@@ -366,9 +366,7 @@ a.sp-sl.best{font-weight:600;border-color:#cf222e;background:rgba(207,34,46,.06)
   <select id="emoji-filter" onchange="filterByEmoji(this.value)" style="width:auto;padding:3px 6px;font-size:.88rem" aria-label="Filtr podle emotikony">
     <option value="">&#128526; Vše</option>
   </select>
-  <select id="meta-filter" onchange="filterByMeta(this.value)" style="width:auto;padding:3px 6px;font-size:.88rem" aria-label="Filtr podle metadat">
-    <option value="">&#128203; Metadata</option>
-  </select>
+  <button onclick="openMetaBrowser()">&#128203; Metadata</button>
   <button onclick="showTasks()" accesskey="t">&#9745; Úkoly<span class="ak">T</span></button>
   <span class="spacer"></span>
   <button onclick="dlgNewNote()" accesskey="n">&#128221; Poznámka<span class="ak">N</span></button>
@@ -748,16 +746,120 @@ function usedMetaKV() {
 }
 
 function renderMetaFilter() {
-  var sel = document.getElementById("meta-filter");
-  if (!sel || !BD) return;
-  var kvs = usedMetaKV();
-  var h = '<option value="">&#128203; Metadata</option>';
-  for (var i = 0; i < kvs.length; i++) {
-    var val = kvs[i].key + "=" + kvs[i].value;
-    var s = (MFILT && MFILT.key === kvs[i].key && MFILT.value === kvs[i].value) ? " selected" : "";
-    h += '<option value="' + esc(val) + '"' + s + ">" + esc(kvs[i].key) + ": " + esc(kvs[i].value) + " (" + kvs[i].count + ")</option>";
+  // No longer a select — metadata browser is opened via button
+}
+
+var MB_EXPANDED_KEYS = {};
+var MB_EXPANDED_VALS = {};
+
+function openMetaBrowser() {
+  if (!BD) return;
+  MFILT = null;
+  MB_EXPANDED_KEYS = {};
+  MB_EXPANDED_VALS = {};
+  renderMetaBrowser();
+}
+
+function renderMetaBrowser() {
+  var tb = document.getElementById("toolbar");
+  var vw = document.getElementById("view");
+  if (!tb || !vw) return;
+
+  tb.innerHTML = '<button class="sm" onclick="openRoot()">&#11013; Zpět</button>';
+
+  var keyMap = {};
+  for (var i = 0; i < BD.notes.length; i++) {
+    var n = BD.notes[i];
+    if (!n.meta) continue;
+    for (var j = 0; j < n.meta.length; j++) {
+      var mk = n.meta[j].key, mv = n.meta[j].value;
+      if (!keyMap[mk]) keyMap[mk] = {};
+      if (!keyMap[mk][mv]) keyMap[mk][mv] = [];
+      keyMap[mk][mv].push(n.id);
+    }
   }
-  sel.innerHTML = h;
+
+  var keys = Object.keys(keyMap).sort(function(a, b) { return a.localeCompare(b, "cs"); });
+
+  var h = '<h6 style="margin:0 0 4px;font-size:.72rem;text-transform:uppercase;color:var(--text2);letter-spacing:.5px">Prohlížeč metadat</h6>';
+  h += '<h2 style="margin:0 0 12px;font-size:1.05rem">&#128203; Metadata</h2>';
+
+  if (keys.length === 0) {
+    h += '<p style="color:var(--text2)">Žádné poznámky nemají metadata.</p>';
+    vw.innerHTML = h;
+    return;
+  }
+
+  h += '<ul style="list-style:none;padding:0;margin:0">';
+  for (var ki = 0; ki < keys.length; ki++) {
+    var key = keys[ki];
+    var vals = keyMap[key];
+    var valKeys = Object.keys(vals).sort(function(a, b) { return a.localeCompare(b, "cs"); });
+    var noteSet = {};
+    for (var vi = 0; vi < valKeys.length; vi++) {
+      var ids = vals[valKeys[vi]];
+      for (var ni = 0; ni < ids.length; ni++) noteSet[ids[ni]] = true;
+    }
+    var totalNotes = Object.keys(noteSet).length;
+    var kExp = MB_EXPANDED_KEYS[key];
+    var kArrow = kExp ? "&#9662;" : "&#9656;";
+    var kId = key.replace(/[^a-zA-Z0-9]/g, "_");
+
+    h += '<li style="margin:4px 0">';
+    h += '<button onclick="toggleMetaKey(this)" data-key="' + esc(key) + '" style="background:none;border:none;cursor:pointer;font-size:.92rem;padding:4px 6px;color:var(--text);text-align:left;width:100%;display:flex;align-items:center;gap:6px;border-radius:4px" aria-expanded="' + (kExp ? "true" : "false") + '">';
+    h += '<span style="width:16px;text-align:center">' + kArrow + '</span>';
+    h += '<strong>' + esc(key) + '</strong>';
+    h += '<span style="color:var(--text2);font-size:.82rem">(' + valKeys.length + ' hodnot, ' + totalNotes + ' poznámek)</span>';
+    h += '</button>';
+
+    if (kExp) {
+      h += '<ul style="list-style:none;padding:0 0 0 22px;margin:2px 0">';
+      for (var vj = 0; vj < valKeys.length; vj++) {
+        var val = valKeys[vj];
+        var noteIds = vals[val];
+        var vKey = key + "=" + val;
+        var vExp = MB_EXPANDED_VALS[vKey];
+        var vArrow = vExp ? "&#9662;" : "&#9656;";
+
+        h += '<li style="margin:2px 0">';
+        h += '<button onclick="toggleMetaVal(this)" data-vkey="' + esc(vKey) + '" style="background:none;border:none;cursor:pointer;font-size:.86rem;padding:3px 6px;color:var(--text);text-align:left;width:100%;display:flex;align-items:center;gap:6px;border-radius:4px" aria-expanded="' + (vExp ? "true" : "false") + '">';
+        h += '<span style="width:16px;text-align:center">' + vArrow + '</span>';
+        h += '<span>' + esc(val) + '</span>';
+        h += '<span style="color:var(--text2);font-size:.78rem">(' + noteIds.length + ')</span>';
+        h += '</button>';
+
+        if (vExp) {
+          h += '<ul style="list-style:none;padding:0 0 0 22px;margin:2px 0">';
+          for (var nj = 0; nj < noteIds.length; nj++) {
+            var note = getNote(noteIds[nj]);
+            if (!note) continue;
+            h += '<li style="margin:2px 0;padding:2px 6px">';
+            h += '<a href="#" onclick="openNote(\x27' + note.id + '\x27);return false" style="font-size:.86rem">' + (note.icon || "&#128221;") + ' ' + esc(note.name) + '</a>';
+            h += '</li>';
+          }
+          h += '</ul>';
+        }
+        h += '</li>';
+      }
+      h += '</ul>';
+    }
+    h += '</li>';
+  }
+  h += '</ul>';
+
+  vw.innerHTML = h;
+}
+
+function toggleMetaKey(btn) {
+  var key = btn.getAttribute("data-key");
+  MB_EXPANDED_KEYS[key] = !MB_EXPANDED_KEYS[key];
+  renderMetaBrowser();
+}
+
+function toggleMetaVal(btn) {
+  var vKey = btn.getAttribute("data-vkey");
+  MB_EXPANDED_VALS[vKey] = !MB_EXPANDED_VALS[vKey];
+  renderMetaBrowser();
 }
 
 function filterByMeta(val) {
@@ -768,6 +870,7 @@ function filterByMeta(val) {
   }
   renderNav();
 }
+
 
 function noteHasMeta(note, key, value) {
   if (!note.meta) return false;
@@ -3109,6 +3212,9 @@ function showSettings() {
   h += '<label>Vlastní emotikony (napište nebo vložte emoji znaky, prázdné = výchozí sada):</label>';
   h += '<input id="dlg-emojis" value="' + esc(BD.emojis || "") + '" placeholder="' + esc(DEFAULT_EMOJIS) + '">';
   h += '<div style="margin-top:6px;font-size:.78rem;color:var(--text2)">Náhled: <span id="dlg-emoji-preview"></span></div>';
+  h += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">';
+  h += '<a href="#" onclick="closeDialog();showMissingLinks();return false" style="font-size:.88rem">&#128269; Zobrazit chybějící odkazy a includy</a>';
+  h += '</div>';
   showDialog("Nastavení", h, function() {
     var name = document.getElementById("dlg-name").value.trim();
     if (!name) return;
@@ -3134,6 +3240,103 @@ function showSettings() {
 // ===== SIDEBAR TOGGLE =====
 function toggleSidebar() {
   document.getElementById("sidebar").classList.toggle("hidden");
+}
+
+// ===== MISSING LINKS =====
+function showMissingLinks() {
+  if (!BD) return;
+  var tb = document.getElementById("toolbar");
+  var vw = document.getElementById("view");
+  if (!tb || !vw) return;
+
+  tb.innerHTML = '<button class="sm" onclick="openRoot()">&#11013; Zpět</button>';
+
+  // Scan all notes for broken [[links]] and {{includes}}
+  var missingLinks = {}; // name → [noteIds]
+  var missingIncludes = {}; // name → [noteIds]
+
+  for (var i = 0; i < BD.notes.length; i++) {
+    var n = BD.notes[i];
+    if (!n.content) continue;
+    var content = n.content;
+
+    // Find [[links]]
+    var lre = /\[\[(.+?)\]\]/g, lm;
+    while ((lm = lre.exec(content)) !== null) {
+      var lname = lm[1].trim();
+      if (!findNoteByName(lname)) {
+        if (!missingLinks[lname]) missingLinks[lname] = [];
+        if (missingLinks[lname].indexOf(n.id) === -1) missingLinks[lname].push(n.id);
+      }
+    }
+
+    // Find {{includes}}
+    var ire = /\{\{(.+?)\}\}/g, im;
+    while ((im = ire.exec(content)) !== null) {
+      var iname = im[1].trim();
+      if (!findNoteByName(iname)) {
+        if (!missingIncludes[iname]) missingIncludes[iname] = [];
+        if (missingIncludes[iname].indexOf(n.id) === -1) missingIncludes[iname].push(n.id);
+      }
+    }
+  }
+
+  var lKeys = Object.keys(missingLinks).sort(function(a, b) { return a.localeCompare(b, "cs"); });
+  var iKeys = Object.keys(missingIncludes).sort(function(a, b) { return a.localeCompare(b, "cs"); });
+
+  var h = '<h6 style="margin:0 0 4px;font-size:.72rem;text-transform:uppercase;color:var(--text2);letter-spacing:.5px">Kontrola integrity</h6>';
+  h += '<h2 style="margin:0 0 12px;font-size:1.05rem">&#128269; Chybějící odkazy a includy</h2>';
+
+  if (lKeys.length === 0 && iKeys.length === 0) {
+    h += '<p style="color:var(--text2)">&#9989; Žádné chybějící odkazy ani includy. Vše je v pořádku.</p>';
+    vw.innerHTML = h;
+    return;
+  }
+
+  if (lKeys.length > 0) {
+    h += '<div style="margin-bottom:16px">';
+    h += '<h3 style="font-size:.92rem;color:var(--danger);margin:0 0 8px">&#128279; Chybějící interní odkazy (' + lKeys.length + ')</h3>';
+    h += '<ul style="list-style:none;padding:0;margin:0">';
+    for (var li = 0; li < lKeys.length; li++) {
+      var lk = lKeys[li];
+      var lnotes = missingLinks[lk];
+      h += '<li style="margin:6px 0;padding:8px 10px;border:1px solid var(--border);border-radius:4px">';
+      h += '<strong style="color:var(--danger)">[[' + esc(lk) + ']]</strong>';
+      h += '<span style="color:var(--text2);font-size:.82rem;margin-left:8px">— odkazováno z ' + lnotes.length + ' poznámek:</span>';
+      h += '<ul style="list-style:disc;padding-left:1.4em;margin:4px 0 0">';
+      for (var lj = 0; lj < lnotes.length; lj++) {
+        var ln = getNote(lnotes[lj]);
+        if (ln) h += '<li style="margin:2px 0"><a href="#" onclick="openNote(\'' + ln.id + '\');return false" style="font-size:.86rem">' + (ln.icon || "&#128221;") + ' ' + esc(ln.name) + '</a></li>';
+      }
+      h += '</ul></li>';
+    }
+    h += '</ul></div>';
+  }
+
+  if (iKeys.length > 0) {
+    h += '<div style="margin-bottom:16px">';
+    h += '<h3 style="font-size:.92rem;color:var(--danger);margin:0 0 8px">&#128206; Chybějící includy (' + iKeys.length + ')</h3>';
+    h += '<ul style="list-style:none;padding:0;margin:0">';
+    for (var ii = 0; ii < iKeys.length; ii++) {
+      var ik = iKeys[ii];
+      var inotes = missingIncludes[ik];
+      h += '<li style="margin:6px 0;padding:8px 10px;border:1px solid var(--border);border-radius:4px">';
+      h += '<strong style="color:var(--danger)">{{' + esc(ik) + '}}</strong>';
+      h += '<span style="color:var(--text2);font-size:.82rem;margin-left:8px">— vkládáno z ' + inotes.length + ' poznámek:</span>';
+      h += '<ul style="list-style:disc;padding-left:1.4em;margin:4px 0 0">';
+      for (var ij = 0; ij < inotes.length; ij++) {
+        var inn = getNote(inotes[ij]);
+        if (inn) h += '<li style="margin:2px 0"><a href="#" onclick="openNote(\'' + inn.id + '\');return false" style="font-size:.86rem">' + (inn.icon || "&#128221;") + ' ' + esc(inn.name) + '</a></li>';
+      }
+      h += '</ul></li>';
+    }
+    h += '</ul></div>';
+  }
+
+  var totalMissing = lKeys.length + iKeys.length;
+  h += '<p style="font-size:.82rem;color:var(--text2);margin-top:12px">Celkem ' + totalMissing + ' chybějících cílů.</p>';
+
+  vw.innerHTML = h;
 }
 
 // ===== PANEL KEYBOARD SHORTCUTS =====
