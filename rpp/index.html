@@ -313,7 +313,7 @@ const tabStates = {}; // key → {page, sort, search, filters}
 
 // ===== IndexedDB Cache =====
 const IDB_NAME = 'rpp-prohlizec';
-const IDB_VERSION = 20;
+const IDB_VERSION = 22;
 const IDB_STORE = 'datasets';
 const IDB_META = 'meta';
 
@@ -1128,8 +1128,19 @@ function buildVirtualCinnosti(){
                 if(agId.startsWith(RDF_BASE)) agId=agId.substring(RDF_BASE.length);
                 rec.agenda=agId;
             }
-            rec.název=cs(cin.název)||cs(cin['má-název-činnosti'])||'';
-            rec.popis=cs(cin.popis)||cs(cin['má-popis-činnosti'])||'';
+            // Extract název and popis from any matching property
+            let foundName='', foundPopis='';
+            for(const[k,v] of Object.entries(cin)){
+                if(k==='id'||k==='type')continue;
+                const sv=cs(v);
+                if(typeof sv!=='string'||!sv)continue;
+                if(sv.startsWith('http')||sv.startsWith('/')||/^\d{4}-\d{2}-\d{2}/.test(sv))continue;
+                const kl=k.toLowerCase();
+                if(!foundName&&(kl==='název'||kl.includes('název'))&&!kl.includes('popis'))foundName=sv;
+                if(!foundPopis&&(kl==='popis'||kl.includes('popis')))foundPopis=sv;
+            }
+            rec.název=foundName;
+            rec.popis=foundPopis;
             if(cin['platnost-od']||cin['má-platnost-činnosti-od'])
                 rec['platnost-od']=cin['platnost-od']||cin['má-platnost-činnosti-od'];
             if(cin['typ-výkonu-činnosti']||cin['typ-výkonu'])
@@ -2070,21 +2081,46 @@ function computePusobnost(rec){
         debugInfo.steps.push('3: působnost dataset: '+pusobnostCount+' záznamů, +'+pusCinCount+' nových činností');
     }
 
-    // === STEP 4: Enrich names from loaded datasets ===
-    const cinDs=datasets['cinnosti'];
-    if(cinDs&&cinDs.loaded){
-        for(const[,ag]of agendaMap){
-            for(const[,cin]of ag.činnosti){
-                const cinRef=globalIndex.get(cin.cinnostId);
-                if(cinRef){ const cinRec=cinDs.records[cinRef.idx]; if(cinRec){
-                    if(cinRec.název) cin.název=cs(cinRec.název);
-                    if(cinRec.popis) cin.popis=cs(cinRec.popis);
-                }}
-            }
-        }
-    }
+    // === STEP 4: Enrich names from agendy inline činnosti (most reliable source) ===
     const agDs=datasets['agendy'];
     if(agDs&&agDs.loaded){
+        // Build local map: short činnost id → full raw object from JSON
+        const cinMap=new Map();
+        const rdfBase='https://rpp-opendata.egon.gov.cz/odrpp/zdroj/';
+        for(const agRec of agDs.records){
+            const cinArr=agRec.činnosti;
+            if(!Array.isArray(cinArr))continue;
+            for(const c of cinArr){
+                if(!c||typeof c!=='object')continue;
+                let cid=c.id||'';
+                if(cid.startsWith(rdfBase)) cid=cid.substring(rdfBase.length);
+                cinMap.set(cid, c);
+            }
+        }
+        // Enrich computed činnosti — scan ALL properties for name and description
+        for(const[,ag]of agendaMap){
+            for(const[,cin]of ag.činnosti){
+                let cid=cin.cinnostId||'';
+                if(cid.startsWith(rdfBase)) cid=cid.substring(rdfBase.length);
+                const raw=cinMap.get(cid);
+                if(!raw)continue;
+                // Try to find název and popis from any property
+                let foundName='', foundPopis='';
+                for(const[k,v] of Object.entries(raw)){
+                    if(k==='id'||k==='type')continue;
+                    const kl=k.toLowerCase();
+                    const sv=cs(v);
+                    if(typeof sv!=='string'||!sv)continue;
+                    // Skip URIs and dates
+                    if(sv.startsWith('http')||sv.startsWith('/')||/^\d{4}-\d{2}-\d{2}/.test(sv))continue;
+                    if(!foundName&&(kl==='název'||kl.includes('název')))foundName=sv;
+                    if(!foundPopis&&(kl==='popis'||kl.includes('popis')))foundPopis=sv;
+                }
+                if(foundName) cin.název=foundName;
+                if(foundPopis) cin.popis=foundPopis;
+            }
+        }
+        // Enrich agenda names
         for(const[,ag]of agendaMap){
             const agRef=globalIndex.get(ag.agendaId);
             if(agRef){ const agRec=agDs.records[agRef.idx]; if(agRec&&agRec.název) ag.název=cs(agRec.název); if(agRec&&agRec.kód) ag.kód=agRec.kód; }
@@ -2186,6 +2222,45 @@ async function renderOvmCustomSections(container, rec){
         const contentDiv=document.createElement('div');
         sec.appendChild(contentDiv);
 
+        // Helper: look up činnost name/popis directly from agendy inline data
+        function lookupCinnostFromAgendy(agendaCode, crCode){
+            const agDs2=datasets['agendy'];
+            if(!agDs2||!agDs2.loaded)return null;
+            const rdfBase='https://rpp-opendata.egon.gov.cz/odrpp/zdroj/';
+            // Find the agenda record
+            for(const agRec of agDs2.records){
+                const ak=agRec.kód||'';
+                let agId=agRec.id||'';
+                if(agId.startsWith(rdfBase)) agId=agId.substring(rdfBase.length);
+                if(ak!==agendaCode&&agId!=='agenda/'+agendaCode)continue;
+                // Search inline činnosti
+                const cinArr=agRec.činnosti;
+                if(!Array.isArray(cinArr))continue;
+                for(const c of cinArr){
+                    if(!c||typeof c!=='object')continue;
+                    let cid=c.id||'';
+                    if(cid.startsWith(rdfBase)) cid=cid.substring(rdfBase.length);
+                    // Match by crCode in the id
+                    if(cid.endsWith('/'+crCode)){
+                        // Extract name and popis from ANY property
+                        let n='', p='';
+                        for(const[k,v] of Object.entries(c)){
+                            if(k==='id'||k==='type')continue;
+                            const sv=cs(v);
+                            if(typeof sv!=='string'||!sv)continue;
+                            if(sv.startsWith('http')||sv.startsWith('/')||/^\d{4}-\d{2}-\d{2}/.test(sv))continue;
+                            const kl=k.toLowerCase();
+                            if(!n&&(kl==='název'||kl.includes('název')&&!kl.includes('popis')))n=sv;
+                            if(!p&&(kl==='popis'||kl.includes('popis')))p=sv;
+                        }
+                        return {název:n, popis:p};
+                    }
+                }
+                break; // found agenda, no need to continue
+            }
+            return null;
+        }
+
         // Prepare flat data array for table view
         const flatRows=[];
         const sortedAgendas=[...pub.agendaMap.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
@@ -2194,7 +2269,20 @@ async function renderOvmCustomSections(container, rec){
             const agName=cs(ag.název)||'';
             const sortedCin=[...ag.činnosti.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
             for(const[crCode,cin]of sortedCin){
-                flatRows.push({agCode:agLabel,agName,agId:ag.agendaId,crCode,cinName:cs(cin.název)||'',cinPopis:cs(cin.popis)||'',cinId:cin.cinnostId,source:[...cin.sources].join(', ')});
+                let cinName=cs(cin.název)||'';
+                let cinPopis=cs(cin.popis)||'';
+                // Fallback: direct lookup from agendy if step 4 didn't enrich
+                if(!cinName){
+                    const info=lookupCinnostFromAgendy(agCode, crCode);
+                    if(info){
+                        cinName=info.název||'';
+                        cinPopis=info.popis||'';
+                        // Also store back for grouped view
+                        cin.název=cinName;
+                        cin.popis=cinPopis;
+                    }
+                }
+                flatRows.push({agCode:agLabel,agName,agId:ag.agendaId,crCode,cinName,cinPopis,cinId:cin.cinnostId,source:[...cin.sources].join(', ')});
             }
             if(sortedCin.length===0){
                 flatRows.push({agCode:agLabel,agName,agId:ag.agendaId,crCode:'—',cinName:'',cinPopis:'',cinId:null,source:ag.source||''});
