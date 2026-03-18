@@ -561,6 +561,7 @@
         .json-input { font-family: 'Consolas', 'Monaco', monospace; font-size: 0.9rem; }
     </style>
     <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
+    <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
     <a href="#main-content" class="skip-link" data-i18n="skipToContent">Přeskočit na hlavní obsah</a>
@@ -1417,6 +1418,7 @@
                     <div class="format-tabs">
                         <button type="button" class="format-tab active" data-format="csv">CSV (čárka)</button>
                         <button type="button" class="format-tab" data-format="tsv">TSV (tabulátor)</button>
+                        <button type="button" class="format-tab" data-format="xlsx">XLSX (Excel)</button>
                     </div>
                 </div>
                 <div class="form-group">
@@ -1507,7 +1509,7 @@
                 selectOptions: "Hodnoty (oddělené čárkou)", dateFormat: "Formát data", dateFormatHelp: "Nápověda k formátu", dateFormatDay: "Den:", dateFormatMonth: "Měsíc:", dateFormatYear: "Rok:", dateFormatWeekday: "Den v týdnu:", dateFormatExamples: "Příklady:", clearDate: "Vymazat datum", targetTable: "Cílová tabulka", parentFieldSelect: "Pole odkazující zpět", sortField: "Řadit záznamy podle", sortDirection: "Směr řazení", sortAsc: "Vzestupně (A→Z, 1→9)", sortDesc: "Sestupně (Z→A, 9→1)", sortByPrimary: "Primární pole", defaultSortField: "Výchozí řazení v seznamech", autoIncrement: "Automatický přírůstek", lastValue: "Poslední hodnota",
                 fieldPrimary: "Primární (název záznamu)", fieldFilter: "Povolit filtrování", addRecord: "Přidat záznam",
                 close: "Zavřít", edit: "Upravit", confirm: "Potvrzení", delete: "Smazat", format: "Formát:",
-                exportData: "Data k exportu:", saveFile: "Uložit soubor", loadFile: "Načíst soubor:",
+                exportData: "Data k exportu:", saveFile: "Uložit soubor", loadFile: "Načíst soubor:", xlsxExportNote: "XLSX export - klikněte na \"Uložit soubor\" pro stažení Excel souboru.\n\nDatumy budou exportovány jako Excel datumy, čísla jako čísla, víceřádkový text zůstane v jedné buňce.",
                 orPasteData: "Nebo vložte data:", hasHeader: "První řádek obsahuje názvy sloupců",
                 searchPlaceholder: "Hledat...", columnVisibility: "Zobrazení sloupců", actions: "Akce",
                 noRecords: "Zatím nemáte žádné záznamy.", allValues: "Všechny hodnoty", noValue: "(bez hodnoty)",
@@ -1537,7 +1539,7 @@
                 selectOptions: "Values (comma-separated)", dateFormat: "Date format", dateFormatHelp: "Format help", dateFormatDay: "Day:", dateFormatMonth: "Month:", dateFormatYear: "Year:", dateFormatWeekday: "Weekday:", dateFormatExamples: "Examples:", clearDate: "Clear date", targetTable: "Target Table", parentFieldSelect: "Back-reference field", sortField: "Sort records by", sortDirection: "Sort direction", sortAsc: "Ascending (A→Z, 1→9)", sortDesc: "Descending (Z→A, 9→1)", sortByPrimary: "Primary field", defaultSortField: "Default sort in lists", autoIncrement: "Auto increment", lastValue: "Last value",
                 fieldPrimary: "Primary (record name)", fieldFilter: "Enable filtering", addRecord: "Add Record",
                 close: "Close", edit: "Edit", confirm: "Confirmation", delete: "Delete", format: "Format:",
-                exportData: "Export data:", saveFile: "Save File", loadFile: "Load file:",
+                exportData: "Export data:", saveFile: "Save File", loadFile: "Load file:", xlsxExportNote: "XLSX export - click \"Save File\" to download the Excel file.\n\nDates will be exported as Excel dates, numbers as numbers, multiline text will stay in one cell.",
                 orPasteData: "Or paste data:", hasHeader: "First row contains column names",
                 searchPlaceholder: "Search...", columnVisibility: "Column Visibility", actions: "Actions",
                 noRecords: "No records yet.", allValues: "All values", noValue: "(no value)",
@@ -7176,14 +7178,90 @@
             openModal('exportModal');
         }
 
+        // Helper function to get export value for a field
+        function getExportFieldValue(table, field, record, forExcel = false) {
+            const v = record.values[field.id];
+            
+            switch (field.type) {
+                case 'composite':
+                    return evaluateCompositeField(table, field, record) || '';
+                    
+                case 'parent':
+                    if (v) {
+                        const targetTable = getTableById(field.targetTableId);
+                        const targetRecord = targetTable ? getRecordById(field.targetTableId, v) : null;
+                        return targetRecord && targetTable ? getPrimaryFieldValue(targetTable, targetRecord) : v;
+                    }
+                    return '';
+                    
+                case 'children':
+                    const children = getChildRecords(table.id, record.id).filter(c => {
+                        if (field.targetTableId && c.table.id !== field.targetTableId) return false;
+                        if (field.parentFieldId && c.field.id !== field.parentFieldId) return false;
+                        return true;
+                    });
+                    return children.map(c => getPrimaryFieldValue(c.table, c.record)).join(', ');
+                    
+                case 'boolean':
+                    return v ? t('yes') : t('no');
+                    
+                case 'date':
+                    if (forExcel && v) {
+                        const d = new Date(v);
+                        if (!isNaN(d.getTime())) return d; // Return Date object for Excel
+                    }
+                    return v ? formatDate(v, field.dateFormat) : '';
+                    
+                case 'number':
+                    if (forExcel) {
+                        return typeof v === 'number' ? v : (v === '' || v === null || v === undefined ? '' : parseFloat(v));
+                    }
+                    return v ?? '';
+                    
+                case 'json':
+                    if (v && typeof v === 'object') {
+                        return JSON.stringify(v);
+                    }
+                    return v ?? '';
+                    
+                default:
+                    return v != null ? String(v) : '';
+            }
+        }
+        
+        // Get visible fields for export based on columnVisibility
+        function getVisibleFieldsForExport(table) {
+            const cv = database.meta.columnVisibility[table.id] || {};
+            return table.fields.filter(f => {
+                // Children must be explicitly enabled
+                if (f.type === 'children') return cv[f.id] === true;
+                // Other fields are visible unless explicitly hidden
+                return cv[f.id] !== false;
+            });
+        }
+
         function updateExportOutput() {
             const table = getTableById(activeTableId);
             if (!table) return;
+            
+            // Hide copy button for XLSX (binary format)
+            document.getElementById('btnExportCopy').style.display = exportFormat === 'xlsx' ? 'none' : '';
+            
+            if (exportFormat === 'xlsx') {
+                document.getElementById('exportOutput').value = t('xlsxExportNote') || 'XLSX export - klikněte na "Uložit soubor" pro stažení Excel souboru.\n\nDatumy budou exportovány jako Excel datumy, čísla jako čísla.';
+                return;
+            }
+            
             const delim = exportFormat === 'csv' ? ',' : '\t';
-            const fields = table.fields.filter(f => f.type !== 'children' && f.type !== 'parent');
+            const fields = getVisibleFieldsForExport(table);
             const escD = (s, d) => { s = String(s); return s.includes(d) || s.includes('"') || s.includes('\n') ? '"' + s.replace(/"/g, '""') + '"' : s; };
             let csv = fields.map(f => escD(f.name, delim)).join(delim) + '\n';
-            table.records.forEach(r => { csv += fields.map(f => { let v = r.values[f.id] ?? ''; if (f.type === 'boolean') v = v ? t('yes') : t('no'); return escD(v, delim); }).join(delim) + '\n'; });
+            table.records.forEach(r => { 
+                csv += fields.map(f => {
+                    const v = getExportFieldValue(table, f, r, false);
+                    return escD(v, delim); 
+                }).join(delim) + '\n'; 
+            });
             document.getElementById('exportOutput').value = csv;
         }
 
@@ -8083,6 +8161,63 @@
             document.getElementById('btnExportCopy').addEventListener('click', () => { navigator.clipboard.writeText(document.getElementById('exportOutput').value); alert(t('jsonCopied')); });
             document.getElementById('btnExportFile').addEventListener('click', async () => {
                 const table = getTableById(activeTableId);
+                if (!table) return;
+                
+                if (exportFormat === 'xlsx') {
+                    // XLSX export using SheetJS
+                    const fields = getVisibleFieldsForExport(table);
+                    
+                    // Build data array with proper types
+                    const data = [];
+                    
+                    // Header row
+                    data.push(fields.map(f => f.name));
+                    
+                    // Data rows
+                    table.records.forEach(r => {
+                        const row = fields.map(f => getExportFieldValue(table, f, r, true));
+                        data.push(row);
+                    });
+                    
+                    // Create workbook
+                    const ws = XLSX.utils.aoa_to_sheet(data);
+                    
+                    // Set column widths based on content
+                    const colWidths = fields.map((f, i) => {
+                        let maxLen = f.name.length;
+                        table.records.forEach(r => {
+                            const v = getExportFieldValue(table, f, r, false); // Get string version for length calc
+                            if (v) {
+                                const len = String(v).split('\n')[0].length; // First line length for multiline
+                                if (len > maxLen) maxLen = len;
+                            }
+                        });
+                        return { wch: Math.min(maxLen + 2, 50) };
+                    });
+                    ws['!cols'] = colWidths;
+                    
+                    // Enable text wrapping for multiline fields
+                    const range = XLSX.utils.decode_range(ws['!ref']);
+                    for (let R = range.s.r; R <= range.e.r; R++) {
+                        for (let C = range.s.c; C <= range.e.c; C++) {
+                            const cell = ws[XLSX.utils.encode_cell({r: R, c: C})];
+                            const fType = fields[C]?.type;
+                            if (cell && (fType === 'textarea' || fType === 'composite' || fType === 'children' || fType === 'json')) {
+                                if (!cell.s) cell.s = {};
+                                cell.s.alignment = { wrapText: true };
+                            }
+                        }
+                    }
+                    
+                    const wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, table.name.substring(0, 31)); // Excel sheet name max 31 chars
+                    
+                    // Generate and download
+                    const filename = `${table.name}.xlsx`;
+                    XLSX.writeFile(wb, filename);
+                    return;
+                }
+                
                 const content = document.getElementById('exportOutput').value;
                 const filename = `${table?.name || 'export'}.${exportFormat}`;
                 const mimeType = exportFormat === 'csv' ? 'text/csv' : 'text/tab-separated-values';
