@@ -2,19 +2,17 @@
 
 Tohle je mikroweb věnovaný informacím o našich (snad) užitečných nástrojích, které by se nejen egovernmenťákům mohly hodit.
 
-
-⚠️ Web a         informace k jednotlivým nástrojům (zejména dokumentace) se vytváří, když má zrovna někdo (nejvíc [Michal]) čas, takže pokud něco chybí, pardon, bude to.
-
-
 ## ✏️Nástroje
 
-Teď jsou pro vás připravené tyhle nástroje: [ArchiMate editor], [Prohlížeč RPP], [Prohlížeč opendat], [Editor JSONDB databází], [NoteBlok], [MarkDown editor], [OPML editor], [Editor spisového plánu], [NSESSS korpus]
+Teď jsou pro vás připravené tyhle nástroje: [ArchiMate editor], [Prohlížeč RPP], [Prohlížeč opendat], [Univerzální databázový nástroj a editor JSONDB databází], [Správce datových katalogů], [NoteBlok], [MarkDown editor], [OPML editor], [Editor spisového plánu], [NSESSS korpus]
 
+⚠️ Web a         informace k jednotlivým nástrojům (zejména dokumentace) se vytváří, když má zrovna někdo (nejvíc [Michal]) čas, takže pokud něco chybí, pardon, bude to.
 
 ## Novinky k našim nástrojům
 
 ℹ️ Čistě teoreticky, na stránce nástroje je sekce s novinkami a změnami v daném nástroji... Teda aspoň doufám, že tam je...
 
+* 30. března 2026: Vydali jsme zatím v betaverzi nový a hodně žádaný nástroj a to [[Správce datových katalogů]]. Jak sám název napovídá, umí to spravovat datové katalogy, datové slovníky, konceptuální datové modely, číselníky apod. Bohužel jsem se zatím nedostal k tvorbě dokumentace.
 * 23. března 2026: Už je tady nástrojů fakt docela dost a tak je asi fakt na čase rozběhnout samotný web https://egdilna.github.io/nastroje tak uvidíme.
 
 # ✏️ArchiMate
@@ -75,7 +73,70 @@ Existuje i [Uživatelská dokumentace](https://egdilna.github.io/nastroje/rpp/do
 1. Funguje i export
 1. Pokud jde o dynamický entitní model, jsou u jednotlivých záznamů také odkaza na jejich detail s podrobným zobrazením i souvisejících entit, jsou-li v dané datové sadě
 
-# ✏️JSONDB
+# JSONDB
+
+## Univerzální databázový nástroj a editor JSONDB databází
+
+⛓️ [Editor JSONDB databází](https://egdilna.github.io/nastroje/jsondb) je univerzální nástroj pro správu databází. Komplexní webový editor vlastních strukturovaných databází ve formátu JSONDB. Jde o univerzální databázový nástroj pro vytváření a správu databází s pokročilými funkcemi. Jednosouborová čistě HTML a JavaScript aplikace, žádná instalace, žádné závislosti, funguje plně ve webovém prohlížeči. Využívá mezinárodní otevřený formát JSONDB se všemi rozšířeními. Online je na https://egdilna.github.io/nastroje/jsondb
+
+
+
+
+### ✏️Hlavní funkce
+
+
+- [ ] dopsat tohle nikde nemůžu najít
+
+### ✏️Dokumentace
+
+* [Kompletní uživatelská příručka](https://egdilna.github.io/nastroje/jsondb/docs-cs)
+* [Documentation in english version](https://egdilna.github.io/nastroje/docs-en
+
+
+### Repository a odkazy
+
+Celý projekt je na GitHubu na https://github.io/michalradacz/database-editor
+
+
+
+
+# DKedit
+
+## Správce datových katalogů
+
+⛓️ [Správce datového katalogu](https://egdilna.github.io/nastroje/dkedit) je komplexní nástroj pro správu datových katalogů úřadu. Umožňuje spravovat všechny katalogy úřadu, včetně datových slovníků, konceptuálních datových katalogů, katalogů údajů do RPP, číselníků a jejich položek a dalších částí povinného datového katalogu úřadu. Vše je spravováno, verzováno, auditováno a samozřejmostí je pak import a export slovníků, číselníků i celých katalogů v závazných formátech JSON a JSONLD podle otevřených formálních norem a požadavků DIA. Online je na https://egdilna.github.io/nastroje/dkedit
+
+
+
+### Hlavní funkce
+
+Komplexní webový nástroj pro správu a úpravy a schvalování datových katalogů úřadu, datových slovníků, datových schémat a číselníků
+
+* Snaha o co nejjednodušší aplikaci pro složitý návrh datových katalogů s propojením mezi sebou
+* Univerzální principy pro celý projekt, včetně verzování a sledování stavu
+* Správa celého DK úřadu jako celého projektu se sledováním změn a verzováním
+* Správa, tvorba, úprava a pokročilé nástroje pro datové slovníky
+* Správa, tvorba, úprava a pokročilé nástroje pro datové katalogy, včetně schémat pro RPP a schémat pro klasifikaci dle vyhlášky 360/2023
+* Správa, tvorba, úprava a pokročilé nástroje pro číselníky, včetně správy jejich položek
+* Propojování dat v rámci projektu i pomocí URI/IRI s jinými katalogy
+* Sestavy pro projednávání a schralováí a sledování změn ve slovnících i číselnících
+* Hromadné operace nad slovníky, pojmy, číselníky i položkami, včetně hromadného schvalování
+* Export katalogu a slovníku do JSONLD dle OFN pro datové a konceptuální slovníky, kompatibilní s povinným formátem pro DIA a RPP
+* Export číselníků v povinném formátu JSONLD podle OFN pro NKOD a RPP
+* Import slovníků a číselníků z JSONLD se sledováním duplicit a změn
+* Univerzální autorské poznámky sloužící jen interně pro projekt
+* Ukládá projekt do jediného JSON souboru, ukládání a správa v browser storage v prohlížeči
+
+### Dokumentace a návody
+
+K dispozici je [Kompletní uživatelská příručka Správce datových katalogů](https://egdilna.github.io/nastroje/dkedit/dokumentace)
+
+V případě zájmu natočíme stručné videonávody.
+
+### Novinky a Historie změn
+
+* 31. března 2026: Když se mi nechce dělat dokumentace, je tu pořád umělá inteligence. A tak jsem s pomocí Claude nechal udělat aspoň první verzi [dokumentace](https://egdilna.github.io/nastroje/dkedit/dokumentace), tak snad to aspoň pomůže.
+* 30. března 2026 Publikována první betaverze, kterou lze ale už reálně používat. Bohužel zatím chybí dokumentace.
 
 # ✏️NoteBlok
 
@@ -144,7 +205,6 @@ Většinou se jedná o nástroje, které já sám - tedy [Michal] potřebuju, ch
 
 ### EGdílna
 
-
 Oficiálně jsou to nástroje šířené pod hlavičkou EGdílny, to je takové divné neformální uskupení nadšenců do eGovernmentu a digitalizace veřejné správy.
 
 Mrkněte na https://www.egdilna.cz
@@ -156,5 +216,8 @@ Hlavním tvůrcem jednotlivých nástrojů jsem většinou já, tedy Michal Rada
 
 
 https://www.michalrada.cz
+
+
+
 
 
