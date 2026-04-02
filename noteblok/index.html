@@ -127,6 +127,8 @@ main#content{flex:1;display:flex;flex-direction:column;overflow:hidden}
 .te-btn-cell{font-size:.65rem;padding:0 4px;background:none;border:1px solid var(--border);color:var(--text2);border-radius:3px;cursor:pointer;flex-shrink:0}
 .te-btn-cell:hover{border-color:var(--accent);color:var(--accent)}
 .te-info{font-size:.82rem;color:var(--text2);margin:8px 0 0}
+.iframe-wrap{position:relative;width:100%;flex:1;min-height:300px;height:calc(100vh - 140px);border:1px solid var(--border);border-radius:4px;overflow:hidden}
+.iframe-embed{width:100%;height:100%;border:none}
 
 .backlinks{margin-top:24px;padding-top:12px;border-top:1px solid var(--border);font-size:.84rem}
 .backlinks h3{font-size:.88rem;color:var(--text2);margin-bottom:6px}
@@ -1169,6 +1171,10 @@ function renderNoteView(noteId) {
   var n = getNote(noteId);
   if (!n) return;
 
+  if (n.noteType === "file") { renderFileNoteView(noteId); return; }
+  if (n.noteType === "task") { renderTaskNoteView(noteId); return; }
+  if (n.noteType === "iframe") { renderIframeNoteView(noteId); return; }
+
   var tb = document.getElementById("toolbar");
   var tbH = "";
   var bmCls = n.bookmarked ? "bm-star active" : "bm-star";
@@ -1355,8 +1361,10 @@ function resolveIncludes(content, depth, seen) {
 
 function findForwardLinks(noteId) {
   var n = getNote(noteId);
-  if (!n || !n.content) return { urls: [], noteLinks: [], includes: [] };
-  var content = n.content;
+  if (!n) return { urls: [], noteLinks: [], includes: [] };
+  var content = n.content || "";
+  if (n.noteType === "task" && n.taskData && n.taskData.description) content = n.taskData.description;
+  if (!content) return { urls: [], noteLinks: [], includes: [] };
 
   // External URLs
   var urls = [], urlSet = {};
@@ -1632,6 +1640,444 @@ var tblEd = {
   _escA: function(s) { return s.replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/'/g,"&#39;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 };
 
+// ===== FILE NOTE =====
+function renderFileNoteView(noteId) {
+  var n = getNote(noteId);
+  if (!n) return;
+  var fv = n.fileVersions || [];
+
+  var tb = document.getElementById("toolbar");
+  var tbH = "";
+  var bmCls = n.bookmarked ? "bm-star active" : "bm-star";
+  tbH += '<button class="' + bmCls + '" onclick="toggleBookmark(\'' + noteId + '\')" accesskey="b" title="Oblíbené (Alt+B)">&#11088;<span class="ak">B</span></button>';
+  tbH += '<button class="sm primary" onclick="dlgAddFileVersion(\'' + noteId + '\')">&#128228; Nahrát verzi</button>';
+  tbH += '<button class="sm" onclick="dlgRenameNote(\'' + noteId + '\')">&#128219; Přejmenovat</button>';
+  tbH += '<button class="sm" onclick="dlgNoteTags(\'' + noteId + '\')">&#127991; Štítky</button>';
+  tbH += '<button class="sm" onclick="dlgNoteMeta(\'' + noteId + '\')" accesskey="m">&#128203; Metadata<span class="ak">M</span></button>';
+  tbH += '<button class="sm" onclick="dlgMoveNote(\'' + noteId + '\')">&#128194; Přesunout</button>';
+  tbH += '<button class="sm" onclick="duplicateNote(\'' + noteId + '\')">&#128203; Duplikovat</button>';
+  tbH += '<span class="sep"></span>';
+  tbH += '<button class="sm danger" onclick="dlgDeleteNote(\'' + noteId + '\')">&#128465; Smazat</button>';
+  tb.innerHTML = tbH;
+
+  var vw = document.getElementById("view");
+  var h = '<div id="crumb">' + breadcrumb(n.folderId) + "</div>";
+  h += '<h6 style="margin:0 0 4px;font-size:.72rem;text-transform:uppercase;color:var(--text2);letter-spacing:.5px">Soubor</h6>';
+  h += "<h1>" + (n.icon || "&#128206;") + " " + esc(n.name) + "</h1>";
+
+  if (n.tags && n.tags.length) {
+    h += '<div style="margin:6px 0 12px">';
+    for (var i = 0; i < n.tags.length; i++) {
+      h += '<span style="background:var(--tag-bg);padding:2px 8px;border-radius:10px;font-size:.78rem;color:var(--accent);margin-right:4px">' + esc(n.tags[i]) + "</span>";
+    }
+    h += "</div>";
+  }
+
+  if (n.meta && n.meta.length > 0) {
+    h += '<table class="meta-table">';
+    for (var mi = 0; mi < n.meta.length; mi++) {
+      var mv = n.meta[mi].value;
+      var mvH = /^https?:\/\/\S+$/i.test(mv) ? '<a href="' + esc(mv) + '" target="_blank" rel="noopener">' + esc(mv) + '</a>' : esc(mv);
+      h += "<tr><td>" + esc(n.meta[mi].key) + "</td><td>" + mvH + "</td></tr>";
+    }
+    h += "</table>";
+  }
+
+  if (fv.length === 0) {
+    h += '<div class="empty">Žádné verze souboru. Klikněte na <strong>Nahrát verzi</strong> pro přidání.</div>';
+  } else {
+    h += '<table class="tbl"><thead><tr><th>Soubor</th><th>Datum</th><th>Velikost</th><th>Poznámka</th><th>Akce</th></tr></thead><tbody>';
+    for (var vi = 0; vi < fv.length; vi++) {
+      var v = fv[vi];
+      var sz = formatFileSize(v.size || 0);
+      var dt = v.date ? new Date(v.date).toLocaleString("cs") : "";
+      h += "<tr>";
+      h += '<td><a href="#" onclick="downloadFileVersion(\'' + noteId + '\',' + vi + ');return false" title="Stáhnout">' + esc(v.fileName) + "</a></td>";
+      h += "<td>" + dt + "</td>";
+      h += "<td>" + sz + "</td>";
+      h += "<td>" + esc(v.comment || "") + "</td>";
+      h += '<td><button class="sm danger" onclick="deleteFileVersion(\'' + noteId + '\',' + vi + ')" title="Smazat verzi">&#128465;</button></td>';
+      h += "</tr>";
+    }
+    h += "</tbody></table>";
+  }
+
+  // Backlinks
+  var bl = findBacklinks(noteId);
+  if (bl.links.length > 0 || bl.includes.length > 0) {
+    h += '<div class="backlinks">';
+    if (bl.links.length > 0) {
+      h += "<h3>&#8617; Odkazuje sem</h3><ul>";
+      for (var li = 0; li < bl.links.length; li++) {
+        var bn = getNote(bl.links[li]);
+        if (bn) h += '<li><a href="#" onclick="openNote(\'' + bn.id + '\');return false">' + (bn.icon || "&#128221;") + " " + esc(bn.name) + "</a></li>";
+      }
+      h += "</ul>";
+    }
+    if (bl.includes.length > 0) {
+      h += "<h3>&#128206; Vkládá tuto poznámku</h3><ul>";
+      for (var ii = 0; ii < bl.includes.length; ii++) {
+        var bn2 = getNote(bl.includes[ii]);
+        if (bn2) h += '<li><a href="#" onclick="openNote(\'' + bn2.id + '\');return false">' + (bn2.icon || "&#128221;") + " " + esc(bn2.name) + "</a></li>";
+      }
+      h += "</ul>";
+    }
+    h += "</div>";
+  }
+
+  vw.innerHTML = h;
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / 1048576).toFixed(1) + " MB";
+}
+
+function dlgAddFileVersion(noteId) {
+  var h = '<label>Soubor:</label><input type="file" id="dlg-fv-file">';
+  h += '<label>Poznámka k verzi:</label><input id="dlg-fv-comment" placeholder="Volitelná poznámka">';
+  showDialog("Nahrát verzi souboru", h, function() {
+    var fileInput = document.getElementById("dlg-fv-file");
+    var comment = document.getElementById("dlg-fv-comment").value.trim();
+    if (!fileInput.files || !fileInput.files[0]) return alert("Vyberte soubor.");
+    var file = fileInput.files[0];
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var n = getNote(noteId);
+      if (!n) return;
+      if (!n.fileVersions) n.fileVersions = [];
+      n.fileVersions.push({
+        fileName: file.name,
+        size: file.size,
+        date: now(),
+        comment: comment,
+        data: e.target.result
+      });
+      n.modified = now();
+      closeDialog();
+      renderNoteView(noteId);
+      renderNav();
+      dbg("Verze souboru přidána: " + file.name + " (" + formatFileSize(file.size) + ")");
+    };
+    reader.onerror = function() { alert("Chyba při čtení souboru."); };
+    reader.readAsDataURL(file);
+  });
+}
+
+function downloadFileVersion(noteId, idx) {
+  var n = getNote(noteId);
+  if (!n || !n.fileVersions || !n.fileVersions[idx]) return;
+  var v = n.fileVersions[idx];
+  var a = document.createElement("a");
+  a.href = v.data;
+  a.download = v.fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function deleteFileVersion(noteId, idx) {
+  var n = getNote(noteId);
+  if (!n || !n.fileVersions || !n.fileVersions[idx]) return;
+  if (!confirm("Smazat verzi \"" + n.fileVersions[idx].fileName + "\"?")) return;
+  n.fileVersions.splice(idx, 1);
+  n.modified = now();
+  renderNoteView(noteId);
+  dbg("Verze souboru smazána");
+}
+
+// ===== IFRAME NOTE =====
+var IFRAME_LOADED = {};
+
+function renderIframeNoteView(noteId) {
+  var n = getNote(noteId);
+  if (!n) return;
+
+  var tb = document.getElementById("toolbar");
+  var tbH = "";
+  var bmCls = n.bookmarked ? "bm-star active" : "bm-star";
+  tbH += '<button class="' + bmCls + '" onclick="toggleBookmark(\'' + noteId + '\')" accesskey="b" title="Oblíbené (Alt+B)">&#11088;<span class="ak">B</span></button>';
+  tbH += '<button class="sm primary" onclick="reloadIframe(\'' + noteId + '\')">&#128260; Načíst znovu</button>';
+  tbH += '<button class="sm" onclick="dlgIframeChangeUrl(\'' + noteId + '\')">&#127760; Změnit URL</button>';
+  tbH += '<button class="sm" onclick="dlgRenameNote(\'' + noteId + '\')">&#128219; Přejmenovat</button>';
+  tbH += '<button class="sm" onclick="dlgNoteTags(\'' + noteId + '\')">&#127991; Štítky</button>';
+  tbH += '<button class="sm" onclick="dlgNoteMeta(\'' + noteId + '\')" accesskey="m">&#128203; Metadata<span class="ak">M</span></button>';
+  tbH += '<button class="sm" onclick="dlgMoveNote(\'' + noteId + '\')">&#128194; Přesunout</button>';
+  tbH += '<button class="sm" onclick="duplicateNote(\'' + noteId + '\')">&#128203; Duplikovat</button>';
+  tbH += '<span class="sep"></span>';
+  tbH += '<button class="sm danger" onclick="dlgDeleteNote(\'' + noteId + '\')">&#128465; Smazat</button>';
+  tb.innerHTML = tbH;
+
+  var vw = document.getElementById("view");
+  var url = n.iframeUrl || "";
+
+  if (!url) {
+    vw.innerHTML = '<div class="empty">Není nastavena URL adresa. Klikněte na <strong>&#127760; Změnit URL</strong>.</div>';
+    return;
+  }
+
+  var h = '<div style="margin:0 0 6px;font-size:.82rem">';
+  h += '<a href="' + esc(url) + '" target="_blank" rel="noopener" title="Otevřít v novém okně">&#127760; ' + esc(url) + '</a>';
+  h += '</div>';
+  h += '<div class="iframe-wrap"><iframe id="iframe-' + noteId + '" class="iframe-embed" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"';
+  if (IFRAME_LOADED[noteId]) {
+    h += ' src="' + esc(url) + '"';
+  }
+  h += '></iframe></div>';
+
+  vw.innerHTML = h;
+
+  if (!IFRAME_LOADED[noteId]) {
+    IFRAME_LOADED[noteId] = true;
+    var ifr = document.getElementById("iframe-" + noteId);
+    if (ifr) ifr.src = url;
+  }
+}
+
+function dlgIframeChangeUrl(noteId) {
+  var n = getNote(noteId);
+  if (!n) return;
+  var h = '<label>URL adresa:</label><input id="dlg-iframe-url" value="' + esc(n.iframeUrl || "") + '" placeholder="https://">';
+  showDialog("Změnit URL", h, function() {
+    var url = document.getElementById("dlg-iframe-url").value.trim();
+    n.iframeUrl = url;
+    n.modified = now();
+    IFRAME_LOADED[noteId] = false;
+    closeDialog();
+    renderNoteView(noteId);
+    dbg("URL změněna: " + url);
+  });
+}
+
+function reloadIframe(noteId) {
+  var n = getNote(noteId);
+  if (!n || !n.iframeUrl) return;
+  var ifr = document.getElementById("iframe-" + noteId);
+  if (ifr) {
+    ifr.src = "";
+    setTimeout(function() { ifr.src = n.iframeUrl; }, 50);
+  }
+  dbg("Iframe reloaded");
+}
+
+// ===== TASK NOTE =====
+var TASK_STATUSES = [
+  { id: "new", label: "Nový", icon: "&#127381;" },
+  { id: "active", label: "Rozpracovaný", icon: "&#128296;" },
+  { id: "waiting", label: "Čeká na", icon: "&#9203;" },
+  { id: "review", label: "Ke kontrole", icon: "&#128269;" },
+  { id: "done", label: "Hotový", icon: "&#9989;" },
+  { id: "cancelled", label: "Zrušený", icon: "&#10060;" }
+];
+
+function getTaskStatus(id) {
+  for (var i = 0; i < TASK_STATUSES.length; i++) {
+    if (TASK_STATUSES[i].id === id) return TASK_STATUSES[i];
+  }
+  return TASK_STATUSES[0];
+}
+
+function renderTaskNoteView(noteId) {
+  var n = getNote(noteId);
+  if (!n) return;
+  var td = n.taskData || { description: "", deadline: "", responsible: "", status: "new", history: [] };
+  var st = getTaskStatus(td.status);
+
+  var tb = document.getElementById("toolbar");
+  var tbH = "";
+  var bmCls = n.bookmarked ? "bm-star active" : "bm-star";
+  tbH += '<button class="' + bmCls + '" onclick="toggleBookmark(\'' + noteId + '\')" accesskey="b" title="Oblíbené (Alt+B)">&#11088;<span class="ak">B</span></button>';
+  tbH += '<button class="sm primary" onclick="dlgTaskUpdateStatus(\'' + noteId + '\')">&#128221; Aktualizovat stav</button>';
+  tbH += '<button class="sm" onclick="dlgTaskEditDesc(\'' + noteId + '\')">&#9998; Popis</button>';
+  tbH += '<button class="sm" onclick="dlgTaskEditFields(\'' + noteId + '\')">&#128203; Údaje</button>';
+  tbH += '<button class="sm" onclick="dlgRenameNote(\'' + noteId + '\')">&#128219; Přejmenovat</button>';
+  tbH += '<button class="sm" onclick="dlgNoteTags(\'' + noteId + '\')">&#127991; Štítky</button>';
+  tbH += '<button class="sm" onclick="dlgNoteMeta(\'' + noteId + '\')" accesskey="m">&#128203; Metadata<span class="ak">M</span></button>';
+  tbH += '<button class="sm" onclick="dlgMoveNote(\'' + noteId + '\')">&#128194; Přesunout</button>';
+  tbH += '<button class="sm" onclick="duplicateNote(\'' + noteId + '\')">&#128203; Duplikovat</button>';
+  tbH += '<span class="sep"></span>';
+  tbH += '<button class="sm danger" onclick="dlgDeleteNote(\'' + noteId + '\')">&#128465; Smazat</button>';
+  tb.innerHTML = tbH;
+
+  var vw = document.getElementById("view");
+  var h = '<div id="crumb">' + breadcrumb(n.folderId) + "</div>";
+  h += '<h6 style="margin:0 0 4px;font-size:.72rem;text-transform:uppercase;color:var(--text2);letter-spacing:.5px">Úkol</h6>';
+  h += "<h1>" + st.icon + " " + esc(n.name) + "</h1>";
+
+  if (n.tags && n.tags.length) {
+    h += '<div style="margin:6px 0 12px">';
+    for (var i = 0; i < n.tags.length; i++) {
+      h += '<span style="background:var(--tag-bg);padding:2px 8px;border-radius:10px;font-size:.78rem;color:var(--accent);margin-right:4px">' + esc(n.tags[i]) + "</span>";
+    }
+    h += "</div>";
+  }
+
+  // Status badge
+  var stColor = td.status === "done" ? "#228B22" : td.status === "cancelled" ? "#cf222e" : td.status === "active" ? "#d97706" : td.status === "waiting" ? "#6366f1" : td.status === "review" ? "#0891b2" : "var(--text2)";
+  h += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin:12px 0;padding:12px;border:1px solid var(--border);border-radius:6px;background:var(--surface)">';
+  h += '<div style="flex:1;min-width:120px"><span style="font-size:.72rem;text-transform:uppercase;color:var(--text2);letter-spacing:.3px">Stav</span><br>';
+  h += '<span style="font-size:1rem;font-weight:600;color:' + stColor + '">' + st.icon + ' ' + esc(st.label) + '</span></div>';
+  if (td.deadline) {
+    h += '<div style="flex:1;min-width:120px"><span style="font-size:.72rem;text-transform:uppercase;color:var(--text2);letter-spacing:.3px">Termín</span><br>';
+    h += '<span style="font-size:.92rem">' + esc(td.deadline) + '</span></div>';
+  }
+  if (td.responsible) {
+    h += '<div style="flex:1;min-width:120px"><span style="font-size:.72rem;text-transform:uppercase;color:var(--text2);letter-spacing:.3px">Zodpovědný</span><br>';
+    h += '<span style="font-size:.92rem">' + esc(td.responsible) + '</span></div>';
+  }
+  h += '</div>';
+
+  // Metadata
+  if (n.meta && n.meta.length > 0) {
+    h += '<table class="meta-table">';
+    for (var mi = 0; mi < n.meta.length; mi++) {
+      var mv = n.meta[mi].value;
+      var mvH = /^https?:\/\/\S+$/i.test(mv) ? '<a href="' + esc(mv) + '" target="_blank" rel="noopener">' + esc(mv) + '</a>' : esc(mv);
+      h += "<tr><td>" + esc(n.meta[mi].key) + "</td><td>" + mvH + "</td></tr>";
+    }
+    h += "</table>";
+  }
+
+  // Description
+  if (td.description && td.description.trim()) {
+    h += '<div style="margin:16px 0"><h3 style="font-size:.88rem;color:var(--text2);margin:0 0 6px">Popis</h3>';
+    h += '<div class="md">' + renderMarkdown(td.description, noteId) + "</div></div>";
+  }
+
+  // History
+  if (td.history && td.history.length > 0) {
+    h += '<div style="margin:16px 0"><h3 style="font-size:.88rem;color:var(--text2);margin:0 0 8px">Průběh (' + td.history.length + ')</h3>';
+    h += '<div style="border-left:3px solid var(--border);padding-left:12px">';
+    for (var hi = td.history.length - 1; hi >= 0; hi--) {
+      var he = td.history[hi];
+      var hst = getTaskStatus(he.status);
+      var hdate = he.date ? new Date(he.date).toLocaleString("cs") : "";
+      h += '<div style="margin:8px 0;padding:6px 0;border-bottom:1px solid var(--border)">';
+      h += '<div style="font-size:.82rem;color:var(--text2)">' + hdate + '</div>';
+      h += '<div>' + hst.icon + ' <strong>' + esc(hst.label) + '</strong>';
+      if (he.note) h += ' — ' + esc(he.note);
+      h += '</div></div>';
+    }
+    h += '</div></div>';
+  }
+
+  // Forward links
+  var fl = findForwardLinks(noteId);
+  if (fl.urls.length > 0 || fl.noteLinks.length > 0) {
+    h += '<div class="backlinks">';
+    if (fl.urls.length > 0) {
+      h += "<h3>&#127760; Obsažené odkazy (" + fl.urls.length + ")</h3><ul>";
+      for (var ui = 0; ui < fl.urls.length; ui++) { h += '<li><a href="' + esc(fl.urls[ui]) + '" target="_blank" rel="noopener">' + esc(fl.urls[ui]) + "</a></li>"; }
+      h += "</ul>";
+    }
+    if (fl.noteLinks.length > 0) {
+      h += "<h3>&#128279; Odkazuje na poznámky (" + fl.noteLinks.length + ")</h3><ul>";
+      for (var ni = 0; ni < fl.noteLinks.length; ni++) { var ln = fl.noteLinks[ni]; h += '<li><a href="#" onclick="openNote(\'' + ln.id + '\');return false">' + (ln.icon || "&#128221;") + " " + esc(ln.name) + "</a></li>"; }
+      h += "</ul>";
+    }
+    h += "</div>";
+  }
+
+  // Backlinks
+  var bl = findBacklinks(noteId);
+  if (bl.links.length > 0 || bl.includes.length > 0) {
+    h += '<div class="backlinks">';
+    if (bl.links.length > 0) {
+      h += "<h3>&#8617; Odkazuje sem</h3><ul>";
+      for (var li = 0; li < bl.links.length; li++) {
+        var bn = getNote(bl.links[li]);
+        if (bn) h += '<li><a href="#" onclick="openNote(\'' + bn.id + '\');return false">' + (bn.icon || "&#128221;") + " " + esc(bn.name) + "</a></li>";
+      }
+      h += "</ul>";
+    }
+    if (bl.includes.length > 0) {
+      h += "<h3>&#128206; Vkládá tuto poznámku</h3><ul>";
+      for (var ii = 0; ii < bl.includes.length; ii++) {
+        var bn2 = getNote(bl.includes[ii]);
+        if (bn2) h += '<li><a href="#" onclick="openNote(\'' + bn2.id + '\');return false">' + (bn2.icon || "&#128221;") + " " + esc(bn2.name) + "</a></li>";
+      }
+      h += "</ul>";
+    }
+    h += "</div>";
+  }
+
+  vw.innerHTML = h;
+}
+
+function renderTaskInclude(note) {
+  var td = note.taskData || {};
+  var st = getTaskStatus(td.status || "new");
+  var stColor = td.status === "done" ? "#228B22" : td.status === "cancelled" ? "#cf222e" : td.status === "active" ? "#d97706" : td.status === "waiting" ? "#6366f1" : td.status === "review" ? "#0891b2" : "var(--text2)";
+  var h = '<div style="border:1px solid var(--border);border-left:4px solid ' + stColor + ';border-radius:4px;padding:8px 12px;margin:6px 0;background:var(--surface)">';
+  h += '<div style="font-size:.92rem;font-weight:600">' + st.icon + ' ' + esc(note.name) + '</div>';
+  h += '<div style="font-size:.82rem;color:' + stColor + ';margin:2px 0">' + esc(st.label);
+  if (td.deadline) h += ' · Termín: ' + esc(td.deadline);
+  if (td.responsible) h += ' · ' + esc(td.responsible);
+  h += '</div>';
+  if (td.description && td.description.trim()) {
+    var firstLine = td.description.trim().split("\n")[0];
+    h += '<div style="font-size:.84rem;color:var(--text2);margin-top:4px">' + esc(firstLine) + '</div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+function dlgTaskUpdateStatus(noteId) {
+  var n = getNote(noteId);
+  if (!n || !n.taskData) return;
+  var td = n.taskData;
+  var h = '<label>Nový stav:</label><select id="dlg-task-status">';
+  for (var i = 0; i < TASK_STATUSES.length; i++) {
+    var s = TASK_STATUSES[i];
+    var sel = s.id === td.status ? " selected" : "";
+    h += '<option value="' + s.id + '"' + sel + '>' + s.icon + ' ' + esc(s.label) + '</option>';
+  }
+  h += '</select>';
+  h += '<label>Poznámka k aktualizaci:</label><input id="dlg-task-note" placeholder="Co se změnilo?">';
+  showDialog("Aktualizovat stav úkolu", h, function() {
+    var newStatus = document.getElementById("dlg-task-status").value;
+    var note = document.getElementById("dlg-task-note").value.trim();
+    td.history.push({ status: newStatus, note: note, date: now() });
+    td.status = newStatus;
+    n.modified = now();
+    closeDialog();
+    renderNoteView(noteId);
+    renderNav();
+    dbg("Stav úkolu aktualizován: " + getTaskStatus(newStatus).label);
+  });
+}
+
+function dlgTaskEditDesc(noteId) {
+  var n = getNote(noteId);
+  if (!n || !n.taskData) return;
+  var h = '<label>Popis úkolu (Markdown, [[odkazy]]):</label>';
+  h += '<textarea id="dlg-task-desc" rows="10">' + esc(n.taskData.description || "") + '</textarea>';
+  showDialog("Upravit popis úkolu", h, function() {
+    n.taskData.description = document.getElementById("dlg-task-desc").value;
+    n.modified = now();
+    closeDialog();
+    renderNoteView(noteId);
+    dbg("Popis úkolu upraven");
+  });
+}
+
+function dlgTaskEditFields(noteId) {
+  var n = getNote(noteId);
+  if (!n || !n.taskData) return;
+  var td = n.taskData;
+  var h = '<label>Termín:</label><input id="dlg-task-deadline" type="date" value="' + esc(td.deadline || "") + '">';
+  h += '<label>Zodpovědný:</label><input id="dlg-task-responsible" value="' + esc(td.responsible || "") + '" placeholder="Jméno">';
+  showDialog("Upravit údaje úkolu", h, function() {
+    td.deadline = document.getElementById("dlg-task-deadline").value;
+    td.responsible = document.getElementById("dlg-task-responsible").value.trim();
+    n.modified = now();
+    closeDialog();
+    renderNoteView(noteId);
+    dbg("Údaje úkolu upraveny");
+  });
+}
+
 // ===== SECTION EDIT =====
 function toggleSectionEdit() {
   SEDIT = !SEDIT;
@@ -1768,6 +2214,9 @@ function editSection(idx) {
 function editNote(noteId) {
   var n = getNote(noteId);
   if (!n) return;
+  if (n.noteType === "file") return;
+  if (n.noteType === "task") return;
+  if (n.noteType === "iframe") return;
 
   document.getElementById("toolbar").innerHTML = "";
   var vw = document.getElementById("view");
@@ -1873,6 +2322,9 @@ function renderMarkdown(src, noteId, depth, seen) {
     var inc = findNoteByName(name.trim());
     if (!inc) return '<em style="color:var(--danger)">[Include nenalezeno: ' + esc(name) + "]</em>";
     if (seen[inc.id]) return '<em style="color:var(--danger)">[Cyklický include: ' + esc(name) + "]</em>";
+    if (inc.noteType === "task") return renderTaskInclude(inc);
+    if (inc.noteType === "file") return '<em>[Soubor: ' + esc(inc.name) + "]</em>";
+    if (inc.noteType === "iframe") return '<em>[Web: <a href="' + esc(inc.iframeUrl || "") + '" target="_blank">' + esc(inc.name) + '</a>]</em>';
     var newSeen = {}; for (var k in seen) newSeen[k] = true; newSeen[inc.id] = true;
     return renderMarkdown(inc.content || "", inc.id, depth + 1, newSeen);
   });
@@ -2030,20 +2482,26 @@ function dlgNewNote(folderId) {
   if (!BD) { newBlock(); return; }
   var fid = folderId || (CUR.type === "folder" ? CUR.id : "") || "";
   var h = '<label>Název poznámky:</label><input id="dlg-name" placeholder="Název">';
+  h += '<label>Typ:</label><select id="dlg-ntype"><option value="note">Textová poznámka</option><option value="file">Soubor (správa verzí)</option><option value="task">Úkol</option><option value="iframe">Webová stránka (iframe)</option></select>';
   h += folderSelectHTML(fid, null, "Složka");
   h += emojiPickerHTML(getEmojis()[0] || "");
   showDialog("Nová poznámka", h, function() {
     var name = document.getElementById("dlg-name").value.trim();
     var folder = document.getElementById("dlg-folder").value || null;
     var icon = document.getElementById("dlg-icon").value;
+    var ntype = document.getElementById("dlg-ntype").value;
     if (!name) return alert("Zadejte název.");
     if (noteNameExists(name, null)) return alert("Poznámka s tímto názvem již existuje.");
     var n = { id: genId(), name: name, folderId: folder, icon: icon, content: "", tags: [], meta: [], bookmarked: false, versions: [], created: now(), modified: now() };
+    if (ntype === "file") { n.noteType = "file"; n.fileVersions = []; }
+    if (ntype === "task") { n.noteType = "task"; n.taskData = { description: "", deadline: "", responsible: "", status: "new", history: [] }; }
+    if (ntype === "iframe") { n.noteType = "iframe"; n.iframeUrl = ""; }
     BD.notes.push(n);
     closeDialog();
     openNote(n.id);
-    editNote(n.id);
-    dbg("Poznámka vytvořena: " + name);
+    if (ntype === "note") editNote(n.id);
+    if (ntype === "iframe") dlgIframeChangeUrl(n.id);
+    dbg("Poznámka vytvořena: " + name + (ntype !== "note" ? " (" + ntype + ")" : ""));
   });
 }
 
@@ -4593,6 +5051,10 @@ var eiMod = {
       var n = notes[j], nk = "n:" + n.id;
       if (this.sel[nk]) {
         var obj = { type: "note", name: n.name, content: n.content || "" };
+        if (n.noteType) obj.noteType = n.noteType;
+        if (n.fileVersions && n.fileVersions.length) obj.fileVersions = JSON.parse(JSON.stringify(n.fileVersions));
+        if (n.taskData) obj.taskData = JSON.parse(JSON.stringify(n.taskData));
+        if (n.iframeUrl !== undefined) obj.iframeUrl = n.iframeUrl;
         if (n.tags && n.tags.length) obj.tags = n.tags.slice();
         if (n.icon) obj.icon = n.icon;
         if (n.bookmarked) obj.bookmarked = true;
@@ -4835,6 +5297,10 @@ var eiMod = {
                 if (it.icon) notes[j].icon = it.icon;
                 if (it.meta) notes[j].meta = JSON.parse(JSON.stringify(it.meta));
                 if (it.bookmarked !== undefined) notes[j].bookmarked = it.bookmarked;
+                if (it.noteType) notes[j].noteType = it.noteType;
+                if (it.fileVersions) notes[j].fileVersions = JSON.parse(JSON.stringify(it.fileVersions));
+                if (it.taskData) notes[j].taskData = JSON.parse(JSON.stringify(it.taskData));
+                if (it.iframeUrl !== undefined) notes[j].iframeUrl = it.iframeUrl;
                 notes[j].modified = now();
                 break;
               }
@@ -4852,7 +5318,7 @@ var eiMod = {
     return stats;
   },
   _createNote: function(name, data, folderId) {
-    BD.notes.push({
+    var note = {
       id: genId(), name: name, content: data.content || "",
       tags: data.tags ? data.tags.slice() : [],
       icon: data.icon || "",
@@ -4861,7 +5327,12 @@ var eiMod = {
       folderId: folderId || null,
       created: data.created || now(),
       modified: now()
-    });
+    };
+    if (data.noteType) note.noteType = data.noteType;
+    if (data.fileVersions) note.fileVersions = JSON.parse(JSON.stringify(data.fileVersions));
+    if (data.taskData) note.taskData = JSON.parse(JSON.stringify(data.taskData));
+    if (data.iframeUrl !== undefined) note.iframeUrl = data.iframeUrl;
+    BD.notes.push(note);
   },
   _uniqueFolderName: function(name, parentId) {
     var base = name, n = 1;
