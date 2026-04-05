@@ -4373,22 +4373,24 @@ function loadFromGitHub(ghPath) {
   var headers = { "Accept": "application/json" };
   if (token) headers["Authorization"] = "token " + token;
 
-  dbg("Načítám z GitHub: " + ghPath + "...");
+  dbg("Načítám z GitHub: " + apiUrl + (token ? " (s tokenem)" : " (bez tokenu)"));
 
   fetch(apiUrl, { headers: headers })
   .then(function(res) {
+    if (res.status === 404) throw new Error("Soubor nenalezen (404). Zkontrolujte cestu: " + ghPath);
+    if (res.status === 401 || res.status === 403) throw new Error("Přístup odepřen (" + res.status + "). " + (token ? "Token nemá dostatečná oprávnění." : "Repozitář je pravděpodobně privátní — nastavte token v Nastavení."));
     if (!res.ok) throw new Error("HTTP " + res.status);
     return res.json();
   }).then(function(data) {
-    // For files >1MB, content is null — use download_url
     if (data.content) {
+      dbg("Soubor nalezen: " + (data.size / 1024).toFixed(0) + " KB, dekóduji base64...");
       return decodeURIComponent(escape(atob(data.content.replace(/\n/g, ""))));
     } else if (data.download_url) {
       dbg("Soubor je velký (" + (data.size / 1024 / 1024).toFixed(1) + " MB), stahuji přes download_url...");
       var rawHeaders = {};
       if (token) rawHeaders["Authorization"] = "token " + token;
       return fetch(data.download_url, { headers: rawHeaders }).then(function(rawRes) {
-        if (!rawRes.ok) throw new Error("HTTP " + rawRes.status);
+        if (!rawRes.ok) throw new Error("HTTP " + rawRes.status + " při stahování souboru");
         return rawRes.text();
       });
     } else {
@@ -4407,7 +4409,7 @@ function loadFromGitHub(ghPath) {
     PANELS = [];
     ACTIVE_PANEL = -1;
     openRoot();
-    dbg("Blok nahrán z GitHub: " + BD.name);
+    dbg("Blok nahrán z GitHub: " + BD.name + " (" + (content.length / 1024).toFixed(0) + " KB)");
   }).catch(function(err) {
     alert("Chyba při načítání z GitHub: " + err.message);
     dbg("GitHub chyba: " + err.message);
@@ -4582,8 +4584,27 @@ document.addEventListener("keydown", function(e) {
 // ===== INIT =====
 dbg("NoteBlock inicializován");
 
-// Auto-load from GitHub via URL ?id=base64(owner/repo/path)
+// Cleanup: unregister old Service Workers (they break API calls)
 (function() {
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.getRegistrations().then(function(regs) {
+      if (regs.length > 0) {
+        dbg("Odregistrovávám starý Service Worker...");
+        Promise.all(regs.map(function(r) { return r.unregister(); })).then(function() {
+          dbg("Service Worker odregistrován, reloaduji stránku...");
+          location.reload();
+        });
+        return; // stop further init, page will reload
+      }
+      // No SW — safe to proceed with GitHub loading
+      initGitHubLoad();
+    });
+  } else {
+    initGitHubLoad();
+  }
+})();
+
+function initGitHubLoad() {
   var params = new URLSearchParams(location.search);
   var idParam = params.get("id");
   if (idParam) {
@@ -4595,7 +4616,7 @@ dbg("NoteBlock inicializován");
       dbg("Chyba dekódování URL id: " + e.message);
     }
   }
-})();
+}
 
 // ===== ADVANCED EDITOR =====
 var AE_ACTIVE = false;
