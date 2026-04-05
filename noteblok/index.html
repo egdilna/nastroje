@@ -4256,8 +4256,8 @@ function readBlockFile(file) {
       EXPANDED = {};
       PANELS = [];
       ACTIVE_PANEL = -1;
-      if (BD.gistId) {
-        history.replaceState(null, "", location.pathname + "?id=" + BD.gistId);
+      if (BD.ghPath) {
+        history.replaceState(null, "", location.pathname + "?id=" + ghEncode(BD.ghPath));
       }
       openRoot();
       dbg("Blok nahrán: " + BD.name);
@@ -4279,12 +4279,11 @@ document.getElementById("file-in").addEventListener("change", function(e) {
 function saveBlock() {
   if (!BD) return alert("Žádný blok.");
   var token = localStorage.getItem("nb_github_token");
-  if (token && BD.gistId) {
-    saveToGist();
-  } else if (token && !BD.gistId) {
-    // Has token but no gist yet — ask
-    if (confirm("Uložit do GitHub Gist? (Zrušit = uložit jako soubor)")) {
-      saveToGist();
+  if (token && BD.ghPath) {
+    saveToGitHub();
+  } else if (token && !BD.ghPath) {
+    if (confirm("Uložit do GitHub? (Zrušit = uložit jako soubor)")) {
+      dlgSetGhPath(function() { saveToGitHub(); });
     } else {
       saveBlockToFile();
     }
@@ -4300,69 +4299,103 @@ function saveBlockToFile() {
   dbg("Blok uložen do souboru: " + BD.name);
 }
 
-function saveToGist() {
-  if (!BD) return;
-  var token = localStorage.getItem("nb_github_token");
-  if (!token) return alert("GitHub token není nastaven. Nastavte ho v Nastavení.");
-  var json = JSON.stringify(BD, null, 2);
-  var filename = sanitize(BD.name) + ".nmb";
-  var files = {};
-  files[filename] = { content: json };
+function parseGhPath(ghPath) {
+  var parts = ghPath.split("/");
+  if (parts.length < 3) return null;
+  return { owner: parts[0], repo: parts[1], path: parts.slice(2).join("/") };
+}
 
-  var method, url;
-  if (BD.gistId) {
-    method = "PATCH";
-    url = "https://api.github.com/gists/" + BD.gistId;
-  } else {
-    method = "POST";
-    url = "https://api.github.com/gists";
-  }
+function ghEncode(ghPath) { return btoa(unescape(encodeURIComponent(ghPath))); }
+function ghDecode(encoded) { return decodeURIComponent(escape(atob(encoded))); }
 
-  dbg("Ukládám do GitHub Gist" + (BD.gistId ? " (update " + BD.gistId + ")" : " (nový)") + "...");
-
-  fetch(url, {
-    method: method,
-    headers: { "Authorization": "token " + token, "Content-Type": "application/json" },
-    body: JSON.stringify({ description: "NoteBlock: " + BD.name, public: false, files: files })
-  }).then(function(res) {
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    return res.json();
-  }).then(function(data) {
-    if (!BD.gistId) {
-      BD.gistId = data.id;
-      // Update URL without reload
-      var newUrl = location.pathname + "?id=" + data.id;
-      history.replaceState(null, "", newUrl);
-    }
-    dbg("Gist uložen: " + data.id);
-  }).catch(function(err) {
-    alert("Chyba při ukládání do Gist: " + err.message);
-    dbg("Gist chyba: " + err.message);
+function dlgSetGhPath(callback) {
+  var h = '<label>Cesta v repozitáři (owner/repo/cesta/soubor.nmb):</label>';
+  h += '<input id="dlg-gh-path" value="' + esc((BD && BD.ghPath) || "") + '" placeholder="uzivatel/repo/noteblock.nmb">';
+  showDialog("Nastavit cestu na GitHubu", h, function() {
+    var p = document.getElementById("dlg-gh-path").value.trim();
+    if (!p || !parseGhPath(p)) return alert("Neplatná cesta. Formát: owner/repo/cesta/soubor.nmb");
+    BD.ghPath = p;
+    closeDialog();
+    if (callback) callback();
   });
 }
 
-function loadFromGist(gistId) {
+function saveToGitHub() {
+  if (!BD || !BD.ghPath) return;
   var token = localStorage.getItem("nb_github_token");
+  if (!token) return alert("GitHub token není nastaven. Nastavte ho v Nastavení.");
+  var parsed = parseGhPath(BD.ghPath);
+  if (!parsed) return alert("Neplatná cesta: " + BD.ghPath);
+
+  var apiUrl = "https://api.github.com/repos/" + parsed.owner + "/" + parsed.repo + "/contents/" + parsed.path;
+  var headers = { "Authorization": "token " + token, "Accept": "application/json" };
+
+  dbg("Ukládám do GitHub: " + BD.ghPath + "...");
+
+  // Step 1: GET to find current SHA (if file exists)
+  fetch(apiUrl, { headers: headers })
+  .then(function(res) {
+    if (res.status === 404) return null; // file doesn't exist yet
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return res.json();
+  }).then(function(existing) {
+    // Step 2: PUT (create or update)
+    var json = JSON.stringify(BD, null, 2);
+    var body = {
+      message: "NoteBlock: " + BD.name + " (" + new Date().toISOString().replace(/T/, " ").replace(/\..+/, "") + ")",
+      content: btoa(unescape(encodeURIComponent(json)))
+    };
+    if (existing && existing.sha) body.sha = existing.sha;
+
+    return fetch(apiUrl, {
+      method: "PUT",
+      headers: { "Authorization": "token " + token, "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+  }).then(function(res) {
+    if (!res.ok) return res.json().then(function(err) { throw new Error("HTTP " + res.status + ": " + (err.message || "")); });
+    return res.json();
+  }).then(function(data) {
+    // Update URL
+    history.replaceState(null, "", location.pathname + "?id=" + ghEncode(BD.ghPath));
+    dbg("GitHub uložen: " + BD.ghPath);
+  }).catch(function(err) {
+    alert("Chyba při ukládání do GitHub: " + err.message);
+    dbg("GitHub chyba: " + err.message);
+  });
+}
+
+function loadFromGitHub(ghPath) {
+  var token = localStorage.getItem("nb_github_token");
+  var parsed = parseGhPath(ghPath);
+  if (!parsed) { alert("Neplatná cesta: " + ghPath); return; }
+
+  var apiUrl = "https://api.github.com/repos/" + parsed.owner + "/" + parsed.repo + "/contents/" + parsed.path;
   var headers = { "Accept": "application/json" };
   if (token) headers["Authorization"] = "token " + token;
 
-  dbg("Načítám Gist: " + gistId + "...");
+  dbg("Načítám z GitHub: " + ghPath + "...");
 
-  fetch("https://api.github.com/gists/" + gistId, { headers: headers })
+  fetch(apiUrl, { headers: headers })
   .then(function(res) {
     if (!res.ok) throw new Error("HTTP " + res.status);
     return res.json();
   }).then(function(data) {
-    var files = data.files;
-    var content = null;
-    for (var fname in files) {
-      if (fname.match(/\.nmb$|\.json$/i)) { content = files[fname].content; break; }
+    // For files >1MB, content is null — use download_url
+    if (data.content) {
+      return decodeURIComponent(escape(atob(data.content.replace(/\n/g, ""))));
+    } else if (data.download_url) {
+      dbg("Soubor je velký (" + (data.size / 1024 / 1024).toFixed(1) + " MB), stahuji přes download_url...");
+      var rawHeaders = {};
+      if (token) rawHeaders["Authorization"] = "token " + token;
+      return fetch(data.download_url, { headers: rawHeaders }).then(function(rawRes) {
+        if (!rawRes.ok) throw new Error("HTTP " + rawRes.status);
+        return rawRes.text();
+      });
+    } else {
+      throw new Error("Soubor nemá obsah.");
     }
-    if (!content) {
-      // Take first file
-      for (var fname2 in files) { content = files[fname2].content; break; }
-    }
-    if (!content) throw new Error("Gist neobsahuje žádný soubor.");
+  }).then(function(content) {
     BD = JSON.parse(content);
     if (!BD.folders) BD.folders = [];
     if (!BD.notes) BD.notes = [];
@@ -4370,15 +4403,15 @@ function loadFromGist(gistId) {
     for (var i = 0; i < BD.notes.length; i++) {
       if (!BD.notes[i].versions) BD.notes[i].versions = [];
     }
-    BD.gistId = gistId;
+    BD.ghPath = ghPath;
     EXPANDED = {};
     PANELS = [];
     ACTIVE_PANEL = -1;
     openRoot();
-    dbg("Blok nahrán z Gist: " + BD.name);
+    dbg("Blok nahrán z GitHub: " + BD.name);
   }).catch(function(err) {
-    alert("Chyba při načítání z Gist: " + err.message);
-    dbg("Gist chyba: " + err.message);
+    alert("Chyba při načítání z GitHub: " + err.message);
+    dbg("GitHub chyba: " + err.message);
   });
 }
 
@@ -4393,12 +4426,16 @@ function showSettings() {
   h += '<a href="#" onclick="closeDialog();showMissingLinks();return false" style="font-size:.88rem">&#128269; Zobrazit chybějící odkazy a includy</a>';
   h += '</div>';
   h += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">';
-  h += '<h3 style="font-size:.88rem;margin:0 0 6px">GitHub Gist (cloud)</h3>';
-  h += '<label>GitHub Personal Access Token (oprávnění: gist):</label>';
+  h += '<h3 style="font-size:.88rem;margin:0 0 6px">GitHub (cloud)</h3>';
+  h += '<label>GitHub Personal Access Token (oprávnění: repo nebo Contents r/w):</label>';
   h += '<input id="dlg-gh-token" type="password" value="' + esc(localStorage.getItem("nb_github_token") || "") + '" placeholder="ghp_...">';
-  h += '<div style="font-size:.78rem;color:var(--text2);margin:2px 0 8px">Token se ukládá v prohlížeči, ne v souboru. Vytvořte na <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a></div>';
-  h += '<label>Gist ID:</label>';
-  h += '<input id="dlg-gist-id" value="' + esc((BD && BD.gistId) || "") + '" placeholder="ID gistu (automaticky po prvním uložení)">';
+  h += '<div style="font-size:.78rem;color:var(--text2);margin:2px 0 8px">Token se ukládá v prohlížeči, ne v souboru. <a href="https://github.com/settings/tokens" target="_blank">Vytvořit token</a> (fine-grained: jen Contents read/write na konkrétní repo)</div>';
+  h += '<label>Cesta v repozitáři:</label>';
+  h += '<input id="dlg-gh-path" value="' + esc((BD && BD.ghPath) || "") + '" placeholder="owner/repo/cesta/soubor.nmb">';
+  h += '<div style="font-size:.78rem;color:var(--text2);margin:2px 0 8px">Formát: vlastník/repozitář/cesta/soubor.nmb</div>';
+  if (BD && BD.ghPath) {
+    h += '<div style="font-size:.78rem;margin:2px 0 8px"><strong>URL odkaz:</strong> <a href="' + location.pathname + '?id=' + ghEncode(BD.ghPath) + '">' + location.pathname + '?id=' + esc(ghEncode(BD.ghPath)) + '</a></div>';
+  }
   h += '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">';
   h += '<button class="sm" onclick="var t=document.getElementById(\'dlg-gh-token\').value.trim();if(t){localStorage.setItem(\'nb_github_token\',t)}else{localStorage.removeItem(\'nb_github_token\')};dbg(\'Token \' + (t ? \'uložen\' : \'smazán\'))">Uložit token</button>';
   h += '<button class="sm" onclick="closeDialog();saveBlockToFile()">Uložit jako soubor</button>';
@@ -4409,10 +4446,11 @@ function showSettings() {
     if (!name) return;
     BD.name = name;
     BD.emojis = document.getElementById("dlg-emojis").value;
-    var gistId = document.getElementById("dlg-gist-id").value.trim();
-    if (gistId) { BD.gistId = gistId; } else { delete BD.gistId; }
+    var ghPath = document.getElementById("dlg-gh-path").value.trim();
+    if (ghPath && parseGhPath(ghPath)) { BD.ghPath = ghPath; } else if (!ghPath) { delete BD.ghPath; }
     var tok = document.getElementById("dlg-gh-token").value.trim();
     if (tok) { localStorage.setItem("nb_github_token", tok); } else { localStorage.removeItem("nb_github_token"); }
+    if (BD.ghPath) { history.replaceState(null, "", location.pathname + "?id=" + ghEncode(BD.ghPath)); }
     closeDialog();
     renderNav();
     if (CUR.type === "folder") renderFolderView(CUR.id);
@@ -4545,13 +4583,18 @@ document.addEventListener("keydown", function(e) {
 // ===== INIT =====
 dbg("NoteBlock inicializován");
 
-// Auto-load gist from URL ?id=xxx
+// Auto-load from GitHub via URL ?id=base64(owner/repo/path)
 (function() {
   var params = new URLSearchParams(location.search);
-  var gistId = params.get("id");
-  if (gistId) {
-    dbg("Gist ID z URL: " + gistId);
-    loadFromGist(gistId);
+  var idParam = params.get("id");
+  if (idParam) {
+    try {
+      var ghPath = ghDecode(idParam);
+      dbg("GitHub cesta z URL: " + ghPath);
+      loadFromGitHub(ghPath);
+    } catch(e) {
+      dbg("Chyba dekódování URL id: " + e.message);
+    }
   }
 })();
 
