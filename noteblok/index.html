@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="cs">
 <head>
@@ -4257,6 +4256,9 @@ function readBlockFile(file) {
       EXPANDED = {};
       PANELS = [];
       ACTIVE_PANEL = -1;
+      if (BD.gistId) {
+        history.replaceState(null, "", location.pathname + "?id=" + BD.gistId);
+      }
       openRoot();
       dbg("Blok nahrán: " + BD.name);
     } catch (err) {
@@ -4276,9 +4278,108 @@ document.getElementById("file-in").addEventListener("change", function(e) {
 
 function saveBlock() {
   if (!BD) return alert("Žádný blok.");
+  var token = localStorage.getItem("nb_github_token");
+  if (token && BD.gistId) {
+    saveToGist();
+  } else if (token && !BD.gistId) {
+    // Has token but no gist yet — ask
+    if (confirm("Uložit do GitHub Gist? (Zrušit = uložit jako soubor)")) {
+      saveToGist();
+    } else {
+      saveBlockToFile();
+    }
+  } else {
+    saveBlockToFile();
+  }
+}
+
+function saveBlockToFile() {
+  if (!BD) return alert("Žádný blok.");
   var json = JSON.stringify(BD, null, 2);
   downloadFile(sanitize(BD.name) + ".nmb", json, "application/json");
-  dbg("Blok uložen: " + BD.name);
+  dbg("Blok uložen do souboru: " + BD.name);
+}
+
+function saveToGist() {
+  if (!BD) return;
+  var token = localStorage.getItem("nb_github_token");
+  if (!token) return alert("GitHub token není nastaven. Nastavte ho v Nastavení.");
+  var json = JSON.stringify(BD, null, 2);
+  var filename = sanitize(BD.name) + ".nmb";
+  var files = {};
+  files[filename] = { content: json };
+
+  var method, url;
+  if (BD.gistId) {
+    method = "PATCH";
+    url = "https://api.github.com/gists/" + BD.gistId;
+  } else {
+    method = "POST";
+    url = "https://api.github.com/gists";
+  }
+
+  dbg("Ukládám do GitHub Gist" + (BD.gistId ? " (update " + BD.gistId + ")" : " (nový)") + "...");
+
+  fetch(url, {
+    method: method,
+    headers: { "Authorization": "token " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({ description: "NoteBlock: " + BD.name, public: false, files: files })
+  }).then(function(res) {
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return res.json();
+  }).then(function(data) {
+    if (!BD.gistId) {
+      BD.gistId = data.id;
+      // Update URL without reload
+      var newUrl = location.pathname + "?id=" + data.id;
+      history.replaceState(null, "", newUrl);
+    }
+    dbg("Gist uložen: " + data.id);
+  }).catch(function(err) {
+    alert("Chyba při ukládání do Gist: " + err.message);
+    dbg("Gist chyba: " + err.message);
+  });
+}
+
+function loadFromGist(gistId) {
+  var token = localStorage.getItem("nb_github_token");
+  var headers = { "Accept": "application/json" };
+  if (token) headers["Authorization"] = "token " + token;
+
+  dbg("Načítám Gist: " + gistId + "...");
+
+  fetch("https://api.github.com/gists/" + gistId, { headers: headers })
+  .then(function(res) {
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return res.json();
+  }).then(function(data) {
+    var files = data.files;
+    var content = null;
+    for (var fname in files) {
+      if (fname.match(/\.nmb$|\.json$/i)) { content = files[fname].content; break; }
+    }
+    if (!content) {
+      // Take first file
+      for (var fname2 in files) { content = files[fname2].content; break; }
+    }
+    if (!content) throw new Error("Gist neobsahuje žádný soubor.");
+    BD = JSON.parse(content);
+    if (!BD.folders) BD.folders = [];
+    if (!BD.notes) BD.notes = [];
+    if (BD.emojis === undefined) BD.emojis = "";
+    for (var i = 0; i < BD.notes.length; i++) {
+      if (!BD.notes[i].versions) BD.notes[i].versions = [];
+    }
+    BD.gistId = gistId;
+    EXPANDED = {};
+    PANELS = [];
+    ACTIVE_PANEL = -1;
+    openRoot();
+    dbg("Blok nahrán z Gist: " + BD.name);
+  }).catch(function(err) {
+    alert("Chyba při načítání z Gist: " + err.message);
+    dbg("Gist chyba: " + err.message);
+  });
 }
 
 // ===== SETTINGS (s editačním polem pro emotikony) =====
@@ -4291,11 +4392,27 @@ function showSettings() {
   h += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">';
   h += '<a href="#" onclick="closeDialog();showMissingLinks();return false" style="font-size:.88rem">&#128269; Zobrazit chybějící odkazy a includy</a>';
   h += '</div>';
+  h += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">';
+  h += '<h3 style="font-size:.88rem;margin:0 0 6px">GitHub Gist (cloud)</h3>';
+  h += '<label>GitHub Personal Access Token (oprávnění: gist):</label>';
+  h += '<input id="dlg-gh-token" type="password" value="' + esc(localStorage.getItem("nb_github_token") || "") + '" placeholder="ghp_...">';
+  h += '<div style="font-size:.78rem;color:var(--text2);margin:2px 0 8px">Token se ukládá v prohlížeči, ne v souboru. Vytvořte na <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a></div>';
+  h += '<label>Gist ID:</label>';
+  h += '<input id="dlg-gist-id" value="' + esc((BD && BD.gistId) || "") + '" placeholder="ID gistu (automaticky po prvním uložení)">';
+  h += '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">';
+  h += '<button class="sm" onclick="var t=document.getElementById(\'dlg-gh-token\').value.trim();if(t){localStorage.setItem(\'nb_github_token\',t)}else{localStorage.removeItem(\'nb_github_token\')};dbg(\'Token \' + (t ? \'uložen\' : \'smazán\'))">Uložit token</button>';
+  h += '<button class="sm" onclick="closeDialog();saveBlockToFile()">Uložit jako soubor</button>';
+  h += '</div>';
+  h += '</div>';
   showDialog("Nastavení", h, function() {
     var name = document.getElementById("dlg-name").value.trim();
     if (!name) return;
     BD.name = name;
     BD.emojis = document.getElementById("dlg-emojis").value;
+    var gistId = document.getElementById("dlg-gist-id").value.trim();
+    if (gistId) { BD.gistId = gistId; } else { delete BD.gistId; }
+    var tok = document.getElementById("dlg-gh-token").value.trim();
+    if (tok) { localStorage.setItem("nb_github_token", tok); } else { localStorage.removeItem("nb_github_token"); }
     closeDialog();
     renderNav();
     if (CUR.type === "folder") renderFolderView(CUR.id);
@@ -4427,6 +4544,16 @@ document.addEventListener("keydown", function(e) {
 
 // ===== INIT =====
 dbg("NoteBlock inicializován");
+
+// Auto-load gist from URL ?id=xxx
+(function() {
+  var params = new URLSearchParams(location.search);
+  var gistId = params.get("id");
+  if (gistId) {
+    dbg("Gist ID z URL: " + gistId);
+    loadFromGist(gistId);
+  }
+})();
 
 // ===== PWA =====
 if ("serviceWorker" in navigator) {
