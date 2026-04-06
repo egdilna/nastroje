@@ -141,7 +141,8 @@ table input[type=checkbox]{width:auto;cursor:pointer}
       <div id="sd-cs"></div>
     </div>
     <div class="ss" style="border-top:1px solid var(--br);padding-top:10px;margin-top:4px">
-      <button class="bs sm" onclick="expProj()" style="width:100%;margin-bottom:4px">💾 Uložit projekt</button>
+      <button class="bs sm" onclick="expProj()" style="width:100%;margin-bottom:4px">💾 Uložit projekt (.json)</button>
+      <button class="bs sm" onclick="ghSave()" style="width:100%;margin-bottom:4px" title="Uložit do GitHub repozitáře">&#x2601; Uložit do GitHub</button>
       <button class="bs sm" onclick="document.getElementById('imp-f').click()" style="width:100%">📂 Načíst projekt</button>
       <input type="file" id="imp-f" accept=".json" style="display:none" onchange="doImpProj(event)">
     </div>
@@ -155,6 +156,16 @@ table input[type=checkbox]{width:auto;cursor:pointer}
   <div class="df" id="dlg-f"></div>
 </dialog>
 <script>
+// Odregistrace případného Service Workeru a vyčištění cache
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.getRegistrations().then(function(regs){
+    if(regs.length===0)return;
+    Promise.all(regs.map(function(r){return r.unregister();}))
+    .then(function(){return caches.keys();})
+    .then(function(keys){return Promise.all(keys.map(function(k){return caches.delete(k);}));})
+    .then(function(){location.reload();});
+  });
+}
 // Auto-migrate: clear incompatible localStorage on first load of this version
 (function(){
   try {
@@ -275,7 +286,7 @@ function doImpProj(ev){
 // ── NOTIFIKACE ──
 function toast(msg,t='s'){
   const sb=document.getElementById('stbar');
-  sb.style.background=t==='d'?'var(--dg)':t==='w'?'var(--wn)':'var(--sc)';
+  sb.style.background=t==='d'?'var(--dg)':t==='w'?'var(--wn)':t==='i'?'var(--in)':'var(--sc)';
   document.getElementById('stm').textContent=msg;sb.style.display='flex';
   clearTimeout(sb._t);sb._t=setTimeout(hideST,4000);
 }
@@ -460,6 +471,14 @@ function vProj(){
     <div class="bg"><button class="bs" onclick="expProj()">Exportovat projekt (.json)</button>
       <button class="bd sm" onclick="resetApp()" title="Smaže všechna data v prohlížeči">⚠ Resetovat aplikaci</button><button class="bs" onclick="document.getElementById('imp-f').click()">Načíst projekt (.json)</button><button class="bs" onclick="V('importSl')">Importovat slovník z JSON-LD</button>
       <button class="bs" onclick="V('importCs')">Importovat číselník z JSON-LD</button></div>
+  </div>
+  <div class="panel"><div class="ptit">GitHub úložiště <span class="hint">(volitelné — ukládání projektu do git repozitáře)</span></div>
+    ${S.ghPath?`<div class="xs" style="margin-bottom:8px"><strong>Soubor:</strong> <code>${e(S.ghPath)}</code></div>`:'<p class="xs" style="margin-bottom:8px;color:var(--tx3)">Není nastaveno. Nastavte token a cestu tlačítkem níže.</p>'}
+    <div class="bg">
+      <button class="bp" onclick="ghSave()">&#x2601; Uložit do GitHub</button>
+      <button class="bs" onclick="ghDlgPath(false)">&#x2699; Nastavení GitHub</button>
+      ${S.ghPath?`<button class="bs" onclick="ghLoad(S.ghPath)">&#x2193; Načíst z GitHub</button>`:''}
+    </div>
   </div>`;
 }
 // ── VIEW: SLOVNÍKY ──
@@ -3017,6 +3036,131 @@ function doBulkPlDel(csId){
   c.aktualizovano=td();saveL();cDlg();
   toast('Smazáno '+ids.length+' položek.');render();
 }
+
+// ════════════════════════════════════════════════════════
+// GITHUB INTEGRACE
+// ════════════════════════════════════════════════════════
+
+function ghEncode(path){return btoa(unescape(encodeURIComponent(path)));}
+function ghDecode(encoded){return decodeURIComponent(escape(atob(encoded)));}
+function parseGhPath(ghPath){
+  var parts=ghPath.split('/');
+  if(parts.length<3)return null;
+  return{owner:parts[0],repo:parts[1],path:parts.slice(2).join('/')};
+}
+function ghToken(){return localStorage.getItem('app_github_token')||'';}
+
+function ghSave(){
+  var token=ghToken();
+  if(!token){toast('GitHub token není nastaven. Nastavte ho v sekci GitHub na záložce Projekt.','w');return;}
+  if(!S.ghPath){ghDlgPath(function(){ghSave();});return;}
+  var parsed=parseGhPath(S.ghPath);
+  if(!parsed){toast('Neplatná cesta k souboru.','w');return;}
+  var apiUrl='https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/contents/'+parsed.path;
+  var headers={'Authorization':'token '+token,'Accept':'application/json'};
+  toast('Ukládám do GitHub…','i');
+  fetch(apiUrl,{headers:headers})
+  .then(function(res){if(res.status===404)return null;if(!res.ok)throw new Error('HTTP '+res.status);return res.json();})
+  .then(function(existing){
+    var json=JSON.stringify(S,null,2);
+    var body={
+      message:'Update: '+new Date().toISOString().replace(/T/,' ').replace(/\..+/,''),
+      content:btoa(unescape(encodeURIComponent(json)))
+    };
+    if(existing&&existing.sha)body.sha=existing.sha;
+    return fetch(apiUrl,{method:'PUT',headers:{'Authorization':'token '+token,'Content-Type':'application/json'},body:JSON.stringify(body)});
+  })
+  .then(function(res){
+    if(!res.ok)return res.json().then(function(e){throw new Error(e.message||res.status);});
+    history.replaceState(null,'',location.pathname+'?id='+ghEncode(S.ghPath));
+    toast('Uloženo do GitHub ✓');
+  })
+  .catch(function(err){toast('Chyba GitHub: '+err.message,'d');});
+}
+
+function ghLoad(ghPath){
+  var token=ghToken();
+  var parsed=parseGhPath(ghPath);
+  if(!parsed){toast('Neplatná GitHub cesta.','w');return;}
+  var apiUrl='https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/contents/'+parsed.path;
+  var headers={'Accept':'application/json'};
+  if(token)headers['Authorization']='token '+token;
+  toast('Načítám z GitHub…','i');
+  fetch(apiUrl,{headers:headers})
+  .then(function(res){if(!res.ok)throw new Error('HTTP '+res.status);return res.json();})
+  .then(function(data){
+    if(data.content){
+      // Malý soubor — obsah přímo v odpovědi
+      return decodeURIComponent(escape(atob(data.content.replace(/\n/g,''))));
+    }else if(data.sha){
+      // Velký soubor (>1 MB) — použít Git Blob API (funguje přes CORS, na rozdíl od download_url)
+      var blobUrl='https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/git/blobs/'+data.sha;
+      var blobH={'Accept':'application/vnd.github.v3+json'};
+      if(token)blobH['Authorization']='token '+token;
+      return fetch(blobUrl,{headers:blobH})
+        .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+        .then(function(blob){
+          if(!blob.content)throw new Error('Blob nemá obsah.');
+          return decodeURIComponent(escape(atob(blob.content.replace(/\n/g,''))));
+        });
+    }else{
+      throw new Error('Soubor nemá obsah ani SHA.');
+    }
+  })
+  .then(function(content){
+    var obj=JSON.parse(content);
+    obj.ghPath=ghPath;
+    S=obj;
+    if(!S.ciselniky)S.ciselniky=[];
+    if(!S.projekt.orgIriBase)S.projekt.orgIriBase='';
+    S.slovniky.forEach(function(sl){if(!sl.poznamky)sl.poznamky=[];sl.pojmy.forEach(function(p){if(!p.poznamky)p.poznamky=[];});});
+    S.ciselniky.forEach(function(c){if(!c.poznamky)c.poznamky=[];if(!c.polozky)c.polozky=[];c.polozky.forEach(function(p){if(!p.poznamky)p.poznamky=[];});});
+    saveL();
+    history.replaceState(null,'',location.pathname+'?id='+ghEncode(ghPath));
+    toast('Načteno z GitHub ✓');
+    render();
+  })
+  .catch(function(err){toast('Chyba GitHub: '+err.message,'d');});
+}
+
+
+function ghDlgPath(onConfirm){
+  oDlg('Nastavení GitHub úložiště',
+    `<div class="fg"><label for="gh-token">GitHub Personal Access Token <span class="hint">(fine-grained, Contents R/W — ukládá se jen v prohlížeči)</span></label>
+      <input type="password" id="gh-token" value="${e(ghToken())}" placeholder="github_pat_…" autocomplete="off">
+      <div class="xs" style="margin-top:4px"><a href="https://github.com/settings/tokens?type=beta" target="_blank" rel="noopener">Vytvořit token na GitHub →</a></div>
+    </div>
+    <div class="fg"><label for="gh-path">Cesta k souboru <span class="hint">(owner/repozitář/cesta/soubor.json)</span></label>
+      <input type="text" id="gh-path" value="${e(S.ghPath||'')}" placeholder="owner/repo/data/projekt.json">
+    </div>
+    ${S.ghPath?`<div class="fg"><label>Přímý odkaz</label>
+      <div class="ir"><input type="text" readonly value="${e(location.origin+location.pathname+'?id='+ghEncode(S.ghPath))}" onclick="this.select()" style="font-size:12px">
+      <button class="bs sm" onclick="navigator.clipboard.writeText(this.previousElementSibling.value);toast('Zkopírováno')">Kopírovat</button></div>
+    </div>`:''}`,
+    `<button class="bp" onclick="ghDlgConfirm(${onConfirm?'true':'false'})">Uložit nastavení</button>
+     <button class="bs" onclick="cDlg()">Zrušit</button>`
+  );
+}
+function ghDlgConfirm(andSave){
+  var token=document.getElementById('gh-token').value.trim();
+  var path=document.getElementById('gh-path').value.trim();
+  if(token)localStorage.setItem('app_github_token',token);
+  else localStorage.removeItem('app_github_token');
+  if(path)S.ghPath=path;
+  saveL();cDlg();
+  toast('GitHub nastavení uloženo.');
+  if(andSave)ghSave();
+}
+
+// Načtení z URL parametru při startu
+(function(){
+  var params=new URLSearchParams(location.search);
+  var idParam=params.get('id');
+  if(idParam){
+    try{var ghPath=ghDecode(idParam);ghLoad(ghPath);}
+    catch(e){}
+  }
+})();
 // ── INIT ──
 loadL();render();
 </script>

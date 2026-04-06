@@ -4275,6 +4275,36 @@ document.getElementById("file-in").addEventListener("change", function(e) {
   this.value = "";
 });
 
+// ===== SOUNDS (Web Audio API) =====
+function playSound(type) {
+  try {
+    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (type === "save") {
+      // Happy ascending chime: C5 → E5 → G5
+      [523, 659, 784].forEach(function(freq, i) {
+        var osc = ctx.createOscillator(); var gain = ctx.createGain();
+        osc.type = "sine"; osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.3, ctx.currentTime + i * 0.12);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.12 + 0.3);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(ctx.currentTime + i * 0.12);
+        osc.stop(ctx.currentTime + i * 0.12 + 0.3);
+      });
+    } else if (type === "load") {
+      // Two-tone doorbell: G4 → C5
+      [392, 523].forEach(function(freq, i) {
+        var osc = ctx.createOscillator(); var gain = ctx.createGain();
+        osc.type = "sine"; osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.25, ctx.currentTime + i * 0.2);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.2 + 0.4);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(ctx.currentTime + i * 0.2);
+        osc.stop(ctx.currentTime + i * 0.2 + 0.4);
+      });
+    }
+  } catch(e) { /* Web Audio not available */ }
+}
+
 function saveBlock() {
   if (!BD) return alert("Žádný blok.");
   var token = localStorage.getItem("nb_github_token");
@@ -4326,19 +4356,22 @@ function saveToGitHub() {
   var parsed = parseGhPath(BD.ghPath);
   if (!parsed) return alert("Neplatná cesta: " + BD.ghPath);
 
+  // Hourglass on save button
+  var saveBtn = document.querySelector('[accesskey="s"]');
+  var origText = saveBtn ? saveBtn.innerHTML : "";
+  if (saveBtn) { saveBtn.innerHTML = "&#9203; Ukládám..."; saveBtn.disabled = true; }
+
   var apiUrl = "https://api.github.com/repos/" + parsed.owner + "/" + parsed.repo + "/contents/" + parsed.path;
   var headers = { "Authorization": "token " + token, "Accept": "application/json" };
 
   dbg("Ukládám do GitHub: " + BD.ghPath + "...");
 
-  // Step 1: GET to find current SHA (if file exists)
   fetch(apiUrl, { headers: headers })
   .then(function(res) {
-    if (res.status === 404) return null; // file doesn't exist yet
+    if (res.status === 404) return null;
     if (!res.ok) throw new Error("HTTP " + res.status);
     return res.json();
   }).then(function(existing) {
-    // Step 2: PUT (create or update)
     var json = JSON.stringify(BD, null, 2);
     var body = {
       message: "NoteBlock: " + BD.name + " (" + new Date().toISOString().replace(/T/, " ").replace(/\..+/, "") + ")",
@@ -4355,12 +4388,14 @@ function saveToGitHub() {
     if (!res.ok) return res.json().then(function(err) { throw new Error("HTTP " + res.status + ": " + (err.message || "")); });
     return res.json();
   }).then(function(data) {
-    // Update URL
     history.replaceState(null, "", location.pathname + "?id=" + ghEncode(BD.ghPath));
     dbg("GitHub uložen: " + BD.ghPath);
+    playSound("save");
   }).catch(function(err) {
     alert("Chyba při ukládání do GitHub: " + err.message);
     dbg("GitHub chyba: " + err.message);
+  }).finally(function() {
+    if (saveBtn) { saveBtn.innerHTML = origText; saveBtn.disabled = false; }
   });
 }
 
@@ -4426,6 +4461,7 @@ function loadFromGitHub(ghPath) {
     ACTIVE_PANEL = -1;
     openRoot();
     dbg("Blok nahrán z GitHub: " + BD.name + " (" + BD.notes.length + " poznámek)");
+    playSound("load");
   }).catch(function(err) {
     alert("Chyba při načítání z GitHub: " + err.message);
     dbg("GitHub CHYBA: " + err.message);
