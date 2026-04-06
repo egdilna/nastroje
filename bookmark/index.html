@@ -711,6 +711,86 @@ mark {
 }
 #debugPanel.visible { display: block; }
 
+/* ===== NOTES ===== */
+.bookmark-notes {
+  margin-top: 6px;
+  padding-left: 0;
+  list-style: none;
+}
+.bookmark-notes li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--text2);
+  line-height: 1.4;
+  padding: 2px 0;
+}
+.bookmark-notes li::before {
+  content: '•';
+  color: var(--accent2);
+  flex-shrink: 0;
+  margin-top: 0;
+}
+.bookmark-notes li .note-text { flex: 1; word-break: break-word; }
+.btn-del-note {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text3);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 0.85rem;
+  line-height: 1;
+  flex-shrink: 0;
+  font-family: var(--font-ui);
+}
+.btn-del-note:hover, .btn-del-note:focus-visible { color: var(--danger); outline: none; }
+.manage-mode .btn-del-note { display: inline; }
+
+.note-add-row {
+  display: none;
+  margin-top: 6px;
+  gap: 4px;
+  align-items: center;
+}
+.manage-mode .note-add-row { display: flex; }
+.note-add-input {
+  flex: 1;
+  background: var(--surface3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  font-family: var(--font-ui);
+  outline: none;
+  min-width: 0;
+}
+.note-add-input:focus { border-color: var(--accent); }
+.note-add-input::placeholder { color: var(--text3); }
+.btn-note-add {
+  background: var(--surface3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  cursor: pointer;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  font-family: var(--font-ui);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.btn-note-add:hover, .btn-note-add:focus-visible { border-color: var(--accent); outline: none; }
+
+/* ===== NOTES VIEW ===== */
+#notesView {
+  padding: 24px;
+  display: none;
+}
+#notesView.active { display: block; }
+#notesView h2 { font-size: 1.2rem; font-weight: 700; margin-bottom: 16px; color: var(--text); }
+
 /* ===== MOVE BUTTONS ===== */
 .btn-move {
   padding: 3px 7px;
@@ -806,10 +886,11 @@ select:focus { border-color: var(--accent) !important; outline: none; }
   <button id="btnGhSave2" aria-label="Uložit na GitHub">↑ Uložit</button>
 </div>
 
-<!-- ===== MAIN NAV (groups / tags) ===== -->
+<!-- ===== MAIN NAV (groups / tags / notes) ===== -->
 <nav id="mainNav" aria-label="Zobrazení">
   <button class="main-nav-btn active" id="navGroups" aria-pressed="true">Skupiny</button>
   <button class="main-nav-btn" id="navTags" aria-pressed="false">Tagy</button>
+  <button class="main-nav-btn" id="navNotes" aria-pressed="false">Se záložkami</button>
 </nav>
 
 <!-- ===== MAIN CONTENT ===== -->
@@ -835,6 +916,13 @@ select:focus { border-color: var(--accent) !important; outline: none; }
     <div id="tagFilterArea" class="tag-filter-area" role="group" aria-label="Dostupné tagy"></div>
     <div class="tags-results-info" id="tagsResultsInfo" aria-live="polite"></div>
     <div id="tagsResultsList" class="bookmarks-list" style="padding:0"></div>
+  </div>
+
+  <!-- === NOTES VIEW === -->
+  <div id="notesView" aria-label="Záložky s poznámkami">
+    <h2>Záložky s poznámkami</h2>
+    <div class="tags-results-info" id="notesResultsInfo" aria-live="polite"></div>
+    <div id="notesResultsList" class="bookmarks-list" style="padding:0"></div>
   </div>
 
   <!-- === SEARCH RESULTS === -->
@@ -1344,8 +1432,10 @@ function renderFolder(group, folder) {
   chevron.innerHTML = '<path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>';
   summary.appendChild(chevron);
 
-  var h2 = document.createElement('h2');
+  var h2 = document.createElement('span');
   h2.className = 'folder-title-text';
+  h2.setAttribute('role', 'heading');
+  h2.setAttribute('aria-level', '2');
   h2.textContent = folder.name;
   summary.appendChild(h2);
 
@@ -1519,7 +1609,73 @@ function renderBookmarkCard(group, folder, bm, bmIdx, bmTotal) {
     card.appendChild(tags);
   }
 
+  // Notes
+  renderNotesOnCard(card, group, folder, bm);
+
   return card;
+}
+
+function renderNotesOnCard(card, group, folder, bm) {
+  // Remove existing notes section if re-rendering
+  var existing = card.querySelector('.bookmark-notes-wrap');
+  if (existing) existing.remove();
+
+  var wrap = document.createElement('div');
+  wrap.className = 'bookmark-notes-wrap';
+
+  if (bm.notes && bm.notes.length) {
+    var ul = document.createElement('ul');
+    ul.className = 'bookmark-notes';
+    ul.setAttribute('aria-label', 'Poznámky k záložce ' + bm.name);
+    bm.notes.forEach(function(note, ni) {
+      var li = document.createElement('li');
+      var span = document.createElement('span');
+      span.className = 'note-text';
+      span.textContent = note;
+      li.appendChild(span);
+      var btnDel = document.createElement('button');
+      btnDel.className = 'btn-del-note';
+      btnDel.textContent = '×';
+      btnDel.setAttribute('aria-label', 'Smazat poznámku: ' + note);
+      btnDel.addEventListener('click', function() {
+        bm.notes.splice(ni, 1);
+        renderNotesOnCard(card, group, folder, bm);
+        announce('Poznámka smazána.');
+      });
+      li.appendChild(btnDel);
+      ul.appendChild(li);
+    });
+    wrap.appendChild(ul);
+  }
+
+  // Add note row (manage mode only via CSS)
+  var addRow = document.createElement('div');
+  addRow.className = 'note-add-row';
+  var inp = document.createElement('input');
+  inp.type = 'text';
+  inp.className = 'note-add-input';
+  inp.placeholder = 'Přidat poznámku…';
+  inp.setAttribute('aria-label', 'Nová poznámka k záložce ' + bm.name);
+  var btnAdd = document.createElement('button');
+  btnAdd.className = 'btn-note-add';
+  btnAdd.textContent = 'Přidat';
+  btnAdd.setAttribute('aria-label', 'Přidat poznámku k záložce ' + bm.name);
+  var doAdd = function() {
+    var val = inp.value.trim();
+    if (!val) return;
+    if (!bm.notes) bm.notes = [];
+    bm.notes.push(val);
+    inp.value = '';
+    renderNotesOnCard(card, group, folder, bm);
+    announce('Poznámka přidána.');
+  };
+  btnAdd.addEventListener('click', doAdd);
+  inp.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); doAdd(); } });
+  addRow.appendChild(inp);
+  addRow.appendChild(btnAdd);
+  wrap.appendChild(addRow);
+
+  card.appendChild(wrap);
 }
 
 // ===================== MANAGE MODE =====================
@@ -1566,11 +1722,12 @@ function doSearch(query) {
   getAllBookmarks().forEach(function(item) {
     var b = item.bookmark;
     var matches = [];
-    var name = b.name || '', url = b.url || '', desc = b.desc || '', tags = (b.tags||[]).join(' ');
+    var name = b.name || '', url = b.url || '', desc = b.desc || '', tags = (b.tags||[]).join(' '), notes = (b.notes||[]).join(' ');
     if (name.toLowerCase().includes(query)) matches.push('název');
     if (url.toLowerCase().includes(query)) matches.push('URL');
     if (desc.toLowerCase().includes(query)) matches.push('popis');
     if (tags.toLowerCase().includes(query)) matches.push('tag');
+    if (notes.toLowerCase().includes(query)) matches.push('poznámka');
     if (matches.length) results.push({ item: item, matches: matches });
   });
 
@@ -1640,6 +1797,20 @@ function doSearch(query) {
         tg.appendChild(tb);
       });
       div.appendChild(tg);
+    }
+    if (b.notes && b.notes.length) {
+      var nl = document.createElement('ul');
+      nl.className = 'bookmark-notes';
+      nl.setAttribute('aria-label', 'Poznámky');
+      b.notes.forEach(function(note) {
+        var li = document.createElement('li');
+        var sp = document.createElement('span');
+        sp.className = 'note-text';
+        sp.innerHTML = highlight(note, query);
+        li.appendChild(sp);
+        nl.appendChild(li);
+      });
+      div.appendChild(nl);
     }
     list.appendChild(div);
   });
@@ -1942,8 +2113,10 @@ document.getElementById('navGroups').addEventListener('click', function() {
   state.activeTags = [];
   this.classList.add('active'); this.setAttribute('aria-pressed','true');
   document.getElementById('navTags').classList.remove('active'); document.getElementById('navTags').setAttribute('aria-pressed','false');
+  document.getElementById('navNotes').classList.remove('active'); document.getElementById('navNotes').setAttribute('aria-pressed','false');
   document.getElementById('groupsView').style.display = '';
   document.getElementById('tagsView').classList.remove('active');
+  document.getElementById('notesView').classList.remove('active');
   document.getElementById('searchResultsView').style.display = 'none';
   document.getElementById('searchInput').value = '';
   render();
@@ -1954,13 +2127,47 @@ document.getElementById('navTags').addEventListener('click', function() {
   state.activeTags = [];
   this.classList.add('active'); this.setAttribute('aria-pressed','true');
   document.getElementById('navGroups').classList.remove('active'); document.getElementById('navGroups').setAttribute('aria-pressed','false');
+  document.getElementById('navNotes').classList.remove('active'); document.getElementById('navNotes').setAttribute('aria-pressed','false');
   document.getElementById('groupsView').style.display = 'none';
   document.getElementById('tagsView').classList.add('active');
+  document.getElementById('notesView').classList.remove('active');
   document.getElementById('searchResultsView').style.display = 'none';
   document.getElementById('searchInput').value = '';
   renderTagsView();
   announce('Zobrazení tagů');
 });
+
+document.getElementById('navNotes').addEventListener('click', function() {
+  state.activeView = 'notes';
+  this.classList.add('active'); this.setAttribute('aria-pressed','true');
+  document.getElementById('navGroups').classList.remove('active'); document.getElementById('navGroups').setAttribute('aria-pressed','false');
+  document.getElementById('navTags').classList.remove('active'); document.getElementById('navTags').setAttribute('aria-pressed','false');
+  document.getElementById('groupsView').style.display = 'none';
+  document.getElementById('tagsView').classList.remove('active');
+  document.getElementById('notesView').classList.add('active');
+  document.getElementById('searchResultsView').style.display = 'none';
+  document.getElementById('searchInput').value = '';
+  renderNotesView();
+  announce('Záložky s poznámkami');
+});
+
+function renderNotesView() {
+  var all = getAllBookmarks().filter(function(item) {
+    return item.bookmark.notes && item.bookmark.notes.length > 0;
+  });
+  var info = document.getElementById('notesResultsInfo');
+  var list = document.getElementById('notesResultsList');
+  info.textContent = 'Záložky s alespoň jednou poznámkou: ' + all.length;
+  list.innerHTML = '';
+  if (!all.length) {
+    list.innerHTML = '<div class="empty-state" style="padding:32px 0">Žádné záložky nemají poznámky.</div>';
+    return;
+  }
+  all.forEach(function(item) {
+    var card = renderBookmarkCard(item.group, item.folder, item.bookmark, 0, 1);
+    list.appendChild(card);
+  });
+}
 
 // ===================== MANAGE TOGGLE =====================
 document.getElementById('manageToggle').addEventListener('change', function() {
