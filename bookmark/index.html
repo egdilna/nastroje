@@ -711,6 +711,34 @@ mark {
 }
 #debugPanel.visible { display: block; }
 
+/* ===== MOVE BUTTONS ===== */
+.btn-move {
+  padding: 3px 7px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text3);
+  cursor: pointer;
+  font-size: 0.78rem;
+  line-height: 1;
+  transition: border-color var(--transition), color var(--transition);
+  font-family: var(--font-ui);
+}
+.btn-move:hover, .btn-move:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
+.btn-newwin {
+  color: var(--text3);
+  flex-shrink: 0;
+  margin-top: 1px;
+  text-decoration: none !important;
+}
+.btn-newwin:hover, .btn-newwin:focus-visible {
+  color: var(--accent);
+  border-color: var(--border);
+  outline: none;
+}
+.btn-move:disabled { opacity: 0.25; cursor: default; pointer-events: none; }
+select:focus { border-color: var(--accent) !important; outline: none; }
+
 /* ===== SCROLLBAR ===== */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -842,6 +870,10 @@ mark {
       <label for="bmTags">Tagy</label>
       <input type="text" id="bmTags" placeholder="tag1, tag2, tag3" autocomplete="off">
       <div class="hint">Oddělte čárkou</div>
+    </div>
+    <div class="form-group" id="bmMoveFolderGroup" style="display:none">
+      <label for="bmMoveFolder">Přesunout do složky</label>
+      <select id="bmMoveFolder" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);padding:8px 12px;font-size:0.9rem;font-family:var(--font-ui);outline:none"></select>
     </div>
     <div class="dialog-footer">
       <button class="btn btn-secondary" id="btnDlgBookmarkCancel">Zrušit</button>
@@ -1064,7 +1096,42 @@ function getAllTags() {
   return Object.keys(tagMap).sort().map(function(t) { return { name: t, count: tagMap[t] }; });
 }
 
-function getDomain(url) {
+function moveArrayItem(arr, idx, dir) {
+  var newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= arr.length) return;
+  var tmp = arr[idx]; arr[idx] = arr[newIdx]; arr[newIdx] = tmp;
+}
+
+function moveGroup(gid, dir) {
+  var idx = appData.groups.findIndex(function(g){ return g.id === gid; });
+  if (idx < 0) return;
+  moveArrayItem(appData.groups, idx, dir);
+  render();
+  announce('Skupina přesunuta.');
+}
+
+function moveFolder(gid, fid, dir) {
+  var g = appData.groups.find(function(x){ return x.id === gid; });
+  if (!g) return;
+  var idx = g.folders.findIndex(function(f){ return f.id === fid; });
+  if (idx < 0) return;
+  moveArrayItem(g.folders, idx, dir);
+  render();
+  announce('Složka přesunuta.');
+}
+
+function moveBookmark(gid, fid, bid, dir) {
+  var g = appData.groups.find(function(x){ return x.id === gid; });
+  if (!g) return;
+  var f = g.folders.find(function(x){ return x.id === fid; });
+  if (!f) return;
+  var idx = f.bookmarks.findIndex(function(b){ return b.id === bid; });
+  if (idx < 0) return;
+  moveArrayItem(f.bookmarks, idx, dir);
+  render();
+  announce('Záložka přesunuta.');
+}
+
   try { return new URL(url).hostname; } catch(e) { return ''; }
 }
 
@@ -1100,31 +1167,60 @@ function render() {
 function renderTabs() {
   var tabList = document.getElementById('tabList');
   tabList.innerHTML = '';
+  var total = appData.groups.length;
   appData.groups.forEach(function(group, idx) {
     var isActive = (state.activeGroup === group.id) || (idx === 0 && !state.activeGroup);
     var count = countGroupBookmarks(group);
-    var btn = document.createElement('button');
-    btn.setAttribute('role', 'tab');
-    btn.setAttribute('id', 'tab-' + group.id);
-    btn.setAttribute('aria-controls', 'panel-' + group.id);
-    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
-    btn.setAttribute('tabindex', isActive ? '0' : '-1');
-    btn.setAttribute('data-gid', group.id);
-    btn.innerHTML = esc(group.name) + ' <span class="tab-count" aria-hidden="true">(' + count + ')</span>';
 
     if (state.manageMode) {
-      // rename + delete inline in tab is complex, so we use group manage bar
+      // Wrap: move buttons + tab button together
+      var wrap = document.createElement('span');
+      wrap.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-right:2px';
+
+      var mvL = document.createElement('button');
+      mvL.className = 'btn-move';
+      mvL.textContent = '◀';
+      mvL.setAttribute('aria-label', 'Posunout skupinu ' + group.name + ' doleva');
+      mvL.disabled = (idx === 0);
+      mvL.addEventListener('click', function(e){ e.stopPropagation(); moveGroup(group.id, -1); });
+      wrap.appendChild(mvL);
+
+      var btn = document.createElement('button');
+      btn.setAttribute('role', 'tab');
+      btn.setAttribute('id', 'tab-' + group.id);
+      btn.setAttribute('aria-controls', 'panel-' + group.id);
+      btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      btn.setAttribute('tabindex', isActive ? '0' : '-1');
+      btn.setAttribute('data-gid', group.id);
+      btn.innerHTML = esc(group.name) + ' <span class="tab-count" aria-hidden="true">(' + count + ')</span>';
+      btn.addEventListener('click', function() { activateTab(group.id); });
+      btn.addEventListener('keydown', handleTabKeydown);
+      wrap.appendChild(btn);
+
+      var mvR = document.createElement('button');
+      mvR.className = 'btn-move';
+      mvR.textContent = '▶';
+      mvR.setAttribute('aria-label', 'Posunout skupinu ' + group.name + ' doprava');
+      mvR.disabled = (idx === total - 1);
+      mvR.addEventListener('click', function(e){ e.stopPropagation(); moveGroup(group.id, 1); });
+      wrap.appendChild(mvR);
+
+      tabList.appendChild(wrap);
+    } else {
+      var btn = document.createElement('button');
+      btn.setAttribute('role', 'tab');
+      btn.setAttribute('id', 'tab-' + group.id);
+      btn.setAttribute('aria-controls', 'panel-' + group.id);
+      btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      btn.setAttribute('tabindex', isActive ? '0' : '-1');
+      btn.setAttribute('data-gid', group.id);
+      btn.innerHTML = esc(group.name) + ' <span class="tab-count" aria-hidden="true">(' + count + ')</span>';
+      btn.addEventListener('click', function() { activateTab(group.id); });
+      btn.addEventListener('keydown', handleTabKeydown);
+      tabList.appendChild(btn);
     }
 
-    btn.addEventListener('click', function() {
-      activateTab(group.id);
-    });
-    btn.addEventListener('keydown', handleTabKeydown);
-    tabList.appendChild(btn);
-
-    if (isActive) {
-      if (!state.activeGroup) state.activeGroup = group.id;
-    }
+    if (isActive && !state.activeGroup) state.activeGroup = group.id;
   });
 
   if (!state.activeGroup && appData.groups.length > 0) {
@@ -1228,6 +1324,9 @@ function renderActivePanel() {
 }
 
 function renderFolder(group, folder) {
+  var folderIdx = group.folders.indexOf(folder);
+  var totalFolders = group.folders.length;
+
   var details = document.createElement('details');
   details.className = 'folder';
   details.open = true;
@@ -1255,10 +1354,27 @@ function renderFolder(group, folder) {
   countSpan.textContent = '(' + folder.bookmarks.length + ')';
   summary.appendChild(countSpan);
 
-  // Folder actions
+  // Folder actions (manage mode only via CSS)
   var actions = document.createElement('div');
   actions.className = 'folder-actions';
   actions.setAttribute('aria-label', 'Akce složky ' + folder.name);
+
+  // Move folder up/down
+  var mvUp = document.createElement('button');
+  mvUp.className = 'btn-move';
+  mvUp.textContent = '▲';
+  mvUp.setAttribute('aria-label', 'Posunout složku ' + folder.name + ' nahoru');
+  mvUp.disabled = (folderIdx === 0);
+  mvUp.addEventListener('click', function(e){ e.preventDefault(); moveFolder(group.id, folder.id, -1); });
+  actions.appendChild(mvUp);
+
+  var mvDn = document.createElement('button');
+  mvDn.className = 'btn-move';
+  mvDn.textContent = '▼';
+  mvDn.setAttribute('aria-label', 'Posunout složku ' + folder.name + ' dolů');
+  mvDn.disabled = (folderIdx === totalFolders - 1);
+  mvDn.addEventListener('click', function(e){ e.preventDefault(); moveFolder(group.id, folder.id, 1); });
+  actions.appendChild(mvDn);
 
   var btnRenameFolder = document.createElement('button');
   btnRenameFolder.className = 'btn-icon';
@@ -1281,8 +1397,8 @@ function renderFolder(group, folder) {
   var list = document.createElement('div');
   list.className = 'bookmarks-list';
 
-  folder.bookmarks.forEach(function(bm) {
-    list.appendChild(renderBookmarkCard(group, folder, bm));
+  folder.bookmarks.forEach(function(bm, bmIdx) {
+    list.appendChild(renderBookmarkCard(group, folder, bm, bmIdx, folder.bookmarks.length));
   });
 
   // Add bookmark button
@@ -1297,7 +1413,7 @@ function renderFolder(group, folder) {
   return details;
 }
 
-function renderBookmarkCard(group, folder, bm) {
+function renderBookmarkCard(group, folder, bm, bmIdx, bmTotal) {
   var card = document.createElement('article');
   card.className = 'bookmark-card';
   card.setAttribute('aria-label', bm.name);
@@ -1322,13 +1438,38 @@ function renderBookmarkCard(group, folder, bm) {
   link.className = 'bookmark-name-link';
   link.textContent = bm.name;
   link.setAttribute('aria-label', bm.name + (bm.desc ? ', ' + bm.desc : ''));
-  link.target = '_blank';
-  link.rel = 'noopener noreferrer';
   top.appendChild(link);
+
+  var btnNewWin = document.createElement('a');
+  btnNewWin.href = bm.url;
+  btnNewWin.target = '_blank';
+  btnNewWin.rel = 'noopener noreferrer';
+  btnNewWin.className = 'btn-icon btn-newwin';
+  btnNewWin.setAttribute('aria-label', 'Otevřít ' + bm.name + ' v novém okně');
+  btnNewWin.setAttribute('title', 'Otevřít v novém okně');
+  btnNewWin.innerHTML = '<svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z"/><path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z"/></svg>';
+  top.appendChild(btnNewWin);
 
   // Actions
   var acts = document.createElement('div');
   acts.className = 'bookmark-actions';
+
+  // Move up/down
+  var mvUp = document.createElement('button');
+  mvUp.className = 'btn-move';
+  mvUp.textContent = '▲';
+  mvUp.setAttribute('aria-label', 'Posunout záložku ' + bm.name + ' nahoru');
+  mvUp.disabled = (bmIdx === 0);
+  mvUp.addEventListener('click', function() { moveBookmark(group.id, folder.id, bm.id, -1); });
+  acts.appendChild(mvUp);
+
+  var mvDn = document.createElement('button');
+  mvDn.className = 'btn-move';
+  mvDn.textContent = '▼';
+  mvDn.setAttribute('aria-label', 'Posunout záložku ' + bm.name + ' dolů');
+  mvDn.disabled = (bmIdx === bmTotal - 1);
+  mvDn.addEventListener('click', function() { moveBookmark(group.id, folder.id, bm.id, 1); });
+  acts.appendChild(mvDn);
 
   var btnEdit = document.createElement('button');
   btnEdit.className = 'btn-icon';
@@ -1618,6 +1759,29 @@ function openBookmarkDialog(gid, fid, bid) {
   document.getElementById('bmUrl').value = bm ? bm.url : '';
   document.getElementById('bmDesc').value = bm ? (bm.desc||'') : '';
   document.getElementById('bmTags').value = bm ? (bm.tags||[]).join(', ') : '';
+
+  // Populate folder move select (only for editing existing bookmarks)
+  var moveFolderGroup = document.getElementById('bmMoveFolderGroup');
+  var sel = document.getElementById('bmMoveFolder');
+  sel.innerHTML = '';
+  if (bid) {
+    appData.groups.forEach(function(grp) {
+      var optgroup = document.createElement('optgroup');
+      optgroup.label = grp.name;
+      grp.folders.forEach(function(fld) {
+        var opt = document.createElement('option');
+        opt.value = grp.id + '|' + fld.id;
+        opt.textContent = fld.name;
+        opt.selected = (grp.id === gid && fld.id === fid);
+        optgroup.appendChild(opt);
+      });
+      sel.appendChild(optgroup);
+    });
+    moveFolderGroup.style.display = '';
+  } else {
+    moveFolderGroup.style.display = 'none';
+  }
+
   openDialog('dlgBookmark', 'bmName');
 }
 
@@ -1687,17 +1851,34 @@ document.getElementById('btnDlgBookmarkOk').addEventListener('click', function()
   var desc = document.getElementById('bmDesc').value.trim();
   var ed = state.editingBookmark;
 
-  var g = appData.groups.find(function(x){ return x.id===ed.gid; });
-  if (!g) return;
-  var f = g.folders.find(function(x){ return x.id===ed.fid; });
-  if (!f) return;
+  var srcG = appData.groups.find(function(x){ return x.id===ed.gid; });
+  if (!srcG) return;
+  var srcF = srcG.folders.find(function(x){ return x.id===ed.fid; });
+  if (!srcF) return;
 
   if (ed.bid) {
-    var bm = f.bookmarks.find(function(x){ return x.id===ed.bid; });
-    if (bm) { bm.name=name; bm.url=url; bm.desc=desc; bm.tags=tags; }
-    announce('Záložka aktualizována.');
+    var bm = srcF.bookmarks.find(function(x){ return x.id===ed.bid; });
+    if (!bm) return;
+    bm.name = name; bm.url = url; bm.desc = desc; bm.tags = tags;
+
+    // Check if folder changed
+    var sel = document.getElementById('bmMoveFolder');
+    var selVal = sel.value; // "gid|fid"
+    var parts = selVal.split('|');
+    var targetGid = parts[0], targetFid = parts[1];
+    if (targetGid !== ed.gid || targetFid !== ed.fid) {
+      // Move: remove from source, add to target
+      srcF.bookmarks = srcF.bookmarks.filter(function(x){ return x.id !== ed.bid; });
+      var tgtG = appData.groups.find(function(x){ return x.id===targetGid; });
+      if (tgtG) {
+        var tgtF = tgtG.folders.find(function(x){ return x.id===targetFid; });
+        if (tgtF) { tgtF.bookmarks.push(bm); announce('Záložka přesunuta a uložena.'); }
+      }
+    } else {
+      announce('Záložka aktualizována.');
+    }
   } else {
-    f.bookmarks.push({ id: uid(), name:name, url:url, desc:desc, tags:tags });
+    srcF.bookmarks.push({ id: uid(), name:name, url:url, desc:desc, tags:tags });
     announce('Záložka přidána.');
   }
   closeDialog('dlgBookmark');
@@ -1784,6 +1965,7 @@ document.getElementById('navTags').addEventListener('click', function() {
 document.getElementById('manageToggle').addEventListener('change', function() {
   state.manageMode = this.checked;
   updateManageUI();
+  updateGhStatusBar();
   announce(state.manageMode ? 'Režim správy zapnut' : 'Režim správy vypnut');
 });
 
@@ -1930,6 +2112,7 @@ document.getElementById('fileInput').addEventListener('change', function(e) {
 function updateGhStatusBar() {
   var bar = document.getElementById('ghStatusBar');
   var status = document.getElementById('ghStatus');
+  if (!state.manageMode) { bar.classList.add('hidden'); return; }
   var token = localStorage.getItem('bm_github_token');
   if (token && appData.ghPath) {
     bar.classList.remove('hidden');
