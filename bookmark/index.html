@@ -954,7 +954,11 @@ select:focus { border-color: var(--accent) !important; outline: none; }
     </div>
     <div class="form-group">
       <label for="bmUrl">URL <span aria-hidden="true">*</span></label>
-      <input type="url" id="bmUrl" required autocomplete="off" aria-required="true" placeholder="https://…">
+      <div style="display:flex;gap:6px;align-items:flex-start">
+        <input type="url" id="bmUrl" required autocomplete="off" aria-required="true" placeholder="https://…" style="flex:1">
+        <button type="button" class="btn btn-secondary" id="btnFetchTitle" style="flex-shrink:0;white-space:nowrap" aria-label="Načíst název stránky z URL">Načíst název</button>
+      </div>
+      <div id="bmFetchStatus" aria-live="polite" style="font-size:0.75rem;color:var(--text3);margin-top:4px;min-height:1em"></div>
     </div>
     <div class="form-group">
       <label for="bmDesc">Popis</label>
@@ -2053,6 +2057,9 @@ function openBookmarkDialog(gid, fid, bid) {
   document.getElementById('bmName').value = bm ? bm.name : '';
   document.getElementById('bmUrl').value = bm ? bm.url : '';
   document.getElementById('bmDesc').value = bm ? (bm.desc||'') : '';
+  document.getElementById('bmFetchStatus').textContent = '';
+  // Tlačítko Načíst název jen při přidávání nové záložky
+  document.getElementById('btnFetchTitle').style.display = bid ? 'none' : '';
 
   // Tagy jako zaškrtávátka
   var currentTags = bm ? (bm.tags||[]).map(function(t){ return t.toLowerCase(); }) : [];
@@ -2203,6 +2210,94 @@ document.getElementById('btnDlgBookmarkOk').addEventListener('click', function()
   render();
 });
 document.getElementById('btnDlgBookmarkCancel').addEventListener('click', function() { closeDialog('dlgBookmark'); });
+
+// ===================== FETCH PAGE TITLE =====================
+document.getElementById('btnFetchTitle').addEventListener('click', function() {
+  var url = document.getElementById('bmUrl').value.trim();
+  if (!url) { announce('Nejprve zadejte URL.'); return; }
+  if (!/^https?:\/\//i.test(url)) { announce('URL musí začínat http:// nebo https://'); return; }
+  fetchPageTitle(url);
+});
+
+function fetchPageTitle(url) {
+  var status = document.getElementById('bmFetchStatus');
+  var btn = document.getElementById('btnFetchTitle');
+  btn.disabled = true;
+  btn.textContent = 'Načítám…';
+  status.textContent = 'Stahuji stránku…';
+  status.style.color = 'var(--text3)';
+
+  // Použijeme allorigins.win jako CORS proxy
+  // raw=true vrátí surový HTML obsah
+  var proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+
+  // Timeout 10 sekund — stránky s dynamickým title potřebují čas
+  var controller = new AbortController();
+  var timer = setTimeout(function() { controller.abort(); }, 10000);
+
+  fetch(proxyUrl, { signal: controller.signal })
+    .then(function(res) {
+      clearTimeout(timer);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.text();
+    })
+    .then(function(html) {
+      // Hledáme <title>...</title>, case-insensitive
+      var match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+      if (!match) throw new Error('Stránka neobsahuje element title.');
+      var raw = match[1];
+      // Dekódovat HTML entity
+      var tmp = document.createElement('textarea');
+      tmp.innerHTML = raw;
+      var title = tmp.value.trim();
+      if (!title) throw new Error('Title je prázdný.');
+      // Pokud je název záložky zatím prázdný, vyplnit ho
+      var nameField = document.getElementById('bmName');
+      if (!nameField.value.trim()) {
+        nameField.value = title;
+        status.textContent = '✓ Název načten: „' + title + '"';
+        status.style.color = 'var(--accent3)';
+        announce('Název načten: ' + title);
+      } else {
+        // Název už je vyplněn — nabídneme přepsání
+        status.textContent = 'Nalezen název: „' + title + '" — klikněte pro přepsání stávajícího názvu.';
+        status.style.color = 'var(--warning)';
+        status.style.cursor = 'pointer';
+        status.setAttribute('role', 'button');
+        status.setAttribute('tabindex', '0');
+        status.setAttribute('aria-label', 'Přepsat název na: ' + title);
+        var applyTitle = function() {
+          nameField.value = title;
+          status.textContent = '✓ Název přepsán na: „' + title + '"';
+          status.style.color = 'var(--accent3)';
+          status.style.cursor = '';
+          status.removeAttribute('role');
+          status.removeAttribute('tabindex');
+          status.removeEventListener('click', applyTitle);
+          status.removeEventListener('keydown', applyTitleKey);
+          announce('Název přepsán: ' + title);
+        };
+        var applyTitleKey = function(e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); applyTitle(); } };
+        status.addEventListener('click', applyTitle);
+        status.addEventListener('keydown', applyTitleKey);
+        announce('Nalezen název: ' + title + '. Klikněte na stavový řádek pro přepsání.');
+      }
+    })
+    .catch(function(err) {
+      clearTimeout(timer);
+      var msg = err.name === 'AbortError'
+        ? 'Časový limit vypršel (10 s). Stránka neodpověděla.'
+        : 'Nepodařilo se načíst: ' + err.message;
+      status.textContent = '✗ ' + msg;
+      status.style.color = 'var(--danger)';
+      announce(msg);
+      debug('fetchPageTitle chyba: ' + err.message);
+    })
+    .finally(function() {
+      btn.disabled = false;
+      btn.textContent = 'Načíst název';
+    });
+}
 
 document.getElementById('btnDlgFolderOk').addEventListener('click', function() {
   var name = document.getElementById('folderName').value.trim();
