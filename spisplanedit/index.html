@@ -1,0 +1,2283 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Editor Spisového Plánu</title>
+<style>
+:root {
+  --bg: #f5f3ee;
+  --surface: #ffffff;
+  --surface2: #ede9e1;
+  --surface3: #ddd8cc;
+  --border: #b8b2a4;
+  --border-strong: #7a7468;
+  --text: #1c1a17;
+  --text-muted: #5a5550;
+  --text-faint: #8a857d;
+  --accent: #2d5a8e;
+  --accent-light: #dce8f5;
+  --accent-hover: #1f3f63;
+  --danger: #8b2020;
+  --danger-light: #fde8e8;
+  --success: #1a5c2a;
+  --success-light: #e4f4e8;
+  --warn: #7a4c00;
+  --warn-light: #fef3dc;
+  --added: #1a5c2a;
+  --added-bg: #e4f4e8;
+  --removed: #8b2020;
+  --removed-bg: #fde8e8;
+  --changed: #7a4c00;
+  --changed-bg: #fef3dc;
+  --font-ui: 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+  --font-mono: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+  --radius: 4px;
+  --shadow: 0 1px 4px rgba(0,0,0,0.12);
+  --shadow-lg: 0 4px 16px rgba(0,0,0,0.14);
+  --focus: 0 0 0 3px rgba(45,90,142,0.4);
+  --node-indent: 1.5rem;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; }
+body { font-family: var(--font-ui); background: var(--bg); color: var(--text); line-height: 1.5; min-height: 100vh; display: flex; flex-direction: column; }
+
+/* === SKIP LINK === */
+.skip-link { position: absolute; top: -999px; left: 0; background: var(--accent); color: #fff; padding: .5rem 1rem; text-decoration: none; font-weight: 600; z-index: 9999; border-radius: 0 0 var(--radius) 0; }
+.skip-link:focus { top: 0; }
+
+/* === HEADER === */
+header { background: var(--accent); color: #fff; padding: .75rem 1.25rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+header h1 { font-size: 1.15rem; font-weight: 700; letter-spacing: .01em; }
+header .subtitle { font-size: .8rem; opacity: .8; }
+.header-actions { margin-left: auto; display: flex; gap: .5rem; flex-wrap: wrap; }
+
+/* === BUTTONS === */
+button, .btn { font-family: var(--font-ui); font-size: .875rem; cursor: pointer; border: none; border-radius: var(--radius); padding: .4rem .9rem; line-height: 1.4; display: inline-flex; align-items: center; gap: .35rem; transition: background .15s, outline .1s; text-decoration: none; }
+button:focus-visible, .btn:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+input:focus, select:focus, textarea:focus { outline: 3px solid var(--accent); outline-offset: 0; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+.btn-secondary:hover { background: var(--surface2); }
+.btn-ghost { background: transparent; color: var(--text); border: 1px solid transparent; }
+.btn-ghost:hover { background: var(--surface2); border-color: var(--border); }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover { background: #6b1818; }
+.btn-sm { padding: .25rem .6rem; font-size: .8rem; }
+.btn-header { background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.3); }
+.btn-header:hover { background: rgba(255,255,255,.25); }
+.btn-icon { padding: .35rem .5rem; }
+
+/* === LAYOUT === */
+#app { display: flex; flex: 1; overflow: hidden; height: calc(100vh - 48px); }
+#sidebar { width: 320px; min-width: 220px; max-width: 480px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; }
+#main-content { flex: 1; overflow: auto; display: flex; flex-direction: column; }
+
+/* === SIDEBAR === */
+.sidebar-header { padding: .75rem 1rem; border-bottom: 1px solid var(--border); background: var(--surface2); display: flex; align-items: center; gap: .5rem; }
+.sidebar-header h2 { font-size: .9rem; font-weight: 600; flex: 1; }
+#tree-container { flex: 1; overflow: auto; padding: .5rem 0; }
+.tree-empty { padding: 2rem 1rem; text-align: center; color: var(--text-muted); font-size: .875rem; }
+
+/* === ACCESSIBLE NAV TREE (ul/li/a) === */
+.nav-tree { list-style: none; padding: 0; margin: 0; }
+.nav-tree ul { list-style: none; padding: 0; margin: 0; }
+.nav-tree li { margin: 0; }
+
+/* Each item row = flex container */
+.nav-item-row {
+  display: flex;
+  align-items: stretch;
+  margin: 1px 4px;
+  border-radius: var(--radius);
+}
+.nav-item-row.is-selected { background: var(--accent-light); outline: 2px solid var(--accent); outline-offset: -2px; }
+.nav-item-row:hover { background: var(--surface2); }
+
+/* Toggle button (expand/collapse) */
+.nav-toggle {
+  flex-shrink: 0;
+  width: 1.75rem;
+  background: none;
+  border: none;
+  border-radius: var(--radius) 0 0 var(--radius);
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: .7rem;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.nav-toggle:hover { background: var(--surface3); color: var(--text); }
+.nav-toggle:focus-visible { outline: 3px solid var(--accent); outline-offset: 0; z-index: 1; position: relative; }
+.nav-toggle-spacer { flex-shrink: 0; width: 1.75rem; }
+
+/* The main link */
+.nav-link {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .35rem .5rem .35rem .15rem;
+  text-decoration: none;
+  color: var(--text);
+  font-size: .85rem;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  min-height: 2rem;
+  overflow: hidden;
+}
+.nav-link:hover { color: var(--accent-hover); }
+.nav-link:focus-visible { outline: 3px solid var(--accent); outline-offset: 0; z-index: 1; position: relative; }
+.nav-link[aria-current="page"] { font-weight: 700; color: var(--accent-hover); }
+
+.nav-icon { font-size: .85rem; flex-shrink: 0; width: 1.1rem; text-align: center; }
+.nav-znak { font-family: var(--font-mono); font-size: .72rem; color: var(--text-muted); background: var(--surface2); padding: .1rem .3rem; border-radius: 2px; flex-shrink: 0; white-space: nowrap; }
+.nav-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-badge { font-size: .68rem; padding: .1rem .3rem; border-radius: 3px; flex-shrink: 0; }
+.badge-new    { background: var(--added-bg);   color: var(--added); }
+.badge-added  { background: var(--added-bg);   color: var(--added); }
+.badge-removed{ background: var(--removed-bg); color: var(--removed); }
+.badge-changed{ background: var(--changed-bg); color: var(--changed); }
+
+/* Indent children by nesting padding on the link */
+.nav-tree ul { border-left: 2px solid var(--border); margin-left: 1.55rem; }
+
+/* === MAIN TABS === */
+.tabs-bar { display: flex; gap: 0; border-bottom: 2px solid var(--border); background: var(--surface); padding: 0 1rem; }
+.tab-btn { background: none; border: none; border-bottom: 3px solid transparent; margin-bottom: -2px; padding: .65rem 1.1rem; font-size: .875rem; font-weight: 600; cursor: pointer; color: var(--text-muted); border-radius: var(--radius) var(--radius) 0 0; transition: color .15s, border-color .15s; }
+.tab-btn:hover { color: var(--text); background: var(--surface2); }
+.tab-btn[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); background: none; }
+.tab-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: -2px; }
+.tab-panel { display: none; flex: 1; overflow: auto; }
+.tab-panel.active { display: flex; flex-direction: column; }
+
+/* === CONTENT AREA === */
+.content-area { padding: 1.25rem 1.5rem; flex: 1; }
+.section-title { font-size: 1rem; font-weight: 700; color: var(--text); margin-bottom: 1rem; padding-bottom: .5rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: .5rem; }
+.section-title .actions { margin-left: auto; display: flex; gap: .35rem; }
+
+/* === FORMS === */
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-bottom: 1.25rem; }
+.form-group { display: flex; flex-direction: column; gap: .3rem; }
+.form-group label { font-size: .8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+.form-group input, .form-group select, .form-group textarea { font-family: var(--font-ui); font-size: .9rem; padding: .45rem .6rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); width: 100%; }
+.form-group textarea { resize: vertical; min-height: 5rem; }
+.form-group input:disabled, .form-group select:disabled, .form-group textarea:disabled { background: var(--surface2); color: var(--text-muted); }
+.form-group .hint { font-size: .75rem; color: var(--text-faint); }
+.form-row { display: flex; gap: .75rem; align-items: flex-end; flex-wrap: wrap; }
+.form-check { display: flex; align-items: center; gap: .5rem; font-size: .9rem; cursor: pointer; }
+.form-check input[type=checkbox] { width: 1.1rem; height: 1.1rem; accent-color: var(--accent); cursor: pointer; }
+.form-actions { display: flex; gap: .5rem; margin-top: 1rem; flex-wrap: wrap; }
+
+/* === CARDS === */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; margin-bottom: 1rem; }
+.card-header { display: flex; align-items: center; gap: .5rem; margin-bottom: .75rem; }
+.card-title { font-size: .9rem; font-weight: 700; }
+.info-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .5rem; }
+.info-item { display: flex; flex-direction: column; gap: .1rem; }
+.info-item dt { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); font-weight: 600; }
+.info-item dd { font-size: .9rem; }
+
+/* === DETAIL PANEL === */
+#detail-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 200px; color: var(--text-muted); gap: 1rem; text-align: center; }
+#detail-empty .icon { font-size: 3rem; }
+
+/* === CHANGE MARKERS === */
+.change-dot { display: inline-block; width: .6rem; height: .6rem; border-radius: 50%; margin-right: .25rem; }
+.change-dot-added { background: var(--added); }
+.change-dot-removed { background: var(--removed); }
+.change-dot-changed { background: var(--changed); }
+.field-changed { background: var(--changed-bg); border-color: var(--changed) !important; }
+.field-added { background: var(--added-bg); }
+.field-removed { background: var(--removed-bg); text-decoration: line-through; }
+
+/* === CHANGE LOG === */
+.change-log { list-style: none; }
+.change-log li { display: flex; gap: .75rem; padding: .6rem .75rem; border-bottom: 1px solid var(--surface2); font-size: .875rem; align-items: flex-start; }
+.change-log li:last-child { border-bottom: none; }
+.change-type { font-size: .7rem; font-weight: 700; padding: .15rem .4rem; border-radius: 3px; white-space: nowrap; flex-shrink: 0; }
+.change-type-added { background: var(--added-bg); color: var(--added); }
+.change-type-removed { background: var(--removed-bg); color: var(--removed); }
+.change-type-changed { background: var(--changed-bg); color: var(--changed); }
+.change-type-meta { background: var(--accent-light); color: var(--accent); }
+.change-desc { flex: 1; }
+.change-meta { color: var(--text-faint); font-size: .78rem; }
+.change-time { color: var(--text-faint); font-size: .78rem; white-space: nowrap; }
+
+/* === VERSIONS === */
+.version-list { list-style: none; }
+.version-item { padding: .75rem 1rem; border-bottom: 1px solid var(--border); display: flex; gap: 1rem; align-items: flex-start; }
+.version-item:last-child { border-bottom: none; }
+.version-num { font-family: var(--font-mono); font-size: .85rem; font-weight: 700; color: var(--accent); flex-shrink: 0; }
+.version-info { flex: 1; }
+.version-name { font-weight: 600; font-size: .9rem; }
+.version-meta { font-size: .8rem; color: var(--text-muted); }
+.version-actions { display: flex; gap: .35rem; flex-shrink: 0; }
+.version-current { background: var(--accent-light); }
+
+/* === PRINT PREVIEW === */
+.print-section { font-size: .875rem; }
+.print-table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: .82rem; }
+.print-table th { background: var(--accent); color: #fff; padding: .4rem .6rem; text-align: left; font-weight: 600; }
+.print-table td { padding: .35rem .6rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+.print-table tr:hover td { background: var(--accent-light); }
+.print-table .level-0 td:first-child { font-weight: 700; }
+.print-table .level-1 td:first-child { padding-left: 1.5rem; }
+.print-table .level-2 td:first-child { padding-left: 3rem; }
+.print-table .level-3 td:first-child { padding-left: 4.5rem; }
+.skart-A { color: var(--success); font-weight: 700; }
+.skart-S { color: var(--danger); font-weight: 700; }
+.skart-V { color: var(--warn); font-weight: 700; }
+
+/* === ALERTS === */
+.alert { padding: .75rem 1rem; border-radius: var(--radius); margin-bottom: 1rem; font-size: .875rem; border-left: 4px solid; }
+.alert-info { background: var(--accent-light); border-color: var(--accent); color: var(--accent-hover); }
+.alert-warn { background: var(--warn-light); border-color: var(--warn); color: var(--warn); }
+.alert-danger { background: var(--danger-light); border-color: var(--danger); color: var(--danger); }
+.alert-success { background: var(--success-light); border-color: var(--success); color: var(--success); }
+
+/* === MODAL === */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+.modal-overlay[hidden] { display: none; }
+.modal { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow-lg); max-width: 600px; width: 100%; max-height: 90vh; overflow: auto; }
+.modal-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: .75rem; }
+.modal-title { font-size: 1rem; font-weight: 700; flex: 1; }
+.modal-body { padding: 1.25rem; }
+.modal-footer { padding: .75rem 1.25rem; border-top: 1px solid var(--border); display: flex; gap: .5rem; justify-content: flex-end; }
+
+/* === NOTES === */
+.note-item { background: var(--warn-light); border: 1px solid #e8c97a; border-radius: var(--radius); padding: .75rem; margin-bottom: .5rem; }
+.note-header { display: flex; align-items: center; gap: .5rem; margin-bottom: .25rem; }
+.note-author { font-size: .78rem; font-weight: 700; color: var(--warn); }
+.note-date { font-size: .75rem; color: var(--text-faint); }
+.note-text { font-size: .875rem; }
+.note-target { font-size: .75rem; color: var(--text-muted); font-style: italic; }
+
+/* === TOOLBAR === */
+.toolbar { display: flex; gap: .35rem; padding: .5rem 1rem; background: var(--surface2); border-bottom: 1px solid var(--border); flex-wrap: wrap; align-items: center; }
+.toolbar-sep { width: 1px; height: 1.5rem; background: var(--border); margin: 0 .25rem; }
+
+/* === STATUS BAR === */
+.statusbar { background: var(--surface2); border-top: 1px solid var(--border); padding: .3rem 1rem; font-size: .75rem; color: var(--text-muted); display: flex; gap: 1.5rem; flex-wrap: wrap; }
+
+/* === SEARCH === */
+.search-box { display: flex; align-items: center; gap: .35rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: .25rem .5rem; }
+.search-box input { border: none; background: transparent; font-size: .85rem; width: 180px; color: var(--text); }
+.search-box input:focus { outline: none; }
+.search-box:focus-within { outline: 3px solid var(--accent); outline-offset: 0; }
+
+/* === MISC === */
+.mono { font-family: var(--font-mono); font-size: .85rem; }
+.text-muted { color: var(--text-muted); }
+.text-small { font-size: .8rem; }
+hr { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
+.flex { display: flex; }
+.gap-sm { gap: .5rem; }
+.ml-auto { margin-left: auto; }
+kbd { font-family: var(--font-mono); font-size: .75rem; background: var(--surface3); border: 1px solid var(--border); border-radius: 3px; padding: .1rem .35rem; }
+
+/* === DRAG RESIZE === */
+#sidebar-resize { width: 4px; cursor: col-resize; background: var(--border); flex-shrink: 0; transition: background .15s; }
+#sidebar-resize:hover, #sidebar-resize.dragging { background: var(--accent); }
+
+/* === NO ITEM SELECTED === */
+.no-selection { color: var(--text-muted); font-style: italic; padding: 1rem; text-align: center; }
+
+/* === PRINT STYLES === */
+@media print {
+  header, #sidebar, #sidebar-resize, .tabs-bar, .toolbar, .statusbar, .no-print { display: none !important; }
+  #app { display: block; height: auto; }
+  #main { overflow: visible; }
+  .tab-panel { display: block !important; }
+  body { background: #fff; font-size: 11pt; }
+  .print-table th { background: #2d5a8e !important; color: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+/* === RESPONSIVE === */
+@media (max-width: 700px) {
+  #sidebar { width: 100%; max-width: 100%; border-right: none; border-bottom: 1px solid var(--border); max-height: 40vh; }
+  #app { flex-direction: column; }
+  #sidebar-resize { display: none; }
+}
+</style>
+</head>
+<body>
+
+<a href="#main-content" class="skip-link">Přeskočit na obsah</a>
+
+<header role="banner">
+  <div>
+    <h1>📋 Editor Spisového Plánu</h1>
+    <div class="subtitle" id="header-subtitle" aria-live="polite"></div>
+  </div>
+  <div class="header-actions" role="toolbar" aria-label="Hlavní akce">
+    <button class="btn btn-header" onclick="showNewProjectModal()" title="Nový projekt">➕ Nový projekt</button>
+    <button class="btn btn-header" onclick="loadFromFile()" title="Načíst JSON projekt">📂 Načíst projekt</button>
+    <button class="btn btn-header" onclick="saveToFile()" title="Uložit JSON projekt">💾 Uložit projekt</button>
+    <button class="btn btn-header" onclick="importXML()" title="Importovat XML (NSESSS)">📥 Import XML</button>
+    <button class="btn btn-header" onclick="exportXML()" title="Exportovat XML (NSESSS v4)">📤 Export XML</button>
+  </div>
+</header>
+
+<div id="app" role="main">
+  <!-- SIDEBAR: strom -->
+  <nav id="sidebar" aria-label="Strom spisového plánu">
+    <div class="sidebar-header">
+      <h2 id="tree-heading">Struktura plánu</h2>
+      <div class="search-box" role="search">
+        <label for="tree-search" class="visually-hidden">Hledat ve stromu</label>
+        <span aria-hidden="true">🔍</span>
+        <input type="text" id="tree-search" placeholder="Hledat…" oninput="filterTree(this.value)" autocomplete="off">
+      </div>
+      <button class="btn btn-ghost btn-sm btn-icon" onclick="expandAll()" title="Rozbalit vše" aria-label="Rozbalit vše">⊞</button>
+      <button class="btn btn-ghost btn-sm btn-icon" onclick="collapseAll()" title="Sbalit vše" aria-label="Sbalit vše">⊟</button>
+    </div>
+    <div id="tree-container" style="flex:1;overflow:auto;padding:.25rem 0"></div>
+    <div style="padding:.5rem;" class="no-print">
+      <button class="btn btn-primary btn-sm" style="width:100%" onclick="addTopLevelGroup()" id="btn-add-top" disabled>➕ Přidat věcnou skupinu</button>
+    </div>
+  </nav>
+
+  <div id="sidebar-resize" role="separator" aria-orientation="vertical" aria-label="Změnit šířku panelu" tabindex="0"></div>
+
+  <!-- MAIN CONTENT -->
+  <div id="main-content" role="main">
+    <div class="tabs-bar" role="tablist" aria-label="Panely editoru">
+      <button class="tab-btn" role="tab" id="tab-detail" aria-selected="true" aria-controls="panel-detail" onclick="switchTab('detail')">📝 Detail položky</button>
+      <button class="tab-btn" role="tab" id="tab-plan" aria-selected="false" aria-controls="panel-plan" onclick="switchTab('plan')">🏛️ Metada plánu</button>
+      <button class="tab-btn" role="tab" id="tab-changes" aria-selected="false" aria-controls="panel-changes" onclick="switchTab('changes')">🔄 Soupis změn</button>
+      <button class="tab-btn" role="tab" id="tab-notes" aria-selected="false" aria-controls="panel-notes" onclick="switchTab('notes')">📌 Poznámky</button>
+      <button class="tab-btn" role="tab" id="tab-versions" aria-selected="false" aria-controls="panel-versions" onclick="switchTab('versions')">📚 Verze</button>
+      <button class="tab-btn" role="tab" id="tab-print" aria-selected="false" aria-controls="panel-print" onclick="switchTab('print'); buildPrintPreview()">🖨️ Tisková sestava</button>
+    </div>
+
+    <!-- PANEL: Detail položky -->
+    <div id="panel-detail" role="tabpanel" aria-labelledby="tab-detail" class="tab-panel active">
+      <div class="toolbar no-print" role="toolbar" aria-label="Akce pro položku">
+        <button class="btn btn-secondary btn-sm" onclick="addChildItem()" id="btn-add-child" disabled>➕ Přidat podpoložku</button>
+        <button class="btn btn-secondary btn-sm" onclick="addSiblingItem()" id="btn-add-sibling" disabled>➕ Přidat na stejnou úroveň</button>
+        <div class="toolbar-sep"></div>
+        <button class="btn btn-secondary btn-sm" onclick="moveItemUp()" id="btn-move-up" disabled title="Posunout nahoru">▲ Nahoru</button>
+        <button class="btn btn-secondary btn-sm" onclick="moveItemDown()" id="btn-move-down" disabled title="Posunout dolů">▼ Dolů</button>
+        <button class="btn btn-secondary btn-sm" onclick="moveItemLeft()" id="btn-outdent" disabled title="Zrušit odsazení">← Vyčlenit</button>
+        <button class="btn btn-secondary btn-sm" onclick="moveItemRight()" id="btn-indent" disabled title="Odsadit jako potomka">→ Vložit</button>
+        <div class="toolbar-sep"></div>
+        <button class="btn btn-secondary btn-sm" onclick="addNoteToSelected()" id="btn-add-note" disabled>📌 Přidat poznámku</button>
+        <div class="toolbar-sep"></div>
+        <button class="btn btn-danger btn-sm" onclick="deleteSelected()" id="btn-delete" disabled>🗑️ Odstranit</button>
+      </div>
+      <div class="content-area" id="detail-content">
+        <div id="detail-empty">
+          <div class="icon" aria-hidden="true">📋</div>
+          <p>Vyberte položku ve stromu<br>nebo vytvořte nový projekt.</p>
+          <p class="text-small text-muted">Klávesnice: <kbd>↑↓</kbd> navigace, <kbd>Enter</kbd> výběr, <kbd>+</kbd> přidat</p>
+        </div>
+        <div id="detail-form" hidden></div>
+      </div>
+    </div>
+
+    <!-- PANEL: Metadata plánu -->
+    <div id="panel-plan" role="tabpanel" aria-labelledby="tab-plan" class="tab-panel">
+      <div class="content-area">
+        <div class="section-title">🏛️ Metada spisového plánu</div>
+        <div id="plan-meta-form">
+          <div class="alert alert-info">Nejprve vytvořte nebo načtěte projekt.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PANEL: Soupis změn -->
+    <div id="panel-changes" role="tabpanel" aria-labelledby="tab-changes" class="tab-panel">
+      <div class="toolbar no-print">
+        <button class="btn btn-secondary btn-sm" onclick="clearChangeLog()">🗑️ Vymazat log</button>
+        <div class="toolbar-sep"></div>
+        <label for="change-filter">Filtr:</label>
+        <select id="change-filter" onchange="renderChangelog()" style="font-size:.8rem;padding:.2rem .4rem;border:1px solid var(--border);border-radius:var(--radius)">
+          <option value="">Vše</option>
+          <option value="added">Přidáno</option>
+          <option value="removed">Odstraněno</option>
+          <option value="changed">Změněno</option>
+          <option value="meta">Metadata</option>
+        </select>
+        <div class="toolbar-sep"></div>
+        <button class="btn btn-secondary btn-sm" onclick="exportChangelog()">📄 Exportovat soupis</button>
+      </div>
+      <div class="content-area">
+        <div class="section-title">🔄 Soupis změn
+          <span class="text-muted text-small" id="changes-count"></span>
+        </div>
+        <div id="changes-list"><div class="alert alert-info">Zatím žádné změny.</div></div>
+      </div>
+    </div>
+
+    <!-- PANEL: Poznámky -->
+    <div id="panel-notes" role="tabpanel" aria-labelledby="tab-notes" class="tab-panel">
+      <div class="toolbar no-print">
+        <button class="btn btn-primary btn-sm" onclick="addGlobalNote()">➕ Přidat poznámku</button>
+        <div class="toolbar-sep"></div>
+        <select id="notes-filter" onchange="renderNotes()" style="font-size:.8rem;padding:.2rem .4rem;border:1px solid var(--border);border-radius:var(--radius)">
+          <option value="">Vše</option>
+          <option value="global">Globální</option>
+          <option value="item">K položkám</option>
+        </select>
+      </div>
+      <div class="content-area">
+        <div class="section-title">📌 Poznámky k návrhu</div>
+        <div id="notes-list"><div class="alert alert-info">Žádné poznámky.</div></div>
+      </div>
+    </div>
+
+    <!-- PANEL: Verze -->
+    <div id="panel-versions" role="tabpanel" aria-labelledby="tab-versions" class="tab-panel">
+      <div class="toolbar no-print">
+        <button class="btn btn-primary btn-sm" onclick="createVersion()">📌 Uložit verzi</button>
+        <div class="toolbar-sep"></div>
+        <span class="text-small text-muted">Verze slouží k uchování mezistavu při přípravě změn</span>
+      </div>
+      <div class="content-area">
+        <div class="section-title">📚 Historie verzí</div>
+        <div id="versions-list"><div class="alert alert-info">Žádné uložené verze.</div></div>
+      </div>
+    </div>
+
+    <!-- PANEL: Tisková sestava -->
+    <div id="panel-print" role="tabpanel" aria-labelledby="tab-print" class="tab-panel">
+      <div class="toolbar no-print">
+        <button class="btn btn-primary btn-sm" onclick="window.print()">🖨️ Tisk / PDF</button>
+        <div class="toolbar-sep"></div>
+        <label><input type="checkbox" id="print-show-changes" onchange="buildPrintPreview()"> Zvýraznit změny</label>
+        <label><input type="checkbox" id="print-show-notes" onchange="buildPrintPreview()"> Zahrnout poznámky</label>
+        <label><input type="checkbox" id="print-only-changed" onchange="buildPrintPreview()"> Jen změněné</label>
+      </div>
+      <div class="content-area print-section" id="print-content">
+        <div class="alert alert-info">Načtěte projekt pro zobrazení tiskové sestavy.</div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<div class="statusbar" role="status" aria-live="polite">
+  <span id="status-project">Žádný projekt</span>
+  <span id="status-version">–</span>
+  <span id="status-items">0 položek</span>
+  <span id="status-changes">0 změn</span>
+  <span id="status-msg" aria-live="polite"></span>
+</div>
+
+<!-- MODAL: Nový projekt -->
+<div id="modal-new" class="modal-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="modal-new-title">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modal-new-title">Nový projekt spisového plánu</h2>
+      <button class="btn btn-ghost btn-sm" onclick="hideModal('modal-new')" aria-label="Zavřít">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group" style="grid-column:1/-1">
+          <label for="new-nazev">Název plánu *</label>
+          <input type="text" id="new-nazev" placeholder="Spisový a skartační plán…" required>
+        </div>
+        <div class="form-group">
+          <label for="new-identifikator">Identifikátor</label>
+          <input type="text" id="new-identifikator" placeholder="SP-2024-001">
+        </div>
+        <div class="form-group">
+          <label for="new-vydavatel">Vydavatel (organizace)</label>
+          <input type="text" id="new-vydavatel" placeholder="Název organizace">
+        </div>
+        <div class="form-group">
+          <label for="new-ico">IČO vydavatele</label>
+          <input type="text" id="new-ico" placeholder="00000000" maxlength="8">
+        </div>
+        <div class="form-group">
+          <label for="new-platnost-od">Platnost od</label>
+          <input type="date" id="new-platnost-od">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label for="new-komentar">Komentář</label>
+          <textarea id="new-komentar" placeholder="Popis, účel, poznámky…"></textarea>
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label for="new-autor">Autor / zpracovatel</label>
+          <input type="text" id="new-autor" placeholder="Jméno zpracovatele">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="hideModal('modal-new')">Zrušit</button>
+      <button class="btn btn-primary" onclick="createNewProject()">✅ Vytvořit projekt</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Přidat položku -->
+<div id="modal-add" class="modal-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="modal-add-title">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modal-add-title">Nová položka</h2>
+      <button class="btn btn-ghost btn-sm" onclick="hideModal('modal-add')" aria-label="Zavřít">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="add-typ">Typ položky *</label>
+          <select id="add-typ" onchange="updateAddSkartaceVisibility()">
+            <option value="VecnaSkupina">Věcná skupina (skupina)</option>
+            <option value="Soucast">Součást (položka)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="add-znak">Spisový znak *</label>
+          <input type="text" id="add-znak" placeholder="např. 1, 1.1, A-01">
+          <span class="hint" id="add-znak-hint" hidden></span>
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label for="add-nazev">Název *</label>
+          <input type="text" id="add-nazev" placeholder="Název věcné skupiny nebo součásti">
+        </div>
+        <div class="form-group">
+          <label for="add-datum-od">Datum otevření</label>
+          <input type="date" id="add-datum-od">
+        </div>
+        <div class="form-group">
+          <label for="add-puvod">Původ</label>
+          <select id="add-puvod">
+            <option value="vlastni">Vlastní</option>
+            <option value="prevzaty">Převzatý</option>
+            <option value="jiný">Jiný</option>
+          </select>
+        </div>
+      </div>
+      <!-- Skartace – zobrazí se jen pro listové položky -->
+      <div id="add-skartace-section" style="margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border)">
+        <div style="font-size:.8rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:.6rem">🗂️ Skartační režim</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="add-skart-znak">Skartační znak</label>
+            <select id="add-skart-znak">
+              <option value="S">S – Stoupa (skartace)</option>
+              <option value="A">A – Archiv (trvalá uchování)</option>
+              <option value="V">V – Výběr (archivní výběr)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="add-skart-lhuta">Skartační lhůta (roky)</label>
+            <input type="number" id="add-skart-lhuta" value="5" min="0" max="999">
+          </div>
+          <div class="form-group">
+            <label for="add-skart-rezim">Spouštěcí událost</label>
+            <select id="add-skart-rezim">
+              <option value="">— nezadáno —</option>
+              <option value="uzavreni">Po uzavření</option>
+              <option value="vyrizeni">Po vyřízení</option>
+              <option value="rok">Konec roku vzniku</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="hideModal('modal-add')">Zrušit</button>
+      <button class="btn btn-primary" onclick="confirmAddItem()">✅ Přidat</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Poznámka -->
+<div id="modal-note" class="modal-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="modal-note-title">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modal-note-title">Přidat poznámku</h2>
+      <button class="btn btn-ghost btn-sm" onclick="hideModal('modal-note')" aria-label="Zavřít">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="note-autor">Autor</label>
+          <input type="text" id="note-autor" placeholder="Vaše jméno">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label for="note-text">Text poznámky *</label>
+          <textarea id="note-text" rows="4" placeholder="Text poznámky…"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="note-typ">Typ</label>
+          <select id="note-typ">
+            <option value="info">Informace</option>
+            <option value="warn">Upozornění</option>
+            <option value="todo">K dořešení</option>
+            <option value="approve">Ke schválení</option>
+          </select>
+        </div>
+      </div>
+      <div id="note-target-info" class="alert alert-info text-small" hidden></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="hideModal('modal-note')">Zrušit</button>
+      <button class="btn btn-primary" onclick="confirmAddNote()">📌 Přidat poznámku</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Uložit verzi -->
+<div id="modal-version" class="modal-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="modal-version-title">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modal-version-title">Uložit verzi</h2>
+      <button class="btn btn-ghost btn-sm" onclick="hideModal('modal-version')" aria-label="Zavřít">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="ver-cislo">Číslo verze</label>
+          <input type="text" id="ver-cislo" placeholder="např. 2.0, 2024-04">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label for="ver-popis">Popis změn v této verzi</label>
+          <textarea id="ver-popis" rows="3" placeholder="Co se v této verzi změnilo…"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="ver-autor">Autor</label>
+          <input type="text" id="ver-autor" placeholder="Jméno">
+        </div>
+        <div class="form-group">
+          <label for="ver-stav">Stav</label>
+          <select id="ver-stav">
+            <option value="navrh">Návrh</option>
+            <option value="k-schvaleni">K schválení</option>
+            <option value="schvaleno">Schváleno</option>
+            <option value="platne">Platné</option>
+            <option value="archivovano">Archivováno</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="hideModal('modal-version')">Zrušit</button>
+      <button class="btn btn-primary" onclick="confirmCreateVersion()">📌 Uložit verzi</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden file inputs -->
+<input type="file" id="file-json" accept=".json" style="display:none" onchange="handleJsonFile(this)">
+<input type="file" id="file-xml" accept=".xml" style="display:none" onchange="handleXmlFile(this)">
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+let project = null;
+let selectedId = null;
+let searchFilter = '';
+let addContext = null; // { parentId, mode: 'child'|'sibling'|'top' }
+let noteContext = null; // null = global, or itemId
+let treeExpanded = new Set();
+let currentVersionForRestore = null;
+
+// ============================================================
+// PROJECT STRUCTURE
+// ============================================================
+function createProject(meta) {
+  const now = new Date().toISOString();
+  return {
+    formatVersion: 1,
+    nsesssVersion: '4.0',
+    createdAt: now,
+    updatedAt: now,
+    meta: {
+      identifikator: meta.identifikator || genId('SP'),
+      nazev: meta.nazev || 'Nový spisový plán',
+      komentar: meta.komentar || '',
+      vydavatel: {
+        nazev: meta.vydavatel || '',
+        ico: meta.ico || '',
+      },
+      platnostOd: meta.platnostOd || '',
+      platnostDo: '',
+      autor: meta.autor || '',
+      xmlId: 'SP_' + Date.now(),
+    },
+    items: [], // PlanVecnaSkupina[]
+    changelog: [],
+    notes: [],
+    versions: [],
+    lastVersionNum: 0,
+  };
+}
+
+function createItem(typ, znak, nazev, parentId) {
+  const now = new Date().toISOString();
+  const id = genId(typ === 'VecnaSkupina' ? 'VG' : 'SC');
+  return {
+    id,
+    xmlId: id,
+    typ, // 'VecnaSkupina' | 'Soucast'
+    parentId: parentId || null,
+    znakJednoduchy: znak || '',
+    znakPlne: '', // computed
+    nazev: nazev || '',
+    komentar: '',
+    puvod: 'vlastni',
+    datumOtevreni: now.slice(0, 10),
+    datumUzavreni: '',
+    skartacniZnak: 'S', // A|S|V
+    skartacniLhuta: '5',
+    skartacniRezim: '',
+    spusteniSkartace: '',
+    bezpecnostniUroven: '',
+    zpusobVedeni: '',
+    urcenoProTypoveSpisy: false,
+    trvalySkartacniSouhlas: false,
+    changeStatus: 'new', // 'new'|'changed'|'removed'|null
+    children: [],
+    notes: [],
+    _editorNotes: [],
+  };
+}
+
+// ============================================================
+// UTILS
+// ============================================================
+function genId(prefix) {
+  return prefix + '_' + Math.random().toString(36).slice(2, 10).toUpperCase();
+}
+
+function timestamp() {
+  return new Date().toISOString();
+}
+
+function formatDateTime(iso) {
+  if (!iso) return '–';
+  try { return new Date(iso).toLocaleString('cs-CZ'); } catch { return iso; }
+}
+
+function countItems(items) {
+  let n = 0;
+  function walk(list) { for (const it of list) { n++; walk(it.children || []); } }
+  walk(items);
+  return n;
+}
+
+function findItemById(id, items) {
+  for (const it of items) {
+    if (it.id === id) return it;
+    const found = findItemById(id, it.children || []);
+    if (found) return found;
+  }
+  return null;
+}
+
+function findParent(id, items, parent = null) {
+  for (const it of items) {
+    if (it.id === id) return { parent, list: parent ? parent.children : project.items };
+    const found = findParent(id, it.children || [], it);
+    if (found) return found;
+  }
+  return null;
+}
+
+function computeZnaky(items, prefix) {
+  for (const it of items) {
+    if (prefix) {
+      it.znakPlne = prefix + '.' + it.znakJednoduchy;
+    } else {
+      it.znakPlne = it.znakJednoduchy;
+    }
+    computeZnaky(it.children || [], it.znakPlne);
+  }
+}
+
+function flattenItems(items, depth = 0) {
+  const result = [];
+  for (const it of items) {
+    result.push({ ...it, depth });
+    result.push(...flattenItems(it.children || [], depth + 1));
+  }
+  return result;
+}
+
+function setMsg(msg, type = 'info') {
+  const el = document.getElementById('status-msg');
+  el.textContent = msg;
+  el.style.color = type === 'error' ? 'var(--danger)' : type === 'success' ? 'var(--success)' : 'var(--text-muted)';
+  setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 4000);
+}
+
+function updateTitle() {
+  const base = 'Editor Spisového Plánu';
+  let subtitle = '';
+  if (project) {
+    subtitle = project.meta.nazev;
+    if (selectedId) {
+      const item = findItemById(selectedId, project.items);
+      if (item) {
+        const znak = item.znakPlne || item.znakJednoduchy;
+        subtitle += ' – ' + (znak ? znak + ' ' : '') + (item.nazev || '(bez názvu)');
+      }
+    }
+    document.title = subtitle + ' | ' + base;
+    document.getElementById('header-subtitle').textContent = subtitle;
+  } else {
+    document.title = base;
+    document.getElementById('header-subtitle').textContent = '';
+  }
+}
+
+function updateStatus() {
+  if (!project) {
+    document.getElementById('status-project').textContent = 'Žádný projekt';
+    document.getElementById('status-version').textContent = '–';
+    document.getElementById('status-items').textContent = '0 položek';
+    document.getElementById('status-changes').textContent = '0 změn';
+    return;
+  }
+  document.getElementById('status-project').textContent = '📋 ' + project.meta.nazev;
+  const v = project.versions.length ? project.versions[project.versions.length - 1].cislo : '—';
+  document.getElementById('status-version').textContent = 'Verze: ' + v;
+  document.getElementById('status-items').textContent = countItems(project.items) + ' položek';
+  const changed = project.changelog.length;
+  document.getElementById('status-changes').textContent = changed + ' změn';
+}
+
+// ============================================================
+// MODALS
+// ============================================================
+function showModal(id) {
+  const el = document.getElementById(id);
+  el.hidden = false;
+  const first = el.querySelector('input, select, textarea, button');
+  if (first) setTimeout(() => first.focus(), 50);
+  el.addEventListener('keydown', handleModalKey);
+}
+
+function hideModal(id) {
+  const el = document.getElementById(id);
+  el.hidden = true;
+  el.removeEventListener('keydown', handleModalKey);
+}
+
+function handleModalKey(e) {
+  if (e.key === 'Escape') {
+    const modal = e.currentTarget;
+    modal.hidden = true;
+  }
+}
+
+document.querySelectorAll('.modal-overlay').forEach(m => {
+  m.addEventListener('click', e => { if (e.target === m) m.hidden = true; });
+});
+
+// ============================================================
+// TABS
+// ============================================================
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.setAttribute('aria-selected', 'false'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).setAttribute('aria-selected', 'true');
+  document.getElementById('panel-' + name).classList.add('active');
+}
+
+// ============================================================
+// NEW PROJECT
+// ============================================================
+function showNewProjectModal() {
+  document.getElementById('new-platnost-od').value = new Date().toISOString().slice(0, 10);
+  showModal('modal-new');
+}
+
+function createNewProject() {
+  const nazev = document.getElementById('new-nazev').value.trim();
+  if (!nazev) { alert('Zadejte název plánu.'); return; }
+  project = createProject({
+    nazev,
+    identifikator: document.getElementById('new-identifikator').value.trim(),
+    vydavatel: document.getElementById('new-vydavatel').value.trim(),
+    ico: document.getElementById('new-ico').value.trim(),
+    komentar: document.getElementById('new-komentar').value.trim(),
+    platnostOd: document.getElementById('new-platnost-od').value,
+    autor: document.getElementById('new-autor').value.trim(),
+  });
+  addChangelogEntry('meta', 'Projekt vytvořen: ' + nazev);
+  hideModal('modal-new');
+  enableProjectUI();
+  renderTree();
+  renderPlanMeta();
+  renderChangelog();
+  updateStatus();
+  updateTitle();
+  setMsg('Projekt vytvořen.', 'success');
+}
+
+function enableProjectUI() {
+  document.getElementById('btn-add-top').disabled = false;
+  updateTitle();
+}
+
+// ============================================================
+// TREE RENDER – přístupný ul/li/a strom
+// ============================================================
+function renderTree() {
+  const container = document.getElementById('tree-container');
+  container.innerHTML = '';
+
+  if (!project || project.items.length === 0) {
+    const msg = document.createElement('p');
+    msg.className = 'tree-empty';
+    msg.setAttribute('role', 'status');
+    msg.innerHTML = !project
+      ? 'Žádný projekt není otevřen.<br>Vytvořte nový nebo načtěte existující.'
+      : 'Plán zatím neobsahuje žádné položky.<br>Použijte tlačítko níže.';
+    container.appendChild(msg);
+    return;
+  }
+
+  computeZnaky(project.items, '');
+
+  const nav = document.createElement('nav');
+  nav.setAttribute('aria-label', 'Položky spisového plánu');
+  const ul = buildNavList(project.items);
+  ul.className = 'nav-tree';
+  nav.appendChild(ul);
+  container.appendChild(nav);
+}
+
+function buildNavList(items) {
+  const filter = searchFilter.toLowerCase();
+  const ul = document.createElement('ul');
+
+  for (const item of items) {
+    // Filtrování při hledání
+    if (filter) {
+      const matchSelf = item.nazev.toLowerCase().includes(filter)
+        || (item.znakJednoduchy || '').toLowerCase().includes(filter)
+        || (item.znakPlne || '').toLowerCase().includes(filter);
+      const matchChild = hasMatch(item.children || [], filter);
+      if (!matchSelf && !matchChild) continue;
+    }
+
+    const li = document.createElement('li');
+    const hasChildren = item.children && item.children.length > 0;
+    const expanded = treeExpanded.has(item.id);
+    const isSelected = selectedId === item.id;
+
+    // Řádek = flex kontejner pro toggle + odkaz
+    const row = document.createElement('div');
+    row.className = 'nav-item-row' + (isSelected ? ' is-selected' : '');
+
+    // Tlačítko rozbalit/sbalit (jen pokud má potomky)
+    if (hasChildren) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'nav-toggle';
+      btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      btn.setAttribute('aria-controls', 'subtree-' + item.id);
+      btn.setAttribute('aria-label', (expanded ? 'Sbalit' : 'Rozbalit') + ': ' + (item.nazev || item.znakJednoduchy));
+      btn.textContent = expanded ? '▾' : '▸';
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleExpand(item.id);
+      });
+      row.appendChild(btn);
+    } else {
+      const spacer = document.createElement('span');
+      spacer.className = 'nav-toggle-spacer';
+      spacer.setAttribute('aria-hidden', 'true');
+      row.appendChild(spacer);
+    }
+
+    // Odkaz – kliknutím zobrazí detail
+    const a = document.createElement('a');
+    a.href = '#detail-content';
+    a.className = 'nav-link';
+    if (isSelected) {
+      a.setAttribute('aria-current', 'page');
+    }
+
+    // Sestavení textu odkazu
+    const typPopis = item.typ === 'VecnaSkupina' ? 'věcná skupina' : 'součást';
+    const zmena = { new: ', nové', added: ', přidáno', changed: ', změněno', removed: ', ke zrušení' }[item.changeStatus] || '';
+    a.setAttribute('aria-label',
+      [(item.znakPlne || item.znakJednoduchy), item.nazev || '(bez názvu)', typPopis, zmena].filter(Boolean).join(' ')
+    );
+
+    // Ikona (skrytá před SR)
+    const icon = document.createElement('span');
+    icon.className = 'nav-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = item.typ === 'VecnaSkupina' ? (expanded ? '📂' : '📁') : '📄';
+    a.appendChild(icon);
+
+    // Spisový znak
+    if (item.znakJednoduchy) {
+      const zn = document.createElement('span');
+      zn.className = 'nav-znak';
+      zn.setAttribute('aria-hidden', 'true');
+      zn.textContent = item.znakJednoduchy;
+      a.appendChild(zn);
+    }
+
+    // Název
+    const lbl = document.createElement('span');
+    lbl.className = 'nav-label';
+    lbl.textContent = item.nazev || '(bez názvu)';
+    a.appendChild(lbl);
+
+    // Odznak změny
+    if (item.changeStatus) {
+      const badge = document.createElement('span');
+      badge.className = 'nav-badge badge-' + item.changeStatus;
+      badge.setAttribute('aria-hidden', 'true');
+      badge.textContent = { new: '✦', added: '+', changed: '~', removed: '−' }[item.changeStatus] || '';
+      a.appendChild(badge);
+    }
+
+    a.addEventListener('click', function(e) {
+      selectItem(item.id);
+      // necháme href=#detail-content ať prohlížeč skočí na obsah
+    });
+
+    row.appendChild(a);
+    li.appendChild(row);
+
+    // Vnořený seznam potomků
+    if (hasChildren) {
+      const childUl = buildNavList(item.children);
+      childUl.id = 'subtree-' + item.id;
+      if (!expanded) childUl.hidden = true;
+      li.appendChild(childUl);
+    }
+
+    ul.appendChild(li);
+  }
+
+  return ul;
+}
+
+function hasMatch(items, filter) {
+  for (const it of items) {
+    if (it.nazev.toLowerCase().includes(filter) || it.znakJednoduchy.toLowerCase().includes(filter)) return true;
+    if (hasMatch(it.children || [], filter)) return true;
+  }
+  return false;
+}
+
+function toggleExpand(id) {
+  if (treeExpanded.has(id)) treeExpanded.delete(id);
+  else treeExpanded.add(id);
+  renderTree();
+}
+
+function expandAll() {
+  function walk(items) { for (const it of items) { treeExpanded.add(it.id); walk(it.children || []); } }
+  if (project) walk(project.items);
+  renderTree();
+}
+
+function collapseAll() { treeExpanded.clear(); renderTree(); }
+
+function filterTree(val) {
+  searchFilter = val;
+  if (val) expandAll();
+  else renderTree();
+}
+
+// ============================================================
+// ITEM SELECTION & DETAIL
+// ============================================================
+function selectItem(id) {
+  selectedId = id;
+  renderTree();
+  renderDetail();
+  updateItemButtons(true);
+  updateTitle();
+}
+
+function updateItemButtons(enabled) {
+  ['btn-add-child', 'btn-add-sibling', 'btn-move-up', 'btn-move-down', 'btn-outdent', 'btn-indent', 'btn-delete', 'btn-add-note'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !enabled;
+  });
+  // Some buttons depend on type
+  if (enabled && selectedId) {
+    const item = findItemById(selectedId, project.items);
+    if (item) {
+      // Only VecnaSkupina can have children
+      document.getElementById('btn-add-child').disabled = item.typ === 'Soucast' && item.children.length === 0 ? false : (item.typ === 'Soucast');
+    }
+  }
+}
+
+function renderDetail() {
+  const emptyEl = document.getElementById('detail-empty');
+  const formEl = document.getElementById('detail-form');
+  if (!selectedId || !project) { emptyEl.hidden = false; formEl.hidden = true; return; }
+  const item = findItemById(selectedId, project.items);
+  if (!item) { emptyEl.hidden = false; formEl.hidden = true; return; }
+  emptyEl.hidden = true;
+  formEl.hidden = false;
+  formEl.innerHTML = buildDetailForm(item);
+}
+
+// Vrátí true, pokud položka nemá žádné věcné skupiny jako děti
+// (tj. je listová věcná skupina nebo součást — skartace se zadává zde)
+function isSkartacniList(item) {
+  if (item.typ === 'Soucast') return true;
+  const children = item.children || [];
+  return children.length === 0;
+}
+
+// Vrátí čitelný název typu pro zobrazení v UI
+function itemTypLabel(item) {
+  if (item.typ === 'Soucast') return 'Součást';
+  return isSkartacniList(item) ? 'Věcná skupina (nejnižší úroveň)' : 'Věcná skupina (nadřazená)';
+}
+
+// Krátký label pro tiskovou sestavu
+function itemTypLabelShort(item) {
+  if (item.typ === 'Soucast') return 'Součást';
+  return isSkartacniList(item) ? 'Věcná skupina *' : 'Věcná skupina';
+}
+
+// Sbírá skartační hodnoty ze všech listových potomků dané položky
+function collectSkartaceFromDescendants(item) {
+  const znaky = new Set();
+  const lhuty = new Set();
+  function walk(it) {
+    const ch = it.children || [];
+    if (isSkartacniList(it)) {
+      if (it.skartacniZnak) znaky.add(it.skartacniZnak);
+      if (it.skartacniLhuta) lhuty.add(it.skartacniLhuta);
+    }
+    ch.forEach(walk);
+  }
+  (item.children || []).forEach(walk);
+  return { znaky: [...znaky].sort(), lhuty: [...lhuty].sort((a, b) => Number(a) - Number(b)) };
+}
+
+function buildDetailForm(item) {
+  const notesBadge = (item._editorNotes || []).length ? ` (${item._editorNotes.length})` : '';
+  return `
+  <fieldset style="border:none;padding:0">
+    <legend style="display:flex;align-items:center;gap:.5rem;font-size:1.1rem;font-weight:700;margin-bottom:1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border);width:100%">
+      <span aria-hidden="true">${item.typ === 'VecnaSkupina' ? '📁' : '📄'}</span>
+      ${escHtml(item.nazev || '(bez názvu)')}
+      <span class="mono text-muted" style="font-size:.85rem">${escHtml(item.znakPlne)}</span>
+      ${item.changeStatus ? `<span class="nav-badge badge-${item.changeStatus}">${{new:'Nové',added:'Přidáno',changed:'Změněno',removed:'Odstraněno'}[item.changeStatus]||''}</span>` : ''}
+    </legend>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">📋 Základní identifikace</span></div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Typ entity</label>
+          <div style="padding:.45rem .6rem;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:.9rem">
+            ${itemTypLabel(item)}
+          </div>
+          <span class="hint">Typ odpovídá pozici ve stromu</span>
+        </div>
+        <div class="form-group">
+          <label for="f-znak">Jednoduchý spisový znak *</label>
+          <input type="text" id="f-znak" value="${escHtml(item.znakJednoduchy)}" onchange="updateField('${item.id}','znakJednoduchy',this.value);updateZnakPreview('${item.id}')">
+          <span class="hint" id="f-znak-preview">Plný znak: <strong>${escHtml(item.znakPlne || item.znakJednoduchy || '?')}</strong></span>
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label for="f-nazev">Název *</label>
+          <input type="text" id="f-nazev" value="${escHtml(item.nazev)}" onchange="updateField('${item.id}','nazev',this.value)">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label for="f-komentar">Komentář / popis</label>
+          <textarea id="f-komentar" rows="3" onchange="updateField('${item.id}','komentar',this.value)">${escHtml(item.komentar)}</textarea>
+        </div>
+        <div class="form-group">
+          <label for="f-puvod">Původ seskupení</label>
+          <select id="f-puvod" onchange="updateField('${item.id}','puvod',this.value)">
+            <option value="vlastni" ${item.puvod==='vlastni'?'selected':''}>Vlastní</option>
+            <option value="prevzaty" ${item.puvod==='prevzaty'?'selected':''}>Převzatý</option>
+            <option value="jiný" ${item.puvod==='jiný'?'selected':''}>Jiný</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="f-xmlid">XML ID</label>
+          <input type="text" id="f-xmlid" value="${escHtml(item.xmlId)}" onchange="updateField('${item.id}','xmlId',this.value)">
+          <span class="hint">Jedinečný identifikátor v XML dokumentu</span>
+        </div>
+      </div>
+    </div>
+
+    ${isSkartacniList(item) ? `
+    <div class="card">
+      <div class="card-header"><span class="card-title">🗂️ Skartační režim</span></div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="f-skart-znak">Skartační znak</label>
+          <select id="f-skart-znak" onchange="updateField('${item.id}','skartacniZnak',this.value)">
+            <option value="A" ${item.skartacniZnak==='A'?'selected':''}>A – Archiv (trvalá uchování)</option>
+            <option value="S" ${item.skartacniZnak==='S'?'selected':''}>S – Stoupa (skartace)</option>
+            <option value="V" ${item.skartacniZnak==='V'?'selected':''}>V – Výběr (archivní výběr)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="f-skart-lhuta">Skartační lhůta (roky)</label>
+          <input type="number" id="f-skart-lhuta" value="${escHtml(item.skartacniLhuta)}" min="0" max="999" onchange="updateField('${item.id}','skartacniLhuta',this.value)">
+        </div>
+        <div class="form-group">
+          <label for="f-skart-rezim">Spuštění skartace</label>
+          <select id="f-skart-rezim" onchange="updateField('${item.id}','spusteniSkartace',this.value)">
+            <option value="" ${!item.spusteniSkartace?'selected':''}>— nezadáno —</option>
+            <option value="uzavreni" ${item.spusteniSkartace==='uzavreni'?'selected':''}>Po uzavření</option>
+            <option value="vyrizeni" ${item.spusteniSkartace==='vyrizeni'?'selected':''}>Po vyřízení</option>
+            <option value="rok" ${item.spusteniSkartace==='rok'?'selected':''}>Konec roku vzniku</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label><span class="form-check"><input type="checkbox" ${item.trvalySkartacniSouhlas?'checked':''} onchange="updateField('${item.id}','trvalySkartacniSouhlas',this.checked)"> Trvalý skartační souhlas</span></label>
+          <span class="hint">Vydán příslušným archivem (NSESSS 3.1.2)</span>
+        </div>
+      </div>
+    </div>` : (() => {
+      const { znaky, lhuty } = collectSkartaceFromDescendants(item);
+      const znakText = znaky.length ? znaky.join(', ') : '—';
+      const lhutaText = lhuty.length ? lhuty.join(', ') + ' let' : '—';
+      return `
+    <div class="card">
+      <div class="card-header"><span class="card-title">🗂️ Skartační režim</span></div>
+      <p class="text-small text-muted" style="padding:.25rem .25rem .75rem">
+        Skartační znaky se zadávají na podřazených listových položkách. Přehled hodnot z potomků:
+      </p>
+      <dl class="info-grid" style="padding-bottom:.25rem">
+        <div class="info-item">
+          <dt>Skartační znaky v potomcích</dt>
+          <dd>${escHtml(znakText)}</dd>
+        </div>
+        <div class="info-item">
+          <dt>Skartační lhůty v potomcích</dt>
+          <dd>${escHtml(lhutaText)}</dd>
+        </div>
+      </dl>
+    </div>`; })()}
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">📅 Manipulace (časové údaje)</span></div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="f-datum-od">Datum otevření *</label>
+          <input type="date" id="f-datum-od" value="${item.datumOtevreni}" onchange="updateField('${item.id}','datumOtevreni',this.value)">
+        </div>
+        <div class="form-group">
+          <label for="f-datum-do">Datum uzavření</label>
+          <input type="date" id="f-datum-do" value="${item.datumUzavreni}" onchange="updateField('${item.id}','datumUzavreni',this.value)">
+          <span class="hint">Vyplnit při uzavření pro příjem dceřiných entit</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">⚙️ Rozšířené vlastnosti</span></div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="f-bezp">Bezpečnostní úroveň</label>
+          <select id="f-bezp" onchange="updateField('${item.id}','bezpecnostniUroven',this.value)">
+            <option value="" ${!item.bezpecnostniUroven?'selected':''}>— nezadáno —</option>
+            <option value="verejna" ${item.bezpecnostniUroven==='verejna'?'selected':''}>Veřejná</option>
+            <option value="omezena" ${item.bezpecnostniUroven==='omezena'?'selected':''}>Omezená</option>
+            <option value="duverna" ${item.bezpecnostniUroven==='duverna'?'selected':''}>Důvěrná</option>
+            <option value="tajne" ${item.bezpecnostniUroven==='tajne'?'selected':''}>Tajné</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="f-zpusob">Způsob vedení (č. jednacího)</label>
+          <select id="f-zpusob" onchange="updateField('${item.id}','zpusobVedeni',this.value)">
+            <option value="" ${!item.zpusobVedeni?'selected':''}>— nezadáno —</option>
+            <option value="vlastni" ${item.zpusobVedeni==='vlastni'?'selected':''}>Vlastní</option>
+            <option value="prevzate" ${item.zpusobVedeni==='prevzate'?'selected':''}>Převzaté</option>
+          </select>
+        </div>
+        ${item.typ==='VecnaSkupina'?`
+        <div class="form-group">
+          <label><span class="form-check"><input type="checkbox" ${item.urcenoProTypoveSpisy?'checked':''} onchange="updateField('${item.id}','urcenoProTypoveSpisy',this.checked)"> Určeno pro typové spisy</span></label>
+          <span class="hint">NSESSS 3.1.2</span>
+        </div>`:``}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">📌 Poznámky k položce${notesBadge}</span>
+        <button class="btn btn-secondary btn-sm" onclick="addNoteToSelected()" style="margin-left:auto">➕ Přidat</button>
+      </div>
+      <div id="item-notes-list">
+        ${renderItemNotes(item)}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">🏷️ Stav změny</span></div>
+      <div class="form-group">
+        <label for="f-change-status">Označení změny pro soupis</label>
+        <select id="f-change-status" onchange="updateField('${item.id}','changeStatus',this.value||null)">
+          <option value="" ${!item.changeStatus?'selected':''}>— beze změny —</option>
+          <option value="new" ${item.changeStatus==='new'?'selected':''}>✦ Nové (přidáno do plánu)</option>
+          <option value="changed" ${item.changeStatus==='changed'?'selected':''}>~ Změněno</option>
+          <option value="removed" ${item.changeStatus==='removed'?'selected':''}>− Navrženo ke zrušení</option>
+        </select>
+        <span class="hint">Slouží pro tiskovou sestavu se soupisem změn</span>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="saveDetailForm('${item.id}')">💾 Uložit změny</button>
+      <button class="btn btn-secondary" onclick="addSiblingItem()">➕ Přidat na stejné úrovni</button>
+      <button class="btn btn-secondary" onclick="addChildItem()">➕ Přidat podpoložku</button>
+      <button class="btn btn-danger" onclick="deleteSelected()">🗑️ Odstranit</button>
+    </div>
+  </fieldset>`;
+}
+
+function renderItemNotes(item) {
+  const notes = item._editorNotes || [];
+  if (!notes.length) return '<p class="text-muted text-small" style="padding:.5rem">Žádné poznámky k této položce.</p>';
+  return notes.map((n, i) => `
+    <div class="note-item">
+      <div class="note-header">
+        <span class="note-author">${escHtml(n.autor || 'Neznámý')}</span>
+        <span class="note-date">${formatDateTime(n.date)}</span>
+        <span class="note-author" style="margin-left:.5rem">${{info:'ℹ️',warn:'⚠️',todo:'✅',approve:'🔖'}[n.typ]||''}</span>
+        <button class="btn btn-ghost btn-sm" style="margin-left:auto;color:var(--danger)" onclick="deleteItemNote('${item.id}',${i})" aria-label="Smazat poznámku">✕</button>
+      </div>
+      <div class="note-text">${escHtml(n.text)}</div>
+    </div>`).join('');
+}
+
+function deleteItemNote(itemId, idx) {
+  const item = findItemById(itemId, project.items);
+  if (item) { item._editorNotes.splice(idx, 1); renderDetail(); }
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ============================================================
+// FIELD UPDATE + CHANGELOG
+// ============================================================
+const fieldLabels = {
+  nazev: 'Název', znakJednoduchy: 'Spisový znak', komentar: 'Komentář', puvod: 'Původ',
+  skartacniZnak: 'Skartační znak', skartacniLhuta: 'Skartační lhůta', spusteniSkartace: 'Spuštění skartace',
+  datumOtevreni: 'Datum otevření', datumUzavreni: 'Datum uzavření', changeStatus: 'Stav změny',
+  bezpecnostniUroven: 'Bezpečnostní úroveň', zpusobVedeni: 'Způsob vedení',
+  urcenoProTypoveSpisy: 'Určeno pro typové spisy', trvalySkartacniSouhlas: 'Trvalý skartační souhlas', typ: 'Typ entity', xmlId: 'XML ID',
+};
+
+function updateField(id, field, value) {
+  if (!project) return;
+  const item = findItemById(id, project.items);
+  if (!item) return;
+  const oldVal = item[field];
+  item[field] = value;
+  if (String(oldVal) !== String(value)) {
+    addChangelogEntry('changed', `Pole "${fieldLabels[field]||field}" u "${item.nazev||item.znakJednoduchy}" změněno z "${oldVal}" na "${value}"`, id);
+    if (!item.changeStatus || item.changeStatus === 'new') {
+      // Keep as-is for new items
+    } else if (field !== 'changeStatus') {
+      // auto-mark as changed if not explicitly set
+    }
+  }
+  computeZnaky(project.items, '');
+  renderTree();
+  updateStatus();
+}
+
+function updateZnakPreview(id) {
+  computeZnaky(project.items, '');
+  const item = findItemById(id, project.items);
+  const el = document.getElementById('f-znak-preview');
+  if (el && item) el.innerHTML = 'Plný znak: <strong>' + escHtml(item.znakPlne || item.znakJednoduchy || '?') + '</strong>';
+}
+
+function saveDetailForm(id) {
+  // Fields auto-save on change, this just gives user feedback
+  setMsg('Změny uloženy.', 'success');
+  renderTree();
+}
+
+// ============================================================
+// ADD / DELETE ITEMS
+// ============================================================
+// Aktualizuje viditelnost sekce skartace v modalu přidání.
+// willBeLeaf = true pokud přidávaná položka bude listová (= nemá děti, protože je nová)
+// Pro nadřazené VecnaSkupina do nichž přidáváme další skupinu – skartace se nezadává.
+function updateAddSkartaceVisibility() {
+  const typ = document.getElementById('add-typ').value;
+  const section = document.getElementById('add-skartace-section');
+  // Nová položka nikdy nemá děti → je vždy listová → skartace se zadává
+  // Výjimka: pokud je typ VecnaSkupina a addContext říká, že přidáváme jako podskupinu
+  // do rodičovské VecnaSkupina – stále je to listová (zatím bez dětí), skartaci zadáme.
+  // Skartaci skryjeme jen pokud typ = VecnaSkupina a context je 'top' nebo 'sibling'
+  // kde rodič je VecnaSkupina s existujícími VecnaSkupina dětmi – to ale nevíme předem,
+  // takže jednoduché pravidlo: vždy zobrazit (nová položka = vždy list).
+  section.hidden = false;
+}
+
+// Vrátí vhodné výchozí datum pro novou položku:
+// datum otevření rodiče, nebo platnostOd projektu, nebo dnešek
+function defaultDatum(parentId) {
+  if (parentId) {
+    const parent = findItemById(parentId, project.items);
+    if (parent?.datumOtevreni) return parent.datumOtevreni;
+  }
+  if (project?.meta?.platnostOd) return project.meta.platnostOd;
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Vrátí plný znakový prefix pro návrh znaku nové položky
+function nextSignHint(parentId) {
+  const parent = parentId ? findItemById(parentId, project.items) : null;
+  const siblings = parent ? parent.children : project.items;
+  return siblings.length + 1; // jen číslo pro hint
+}
+
+function openAddModal(title, typ, parentId) {
+  addContext = { parentId: parentId || null, mode: parentId ? 'child' : 'top' };
+  document.getElementById('modal-add-title').textContent = title;
+  document.getElementById('add-typ').value = typ;
+  document.getElementById('add-nazev').value = '';
+  document.getElementById('add-znak').value = '';
+  document.getElementById('add-datum-od').value = defaultDatum(parentId);
+  document.getElementById('add-puvod').value = 'vlastni';
+  document.getElementById('add-skart-znak').value = 'S';
+  document.getElementById('add-skart-lhuta').value = '5';
+  document.getElementById('add-skart-rezim').value = '';
+  updateAddSkartaceVisibility();
+
+  // Zobraz znakový kontext jako hint
+  const parent = parentId ? findItemById(parentId, project.items) : null;
+  const hintEl = document.getElementById('add-znak-hint');
+  if (parent?.znakPlne) {
+    hintEl.textContent = 'Plný znak bude: ' + parent.znakPlne + '.' + '?';
+    hintEl.hidden = false;
+  } else {
+    hintEl.hidden = true;
+  }
+
+  showModal('modal-add');
+  document.getElementById('add-znak').focus();
+}
+
+function addTopLevelGroup() {
+  if (!project) return;
+  openAddModal('Nová věcná skupina (vrchní úroveň)', 'VecnaSkupina', null);
+}
+
+function addChildItem() {
+  if (!selectedId || !project) return;
+  const parent = findItemById(selectedId, project.items);
+  if (!parent) return;
+  const childTyp = parent.typ === 'Soucast' ? 'Soucast' : 'VecnaSkupina';
+  openAddModal('Nová podpoložka v: ' + (parent.znakPlne ? parent.znakPlne + ' ' : '') + parent.nazev, childTyp, selectedId);
+}
+
+function addSiblingItem() {
+  if (!selectedId || !project) return;
+  const item = findItemById(selectedId, project.items);
+  const parentInfo = findParent(selectedId, project.items);
+  const parentId = parentInfo?.parent?.id || null;
+  openAddModal('Nová položka na stejné úrovni jako: ' + (item?.znakPlne ? item.znakPlne + ' ' : '') + (item?.nazev || ''), item?.typ || 'VecnaSkupina', parentId);
+}
+
+function confirmAddItem() {
+  const znak = document.getElementById('add-znak').value.trim();
+  const nazev = document.getElementById('add-nazev').value.trim();
+  const typ = document.getElementById('add-typ').value;
+  if (!nazev) { alert('Zadejte název.'); return; }
+  const item = createItem(typ, znak, nazev, addContext?.parentId);
+  item.datumOtevreni = document.getElementById('add-datum-od').value;
+  item.puvod = document.getElementById('add-puvod').value;
+  item.changeStatus = 'new';
+  // Skartace – jen pro listové položky (nová položka je vždy listová)
+  item.skartacniZnak = document.getElementById('add-skart-znak').value || 'S';
+  item.skartacniLhuta = document.getElementById('add-skart-lhuta').value || '5';
+  item.spusteniSkartace = document.getElementById('add-skart-rezim').value || '';
+
+  if (!addContext || addContext.mode === 'top' || !addContext.parentId) {
+    project.items.push(item);
+  } else {
+    const parent = findItemById(addContext.parentId, project.items);
+    if (parent) {
+      // VecnaSkupina can have VecnaSkupina or Soucast children
+      // Soucast can only have Soucast children
+      parent.children.push(item);
+      treeExpanded.add(addContext.parentId);
+    }
+  }
+
+  addChangelogEntry('added', `Přidána položka "${item.nazev}" (${item.znakJednoduchy}) [${item.typ}]`, item.id);
+  hideModal('modal-add');
+  computeZnaky(project.items, '');
+  renderTree();
+  selectItem(item.id);
+  updateStatus();
+  setMsg('Položka přidána.', 'success');
+}
+
+function deleteSelected() {
+  if (!selectedId || !project) return;
+  const item = findItemById(selectedId, project.items);
+  if (!item) return;
+  if (!confirm(`Opravdu odstranit "${item.nazev || item.znakJednoduchy}"?${item.children?.length ? '\n\nPozor: Budou odstraněny i všechny podpoložky!' : ''}`)) return;
+  addChangelogEntry('removed', `Odstraněna položka "${item.nazev}" (${item.znakPlne||item.znakJednoduchy})`, selectedId);
+  removeItemFromTree(selectedId, project.items);
+  selectedId = null;
+  renderTree();
+  renderDetail();
+  updateItemButtons(false);
+  updateStatus();
+  setMsg('Položka odstraněna.', 'success');
+}
+
+function removeItemFromTree(id, list) {
+  for (let i = 0; i < list.length; i++) {
+    if (list[i].id === id) { list.splice(i, 1); return true; }
+    if (removeItemFromTree(id, list[i].children || [])) return true;
+  }
+  return false;
+}
+
+// ============================================================
+// MOVE ITEMS
+// ============================================================
+function moveItemUp() {
+  if (!selectedId) return;
+  const info = findParent(selectedId, project.items);
+  if (!info) return;
+  const list = info.list;
+  const idx = list.findIndex(i => i.id === selectedId);
+  if (idx <= 0) return;
+  [list[idx-1], list[idx]] = [list[idx], list[idx-1]];
+  computeZnaky(project.items, '');
+  renderTree();
+  addChangelogEntry('changed', `Přesunuta položka "${list[idx].nazev}" nahoru`);
+}
+
+function moveItemDown() {
+  if (!selectedId) return;
+  const info = findParent(selectedId, project.items);
+  if (!info) return;
+  const list = info.list;
+  const idx = list.findIndex(i => i.id === selectedId);
+  if (idx < 0 || idx >= list.length - 1) return;
+  [list[idx], list[idx+1]] = [list[idx+1], list[idx]];
+  computeZnaky(project.items, '');
+  renderTree();
+  addChangelogEntry('changed', `Přesunuta položka "${list[idx].nazev}" dolů`);
+}
+
+function moveItemLeft() {
+  // Outdent: move to parent's parent
+  if (!selectedId) return;
+  const info = findParent(selectedId, project.items);
+  if (!info || !info.parent) return;
+  const item = findItemById(selectedId, project.items);
+  const parentInfo = findParent(info.parent.id, project.items);
+  removeItemFromTree(selectedId, info.parent.children);
+  const targetList = parentInfo ? parentInfo.list : project.items;
+  const parentIdx = targetList.findIndex(i => i.id === info.parent.id);
+  targetList.splice(parentIdx + 1, 0, item);
+  item.parentId = parentInfo?.parent?.id || null;
+  computeZnaky(project.items, '');
+  renderTree();
+  addChangelogEntry('changed', `Vyčleněna položka "${item.nazev}" o úroveň výš`);
+}
+
+function moveItemRight() {
+  // Indent: make child of previous sibling
+  if (!selectedId) return;
+  const info = findParent(selectedId, project.items);
+  if (!info) return;
+  const list = info.list;
+  const idx = list.findIndex(i => i.id === selectedId);
+  if (idx <= 0) return;
+  const prevSibling = list[idx - 1];
+  if (prevSibling.typ === 'Soucast' && findItemById(selectedId, project.items)?.typ === 'VecnaSkupina') {
+    setMsg('Věcná skupina nemůže být podpoložkou součásti.', 'error'); return;
+  }
+  const item = list.splice(idx, 1)[0];
+  prevSibling.children.push(item);
+  item.parentId = prevSibling.id;
+  treeExpanded.add(prevSibling.id);
+  computeZnaky(project.items, '');
+  renderTree();
+  addChangelogEntry('changed', `Vložena položka "${item.nazev}" jako podpoložka "${prevSibling.nazev}"`);
+}
+
+// ============================================================
+// PLAN META FORM
+// ============================================================
+function renderPlanMeta() {
+  const el = document.getElementById('plan-meta-form');
+  if (!project) { el.innerHTML = '<div class="alert alert-info">Nejprve vytvořte nebo načtěte projekt.</div>'; return; }
+  el.innerHTML = `
+  <div class="card">
+    <div class="card-header"><span class="card-title">📋 Základní údaje</span></div>
+    <div class="form-grid">
+      <div class="form-group" style="grid-column:1/-1">
+        <label for="m-nazev">Název spisového plánu *</label>
+        <input type="text" id="m-nazev" value="${escHtml(project.meta.nazev)}" onchange="updateMeta('nazev',this.value)">
+      </div>
+      <div class="form-group">
+        <label for="m-identifikator">Identifikátor</label>
+        <input type="text" id="m-identifikator" value="${escHtml(project.meta.identifikator)}" onchange="updateMeta('identifikator',this.value)">
+      </div>
+      <div class="form-group">
+        <label for="m-xmlid">XML ID (SpisovyPlan[@ID])</label>
+        <input type="text" id="m-xmlid" value="${escHtml(project.meta.xmlId)}" onchange="updateMeta('xmlId',this.value)">
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label for="m-komentar">Komentář</label>
+        <textarea id="m-komentar" rows="3" onchange="updateMeta('komentar',this.value)">${escHtml(project.meta.komentar)}</textarea>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">🏛️ Vydavatel</span></div>
+    <div class="form-grid">
+      <div class="form-group" style="grid-column:1/-1">
+        <label for="m-vydavatel">Název organizace</label>
+        <input type="text" id="m-vydavatel" value="${escHtml(project.meta.vydavatel?.nazev||'')}" onchange="updateMetaNested('vydavatel','nazev',this.value)">
+      </div>
+      <div class="form-group">
+        <label for="m-ico">IČO</label>
+        <input type="text" id="m-ico" value="${escHtml(project.meta.vydavatel?.ico||'')}" onchange="updateMetaNested('vydavatel','ico',this.value)" maxlength="8">
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">📅 Platnost</span></div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label for="m-platnost-od">Platnost od</label>
+        <input type="date" id="m-platnost-od" value="${project.meta.platnostOd||''}" onchange="updateMeta('platnostOd',this.value)">
+      </div>
+      <div class="form-group">
+        <label for="m-platnost-do">Platnost do</label>
+        <input type="date" id="m-platnost-do" value="${project.meta.platnostDo||''}" onchange="updateMeta('platnostDo',this.value)">
+      </div>
+      <div class="form-group">
+        <label for="m-autor">Zpracovatel</label>
+        <input type="text" id="m-autor" value="${escHtml(project.meta.autor||'')}" onchange="updateMeta('autor',this.value)">
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">ℹ️ Informace o projektu</span></div>
+    <dl class="info-grid">
+      <div class="info-item"><dt>Vytvořen</dt><dd>${formatDateTime(project.createdAt)}</dd></div>
+      <div class="info-item"><dt>Poslední změna</dt><dd>${formatDateTime(project.updatedAt)}</dd></div>
+      <div class="info-item"><dt>Počet položek</dt><dd>${countItems(project.items)}</dd></div>
+      <div class="info-item"><dt>Počet verzí</dt><dd>${project.versions.length}</dd></div>
+      <div class="info-item"><dt>Počet změn</dt><dd>${project.changelog.length}</dd></div>
+      <div class="info-item"><dt>NSESSS verze</dt><dd>${project.nsesssVersion}</dd></div>
+    </dl>
+  </div>
+  <div class="form-actions">
+    <button class="btn btn-primary" onclick="setMsg('Metadata uložena.','success')">💾 Uložit metadata</button>
+  </div>`;
+}
+
+function updateMeta(field, value) {
+  if (!project) return;
+  project.meta[field] = value;
+  project.updatedAt = timestamp();
+  addChangelogEntry('meta', `Metadata plánu – pole "${field}" změněno`);
+  updateStatus();
+  updateTitle();
+}
+
+function updateMetaNested(obj, field, value) {
+  if (!project) return;
+  project.meta[obj][field] = value;
+  project.updatedAt = timestamp();
+  addChangelogEntry('meta', `Metadata – ${obj}.${field} změněno`);
+}
+
+// ============================================================
+// CHANGELOG
+// ============================================================
+function addChangelogEntry(type, desc, itemId = null) {
+  if (!project) return;
+  project.changelog.push({ type, desc, itemId, time: timestamp() });
+  project.updatedAt = timestamp();
+  renderChangelog();
+  updateStatus();
+}
+
+function renderChangelog() {
+  const el = document.getElementById('changes-list');
+  const countEl = document.getElementById('changes-count');
+  if (!project) { el.innerHTML = '<div class="alert alert-info">Žádný projekt.</div>'; return; }
+  const filter = document.getElementById('change-filter')?.value || '';
+  const entries = filter ? project.changelog.filter(e => e.type === filter) : project.changelog;
+  countEl.textContent = `(${entries.length} záznamů)`;
+  if (!entries.length) { el.innerHTML = '<div class="alert alert-info">Žádné záznamy.</div>'; return; }
+  const ul = document.createElement('ul');
+  ul.className = 'change-log';
+  ul.setAttribute('aria-label', 'Soupis změn');
+  [...entries].reverse().forEach(e => {
+    const li = document.createElement('li');
+    const typeMap = { added: ['Přidáno', 'change-type-added'], removed: ['Odstraněno', 'change-type-removed'], changed: ['Změněno', 'change-type-changed'], meta: ['Metadata', 'change-type-meta'] };
+    const [label, cls] = typeMap[e.type] || ['Info', 'change-type-meta'];
+    li.innerHTML = `<span class="change-type ${cls}">${label}</span><span class="change-desc">${escHtml(e.desc)}</span><span class="change-time">${formatDateTime(e.time)}</span>`;
+    ul.appendChild(li);
+  });
+  el.innerHTML = '';
+  el.appendChild(ul);
+}
+
+function clearChangeLog() {
+  if (!project) return;
+  if (!confirm('Opravdu vymazat celý log změn?')) return;
+  project.changelog = [];
+  renderChangelog();
+  updateStatus();
+}
+
+function exportChangelog() {
+  if (!project) return;
+  const lines = [`Soupis změn – ${project.meta.nazev}`, `Vygenerováno: ${formatDateTime(timestamp())}`, ''];
+  project.changelog.forEach(e => {
+    lines.push(`[${e.type.toUpperCase()}] ${e.desc} (${formatDateTime(e.time)})`);
+  });
+  downloadText(lines.join('\n'), 'soupis-zmen.txt', 'text/plain');
+}
+
+// ============================================================
+// NOTES
+// ============================================================
+function addGlobalNote() {
+  noteContext = null;
+  document.getElementById('note-target-info').hidden = true;
+  document.getElementById('note-text').value = '';
+  document.getElementById('note-autor').value = project?.meta?.autor || '';
+  showModal('modal-note');
+}
+
+function addNoteToSelected() {
+  if (!selectedId || !project) return;
+  const item = findItemById(selectedId, project.items);
+  noteContext = selectedId;
+  const info = document.getElementById('note-target-info');
+  info.hidden = false;
+  info.textContent = `Poznámka k: ${item?.znakPlne} ${item?.nazev || ''}`;
+  document.getElementById('note-text').value = '';
+  document.getElementById('note-autor').value = project.meta.autor || '';
+  showModal('modal-note');
+}
+
+function confirmAddNote() {
+  const text = document.getElementById('note-text').value.trim();
+  if (!text) { alert('Zadejte text poznámky.'); return; }
+  const note = {
+    id: genId('N'),
+    text,
+    autor: document.getElementById('note-autor').value.trim(),
+    typ: document.getElementById('note-typ').value,
+    date: timestamp(),
+    itemId: noteContext || null,
+  };
+  if (noteContext) {
+    const item = findItemById(noteContext, project.items);
+    if (item) { item._editorNotes = item._editorNotes || []; item._editorNotes.push(note); }
+  } else {
+    project.notes.push(note);
+  }
+  addChangelogEntry('meta', `Přidána poznámka${noteContext ? ' k položce' : ' (globální)'}`);
+  hideModal('modal-note');
+  renderNotes();
+  if (noteContext && selectedId === noteContext) renderDetail();
+  setMsg('Poznámka přidána.', 'success');
+}
+
+function renderNotes() {
+  const el = document.getElementById('notes-list');
+  if (!project) { el.innerHTML = '<div class="alert alert-info">Žádný projekt.</div>'; return; }
+  const filter = document.getElementById('notes-filter')?.value || '';
+  let notes = [...(project.notes || [])];
+  // Also collect item notes
+  const itemNotes = [];
+  flattenItems(project.items).forEach(it => {
+    (it._editorNotes || []).forEach(n => itemNotes.push({ ...n, _itemRef: it }));
+  });
+  let all = [];
+  if (!filter || filter === 'global') all.push(...notes.map(n => ({ ...n, _itemRef: null })));
+  if (!filter || filter === 'item') all.push(...itemNotes);
+  all.sort((a, b) => b.date.localeCompare(a.date));
+  if (!all.length) { el.innerHTML = '<div class="alert alert-info">Žádné poznámky.</div>'; return; }
+  el.innerHTML = all.map(n => `
+    <div class="note-item">
+      <div class="note-header">
+        <span class="note-author">${escHtml(n.autor||'Neznámý')}</span>
+        <span class="note-date">${formatDateTime(n.date)}</span>
+        <span style="margin-left:.5rem">${{info:'ℹ️',warn:'⚠️',todo:'✅',approve:'🔖'}[n.typ]||''}</span>
+      </div>
+      ${n._itemRef ? `<div class="note-target">K položce: ${escHtml(n._itemRef.znakPlne)} ${escHtml(n._itemRef.nazev)}</div>` : '<div class="note-target">Globální poznámka</div>'}
+      <div class="note-text">${escHtml(n.text)}</div>
+    </div>`).join('');
+}
+
+// ============================================================
+// VERSIONS
+// ============================================================
+function createVersion() {
+  if (!project) return;
+  project.lastVersionNum = (project.lastVersionNum || 0) + 1;
+  document.getElementById('ver-cislo').value = String(project.lastVersionNum) + '.0';
+  document.getElementById('ver-popis').value = '';
+  document.getElementById('ver-autor').value = project.meta.autor || '';
+  document.getElementById('ver-stav').value = 'navrh';
+  showModal('modal-version');
+}
+
+function confirmCreateVersion() {
+  const cislo = document.getElementById('ver-cislo').value.trim() || String(project.lastVersionNum);
+  const snapshot = JSON.parse(JSON.stringify({ items: project.items, meta: project.meta }));
+  const ver = {
+    id: genId('VER'),
+    cislo,
+    popis: document.getElementById('ver-popis').value.trim(),
+    autor: document.getElementById('ver-autor').value.trim(),
+    stav: document.getElementById('ver-stav').value,
+    date: timestamp(),
+    changelogCount: project.changelog.length,
+    snapshot,
+  };
+  project.versions.push(ver);
+  addChangelogEntry('meta', `Uložena verze ${cislo}: ${ver.popis}`);
+  hideModal('modal-version');
+  renderVersions();
+  updateStatus();
+  setMsg(`Verze ${cislo} uložena.`, 'success');
+}
+
+function renderVersions() {
+  const el = document.getElementById('versions-list');
+  if (!project || !project.versions.length) { el.innerHTML = '<div class="alert alert-info">Žádné uložené verze.</div>'; return; }
+  const stavLabel = { navrh: '📝 Návrh', 'k-schvaleni': '🔖 K schválení', schvaleno: '✅ Schváleno', platne: '🟢 Platné', archivovano: '📦 Archivováno' };
+  el.innerHTML = `<ul class="version-list" aria-label="Historie verzí">` + [...project.versions].reverse().map(v => `
+    <li class="version-item">
+      <span class="version-num">v${escHtml(v.cislo)}</span>
+      <div class="version-info">
+        <div class="version-name">${stavLabel[v.stav]||v.stav}</div>
+        ${v.popis ? `<div class="version-meta">${escHtml(v.popis)}</div>` : ''}
+        <div class="version-meta">Autor: ${escHtml(v.autor||'—')} · ${formatDateTime(v.date)} · ${v.changelogCount} změn</div>
+      </div>
+      <div class="version-actions">
+        <button class="btn btn-secondary btn-sm" onclick="restoreVersion('${v.id}')" title="Obnovit tuto verzi">↩️ Obnovit</button>
+        <button class="btn btn-secondary btn-sm" onclick="exportVersionXML('${v.id}')" title="Exportovat XML této verze">📤 XML</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteVersion('${v.id}')" title="Smazat verzi">✕</button>
+      </div>
+    </li>`).join('') + '</ul>';
+}
+
+function restoreVersion(id) {
+  const ver = project.versions.find(v => v.id === id);
+  if (!ver) return;
+  if (!confirm(`Obnovit verzi ${ver.cislo}? Aktuální stav bude přepsán!`)) return;
+  project.items = JSON.parse(JSON.stringify(ver.snapshot.items));
+  project.meta = JSON.parse(JSON.stringify(ver.snapshot.meta));
+  addChangelogEntry('meta', `Obnovena verze ${ver.cislo}`);
+  computeZnaky(project.items, '');
+  renderTree();
+  renderPlanMeta();
+  renderChangelog();
+  renderVersions();
+  updateStatus();
+  setMsg(`Verze ${ver.cislo} obnovena.`, 'success');
+}
+
+function deleteVersion(id) {
+  if (!confirm('Smazat tuto verzi?')) return;
+  project.versions = project.versions.filter(v => v.id !== id);
+  renderVersions();
+}
+
+function exportVersionXML(id) {
+  const ver = project.versions.find(v => v.id === id);
+  if (!ver) return;
+  const xml = generateXML({ ...project, items: ver.snapshot.items, meta: ver.snapshot.meta });
+  downloadText(xml, `spisovy-plan-v${ver.cislo}.xml`, 'application/xml');
+}
+
+// ============================================================
+// PRINT PREVIEW
+// ============================================================
+function buildPrintPreview() {
+  const el = document.getElementById('print-content');
+  if (!project) { el.innerHTML = '<div class="alert alert-info">Načtěte projekt pro zobrazení tiskové sestavy.</div>'; return; }
+  const showChanges = document.getElementById('print-show-changes')?.checked;
+  const showNotes = document.getElementById('print-show-notes')?.checked;
+  const onlyChanged = document.getElementById('print-only-changed')?.checked;
+  computeZnaky(project.items, '');
+  let flat = flattenItems(project.items);
+  if (onlyChanged) flat = flat.filter(i => i.changeStatus);
+  const stavLabel = { navrh: 'Návrh', 'k-schvaleni': 'K schválení', schvaleno: 'Schváleno', platne: 'Platné', archivovano: 'Archivováno' };
+  const currentVer = project.versions.length ? project.versions[project.versions.length - 1] : null;
+
+  let html = `
+  <div style="margin-bottom:1.5rem">
+    <h2 style="font-size:1.3rem;margin-bottom:.25rem">${escHtml(project.meta.nazev)}</h2>
+    <div class="text-muted text-small">
+      ${project.meta.vydavatel?.nazev ? `<strong>Vydavatel:</strong> ${escHtml(project.meta.vydavatel.nazev)} · ` : ''}
+      ${project.meta.vydavatel?.ico ? `IČO: ${escHtml(project.meta.vydavatel.ico)} · ` : ''}
+      ${project.meta.platnostOd ? `Platnost od: ${project.meta.platnostOd} · ` : ''}
+      ${currentVer ? `Verze: ${escHtml(currentVer.cislo)} (${stavLabel[currentVer.stav]||currentVer.stav}) · ` : ''}
+      Vygenerováno: ${formatDateTime(timestamp())}
+    </div>
+    ${project.meta.komentar ? `<p style="margin-top:.5rem;font-size:.875rem">${escHtml(project.meta.komentar)}</p>` : ''}
+  </div>`;
+
+  if (showChanges && project.changelog.length) {
+    const changed = project.changelog.filter(e => ['added','removed','changed'].includes(e.type));
+    if (changed.length) {
+      html += `<h3 style="margin-bottom:.5rem;font-size:1rem">Soupis změn</h3>
+      <ul class="change-log" style="border:1px solid var(--border);border-radius:var(--radius);margin-bottom:1.5rem">
+      ${changed.slice(-50).map(e => {
+        const typeMap = { added: ['Přidáno','change-type-added'], removed: ['Odstraněno','change-type-removed'], changed: ['Změněno','change-type-changed'] };
+        const [label,cls] = typeMap[e.type]||['',''];
+        return `<li style="display:flex;gap:.5rem;padding:.4rem .75rem;border-bottom:1px solid var(--surface2);font-size:.8rem">
+          <span class="change-type ${cls}">${label}</span>
+          <span>${escHtml(e.desc)}</span>
+          <span style="margin-left:auto;color:var(--text-faint)">${formatDateTime(e.time)}</span>
+        </li>`;
+      }).join('')}
+      </ul>`;
+    }
+  }
+
+  html += `<h3 style="margin-bottom:.5rem;font-size:1rem">Spisový a skartační plán</h3>
+  <table class="print-table" aria-label="Tabulka spisového plánu">
+    <thead>
+      <tr>
+        <th scope="col">Spisový znak</th>
+        <th scope="col">Název věcné skupiny / součásti</th>
+        <th scope="col">Typ</th>
+        <th scope="col" style="text-align:center">Skart.</th>
+        <th scope="col">Datum otevření</th>
+        ${showChanges ? '<th scope="col">Změna</th>' : ''}
+      </tr>
+    </thead>
+    <tbody>`;
+
+  const skartMap = { A: 'skart-A', S: 'skart-S', V: 'skart-V' };
+  const changeMap = { new: '✦ Nové', added: '+ Přidáno', changed: '~ Změněno', removed: '− Zrušeno' };
+
+  for (const item of flat) {
+    const rowClass = `level-${Math.min(item.depth, 3)}${item.changeStatus ? ' row-' + item.changeStatus : ''}`;
+    const changeBg = item.changeStatus ? ({new:'background:var(--added-bg)',added:'background:var(--added-bg)',removed:'background:var(--removed-bg)',changed:'background:var(--changed-bg)'}[item.changeStatus]||'') : '';
+    const isLeaf = isSkartacniList(item);
+    let skartCell;
+    if (isLeaf) {
+      const combined = (item.skartacniZnak || '') + (item.skartacniLhuta || '');
+      skartCell = `<td style="text-align:center;font-weight:700" class="${skartMap[item.skartacniZnak]||''}">${escHtml(combined)}</td>`;
+    } else {
+      const { znaky, lhuty } = collectSkartaceFromDescendants(item);
+      // Sestavíme přehledové kombinace: pokud jsou 1:1, zobrazíme jako "A10, S5", jinak zvlášť
+      let preview;
+      if (znaky.length === 0) {
+        preview = '—';
+      } else if (znaky.length === lhuty.length && znaky.length <= 3) {
+        // Seřadíme páry dohromady pro přehled
+        preview = znaky.map((z, i) => z + (lhuty[i] || '')).join(', ');
+      } else {
+        preview = znaky.join(', ') + (lhuty.length ? ' / ' + lhuty.join(', ') : '');
+      }
+      skartCell = `<td style="text-align:center;font-size:.72rem;color:var(--text-muted)">${escHtml(preview)}</td>`;
+    }
+    html += `<tr class="${rowClass}" style="${changeBg}">
+      <td class="mono" style="white-space:nowrap">${escHtml(item.znakPlne)}</td>
+      <td style="padding-left:${item.depth * 1.25 + .35}rem">${escHtml(item.nazev)}</td>
+      <td style="font-size:.78rem">${itemTypLabelShort(item)}</td>
+      ${skartCell}
+      <td style="font-size:.78rem">${item.datumOtevreni||'—'}</td>
+      ${showChanges ? `<td style="font-size:.78rem">${changeMap[item.changeStatus]||'—'}</td>` : ''}
+    </tr>`;
+    if (showNotes && (item._editorNotes||[]).length) {
+      html += `<tr style="background:var(--warn-light)">
+        <td colspan="${showChanges?6:5}" style="font-size:.75rem;padding:.25rem .6rem;font-style:italic">
+          📌 ${item._editorNotes.map(n => escHtml(n.text)).join(' | ')}
+        </td>
+      </tr>`;
+    }
+  }
+  html += `</tbody></table>
+  <div class="text-small text-muted" style="margin-top:.5rem">
+    Legenda: Skart. = skartační znak + lhůta (např. A10 = Archiv 10 let, S5 = Stoupa 5 let, V5 = Výběr 5 let) · * = věcná skupina nejnižší úrovně (zadává se skartace)
+  </div>`;
+
+  el.innerHTML = html;
+}
+
+// ============================================================
+// FILE I/O: JSON
+// ============================================================
+function loadFromFile() {
+  document.getElementById('file-json').click();
+}
+
+function handleJsonFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      project = JSON.parse(e.target.result);
+      computeZnaky(project.items, '');
+      enableProjectUI();
+      renderTree();
+      renderPlanMeta();
+      renderChangelog();
+      renderNotes();
+      renderVersions();
+      updateStatus();
+      updateTitle();
+      setMsg('Projekt načten: ' + project.meta.nazev, 'success');
+    } catch (err) {
+      alert('Chyba při načítání souboru: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+function saveToFile() {
+  if (!project) { alert('Není otevřen žádný projekt.'); return; }
+  project.updatedAt = timestamp();
+  const json = JSON.stringify(project, null, 2);
+  const name = (project.meta.nazev || 'spisovy-plan').replace(/[^a-zA-Z0-9čšžýáéíóúůňřťďě ]/gi,'_').replace(/ /g,'_');
+  downloadText(json, name + '.json', 'application/json');
+  setMsg('Projekt uložen.', 'success');
+}
+
+// ============================================================
+// FILE I/O: XML IMPORT
+// ============================================================
+function importXML() {
+  document.getElementById('file-xml').click();
+}
+
+function handleXmlFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(e.target.result, 'application/xml');
+      const parseErr = doc.querySelector('parsererror');
+      if (parseErr) throw new Error('XML syntaktická chyba: ' + parseErr.textContent.slice(0,200));
+      const ns = 'http://www.mvcr.cz/nsesss/v4';
+      const root = doc.documentElement;
+      if (root.localName !== 'SpisovyPlan') throw new Error('Kořenový element není SpisovyPlan');
+
+      const getText = (el, tag) => { const c = el.querySelector(`*|${tag}`) || el.getElementsByTagNameNS(ns,tag)[0] || el.getElementsByTagName(tag)[0]; return c?.textContent?.trim() || ''; };
+
+      const metaNazev = getText(root, 'Nazev');
+      const metaIdent = getText(root, 'Identifikator');
+      const metaKom = getText(root, 'Komentar');
+      // Vydavatel
+      const vydavatelEl = root.getElementsByTagNameNS(ns,'Vydavatel')[0] || root.getElementsByTagName('Vydavatel')[0];
+      const vydavatelNazev = vydavatelEl ? getText(vydavatelEl,'Nazev') : '';
+      const vydavatelIco = vydavatelEl ? getText(vydavatelEl,'ICO') : '';
+      // Manipulace
+      const manipEl = root.getElementsByTagNameNS(ns,'Manipulace')[0] || root.getElementsByTagName('Manipulace')[0];
+      const platnostOd = manipEl ? getText(manipEl,'DatumOtevreni') : '';
+
+      project = createProject({ nazev: metaNazev||'Importovaný plán', identifikator: metaIdent, komentar: metaKom, vydavatel: vydavatelNazev, ico: vydavatelIco, platnostOd });
+      project.meta.xmlId = root.getAttribute('ID') || project.meta.xmlId;
+
+      // Parse VecnaSkupina
+      function parseVecnaSkupina(el, parentId) {
+        const eu = el.getElementsByTagNameNS(ns,'EvidencniUdaje')[0] || el.getElementsByTagName('EvidencniUdaje')[0];
+        if (!eu) return null;
+        const trideni = eu.getElementsByTagNameNS(ns,'Trideni')[0] || eu.getElementsByTagName('Trideni')[0];
+        const vyraz = eu.getElementsByTagNameNS(ns,'Vyrazovani')[0] || eu.getElementsByTagName('Vyrazovani')[0];
+        const manip = eu.getElementsByTagNameNS(ns,'Manipulace')[0] || eu.getElementsByTagName('Manipulace')[0];
+        const znak = trideni ? getText(trideni,'JednoduchySpisovyZnak') : '';
+        const nazev = getText(eu,'Nazev');
+        const typ = el.localName === 'PlanSoucast' ? 'Soucast' : 'VecnaSkupina';
+        const item = createItem(typ, znak, nazev, parentId);
+        item.xmlId = el.getAttribute('ID') || item.xmlId;
+        item.komentar = getText(eu,'Komentar');
+        item.datumOtevreni = manip ? getText(manip,'DatumOtevreni') : '';
+        item.datumUzavreni = manip ? getText(manip,'DatumUzavreni') : '';
+        item.changeStatus = null;
+        // Skartace
+        if (vyraz) {
+          const skZnak = vyraz.getElementsByTagNameNS(ns,'SkartacniZnak')[0] || vyraz.getElementsByTagName('SkartacniZnak')[0];
+          if (skZnak) {
+            item.skartacniZnak = skZnak.getAttribute('hodnota') || getText(vyraz,'SkartacniZnak') || 'S';
+            item.skartacniLhuta = skZnak.getAttribute('lhuta') || getText(vyraz,'SkartacniLhuta') || '5';
+          }
+        }
+        item.trvalySkartacniSouhlas = getText(eu,'TrvalySkartacniSouhlas') === 'true' || getText(eu,'TrvalySkartacniSouhlas') === '1';
+        item.urcenoProTypoveSpisy = getText(eu,'UrcenoProTypoveSpisy') === 'true';
+        item.zpusobVedeni = getText(eu,'ZpusobVedeni');
+        // Children
+        const childEls = el.children;
+        for (const child of childEls) {
+          if (child.localName === 'PlanVecnaSkupina' || child.localName === 'PlanSoucast') {
+            const childItem = parseVecnaSkupina(child, item.id);
+            if (childItem) item.children.push(childItem);
+          }
+        }
+        return item;
+      }
+
+      const groupEls = root.children;
+      for (const child of groupEls) {
+        if (child.localName === 'PlanVecnaSkupina') {
+          const item = parseVecnaSkupina(child, null);
+          if (item) project.items.push(item);
+        }
+      }
+
+      addChangelogEntry('meta', `Importováno z XML: ${file.name}`);
+      computeZnaky(project.items, '');
+      enableProjectUI();
+      renderTree();
+      renderPlanMeta();
+      renderChangelog();
+      renderNotes();
+      renderVersions();
+      updateStatus();
+      updateTitle();
+      setMsg(`XML importováno (${countItems(project.items)} položek).`, 'success');
+    } catch (err) {
+      alert('Chyba při importu XML:\n' + err.message);
+      console.error(err);
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+// ============================================================
+// FILE I/O: XML EXPORT
+// ============================================================
+function exportXML() {
+  if (!project) { alert('Není otevřen žádný projekt.'); return; }
+  const xml = generateXML(project);
+  const name = (project.meta.nazev||'spisovy-plan').replace(/[^a-zA-Z0-9]/g,'_');
+  downloadText(xml, name + '.xml', 'application/xml');
+  addChangelogEntry('meta', 'Exportováno do XML');
+  setMsg('XML exportováno.', 'success');
+}
+
+function generateXML(proj) {
+  computeZnaky(proj.items, '');
+  const lines = [];
+  lines.push('<?xml version="1.0" encoding="UTF-8"?>');
+  lines.push(`<SpisovyPlan xmlns="http://www.mvcr.cz/nsesss/v4" ID="${xmlEsc(proj.meta.xmlId)}">`);
+  lines.push(`  <Identifikator>${xmlEsc(proj.meta.identifikator)}</Identifikator>`);
+  lines.push(`  <Nazev>${xmlEsc(proj.meta.nazev)}</Nazev>`);
+  if (proj.meta.komentar) lines.push(`  <Komentar>${xmlEsc(proj.meta.komentar)}</Komentar>`);
+  lines.push(`  <Manipulace>`);
+  lines.push(`    <DatumOtevreni>${xmlEsc(proj.meta.platnostOd || new Date().toISOString().slice(0,10))}</DatumOtevreni>`);
+  if (proj.meta.platnostDo) lines.push(`    <DatumUzavreni>${xmlEsc(proj.meta.platnostDo)}</DatumUzavreni>`);
+  lines.push(`  </Manipulace>`);
+  lines.push(`  <Vydavatel>`);
+  lines.push(`    <Nazev>${xmlEsc(proj.meta.vydavatel?.nazev || '')}</Nazev>`);
+  if (proj.meta.vydavatel?.ico) lines.push(`    <ICO>${xmlEsc(proj.meta.vydavatel.ico)}</ICO>`);
+  lines.push(`  </Vydavatel>`);
+
+  function serializeItem(item, indent) {
+    const tag = item.typ === 'Soucast' ? 'PlanSoucast' : 'PlanVecnaSkupina';
+    const i = '  '.repeat(indent);
+    lines.push(`${i}<${tag} ID="${xmlEsc(item.xmlId)}">`);
+    lines.push(`${i}  <EvidencniUdaje>`);
+    lines.push(`${i}    <Identifikator>${xmlEsc(item.id)}</Identifikator>`);
+    lines.push(`${i}    <Nazev>${xmlEsc(item.nazev)}</Nazev>`);
+    if (item.komentar) lines.push(`${i}    <Komentar>${xmlEsc(item.komentar)}</Komentar>`);
+    lines.push(`${i}    <Puvod>${xmlEsc(item.puvod||'vlastni')}</Puvod>`);
+    lines.push(`${i}    <Trideni>`);
+    lines.push(`${i}      <JednoduchySpisovyZnak>${xmlEsc(item.znakJednoduchy)}</JednoduchySpisovyZnak>`);
+    lines.push(`${i}      <PlneUrcenySpisovyZnak>${xmlEsc(item.znakPlne)}</PlneUrcenySpisovyZnak>`);
+    lines.push(`${i}    </Trideni>`);
+    // Vyrazovani — skartační hodnoty jen u listových položek
+    lines.push(`${i}    <Vyrazovani>`);
+    if (isSkartacniList(item)) {
+      lines.push(`${i}      <SkartacniZnak hodnota="${xmlEsc(item.skartacniZnak||'S')}" lhuta="${xmlEsc(item.skartacniLhuta||'5')}"/>`);
+      if (item.spusteniSkartace) lines.push(`${i}      <SpusteniSkartace>${xmlEsc(item.spusteniSkartace)}</SpusteniSkartace>`);
+    }
+    lines.push(`${i}    </Vyrazovani>`);
+    lines.push(`${i}    <Manipulace>`);
+    lines.push(`${i}      <DatumOtevreni>${xmlEsc(item.datumOtevreni || new Date().toISOString().slice(0,10))}</DatumOtevreni>`);
+    if (item.datumUzavreni) lines.push(`${i}      <DatumUzavreni>${xmlEsc(item.datumUzavreni)}</DatumUzavreni>`);
+    lines.push(`${i}    </Manipulace>`);
+    if (item.zpusobVedeni) lines.push(`${i}    <ZpusobVedeni>${xmlEsc(item.zpusobVedeni)}</ZpusobVedeni>`);
+    if (item.trvalySkartacniSouhlas) lines.push(`${i}    <TrvalySkartacniSouhlas>true</TrvalySkartacniSouhlas>`);
+    if (item.typ === 'VecnaSkupina' && item.urcenoProTypoveSpisy) lines.push(`${i}    <UrcenoProTypoveSpisy>true</UrcenoProTypoveSpisy>`);
+    lines.push(`${i}  </EvidencniUdaje>`);
+    for (const child of (item.children || [])) serializeItem(child, indent + 1);
+    lines.push(`${i}</${tag}>`);
+  }
+
+  for (const item of proj.items) serializeItem(item, 1);
+  lines.push('</SpisovyPlan>');
+  return lines.join('\n');
+}
+
+function xmlEsc(s) {
+  if (!s && s !== 0) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
+}
+
+// ============================================================
+// DOWNLOAD HELPER
+// ============================================================
+function downloadText(content, filename, mime) {
+  const blob = new Blob([content], { type: mime + ';charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ============================================================
+// SIDEBAR RESIZE
+// ============================================================
+const resizer = document.getElementById('sidebar-resize');
+const sidebar = document.getElementById('sidebar');
+let isResizing = false;
+resizer.addEventListener('mousedown', e => { isResizing = true; resizer.classList.add('dragging'); e.preventDefault(); });
+document.addEventListener('mousemove', e => { if (!isResizing) return; const w = e.clientX; sidebar.style.width = Math.max(180, Math.min(600, w)) + 'px'; });
+document.addEventListener('mouseup', () => { isResizing = false; resizer.classList.remove('dragging'); });
+resizer.addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft') sidebar.style.width = (parseInt(sidebar.style.width||320) - 20) + 'px';
+  if (e.key === 'ArrowRight') sidebar.style.width = (parseInt(sidebar.style.width||320) + 20) + 'px';
+});
+
+// ============================================================
+// KEYBOARD SHORTCUTS
+// ============================================================
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey && e.key === 's') { e.preventDefault(); saveToFile(); }
+  if (e.ctrlKey && e.key === 'o') { e.preventDefault(); loadFromFile(); }
+  if (e.ctrlKey && e.key === 'e') { e.preventDefault(); exportXML(); }
+  if (e.ctrlKey && e.key === 'n') { e.preventDefault(); showNewProjectModal(); }
+});
+
+// ============================================================
+// INIT
+// ============================================================
+renderTree();
+updateStatus();
+updateTitle();
+</script>
+</body>
+</html>
