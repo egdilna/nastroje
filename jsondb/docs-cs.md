@@ -2,13 +2,14 @@
 
 **JSONDB Editor** je výkonný editor databází běžící přímo v prohlížeči. Nevyžaduje žádný server, instalaci ani připojení k internetu. Vaše data zůstávají pouze ve vašem počítači.
 
-🌐 **Online verze:** [mrt.site44.com/database-editor](https://mrt.site44.com/database-editor)  
+🌐 **Online verze:** https://egdilna.github.io/nastroje/jsondb
+
 📦 **GitHub:** [github.com/michalradacz/database-editor](https://github.com/michalradacz/database-editor)
 
 ## Způsoby použití
 
 ### Online verze
-Jednoduše otevřete [online verzi](https://mrt.site44.com/database-editor) v prohlížeči a začněte pracovat. Data se ukládají v rámci relace prohlížeče – můžete mít otevřeno více databází v různých kartách současně.
+Jednoduše otevřete [online verzi](https://egdilna.github.io/nastroje/jsondb) v prohlížeči a začněte pracovat. Data se ukládají v rámci relace prohlížeče – můžete mít otevřeno více databází v různých kartách současně.
 
 ### Offline verze
 1. Stáhněte si soubor `database-editor.html` z [GitHubu](https://github.com/michalradacz/database-editor)
@@ -17,6 +18,9 @@ Jednoduše otevřete [online verzi](https://mrt.site44.com/database-editor) v pr
 
 ### DokuWiki integrace
 Editor lze integrovat jako plugin do systému DokuWiki. Plugin najdete ve složce `jsondbeditor` na GitHubu.
+
+### Integrace s GIT
+Databáze můžete načítat a ukládat jako JSONDB soubory a datové objekty v GIT repozitáři, jako je GitHub. Pro přístup pro zápis u veřejných a pro přístup ke čtení u privátních repos budete muset využít váš API klíč a mít dostatečná oprávnění.
 
 ---
 
