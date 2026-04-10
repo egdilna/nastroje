@@ -1246,6 +1246,7 @@ function renderNoteView(noteId) {
   if (n.noteType === "iframe") { renderIframeNoteView(noteId); return; }
   if (n.noteType === "vfolder") { renderVFolderNoteView(noteId); return; }
   if (n.noteType === "database") { renderDbNoteView(noteId); return; }
+  if (n.noteType === "diagram") { renderDiagramNoteView(noteId); return; }
 
   var tb = document.getElementById("toolbar");
   var tbH = "";
@@ -2253,7 +2254,7 @@ function renderVFolderNoteView(noteId) {
       var vn = getNote(ids[vi]);
       if (!vn) continue;
       var mod = vn.modified ? new Date(vn.modified).toLocaleDateString("cs") : "";
-      var tLabel = vn.noteType === "task" ? "Úkol" : vn.noteType === "file" ? "Soubor" : vn.noteType === "iframe" ? "Web" : vn.noteType === "vfolder" ? "V.složka" : vn.noteType === "database" ? "Databáze" : "Poznámka";
+      var tLabel = vn.noteType === "task" ? "Úkol" : vn.noteType === "file" ? "Soubor" : vn.noteType === "iframe" ? "Web" : vn.noteType === "vfolder" ? "V.složka" : vn.noteType === "database" ? "Databáze" : vn.noteType === "diagram" ? "Diagram" : "Poznámka";
       var mTyp = getMetaValue(vn, "Typ");
       var mStav = getMetaValue(vn, "Stav");
       h += "<tr>";
@@ -2688,6 +2689,351 @@ function dbSortedRecords(recs, db) {
   });
 }
 
+// ===== DIAGRAM NOTE (PlantUML) =====
+function pumlEncode6bit(b) {
+  if (b < 10) return String.fromCharCode(48 + b);
+  b -= 10;
+  if (b < 26) return String.fromCharCode(65 + b);
+  b -= 26;
+  if (b < 26) return String.fromCharCode(97 + b);
+  b -= 26;
+  if (b === 0) return "-";
+  if (b === 1) return "_";
+  return "?";
+}
+
+function pumlAppend3(b1, b2, b3) {
+  return pumlEncode6bit(b1 >> 2) + pumlEncode6bit(((b1 & 3) << 4) | (b2 >> 4)) + pumlEncode6bit(((b2 & 0xF) << 2) | (b3 >> 6)) + pumlEncode6bit(b3 & 0x3F);
+}
+
+function pumlBase64(data) {
+  var r = "";
+  for (var i = 0; i < data.length; i += 3) {
+    var b1 = data[i], b2 = i + 1 < data.length ? data[i + 1] : 0, b3 = i + 2 < data.length ? data[i + 2] : 0;
+    r += pumlAppend3(b1, b2, b3);
+  }
+  return r;
+}
+
+function pumlEncodeAsync(text) {
+  return new Promise(function(resolve, reject) {
+    try {
+      var encoder = new TextEncoder();
+      var data = encoder.encode(text);
+      var cs = new CompressionStream("deflate-raw");
+      var writer = cs.writable.getWriter();
+      writer.write(data);
+      writer.close();
+      var reader = cs.readable.getReader();
+      var chunks = [];
+      function pump() {
+        reader.read().then(function(result) {
+          if (result.done) {
+            var total = 0;
+            for (var i = 0; i < chunks.length; i++) total += chunks[i].length;
+            var combined = new Uint8Array(total);
+            var off = 0;
+            for (var j = 0; j < chunks.length; j++) { combined.set(chunks[j], off); off += chunks[j].length; }
+            resolve(pumlBase64(combined));
+          } else {
+            chunks.push(result.value);
+            pump();
+          }
+        }).catch(reject);
+      }
+      pump();
+    } catch (e) {
+      // Fallback: hex encoding (longer URLs but always works)
+      var hex = "";
+      var bytes = new TextEncoder().encode(text);
+      for (var k = 0; k < bytes.length; k++) hex += ("0" + bytes[k].toString(16)).slice(-2);
+      resolve("~h" + hex);
+    }
+  });
+}
+
+function pumlPngUrl(encoded) {
+  return "https://www.plantuml.com/plantuml/png/" + encoded;
+}
+
+function pumlSvgUrl(encoded) {
+  return "https://www.plantuml.com/plantuml/svg/" + encoded;
+}
+
+function updateDiagramEncoded(noteId) {
+  var n = getNote(noteId);
+  if (!n || !n.diagramData) return Promise.resolve();
+  return pumlEncodeAsync(n.diagramData.source || "@startuml\n@enduml").then(function(enc) {
+    n.diagramData.encoded = enc;
+  });
+}
+
+function renderDiagramNoteView(noteId) {
+  var n = getNote(noteId);
+  if (!n || !n.diagramData) return;
+  var dd = n.diagramData;
+
+  // Ensure encoded is up to date, then render
+  updateDiagramEncoded(noteId).then(function() {
+    _renderDiagramView(noteId);
+  });
+}
+
+function _renderDiagramView(noteId) {
+  var n = getNote(noteId);
+  if (!n) return;
+  var dd = n.diagramData;
+  var encoded = dd.encoded || "";
+  var pngUrl = pumlPngUrl(encoded);
+
+  var tb = document.getElementById("toolbar");
+  var tbH = "";
+  var bmCls = n.bookmarked ? "bm-star active" : "bm-star";
+  tbH += '<button class="' + bmCls + '" onclick="toggleBookmark(\'' + noteId + '\')" accesskey="b" title="Oblíbené (Alt+B)">Oblíbené<span class="ak">B</span></button>';
+  tbH += '<button class="sm primary" onclick="dlgDiagramEditSource(\'' + noteId + '\')">Upravit zdroj</button>';
+  tbH += '<button class="sm" onclick="dlgDiagramEditName(\'' + noteId + '\')">Název diagramu</button>';
+  tbH += '<button class="sm" onclick="dlgRenameNote(\'' + noteId + '\')">Přejmenovat</button>';
+  tbH += '<button class="sm" onclick="dlgNoteTags(\'' + noteId + '\')">Štítky</button>';
+  tbH += '<button class="sm" onclick="dlgNoteMeta(\'' + noteId + '\')" accesskey="m">Metadata<span class="ak">M</span></button>';
+  tbH += '<button class="sm" onclick="dlgMoveNote(\'' + noteId + '\')">Přesunout</button>';
+  tbH += '<span class="sep"></span>';
+  tbH += '<button class="sm" onclick="copyDiagramSource(\'' + noteId + '\')">Kopírovat zdroj</button>';
+  tbH += '<button class="sm" onclick="copyDiagramPngUrl(\'' + noteId + '\')">Kopírovat PNG URL</button>';
+  tbH += '<button class="sm" onclick="copyDiagramMd(\'' + noteId + '\')">Kopírovat Markdown</button>';
+  tbH += '<button class="sm" onclick="copyDiagramWiki(\'' + noteId + '\')">Kopírovat Wiki</button>';
+  tbH += '<button class="sm" onclick="downloadDiagramPng(\'' + noteId + '\')">Stáhnout PNG</button>';
+  tbH += '<span class="sep"></span>';
+  tbH += '<button class="sm" onclick="dlgDiagramSaveVersion(\'' + noteId + '\')" accesskey="w">Verze+<span class="ak">W</span></button>';
+  var vcnt = (dd.versions && dd.versions.length) ? dd.versions.length : 0;
+  tbH += '<button class="sm" onclick="showDiagramVersions(\'' + noteId + '\')" accesskey="r">Verze (' + vcnt + ')<span class="ak">R</span></button>';
+  tbH += '<span class="sep"></span>';
+  tbH += '<button class="sm danger" onclick="dlgDeleteNote(\'' + noteId + '\')">Smazat</button>';
+  tb.innerHTML = tbH;
+
+  var vw = document.getElementById("view");
+  var h = '<div id="crumb">' + breadcrumb(n.folderId) + "</div>";
+  h += renderVFolderMemberships(noteId);
+  h += '<h6 style="margin:0 0 4px;font-size:.72rem;text-transform:uppercase;color:var(--text2);letter-spacing:.5px">Diagram</h6>';
+  h += "<h1>" + (n.icon || "&#128202;") + " " + esc(n.name) + "</h1>";
+
+  if (dd.name) {
+    h += '<div style="font-size:.92rem;color:var(--text2);margin:4px 0 8px">Název diagramu: <strong>' + esc(dd.name) + '</strong></div>';
+  }
+
+  if (n.tags && n.tags.length) {
+    h += '<div style="margin:6px 0 12px">';
+    for (var i = 0; i < n.tags.length; i++) {
+      h += '<span style="background:var(--tag-bg);padding:2px 8px;border-radius:10px;font-size:.78rem;color:var(--accent);margin-right:4px">' + esc(n.tags[i]) + "</span>";
+    }
+    h += "</div>";
+  }
+
+  // Diagram image
+  if (dd.source && dd.source.trim()) {
+    h += '<div style="margin:12px 0;border:1px solid var(--border);border-radius:6px;padding:8px;background:var(--surface)">';
+    h += '<img id="puml-img" src="' + esc(pngUrl) + '" alt="' + esc(dd.name || n.name) + '" style="max-width:100%;height:auto" onerror="document.getElementById(\'puml-err\').style.display=\'block\'" onload="showPumlSize()">';
+    h += '<div id="puml-err" style="display:none;color:var(--danger);margin-top:8px;padding:8px;border:1px solid var(--danger);border-radius:4px;font-size:.86rem">';
+    h += '<strong>Chyba vykreslení diagramu.</strong> Zkontrolujte PlantUML syntaxi.';
+    h += '</div>';
+    h += '<div id="puml-size" style="font-size:.78rem;color:var(--text2);margin-top:4px"></div>';
+    h += '</div>';
+
+    // Source preview
+    h += '<details style="margin:8px 0"><summary style="cursor:pointer;font-size:.84rem;color:var(--text2)">Zdrojový kód PlantUML</summary>';
+    h += '<pre style="background:var(--surface2);padding:8px;border-radius:4px;font-size:.82rem;overflow-x:auto;margin:4px 0">' + esc(dd.source) + '</pre>';
+    h += '</details>';
+
+    // URL
+    h += '<details style="margin:4px 0"><summary style="cursor:pointer;font-size:.84rem;color:var(--text2)">URL obrázku</summary>';
+    h += '<div style="word-break:break-all;font-size:.8rem;padding:4px 0"><a href="' + esc(pngUrl) + '" target="_blank">' + esc(pngUrl) + '</a></div>';
+    h += '</details>';
+  } else {
+    h += '<div class="empty">Diagram nemá zdrojový kód. Klikněte na <strong>Upravit zdroj</strong>.</div>';
+  }
+
+  // Backlinks
+  var bl = findBacklinks(noteId);
+  if (bl.links.length > 0) {
+    h += '<div class="backlinks"><h3>&#8617; Odkazuje sem</h3><ul>';
+    for (var li = 0; li < bl.links.length; li++) {
+      var bn = getNote(bl.links[li]);
+      if (bn) h += '<li><a href="#" onclick="openNote(\'' + bn.id + '\');return false">' + (bn.icon || "&#128221;") + " " + esc(bn.name) + "</a></li>";
+    }
+    h += "</ul></div>";
+  }
+
+  vw.innerHTML = h;
+}
+
+function showPumlSize() {
+  var img = document.getElementById("puml-img");
+  var el = document.getElementById("puml-size");
+  if (img && el && img.naturalWidth) {
+    el.textContent = "Rozměry: " + img.naturalWidth + " × " + img.naturalHeight + " px";
+  }
+}
+
+function renderDiagramInclude(note) {
+  var dd = note.diagramData || {};
+  if (!dd.encoded) return '<em>[Diagram: ' + esc(note.name) + ' (nekódováno)]</em>';
+  var url = pumlPngUrl(dd.encoded);
+  var title = dd.name || note.name;
+  return '<img src="' + esc(url) + '" alt="' + esc(title) + '" style="max-width:100%;height:auto">';
+}
+
+function dlgDiagramEditSource(noteId) {
+  var n = getNote(noteId);
+  if (!n || !n.diagramData) return;
+  var h = '<label>Zdrojový kód PlantUML:</label>';
+  h += '<textarea id="dlg-puml-src" rows="16" style="font-family:Consolas,monospace;font-size:.86rem">' + esc(n.diagramData.source || "") + '</textarea>';
+  showDialog("Upravit zdrojový kód diagramu", h, function() {
+    n.diagramData.source = document.getElementById("dlg-puml-src").value;
+    n.modified = now();
+    closeDialog();
+    renderNoteView(noteId);
+    dbg("Zdrojový kód diagramu upraven");
+  });
+}
+
+function dlgDiagramEditName(noteId) {
+  var n = getNote(noteId);
+  if (!n || !n.diagramData) return;
+  var h = '<label>Název diagramu (pro popisek obrázku):</label>';
+  h += '<input id="dlg-puml-name" value="' + esc(n.diagramData.name || "") + '" placeholder="Název diagramu">';
+  showDialog("Název diagramu", h, function() {
+    n.diagramData.name = document.getElementById("dlg-puml-name").value.trim();
+    n.modified = now();
+    closeDialog();
+    renderNoteView(noteId);
+  });
+}
+
+function copyDiagramSource(noteId) {
+  var n = getNote(noteId);
+  if (!n || !n.diagramData) return;
+  navigator.clipboard.writeText(n.diagramData.source || "").then(function() {
+    dbg("Zdrojový kód zkopírován");
+  });
+}
+
+function copyDiagramPngUrl(noteId) {
+  var n = getNote(noteId);
+  if (!n || !n.diagramData || !n.diagramData.encoded) return;
+  var url = pumlPngUrl(n.diagramData.encoded);
+  navigator.clipboard.writeText(url).then(function() {
+    dbg("PNG URL zkopírováno");
+  });
+}
+
+function copyDiagramMd(noteId) {
+  var n = getNote(noteId);
+  if (!n || !n.diagramData || !n.diagramData.encoded) return;
+  var url = pumlPngUrl(n.diagramData.encoded);
+  var title = n.diagramData.name || n.name;
+  var md = "![" + title + "](" + url + ")";
+  navigator.clipboard.writeText(md).then(function() {
+    dbg("Markdown obrázek zkopírován");
+  });
+}
+
+function copyDiagramWiki(noteId) {
+  var n = getNote(noteId);
+  if (!n || !n.diagramData || !n.diagramData.encoded) return;
+  var url = pumlPngUrl(n.diagramData.encoded) + "/diagram.png";
+  var title = n.diagramData.name || n.name;
+  var wiki = "{{" + url + "?nolink|" + title + "}}";
+  navigator.clipboard.writeText(wiki).then(function() {
+    dbg("Wiki syntaxe zkopírována");
+  });
+}
+
+function downloadDiagramPng(noteId) {
+  var n = getNote(noteId);
+  if (!n || !n.diagramData || !n.diagramData.encoded) return;
+  var url = pumlPngUrl(n.diagramData.encoded);
+  var name = sanitize(n.diagramData.name || n.name) + ".png";
+  fetch(url).then(function(res) {
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return res.blob();
+  }).then(function(blob) {
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+    dbg("PNG stažen: " + name);
+  }).catch(function(err) {
+    dbg("Chyba stahování PNG: " + err.message);
+  });
+}
+
+function dlgDiagramSaveVersion(noteId) {
+  var n = getNote(noteId);
+  if (!n || !n.diagramData) return;
+  if (!n.diagramData.versions) n.diagramData.versions = [];
+  var h = '<label>Popis verze:</label><input id="dlg-dver-label" placeholder="Volitelný popis">';
+  showDialog("Uložit verzi diagramu", h, function() {
+    var label = document.getElementById("dlg-dver-label").value.trim();
+    n.diagramData.versions.push({
+      label: label,
+      source: n.diagramData.source,
+      name: n.diagramData.name,
+      date: now()
+    });
+    closeDialog();
+    renderNoteView(noteId);
+    dbg("Verze diagramu uložena" + (label ? ": " + label : ""));
+  });
+}
+
+function showDiagramVersions(noteId) {
+  var n = getNote(noteId);
+  if (!n || !n.diagramData) return;
+  var versions = n.diagramData.versions || [];
+  if (versions.length === 0) return alert("Žádné uložené verze.");
+
+  var tb = document.getElementById("toolbar");
+  tb.innerHTML = '<button class="sm" onclick="renderNoteView(\'' + noteId + '\')">Zpět</button>';
+
+  var vw = document.getElementById("view");
+  var h = '<h6 style="margin:0 0 4px;font-size:.72rem;text-transform:uppercase;color:var(--text2);letter-spacing:.5px">Verze diagramu</h6>';
+  h += '<h2 style="margin:0 0 12px;font-size:1.05rem">' + esc(n.name) + ' — ' + versions.length + ' verzí</h2>';
+  h += '<table class="tbl"><thead><tr><th>#</th><th>Datum</th><th>Popis</th><th>Akce</th></tr></thead><tbody>';
+  for (var i = versions.length - 1; i >= 0; i--) {
+    var v = versions[i];
+    var dt = v.date ? new Date(v.date).toLocaleString("cs") : "";
+    h += '<tr><td>' + (i + 1) + '</td><td>' + dt + '</td><td>' + esc(v.label || "") + '</td>';
+    h += '<td style="white-space:nowrap">';
+    h += '<button class="sm" onclick="restoreDiagramVersion(\'' + noteId + '\',' + i + ')">Obnovit</button> ';
+    h += '<button class="sm danger" onclick="deleteDiagramVersion(\'' + noteId + '\',' + i + ')">Smazat</button>';
+    h += '</td></tr>';
+  }
+  h += '</tbody></table>';
+  vw.innerHTML = h;
+}
+
+function restoreDiagramVersion(noteId, idx) {
+  var n = getNote(noteId);
+  if (!n || !n.diagramData || !n.diagramData.versions[idx]) return;
+  var v = n.diagramData.versions[idx];
+  if (!confirm("Obnovit verzi " + (idx + 1) + "? Aktuální zdrojový kód bude nahrazen.")) return;
+  n.diagramData.source = v.source;
+  if (v.name !== undefined) n.diagramData.name = v.name;
+  n.modified = now();
+  renderNoteView(noteId);
+  dbg("Verze diagramu obnovena: " + (v.label || "#" + (idx + 1)));
+}
+
+function deleteDiagramVersion(noteId, idx) {
+  var n = getNote(noteId);
+  if (!n || !n.diagramData || !n.diagramData.versions[idx]) return;
+  if (!confirm("Smazat verzi " + (idx + 1) + "?")) return;
+  n.diagramData.versions.splice(idx, 1);
+  showDiagramVersions(noteId);
+}
+
 // ===== SECTION EDIT =====
 function toggleSectionEdit() {
   SEDIT = !SEDIT;
@@ -2829,6 +3175,7 @@ function editNote(noteId) {
   if (n.noteType === "iframe") return;
   if (n.noteType === "vfolder") return;
   if (n.noteType === "database") return;
+  if (n.noteType === "diagram") return;
 
   document.getElementById("toolbar").innerHTML = "";
   var vw = document.getElementById("view");
@@ -2939,6 +3286,7 @@ function renderMarkdown(src, noteId, depth, seen) {
     if (inc.noteType === "iframe") return '<em>[Web: <a href="' + esc(inc.iframeUrl || "") + '" target="_blank">' + esc(inc.name) + '</a>]</em>';
     if (inc.noteType === "vfolder") return renderVFolderInclude(inc);
     if (inc.noteType === "database") return renderDbInclude(inc);
+    if (inc.noteType === "diagram") return renderDiagramInclude(inc);
     var newSeen = {}; for (var k in seen) newSeen[k] = true; newSeen[inc.id] = true;
     return renderMarkdown(inc.content || "", inc.id, depth + 1, newSeen);
   });
@@ -3096,7 +3444,7 @@ function dlgNewNote(folderId) {
   if (!BD) { newBlock(); return; }
   var fid = folderId || (CUR.type === "folder" ? CUR.id : "") || "";
   var h = '<label>Název poznámky:</label><input id="dlg-name" placeholder="Název">';
-  h += '<label>Typ:</label><select id="dlg-ntype"><option value="note">Textová poznámka</option><option value="file">Soubor (správa verzí)</option><option value="task">Úkol</option><option value="iframe">Webová stránka (iframe)</option><option value="vfolder">Virtuální složka</option><option value="database">Databáze</option></select>';
+  h += '<label>Typ:</label><select id="dlg-ntype"><option value="note">Textová poznámka</option><option value="file">Soubor (správa verzí)</option><option value="task">Úkol</option><option value="iframe">Webová stránka (iframe)</option><option value="vfolder">Virtuální složka</option><option value="database">Databáze</option><option value="diagram">Diagram (PlantUML)</option></select>';
   h += folderSelectHTML(fid, null, "Složka");
   h += emojiPickerHTML(getEmojis()[0] || "");
   showDialog("Nová poznámka", h, function() {
@@ -3112,6 +3460,7 @@ function dlgNewNote(folderId) {
     if (ntype === "iframe") { n.noteType = "iframe"; n.iframeUrl = ""; }
     if (ntype === "vfolder") { n.noteType = "vfolder"; n.vfolderData = { description: "", noteIds: [] }; }
     if (ntype === "database") { n.noteType = "database"; n.dbData = { fields: [], records: [] }; }
+    if (ntype === "diagram") { n.noteType = "diagram"; n.diagramData = { name: "", source: "@startuml\n\n@enduml", encoded: "" }; }
     BD.notes.push(n);
     closeDialog();
     openNote(n.id);
@@ -5942,6 +6291,7 @@ var eiMod = {
         if (n.iframeUrl !== undefined) obj.iframeUrl = n.iframeUrl;
         if (n.vfolderData) obj.vfolderData = JSON.parse(JSON.stringify(n.vfolderData));
         if (n.dbData) obj.dbData = JSON.parse(JSON.stringify(n.dbData));
+        if (n.diagramData) obj.diagramData = JSON.parse(JSON.stringify(n.diagramData));
         if (n.tags && n.tags.length) obj.tags = n.tags.slice();
         if (n.icon) obj.icon = n.icon;
         if (n.bookmarked) obj.bookmarked = true;
@@ -6187,7 +6537,7 @@ var eiMod = {
                 if (it.noteType) notes[j].noteType = it.noteType;
                 if (it.fileVersions) notes[j].fileVersions = JSON.parse(JSON.stringify(it.fileVersions));
                 if (it.taskData) notes[j].taskData = JSON.parse(JSON.stringify(it.taskData));
-                if (it.iframeUrl !== undefined) notes[j].iframeUrl = it.iframeUrl; if (it.vfolderData) notes[j].vfolderData = JSON.parse(JSON.stringify(it.vfolderData)); if (it.dbData) notes[j].dbData = JSON.parse(JSON.stringify(it.dbData));
+                if (it.iframeUrl !== undefined) notes[j].iframeUrl = it.iframeUrl; if (it.vfolderData) notes[j].vfolderData = JSON.parse(JSON.stringify(it.vfolderData)); if (it.dbData) notes[j].dbData = JSON.parse(JSON.stringify(it.dbData)); if (it.diagramData) notes[j].diagramData = JSON.parse(JSON.stringify(it.diagramData));
                 notes[j].modified = now();
                 break;
               }
@@ -6221,6 +6571,7 @@ var eiMod = {
     if (data.iframeUrl !== undefined) note.iframeUrl = data.iframeUrl;
     if (data.vfolderData) note.vfolderData = JSON.parse(JSON.stringify(data.vfolderData));
     if (data.dbData) note.dbData = JSON.parse(JSON.stringify(data.dbData));
+    if (data.diagramData) note.diagramData = JSON.parse(JSON.stringify(data.diagramData));
     BD.notes.push(note);
   },
   _uniqueFolderName: function(name, parentId) {
