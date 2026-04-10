@@ -2,9 +2,9 @@
 
 Tohle je mikroweb věnovaný informacím o našich (snad) užitečných nástrojích, které by se nejen egovernmenťákům mohly hodit.
 
-## ✏️Nástroje
+## Nástroje
 
-Teď jsou pro vás připravené tyhle nástroje: [ArchiMate editor], [Prohlížeč RPP], [Prohlížeč opendat], [Univerzální databázový nástroj a editor JSONDB databází], [Správce datových katalogů], [NoteBlok], [MarkDown editor], [OPML editor], [Editor spisového plánu], [NSESSS korpus]
+Teď jsou pro vás připravené tyhle nástroje: [ArchiMate editor], [Prohlížeč RPP], [Prohlížeč opendat], [Univerzální databázový nástroj a editor JSONDB databází], [Správce datových katalogů], [NoteBlok], [MarkDown editor], [OPML editor], [Editor spisového plánu], [Správce záložek], [NSESSS korpus]
 
 ⚠️ Web a         informace k jednotlivým nástrojům (zejména dokumentace) se vytváří, když má zrovna někdo (nejvíc [Michal]) čas, takže pokud něco chybí, pardon, bude to.
 
@@ -12,10 +12,61 @@ Teď jsou pro vás připravené tyhle nástroje: [ArchiMate editor], [Prohlíže
 
 ℹ️ Čistě teoreticky, na stránce nástroje je sekce s novinkami a změnami v daném nástroji... Teda aspoň doufám, že tam je...
 
+* 7. dubna 2026 Nový nástroj [Správce záložek] - Bookmark je komplexním správcem sady záložek (bookmarků). Data o záložkách v katalogu lze ukládat a načítat buď z lokálního JSON souboru, ale především z GitHubu a GIT repozitáře a to včetně privátních cest. První funkční betaverze publikována v nástrojích a to na adrese https://egdilna.github.io/nastroje/bookmark 
+* 6. dubna 2026: Pozor, většina našich nástrojů teď mimo jiných metod pro načítání a ukládání dat <mark>podporuje i plnou itegraci s GIT úložištěm, třeba GitHub přes API</mark>. Pro zápisy budete potřebovat vlastní GitHub API klíč, ale ten zůstane jen ve vašem prohlížeči a nikdy se neukládá ani k nám a ani do příslušného datového souboru.
 * 30. března 2026: Vydali jsme zatím v betaverzi nový a hodně žádaný nástroj a to [[Správce datových katalogů]]. Jak sám název napovídá, umí to spravovat datové katalogy, datové slovníky, konceptuální datové modely, číselníky apod. Bohužel jsem se zatím nedostal k tvorbě dokumentace.
 * 23. března 2026: Už je tady nástrojů fakt docela dost a tak je asi fakt na čase rozběhnout samotný web https://egdilna.github.io/nastroje tak uvidíme.
 
-# ✏️ArchiMate
+# ArchiMate
+
+## Archimate editor
+
+⛓️ [Archimate editor](https://egdilna.github.io/nastroje/archimate) je webový komplexní nástroj pro tvorbu a správu architektury, především pro architektonické modely v jazyce ArchiMate, ale umí na jednom místě také spravovat ADR dokumenty, architektonické úkoly a poznámky. Má spoustu různých vychytávek, jako je generátor textových výstupů z architektury, slučování modelů s uživatelským výběrem a mnoho dalšího. Je stoprocentně přístupný, ale podporuje i grafické modelování. Online běží na https://egdilna.github-io/nastroje/archimate
+
+
+
+### Hlavní funkce
+
+Pokročilý editor architektury v jazyce ArchiMate, který může ale sloužit i nearchitektům
+
+
+- **ArchiMate 3.2** - podpora všech 60 typů prvků a 11 typů vazeb s kontrolou validity
+- **Vícejazyčné rozhraní** - čeština a angličtina
+- **Automatické ukládání** - data se ukládají do prohlížeče
+- **Tvorba po katalozích**: Možnost tvořit architekturu přes katalog prvků s jejich vlastnostmi a katalog vazeb, ze kterých se pak sestavují příznaky, packages a diagramy a výstupy
+- **Vizuální modelování**: Vizuální editor diagramů
+- **Import/export** - formáty AJX (JSON) a ArchiMate Open Exchange XML, plná podpora všech rozšíření AJX, diagramy lze exportovat v PNG a SVG, export vygenerovaných textových výstupů podle uživatelských šablon textu
+- **Slučování modelů** - import vybraných částí z jiného modelu
+- **Úkoly** - evidence a sledování úkolů pro rozvoj architektury
+- **Poznámky** - Markdown poznámky s verzováním
+- **ADR (Architecture Decision Records)** - správa architektonických rozhodnutí
+- **Generátor textu** - tvorba dokumentace z modelu pomocí šablon
+- **Diagramy** - vizuální náhled s exportem do SVG
+- **Hromadné operace** - práce s příznaky (tagy)
+- **Přístupnost** - plně přístupné rozhraní pro odečítače obrazovky
+- **Integrace s GitHub a GIT**: Možnost načíst a ukládat modely a projekty v GIT repozitáři, přístup je zajištěn přes API klíč, takže to bude fungovat i u privátních repos.
+- **DokuWiki integrace** - plugin pro spolupráci v týmu
+
+### Dokumentace a odkazy na repo
+
+* [Kompletní uživatelská příručka Archimate editoru](https://egdilna.github.io/nastroje/archimate/docs-cs
+* Nástroj má vlastní repozitář na GitHubu na adrese https://github.com/michalradacz/archimate-editor
+
+### Změny a novinky
+
+* 9. dubna 2026
+    * V tabulkovém editoru diagramu se nyní nemusejí přidávat jen prvky, ale lze přidávat i vazby (a prvky se samozŕejmě přidají také), což může urychlit tvorbu diagramu.
+    * U prvků se v různých zobrazeních nyní zobrazují dvě malá tlačítka "Z" a "DO", kterými si lze zobrazit rychlý popup se seznamem prvků s vazou na tento prvek, což zvýší přehled o vazbách bez nutnosti si filtrovat v celém samostatném zobrazení vazeb.
+    * Karta pro export a import a slučování už byla dost nepřehledná, takže teď je rozdělena na jednotlivé taby s jednotlivými funkcemi pro lepší přehlednost.
+
+### Použití
+
+Úřady a organizace, které nástroj využívají, zatím nechtějí pulikovat svoje modely veřejně.
+
+Nicméně na tomto nástroji jsou založeny online modely:
+
+* [Archimate model Referenční architektura ESSL v2 (EGdílna)](https://egdwiki.info/egdilna:archimate-essl-referencni-v2.ajx)
+* [ArchiMate model ehealth u poskytovatele (DigiNemocnice.cz)](https://egdwiki.info/diginemocnice:archimate-model-ehealthuposkytovatele)
 
 # RPP
 
@@ -84,7 +135,6 @@ Existuje i [Uživatelská dokumentace](https://egdilna.github.io/nastroje/rpp/do
 
 ### ✏️Hlavní funkce
 
-
 - [ ] dopsat tohle nikde nemůžu najít
 
 ### ✏️Dokumentace
@@ -92,13 +142,9 @@ Existuje i [Uživatelská dokumentace](https://egdilna.github.io/nastroje/rpp/do
 * [Kompletní uživatelská příručka](https://egdilna.github.io/nastroje/jsondb/docs-cs)
 * [Documentation in english version](https://egdilna.github.io/nastroje/docs-en
 
-
 ### Repository a odkazy
 
 Celý projekt je na GitHubu na https://github.io/michalradacz/database-editor
-
-
-
 
 # DKedit
 
@@ -185,6 +231,30 @@ multisection
 
 multisection
 
+## Bookmark
+
+### Správce záložek
+
+⛓️ [Bookmark Správce záložek](https://egdilna.github.io/nastroje/bookmark) je jednoduchý, ale užitečný správce záložek (bookmarků) a odkazů. OD jechoduchého seznamu až po komplexní katalogy. Jako každ´jiný náš nástroj jde o webovou aplikaci a opensource. Kromě lokálních katalogů podporuje i plnou integraci s GitHubem včetně privátních katalogů. Online běží na https://egdilna.github.io/nastroje/bookmark
+
+
+
+#### Hlavní funkce
+
+Správce záložek, bookmarků a odkazů
+
+* Komplexní správa katalogů záložek
+* Od jednoduchého seznamu až po trojírovňovou hierarchii karet se skupinami, složek a jejich záložek
+* Možnost otevírat záložky ve stejném či novém okně a zkopírovat URL a MD odkaz
+* Načtení a uložení katalogu záložek ze souboru, z repozitáře GitHub (včetně privátních pro vaše vlastní katalogy) a nebo přes rozhraní prohlížeče ChroniumChromium
+* Tagy
+* Uživatelské poznámky k záložce (více poznámek k jedné záložce)
+* Export přehledu celé složky do Markdown
+
+#### Příklady využívání
+
+Katalog veřejných odkazů EGdílny na drese https://shm.to/egodkazy
+
 ## ✏️NSESSS korpus
 
 # Více
@@ -216,8 +286,3 @@ Hlavním tvůrcem jednotlivých nástrojů jsem většinou já, tedy Michal Rada
 
 
 https://www.michalrada.cz
-
-
-
-
-

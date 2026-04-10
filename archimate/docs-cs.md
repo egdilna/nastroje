@@ -5,7 +5,7 @@ Webový editor pro tvorbu a správu architektonických modelů podle standardu A
 ## Online verze a stažení
 
 - **Online verze:** https://egdilna.github.io/nastroje/archimate
-- **GitHub:** https://github.com/egdilna/nastroje
+- **GitHub:** https://github.com/michalradacz/archimate-editor
 
 Na GitHubu najdete:
 - Editor ke stažení jako jeden HTML soubor
@@ -45,10 +45,16 @@ ArchiMate Editor je kompletní nástroj pro modelování podnikové architektury
 
 ### Hlavní vlastnosti
 
+
+Pokročilý editor architektury v jazyce ArchiMate, který může ale sloužit i nearchitektům
+
+
 - **ArchiMate 3.2** - podpora všech 60 typů prvků a 11 typů vazeb s kontrolou validity
 - **Vícejazyčné rozhraní** - čeština a angličtina
 - **Automatické ukládání** - data se ukládají do prohlížeče
-- **Import/export** - formáty AJX (JSON) a ArchiMate Open Exchange XML
+- **Tvorba po katalozích**: Možnost tvořit architekturu přes katalog prvků s jejich vlastnostmi a katalog vazeb, ze kterých se pak sestavují příznaky, packages a diagramy a výstupy
+- **Vizuální modelování**: Vizuální editor diagramů
+- **Import/export** - formáty AJX (JSON) a ArchiMate Open Exchange XML, plná podpora všech rozšíření AJX, diagramy lze exportovat v PNG a SVG, export vygenerovaných textových výstupů podle uživatelských šablon textu
 - **Slučování modelů** - import vybraných částí z jiného modelu
 - **Úkoly** - evidence a sledování úkolů pro rozvoj architektury
 - **Poznámky** - Markdown poznámky s verzováním
@@ -57,9 +63,10 @@ ArchiMate Editor je kompletní nástroj pro modelování podnikové architektury
 - **Diagramy** - vizuální editor s drag & drop a export do SVG/PNG
 - **Hromadné operace** - práce s příznaky (tagy)
 - **Přístupnost** - plně přístupné rozhraní pro odečítače obrazovky
+- **Integrace s GitHub a GIT**: Možnost načíst a ukládat modely a projekty v GIT repozitáři, přístup je zajištěn přes API klíč, takže to bude fungovat i u privátních repos.
 - **DokuWiki integrace** - plugin pro spolupráci v týmu
 
----
+
 
 ## Formát AJX
 
