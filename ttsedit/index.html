@@ -295,6 +295,15 @@
     font-size: 0.78rem;
     color: var(--text-dim);
     min-width: 4rem;
+    flex-shrink: 0;
+  }
+
+  .chunk-duration {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--accent);
+    min-width: 3.5rem;
+    flex-shrink: 0;
   }
 
   .chunk-actions {
@@ -442,13 +451,7 @@
   <header role="banner">
     <h1>TTS Editor</h1>
     <div class="header-controls">
-      <div class="api-row">
-        <label for="api-key-input">API klíč:</label>
-        <input type="password" id="api-key-input" autocomplete="off"
-          placeholder="sk-..." aria-describedby="api-key-hint">
-        <button class="btn-secondary" id="btn-save-key" type="button">Uložit</button>
-        <button class="btn-secondary" id="btn-load-voices" type="button">Načíst hlasy</button>
-      </div>
+      <button class="btn-secondary" id="btn-toggle-settings" type="button" aria-expanded="false" aria-controls="api-settings-panel">⚙ Nastavení</button>
       <div class="voice-row">
         <label for="voice-select">Hlas:</label>
         <select id="voice-select" aria-label="Výběr hlasu pro TTS">
@@ -460,6 +463,15 @@
     </div>
   </header>
 
+  <div id="api-settings-panel" hidden>
+    <div style="background:var(--surface);border-bottom:1px solid var(--border);padding:0.6rem 1.5rem;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+      <label for="api-key-input" style="font-size:0.85rem;color:var(--text-dim);white-space:nowrap;">API klíč ElevenLabs:</label>
+      <input type="password" id="api-key-input" autocomplete="off" placeholder="sk-...">
+      <button class="btn-secondary" id="btn-save-key" type="button">Uložit klíč</button>
+      <button class="btn-secondary" id="btn-load-voices" type="button">Načíst hlasy</button>
+    </div>
+  </div>
+
   <div id="status-bar" role="status" aria-live="polite">
     <span class="status-msg" id="status-msg">Vítejte. Zadejte API klíč a načtěte hlasy.</span>
   </div>
@@ -469,6 +481,7 @@
     <section aria-label="Ovládací panel" id="toolbar">
       <button class="btn-secondary" id="btn-add-chunk" type="button">+ Přidat chunk</button>
       <button class="btn-secondary" id="btn-generate-all" type="button">▶▶ Generovat vše</button>
+      <button class="btn-secondary" id="btn-play-all" type="button">▶ Přehrát vše</button>
       <button class="btn-secondary" id="btn-stop-all" type="button" disabled>■ Zastavit</button>
       <button class="btn-secondary" id="btn-clear-audio" type="button">✕ Smazat všechno audio</button>
       <button class="btn-secondary" id="btn-export" type="button">↓ Exportovat projekt (JSON)</button>
@@ -501,6 +514,7 @@
         Chunky textu
         <span id="chunks-count" aria-live="polite" aria-atomic="true">(0 chunků)</span>
         <span id="chunks-total-chars" style="margin-left:1rem;font-family:'IBM Plex Mono',monospace;">0 znaků celkem</span>
+        <span id="chunks-total-duration" style="margin-left:1rem;font-family:'IBM Plex Mono',monospace;color:var(--accent);"></span>
       </h2>
       <ul id="chunks-list" aria-label="Seznam textových chunků">
         <!-- Chunky se generují dynamicky -->
@@ -551,12 +565,15 @@ const $ = id => document.getElementById(id);
 const apiKeyInput    = $('api-key-input');
 const btnSaveKey     = $('btn-save-key');
 const btnLoadVoices  = $('btn-load-voices');
+const btnToggleSettings = $('btn-toggle-settings');
+const apiSettingsPanel  = $('api-settings-panel');
 const voiceSelect    = $('voice-select');
 const btnPreviewVoice= $('btn-preview-voice');
 const statusMsg      = $('status-msg');
 const srLive         = $('sr-live');
 const btnAddChunk    = $('btn-add-chunk');
 const btnGenerateAll = $('btn-generate-all');
+const btnPlayAll     = $('btn-play-all');
 const btnStopAll     = $('btn-stop-all');
 const btnClearAudio  = $('btn-clear-audio');
 const btnExport      = $('btn-export');
@@ -571,11 +588,33 @@ const btnAddAsOne    = $('btn-add-as-one');
 const chunksList     = $('chunks-list');
 const chunksEmpty    = $('chunks-empty');
 const chunksCount    = $('chunks-count');
-const chunksTotalChars = $('chunks-total-chars');
+const chunksTotalChars    = $('chunks-total-chars');
+const chunksTotalDuration = $('chunks-total-duration');
 const outputTextarea = $('output-textarea');
 const btnCombine     = $('btn-combine');
 const btnCopyOutput  = $('btn-copy-output');
 const btnClearAll    = $('btn-clear-all');
+
+// ─── SETTINGS PANEL TOGGLE ───────────────────────────────────────────────────
+btnToggleSettings.addEventListener('click', () => {
+  const hidden = apiSettingsPanel.hidden;
+  apiSettingsPanel.hidden = !hidden;
+  btnToggleSettings.setAttribute('aria-expanded', String(!hidden));
+  if (!hidden === true) apiKeyInput.focus();
+});
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+function formatDuration(sec) {
+  if (!sec || isNaN(sec)) return '';
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return m > 0 ? `${m}:${String(s).padStart(2,'0')} min` : `${s} s`;
+}
+
+function updateTotalDuration() {
+  const total = state.chunks.reduce((s, c) => s + (c.audioDuration || 0), 0);
+  chunksTotalDuration.textContent = total > 0 ? `/ ${formatDuration(total)} audio` : '';
+}
 
 // ─── STATUS / ANNOUNCE ───────────────────────────────────────────────────────
 function setStatus(msg, type='') {
@@ -753,12 +792,21 @@ async function generateAndPlay(chunkId, text, store) {
         chunk.audioBlob = blob;
         chunk.audioUrl  = url;
         chunk.status    = 'ok';
-        // Update audio element
+        // Update audio element in DOM
         const audioEl = chunkEl?.querySelector('audio');
         if (audioEl) {
           audioEl.src = url;
           chunkEl?.querySelector('.chunk-player')?.removeAttribute('hidden');
         }
+        // Get duration once metadata loaded
+        const tempAudio = new Audio(url);
+        tempAudio.addEventListener('loadedmetadata', () => {
+          chunk.audioDuration = tempAudio.duration;
+          // Update duration display in chunk header
+          const durEl = chunkEl?.querySelector('.chunk-duration');
+          if (durEl) durEl.textContent = formatDuration(tempAudio.duration);
+          updateTotalDuration();
+        });
         setChunkStatus(chunkId, 'ok', '✓ audio OK');
       }
     }
@@ -809,6 +857,7 @@ function makeChunk(text='', id=null) {
     text: text,
     audioBlob: null,
     audioUrl: null,
+    audioDuration: null,
     status: 'none',
     done: false
   };
@@ -911,6 +960,7 @@ function renderChunks() {
   chunksCount.textContent = `(${state.chunks.length} ${pluralChunk(state.chunks.length)})`;
   const totalChars = state.chunks.reduce((s, c) => s + c.text.length, 0);
   chunksTotalChars.textContent = `${totalChars.toLocaleString('cs')} znaků celkem`;
+  updateTotalDuration();
 
   state.chunks.forEach((chunk, idx) => {
     const li = document.createElement('li');
@@ -931,6 +981,11 @@ function renderChunks() {
     charCount.className = 'chunk-charcount';
     charCount.textContent = `${chunk.text.length} zn.`;
     charCount.setAttribute('aria-hidden', 'true');
+
+    const durSpan = document.createElement('span');
+    durSpan.className = 'chunk-duration';
+    durSpan.textContent = chunk.audioDuration ? formatDuration(chunk.audioDuration) : '';
+    durSpan.setAttribute('aria-hidden', 'true');
 
     const btnPlay = makeButton('▷ Přehrát', 'btn-secondary', () => {
       if (!chunk.audioUrl) { announce('Chunk nemá audio. Nejprve generujte.'); return; }
@@ -959,7 +1014,7 @@ function renderChunks() {
     st.textContent = chunk.audioUrl ? '✓ audio OK' : '';
     st.setAttribute('aria-live', 'polite');
 
-    header.append(num, charCount, btnPlay, btnDel, st);
+    header.append(num, charCount, durSpan, btnPlay, btnDel, st);
 
     // Body
     const body = document.createElement('div');
@@ -1145,6 +1200,47 @@ btnPasteImport.addEventListener('click', async () => {
 });
 
 btnAddChunk.addEventListener('click', () => addChunk(''));
+
+// ─── PLAY ALL ────────────────────────────────────────────────────────────────
+btnPlayAll.addEventListener('click', async () => {
+  const withAudio = state.chunks.filter(c => c.audioUrl);
+  if (!withAudio.length) {
+    setStatus('Žádné chunky s audiem k přehrání.', 'error');
+    announce('Žádné chunky s audiem k přehrání.');
+    return;
+  }
+  state.stopRequested = false;
+  btnStopAll.disabled = false;
+  btnPlayAll.disabled = true;
+
+  for (let i = 0; i < withAudio.length; i++) {
+    if (state.stopRequested) break;
+    const c = withAudio[i];
+    const chunkEl = document.querySelector(`[data-chunk-id="${c.id}"]`);
+    stopCurrentAudio();
+    const audio = new Audio(c.audioUrl);
+    state.currentAudio = audio;
+    if (chunkEl) chunkEl.classList.add('is-playing');
+    setChunkStatus(c.id, 'playing', '▶ přehrávám');
+    setStatus(`Přehrávám chunk ${state.chunks.indexOf(c) + 1} / ${withAudio.length}…`, 'info');
+    announce(`Chunk ${state.chunks.indexOf(c) + 1}.`);
+    audio.play().catch(e => setStatus(`Přehrávání selhalo: ${e.message}`, 'error'));
+    await new Promise(resolve => {
+      const done = () => { audio.removeEventListener('ended', done); audio.removeEventListener('error', done); resolve(); };
+      audio.addEventListener('ended', done);
+      audio.addEventListener('error', done);
+    });
+    if (chunkEl) chunkEl.classList.remove('is-playing');
+    setChunkStatus(c.id, 'ok', '✓ audio OK');
+    if (state.currentAudio === audio) state.currentAudio = null;
+  }
+
+  btnStopAll.disabled = true;
+  btnPlayAll.disabled = false;
+  const msg = state.stopRequested ? 'Přehrávání zastaveno.' : 'Přehrávání dokončeno.';
+  setStatus(msg, 'ok');
+  announce(msg);
+});
 
 // ─── GENERATE ALL ─────────────────────────────────────────────────────────────
 btnGenerateAll.addEventListener('click', async () => {
