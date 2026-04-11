@@ -1247,6 +1247,7 @@ function renderNoteView(noteId) {
   if (n.noteType === "vfolder") { renderVFolderNoteView(noteId); return; }
   if (n.noteType === "database") { renderDbNoteView(noteId); return; }
   if (n.noteType === "diagram") { renderDiagramNoteView(noteId); return; }
+  if (n.noteType === "journal") { renderJournalNoteView(noteId); return; }
 
   var tb = document.getElementById("toolbar");
   var tbH = "";
@@ -2254,7 +2255,7 @@ function renderVFolderNoteView(noteId) {
       var vn = getNote(ids[vi]);
       if (!vn) continue;
       var mod = vn.modified ? new Date(vn.modified).toLocaleDateString("cs") : "";
-      var tLabel = vn.noteType === "task" ? "Úkol" : vn.noteType === "file" ? "Soubor" : vn.noteType === "iframe" ? "Web" : vn.noteType === "vfolder" ? "V.složka" : vn.noteType === "database" ? "Databáze" : vn.noteType === "diagram" ? "Diagram" : "Poznámka";
+      var tLabel = vn.noteType === "task" ? "Úkol" : vn.noteType === "file" ? "Soubor" : vn.noteType === "iframe" ? "Web" : vn.noteType === "vfolder" ? "V.složka" : vn.noteType === "database" ? "Databáze" : vn.noteType === "diagram" ? "Diagram" : vn.noteType === "journal" ? "Deník" : "Poznámka";
       var mTyp = getMetaValue(vn, "Typ");
       var mStav = getMetaValue(vn, "Stav");
       h += "<tr>";
@@ -3034,6 +3035,214 @@ function deleteDiagramVersion(noteId, idx) {
   showDiagramVersions(noteId);
 }
 
+// ===== JOURNAL NOTE (Deník) =====
+var JRNL_DAYS = ["neděle","pondělí","úterý","středa","čtvrtek","pátek","sobota"];
+var JRNL_MONTHS = ["ledna","února","března","dubna","května","června","července","srpna","září","října","listopadu","prosince"];
+
+function jrnlFormatDate(dateStr) {
+  var d = new Date(dateStr);
+  return JRNL_DAYS[d.getDay()] + " " + d.getDate() + ". " + JRNL_MONTHS[d.getMonth()] + " " + d.getFullYear();
+}
+
+function jrnlFormatTime(dateStr) {
+  var d = new Date(dateStr);
+  return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
+}
+
+function jrnlDateKey(dateStr) {
+  var d = new Date(dateStr);
+  return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2);
+}
+
+function jrnlSorted(entries, dir) {
+  return entries.slice().sort(function(a, b) {
+    var cmp = a.date.localeCompare(b.date);
+    return dir === "desc" ? -cmp : cmp;
+  });
+}
+
+function jrnlGroupByDate(sorted) {
+  var groups = [], cur = null;
+  for (var i = 0; i < sorted.length; i++) {
+    var key = jrnlDateKey(sorted[i].date);
+    if (!cur || cur.key !== key) {
+      cur = { key: key, label: jrnlFormatDate(sorted[i].date), entries: [] };
+      groups.push(cur);
+    }
+    cur.entries.push(sorted[i]);
+  }
+  return groups;
+}
+
+function renderJournalNoteView(noteId) {
+  var n = getNote(noteId);
+  if (!n || !n.journalData) return;
+  var jd = n.journalData;
+  var entries = jd.entries || [];
+  var dir = jd.sortDir || "asc";
+
+  var tb = document.getElementById("toolbar");
+  var tbH = "";
+  var bmCls = n.bookmarked ? "bm-star active" : "bm-star";
+  tbH += '<button class="' + bmCls + '" onclick="toggleBookmark(\'' + noteId + '\')" accesskey="b" title="Oblíbené (Alt+B)">Oblíbené<span class="ak">B</span></button>';
+  tbH += '<button class="sm primary" onclick="dlgJrnlAddEntry(\'' + noteId + '\')">Přidat záznam</button>';
+  tbH += '<button class="sm" onclick="dlgJrnlEditEntries(\'' + noteId + '\')">Upravit záznamy</button>';
+  tbH += '<button class="sm" onclick="jrnlToggleSort(\'' + noteId + '\')">' + (dir === "asc" ? "Nejstarší &#9650;" : "Nejnovější &#9660;") + '</button>';
+  tbH += '<button class="sm" onclick="dlgRenameNote(\'' + noteId + '\')">Přejmenovat</button>';
+  tbH += '<button class="sm" onclick="dlgNoteTags(\'' + noteId + '\')">Štítky</button>';
+  tbH += '<button class="sm" onclick="dlgNoteMeta(\'' + noteId + '\')" accesskey="m">Metadata<span class="ak">M</span></button>';
+  tbH += '<button class="sm" onclick="dlgMoveNote(\'' + noteId + '\')">Přesunout</button>';
+  tbH += '<span class="sep"></span>';
+  tbH += '<button class="sm danger" onclick="dlgDeleteNote(\'' + noteId + '\')">Smazat</button>';
+  tb.innerHTML = tbH;
+
+  var vw = document.getElementById("view");
+  var h = '<div id="crumb">' + breadcrumb(n.folderId) + "</div>";
+  h += renderVFolderMemberships(noteId);
+  h += '<h6 style="margin:0 0 4px;font-size:.72rem;text-transform:uppercase;color:var(--text2);letter-spacing:.5px">Deník</h6>';
+  h += "<h1>" + (n.icon || "&#128214;") + " " + esc(n.name) + "</h1>";
+
+  if (n.tags && n.tags.length) {
+    h += '<div style="margin:6px 0 12px">';
+    for (var i = 0; i < n.tags.length; i++) {
+      h += '<span style="background:var(--tag-bg);padding:2px 8px;border-radius:10px;font-size:.78rem;color:var(--accent);margin-right:4px">' + esc(n.tags[i]) + "</span>";
+    }
+    h += "</div>";
+  }
+
+  if (entries.length === 0) {
+    h += '<div class="empty">Deník je prázdný. Klikněte na <strong>Přidat záznam</strong>.</div>';
+  } else {
+    h += '<div style="font-size:.82rem;color:var(--text2);margin:4px 0 8px">' + entries.length + ' záznamů</div>';
+    h += renderJournalList(entries, dir);
+  }
+
+  // Backlinks
+  var bl = findBacklinks(noteId);
+  if (bl.links.length > 0) {
+    h += '<div class="backlinks"><h3>&#8617; Odkazuje sem</h3><ul>';
+    for (var li = 0; li < bl.links.length; li++) {
+      var bn = getNote(bl.links[li]);
+      if (bn) h += '<li><a href="#" onclick="openNote(\'' + bn.id + '\');return false">' + (bn.icon || "&#128221;") + " " + esc(bn.name) + "</a></li>";
+    }
+    h += "</ul></div>";
+  }
+
+  vw.innerHTML = h;
+}
+
+function renderJournalList(entries, dir) {
+  var sorted = jrnlSorted(entries, dir);
+  var groups = jrnlGroupByDate(sorted);
+  var h = '<ul style="list-style:disc;padding-left:1.4em;margin:8px 0">';
+  for (var gi = 0; gi < groups.length; gi++) {
+    var g = groups[gi];
+    h += '<li style="margin:8px 0"><strong>' + esc(g.label) + '</strong>';
+    h += '<ul style="list-style:circle;padding-left:1.4em;margin:4px 0">';
+    for (var ei = 0; ei < g.entries.length; ei++) {
+      var e = g.entries[ei];
+      h += '<li style="margin:3px 0"><strong>' + jrnlFormatTime(e.date) + '</strong> ' + esc(e.text) + '</li>';
+    }
+    h += '</ul></li>';
+  }
+  h += '</ul>';
+  return h;
+}
+
+function renderJournalInclude(note) {
+  var jd = note.journalData || {};
+  var entries = jd.entries || [];
+  if (entries.length === 0) return '<em>[Deník: ' + esc(note.name) + ' (prázdný)]</em>';
+  return renderJournalList(entries, "asc");
+}
+
+function dlgJrnlAddEntry(noteId) {
+  var n = getNote(noteId);
+  if (!n || !n.journalData) return;
+  var nowDt = new Date();
+  var dtVal = nowDt.getFullYear() + "-" + ("0" + (nowDt.getMonth() + 1)).slice(-2) + "-" + ("0" + nowDt.getDate()).slice(-2) + "T" + ("0" + nowDt.getHours()).slice(-2) + ":" + ("0" + nowDt.getMinutes()).slice(-2);
+  var h = '<label>Datum a čas:</label><input id="dlg-jrnl-dt" type="datetime-local" value="' + dtVal + '">';
+  h += '<label>Text záznamu:</label><textarea id="dlg-jrnl-text" rows="4" placeholder="Text záznamu..."></textarea>';
+  showDialog("Přidat záznam do deníku", h, function() {
+    var dt = document.getElementById("dlg-jrnl-dt").value;
+    var text = document.getElementById("dlg-jrnl-text").value.trim();
+    if (!dt || !text) return alert("Vyplňte datum a text.");
+    n.journalData.entries.push({ id: genId(), date: dt, text: text });
+    n.modified = now();
+    closeDialog();
+    renderNoteView(noteId);
+    dbg("Záznam přidán do deníku");
+  });
+}
+
+function dlgJrnlEditEntries(noteId) {
+  var n = getNote(noteId);
+  if (!n || !n.journalData) return;
+
+  var tb = document.getElementById("toolbar");
+  tb.innerHTML = '<button class="sm" onclick="renderNoteView(\'' + noteId + '\')">Zpět</button> <button class="sm primary" onclick="dlgJrnlAddEntry(\'' + noteId + '\')">Přidat záznam</button>';
+
+  var vw = document.getElementById("view");
+  var entries = jrnlSorted(n.journalData.entries || [], "desc");
+  var h = '<h6 style="margin:0 0 4px;font-size:.72rem;text-transform:uppercase;color:var(--text2);letter-spacing:.5px">Úprava záznamů</h6>';
+  h += '<h2 style="margin:0 0 12px;font-size:1.05rem">' + esc(n.name) + ' — ' + entries.length + ' záznamů</h2>';
+
+  if (entries.length === 0) {
+    h += '<div class="empty">Žádné záznamy.</div>';
+  } else {
+    h += '<table class="tbl"><thead><tr><th>Datum a čas</th><th>Text</th><th>Akce</th></tr></thead><tbody>';
+    for (var i = 0; i < entries.length; i++) {
+      var e = entries[i];
+      var dt = e.date ? new Date(e.date).toLocaleString("cs") : "";
+      h += '<tr><td style="white-space:nowrap">' + dt + '</td>';
+      h += '<td>' + esc(e.text) + '</td>';
+      h += '<td style="white-space:nowrap">';
+      h += '<button class="sm" onclick="dlgJrnlEditEntry(\'' + noteId + '\',\'' + e.id + '\')">Upravit</button> ';
+      h += '<button class="sm danger" onclick="jrnlDeleteEntry(\'' + noteId + '\',\'' + e.id + '\')">Smazat</button>';
+      h += '</td></tr>';
+    }
+    h += '</tbody></table>';
+  }
+  vw.innerHTML = h;
+}
+
+function dlgJrnlEditEntry(noteId, entryId) {
+  var n = getNote(noteId);
+  if (!n || !n.journalData) return;
+  var entry = null;
+  for (var i = 0; i < n.journalData.entries.length; i++) {
+    if (n.journalData.entries[i].id === entryId) { entry = n.journalData.entries[i]; break; }
+  }
+  if (!entry) return;
+  var h = '<label>Datum a čas:</label><input id="dlg-jrnl-dt" type="datetime-local" value="' + esc(entry.date || "") + '">';
+  h += '<label>Text záznamu:</label><textarea id="dlg-jrnl-text" rows="4">' + esc(entry.text || "") + '</textarea>';
+  showDialog("Upravit záznam", h, function() {
+    entry.date = document.getElementById("dlg-jrnl-dt").value;
+    entry.text = document.getElementById("dlg-jrnl-text").value.trim();
+    n.modified = now();
+    closeDialog();
+    dlgJrnlEditEntries(noteId);
+    dbg("Záznam upraven");
+  });
+}
+
+function jrnlDeleteEntry(noteId, entryId) {
+  var n = getNote(noteId);
+  if (!n || !n.journalData) return;
+  if (!confirm("Smazat tento záznam?")) return;
+  n.journalData.entries = n.journalData.entries.filter(function(e) { return e.id !== entryId; });
+  n.modified = now();
+  dlgJrnlEditEntries(noteId);
+  dbg("Záznam smazán");
+}
+
+function jrnlToggleSort(noteId) {
+  var n = getNote(noteId);
+  if (!n || !n.journalData) return;
+  n.journalData.sortDir = (n.journalData.sortDir || "asc") === "asc" ? "desc" : "asc";
+  renderNoteView(noteId);
+}
+
 // ===== SECTION EDIT =====
 function toggleSectionEdit() {
   SEDIT = !SEDIT;
@@ -3176,6 +3385,7 @@ function editNote(noteId) {
   if (n.noteType === "vfolder") return;
   if (n.noteType === "database") return;
   if (n.noteType === "diagram") return;
+  if (n.noteType === "journal") return;
 
   document.getElementById("toolbar").innerHTML = "";
   var vw = document.getElementById("view");
@@ -3287,6 +3497,7 @@ function renderMarkdown(src, noteId, depth, seen) {
     if (inc.noteType === "vfolder") return renderVFolderInclude(inc);
     if (inc.noteType === "database") return renderDbInclude(inc);
     if (inc.noteType === "diagram") return renderDiagramInclude(inc);
+    if (inc.noteType === "journal") return renderJournalInclude(inc);
     var newSeen = {}; for (var k in seen) newSeen[k] = true; newSeen[inc.id] = true;
     return renderMarkdown(inc.content || "", inc.id, depth + 1, newSeen);
   });
@@ -3444,7 +3655,7 @@ function dlgNewNote(folderId) {
   if (!BD) { newBlock(); return; }
   var fid = folderId || (CUR.type === "folder" ? CUR.id : "") || "";
   var h = '<label>Název poznámky:</label><input id="dlg-name" placeholder="Název">';
-  h += '<label>Typ:</label><select id="dlg-ntype"><option value="note">Textová poznámka</option><option value="file">Soubor (správa verzí)</option><option value="task">Úkol</option><option value="iframe">Webová stránka (iframe)</option><option value="vfolder">Virtuální složka</option><option value="database">Databáze</option><option value="diagram">Diagram (PlantUML)</option></select>';
+  h += '<label>Typ:</label><select id="dlg-ntype"><option value="note">Textová poznámka</option><option value="file">Soubor (správa verzí)</option><option value="task">Úkol</option><option value="iframe">Webová stránka (iframe)</option><option value="vfolder">Virtuální složka</option><option value="database">Databáze</option><option value="diagram">Diagram (PlantUML)</option><option value="journal">Deník</option></select>';
   h += folderSelectHTML(fid, null, "Složka");
   h += emojiPickerHTML(getEmojis()[0] || "");
   showDialog("Nová poznámka", h, function() {
@@ -3460,6 +3671,7 @@ function dlgNewNote(folderId) {
     if (ntype === "iframe") { n.noteType = "iframe"; n.iframeUrl = ""; }
     if (ntype === "vfolder") { n.noteType = "vfolder"; n.vfolderData = { description: "", noteIds: [] }; }
     if (ntype === "database") { n.noteType = "database"; n.dbData = { fields: [], records: [] }; }
+    if (ntype === "journal") { n.noteType = "journal"; n.journalData = { entries: [], sortDir: "asc" }; }
     if (ntype === "diagram") { n.noteType = "diagram"; n.diagramData = { name: "", source: "@startuml\n\n@enduml", encoded: "" }; }
     BD.notes.push(n);
     closeDialog();
@@ -6292,6 +6504,7 @@ var eiMod = {
         if (n.vfolderData) obj.vfolderData = JSON.parse(JSON.stringify(n.vfolderData));
         if (n.dbData) obj.dbData = JSON.parse(JSON.stringify(n.dbData));
         if (n.diagramData) obj.diagramData = JSON.parse(JSON.stringify(n.diagramData));
+        if (n.journalData) obj.journalData = JSON.parse(JSON.stringify(n.journalData));
         if (n.tags && n.tags.length) obj.tags = n.tags.slice();
         if (n.icon) obj.icon = n.icon;
         if (n.bookmarked) obj.bookmarked = true;
@@ -6537,7 +6750,7 @@ var eiMod = {
                 if (it.noteType) notes[j].noteType = it.noteType;
                 if (it.fileVersions) notes[j].fileVersions = JSON.parse(JSON.stringify(it.fileVersions));
                 if (it.taskData) notes[j].taskData = JSON.parse(JSON.stringify(it.taskData));
-                if (it.iframeUrl !== undefined) notes[j].iframeUrl = it.iframeUrl; if (it.vfolderData) notes[j].vfolderData = JSON.parse(JSON.stringify(it.vfolderData)); if (it.dbData) notes[j].dbData = JSON.parse(JSON.stringify(it.dbData)); if (it.diagramData) notes[j].diagramData = JSON.parse(JSON.stringify(it.diagramData));
+                if (it.iframeUrl !== undefined) notes[j].iframeUrl = it.iframeUrl; if (it.vfolderData) notes[j].vfolderData = JSON.parse(JSON.stringify(it.vfolderData)); if (it.dbData) notes[j].dbData = JSON.parse(JSON.stringify(it.dbData)); if (it.diagramData) notes[j].diagramData = JSON.parse(JSON.stringify(it.diagramData)); if (it.journalData) notes[j].journalData = JSON.parse(JSON.stringify(it.journalData));
                 notes[j].modified = now();
                 break;
               }
@@ -6572,6 +6785,7 @@ var eiMod = {
     if (data.vfolderData) note.vfolderData = JSON.parse(JSON.stringify(data.vfolderData));
     if (data.dbData) note.dbData = JSON.parse(JSON.stringify(data.dbData));
     if (data.diagramData) note.diagramData = JSON.parse(JSON.stringify(data.diagramData));
+    if (data.journalData) note.journalData = JSON.parse(JSON.stringify(data.journalData));
     BD.notes.push(note);
   },
   _uniqueFolderName: function(name, parentId) {
