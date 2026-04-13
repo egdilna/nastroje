@@ -470,6 +470,7 @@
   }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
 </head>
 <body>
 <a href="#chunks-list" class="skip-link">Přeskočit na seznam chunků</a>
@@ -522,6 +523,7 @@
       <button class="btn-secondary" id="btn-import-project" type="button">↑ Importovat projekt (JSON)</button>
       <button class="btn-secondary" id="btn-download-all-audio" type="button">↓ Stáhnout všechna MP3 (ZIP)</button>
       <button class="btn-secondary" id="btn-merge-audio" type="button">↓ Spojit a stáhnout (WAV)</button>
+      <button class="btn-secondary" id="btn-merge-mp3" type="button">↓ Spojit a stáhnout (MP3)</button>
       <input type="file" id="file-input" accept=".json" style="display:none" aria-hidden="true">
     </section>
 
@@ -615,6 +617,7 @@ const btnExport      = $('btn-export');
 const btnImportProj  = $('btn-import-project');
 const btnDownloadAllAudio = $('btn-download-all-audio');
 const btnMergeAudio       = $('btn-merge-audio');
+const btnMergeMp3         = $('btn-merge-mp3');
 const fileInput      = $('file-input');
 const importTextarea = $('import-textarea');
 const btnSplitAdd    = $('btn-split-add');
@@ -1552,6 +1555,102 @@ function encodeWAV(buffer) {
 
   return new Blob([ab], { type: 'audio/wav' });
 }
+
+// ─── MERGE ALL AUDIO TO MP3 ───────────────────────────────────────────────────
+btnMergeMp3.addEventListener('click', async () => {
+  const withAudio = state.chunks.filter(c => c.audioBlob);
+  if (!withAudio.length) {
+    setStatus('Žádné vygenerované audio ke spojení.', 'error');
+    announce('Žádné vygenerované audio ke spojení.');
+    return;
+  }
+  if (!window.lamejs) {
+    setStatus('Knihovna lamejs se nenačetla. Zkontrolujte připojení k internetu.', 'error');
+    return;
+  }
+  btnMergeMp3.disabled = true;
+  setStatus(`Spojuji ${withAudio.length} audio souborů do MP3…`, 'info');
+
+  try {
+    const actx = new AudioContext();
+
+    // Dekóduj všechny bloby
+    const buffers = [];
+    for (let i = 0; i < withAudio.length; i++) {
+      setStatus(`Dekóduji chunk ${i + 1} / ${withAudio.length}…`, 'info');
+      const arrayBuf = await withAudio[i].audioBlob.arrayBuffer();
+      const decoded = await actx.decodeAudioData(arrayBuf);
+      buffers.push(decoded);
+    }
+
+    const sampleRate  = buffers[0].sampleRate;
+    const numChannels = Math.min(2, Math.max(...buffers.map(b => b.numberOfChannels)));
+    const totalLength = buffers.reduce((s, b) => s + b.length, 0);
+
+    // Spoj do jednoho Float32 pole na kanál
+    const merged = [];
+    for (let ch = 0; ch < numChannels; ch++) {
+      merged.push(new Float32Array(totalLength));
+    }
+    let offset = 0;
+    for (const buf of buffers) {
+      for (let ch = 0; ch < numChannels; ch++) {
+        const src = ch < buf.numberOfChannels ? buf.getChannelData(ch) : buf.getChannelData(0);
+        merged[ch].set(src, offset);
+      }
+      offset += buf.length;
+    }
+    actx.close();
+
+    setStatus('Kóduji MP3…', 'info');
+
+    // Převeď Float32 → Int16 pro lamejs
+    function toInt16(float32) {
+      const int16 = new Int16Array(float32.length);
+      for (let i = 0; i < float32.length; i++) {
+        const s = Math.max(-1, Math.min(1, float32[i]));
+        int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      }
+      return int16;
+    }
+
+    const kbps = 128;
+    const encoder = numChannels === 2
+      ? new lamejs.Mp3Encoder(2, sampleRate, kbps)
+      : new lamejs.Mp3Encoder(1, sampleRate, kbps);
+
+    const leftInt16  = toInt16(merged[0]);
+    const rightInt16 = numChannels === 2 ? toInt16(merged[1]) : null;
+
+    const mp3Chunks = [];
+    const blockSize = 1152; // lamejs block size
+
+    for (let i = 0; i < leftInt16.length; i += blockSize) {
+      const left  = leftInt16.subarray(i, i + blockSize);
+      const right = rightInt16 ? rightInt16.subarray(i, i + blockSize) : null;
+      const encoded = right ? encoder.encodeBuffer(left, right) : encoder.encodeBuffer(left);
+      if (encoded.length > 0) mp3Chunks.push(new Int8Array(encoded));
+    }
+    const flushed = encoder.flush();
+    if (flushed.length > 0) mp3Chunks.push(new Int8Array(flushed));
+
+    const mp3Blob = new Blob(mp3Chunks, { type: 'audio/mp3' });
+    const url = URL.createObjectURL(mp3Blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tts-spojeno-${new Date().toISOString().slice(0,10)}.mp3`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    const durTotal = formatDuration(totalLength / sampleRate);
+    setStatus(`Spojený MP3 stažen (${durTotal}, ${Math.round(mp3Blob.size / 1024)} KB).`, 'ok');
+    announce(`Spojený MP3 soubor stažen, délka ${durTotal}.`);
+  } catch(e) {
+    setStatus(`Chyba při kódování MP3: ${e.message}`, 'error');
+  } finally {
+    btnMergeMp3.disabled = false;
+  }
+});
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 loadFromStorage();
