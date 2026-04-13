@@ -521,6 +521,7 @@
       <button class="btn-secondary" id="btn-export" type="button">↓ Exportovat projekt (JSON)</button>
       <button class="btn-secondary" id="btn-import-project" type="button">↑ Importovat projekt (JSON)</button>
       <button class="btn-secondary" id="btn-download-all-audio" type="button">↓ Stáhnout všechna MP3 (ZIP)</button>
+      <button class="btn-secondary" id="btn-merge-audio" type="button">↓ Spojit a stáhnout (WAV)</button>
       <input type="file" id="file-input" accept=".json" style="display:none" aria-hidden="true">
     </section>
 
@@ -613,6 +614,7 @@ const btnClearAudio  = $('btn-clear-audio');
 const btnExport      = $('btn-export');
 const btnImportProj  = $('btn-import-project');
 const btnDownloadAllAudio = $('btn-download-all-audio');
+const btnMergeAudio       = $('btn-merge-audio');
 const fileInput      = $('file-input');
 const importTextarea = $('import-textarea');
 const btnSplitAdd    = $('btn-split-add');
@@ -1445,6 +1447,111 @@ btnDownloadAllAudio.addEventListener('click', async () => {
     btnDownloadAllAudio.disabled = false;
   }
 });
+
+// ─── MERGE ALL AUDIO TO WAV ───────────────────────────────────────────────────
+btnMergeAudio.addEventListener('click', async () => {
+  const withAudio = state.chunks.filter(c => c.audioBlob);
+  if (!withAudio.length) {
+    setStatus('Žádné vygenerované audio ke spojení.', 'error');
+    announce('Žádné vygenerované audio ke spojení.');
+    return;
+  }
+  btnMergeAudio.disabled = true;
+  setStatus(`Spojuji ${withAudio.length} audio souborů…`, 'info');
+
+  try {
+    const actx = new AudioContext();
+
+    // Dekóduj všechny bloby na AudioBuffer
+    const buffers = [];
+    for (let i = 0; i < withAudio.length; i++) {
+      setStatus(`Dekóduji chunk ${i + 1} / ${withAudio.length}…`, 'info');
+      const arrayBuf = await withAudio[i].audioBlob.arrayBuffer();
+      const decoded = await actx.decodeAudioData(arrayBuf);
+      buffers.push(decoded);
+    }
+
+    // Zjisti parametry výsledného bufferu
+    const sampleRate = buffers[0].sampleRate;
+    const numChannels = Math.max(...buffers.map(b => b.numberOfChannels));
+    const totalLength = buffers.reduce((s, b) => s + b.length, 0);
+
+    // Vytvoř výsledný buffer a zkopíruj data
+    const merged = actx.createBuffer(numChannels, totalLength, sampleRate);
+    let offset = 0;
+    for (const buf of buffers) {
+      for (let ch = 0; ch < numChannels; ch++) {
+        const src = ch < buf.numberOfChannels
+          ? buf.getChannelData(ch)
+          : buf.getChannelData(0); // mono → stereo fallback
+        merged.getChannelData(ch).set(src, offset);
+      }
+      offset += buf.length;
+    }
+
+    actx.close();
+
+    // Zakóduj jako WAV
+    const wavBlob = encodeWAV(merged);
+    const url = URL.createObjectURL(wavBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tts-spojeno-${new Date().toISOString().slice(0,10)}.wav`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    const durTotal = formatDuration(totalLength / sampleRate);
+    setStatus(`Spojený WAV stažen (${durTotal}).`, 'ok');
+    announce(`Spojený audio soubor stažen, délka ${durTotal}.`);
+  } catch(e) {
+    setStatus(`Chyba při spojování audia: ${e.message}`, 'error');
+  } finally {
+    btnMergeAudio.disabled = false;
+  }
+});
+
+function encodeWAV(buffer) {
+  const numChannels = buffer.numberOfChannels;
+  const sampleRate  = buffer.sampleRate;
+  const numSamples  = buffer.length;
+  const bytesPerSample = 2; // 16-bit PCM
+  const blockAlign  = numChannels * bytesPerSample;
+  const byteRate    = sampleRate * blockAlign;
+  const dataSize    = numSamples * blockAlign;
+  const ab = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(ab);
+
+  function writeStr(off, str) {
+    for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i));
+  }
+  writeStr(0,  'RIFF');
+  view.setUint32(4,  36 + dataSize, true);
+  writeStr(8,  'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);          // PCM chunk size
+  view.setUint16(20, 1,  true);          // PCM format
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate,  true);
+  view.setUint32(28, byteRate,    true);
+  view.setUint16(32, blockAlign,  true);
+  view.setUint16(34, 16,          true); // bits per sample
+  writeStr(36, 'data');
+  view.setUint32(40, dataSize, true);
+
+  // Interleave channels as 16-bit PCM
+  let off = 44;
+  const channels = [];
+  for (let ch = 0; ch < numChannels; ch++) channels.push(buffer.getChannelData(ch));
+  for (let i = 0; i < numSamples; i++) {
+    for (let ch = 0; ch < numChannels; ch++) {
+      const s = Math.max(-1, Math.min(1, channels[ch][i]));
+      view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      off += 2;
+    }
+  }
+
+  return new Blob([ab], { type: 'audio/wav' });
+}
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 loadFromStorage();
