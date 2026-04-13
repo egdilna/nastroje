@@ -970,22 +970,99 @@ function computeOffsets() {
 }
 
 // ============================================================
-// Safari-compatible decodeAudioData wrapper
-// Safari pouziva starsi callback API - promise syntaxe tam pada s EncodingError
+// Decode audio – robustni pro iOS Safari
 // ============================================================
-function safeDecode(ctx, arrayBuffer) {
+
+// Hlavni dekovaci funkce:
+// 1. Zkusi standardni decodeAudioData (callback forma)
+// 2. Pri selhani pouzije HTMLAudioElement + OfflineAudioContext workaround (iOS Safari M4A fix)
+async function safeDecode(arrayBuffer, mimeHint) {
+  const ctx = getAudioContext();
+
+  // Nejdriv zkus standardni cestu – callback API (Safari kompatibilni)
+  try {
+    const buf = await new Promise((resolve, reject) => {
+      ctx.decodeAudioData(arrayBuffer.slice(0), resolve, reject);
+    });
+    return buf;
+  } catch(e) {
+    // decodeAudioData selhal – zkusime HTMLAudioElement fallback (iOS Safari M4A)
+  }
+
+  // Fallback: HTMLAudioElement -> OfflineAudioContext rendering
+  // Funguje pro M4A/AAC v iOS Safari kde decodeAudioData pada
   return new Promise((resolve, reject) => {
-    ctx.decodeAudioData(arrayBuffer, resolve, reject);
+    const mime = mimeHint || 'audio/mp4';
+    const blob = new Blob([arrayBuffer], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio();
+    audio.preload = 'auto';
+    let resolved = false;
+
+    const cleanup = () => { try { URL.revokeObjectURL(url); } catch(e) {} };
+
+    const doRender = async () => {
+      if (resolved) return;
+      resolved = true;
+      try {
+        const duration = audio.duration;
+        if (!isFinite(duration) || duration <= 0) {
+          cleanup();
+          reject(new Error('Nelze zjistit delku souboru.'));
+          return;
+        }
+        const sampleRate = ctx.sampleRate;
+        const channels = 2;
+        const totalSamples = Math.ceil(duration * sampleRate);
+        const offline = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(channels, totalSamples, sampleRate);
+
+        const blob2 = new Blob([arrayBuffer], { type: mime });
+        const url2 = URL.createObjectURL(blob2);
+        const audio2 = new Audio();
+        audio2.src = url2;
+        audio2.preload = 'auto';
+        await new Promise((res, rej) => {
+          audio2.addEventListener('canplaythrough', res, { once: true });
+          audio2.addEventListener('error', rej, { once: true });
+          audio2.load();
+        });
+        const source = offline.createMediaElementSource(audio2);
+        source.connect(offline.destination);
+        audio2.play().catch(() => {});
+        const rendered = await offline.startRendering();
+        URL.revokeObjectURL(url2);
+        cleanup();
+        resolve(rendered);
+      } catch(err) {
+        cleanup();
+        reject(err);
+      }
+    };
+
+    audio.addEventListener('error', () => {
+      cleanup();
+      reject(new Error('Nepodporovany format nebo poskozeny soubor.'));
+    });
+    audio.addEventListener('canplaythrough', doRender, { once: true });
+    audio.addEventListener('loadedmetadata', () => {
+      // iOS Safari casto spusti loadedmetadata ale ne canplaythrough – zkusime po kratke pauze
+      setTimeout(() => { if (!resolved && isFinite(audio.duration)) doRender(); }, 300);
+    }, { once: true });
+
+    audio.src = url;
+    audio.load();
   });
 }
 
 // ============================================================
-// Decode audio
+// Decode audio region (s cache)
 // ============================================================
 async function decodeRegion(region) {
   if (bufferCache[region.id]) return bufferCache[region.id];
-  const ctx = getAudioContext();
-  const buf = await safeDecode(ctx, region.audioData.slice(0));
+  const ext = (region.fileName || '').split('.').pop().toLowerCase();
+  const mimeMap = { mp3: 'audio/mpeg', ogg: 'audio/ogg', wav: 'audio/wav', m4a: 'audio/mp4', mp4: 'audio/mp4' };
+  const mime = mimeMap[ext] || 'audio/mp4';
+  const buf = await safeDecode(region.audioData, mime);
   bufferCache[region.id] = buf;
   region.duration = buf.duration;
   return buf;
@@ -998,8 +1075,10 @@ async function loadAudioFile(file, insertAfterIndex) {
   setStatus(t('status.loading'));
   try {
     const arrayBuffer = await file.arrayBuffer();
-    const ctx = getAudioContext();
-    const audioBuf = await safeDecode(ctx, arrayBuffer.slice(0));
+    const ext = file.name.split('.').pop().toLowerCase();
+    const mimeMap = { mp3: 'audio/mpeg', ogg: 'audio/ogg', wav: 'audio/wav', m4a: 'audio/mp4', mp4: 'audio/mp4' };
+    const mime = mimeMap[ext] || file.type || 'audio/mp4';
+    const audioBuf = await safeDecode(arrayBuffer, mime);
     const baseName = file.name.replace(/\.[^.]+$/, '');
     const name = safeName(baseName);
 
