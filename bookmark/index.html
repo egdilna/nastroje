@@ -1229,6 +1229,58 @@ function uid() {
 function ghEncode(path) { return btoa(unescape(encodeURIComponent(path))); }
 function ghDecode(encoded) { return decodeURIComponent(escape(atob(encoded))); }
 
+// ===================== VIEW URL PARAM =====================
+// view parametr: base64("group:gid") nebo base64("folder:gid:fid") nebo base64("tag:nazevtagu")
+function viewEncode(obj) {
+  var s;
+  if (obj.type === 'group')  s = 'group:'  + obj.gid;
+  if (obj.type === 'folder') s = 'folder:' + obj.gid + ':' + obj.fid;
+  if (obj.type === 'tag')    s = 'tag:'    + obj.tag;
+  return btoa(unescape(encodeURIComponent(s)));
+}
+
+function viewDecode(encoded) {
+  var s = decodeURIComponent(escape(atob(encoded)));
+  if (s.startsWith('group:'))  return { type: 'group',  gid: s.slice(6) };
+  if (s.startsWith('folder:')) { var p = s.slice(7).split(':'); return { type: 'folder', gid: p[0], fid: p[1] }; }
+  if (s.startsWith('tag:'))    return { type: 'tag',    tag: s.slice(4) };
+  return null;
+}
+
+function buildViewUrl(viewObj) {
+  var base = location.href.split('?')[0];
+  var params = new URLSearchParams(location.search);
+  params.set('view', viewEncode(viewObj));
+  return base + '?' + params.toString();
+}
+
+function applyViewParam(viewObj) {
+  if (!viewObj) return;
+  if (viewObj.type === 'group') {
+    var g = appData.groups.find(function(x){ return x.id === viewObj.gid; });
+    if (g) activateTab(g.id);
+  } else if (viewObj.type === 'folder') {
+    var g2 = appData.groups.find(function(x){ return x.id === viewObj.gid; });
+    if (g2) {
+      activateTab(g2.id);
+      // Scroll na složku
+      setTimeout(function() {
+        var el = document.getElementById('folder-' + viewObj.fid);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 150);
+    }
+  } else if (viewObj.type === 'tag') {
+    filterByTag(viewObj.tag);
+  }
+}
+
+function copyViewUrl(viewObj, label) {
+  var url = buildViewUrl(viewObj);
+  navigator.clipboard.writeText(url).then(function() {
+    announce('Odkaz zkopírován: ' + label);
+  });
+}
+
 function parseGhPath(ghPath) {
   var parts = ghPath.split("/");
   if (parts.length < 3) return null;
@@ -1604,6 +1656,15 @@ function renderActivePanel() {
     btnAddFolder.addEventListener('click', function() { openFolderDialog(group.id, null); });
     mbar.appendChild(btnAddFolder);
 
+    var btnCopyGroupUrl = document.createElement('button');
+    btnCopyGroupUrl.className = 'btn btn-secondary';
+    btnCopyGroupUrl.innerHTML = '<svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0 1 1 0 00-1.414 1.414 4 4 0 005.656 0l3-3a4 4 0 00-5.656-5.656l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5zm-5 5a2 2 0 012.828 0 1 1 0 101.414-1.414 4 4 0 00-5.656 0l-3 3a4 4 0 105.656 5.656l1.5-1.5a1 1 0 10-1.414-1.414l-1.5 1.5a2 2 0 11-2.828-2.828l3-3z"/></svg> Kopírovat odkaz';
+    btnCopyGroupUrl.setAttribute('aria-label', 'Zkopírovat odkaz na skupinu ' + group.name);
+    btnCopyGroupUrl.addEventListener('click', (function(gid, gname) {
+      return function() { copyViewUrl({ type: 'group', gid: gid }, 'skupina ' + gname); };
+    })(group.id, group.name));
+    mbar.appendChild(btnCopyGroupUrl);
+
     panel.appendChild(mbar);
 
     if (!group.folders.length) {
@@ -1684,6 +1745,16 @@ function renderFolder(group, folder) {
     });
   });
   actions.appendChild(btnExportMd);
+
+  var btnCopyFolderUrl = document.createElement('button');
+  btnCopyFolderUrl.className = 'btn-icon';
+  btnCopyFolderUrl.setAttribute('aria-label', 'Zkopírovat odkaz na složku ' + folder.name);
+  btnCopyFolderUrl.setAttribute('title', 'Zkopírovat odkaz na tuto složku');
+  btnCopyFolderUrl.innerHTML = '<svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0 1 1 0 00-1.414 1.414 4 4 0 005.656 0l3-3a4 4 0 00-5.656-5.656l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5zm-5 5a2 2 0 012.828 0 1 1 0 101.414-1.414 4 4 0 00-5.656 0l-3 3a4 4 0 105.656 5.656l1.5-1.5a1 1 0 10-1.414-1.414l-1.5 1.5a2 2 0 11-2.828-2.828l3-3z"/></svg>';
+  btnCopyFolderUrl.addEventListener('click', (function(gid, fid, fname) {
+    return function() { copyViewUrl({ type: 'folder', gid: gid, fid: fid }, 'složka ' + fname); };
+  })(group.id, folder.id, folder.name));
+  actions.appendChild(btnCopyFolderUrl);
 
   var btnDel = document.createElement('button');
   btnDel.className = 'btn-icon danger';
@@ -2150,13 +2221,25 @@ function renderTagsView() {
     btnMd.setAttribute('aria-label', 'Zkopírovat záložky tagu ' + tagName + ' jako Markdown');
     btnMd.setAttribute('title', 'Zkopírovat tag jako Markdown');
     btnMd.innerHTML = '<svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>';
-    btnMd.addEventListener('click', function() {
-      var md = tagToMarkdown(tagName);
-      navigator.clipboard.writeText(md).then(function() {
-        announce('Záložky tagu „' + tagName + '" zkopírovány jako Markdown (' + count + ' záložek).');
-      });
-    });
+    btnMd.addEventListener('click', (function(tn, cnt) {
+      return function() {
+        var md = tagToMarkdown(tn);
+        navigator.clipboard.writeText(md).then(function() {
+          announce('Záložky tagu „' + tn + '" zkopírovány jako Markdown (' + cnt + ' záložek).');
+        });
+      };
+    })(tagName, count));
     wrap.appendChild(btnMd);
+
+    var btnTagUrl = document.createElement('button');
+    btnTagUrl.className = 'btn-icon btn-newwin';
+    btnTagUrl.setAttribute('aria-label', 'Zkopírovat odkaz na tag ' + tagName);
+    btnTagUrl.setAttribute('title', 'Zkopírovat odkaz na tento tag');
+    btnTagUrl.innerHTML = '<svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0 1 1 0 00-1.414 1.414 4 4 0 005.656 0l3-3a4 4 0 00-5.656-5.656l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5zm-5 5a2 2 0 012.828 0 1 1 0 101.414-1.414 4 4 0 00-5.656 0l-3 3a4 4 0 105.656 5.656l1.5-1.5a1 1 0 10-1.414-1.414l-1.5 1.5a2 2 0 11-2.828-2.828l3-3z"/></svg>';
+    btnTagUrl.addEventListener('click', (function(tn) {
+      return function() { copyViewUrl({ type: 'tag', tag: tn }, 'tag ' + tn); };
+    })(tagName));
+    wrap.appendChild(btnTagUrl);
 
     area.appendChild(wrap);
   });
@@ -2597,6 +2680,13 @@ document.getElementById('manageToggle').addEventListener('change', function() {
   updateManageUI();
   updateGhStatusBar();
   announce(state.manageMode ? 'Režim správy zapnut' : 'Režim správy vypnut');
+  // Automatické uložení při vypnutí správy
+  if (!state.manageMode) {
+    var token = localStorage.getItem('bm_github_token');
+    if (token && appData.ghPath) {
+      saveToGitHub(appData);
+    }
+  }
 });
 
 // ===================== SEARCH INPUT =====================
@@ -2809,6 +2899,14 @@ function loadFromGitHub(ghPath) {
     loading(false);
     announce('Data načtena ze GitHub.');
     debug('Načtení úspěšné, ' + appData.groups.length + ' skupin.');
+    // Aplikovat view parametr pokud čeká
+    if (state._pendingView) {
+      try {
+        var vObj = viewDecode(state._pendingView);
+        setTimeout(function() { applyViewParam(vObj); }, 100);
+      } catch(e) { debug('Chyba view parametru: ' + e.message); }
+      delete state._pendingView;
+    }
   }).catch(function(err) {
     loading(false);
     var msg = 'Chyba při načítání ze GitHub: ' + err.message;
@@ -2857,7 +2955,10 @@ function saveToGitHub(data) {
     });
   }).then(function(res) {
     if (!res.ok) return res.json().then(function(e) { throw new Error(e.message || res.status); });
-    history.replaceState(null, '', location.pathname + '?id=' + ghEncode(data.ghPath));
+    var savedUrl = location.pathname + '?id=' + ghEncode(data.ghPath);
+    var existingView = new URLSearchParams(location.search).get('view');
+    if (existingView) savedUrl += '&view=' + existingView;
+    history.replaceState(null, '', savedUrl);
     loading(false);
     announce('Záložky uloženy na GitHub.');
     debug('Uložení úspěšné.');
@@ -2906,10 +3007,25 @@ function saveToFile() {
       var ghPath = ghDecode(idParam);
       debug('URL parametr: ' + ghPath);
       appData.ghPath = ghPath;
+      // Po načtení dat aplikovat view parametr
+      var viewParam = params.get('view');
+      var origLoadFromGitHub = loadFromGitHub;
+      if (viewParam) {
+        state._pendingView = viewParam;
+      }
       loadFromGitHub(ghPath);
     } catch(e) {
       debug('Neplatný URL parametr: ' + e.message);
       showPageError('Neplatný URL parametr pro načtení ze GitHub.');
+    }
+  } else {
+    // Bez GitHub načítání — aplikovat view rovnou
+    var viewParam2 = params.get('view');
+    if (viewParam2) {
+      try {
+        var vObj = viewDecode(viewParam2);
+        applyViewParam(vObj);
+      } catch(e) { debug('Neplatný view parametr: ' + e.message); }
     }
   }
 })();
