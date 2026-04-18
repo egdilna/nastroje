@@ -117,10 +117,26 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 #metadata-panel p { margin: 4px 0; color: #444; }
 #metadata-panel .meta-stats { font-weight: 600; color: #1a1a1a; }
 
-/* Presets */
-#presets-area { margin-bottom: 8px; }
-#presets-area:empty { display: none; }
-.preset-link { display: inline-block; margin-right: 12px; margin-bottom: 4px; font-size: 0.9rem; }
+/* Footer */
+footer {
+    max-width: 1400px;
+    margin: 24px auto 0 auto;
+    padding: 20px 24px;
+    border-top: 1px solid #ccc;
+    color: #555;
+    font-size: 0.9rem;
+    background: #fafafa;
+}
+footer p { margin: 4px 0; }
+footer a { color: #0056b3; }
+
+/* Inline copy-share button in metadata panel */
+.copy-share-btn {
+    padding: 3px 10px;
+    font-size: 0.85rem;
+    margin-left: 4px;
+    vertical-align: baseline;
+}
 
 /* Search & filter toolbar */
 #toolbar { display: none; margin-bottom: 16px; }
@@ -345,15 +361,14 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
 
     <fieldset>
         <legend>Načtení datové sady</legend>
-        <div id="presets-area" role="navigation" aria-label="Ukázkové datové sady"></div>
         <div class="form-row">
             <div class="form-field">
                 <label for="schema-url">URL schématu (JSON Schema)</label>
                 <input type="url" id="schema-url" placeholder="https://…/schema.json">
             </div>
             <div class="form-field">
-                <label for="data-url">URL datové sady (JSON)</label>
-                <input type="url" id="data-url" placeholder="https://…/data.json">
+                <label for="data-url">URL datové sady (JSON nebo CSV)</label>
+                <input type="url" id="data-url" placeholder="https://…/data.json nebo data.csv">
             </div>
             <div>
                 <button id="btn-load" type="button">Načíst</button>
@@ -416,6 +431,11 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
 
 </main>
 
+<footer role="contentinfo">
+    <p><strong>Prohlížeč otevřených dat</strong> – nástroj projektu <a href="https://egdilna.github.io/nastroje/#opendata" target="_blank" rel="noopener">EGdílna (egdilna.github.io/nastroje)</a></p>
+    <p>© 2026 EGdílna a Michal Rada</p>
+</footer>
+
 <script>
 (function() {
     'use strict';
@@ -423,6 +443,7 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
     // ===== State =====
     let schemaData = null;
     let rawData = null;
+    let dataFormat = 'json'; // 'json' or 'csv' — set by fetchData
     let allRecords = [];
     let filteredRecords = []; // [{rec, idx}]
     let columns = [];        // all columns including sub-records
@@ -446,7 +467,6 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
     const elPageSize = $('page-size');
     const elDetailView = $('detail-view'), elDetailBack = $('detail-back');
     const elDetailTitle = $('detail-title'), elDetailContent = $('detail-content');
-    const elPresetsArea = $('presets-area');
     const elTableArea = $('table-area'), elPagArea = $('pagination-area');
 
     // ===== Helpers =====
@@ -568,42 +588,74 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
         return { label: labels[code] || code.replace(/_/g, ' '), code, badgeClass: badgeClasses[code] || '' };
     }
 
-    // ===== Presets =====
-    const PRESETS = [
-        { name: 'RPP – Údaje', schema: 'https://ofn.gov.cz/registr-pr%C3%A1v-a-povinnost%C3%AD/%C3%BAdaje/2021-01-12/%C3%BAdaje.schema.json', data: 'https://rpp-opendata.egon.gov.cz/odrpp/datovasada/udaje.json' },
-        { name: 'Turistické cíle Brno', schema: 'https://ofn.gov.cz/turistické-cíle/2020-07-01/schémata/turistický-cíl.json', data: 'https://www.brno.cz/opendata/turisticke-cile.json' },
-        { name: 'Sportoviště Brno', schema: 'https://ofn.gov.cz/sportoviště/2020-07-01/schémata/sportoviště.json', data: 'https://www.brno.cz/opendata/sportoviste.json' },
-        { name: 'Aktuality Brno', schema: 'https://ofn.gov.cz/aktuality/2019-11-28/schémata/aktualita.json', data: 'https://www.brno.cz/opendata/aktuality.json' }
-    ];
+    // ===== URL hash (shared link via base64-encoded JSON) =====
+    // Format: #d=<base64url of {"s":schemaUrl,"d":dataUrl}>
+    // Backward compatible with legacy #schema=...&data=... format.
 
-    function renderPresets() {
-        elPresetsArea.innerHTML = '';
-        const span = document.createElement('span');
-        span.textContent = 'Příklady: ';
-        span.style.cssText = 'font-size:0.9rem;font-weight:500';
-        elPresetsArea.appendChild(span);
-        PRESETS.forEach(p => {
-            const a = document.createElement('a');
-            a.href = '#'; a.className = 'preset-link'; a.textContent = p.name;
-            a.addEventListener('click', e => { e.preventDefault(); elSchemaUrl.value = p.schema; elDataUrl.value = p.data; loadData(); });
-            elPresetsArea.appendChild(a);
-        });
+    function b64UrlEncode(str) {
+        // UTF-8 safe: encodeURIComponent → unescape turns it into a byte string btoa can consume.
+        const bytes = unescape(encodeURIComponent(str));
+        return btoa(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     }
 
-    // ===== URL hash =====
+    function b64UrlDecode(str) {
+        let b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+        while (b64.length % 4) b64 += '=';
+        return decodeURIComponent(escape(atob(b64)));
+    }
+
+    function buildShareHash(schemaUrl, dataUrl) {
+        const payload = JSON.stringify({ s: schemaUrl, d: dataUrl });
+        return '#d=' + b64UrlEncode(payload);
+    }
+
+    function buildShareUrl(schemaUrl, dataUrl) {
+        // Use current page URL (origin + pathname + search) + new hash.
+        return location.origin + location.pathname + location.search + buildShareHash(schemaUrl, dataUrl);
+    }
+
     function saveHash() {
-        const p = new URLSearchParams();
-        if (elSchemaUrl.value) p.set('schema', elSchemaUrl.value);
-        if (elDataUrl.value) p.set('data', elDataUrl.value);
-        history.replaceState(null, '', '#' + p.toString());
+        if (elSchemaUrl.value && elDataUrl.value) {
+            history.replaceState(null, '', buildShareHash(elSchemaUrl.value, elDataUrl.value));
+        } else {
+            history.replaceState(null, '', location.pathname + location.search);
+        }
     }
+
     function loadHash() {
         if (!location.hash || location.hash.length < 2) return false;
         try {
-            const p = new URLSearchParams(location.hash.substring(1));
-            if (p.get('schema')) elSchemaUrl.value = p.get('schema');
-            if (p.get('data')) elDataUrl.value = p.get('data');
-            return !!(p.get('schema') && p.get('data'));
+            const params = new URLSearchParams(location.hash.substring(1));
+            // New format: ?d=base64
+            const d = params.get('d');
+            if (d) {
+                const parsed = JSON.parse(b64UrlDecode(d));
+                if (parsed.s) elSchemaUrl.value = parsed.s;
+                if (parsed.d) elDataUrl.value = parsed.d;
+                return !!(parsed.s && parsed.d);
+            }
+            // Legacy format: ?schema=...&data=...
+            if (params.get('schema')) elSchemaUrl.value = params.get('schema');
+            if (params.get('data')) elDataUrl.value = params.get('data');
+            return !!(params.get('schema') && params.get('data'));
+        } catch(e) { return false; }
+    }
+
+    // Copy text to clipboard with a fallback for older/restrictive browsers.
+    async function copyToClipboard(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            try { await navigator.clipboard.writeText(text); return true; } catch(e) {}
+        }
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+            document.body.appendChild(ta);
+            ta.select(); ta.setSelectionRange(0, text.length);
+            const ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+            return ok;
         } catch(e) { return false; }
     }
 
@@ -623,6 +675,144 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
             }
             throw new Error(`Nepodařilo se načíst ${label}`);
         }
+    }
+
+    // Fetch dataset: auto-detects JSON vs CSV from Content-Type, URL extension, or content.
+    // Returns { data, format } where format is 'json' or 'csv'.
+    async function fetchData(url, label) {
+        setStatus(`Načítám ${label}…`, 'info');
+        const tryFetch = async (u) => {
+            const r = await fetch(u);
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return { text: await r.text(), contentType: (r.headers.get('content-type') || '').toLowerCase() };
+        };
+        let res = null;
+        try { res = await tryFetch(url); }
+        catch(e) {
+            for (const proxy of ['https://corsproxy.io/?','https://api.allorigins.win/raw?url=']) {
+                try { res = await tryFetch(proxy + encodeURIComponent(url)); break; } catch(e2) {}
+            }
+        }
+        if (!res) throw new Error(`Nepodařilo se načíst ${label}`);
+
+        // Strip UTF-8 BOM
+        let text = res.text;
+        if (text.charCodeAt(0) === 0xFEFF) text = text.substring(1);
+
+        const urlLower = url.toLowerCase().split('?')[0];
+        const looksJsonByCT = res.contentType.includes('json');
+        const looksCsvByCT = res.contentType.includes('csv') || res.contentType.includes('text/tab-separated');
+        const looksJsonByUrl = /\.json$/.test(urlLower);
+        const looksCsvByUrl = /\.(csv|tsv)$/.test(urlLower);
+        const trimmed = text.trimStart();
+        const looksJsonByContent = trimmed.startsWith('{') || trimmed.startsWith('[');
+
+        // Decide: prefer explicit signals, fall back to content sniffing
+        let format;
+        if (looksJsonByCT || (looksJsonByUrl && !looksCsvByCT)) format = 'json';
+        else if (looksCsvByCT || (looksCsvByUrl && !looksJsonByCT)) format = 'csv';
+        else format = looksJsonByContent ? 'json' : 'csv';
+
+        if (format === 'json') {
+            try { return { data: JSON.parse(text), format: 'json' }; }
+            catch(e) {
+                // Fallback: maybe it's actually CSV mislabelled
+                if (!looksJsonByContent) return { data: parseCSV(text), format: 'csv' };
+                throw new Error(`${label}: neplatný JSON (${e.message})`);
+            }
+        }
+        return { data: parseCSV(text), format: 'csv' };
+    }
+
+    // CSV parser: RFC 4180 compatible. Auto-detects delimiter from header row.
+    // Handles quoted fields, escaped quotes (""), CRLF/LF, and empty lines.
+    function parseCSV(text) {
+        if (!text || !text.length) return [];
+
+        // Detect delimiter from first (non-empty) line, counting occurrences outside quotes
+        const firstLine = (text.split(/\r?\n/).find(l => l.length > 0)) || '';
+        const candidates = [',', ';', '\t', '|'];
+        let delim = ',', bestCount = -1;
+        for (const d of candidates) {
+            let count = 0, inQ = false;
+            for (let i = 0; i < firstLine.length; i++) {
+                const ch = firstLine[i];
+                if (ch === '"') inQ = !inQ;
+                else if (ch === d && !inQ) count++;
+            }
+            if (count > bestCount) { bestCount = count; delim = d; }
+        }
+        if (bestCount <= 0) delim = ','; // single column fallback
+
+        // Tokenize into rows of fields
+        const rows = [];
+        let row = [], field = '', inQ = false, i = 0;
+        const n = text.length;
+        while (i < n) {
+            const ch = text[i];
+            if (inQ) {
+                if (ch === '"') {
+                    if (text[i + 1] === '"') { field += '"'; i += 2; continue; }
+                    inQ = false; i++; continue;
+                }
+                field += ch; i++; continue;
+            }
+            if (ch === '"') { inQ = true; i++; continue; }
+            if (ch === delim) { row.push(field); field = ''; i++; continue; }
+            if (ch === '\r') { i++; continue; }
+            if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; i++; continue; }
+            field += ch; i++;
+        }
+        if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+
+        // Drop trailing blank lines
+        while (rows.length > 0) {
+            const last = rows[rows.length - 1];
+            if (last.length === 0 || (last.length === 1 && last[0] === '')) rows.pop();
+            else break;
+        }
+        if (rows.length === 0) return [];
+
+        const headers = rows[0].map(h => h.trim());
+        const records = [];
+        for (let r = 1; r < rows.length; r++) {
+            const cells = rows[r];
+            // Skip blank rows
+            if (cells.length === 1 && cells[0] === '') continue;
+            const obj = {};
+            for (let c = 0; c < headers.length; c++) {
+                const key = headers[c] || ('col' + (c + 1));
+                obj[key] = coerceCsvValue(cells[c]);
+            }
+            records.push(obj);
+        }
+        return records;
+    }
+
+    // Convert CSV string values to richer JS types where safe.
+    // Preserves strings with leading zeros (e.g. IČO, PSČ), codes, and non-ASCII.
+    function coerceCsvValue(s) {
+        if (s === undefined || s === null) return null;
+        if (s === '') return null;
+        const t = s.trim();
+        if (t === '') return s;
+        // Boolean
+        if (t === 'true') return true;
+        if (t === 'false') return false;
+        // Integer — reject leading zeros on multi-digit to preserve codes
+        if (/^-?\d+$/.test(t)) {
+            if (!/^-?0\d/.test(t)) {
+                const n = Number(t);
+                if (Number.isSafeInteger(n)) return n;
+            }
+            return s;
+        }
+        // Float (including scientific notation)
+        if (/^-?\d+\.\d+([eE][+-]?\d+)?$/.test(t) || /^-?\d+[eE][+-]?\d+$/.test(t)) {
+            const n = Number(t);
+            if (!isNaN(n) && isFinite(n)) return n;
+        }
+        return s;
     }
 
     // ===== Schema parsing =====
@@ -737,7 +927,23 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
         const mkLink = (href, text) => { const a = document.createElement('a'); a.href = href; a.target = '_blank'; a.rel = 'noopener'; a.textContent = text; return a; };
         pLinks.appendChild(mkLink(elSchemaUrl.value, 'Schéma'));
         pLinks.appendChild(document.createTextNode(' · '));
-        pLinks.appendChild(mkLink(elDataUrl.value, 'Zdrojová data (JSON)'));
+        pLinks.appendChild(mkLink(elDataUrl.value, 'Zdrojová data (' + (dataFormat === 'csv' ? 'CSV' : 'JSON') + ')'));
+        pLinks.appendChild(document.createTextNode(' · '));
+
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.className = 'secondary copy-share-btn';
+        copyBtn.textContent = 'Kopírovat odkaz ke sdílení';
+        copyBtn.setAttribute('aria-label', 'Kopírovat do schránky odkaz, který po otevření načte tuto datovou sadu');
+        copyBtn.addEventListener('click', async () => {
+            const url = buildShareUrl(elSchemaUrl.value, elDataUrl.value);
+            const ok = await copyToClipboard(url);
+            copyBtn.textContent = ok ? 'Zkopírováno ✓' : 'Kopírování selhalo';
+            setStatus(ok ? 'Sdílený odkaz byl zkopírován do schránky.' : 'Nepodařilo se zkopírovat odkaz. Zkuste jej vybrat ručně z adresního řádku.', ok ? 'success' : 'error');
+            setTimeout(() => { copyBtn.textContent = 'Kopírovat odkaz ke sdílení'; }, 3000);
+        });
+        pLinks.appendChild(copyBtn);
+
         elMetadata.appendChild(pLinks);
     }
 
@@ -1221,7 +1427,9 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
 
         try {
             schemaData = await fetchJSON(schemaUrl, 'schéma');
-            rawData = await fetchJSON(dataUrl, 'data');
+            const fetched = await fetchData(dataUrl, 'data');
+            rawData = fetched.data;
+            dataFormat = fetched.format;
             const ok = parseSchema(schemaData);
             parseData(rawData);
             if (!ok || columns.length === 0) columnsFromData();
@@ -1251,7 +1459,7 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && elDetailView.classList.contains('visible')) hideDetail(); });
 
     // ===== Init =====
-    renderPresets(); if (loadHash()) loadData();
+    if (loadHash()) loadData();
 })();
 </script>
 </body>
