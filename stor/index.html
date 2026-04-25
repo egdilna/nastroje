@@ -1137,7 +1137,7 @@ function clearDoneOps() {
 }
 
 async function retryAllFailed() {
-  const fails = state.ops.filter(o => o.status === "err" && typeof o.retry === "function");
+  const fails = state.ops.filter(o => o.status === "err" && typeof o.retry === "function" && !o.manualRetryOnly);
   for (const o of fails) {
     try {
       await o.retry();
@@ -1191,7 +1191,7 @@ function renderOpLog() {
     li.appendChild(body);
     const acts = el("div", { class: "op-log-item-actions" });
     if (op.status === "err" && typeof op.retry === "function") {
-      acts.appendChild(el("button", { class: "small primary", onclick: () => { op.retry(); } }, "Opakovat"));
+      acts.appendChild(el("button", { class: "small primary", onclick: () => { op.retry(); } }, op.retryLabel || "Opakovat"));
     }
     if (op.canDismiss) {
       acts.appendChild(el("button", { class: "small subtle", onclick: () => dismissOp(op.id), "aria-label": "Skrýt z logu" }, "✕"));
@@ -1206,7 +1206,9 @@ function renderOpLog() {
   if (nErr) parts.push(`<span class="has-fail">${nErr} chyb</span>`);
   if (nOk) parts.push(`${nOk} hotovo`);
   summary.innerHTML = parts.join(" · ") || "&nbsp;";
-  if (retryAllBtn) retryAllBtn.hidden = !nErr;
+  // retry-all visible only if there is at least one auto-retryable error
+  const autoRetryable = state.ops.some(o => o.status === "err" && typeof o.retry === "function" && !o.manualRetryOnly);
+  if (retryAllBtn) retryAllBtn.hidden = !autoRetryable;
 }
 
 //=============================================================================
@@ -1615,8 +1617,16 @@ async function loadStorageFromGithub() {
     return true;
   } catch (e) {
     if (/404/.test(e.message)) {
-      handle.fail(new Error("storage.json nenalezen v zadané cestě (404)"), () => loadStorageFromGithub());
-      showStatus("storage.json nenalezen. Zkontrolujte cestu nebo vytvořte nové úložiště.", "warning", 6000);
+      // Soubor (nebo složka) neexistuje. Tohle není „chyba", ale výzva k vytvoření.
+      handle.fail(
+        new Error("storage.json v této cestě zatím není. Lze založit nové úložiště — složka se v repu vytvoří automaticky při prvním uložení."),
+        () => createNewStorage()
+      );
+      // Přepiš text retry tlačítka v op-logu a vyloč z hromadného retry
+      handle.op.retryLabel = "Vytvořit nové úložiště";
+      handle.op.manualRetryOnly = true;
+      renderOpLog();
+      showStatus("Cesta zatím neobsahuje storage.json — můžete v nastavení založit nové úložiště.", "warning", 8000);
       return false;
     }
     handle.fail(e, () => loadStorageFromGithub());
@@ -2944,7 +2954,7 @@ function renderEditPanel() {
   const fpath = el("div", { class: "field" });
   fpath.appendChild(el("label", { for: "set-repo-path" }, "Cesta k úložišti (owner/repo/složka)"));
   fpath.appendChild(el("input", { type: "text", id: "set-repo-path", value: state.config.repoPath || "" }));
-  fpath.appendChild(el("div", { class: "hint" }, "Např. „myuser/myrepo/dms\". Složka musí v repu existovat."));
+  fpath.appendChild(el("div", { class: "hint" }, "Např. „myuser/myrepo/dms\". Repo a větev musí existovat, ale samotná složka ne — když ještě neexistuje, vytvoří se automaticky při prvním uložení (tlačítko „Vytvořit nové úložiště\")."));
   cf.appendChild(fpath);
   const row2 = el("div", { class: "field-row" });
   const fbr = el("div", { class: "field" });
