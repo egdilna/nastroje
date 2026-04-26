@@ -210,6 +210,11 @@ input[type="text"], input[type="url"], input[type="password"], input[type="searc
 }
 textarea { resize: vertical; min-height: 60px; font-family: var(--font-body); }
 input[type="file"] { font-size: 0.92rem; }
+input[readonly] {
+  background: var(--bg-soft);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
 label { font-size: 0.93rem; color: var(--text); }
 .field {
   display: flex;
@@ -817,6 +822,42 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   margin-top: 2px;
   font-family: var(--font-mono);
 }
+
+.known-repos {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.known-repo-item {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+  background: var(--bg-elevated);
+}
+.known-repo-item.current {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.known-repo-head {
+  font-size: 0.95rem;
+}
+.known-repo-current {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.known-repo-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-top: 2px;
+  word-break: break-all;
+}
+.known-repo-actions {
+  margin-top: 4px;
+  font-size: 0.85rem;
+}
 </style>
 </head>
 <body>
@@ -901,7 +942,8 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 //=============================================================================
 const APP_VERSION = "1.0";
 const STORAGE_FILENAME = "storage.json";
-const LS_KEY = "dms-config-v1";
+const LS_KEY = "dms-config-v2";
+const LS_KEY_LEGACY = "dms-config-v1";
 const COMMIT_BRANCH_DEFAULT = "main";
 
 const state = {
@@ -1043,18 +1085,146 @@ function base64ToBlob(b64, mime) {
 }
 
 //=============================================================================
-// CONFIG (localStorage)
+// CONFIG (localStorage) — multi-storage capable
 //=============================================================================
-function loadConfig() {
+// Struktura v localStorage (v2):
+// {
+//   deviceName: "...",
+//   repos: {
+//     "owner/repo/path": {
+//        apiKey: "...",
+//        branch: "main",
+//        storageId: "...",       // naposled viděné
+//        storageName: "...",     // naposled viděné
+//        lastVisited: "ISO datum"
+//     },
+//     ...
+//   },
+//   lastRepoPath: "owner/repo/path"
+// }
+//
+// state.config v paměti zůstává zploštělý ({apiKey, deviceName, repoPath, branch}) — load/save převádí.
+
+function loadFullConfig() {
+  // Vrátí celý config v2 (s migrací z v1, pokud existuje).
+  let cfg = { deviceName: "", repos: {}, lastRepoPath: "" };
   try {
     const raw = localStorage.getItem(LS_KEY);
-    if (raw) Object.assign(state.config, JSON.parse(raw));
-  } catch(e) { debug("Chyba načtení konfigurace: " + e.message, "err"); }
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        cfg.deviceName = parsed.deviceName || "";
+        cfg.repos = parsed.repos || {};
+        cfg.lastRepoPath = parsed.lastRepoPath || "";
+      }
+    } else {
+      // Zkus migraci ze starého (v1) configu
+      const legacyRaw = localStorage.getItem(LS_KEY_LEGACY);
+      if (legacyRaw) {
+        const legacy = JSON.parse(legacyRaw);
+        if (legacy && legacy.repoPath) {
+          cfg.repos[legacy.repoPath] = {
+            apiKey: legacy.apiKey || "",
+            branch: legacy.branch || COMMIT_BRANCH_DEFAULT,
+            storageId: "",
+            storageName: "",
+            lastVisited: nowIso(),
+          };
+          cfg.lastRepoPath = legacy.repoPath;
+        }
+        if (legacy && legacy.deviceName) cfg.deviceName = legacy.deviceName;
+        debug("Migrace konfigurace z v1 do v2 proběhla.");
+      }
+    }
+  } catch(e) {
+    debug("Chyba načtení konfigurace: " + e.message, "err");
+  }
+  return cfg;
 }
-function saveConfig() {
+
+function saveFullConfig(cfg) {
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(state.config));
-  } catch(e) { debug("Chyba uložení konfigurace: " + e.message, "err"); }
+    localStorage.setItem(LS_KEY, JSON.stringify(cfg));
+  } catch(e) {
+    debug("Chyba uložení konfigurace: " + e.message, "err");
+  }
+}
+
+function loadConfig() {
+  // Naplní state.config. Pokud má state.config už nastavený repoPath
+  // (např. z URL přečtené dřív), zachová ho a načte z mapy odpovídající apiKey/branch.
+  // Jinak použije lastRepoPath z mapy.
+  const full = loadFullConfig();
+  state.config.deviceName = full.deviceName || "";
+  // Pokud už repoPath je nastaven (z URL při readUrlOnLoad), drž se ho;
+  // jinak sáhni po last-used.
+  const targetRepo = state.config.repoPath || full.lastRepoPath || "";
+  state.config.repoPath = targetRepo;
+  const entry = (full.repos && full.repos[targetRepo]) || null;
+  state.config.apiKey = entry ? (entry.apiKey || "") : "";
+  state.config.branch = entry ? (entry.branch || COMMIT_BRANCH_DEFAULT) : COMMIT_BRANCH_DEFAULT;
+}
+
+function saveConfig() {
+  // Uloží aktuální state.config do mapy (klíč = repoPath).
+  // Pokud repoPath není, uloží jen deviceName.
+  const full = loadFullConfig();
+  full.deviceName = state.config.deviceName || "";
+  const rp = state.config.repoPath;
+  if (rp) {
+    if (!full.repos) full.repos = {};
+    const existing = full.repos[rp] || {};
+    full.repos[rp] = {
+      apiKey: state.config.apiKey || "",
+      branch: state.config.branch || COMMIT_BRANCH_DEFAULT,
+      storageId: existing.storageId || "",
+      storageName: existing.storageName || "",
+      lastVisited: nowIso(),
+    };
+    full.lastRepoPath = rp;
+  }
+  saveFullConfig(full);
+}
+
+function rememberStorageInfo(storageId, storageName) {
+  // Uloží storageid + name pro aktuální repoPath (volá se po úspěšném loadu / vytvoření).
+  const rp = state.config.repoPath;
+  if (!rp) return;
+  const full = loadFullConfig();
+  if (!full.repos) full.repos = {};
+  const e = full.repos[rp] || {};
+  e.apiKey = state.config.apiKey || e.apiKey || "";
+  e.branch = state.config.branch || e.branch || COMMIT_BRANCH_DEFAULT;
+  e.storageId = storageId || "";
+  e.storageName = storageName || "";
+  e.lastVisited = nowIso();
+  full.repos[rp] = e;
+  full.lastRepoPath = rp;
+  saveFullConfig(full);
+}
+
+function listKnownRepos() {
+  // Vrátí pole [{repoPath, apiKey, branch, storageId, storageName, lastVisited}], seřazeno od nejnověji navštívených.
+  const full = loadFullConfig();
+  const out = [];
+  for (const rp in (full.repos || {})) {
+    out.push(Object.assign({ repoPath: rp }, full.repos[rp]));
+  }
+  out.sort((a, b) => {
+    const ta = a.lastVisited || "", tb = b.lastVisited || "";
+    return tb.localeCompare(ta);
+  });
+  return out;
+}
+
+function forgetRepo(repoPath) {
+  // Odstraní repo z mapy (např. když uživatel chce zapomenout API klíč).
+  const full = loadFullConfig();
+  if (full.repos && full.repos[repoPath]) {
+    delete full.repos[repoPath];
+    if (full.lastRepoPath === repoPath) full.lastRepoPath = "";
+    saveFullConfig(full);
+  }
 }
 
 //=============================================================================
@@ -1610,6 +1780,7 @@ async function loadStorageFromGithub() {
     const r = await ghReadJson(STORAGE_FILENAME);
     state.storage = r.data;
     if (!state.storage.rootItems) state.storage.rootItems = [];
+    rememberStorageInfo(state.storage.id, state.storage.name);
     const st = computeStats();
     handle.succeed(`Načteno: ${st.folders} složek, ${st.files} souborů, ${st.versions} verzí (${fmtSize(st.totalSize)})`);
     showStatus("Úložiště načteno.", "success");
@@ -1930,6 +2101,20 @@ function renderHeader() {
   const desc = s ? (s.description || "") : "";
   $("storage-desc").textContent = desc;
   $("storage-desc").style.display = desc ? "" : "none";
+  // Aktualizace document.title — formát: „<název položky> · <název úložiště> – DMS"
+  // Na rootu jen „<název úložiště> – DMS"; bez úložiště „DMS úložiště".
+  let title = "DMS úložiště";
+  if (s) {
+    const storageName = s.name || s.id || "Úložiště";
+    if (state.currentDetailId && state.currentDetailId !== "root") {
+      const found = findItem(state.currentDetailId);
+      const itemName = (found && found.item && found.item.name) ? found.item.name : "";
+      title = (itemName ? itemName + " · " : "") + storageName + " – DMS";
+    } else {
+      title = storageName + " – DMS";
+    }
+  }
+  if (document.title !== title) document.title = title;
 }
 
 function renderBreadcrumb() {
@@ -2092,7 +2277,6 @@ function renderItemRow(it) {
     metaParts.push(`${ic} ${ic === 1 ? "položka" : ic >= 2 && ic <= 4 ? "položky" : "položek"}`);
     if (it.modified) metaParts.push("upraveno: " + fmtDate(it.modified));
   } else if (it.type === T.FILE) {
-    metaParts.push(`ID: ${it.id}`);
     const verCount = (it.versions || []).length;
     metaParts.push(`${verCount} ${verCount === 1 ? "verze" : verCount >= 2 && verCount <= 4 ? "verze" : "verzí"}`);
     const lastV = it.versions && it.versions[it.versions.length - 1];
@@ -2385,7 +2569,6 @@ function renderVersionItem(file, version, isActive) {
   li.appendChild(head);
 
   if (version.description) li.appendChild(el("div", { class: "version-desc" }, version.description));
-  li.appendChild(el("div", { class: "version-meta", style: { fontSize: "0.78rem", marginTop: "4px", fontFamily: "var(--font-mono)" } }, version.filename));
 
   // Akce v editmódu (a smazat i u pendingUpload, aby šla rozdělaná verze zrušit)
   if (state.editMode) {
@@ -2925,29 +3108,7 @@ function renderEditPanel() {
   if (!state.editMode) { panel.hidden = true; panel.innerHTML = ""; return; }
   panel.hidden = false;
   panel.innerHTML = "";
-  // Section: storage settings (only if storage exists)
-  if (state.storage) {
-    const sect = el("section");
-    sect.appendChild(el("h3", null, "Vlastnosti úložiště"));
-    const row1 = el("div", { class: "field-row" });
-    const fid = el("div", { class: "field" });
-    fid.appendChild(el("label", { for: "set-storage-id" }, "ID úložiště (storageid)"));
-    fid.appendChild(el("input", { type: "text", id: "set-storage-id", value: state.storage.id || "" }));
-    fid.appendChild(el("div", { class: "hint" }, "Použito v názvech souborů. Pouze a-z, 0-9, _, -."));
-    row1.appendChild(fid);
-    const fname = el("div", { class: "field" });
-    fname.appendChild(el("label", { for: "set-storage-name" }, "Název úložiště"));
-    fname.appendChild(el("input", { type: "text", id: "set-storage-name", value: state.storage.name || "" }));
-    row1.appendChild(fname);
-    sect.appendChild(row1);
-    const fdesc = el("div", { class: "field" });
-    fdesc.appendChild(el("label", { for: "set-storage-desc" }, "Popis úložiště"));
-    fdesc.appendChild(el("textarea", { id: "set-storage-desc", rows: 2 }, state.storage.description || ""));
-    sect.appendChild(fdesc);
-    sect.appendChild(el("button", { class: "primary small", onclick: () => saveStorageProps() }, "Uložit vlastnosti"));
-    panel.appendChild(sect);
-  }
-  // Section: github / device settings
+  // Section: github / device settings (sklápěcí; otevřené když ještě není storage)
   const det = el("details", { open: !state.storage });
   det.appendChild(el("summary", null, "Nastavení (cesta, klíč, zařízení)"));
   const cf = el("div");
@@ -2982,6 +3143,76 @@ function renderEditPanel() {
   det.appendChild(cf);
   panel.appendChild(det);
 
+  // Section: vlastnosti úložiště (sklápěcí; storageid je readonly)
+  if (state.storage) {
+    const detProps = el("details");
+    detProps.appendChild(el("summary", null, "Vlastnosti úložiště"));
+    const sectInner = el("div");
+    const row1 = el("div", { class: "field-row" });
+    const fid = el("div", { class: "field" });
+    fid.appendChild(el("label", { for: "set-storage-id" }, "ID úložiště (storageid, neměnné)"));
+    fid.appendChild(el("input", { type: "text", id: "set-storage-id", value: state.storage.id || "", readonly: true, "aria-readonly": "true" }));
+    fid.appendChild(el("div", { class: "hint" }, "Použito v názvech souborů. Nelze měnit po vytvoření úložiště."));
+    row1.appendChild(fid);
+    const fname = el("div", { class: "field" });
+    fname.appendChild(el("label", { for: "set-storage-name" }, "Název úložiště"));
+    fname.appendChild(el("input", { type: "text", id: "set-storage-name", value: state.storage.name || "" }));
+    row1.appendChild(fname);
+    sectInner.appendChild(row1);
+    const fdesc = el("div", { class: "field" });
+    fdesc.appendChild(el("label", { for: "set-storage-desc" }, "Popis úložiště"));
+    fdesc.appendChild(el("textarea", { id: "set-storage-desc", rows: 2 }, state.storage.description || ""));
+    sectInner.appendChild(fdesc);
+    sectInner.appendChild(el("button", { class: "primary small", onclick: () => saveStorageProps() }, "Uložit vlastnosti"));
+    detProps.appendChild(sectInner);
+    panel.appendChild(detProps);
+  }
+
+  // Section: známá úložiště (multi-storage navigace)
+  const known = listKnownRepos();
+  // ukaž sekci, jen pokud je víc než jeden repo NEBO uživatel má jeden, který není ten současný
+  const interestingKnown = known.filter(k => k.repoPath !== state.config.repoPath);
+  if (known.length >= 1) {
+    const det4 = el("details", { open: !state.storage && known.length > 0 });
+    det4.appendChild(el("summary", null, "Známá úložiště (" + known.length + ")"));
+    const list = el("ul", { class: "known-repos" });
+    for (const k of known) {
+      const li = el("li", { class: "known-repo-item" + (k.repoPath === state.config.repoPath ? " current" : "") });
+      const head = el("div", { class: "known-repo-head" });
+      const titleText = (k.storageName || "(bez názvu)") + (k.storageId ? " [" + k.storageId + "]" : "");
+      if (k.repoPath === state.config.repoPath) {
+        head.appendChild(el("strong", null, titleText));
+        head.appendChild(el("span", { class: "known-repo-current" }, " — právě zobrazeno"));
+      } else {
+        head.appendChild(el("a", {
+          href: "#",
+          onclick: (e) => { e.preventDefault(); openStorage(k.repoPath); },
+          "aria-label": "Otevřít úložiště " + titleText,
+        }, titleText));
+      }
+      li.appendChild(head);
+      li.appendChild(el("div", { class: "known-repo-meta" }, k.repoPath));
+      if (k.lastVisited) {
+        li.appendChild(el("div", { class: "known-repo-meta" }, "Naposledy: " + fmtDate(k.lastVisited)));
+      }
+      const acts = el("div", { class: "known-repo-actions" });
+      acts.appendChild(el("a", {
+        href: "?detail=" + encodeDetailParam(k.repoPath, "root"),
+        target: "_blank",
+        rel: "noopener",
+      }, "Otevřít v novém tabu"));
+      acts.appendChild(document.createTextNode(" · "));
+      acts.appendChild(el("a", {
+        href: "#",
+        onclick: (e) => { e.preventDefault(); forgetRepoConfirm(k.repoPath); },
+      }, "Zapomenout"));
+      li.appendChild(acts);
+      list.appendChild(li);
+    }
+    det4.appendChild(list);
+    panel.appendChild(det4);
+  }
+
   // Section: search (global)
   if (state.storage) {
     const det2 = el("details");
@@ -3015,17 +3246,14 @@ function renderEditPanel() {
 
 function saveStorageProps() {
   if (!state.storage) return;
-  const id = $("set-storage-id").value.trim();
+  // ID úložiště je neměnné — ignorujeme případnou hodnotu z formu (input je readonly,
+  // ale pro jistotu nikdy nepřepisujeme state.storage.id).
   const name = $("set-storage-name").value.trim();
   const desc = $("set-storage-desc").value;
-  if (id && !/^[a-zA-Z0-9_\-]+$/.test(id)) {
-    showStatus("ID úložiště smí obsahovat jen a-z, 0-9, _ a -.", "warning");
-    return;
-  }
-  state.storage.id = id;
   state.storage.name = name || "Úložiště";
   state.storage.description = desc;
   state.storage.modified = nowIso();
+  rememberStorageInfo(state.storage.id, state.storage.name);
   markModified();
   showStatus("Vlastnosti uloženy. Změny se odešlou při ukončení režimu úprav.", "success");
   render();
@@ -3047,6 +3275,38 @@ async function saveSettingsAndLoad() {
   render();
 }
 
+async function openStorage(repoPath) {
+  // Otevře jiné úložiště v aktuálním tabu. Načte apiKey/branch z mapy podle repoPath.
+  if (!repoPath) return;
+  if (state.unsaved) {
+    const ok = await confirmDialog("Máte neuložené změny v aktuálním úložišti. Opravdu přepnout?", { okLabel: "Přepnout" });
+    if (!ok) return;
+  }
+  // Vyčisti aktuální stav
+  state.storage = null;
+  state.currentDetailId = "root";
+  state.viewingVersionId = null;
+  state.unsaved = false;
+  $("unsaved-indicator").hidden = true;
+  // Nastav nový repoPath a načti k němu data z mapy
+  state.config.repoPath = repoPath;
+  loadConfig(); // načte apiKey/branch pro nový repoPath
+  updateUrl();
+  render();
+  await loadStorageFromGithub();
+  render();
+}
+
+async function forgetRepoConfirm(repoPath) {
+  const ok = await confirmDialog("Smazat z lokálních dat informace o úložišti " + repoPath + "? (API klíč zmizí, samotná data na githubu zůstávají.)", {
+    title: "Zapomenout úložiště", danger: true, okLabel: "Zapomenout",
+  });
+  if (!ok) return;
+  forgetRepo(repoPath);
+  showStatus("Úložiště zapomenuto z lokálních dat.", "success");
+  render();
+}
+
 async function createNewStorage() {
   if (state.unsaved) {
     const ok = await confirmDialog("Máte neuložené změny ve stávajícím úložišti. Opravdu vytvořit nové?", { okLabel: "Vytvořit nové" });
@@ -3061,6 +3321,7 @@ async function createNewStorage() {
   if (!/^[a-zA-Z0-9_\-]+$/.test(r.id)) { showStatus("Chybný formát ID.", "warning"); return; }
   state.storage = emptyStorage(r.id, r.name, r.description);
   state.currentDetailId = "root";
+  rememberStorageInfo(state.storage.id, state.storage.name);
   markModified();
   // Push immediately if config is ready
   if (state.config.apiKey && parseRepoPath(state.config.repoPath)) {
@@ -3191,9 +3452,10 @@ function wireOpLogButtons() {
 }
 
 async function init() {
-  loadConfig();
-  // Read URL FIRST - if URL specifies a repo, use it (override anything from localStorage for this session)
+  // Pořadí důležité: URL musí proběhnout PŘED loadConfig, aby loadConfig
+  // dohledal apiKey/branch pro repo z URL (ne z lastRepoPath).
   const urlInfo = readUrlOnLoad();
+  loadConfig();
   wireEditModeToggle();
   wireDebugToggle();
   wireBeforeUnload();
