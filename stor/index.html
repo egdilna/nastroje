@@ -94,11 +94,13 @@ a:hover { text-decoration-thickness: 2px; }
   padding-bottom: 14px;
   margin-bottom: 16px;
 }
-.header h1 {
-  font-size: 1.4rem;
+.storage-name-label {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
   margin: 0 0 4px;
   font-weight: 600;
-  letter-spacing: -0.01em;
 }
 .header .desc {
   margin: 0 0 10px;
@@ -106,6 +108,18 @@ a:hover { text-decoration-thickness: 2px; }
   font-size: 0.95rem;
 }
 .header .desc:empty { display: none; }
+
+#page-heading {
+  font-size: 1.6rem;
+  margin: 0 0 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  word-break: break-word;
+}
+#page-heading .heading-icon {
+  margin-right: 8px;
+  display: inline-block;
+}
 
 .breadcrumb {
   display: flex;
@@ -127,6 +141,10 @@ a:hover { text-decoration-thickness: 2px; }
   color: var(--text-faint);
   margin: 0 4px;
   font-weight: 400;
+}
+.crumb-icon {
+  display: inline-block;
+  margin-right: 2px;
 }
 .breadcrumb a {
   color: var(--accent);
@@ -697,7 +715,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 /* iframe-friendly: tighter outer padding when in iframe */
 @media (max-width: 720px) {
   .app { padding: 12px 14px 70px; }
-  .header h1 { font-size: 1.2rem; }
+  #page-heading { font-size: 1.3rem; }
 }
 
 /* Operation log */
@@ -863,7 +881,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 
 <div class="app">
   <header class="header" id="app-header">
-    <h1 id="storage-name">DMS úložiště</h1>
+    <p id="storage-name" class="storage-name-label">DMS úložiště</p>
     <p class="desc" id="storage-desc"></p>
     <nav aria-label="Drobečková navigace" id="breadcrumb-nav">
       <ol class="breadcrumb" id="breadcrumb"></ol>
@@ -871,6 +889,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   </header>
 
   <main id="main" tabindex="-1">
+    <h1 id="page-heading">DMS úložiště</h1>
     <div id="view"></div>
   </main>
 
@@ -2108,12 +2127,32 @@ function render() {
 
 function renderHeader() {
   const s = state.storage;
+  // Storage name jako malý popisek nahoře
   $("storage-name").textContent = s ? (s.name || "Úložiště") : "DMS úložiště";
   const desc = s ? (s.description || "") : "";
   $("storage-desc").textContent = desc;
   $("storage-desc").style.display = desc ? "" : "none";
+
+  // H1 = aktuální položka (nebo název úložiště pro root). Vždy s emoji.
+  const h1 = $("page-heading");
+  h1.innerHTML = "";
+  if (!s) {
+    h1.appendChild(document.createTextNode("DMS úložiště"));
+  } else if (state.currentDetailId === "root" || !state.currentDetailId) {
+    h1.appendChild(el("span", { class: "heading-icon" }, T_ICON[T.FOLDER]));
+    h1.appendChild(document.createTextNode(s.name || "Úložiště"));
+  } else {
+    const found = findItem(state.currentDetailId);
+    if (found && found.item) {
+      h1.appendChild(el("span", { class: "heading-icon" }, iconFor(found.item)));
+      h1.appendChild(document.createTextNode(found.item.name || "(bez názvu)"));
+    } else {
+      h1.appendChild(el("span", { class: "heading-icon" }, T_ICON[T.FOLDER]));
+      h1.appendChild(document.createTextNode(s.name || "Úložiště"));
+    }
+  }
+
   // Aktualizace document.title — formát: „<název položky> · <název úložiště> – DMS"
-  // Na rootu jen „<název úložiště> – DMS"; bez úložiště „DMS úložiště".
   let title = "DMS úložiště";
   if (s) {
     const storageName = s.name || s.id || "Úložiště";
@@ -2139,23 +2178,40 @@ function renderBreadcrumb() {
   const found = findItem(state.currentDetailId);
   if (!found) { state.currentDetailId = "root"; return renderBreadcrumb(); }
   const isRoot = state.currentDetailId === "root";
-  // Root crumb
+  // Root crumb (úložiště reprezentováno jako složka)
   const liRoot = el("li");
+  const rootLabel = state.storage.name || "Úložiště";
   if (isRoot) {
-    liRoot.appendChild(el("span", { "aria-current": "page" }, state.storage.name || "Úložiště"));
+    liRoot.appendChild(el("span", { "aria-current": "page" },
+      el("span", { class: "crumb-icon" }, T_ICON[T.FOLDER]),
+      " ",
+      rootLabel,
+    ));
   } else {
-    liRoot.appendChild(el("a", { href: "#", onclick: (e) => { e.preventDefault(); navigateTo("root"); } }, state.storage.name || "Úložiště"));
+    liRoot.appendChild(el("a", { href: "#", onclick: (e) => { e.preventDefault(); navigateTo("root"); } },
+      el("span", { class: "crumb-icon" }, T_ICON[T.FOLDER]),
+      " ",
+      rootLabel,
+    ));
   }
   ol.appendChild(liRoot);
-  // Intermediate folders + current item
+  // Mezilehlé položky + aktuální položka — každá s vlastní ikonou
   for (let i = 0; i < found.path.length; i++) {
     const it = found.path[i];
     const isLast = (i === found.path.length - 1);
     const li = el("li");
     if (isLast) {
-      li.appendChild(el("span", { "aria-current": "page" }, it.name));
+      li.appendChild(el("span", { "aria-current": "page" },
+        el("span", { class: "crumb-icon" }, iconFor(it)),
+        " ",
+        it.name,
+      ));
     } else {
-      li.appendChild(el("a", { href: "#", onclick: (e) => { e.preventDefault(); navigateTo(it.id); } }, it.name));
+      li.appendChild(el("a", { href: "#", onclick: (e) => { e.preventDefault(); navigateTo(it.id); } },
+        el("span", { class: "crumb-icon" }, iconFor(it)),
+        " ",
+        it.name,
+      ));
     }
     ol.appendChild(li);
   }
@@ -2191,14 +2247,12 @@ function renderEmptyApp(view) {
 function renderFolderView(view, found) {
   const folder = found.item;
   const isRoot = state.currentDetailId === "root";
-  // Title section
-  const sect = el("section", { class: "detail-section", "aria-label": "Obsah složky" });
-  if (!isRoot) {
-    sect.appendChild(el("h2", null, folder.name));
-    if (folder.description) sect.appendChild(el("p", { class: "desc" }, folder.description));
+  // Title section — H1 už je v hlavičce stránky, takže zde jen popis (pokud existuje).
+  if (!isRoot && folder.description) {
+    const sect = el("section", { class: "detail-section", "aria-label": "Popis složky" });
+    sect.appendChild(el("p", { class: "desc" }, folder.description));
+    view.appendChild(sect);
   }
-  // (Stats are no longer shown automatically in root; toggle them in settings panel.)
-  view.appendChild(sect);
 
   // Toolbar with search
   const toolbar = el("div", { class: "toolbar" });
@@ -2267,7 +2321,7 @@ function renderItemRow(it) {
   const body = el("div", { class: "item-body" });
   const titleEl = el("h3", { class: "item-title" });
   const linkEl = el("a", { href: "#", class: "item-link", onclick: (e) => { e.preventDefault(); navigateTo(it.id); } },
-    el("span", { class: "item-icon", "aria-hidden": "true" }, iconFor(it)),
+    el("span", { class: "item-icon" }, iconFor(it)),
     " ",
     el("span", { class: "item-name" }, it.name || "(bez názvu)"),
   );
@@ -2353,10 +2407,17 @@ function lastTimeOf(it) {
   return latest;
 }
 // Aplikuje aktuální sortMode na zadané pole a vrátí novou setříděnou kopii.
+// Složky jsou VŽDY nahoře, bez ohledu na zvolený režim řazení.
+// Zvolený režim se uplatní pouze v rámci každé skupiny (složky zvlášť, ne-složky zvlášť).
 function applySort(items) {
   const mode = state.sortMode || "name";
   const out = items.slice();
   out.sort((a, b) => {
+    // Hlavní třídění: složky před vším ostatním
+    const aIsFolder = a.type === T.FOLDER;
+    const bIsFolder = b.type === T.FOLDER;
+    if (aIsFolder !== bIsFolder) return aIsFolder ? -1 : 1;
+    // V rámci stejné skupiny použij zvolený režim
     if (mode === "name") return (a.name || "").localeCompare(b.name || "", "cs");
     if (mode === "name-desc") return (b.name || "").localeCompare(a.name || "", "cs");
     if (mode === "modified-desc") {
@@ -2364,6 +2425,7 @@ function applySort(items) {
       return (bt || "").localeCompare(at || "");
     }
     if (mode === "type") {
+      // V rámci ne-složek: nejdřív soubory, pak odkazy; v rámci typu A–Z
       const order = { folder: 0, file: 1, link: 2 };
       const d = (order[a.type] - order[b.type]);
       if (d !== 0) return d;
@@ -2504,7 +2566,7 @@ function renderFileView(view, found) {
 function renderFileHeaderSection(found) {
   const file = found.item;
   const sect = el("section", { class: "detail-section" });
-  sect.appendChild(el("h2", null, file.name));
+  // H1 s názvem už je nahoře (v page-heading); tady jen popis a meta.
   if (file.description) sect.appendChild(el("p", { class: "desc" }, file.description));
   // Quick meta
   const meta = el("dl", { class: "detail-meta" });
@@ -2639,7 +2701,7 @@ async function previewMdVersion(version) {
 function renderLinkView(view, found) {
   const link = found.item;
   const sect = el("section", { class: "detail-section" });
-  sect.appendChild(el("h2", null, link.name));
+  // H1 s názvem je už v hlavičce stránky
   if (link.description) sect.appendChild(el("p", { class: "desc" }, link.description));
   if (link.url) {
     sect.appendChild(el("p", null,
@@ -3434,7 +3496,7 @@ function doGlobalSearch(query) {
     const body = el("div", { class: "item-body" });
     body.appendChild(el("h3", { class: "item-title" },
       el("a", { href: "#", class: "item-link", onclick: (e) => { e.preventDefault(); navigateTo(it.id); } },
-        el("span", { class: "item-icon", "aria-hidden": "true" }, iconFor(it)),
+        el("span", { class: "item-icon" }, iconFor(it)),
         " ",
         el("span", { class: "item-name" }, it.name || "(bez názvu)"),
       )));
