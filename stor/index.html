@@ -895,8 +895,8 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 
   <div class="edit-bar">
     <label class="edit-toggle">
-      <input type="checkbox" id="edit-mode-toggle" accesskey="x" />
-      <span id="edit-mode-label" title="Klávesa: X (Alt+X v Chrome/Firefox; Ctrl+Alt+X v Safari)">Režim úprav</span>
+      <input type="checkbox" id="edit-mode-toggle" />
+      <span id="edit-mode-label" title="Klávesa: X">Režim úprav</span>
       <span id="unsaved-indicator" class="unsaved-badge" hidden>Neuloženo</span>
     </label>
     <div id="edit-panel" class="edit-panel" hidden></div>
@@ -905,8 +905,8 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
       <div id="op-log-summary" class="op-log-summary" aria-live="polite"></div>
       <ul id="op-log" class="op-log" aria-live="polite"></ul>
       <div class="op-log-actions">
-        <button type="button" class="small subtle" id="op-log-clear" accesskey="c" title="Klávesa: C">Vyčistit dokončené</button>
-        <button type="button" class="small subtle" id="op-log-retry-all" accesskey="r" title="Klávesa: R" hidden>Opakovat všechny chybné</button>
+        <button type="button" class="small subtle" id="op-log-clear" title="Klávesa: C">Vyčistit dokončené</button>
+        <button type="button" class="small subtle" id="op-log-retry-all" title="Klávesa: R" hidden>Opakovat všechny chybné</button>
       </div>
     </section>
     <div id="debug-toggle-wrap" style="margin-top: 10px;">
@@ -1771,16 +1771,55 @@ function fullRepoPath(filename) {
 //=============================================================================
 // HIGH-LEVEL ACTIONS
 //=============================================================================
+// Serializace state.storage pro push na github.
+// Vyhazuje:
+//   - verze, které ještě nebyly uploadovány (`pendingUpload: true`)
+//     — nemá smysl referencovat v JSONu blob, který na githubu zatím není
+//   - flag `pendingUpload` z jakékoliv verze (defenzivně, kdyby zbyl po loadu z dříve poškozeného JSONu)
+// `pendingUpload` je čistě runtime UI marker, nesmí přežít serializaci.
+function serializeStorage(storage) {
+  return JSON.stringify(storage, (key, value) => {
+    if (key === "versions" && Array.isArray(value)) {
+      return value.filter(v => !v.pendingUpload);
+    }
+    if (key === "pendingUpload") return undefined;
+    return value;
+  }, 2);
+}
+
+// Defenzivní cleanup po načtení z githubu — v paměti odstraní zbytky
+// `pendingUpload` flagu z verzí, které ve skutečnosti existují na githubu
+// (atomický commit blob+JSON zaručuje, že verze v JSONu má i blob).
+function stripPendingUploadMarkersFromLoadedStorage(storage) {
+  if (!storage) return;
+  let stripped = 0;
+  function walk(items) {
+    for (const it of items || []) {
+      if (it.type === T.FILE && Array.isArray(it.versions)) {
+        for (const v of it.versions) {
+          if (v.pendingUpload) { delete v.pendingUpload; stripped++; }
+        }
+      } else if (it.type === T.FOLDER && it.items) {
+        walk(it.items);
+      }
+    }
+  }
+  walk(storage.rootItems || []);
+  if (stripped > 0) {
+    debug("Cleanup: smazáno " + stripped + " zbytečných pendingUpload flagů z načteného JSONu.", "ok");
+  }
+}
+
 async function pushStorageJson(message) {
   if (!state.storage) return;
-  const json = JSON.stringify(state.storage, null, 2);
+  const json = serializeStorage(state.storage);
   const b64 = arrayBufferToBase64(new TextEncoder().encode(json).buffer);
   await ghCommitChanges([{ path: fullRepoPath(STORAGE_FILENAME), contentBase64: b64 }], message || "DMS: update storage.json");
   markSaved();
 }
 
 async function pushFileVersionAndJson(versionPath, versionBase64, commitMsg) {
-  const json = JSON.stringify(state.storage, null, 2);
+  const json = serializeStorage(state.storage);
   const jsonB64 = arrayBufferToBase64(new TextEncoder().encode(json).buffer);
   const result = await ghCommitChanges([
     { path: versionPath, contentBase64: versionBase64 },
@@ -1791,7 +1830,7 @@ async function pushFileVersionAndJson(versionPath, versionBase64, commitMsg) {
 }
 
 async function pushDeleteAndJson(pathsToDelete, commitMsg) {
-  const json = JSON.stringify(state.storage, null, 2);
+  const json = serializeStorage(state.storage);
   const jsonB64 = arrayBufferToBase64(new TextEncoder().encode(json).buffer);
   const changes = pathsToDelete.map(p => ({ path: p, delete: true }));
   changes.push({ path: fullRepoPath(STORAGE_FILENAME), contentBase64: jsonB64 });
@@ -1809,6 +1848,9 @@ async function loadStorageFromGithub() {
     const r = await ghReadJson(STORAGE_FILENAME);
     state.storage = r.data;
     if (!state.storage.rootItems) state.storage.rootItems = [];
+    // Defenzivní cleanup — pokud staré buggy verze aplikace pushly JSON s `pendingUpload: true`,
+    // odstraníme to teď. Atomický commit blob+JSON zaručuje, že verze v loadnutém JSONu má i blob na githubu.
+    stripPendingUploadMarkersFromLoadedStorage(state.storage);
     rememberStorageInfo(state.storage.id, state.storage.name);
     const st = computeStats();
     handle.succeed(`Načteno: ${st.folders} složek, ${st.files} souborů, ${st.versions} verzí (${fmtSize(st.totalSize)})`);
@@ -2276,9 +2318,9 @@ function renderFolderView(view, found) {
   sortSel.value = state.sortMode || "name";
   toolbar.appendChild(sortSel);
   if (state.editMode) {
-    toolbar.appendChild(el("button", { class: "primary small", onclick: () => createFolder(folder), accesskey: "f", title: "Přidat složku (klávesa F)", "aria-label": "Přidat složku" }, "+ " + T_ICON[T.FOLDER]));
-    toolbar.appendChild(el("button", { class: "primary small", onclick: () => createLink(folder), accesskey: "l", title: "Přidat odkaz (klávesa L)", "aria-label": "Přidat odkaz" }, "+ " + T_ICON[T.LINK]));
-    toolbar.appendChild(el("button", { class: "primary small", onclick: () => createFile(folder), accesskey: "n", title: "Přidat soubor (klávesa N)", "aria-label": "Přidat soubor" }, "+ " + T_ICON[T.FILE]));
+    toolbar.appendChild(el("button", { class: "primary small", onclick: () => createFolder(folder), title: "Přidat složku (klávesa F)", "aria-label": "Přidat složku" }, "+ " + T_ICON[T.FOLDER]));
+    toolbar.appendChild(el("button", { class: "primary small", onclick: () => createLink(folder), title: "Přidat odkaz (klávesa L)", "aria-label": "Přidat odkaz" }, "+ " + T_ICON[T.LINK]));
+    toolbar.appendChild(el("button", { class: "primary small", onclick: () => createFile(folder), title: "Přidat soubor (klávesa N)", "aria-label": "Přidat soubor" }, "+ " + T_ICON[T.FILE]));
   }
   view.appendChild(toolbar);
 
@@ -2299,7 +2341,7 @@ function renderFolderView(view, found) {
   if (state.editMode && !isRoot) {
     const editBox = el("section", { class: "edit-panel" });
     editBox.appendChild(el("h3", null, "Vlastnosti " + T_ICON[T.FOLDER]));
-    editBox.appendChild(el("button", { class: "small", onclick: () => editFolderProps(folder), accesskey: "e", title: "Přejmenovat / popis (klávesa E)" }, "Přejmenovat / popis"));
+    editBox.appendChild(el("button", { class: "small", onclick: () => editFolderProps(folder), title: "Přejmenovat / popis (klávesa E)" }, "Přejmenovat / popis"));
     editBox.appendChild(document.createTextNode(" "));
     if (found.path.length > 0) {
       editBox.appendChild(el("button", { class: "small", onclick: () => moveItem(folder.id) }, "Přesunout"));
@@ -2530,7 +2572,8 @@ function renderFileView(view, found) {
     const upForm = el("div");
     const fld1 = el("div", { class: "field" });
     fld1.appendChild(el("label", { for: "up-file" }, "Soubor"));
-    fld1.appendChild(el("input", { type: "file", id: "up-file" }));
+    fld1.appendChild(el("input", { type: "file", id: "up-file", title: "Klávesa: O (otevřít dialog pro výběr souboru)" }));
+    fld1.appendChild(el("div", { class: "hint" }, "Tip: klávesa O otevře dialog pro výběr souboru."));
     upForm.appendChild(fld1);
     const fld2 = el("div", { class: "field" });
     fld2.appendChild(el("label", { for: "up-desc" }, "Popis verze (volitelně)"));
@@ -2554,7 +2597,7 @@ function renderFileView(view, found) {
   if (state.editMode) {
     const editBox = el("section", { class: "edit-panel" });
     editBox.appendChild(el("h3", null, "Akce " + T_ICON[T.FILE]));
-    editBox.appendChild(el("button", { class: "small", onclick: () => editItemProps(file), accesskey: "e", title: "Přejmenovat / popis (klávesa E)" }, "Přejmenovat / popis"));
+    editBox.appendChild(el("button", { class: "small", onclick: () => editItemProps(file), title: "Přejmenovat / popis (klávesa E)" }, "Přejmenovat / popis"));
     editBox.appendChild(document.createTextNode(" "));
     editBox.appendChild(el("button", { class: "small", onclick: () => moveItem(file.id) }, "Přesunout"));
     editBox.appendChild(document.createTextNode(" "));
@@ -2591,7 +2634,6 @@ function renderFileHeaderSection(found) {
     sect.appendChild(el("div", { style: { marginTop: "8px" } },
       el("a", {
         href: "#",
-        accesskey: "d",
         title: "Stáhnout nejnovější verzi (klávesa D)",
         onclick: (e) => { e.preventDefault(); downloadVersion(lastDownloadable); },
       }, "Stáhnout nejnovější verzi"),
@@ -2714,7 +2756,7 @@ function renderLinkView(view, found) {
   if (state.editMode) {
     const editBox = el("section", { class: "edit-panel" });
     editBox.appendChild(el("h3", null, "Akce " + T_ICON[T.LINK]));
-    editBox.appendChild(el("button", { class: "small", onclick: () => editItemProps(link), accesskey: "e", title: "Upravit (klávesa E)" }, "Upravit"));
+    editBox.appendChild(el("button", { class: "small", onclick: () => editItemProps(link), title: "Upravit (klávesa E)" }, "Upravit"));
     editBox.appendChild(document.createTextNode(" "));
     editBox.appendChild(el("button", { class: "small", onclick: () => moveItem(link.id) }, "Přesunout"));
     editBox.appendChild(document.createTextNode(" "));
@@ -3154,6 +3196,9 @@ async function doUploadVersion(file) {
 // Separate attempt fn so retry can call it again with the same context
 async function uploadVersionAttempt(file, version, b64) {
   const handle = beginOp("Upload verze + storage.json (atomický commit): " + version.filename + " (" + fmtSize(version.size) + ")", "upload");
+  // pendingUpload je čistě UI marker — smažeme HO PŘED serializací JSONu pro push.
+  // Pokud push selže, vrátíme ho zpátky aby UI dál ukazovalo přesýpací hodiny a šel retry.
+  delete version.pendingUpload;
   try {
     const result = await pushFileVersionAndJson(
       fullRepoPath(version.filename), b64,
@@ -3162,12 +3207,12 @@ async function uploadVersionAttempt(file, version, b64) {
     if (result.pathToSha[fullRepoPath(version.filename)]) {
       version.sha = result.pathToSha[fullRepoPath(version.filename)];
     }
-    delete version.pendingUpload;
     handle.succeed("Verze + storage.json uloženy v jednom commitu: " + version.filename);
     showStatus("Nová verze nahrána (včetně storage.json).", "success");
     render();
   } catch (e) {
-    // Verze zůstává v lokálním stavu s pendingUpload=true. Retry znova zkusí push (oba znovu, atomicky).
+    // Push selhal — vrátíme marker, aby UI dál ukazovalo „čeká na upload" a retry mohl proběhnout.
+    version.pendingUpload = true;
     handle.fail(e, () => uploadVersionAttempt(file, version, b64));
     showStatus("Nahrání selhalo: " + e.message + " — můžete opakovat z panelu operací.", "error", 8000);
     render();
@@ -3462,7 +3507,7 @@ async function pushStorageJsonWithLog(commitMsg, opLabel) {
 
 function exportStorageJson() {
   if (!state.storage) return;
-  const json = JSON.stringify(state.storage, null, 2);
+  const json = serializeStorage(state.storage);
   const blob = new Blob([json], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -3560,6 +3605,114 @@ function wireOpLogButtons() {
   if (retryBtn) retryBtn.addEventListener("click", retryAllFailed);
 }
 
+//=============================================================================
+// GLOBÁLNÍ KLÁVESOVÉ ZKRATKY (holé klávesy, bez Alt/Ctrl)
+//=============================================================================
+// X — toggle režim úprav
+// F — přidat 📁 (jen v editmódu, ve složce)
+// L — přidat ⛓️ (jen v editmódu, ve složce)
+// N — přidat 📃 (jen v editmódu, ve složce)
+// E — přejmenovat / popis (jen v editmódu, na položce ne v rootu)
+// D — stáhnout nejnovější verzi (jen na detailu souboru)
+// O — otevřít file picker pro novou verzi (jen na detailu souboru, ne v náhledu verze)
+// C — vyčistit dokončené z op-logu
+// R — opakovat všechny chybné z op-logu
+function handleGlobalKey(e) {
+  // Nereagovat když uživatel píše v inputu/textarea/selectu nebo je dialog otevřený.
+  const t = e.target;
+  const tag = t && t.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;
+  if (document.querySelector("dialog[open]")) return;
+  // Jen holé klávesy (bez modifikátorů — Ctrl+F je prohlížečové vyhledávání atd.)
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  // Klávesa musí být jediný znak (písmeno), ne F1, Tab, Enter atd.
+  if (!e.key || e.key.length !== 1) return;
+
+  const key = e.key.toLowerCase();
+  const isOnFile = (() => {
+    if (!state.storage || state.currentDetailId === "root") return null;
+    const found = findItem(state.currentDetailId);
+    return (found && found.item && found.item.type === T.FILE) ? found.item : null;
+  })();
+  const currentFolder = (() => {
+    if (!state.storage) return null;
+    if (state.currentDetailId === "root") {
+      // Vrať pseudo-rootem, který createFolder/createLink/createFile umí zpracovat
+      return { id: "root", type: T.FOLDER, items: state.storage.rootItems };
+    }
+    const found = findItem(state.currentDetailId);
+    return (found && found.item && found.item.type === T.FOLDER) ? found.item : null;
+  })();
+
+  switch (key) {
+    case "x": {
+      const cb = $("edit-mode-toggle");
+      if (cb) {
+        cb.checked = !cb.checked;
+        cb.dispatchEvent(new Event("change"));
+        e.preventDefault();
+      }
+      break;
+    }
+    case "f": {
+      if (state.editMode && currentFolder) { e.preventDefault(); createFolder(currentFolder); }
+      break;
+    }
+    case "l": {
+      if (state.editMode && currentFolder) { e.preventDefault(); createLink(currentFolder); }
+      break;
+    }
+    case "n": {
+      if (state.editMode && currentFolder) { e.preventDefault(); createFile(currentFolder); }
+      break;
+    }
+    case "e": {
+      if (state.editMode && state.currentDetailId !== "root") {
+        const found = findItem(state.currentDetailId);
+        if (found && found.item) { e.preventDefault(); editItemProps(found.item); }
+      }
+      break;
+    }
+    case "d": {
+      if (isOnFile) {
+        const versions = isOnFile.versions || [];
+        for (let i = versions.length - 1; i >= 0; i--) {
+          if (!versions[i].pendingUpload) {
+            e.preventDefault();
+            downloadVersion(versions[i]);
+            return;
+          }
+        }
+      }
+      break;
+    }
+    case "o": {
+      if (isOnFile) {
+        const fileInput = $("up-file");
+        if (fileInput) {
+          e.preventDefault();
+          fileInput.click(); // otevře OS dialog pro výběr souboru
+        }
+      }
+      break;
+    }
+    case "c": {
+      const sect = $("op-log-section");
+      const btn = $("op-log-clear");
+      if (sect && !sect.hidden && btn) { e.preventDefault(); btn.click(); }
+      break;
+    }
+    case "r": {
+      const btn = $("op-log-retry-all");
+      if (btn && !btn.hidden) { e.preventDefault(); btn.click(); }
+      break;
+    }
+  }
+}
+function wireGlobalKeys() {
+  document.addEventListener("keydown", handleGlobalKey);
+}
+
 async function init() {
   // Pořadí důležité: URL musí proběhnout PŘED loadConfig, aby loadConfig
   // dohledal apiKey/branch pro repo z URL (ne z lastRepoPath).
@@ -3569,6 +3722,7 @@ async function init() {
   wireDebugToggle();
   wireBeforeUnload();
   wireOpLogButtons();
+  wireGlobalKeys();
 
   // Initial paint of empty shell so user sees the page even if load takes time
   render();
