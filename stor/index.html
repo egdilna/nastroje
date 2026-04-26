@@ -3605,27 +3605,33 @@ function wireOpLogButtons() {
   if (retryBtn) retryBtn.addEventListener("click", retryAllFailed);
 }
 
-//=============================================================================
-// GLOBÁLNÍ KLÁVESOVÉ ZKRATKY (holé klávesy, bez Alt/Ctrl)
-//=============================================================================
-// X — toggle režim úprav
-// F — přidat 📁 (jen v editmódu, ve složce)
-// L — přidat ⛓️ (jen v editmódu, ve složce)
-// N — přidat 📃 (jen v editmódu, ve složce)
-// E — přejmenovat / popis (jen v editmódu, na položce ne v rootu)
-// D — stáhnout nejnovější verzi (jen na detailu souboru)
-// O — otevřít file picker pro novou verzi (jen na detailu souboru, ne v náhledu verze)
-// C — vyčistit dokončené z op-logu
-// R — opakovat všechny chybné z op-logu
+// Globální klávesové zkratky — holá písmena BEZ modifikátorů.
+//
+// x — toggle režim úprav
+// f — přidat 📁 (jen v editmódu, ve složce)
+// l — přidat ⛓️ (jen v editmódu, ve složce)
+// n — přidat 📃 (jen v editmódu, ve složce)
+// e — přejmenovat / popis (jen v editmódu, na položce ne v rootu)
+// d — stáhnout nejnovější verzi (jen na detailu souboru)
+// o — otevřít file picker pro novou verzi (jen na detailu souboru, ne v náhledu verze)
+// c — vyčistit dokončené z op-logu
+// r — opakovat všechny chybné z op-logu
+//
+// Poznámka pro screen reader uživatele: NVDA/JAWS/VoiceOver v default browse modu
+// si některá písmena rezervují pro vlastní quick-navigation (X = další checkbox,
+// F = další form field, atd.). Aplikace přidává `keydown` handler v CAPTURE fázi
+// a u rozpoznaných kláves volá stopPropagation, aby zkratky aplikace měly přednost
+// před quick-nav screen readeru. Pokud by to v některém prostředí stále nefungovalo,
+// stiskněte v NVDA NVDA+Mezera pro přepnutí do focus modu.
 function handleGlobalKey(e) {
   // Nereagovat když uživatel píše v inputu/textarea/selectu nebo je dialog otevřený.
   const t = e.target;
   const tag = t && t.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;
   if (document.querySelector("dialog[open]")) return;
-  // Jen holé klávesy (bez modifikátorů — Ctrl+F je prohlížečové vyhledávání atd.)
-  if (e.ctrlKey || e.metaKey || e.altKey) return;
-  // Klávesa musí být jediný znak (písmeno), ne F1, Tab, Enter atd.
+  // Žádné modifikátory (Ctrl/Cmd/Alt/Shift) — chceme holá písmena.
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+  // Klávesa musí být jediný znak.
   if (!e.key || e.key.length !== 1) return;
 
   const key = e.key.toLowerCase();
@@ -3644,32 +3650,33 @@ function handleGlobalKey(e) {
     return (found && found.item && found.item.type === T.FOLDER) ? found.item : null;
   })();
 
+  let consumed = false;
   switch (key) {
     case "x": {
       const cb = $("edit-mode-toggle");
       if (cb) {
         cb.checked = !cb.checked;
         cb.dispatchEvent(new Event("change"));
-        e.preventDefault();
+        consumed = true;
       }
       break;
     }
     case "f": {
-      if (state.editMode && currentFolder) { e.preventDefault(); createFolder(currentFolder); }
+      if (state.editMode && currentFolder) { createFolder(currentFolder); consumed = true; }
       break;
     }
     case "l": {
-      if (state.editMode && currentFolder) { e.preventDefault(); createLink(currentFolder); }
+      if (state.editMode && currentFolder) { createLink(currentFolder); consumed = true; }
       break;
     }
     case "n": {
-      if (state.editMode && currentFolder) { e.preventDefault(); createFile(currentFolder); }
+      if (state.editMode && currentFolder) { createFile(currentFolder); consumed = true; }
       break;
     }
     case "e": {
       if (state.editMode && state.currentDetailId !== "root") {
         const found = findItem(state.currentDetailId);
-        if (found && found.item) { e.preventDefault(); editItemProps(found.item); }
+        if (found && found.item) { editItemProps(found.item); consumed = true; }
       }
       break;
     }
@@ -3678,9 +3685,9 @@ function handleGlobalKey(e) {
         const versions = isOnFile.versions || [];
         for (let i = versions.length - 1; i >= 0; i--) {
           if (!versions[i].pendingUpload) {
-            e.preventDefault();
             downloadVersion(versions[i]);
-            return;
+            consumed = true;
+            break;
           }
         }
       }
@@ -3690,8 +3697,8 @@ function handleGlobalKey(e) {
       if (isOnFile) {
         const fileInput = $("up-file");
         if (fileInput) {
-          e.preventDefault();
           fileInput.click(); // otevře OS dialog pro výběr souboru
+          consumed = true;
         }
       }
       break;
@@ -3699,18 +3706,28 @@ function handleGlobalKey(e) {
     case "c": {
       const sect = $("op-log-section");
       const btn = $("op-log-clear");
-      if (sect && !sect.hidden && btn) { e.preventDefault(); btn.click(); }
+      if (sect && !sect.hidden && btn) { btn.click(); consumed = true; }
       break;
     }
     case "r": {
       const btn = $("op-log-retry-all");
-      if (btn && !btn.hidden) { e.preventDefault(); btn.click(); }
+      if (btn && !btn.hidden) { btn.click(); consumed = true; }
       break;
     }
   }
+  if (consumed) {
+    // PreventDefault i stopPropagation — kombinace, která zabrání jak browser default,
+    // tak quick-navigation screen readerů (NVDA/JAWS/VoiceOver).
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+  }
 }
 function wireGlobalKeys() {
-  document.addEventListener("keydown", handleGlobalKey);
+  // Capture fáze — handler dostane event PŘED tím, než ho zpracuje NVDA quick-nav.
+  // U rozpoznaných kláves voláme stopPropagation, takže se ke screen readeru
+  // ten event už nedostane.
+  document.addEventListener("keydown", handleGlobalKey, true);
 }
 
 async function init() {
