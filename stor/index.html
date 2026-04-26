@@ -957,8 +957,9 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 //=============================================================================
 const APP_VERSION = "1.0";
 const STORAGE_FILENAME = "storage.json";
-const LS_KEY = "dms-config-v2";
-const LS_KEY_LEGACY = "dms-config-v1";
+const LS_KEY = "dms-config-v3";
+const LS_KEY_V2 = "dms-config-v2";
+const LS_KEY_V1 = "dms-config-v1";
 const COMMIT_BRANCH_DEFAULT = "main";
 
 const state = {
@@ -1114,56 +1115,104 @@ function base64ToBlob(b64, mime) {
 }
 
 //=============================================================================
-// CONFIG (localStorage) — multi-storage capable
+// CONFIG (localStorage) — device-global credentials, multi-storage navigation
 //=============================================================================
-// Struktura v localStorage (v2):
+// Struktura v localStorage (v3):
 // {
-//   deviceName: "...",
-//   repos: {
-//     "owner/repo/path": {
-//        apiKey: "...",
-//        branch: "main",
-//        storageId: "...",       // naposled viděné
-//        storageName: "...",     // naposled viděné
-//        lastVisited: "ISO datum"
+//   apiKey: "ghp_...",                    // GLOBÁLNÍ — jeden GitHub PAT pro celé zařízení
+//   deviceName: "...",                    // GLOBÁLNÍ — jméno tohoto zařízení (zobrazuje se u verzí)
+//   branch: "main",                       // GLOBÁLNÍ default větev
+//   knownRepos: [                         // historie navštívených úložišť (jen pro UX nawigaci)
+//     {
+//       repoPath: "owner/repo/path",
+//       storageId: "...",                 // pamatováno po loadu (zobrazuje se v seznamu)
+//       storageName: "...",
+//       lastVisited: "ISO datum",
+//       branch: "..."                     // OPTIONAL override globální větve
 //     },
 //     ...
-//   },
-//   lastRepoPath: "owner/repo/path"
+//   ],
+//   lastRepoPath: "owner/repo/path"       // co bylo naposled aktivní (kam se vrátit při dalším otevření)
 // }
 //
-// state.config v paměti zůstává zploštělý ({apiKey, deviceName, repoPath, branch}) — load/save převádí.
+// Klíčový princip: API klíč je vlastnost ZAŘÍZENÍ, ne úložiště. Když dostanu URL na nové
+// úložiště (i v iframe), přirozeně se použije globální klíč — funguje to okamžitě
+// bez nutnosti znovu zadávat credentials.
+//
+// state.config v paměti je zploštělý ({apiKey, deviceName, repoPath, branch}) — load/save převádí.
 
 function loadFullConfig() {
-  // Vrátí celý config v2 (s migrací z v1, pokud existuje).
-  let cfg = { deviceName: "", repos: {}, lastRepoPath: "" };
+  // Vrátí celý config v3. Provádí migraci z v2 a v1, pokud jsou k dispozici.
+  let cfg = { apiKey: "", deviceName: "", branch: COMMIT_BRANCH_DEFAULT, knownRepos: [], lastRepoPath: "" };
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === "object") {
+        cfg.apiKey = parsed.apiKey || "";
         cfg.deviceName = parsed.deviceName || "";
-        cfg.repos = parsed.repos || {};
+        cfg.branch = parsed.branch || COMMIT_BRANCH_DEFAULT;
+        cfg.knownRepos = Array.isArray(parsed.knownRepos) ? parsed.knownRepos : [];
         cfg.lastRepoPath = parsed.lastRepoPath || "";
       }
-    } else {
-      // Zkus migraci ze starého (v1) configu
-      const legacyRaw = localStorage.getItem(LS_KEY_LEGACY);
-      if (legacyRaw) {
-        const legacy = JSON.parse(legacyRaw);
-        if (legacy && legacy.repoPath) {
-          cfg.repos[legacy.repoPath] = {
-            apiKey: legacy.apiKey || "",
-            branch: legacy.branch || COMMIT_BRANCH_DEFAULT,
-            storageId: "",
-            storageName: "",
-            lastVisited: nowIso(),
-          };
-          cfg.lastRepoPath = legacy.repoPath;
+      return cfg;
+    }
+    // Migrace v2 → v3: vezmi nejnovější apiKey a branch jako globální, repos[] zploštit do knownRepos[].
+    const rawV2 = localStorage.getItem(LS_KEY_V2);
+    if (rawV2) {
+      const v2 = JSON.parse(rawV2) || {};
+      cfg.deviceName = v2.deviceName || "";
+      cfg.lastRepoPath = v2.lastRepoPath || "";
+      let bestApiKey = "";
+      let bestBranch = COMMIT_BRANCH_DEFAULT;
+      let bestVisited = "";
+      const repos = v2.repos || {};
+      for (const rp in repos) {
+        const e = repos[rp];
+        cfg.knownRepos.push({
+          repoPath: rp,
+          storageId: e.storageId || "",
+          storageName: e.storageName || "",
+          lastVisited: e.lastVisited || "",
+          branch: e.branch && e.branch !== COMMIT_BRANCH_DEFAULT ? e.branch : undefined,
+        });
+        // Vezmi globální apiKey z entry s nejnovějším lastVisited (nebo první nenulový)
+        if (e.apiKey && (!bestApiKey || (e.lastVisited && e.lastVisited > bestVisited))) {
+          bestApiKey = e.apiKey;
+          bestBranch = e.branch || COMMIT_BRANCH_DEFAULT;
+          bestVisited = e.lastVisited || "";
         }
-        if (legacy && legacy.deviceName) cfg.deviceName = legacy.deviceName;
-        debug("Migrace konfigurace z v1 do v2 proběhla.");
       }
+      cfg.apiKey = bestApiKey;
+      cfg.branch = bestBranch;
+      // Vyčisti undefined branch (kvůli JSON.stringify)
+      cfg.knownRepos = cfg.knownRepos.map(r => {
+        const c = Object.assign({}, r);
+        if (c.branch === undefined) delete c.branch;
+        return c;
+      });
+      saveFullConfig(cfg);
+      try { localStorage.removeItem(LS_KEY_V2); } catch {}
+      debug("Migrace konfigurace v2 → v3: API klíč povýšen na globální (per-device).", "ok");
+      return cfg;
+    }
+    // Migrace v1 → v3 (přímá): jeden repo, jeden apiKey, povýšit na globální.
+    const rawV1 = localStorage.getItem(LS_KEY_V1);
+    if (rawV1) {
+      const v1 = JSON.parse(rawV1) || {};
+      cfg.apiKey = v1.apiKey || "";
+      cfg.deviceName = v1.deviceName || "";
+      cfg.branch = v1.branch || COMMIT_BRANCH_DEFAULT;
+      if (v1.repoPath) {
+        cfg.knownRepos.push({
+          repoPath: v1.repoPath, storageId: "", storageName: "", lastVisited: nowIso()
+        });
+        cfg.lastRepoPath = v1.repoPath;
+      }
+      saveFullConfig(cfg);
+      try { localStorage.removeItem(LS_KEY_V1); } catch {}
+      debug("Migrace konfigurace v1 → v3 proběhla.", "ok");
+      return cfg;
     }
   } catch(e) {
     debug("Chyba načtení konfigurace: " + e.message, "err");
@@ -1180,65 +1229,77 @@ function saveFullConfig(cfg) {
 }
 
 function loadConfig() {
-  // Naplní state.config. Pokud má state.config už nastavený repoPath
-  // (např. z URL přečtené dřív), zachová ho a načte z mapy odpovídající apiKey/branch.
-  // Jinak použije lastRepoPath z mapy.
+  // Naplní state.config. API klíč a deviceName jsou globální per-device.
+  // repoPath přijde z URL (priorita) nebo z lastRepoPath (fallback).
+  // branch: pokud má aktuální repo per-repo override v knownRepos, použije se ten;
+  //   jinak globální default.
   const full = loadFullConfig();
+  state.config.apiKey = full.apiKey || "";
   state.config.deviceName = full.deviceName || "";
-  // Pokud už repoPath je nastaven (z URL při readUrlOnLoad), drž se ho;
-  // jinak sáhni po last-used.
+  // repoPath: pokud už je nastaven (z URL přečtené dřív), drž se ho; jinak last-used.
   const targetRepo = state.config.repoPath || full.lastRepoPath || "";
   state.config.repoPath = targetRepo;
-  const entry = (full.repos && full.repos[targetRepo]) || null;
-  state.config.apiKey = entry ? (entry.apiKey || "") : "";
-  state.config.branch = entry ? (entry.branch || COMMIT_BRANCH_DEFAULT) : COMMIT_BRANCH_DEFAULT;
+  // Branch: per-repo override > globální default
+  const entry = (full.knownRepos || []).find(r => r.repoPath === targetRepo);
+  state.config.branch = (entry && entry.branch) || full.branch || COMMIT_BRANCH_DEFAULT;
 }
 
 function saveConfig() {
-  // Uloží aktuální state.config do mapy (klíč = repoPath).
-  // Pokud repoPath není, uloží jen deviceName.
+  // Uloží globální fields (apiKey, deviceName, branch jako default) + aktualizuje
+  // knownRepos[] entry pro aktuální repoPath (lastVisited).
   const full = loadFullConfig();
+  full.apiKey = state.config.apiKey || "";
   full.deviceName = state.config.deviceName || "";
+  // Globální branch updatujeme jen pokud aktuální config nepoužívá per-repo override.
+  // Jednoduššeji: nechej globální branch netknutou; per-repo branch se ukládá zvlášť přes
+  // mechanismus knownRepos. Tady jen ukládáme jako default pokud je config.branch jiný než
+  // globální + nejde o per-repo override.
   const rp = state.config.repoPath;
   if (rp) {
-    if (!full.repos) full.repos = {};
-    const existing = full.repos[rp] || {};
-    full.repos[rp] = {
-      apiKey: state.config.apiKey || "",
-      branch: state.config.branch || COMMIT_BRANCH_DEFAULT,
-      storageId: existing.storageId || "",
-      storageName: existing.storageName || "",
+    if (!Array.isArray(full.knownRepos)) full.knownRepos = [];
+    const idx = full.knownRepos.findIndex(r => r.repoPath === rp);
+    const existing = idx >= 0 ? full.knownRepos[idx] : null;
+    const branchVal = state.config.branch || COMMIT_BRANCH_DEFAULT;
+    const entry = {
+      repoPath: rp,
+      storageId: existing ? (existing.storageId || "") : "",
+      storageName: existing ? (existing.storageName || "") : "",
       lastVisited: nowIso(),
     };
+    // Pokud branch v configu je jiný než globální default, uložíme per-repo override
+    if (branchVal !== (full.branch || COMMIT_BRANCH_DEFAULT)) entry.branch = branchVal;
+    if (idx >= 0) full.knownRepos[idx] = entry;
+    else full.knownRepos.push(entry);
     full.lastRepoPath = rp;
   }
   saveFullConfig(full);
 }
 
 function rememberStorageInfo(storageId, storageName) {
-  // Uloží storageid + name pro aktuální repoPath (volá se po úspěšném loadu / vytvoření).
+  // Aktualizuje storageId + storageName pro aktuální repoPath (volá se po úspěšném loadu / vytvoření).
   const rp = state.config.repoPath;
   if (!rp) return;
   const full = loadFullConfig();
-  if (!full.repos) full.repos = {};
-  const e = full.repos[rp] || {};
-  e.apiKey = state.config.apiKey || e.apiKey || "";
-  e.branch = state.config.branch || e.branch || COMMIT_BRANCH_DEFAULT;
-  e.storageId = storageId || "";
-  e.storageName = storageName || "";
-  e.lastVisited = nowIso();
-  full.repos[rp] = e;
+  if (!Array.isArray(full.knownRepos)) full.knownRepos = [];
+  const idx = full.knownRepos.findIndex(r => r.repoPath === rp);
+  const branchVal = state.config.branch || COMMIT_BRANCH_DEFAULT;
+  const entry = {
+    repoPath: rp,
+    storageId: storageId || "",
+    storageName: storageName || "",
+    lastVisited: nowIso(),
+  };
+  if (branchVal !== (full.branch || COMMIT_BRANCH_DEFAULT)) entry.branch = branchVal;
+  if (idx >= 0) full.knownRepos[idx] = entry;
+  else full.knownRepos.push(entry);
   full.lastRepoPath = rp;
   saveFullConfig(full);
 }
 
 function listKnownRepos() {
-  // Vrátí pole [{repoPath, apiKey, branch, storageId, storageName, lastVisited}], seřazeno od nejnověji navštívených.
+  // Vrátí pole známých úložišť, řazené od nejnověji navštívených.
   const full = loadFullConfig();
-  const out = [];
-  for (const rp in (full.repos || {})) {
-    out.push(Object.assign({ repoPath: rp }, full.repos[rp]));
-  }
+  const out = (full.knownRepos || []).slice();
   out.sort((a, b) => {
     const ta = a.lastVisited || "", tb = b.lastVisited || "";
     return tb.localeCompare(ta);
@@ -1247,13 +1308,13 @@ function listKnownRepos() {
 }
 
 function forgetRepo(repoPath) {
-  // Odstraní repo z mapy (např. když uživatel chce zapomenout API klíč).
+  // Odstraní repo ze seznamu známých úložišť. Globální API klíč zůstává.
   const full = loadFullConfig();
-  if (full.repos && full.repos[repoPath]) {
-    delete full.repos[repoPath];
-    if (full.lastRepoPath === repoPath) full.lastRepoPath = "";
-    saveFullConfig(full);
+  if (Array.isArray(full.knownRepos)) {
+    full.knownRepos = full.knownRepos.filter(r => r.repoPath !== repoPath);
   }
+  if (full.lastRepoPath === repoPath) full.lastRepoPath = "";
+  saveFullConfig(full);
 }
 
 //=============================================================================
@@ -3280,9 +3341,9 @@ function renderEditPanel() {
   row2.appendChild(fdev);
   cf.appendChild(row2);
   const fkey = el("div", { class: "field" });
-  fkey.appendChild(el("label", { for: "set-api-key" }, "GitHub API klíč (jen lokálně)"));
+  fkey.appendChild(el("label", { for: "set-api-key" }, "GitHub API klíč (per-device, jen lokálně)"));
   fkey.appendChild(el("input", { type: "password", id: "set-api-key", value: state.config.apiKey || "", autocomplete: "off" }));
-  fkey.appendChild(el("div", { class: "hint" }, "Personal access token s repo právy. Bez klíče funguje jen čtení veřejných repo."));
+  fkey.appendChild(el("div", { class: "hint" }, "Personal access token s repo právy. Klíč je společný pro všechna úložiště otevřená v tomto prohlížeči. Bez klíče funguje jen čtení veřejných repo."));
   cf.appendChild(fkey);
   const btnRow = el("div", { style: { display: "flex", gap: "6px", flexWrap: "wrap" } });
   btnRow.appendChild(el("button", { class: "primary small", onclick: () => saveSettingsAndLoad() }, "Uložit a načíst"));
@@ -3428,7 +3489,8 @@ async function saveSettingsAndLoad() {
 }
 
 async function openStorage(repoPath) {
-  // Otevře jiné úložiště v aktuálním tabu. Načte apiKey/branch z mapy podle repoPath.
+  // Otevře jiné úložiště v aktuálním tabu. API klíč zůstává globální (per-device).
+  // Aktualizuje se jen repoPath a (pokud má per-repo override) branch.
   if (!repoPath) return;
   if (state.unsaved) {
     const ok = await confirmDialog("Máte neuložené změny v aktuálním úložišti. Opravdu přepnout?", { okLabel: "Přepnout" });
@@ -3440,9 +3502,9 @@ async function openStorage(repoPath) {
   state.viewingVersionId = null;
   state.unsaved = false;
   $("unsaved-indicator").hidden = true;
-  // Nastav nový repoPath a načti k němu data z mapy
+  // Nastav nový repoPath; loadConfig pro něj dohledá per-repo branch override (apiKey je globální)
   state.config.repoPath = repoPath;
-  loadConfig(); // načte apiKey/branch pro nový repoPath
+  loadConfig();
   updateUrl();
   render();
   await loadStorageFromGithub();
@@ -3450,12 +3512,12 @@ async function openStorage(repoPath) {
 }
 
 async function forgetRepoConfirm(repoPath) {
-  const ok = await confirmDialog("Smazat z lokálních dat informace o úložišti " + repoPath + "? (API klíč zmizí, samotná data na githubu zůstávají.)", {
+  const ok = await confirmDialog("Odebrat tohle úložiště ze seznamu známých? (Pouze lokální záznam o návštěvě — globální API klíč zůstává, data na githubu zůstávají.)", {
     title: "Zapomenout úložiště", danger: true, okLabel: "Zapomenout",
   });
   if (!ok) return;
   forgetRepo(repoPath);
-  showStatus("Úložiště zapomenuto z lokálních dat.", "success");
+  showStatus("Úložiště odebráno ze seznamu známých.", "success");
   render();
 }
 
