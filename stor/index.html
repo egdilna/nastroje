@@ -403,6 +403,47 @@ a.version-time {
   flex-wrap: wrap;
 }
 
+/* Parts list (v editmódu detailu souboru) */
+.parts-list {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+}
+.part-item {
+  padding: 8px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+}
+.part-meta {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.part-actions {
+  margin-top: 6px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Version filter row */
+.version-filter-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 6px 0 12px;
+  flex-wrap: wrap;
+}
+.version-filter-row label {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+.version-filter-row select {
+  width: auto;
+  min-width: 200px;
+}
+
 /* Edit-mode panel */
 .edit-bar {
   position: sticky;
@@ -982,6 +1023,7 @@ const state = {
   showStats: false,     // user toggled stats display in edit panel
   sortMode: "name",     // řazení v aktuálním pohledu složky
   filterQuery: "",      // filtr ve složce
+  versionFilterPartId: null, // filtr verzí v detailu souboru: null = vše, "" = bez části, "<id>" = konkrétní část
 };
 
 // Item type constants
@@ -1072,14 +1114,17 @@ function getExt(filename) {
   const m = /\.([a-zA-Z0-9]+)$/.exec(filename);
   return m ? m[1].toLowerCase() : "";
 }
-function genVersionFilename(storageId, fileId, ext) {
-  // storageid_souborid_2026-04-25_16-23.ext
+function genVersionFilename(storageId, fileId, partId, ext) {
+  // Bez části:  storageid_souborid_2026-04-25_16-23.ext
+  // S částí:    storageid_souborid_castid_2026-04-25_16-23.ext
   const d = new Date();
   const pad = (n) => String(n).padStart(2, "0");
   const ts = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}`;
   const safeStorage = (storageId || "storage").replace(/[^a-zA-Z0-9_\-]/g,"_");
   const safeFile = (fileId || "file").replace(/[^a-zA-Z0-9_\-]/g,"_");
-  return `${safeStorage}_${safeFile}_${ts}${ext ? "." + ext : ""}`;
+  const safePart = partId ? (partId.replace(/[^a-zA-Z0-9_\-]/g,"_")) : "";
+  const middle = safePart ? `${safeFile}_${safePart}` : safeFile;
+  return `${safeStorage}_${middle}_${ts}${ext ? "." + ext : ""}`;
 }
 
 // Base64 helpers (URL-safe, no padding) for the ?detail= parameter
@@ -1242,6 +1287,19 @@ function loadConfig() {
   // Branch: per-repo override > globální default
   const entry = (full.knownRepos || []).find(r => r.repoPath === targetRepo);
   state.config.branch = (entry && entry.branch) || full.branch || COMMIT_BRANCH_DEFAULT;
+  // Diagnostika
+  const inIframe = (function() { try { return window.self !== window.top; } catch { return true; } })();
+  debug("loadConfig: origin=" + window.location.origin + (inIframe ? " (V IFRAMU)" : "")
+    + ", apiKey=" + (state.config.apiKey ? "(je " + state.config.apiKey.length + " znaků)" : "PRÁZDNÝ")
+    + ", deviceName=" + (state.config.deviceName || "(není)")
+    + ", knownRepos=" + (full.knownRepos || []).length
+    + ", repoPath=" + (state.config.repoPath || "(není)"),
+    state.config.apiKey ? "ok" : "err"
+  );
+  // Pokud v iframe a apiKey není, zobraz nápadnou nápovědu
+  if (inIframe && !state.config.apiKey) {
+    showStatus("V iframe není dostupný globální API klíč. Otevřete aplikaci přímo (mimo iframe), zadejte klíč, a iframe pak načte tu samou storage. Více v debug panelu.", "warning", 12000);
+  }
 }
 
 function saveConfig() {
@@ -2182,6 +2240,7 @@ function navigateTo(itemId) {
   state.currentDetailId = itemId || "root";
   state.viewingVersionId = null; // navigating to an item resets any version view
   state.filterQuery = "";        // a taky filter ve složce — neexportujeme ho mezi view
+  state.versionFilterPartId = null; // a filter verzí — také reset
   // Reset scroll
   try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { window.scrollTo(0, 0); }
   updateUrl();
@@ -2567,11 +2626,39 @@ function renderFileView(view, found) {
     ),
   ));
 
+  // 2b) Parts management section (jen v editmódu)
+  if (state.editMode && !activeVersion) {
+    const partsSect = el("section", { class: "detail-section", "aria-labelledby": "parts-h" });
+    partsSect.appendChild(el("h2", { id: "parts-h" }, "Části (" + getParts(file).length + ")"));
+    partsSect.appendChild(el("p", { class: "hint" }, "Část je volitelná podstruktura souboru. Verze může (ale nemusí) patřit k některé části. Pomáhá organizovat verze, když k jednomu souboru patří víc paralelních linek (např. různé subjekty smluv)."));
+    const partsList = getParts(file);
+    if (partsList.length) {
+      const ul = el("ul", { class: "parts-list" });
+      for (const p of partsList) {
+        const cnt = countVersionsInPart(file, p.id);
+        const li = el("li", { class: "part-item" });
+        li.appendChild(el("strong", null, p.name));
+        li.appendChild(el("span", { class: "part-meta" }, " · ID: " + p.id + " · " + cnt + " " + (cnt === 1 ? "verze" : (cnt >= 2 && cnt <= 4) ? "verze" : "verzí")));
+        const acts = el("div", { class: "part-actions" });
+        acts.appendChild(el("button", { class: "small", onclick: () => editPart(file, p) }, "Přejmenovat"));
+        acts.appendChild(el("button", { class: "small danger", onclick: () => deletePart(file, p) }, "Smazat"));
+        li.appendChild(acts);
+        ul.appendChild(li);
+      }
+      partsSect.appendChild(ul);
+    }
+    partsSect.appendChild(el("button", { class: "primary small", onclick: () => createPart(file) }, "+ Část"));
+    view.appendChild(partsSect);
+  }
+
   if (activeVersion) {
     // ---- VERSION DETAIL VIEW ----
     // 3) Version info banner (above MD)
     const banner = el("section", { class: "viewing-version-banner", "aria-label": "Zobrazená verze" });
-    banner.appendChild(el("strong", null, "Zobrazená verze: " + fmtDate(activeVersion.timestamp)));
+    // Pokud verze patří k části, ukaž to v banneru
+    const part = activeVersion.partId ? findPart(file, activeVersion.partId) : null;
+    const versionTitle = part ? (part.name + " — " + fmtDate(activeVersion.timestamp)) : fmtDate(activeVersion.timestamp);
+    banner.appendChild(el("strong", null, "Zobrazená verze: " + versionTitle));
     if (activeVersion.description) {
       banner.appendChild(el("div", { style: { marginTop: "4px" } }, activeVersion.description));
     }
@@ -2611,15 +2698,63 @@ function renderFileView(view, found) {
     }
   }
 
-  // 5) Versions list (always shown — useful even in version-viewing mode to switch versions)
+  // 5) Versions list — s volitelným filtrem podle části
   const versSect = el("section", { class: "detail-section", "aria-labelledby": "versions-h" });
-  versSect.appendChild(el("h2", { id: "versions-h" }, "Verze (" + (file.versions || []).length + ")"));
-  if (!file.versions || !file.versions.length) {
-    versSect.appendChild(el("div", { class: "empty-state" }, "Soubor zatím nemá žádnou verzi. Nahrajte první níže."));
+  const allVersions = file.versions || [];
+  // Aplikuj filter
+  const partsAvailable = getParts(file);
+  const filterPartId = state.versionFilterPartId; // null = vše, "" = bez části, "<id>" = konkrétní část
+  let visibleVersions;
+  if (filterPartId === null) {
+    visibleVersions = allVersions;
+  } else if (filterPartId === "") {
+    visibleVersions = allVersions.filter(v => !v.partId);
+  } else {
+    visibleVersions = allVersions.filter(v => v.partId === filterPartId);
+  }
+  // Heading dynamický podle aktivního filtru
+  let headingText;
+  if (filterPartId === null) headingText = "Verze (" + visibleVersions.length + " z " + allVersions.length + ")";
+  else if (filterPartId === "") headingText = "Verze bez části (" + visibleVersions.length + ")";
+  else {
+    const fp = findPart(file, filterPartId);
+    headingText = "Verze části " + (fp ? "„" + fp.name + "\"" : filterPartId) + " (" + visibleVersions.length + ")";
+  }
+  versSect.appendChild(el("h2", { id: "versions-h" }, headingText));
+
+  // Filter UI — zobraz, jen pokud existují části
+  if (partsAvailable.length > 0) {
+    const filterRow = el("div", { class: "version-filter-row" });
+    filterRow.appendChild(el("label", { for: "ver-filter" }, "Zobrazit:"));
+    const sel = el("select", {
+      id: "ver-filter",
+      onchange: (e) => {
+        const v = e.target.value;
+        if (v === "__all__") state.versionFilterPartId = null;
+        else if (v === "__none__") state.versionFilterPartId = "";
+        else state.versionFilterPartId = v;
+        render();
+      }
+    });
+    sel.appendChild(el("option", { value: "__all__" }, "Všechny verze"));
+    sel.appendChild(el("option", { value: "__none__" }, "Bez části"));
+    for (const p of partsAvailable) {
+      sel.appendChild(el("option", { value: p.id }, p.name));
+    }
+    sel.value = filterPartId === null ? "__all__" : filterPartId === "" ? "__none__" : filterPartId;
+    filterRow.appendChild(sel);
+    versSect.appendChild(filterRow);
+  }
+
+  if (!visibleVersions.length) {
+    if (allVersions.length === 0) {
+      versSect.appendChild(el("div", { class: "empty-state" }, "Soubor zatím nemá žádnou verzi. Nahrajte první níže."));
+    } else {
+      versSect.appendChild(el("div", { class: "empty-state" }, "V této kategorii není žádná verze. Změňte filtr výše."));
+    }
   } else {
     const list = el("ul", { class: "versions" });
-    // newest first
-    file.versions.slice().reverse().forEach((v) => {
+    visibleVersions.slice().reverse().forEach((v) => {
       list.appendChild(renderVersionItem(file, v, activeVersion === v));
     });
     versSect.appendChild(list);
@@ -2636,6 +2771,20 @@ function renderFileView(view, found) {
     fld1.appendChild(el("input", { type: "file", id: "up-file", title: "Klávesa: O (otevřít dialog pro výběr souboru)" }));
     fld1.appendChild(el("div", { class: "hint" }, "Tip: klávesa O otevře dialog pro výběr souboru."));
     upForm.appendChild(fld1);
+    // Část (jen pokud existují)
+    if (partsAvailable.length > 0) {
+      const fldP = el("div", { class: "field" });
+      fldP.appendChild(el("label", { for: "up-part" }, "Část (volitelně)"));
+      const partSel = el("select", { id: "up-part" });
+      partSel.appendChild(el("option", { value: "" }, "(žádná část)"));
+      for (const p of partsAvailable) {
+        partSel.appendChild(el("option", { value: p.id }, p.name));
+      }
+      // Předvyplníme podle aktuálního filtru, pokud filtruje na konkrétní část
+      if (filterPartId && filterPartId !== "") partSel.value = filterPartId;
+      fldP.appendChild(partSel);
+      upForm.appendChild(fldP);
+    }
     const fld2 = el("div", { class: "field" });
     fld2.appendChild(el("label", { for: "up-desc" }, "Popis verze (volitelně)"));
     fld2.appendChild(el("textarea", { id: "up-desc", rows: 2 }));
@@ -2728,25 +2877,35 @@ function renderVersionItem(file, version, isActive) {
   const li = el("li", { class: "version" + (isActive ? " active" : "") + (version.pendingUpload ? " pending" : "") });
   const head = el("div", { class: "version-head" });
 
-  // Datum a čas verze JE primární odkaz / akce.
+  // Text odkazu:
+  // - bez části:  "25. 4. 2026 16:30 (pdf)"
+  // - s částí:    "Smlouva s Novákem — 25. 4. 2026 16:30 (pdf)"
+  const dateText = fmtDate(version.timestamp);
+  const ext = getExt(version.filename);
+  const extText = ext ? " (" + ext + ")" : "";
+  const part = version.partId ? findPart(file, version.partId) : null;
+  const linkText = (part ? part.name + " — " : "") + dateText + extText;
+
+  // ARIA label pro screen reader: rozbalený popis
+  const ariaBase = (part ? "z části „" + part.name + "\", " : "") + "datum " + dateText + (ext ? ", typ " + ext : "");
+
+  // Datum/část/extension JE primární odkaz / akce.
   // - markdown (a není pending, není aktivní) -> odkaz "Zobrazit náhled"
   // - markdown (aktivní -> právě zobrazena) -> text + odkaz "skrýt náhled"
   // - ostatní (a není pending) -> odkaz "Stáhnout"
   // - pending upload -> jen text
-  const dateText = fmtDate(version.timestamp);
   if (version.pendingUpload) {
-    head.appendChild(el("span", { class: "version-time" }, dateText));
+    head.appendChild(el("span", { class: "version-time" }, linkText));
   } else if (isMarkdownFilename(version.filename)) {
     if (isActive) {
-      // už zobrazeno — datum jako text, odkaz "skrýt náhled"
-      const wrap = el("span", { class: "version-time" }, dateText);
-      head.appendChild(wrap);
+      // už zobrazeno — text bez odkazu, odkaz "skrýt náhled"
+      head.appendChild(el("span", { class: "version-time" }, linkText));
       head.appendChild(el("span", { class: "version-status-note" },
         " (👁 právě zobrazeno — ",
         el("a", {
           href: "#",
           onclick: (e) => { e.preventDefault(); clearVersionView(); },
-          "aria-label": "Skrýt náhled verze z " + dateText,
+          "aria-label": "Skrýt náhled verze: " + ariaBase,
         }, "skrýt náhled"),
         ")"
       ));
@@ -2755,8 +2914,8 @@ function renderVersionItem(file, version, isActive) {
         href: "#",
         class: "version-time",
         onclick: (e) => { e.preventDefault(); navigateToVersion(file, version); },
-        "aria-label": "Zobrazit náhled verze z " + dateText,
-      }, dateText);
+        "aria-label": "Zobrazit náhled verze: " + ariaBase,
+      }, linkText);
       head.appendChild(link);
     }
   } else {
@@ -2764,8 +2923,8 @@ function renderVersionItem(file, version, isActive) {
       href: "#",
       class: "version-time",
       onclick: (e) => { e.preventDefault(); downloadVersion(version); },
-      "aria-label": "Stáhnout verzi z " + dateText,
-    }, dateText);
+      "aria-label": "Stáhnout verzi: " + ariaBase,
+    }, linkText);
     head.appendChild(link);
   }
 
@@ -3170,6 +3329,89 @@ function collectVersionPaths(item) {
   return out;
 }
 
+//=============================================================================
+// PARTS — správa "částí" souboru
+//=============================================================================
+// Část (part) je volitelná podstruktura souboru. Verze může patřit k jedné části
+// nebo k žádné. Filename zahrnuje partId mezi fileId a timestampem.
+// Datový model: file.parts = [{ id, name }, ...] — volitelný, default neexistující/[]
+
+function getParts(file) {
+  return Array.isArray(file.parts) ? file.parts : [];
+}
+
+function findPart(file, partId) {
+  if (!partId) return null;
+  return getParts(file).find(p => p.id === partId) || null;
+}
+
+function isPartIdUnique(file, partId, ignorePart) {
+  return !getParts(file).some(p => p.id === partId && p !== ignorePart);
+}
+
+function countVersionsInPart(file, partId) {
+  return (file.versions || []).filter(v => (v.partId || "") === (partId || "")).length;
+}
+
+async function createPart(file) {
+  const r = await promptDialog("Vytvořit část souboru", [
+    { name: "id", label: "ID části", required: true, hint: "Jen a-z, 0-9, _, -. Použito v názvech souborů." },
+    { name: "name", label: "Název části", required: true, hint: "Co se zobrazí v odkazu verze." },
+  ]);
+  if (!r) return;
+  if (!/^[a-zA-Z0-9_\-]+$/.test(r.id)) {
+    showStatus("Chybný formát ID části. Jen a-z, 0-9, _, -.", "warning");
+    return;
+  }
+  if (!isPartIdUnique(file, r.id)) {
+    showStatus("Část s tímto ID už existuje.", "warning");
+    return;
+  }
+  if (!Array.isArray(file.parts)) file.parts = [];
+  file.parts.push({ id: r.id, name: r.name });
+  file.modified = nowIso();
+  state.storage.modified = nowIso();
+  markModified();
+  showStatus("Část vytvořena.", "success");
+  render();
+}
+
+async function editPart(file, part) {
+  const r = await promptDialog("Upravit část souboru", [
+    { name: "id", label: "ID části (neměnné)", required: true, value: part.id, readonly: true },
+    { name: "name", label: "Název části", required: true, value: part.name },
+  ]);
+  if (!r) return;
+  // ID je neměnné, ignorujeme
+  if (r.name && r.name !== part.name) {
+    part.name = r.name;
+    file.modified = nowIso();
+    state.storage.modified = nowIso();
+    markModified();
+    showStatus("Část upravena.", "success");
+    render();
+  }
+}
+
+async function deletePart(file, part) {
+  const cnt = countVersionsInPart(file, part.id);
+  if (cnt > 0) {
+    showStatus(`Nelze smazat část „${part.name}" — patří k ní ${cnt} verzí. Nejdřív smažte verze.`, "warning", 8000);
+    return;
+  }
+  const ok = await confirmDialog(`Opravdu smazat část „${part.name}"? (Verze k ní nepatří, takže žádné soubory se nemažou.)`, {
+    title: "Smazat část", danger: true, okLabel: "Smazat",
+  });
+  if (!ok) return;
+  const idx = file.parts.indexOf(part);
+  if (idx >= 0) file.parts.splice(idx, 1);
+  file.modified = nowIso();
+  state.storage.modified = nowIso();
+  markModified();
+  showStatus("Část smazána.", "success");
+  render();
+}
+
 async function deleteVersion(file, version) {
   const ok = await confirmDialog("Opravdu smazat verzi z " + fmtDate(version.timestamp) + "? Soubor bude smazán i z githubu.", {
     title: "Smazat verzi", danger: true, okLabel: "Smazat verzi",
@@ -3212,6 +3454,7 @@ async function deleteVersion(file, version) {
 async function doUploadVersion(file) {
   const fileInput = $("up-file");
   const descInput = $("up-desc");
+  const partSel = $("up-part"); // select pro výběr části (může chybět pokud soubor nemá části)
   const f = fileInput.files && fileInput.files[0];
   if (!f) { showStatus("Vyberte soubor.", "warning"); return; }
   if (!state.config.apiKey) { showStatus("Pro nahrávání je nutný API klíč v nastavení.", "warning"); return; }
@@ -3222,7 +3465,11 @@ async function doUploadVersion(file) {
   }
   // Read & encode to base64 (we keep b64 in memory for potential retry)
   const ext = getExt(f.name);
-  const newFilename = genVersionFilename(state.storage.id, file.id, ext);
+  // Část (volitelně) — prázdný řetězec / "(žádná)" znamená bez části
+  const partId = (partSel && partSel.value) || "";
+  // Validace: pokud uživatel vybral partId který už neexistuje, zahodíme
+  const validPartId = partId && findPart(file, partId) ? partId : "";
+  const newFilename = genVersionFilename(state.storage.id, file.id, validPartId, ext);
   const description = descInput.value || "";
   let b64;
   try {
@@ -3242,6 +3489,7 @@ async function doUploadVersion(file) {
     sha: null,
     pendingUpload: true, // marker -- removed on success
   };
+  if (validPartId) newVersion.partId = validPartId;
   if (!file.versions) file.versions = [];
   file.versions.push(newVersion);
   file.modified = nowIso();
@@ -3249,6 +3497,7 @@ async function doUploadVersion(file) {
   // Reset form fields immediately
   fileInput.value = "";
   descInput.value = "";
+  // U partSel ponecháme aktuální výběr — uživatel asi nahrává více verzí stejné části
   render();
   showStatus("Nahrávám novou verzi „" + newFilename + "\"…");
   await uploadVersionAttempt(file, newVersion, b64);
