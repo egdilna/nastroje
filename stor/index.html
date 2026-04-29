@@ -444,6 +444,69 @@ a.version-time {
   min-width: 200px;
 }
 
+/* Note view */
+.note-actions {
+  font-size: 0.9rem;
+}
+.note-textarea {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+  min-height: 360px;
+}
+
+/* Comments */
+.comments-section {
+  margin-top: 16px;
+}
+.comments-list {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+}
+.comment-item {
+  padding: 10px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+}
+.comment-item.editing {
+  border-color: var(--accent);
+}
+.comment-head {
+  font-size: 0.9rem;
+  margin-bottom: 4px;
+}
+.comment-meta {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.comment-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.95rem;
+}
+.comment-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.comment-form {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.comment-form h3 {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
 /* Edit-mode panel */
 .edit-bar {
   position: sticky;
@@ -1024,16 +1087,19 @@ const state = {
   sortMode: "name",     // řazení v aktuálním pohledu složky
   filterQuery: "",      // filtr ve složce
   versionFilterPartId: null, // filtr verzí v detailu souboru: null = vše, "" = bez části, "<id>" = konkrétní část
+  editingNoteId: null,  // ID poznámky, jejíž obsah je právě editován
+  editingCommentId: null, // ID komentáře u souboru, který je právě editován
 };
 
 // Item type constants
-const T = { FOLDER: "folder", FILE: "file", LINK: "link" };
+const T = { FOLDER: "folder", FILE: "file", LINK: "link", NOTE: "note" };
 // Emoji ikona pro každý typ. Když přibude nový typ (např. video/notebook/...),
 // stačí ho přidat tady a do T — UI se zařídí samo.
 const T_ICON = {
   [T.FOLDER]: "📁",
   [T.FILE]: "📃",
   [T.LINK]: "⛓️",
+  [T.NOTE]: "📝",
 };
 // Pomocná funkce: emoji pro danou položku, fallback "•".
 function iconFor(item) {
@@ -2241,6 +2307,8 @@ function navigateTo(itemId) {
   state.viewingVersionId = null; // navigating to an item resets any version view
   state.filterQuery = "";        // a taky filter ve složce — neexportujeme ho mezi view
   state.versionFilterPartId = null; // a filter verzí — také reset
+  state.editingNoteId = null;       // a editace obsahu poznámky — také reset
+  state.editingCommentId = null;    // a editace komentáře — také reset
   // Reset scroll
   try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { window.scrollTo(0, 0); }
   updateUrl();
@@ -2395,6 +2463,7 @@ function renderView() {
   if (found.item.type === T.FOLDER) renderFolderView(view, found);
   else if (found.item.type === T.FILE) renderFileView(view, found);
   else if (found.item.type === T.LINK) renderLinkView(view, found);
+  else if (found.item.type === T.NOTE) renderNoteView(view, found);
 }
 
 function renderEmptyApp(view) {
@@ -2441,6 +2510,7 @@ function renderFolderView(view, found) {
     toolbar.appendChild(el("button", { class: "primary small", onclick: () => createFolder(folder), title: "Přidat složku (klávesa F)", "aria-label": "Přidat složku" }, "+ " + T_ICON[T.FOLDER]));
     toolbar.appendChild(el("button", { class: "primary small", onclick: () => createLink(folder), title: "Přidat odkaz (klávesa L)", "aria-label": "Přidat odkaz" }, "+ " + T_ICON[T.LINK]));
     toolbar.appendChild(el("button", { class: "primary small", onclick: () => createFile(folder), title: "Přidat soubor (klávesa N)", "aria-label": "Přidat soubor" }, "+ " + T_ICON[T.FILE]));
+    toolbar.appendChild(el("button", { class: "primary small", onclick: () => createNote(folder), title: "Přidat poznámku (klávesa M)", "aria-label": "Přidat poznámku" }, "+ " + T_ICON[T.NOTE]));
   }
   view.appendChild(toolbar);
 
@@ -2515,6 +2585,11 @@ function renderItemRow(it) {
       body.appendChild(el("div", { class: "item-meta" }, m));
     }
     if (it.modified) metaParts.push("aktualizováno: " + fmtDate(it.modified));
+  } else if (it.type === T.NOTE) {
+    const last = it.modified || it.created;
+    if (last) metaParts.push("upraveno: " + fmtDate(last));
+    const len = (it.content || "").length;
+    if (len) metaParts.push(len + " znaků");
   }
   if (metaParts.length) body.appendChild(el("div", { class: "item-meta" }, metaParts.join(" · ")));
   if (it.description) body.appendChild(el("div", { class: "item-desc" }, it.description));
@@ -2587,8 +2662,8 @@ function applySort(items) {
       return (bt || "").localeCompare(at || "");
     }
     if (mode === "type") {
-      // V rámci ne-složek: nejdřív soubory, pak odkazy; v rámci typu A–Z
-      const order = { folder: 0, file: 1, link: 2 };
+      // V rámci ne-složek: nejdřív soubory, pak poznámky, pak odkazy; v rámci typu A–Z
+      const order = { folder: 0, file: 1, note: 2, link: 3 };
       const d = (order[a.type] - order[b.type]);
       if (d !== 0) return d;
       return (a.name || "").localeCompare(b.name || "", "cs");
@@ -2760,6 +2835,9 @@ function renderFileView(view, found) {
     versSect.appendChild(list);
   }
   view.appendChild(versSect);
+
+  // 5b) Komentáře k souboru (vždy zobrazené, CRUD jen v editmódu)
+  view.appendChild(renderFileCommentsSection(file));
 
   // 6) Upload new version (only if NOT in version-viewing mode, to keep that view focused)
   if (!activeVersion) {
@@ -2979,6 +3057,150 @@ function renderLinkView(view, found) {
   }
 }
 
+// ---------- NOTE VIEW ----------
+function renderNoteView(view, found) {
+  const note = found.item;
+  // Header (popis + meta)
+  const header = el("section", { class: "detail-section" });
+  if (note.description) header.appendChild(el("p", { class: "desc" }, note.description));
+  const metaParts = [];
+  if (note.modified) metaParts.push("Upraveno: " + fmtDate(note.modified));
+  else if (note.created) metaParts.push("Vytvořeno: " + fmtDate(note.created));
+  if (metaParts.length) header.appendChild(el("p", { class: "item-meta" }, metaParts.join(" · ")));
+  view.appendChild(header);
+
+  // Akce nad obsahem: kopírovat / stáhnout
+  const actions = el("section", { class: "detail-section note-actions" });
+  actions.appendChild(el("a", {
+    href: "#",
+    onclick: (e) => { e.preventDefault(); copyNoteToClipboard(note); },
+  }, "Kopírovat do schránky"));
+  actions.appendChild(document.createTextNode(" · "));
+  actions.appendChild(el("a", {
+    href: "#",
+    onclick: (e) => { e.preventDefault(); downloadNoteAsMd(note); },
+  }, "Stáhnout jako .md"));
+  view.appendChild(actions);
+
+  // Obsah poznámky
+  if (state.editingNoteId === note.id) {
+    // Editační režim
+    const editSect = el("section", { class: "detail-section note-editor", "aria-labelledby": "note-edit-h" });
+    editSect.appendChild(el("h2", { id: "note-edit-h" }, "Úprava poznámky"));
+    const ta = el("textarea", {
+      id: "note-content",
+      rows: 20,
+      class: "note-textarea",
+      placeholder: "Markdown obsah poznámky...",
+    });
+    ta.value = note.content || "";
+    editSect.appendChild(ta);
+    const btnRow = el("div", { style: { display: "flex", gap: "8px", marginTop: "8px", flexWrap: "wrap" } });
+    btnRow.appendChild(el("button", { class: "primary", onclick: () => saveNoteContent(note) }, "Uložit"));
+    btnRow.appendChild(el("button", { class: "small", onclick: () => cancelNoteEdit() }, "Zrušit"));
+    editSect.appendChild(btnRow);
+    view.appendChild(editSect);
+  } else {
+    // Render markdownu
+    const mdSect = el("section", { class: "detail-section", "aria-label": "Obsah poznámky" });
+    if (note.content && note.content.trim()) {
+      const mdContainer = el("div", { class: "markdown-body" });
+      mdContainer.innerHTML = renderMarkdown(note.content);
+      mdSect.appendChild(mdContainer);
+    } else {
+      mdSect.appendChild(el("div", { class: "empty-state" }, "Poznámka je prázdná." + (state.editMode ? " Klikněte na Upravit obsah níže." : "")));
+    }
+    view.appendChild(mdSect);
+  }
+
+  // Edit panel pro úpravu obsahu / vlastností / akce
+  if (state.editMode) {
+    const editBox = el("section", { class: "edit-panel" });
+    editBox.appendChild(el("h3", null, "Akce " + T_ICON[T.NOTE]));
+    if (state.editingNoteId !== note.id) {
+      editBox.appendChild(el("button", { class: "primary small", onclick: () => beginNoteEdit(note), title: "Upravit obsah (klávesa O)" }, "Upravit obsah"));
+      editBox.appendChild(document.createTextNode(" "));
+    }
+    editBox.appendChild(el("button", { class: "small", onclick: () => editItemProps(note), title: "Přejmenovat / popis (klávesa E)" }, "Přejmenovat / popis"));
+    editBox.appendChild(document.createTextNode(" "));
+    editBox.appendChild(el("button", { class: "small", onclick: () => moveItem(note.id) }, "Přesunout"));
+    editBox.appendChild(document.createTextNode(" "));
+    editBox.appendChild(el("button", { class: "small danger", onclick: () => deleteItem(note.id), "aria-label": "Smazat poznámku" }, "Smazat " + T_ICON[T.NOTE]));
+    view.appendChild(editBox);
+  }
+}
+
+function beginNoteEdit(note) {
+  state.editingNoteId = note.id;
+  render();
+  // Focus na textarea
+  setTimeout(() => {
+    const ta = $("note-content");
+    if (ta) { ta.focus(); }
+  }, 30);
+}
+
+function cancelNoteEdit() {
+  state.editingNoteId = null;
+  render();
+}
+
+function saveNoteContent(note) {
+  const ta = $("note-content");
+  if (!ta) return;
+  const newContent = ta.value;
+  if (newContent !== (note.content || "")) {
+    note.content = newContent;
+    note.modified = nowIso();
+    state.storage.modified = nowIso();
+    markModified();
+    showStatus("Obsah poznámky uložen.", "success");
+  }
+  state.editingNoteId = null;
+  render();
+}
+
+async function copyNoteToClipboard(note) {
+  const text = note.content || "";
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      showStatus("Zkopírováno do schránky (" + text.length + " znaků).", "success");
+      return;
+    }
+  } catch (e) {
+    debug("Clipboard API selhalo: " + (e.message || e), "err");
+  }
+  // Fallback: dočasná textarea + execCommand
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+    showStatus("Zkopírováno do schránky.", "success");
+  } catch (e) {
+    showStatus("Kopírování selhalo: " + e.message, "error", 8000);
+  }
+}
+
+function downloadNoteAsMd(note) {
+  const text = note.content || "";
+  // Bezpečný název souboru
+  const safeName = (note.name || "poznamka").replace(/[^a-zA-Z0-9\u00C0-\u017F_\- ]/g, "_").trim() || "poznamka";
+  const filename = safeName + ".md";
+  const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+  showStatus("Staženo: " + filename, "success");
+}
+
 function copyDetailUrl() {
   // Funkce odstraněna na žádost uživatele. Ponecháme stub kvůli kompatibilitě, kdyby ji někde volal starý kód.
   const url = window.location.href;
@@ -3080,10 +3302,37 @@ async function createFile(parentFolder) {
   }
 }
 
+async function createNote(parentFolder) {
+  const r = await promptDialog("Nová poznámka", [
+    { name: "name", label: "Název", required: true },
+    { name: "description", label: "Krátký popis (volitelně)", type: "textarea" },
+  ]);
+  if (!r) return;
+  const newNote = {
+    type: T.NOTE,
+    id: uuid(),
+    name: r.name,
+    description: r.description || "",
+    content: "",   // markdown obsah, ten se edituje až v detailu
+    created: nowIso(),
+    modified: nowIso(),
+  };
+  if (parentFolder.id === "root" || state.currentDetailId === "root") {
+    state.storage.rootItems.push(newNote);
+  } else {
+    if (!parentFolder.items) parentFolder.items = [];
+    parentFolder.items.push(newNote);
+  }
+  markModified();
+  showStatus("Poznámka vytvořena.", "success");
+  navigateTo(newNote.id);
+}
+
 async function editItemProps(it) {
   if (it.type === T.FOLDER) return editFolderProps(it);
   if (it.type === T.LINK) return editLinkProps(it);
   if (it.type === T.FILE) return editFileProps(it);
+  if (it.type === T.NOTE) return editNoteProps(it);
 }
 async function editFolderProps(folder) {
   const r = await promptDialog("Upravit složku", [
@@ -3119,6 +3368,18 @@ async function editFileProps(file) {
   if (!r) return;
   file.name = r.name; file.description = r.description;
   file.modified = nowIso();
+  markModified();
+  render();
+}
+async function editNoteProps(note) {
+  // Jen název a popis. Obsah poznámky se edituje přímo v detailu (větší editor).
+  const r = await promptDialog("Upravit poznámku", [
+    { name: "name", label: "Název", value: note.name, required: true },
+    { name: "description", label: "Krátký popis (volitelně)", type: "textarea", value: note.description || "" },
+  ]);
+  if (!r) return;
+  note.name = r.name; note.description = r.description;
+  note.modified = nowIso();
   markModified();
   render();
 }
@@ -3403,6 +3664,155 @@ async function deletePart(file, part) {
   state.storage.modified = nowIso();
   markModified();
   showStatus("Část smazána.", "success");
+  render();
+}
+
+//=============================================================================
+// COMMENTS — komentáře k souboru
+//=============================================================================
+// Datový model: file.comments = [{ id, author, text, created, modified? }]
+// Volitelný field; když chybí, soubor zatím nemá žádné komentáře.
+
+function getComments(file) {
+  return Array.isArray(file.comments) ? file.comments : [];
+}
+
+function renderFileCommentsSection(file) {
+  const sect = el("section", { class: "detail-section comments-section", "aria-labelledby": "comments-h" });
+  const comments = getComments(file);
+  sect.appendChild(el("h2", { id: "comments-h" }, "Komentáře (" + comments.length + ")"));
+
+  if (!comments.length) {
+    sect.appendChild(el("div", { class: "empty-state" }, "Zatím žádné komentáře."));
+  } else {
+    const ul = el("ul", { class: "comments-list" });
+    // Nejnovější nahoře
+    comments.slice().reverse().forEach(c => {
+      ul.appendChild(renderCommentItem(file, c));
+    });
+    sect.appendChild(ul);
+  }
+
+  // Form pro přidání nového komentáře (jen v editmódu)
+  if (state.editMode && !state.editingCommentId) {
+    const form = el("div", { class: "comment-form" });
+    form.appendChild(el("h3", null, "Přidat komentář"));
+    const fld = el("div", { class: "field" });
+    fld.appendChild(el("label", { for: "new-comment-text" }, "Text komentáře"));
+    fld.appendChild(el("textarea", { id: "new-comment-text", rows: 3 }));
+    form.appendChild(fld);
+    form.appendChild(el("button", { class: "primary small", onclick: () => addComment(file) }, "Přidat"));
+    sect.appendChild(form);
+  }
+
+  return sect;
+}
+
+function renderCommentItem(file, comment) {
+  const li = el("li", { class: "comment-item" + (state.editingCommentId === comment.id ? " editing" : "") });
+  // Hlavička: autor + datum
+  const head = el("div", { class: "comment-head" });
+  head.appendChild(el("strong", null, comment.author || "(neznámý)"));
+  head.appendChild(el("span", { class: "comment-meta" }, " · " + fmtDate(comment.created || "")));
+  if (comment.modified && comment.modified !== comment.created) {
+    head.appendChild(el("span", { class: "comment-meta" }, " · upraveno: " + fmtDate(comment.modified)));
+  }
+  li.appendChild(head);
+
+  if (state.editingCommentId === comment.id) {
+    // Edit režim
+    const fld = el("div", { class: "field" });
+    const ta = el("textarea", { id: "edit-comment-text-" + comment.id, rows: 3 });
+    ta.value = comment.text || "";
+    fld.appendChild(ta);
+    li.appendChild(fld);
+    const acts = el("div", { class: "comment-actions" });
+    acts.appendChild(el("button", { class: "primary small", onclick: () => saveCommentEdit(file, comment) }, "Uložit"));
+    acts.appendChild(el("button", { class: "small", onclick: () => cancelCommentEdit() }, "Zrušit"));
+    li.appendChild(acts);
+  } else {
+    // Read mode — text v paragrafu, white-space pre-wrap
+    li.appendChild(el("div", { class: "comment-text" }, comment.text || ""));
+    if (state.editMode) {
+      const acts = el("div", { class: "comment-actions" });
+      acts.appendChild(el("button", { class: "small", onclick: () => beginCommentEdit(comment) }, "Upravit"));
+      acts.appendChild(el("button", { class: "small danger", onclick: () => deleteComment(file, comment) }, "Smazat"));
+      li.appendChild(acts);
+    }
+  }
+  return li;
+}
+
+function addComment(file) {
+  const ta = $("new-comment-text");
+  if (!ta) return;
+  const text = ta.value.trim();
+  if (!text) {
+    showStatus("Komentář je prázdný.", "warning");
+    ta.focus();
+    return;
+  }
+  if (!Array.isArray(file.comments)) file.comments = [];
+  const c = {
+    id: uuid(),
+    author: state.config.deviceName || "(bez jména)",
+    text,
+    created: nowIso(),
+  };
+  file.comments.push(c);
+  file.modified = nowIso();
+  state.storage.modified = nowIso();
+  markModified();
+  showStatus("Komentář přidán.", "success");
+  render();
+}
+
+function beginCommentEdit(comment) {
+  state.editingCommentId = comment.id;
+  render();
+  setTimeout(() => {
+    const ta = $("edit-comment-text-" + comment.id);
+    if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+  }, 30);
+}
+
+function cancelCommentEdit() {
+  state.editingCommentId = null;
+  render();
+}
+
+function saveCommentEdit(file, comment) {
+  const ta = $("edit-comment-text-" + comment.id);
+  if (!ta) return;
+  const newText = ta.value.trim();
+  if (!newText) {
+    showStatus("Komentář nemůže být prázdný.", "warning");
+    return;
+  }
+  if (newText !== comment.text) {
+    comment.text = newText;
+    comment.modified = nowIso();
+    file.modified = nowIso();
+    state.storage.modified = nowIso();
+    markModified();
+    showStatus("Komentář upraven.", "success");
+  }
+  state.editingCommentId = null;
+  render();
+}
+
+async function deleteComment(file, comment) {
+  const ok = await confirmDialog("Opravdu smazat tento komentář?", {
+    title: "Smazat komentář", danger: true, okLabel: "Smazat",
+  });
+  if (!ok) return;
+  const idx = (file.comments || []).indexOf(comment);
+  if (idx < 0) return;
+  file.comments.splice(idx, 1);
+  file.modified = nowIso();
+  state.storage.modified = nowIso();
+  markModified();
+  showStatus("Komentář smazán.", "success");
   render();
 }
 
@@ -3916,6 +4326,7 @@ function wireOpLogButtons() {
 // f — přidat 📁 (jen v editmódu, ve složce)
 // l — přidat ⛓️ (jen v editmódu, ve složce)
 // n — přidat 📃 (jen v editmódu, ve složce)
+// m — přidat 📝 poznámku (jen v editmódu, ve složce)
 // e — přejmenovat / popis (jen v editmódu, na položce ne v rootu)
 // d — stáhnout nejnovější verzi (jen na detailu souboru)
 // o — otevřít file picker pro novou verzi (jen na detailu souboru, ne v náhledu verze)
@@ -3978,6 +4389,10 @@ function handleGlobalKey(e) {
       if (state.editMode && currentFolder) { createFile(currentFolder); consumed = true; }
       break;
     }
+    case "m": {
+      if (state.editMode && currentFolder) { createNote(currentFolder); consumed = true; }
+      break;
+    }
     case "e": {
       if (state.editMode && state.currentDetailId !== "root") {
         const found = findItem(state.currentDetailId);
@@ -4003,6 +4418,12 @@ function handleGlobalKey(e) {
         const fileInput = $("up-file");
         if (fileInput) {
           fileInput.click(); // otevře OS dialog pro výběr souboru
+          consumed = true;
+        }
+      } else if (state.editMode && state.currentDetailId !== "root") {
+        const found = findItem(state.currentDetailId);
+        if (found && found.item && found.item.type === T.NOTE && state.editingNoteId !== found.item.id) {
+          beginNoteEdit(found.item);
           consumed = true;
         }
       }
