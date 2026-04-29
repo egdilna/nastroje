@@ -374,6 +374,30 @@ function sanitizeAliasInput(s){
   return asciiize(s);
 }
 
+// Vloží do PlantUML šipky barvu ve formátu [#Color]. Šipka může být
+// libovolná kombinace ze {<, >, |, *, o} kolem řetězce dvou - nebo .
+// Příklady: '<|--' + 'Red' = '<|-[#Red]-'; '..>' + 'Blue' = '.[#Blue].>'
+function applyArrowColor(arr, color){
+  if(!color) return arr;
+  // Najdeme první - nebo . a vložíme [#color] hned za něj
+  let firstLine = -1;
+  for(let i=0;i<arr.length;i++){
+    if(arr[i] === '-' || arr[i] === '.'){ firstLine = i; break; }
+  }
+  if(firstLine === -1) return arr;
+  // Pokud color začíná #, nepřidáváme další
+  const c = color.startsWith('#') ? color : '#' + color;
+  return arr.slice(0, firstLine+1) + '[' + c + ']' + arr.slice(firstLine+1);
+}
+
+// Vyextrahuje [#color] ze šipky/řádku a vrátí {color, cleaned}.
+// Pokud řádek žádnou barvu nemá, color = ''.
+function extractArrowColor(s){
+  const m = s.match(/\[#([^\]]+)\]/);
+  if(!m) return {color:'', cleaned:s};
+  return {color: m[1], cleaned: s.replace(/\[#[^\]]+\]/g, '')};
+}
+
 // === DIALOGY ==================================================
 function dlgPrompt(title, label, defaultVal, help){
   return new Promise(resolve => {
@@ -467,6 +491,56 @@ const TYPES = [
   {value:'sequence', label:'Sequence diagram (zprávy)'},
   {value:'usecase', label:'Use Case diagram (případy užití)'}
 ];
+
+// Paleta 40 barev v češtině. Hodnoty jsou CSS / PlantUML názvy barev,
+// které PlantUML i prohlížeč zvládají bez konverze na hex.
+const COLORS = [
+  {value:'', label:'(žádná)'},
+  // Základní
+  {value:'White', label:'Bílá'},
+  {value:'Black', label:'Černá'},
+  {value:'Red', label:'Červená'},
+  {value:'Green', label:'Zelená'},
+  {value:'Blue', label:'Modrá'},
+  {value:'Yellow', label:'Žlutá'},
+  {value:'Orange', label:'Oranžová'},
+  {value:'Purple', label:'Fialová'},
+  {value:'Pink', label:'Růžová'},
+  {value:'Brown', label:'Hnědá'},
+  {value:'Gray', label:'Šedá'},
+  {value:'Cyan', label:'Azurová'},
+  {value:'Magenta', label:'Magenta'},
+  // Světlé varianty
+  {value:'LightBlue', label:'Světle modrá'},
+  {value:'LightGreen', label:'Světle zelená'},
+  {value:'LightYellow', label:'Světle žlutá'},
+  {value:'LightPink', label:'Světle růžová'},
+  {value:'LightCyan', label:'Světle azurová'},
+  {value:'LightGray', label:'Světle šedá'},
+  {value:'LightSalmon', label:'Světle lososová'},
+  {value:'LightCoral', label:'Světle korálová'},
+  {value:'LightSteelBlue', label:'Světle ocelově modrá'},
+  // Tmavé varianty
+  {value:'DarkRed', label:'Tmavě červená'},
+  {value:'DarkBlue', label:'Tmavě modrá'},
+  {value:'DarkGreen', label:'Tmavě zelená'},
+  {value:'DarkOrange', label:'Tmavě oranžová'},
+  {value:'DarkViolet', label:'Tmavě fialová'},
+  {value:'DarkGray', label:'Tmavě šedá'},
+  {value:'DarkSlateGray', label:'Tmavě šedomodrá'},
+  {value:'DarkOliveGreen', label:'Tmavě olivová'},
+  // Speciální
+  {value:'Gold', label:'Zlatá'},
+  {value:'Silver', label:'Stříbrná'},
+  {value:'Navy', label:'Námořní modrá'},
+  {value:'Teal', label:'Modrozelená'},
+  {value:'Olive', label:'Olivová'},
+  {value:'Maroon', label:'Vínová'},
+  {value:'Coral', label:'Korálová'},
+  {value:'Salmon', label:'Lososová'},
+  {value:'Khaki', label:'Khaki'},
+  {value:'Lime', label:'Limetková'}
+];
 function getDiagram(id){ if(!state.project) return null; return state.project.diagrams.find(d => d.id === id) || null; }
 function getCurrentDiagram(){ return state.selectedDiagramId ? getDiagram(state.selectedDiagramId) : null; }
 
@@ -554,8 +628,13 @@ function genActivity(model){
         case 'break': out.push(pad + 'break'); break;
         case 'action': {
           const text = (n.text || ' ').replace(/;/g,'\\;');
-          if(n.color) out.push(pad + n.color + ':' + text + ';');
-          else out.push(pad + ':' + text + ';');
+          if(n.color){
+            // přijmeme jak 'Red' tak '#Red' (legacy)
+            const c = n.color.startsWith('#') ? n.color : '#' + n.color;
+            out.push(pad + c + ':' + text + ';');
+          } else {
+            out.push(pad + ':' + text + ';');
+          }
           if(n.note){
             const pos = n.notePosition || 'right';
             out.push(pad + 'note ' + pos);
@@ -710,7 +789,8 @@ function genClass(model){
     const from = classes.find(c => c.id === r.sourceClassId);
     const to = classes.find(c => c.id === r.targetClassId);
     if(!from || !to) return;
-    const a = (r.direction === 'backward' ? reversed : arrows)[r.type] || '--';
+    let a = (r.direction === 'backward' ? reversed : arrows)[r.type] || '--';
+    if(r.color) a = applyArrowColor(a, r.color);
     const sc = r.sourceCardinality ? '"' + r.sourceCardinality + '" ' : '';
     const tc = r.targetCardinality ? ' "' + r.targetCardinality + '"' : '';
     const lab = r.label ? ' : ' + r.label : '';
@@ -749,7 +829,9 @@ function genSequence(model){
         const fromA = aliasOf[n.from], toA = aliasOf[n.to];
         if(!fromA || !toA){ out.push(pad + "' chybí účastník zprávy"); return; }
         if(n.activate) out.push(pad + 'activate ' + toA);
-        out.push(pad + fromA + ' ' + arrow(n.arrow) + ' ' + toA + (n.text ? ': ' + n.text : ''));
+        let a = arrow(n.arrow);
+        if(n.color) a = applyArrowColor(a, n.color);
+        out.push(pad + fromA + ' ' + a + ' ' + toA + (n.text ? ': ' + n.text : ''));
         if(n.deactivate) out.push(pad + 'deactivate ' + toA);
         if(n.note){
           const pos = n.notePosition || 'right';
@@ -850,6 +932,7 @@ function genUseCase(model){
       case 'generalization': arr = '<|--'; break;
       default: arr = '-->';
     }
+    if(r.color) arr = applyArrowColor(arr, r.color);
     let line = src + ' ' + arr + ' ' + tgt;
     if(r.type === 'include') line += ' : <<include>>' + (r.label ? ' ' + r.label : '');
     else if(r.type === 'extend') line += ' : <<extend>>' + (r.label ? ' ' + r.label : '');
@@ -909,8 +992,8 @@ function parseActivity(text){
     if(ln === 'detach'){ pushChild({id:uid('n'),type:'detach'}); continue; }
     if(ln === 'kill'){ pushChild({id:uid('n'),type:'kill'}); continue; }
     if(ln === 'break'){ pushChild({id:uid('n'),type:'break'}); continue; }
-    if((m = ln.match(/^(?:#([A-Za-z0-9]+):)?:(.*?);$/))){
-      pushChild({id:uid('n'),type:'action',text:m[2],color:m[1]?'#'+m[1]:''});
+    if((m = ln.match(/^(?:#([A-Za-z0-9]+))?:(.*?);$/))){
+      pushChild({id:uid('n'),type:'action',text:m[2],color:m[1]||''});
       continue;
     }
     if((m = ln.match(/^if\s*\((.*?)\)\s*then(?:\s*\((.*?)\))?$/))){
@@ -1070,29 +1153,34 @@ function parseClass(text){
       }
       i++; continue;
     }
-    if((m = ln.match(/^("[^"]+"|[A-Za-z_][A-Za-z_0-9]*)\s*(?:"([^"]*)"\s*)?(<\|--|<\|\.\.|\*--|o--|--|\.\.>|--\|>|\.\.\|>|--\*|--o|<\.\.)(?:\s*"([^"]*)")?\s*("[^"]+"|[A-Za-z_][A-Za-z_0-9]*)\s*(?::\s*(.*))?$/))){
-      const findCls = (ref) => {
-        const stripped = ref.replace(/^"(.*)"$/,'$1');
-        return model.classes.find(c => c.alias === ref || c.alias === stripped || c.name === stripped);
-      };
-      const fromCls = findCls(m[1]);
-      const toCls = findCls(m[5]);
-      if(fromCls && toCls){
-        const arr = m[3];
-        const arrowMap = {'<|--':'inheritance','<|..':'realization','*--':'composition','o--':'aggregation','--':'association','..>':'dependency','--|>':'inheritance','..|>':'realization','--*':'composition','--o':'aggregation','<..':'dependency'};
-        const reversed = ['--|>','..|>','--*','--o','<..'].includes(arr);
-        model.relationships.push({
-          id:uid('rel'),
-          sourceClassId: reversed ? toCls.id : fromCls.id,
-          targetClassId: reversed ? fromCls.id : toCls.id,
-          type: arrowMap[arr] || 'association',
-          sourceCardinality: m[2] || '',
-          targetCardinality: m[4] || '',
-          label: m[6] || '',
-          direction: 'forward'
-        });
+    // Vztah – barvu [#color] uvnitř šipky odstraníme předem a uložíme zvlášť
+    {
+      const ext = extractArrowColor(ln);
+      if((m = ext.cleaned.match(/^("[^"]+"|[A-Za-z_][A-Za-z_0-9]*)\s*(?:"([^"]*)"\s*)?(<\|--|<\|\.\.|\*--|o--|--|\.\.>|--\|>|\.\.\|>|--\*|--o|<\.\.)(?:\s*"([^"]*)")?\s*("[^"]+"|[A-Za-z_][A-Za-z_0-9]*)\s*(?::\s*(.*))?$/))){
+        const findCls = (ref) => {
+          const stripped = ref.replace(/^"(.*)"$/,'$1');
+          return model.classes.find(c => c.alias === ref || c.alias === stripped || c.name === stripped);
+        };
+        const fromCls = findCls(m[1]);
+        const toCls = findCls(m[5]);
+        if(fromCls && toCls){
+          const arr = m[3];
+          const arrowMap = {'<|--':'inheritance','<|..':'realization','*--':'composition','o--':'aggregation','--':'association','..>':'dependency','--|>':'inheritance','..|>':'realization','--*':'composition','--o':'aggregation','<..':'dependency'};
+          const reversed = ['--|>','..|>','--*','--o','<..'].includes(arr);
+          model.relationships.push({
+            id:uid('rel'),
+            sourceClassId: reversed ? toCls.id : fromCls.id,
+            targetClassId: reversed ? fromCls.id : toCls.id,
+            type: arrowMap[arr] || 'association',
+            sourceCardinality: m[2] || '',
+            targetCardinality: m[4] || '',
+            label: m[6] || '',
+            direction: 'forward',
+            color: ext.color
+          });
+        }
+        i++; continue;
       }
-      i++; continue;
     }
     i++;
   }
@@ -1119,14 +1207,19 @@ function parseSequence(text){
       model.participants.push({id:uid('pa'),type:m[1],alias,name:display});
       i++; continue;
     }
-    if((m = ln.match(/^([A-Za-z_][A-Za-z_0-9]*)\s*(->|->>|-->|->x)\s*([A-Za-z_][A-Za-z_0-9]*)\s*(?::\s*(.*))?$/))){
-      const fromP = model.participants.find(p => p.alias === m[1]);
-      const toP = model.participants.find(p => p.alias === m[3]);
-      if(fromP && toP){
-        const arrowMap = {'->':'sync','->>':'async','-->':'return','->x':'lostMsg'};
-        pushChild({id:uid('ms'),type:'message',from:fromP.id,to:toP.id,text:m[4]||'',arrow:arrowMap[m[2]]||'sync'});
+    // Zpráva: vyjmout [#color] ze šipky předem
+    {
+      const ext = extractArrowColor(ln);
+      if((m = ext.cleaned.match(/^([A-Za-z_][A-Za-z_0-9]*)\s*(->|->>|-->|->x)\s*([A-Za-z_][A-Za-z_0-9]*)\s*(?::\s*(.*))?$/))){
+        const fromP = model.participants.find(p => p.alias === m[1]);
+        const toP = model.participants.find(p => p.alias === m[3]);
+        if(fromP && toP){
+          const arrowMap = {'->':'sync','->>':'async','-->':'return','->x':'lostMsg'};
+          pushChild({id:uid('ms'),type:'message',from:fromP.id,to:toP.id,text:m[4]||'',
+                     arrow:arrowMap[m[2]]||'sync', color: ext.color});
+        }
+        i++; continue;
       }
-      i++; continue;
     }
     if((m = ln.match(/^alt\s*(.*)$/))){
       const node = {id:uid('gp'),type:'group',groupType:'alt',label:'',branches:[{id:uid('br'),label:m[1].trim(),children:[]}]};
@@ -1197,24 +1290,29 @@ function parseUseCase(text){
       continue;
     }
     if(ln === '}'){ currentSystem = null; continue; }
-    if((m = ln.match(/^([A-Za-z_][A-Za-z_0-9]*)\s*(-->|<--|\.\.>|<\.\.|<\|--|--\|>)\s*([A-Za-z_][A-Za-z_0-9]*)\s*(?::\s*(.*))?$/))){
-      const findEnt = (alias) => {
-        const ac = model.actors.find(a => a.alias === alias);
-        if(ac) return {id:ac.id,type:'actor'};
-        const uc = model.useCases.find(u => u.alias === alias);
-        if(uc) return {id:uc.id,type:'usecase'};
-        return null;
-      };
-      const src = findEnt(m[1]), tgt = findEnt(m[3]);
-      if(src && tgt){
-        const labelText = m[4] || '';
-        let type = 'association', label = labelText;
-        if(/<<include>>/.test(labelText)){ type='include'; label=labelText.replace(/<<include>>/,'').trim(); }
-        else if(/<<extend>>/.test(labelText)){ type='extend'; label=labelText.replace(/<<extend>>/,'').trim(); }
-        else if(m[2] === '<|--' || m[2] === '--|>') type = 'generalization';
-        model.relationships.push({id:uid('rl'),sourceId:src.id,sourceType:src.type,targetId:tgt.id,targetType:tgt.type,type,label});
+    // Vztah: vyjmout [#color] ze šipky předem
+    {
+      const ext = extractArrowColor(ln);
+      if((m = ext.cleaned.match(/^([A-Za-z_][A-Za-z_0-9]*)\s*(-->|<--|\.\.>|<\.\.|<\|--|--\|>)\s*([A-Za-z_][A-Za-z_0-9]*)\s*(?::\s*(.*))?$/))){
+        const findEnt = (alias) => {
+          const ac = model.actors.find(a => a.alias === alias);
+          if(ac) return {id:ac.id,type:'actor'};
+          const uc = model.useCases.find(u => u.alias === alias);
+          if(uc) return {id:uc.id,type:'usecase'};
+          return null;
+        };
+        const src = findEnt(m[1]), tgt = findEnt(m[3]);
+        if(src && tgt){
+          const labelText = m[4] || '';
+          let type = 'association', label = labelText;
+          if(/<<include>>/.test(labelText)){ type='include'; label=labelText.replace(/<<include>>/,'').trim(); }
+          else if(/<<extend>>/.test(labelText)){ type='extend'; label=labelText.replace(/<<extend>>/,'').trim(); }
+          else if(m[2] === '<|--' || m[2] === '--|>') type = 'generalization';
+          model.relationships.push({id:uid('rl'),sourceId:src.id,sourceType:src.type,targetId:tgt.id,targetType:tgt.type,
+                                    type,label, color: ext.color});
+        }
+        continue;
       }
-      continue;
     }
   }
   return {type:'usecase', model};
@@ -1861,6 +1959,41 @@ function checkboxField(label, value, onChange){
   return lab;
 }
 
+// Pole pro výběr barvy: select s českými názvy + náhledový čtvereček.
+// Pokud uložená hodnota není v paletě (např. import z PUML s vlastní barvou),
+// přidá se automaticky jako možnost „Vlastní: …" aby se neztratila.
+function colorField(label, value, onChange, id, helpText){
+  const f = el('div', {class:'field'});
+  if(label){
+    const lab = el('label', null, label);
+    if(id) lab.setAttribute('for', id);
+    f.appendChild(lab);
+  }
+  // pokud uložená hodnota není v paletě, doplníme ji jako vlastní položku
+  let options = COLORS.slice();
+  // hodnota uložená bez # se porovná s value v COLORS (tam taky bez #)
+  const lookup = (value || '').replace(/^#/, '');
+  if(lookup && !COLORS.find(c => c.value === lookup)){
+    options.push({value: lookup, label: 'Vlastní: ' + lookup});
+  }
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;align-items:center;gap:.5em';
+  const swatch = document.createElement('span');
+  swatch.setAttribute('aria-hidden', 'true');
+  swatch.title = lookup ? 'Aktuální barva: ' + lookup : 'bez barvy';
+  swatch.style.cssText =
+    'display:inline-block;width:1.4em;height:1.4em;border-radius:3px;flex-shrink:0;' +
+    'border:1px solid ' + (lookup ? '#888' : '#ccc') + ';' +
+    'background-color:' + (lookup || 'transparent');
+  const sel = selectField(lookup, options, onChange, id);
+  sel.style.flex = '1';
+  wrap.appendChild(swatch);
+  wrap.appendChild(sel);
+  f.appendChild(wrap);
+  if(helpText) f.appendChild(el('div', {class:'help'}, helpText));
+  return f;
+}
+
 // --- ACTIVITY DETAIL ------------------------------------------
 function getActivityNodeAtPath(model, path){
   // Cesta začíná implicitně v model.children. Každý krok je buď index pole nebo název vlastnosti (např. 'branches', 'children').
@@ -1894,8 +2027,9 @@ function renderActivityDetail(d, root){
         selectField(node.swimlane||'',
           [{value:'',label:'(žádná)'}].concat((d.model.swimlanes||[]).map(s=>({value:s.name,label:s.name}))),
           v => { node.swimlane = v; touchDiagram(d); renderApp(); }, 'flActSw')));
-      root.appendChild(field('Barva (např. #LightBlue):',
-        inputText(node.color||'', v => { node.color = v; touchDiagram(d); renderApp(); }, 'flActColor')));
+      root.appendChild(colorField('Barva pozadí akce:', node.color||'',
+        v => { node.color = v; touchDiagram(d); renderApp(); }, 'flActColor',
+        'Barva výplně. PlantUML rozumí pojmenovaným barvám i hex hodnotám.'));
       root.appendChild(field('Poznámka u akce:',
         inputArea(node.note||'', v => { node.note = v; touchDiagram(d); renderApp(); }, 'flActNote')));
       root.appendChild(field('Pozice poznámky:',
@@ -2114,6 +2248,9 @@ function renderRelationshipForm(d, r, root){
     selectField(r.direction||'forward',
       [{value:'forward',label:'výchozí → cílová'},{value:'backward',label:'cílová → výchozí'}],
       v=>{r.direction=v;touchDiagram(d);renderApp();})));
+  root.appendChild(colorField('Barva čáry:', r.color||'',
+    v=>{r.color=v;touchDiagram(d);renderApp();}, 'cfRelColor',
+    'Barva celé šipky/relace (volitelné).'));
 }
 
 function renderPackageForm(d, p, root){
@@ -2177,6 +2314,9 @@ function renderSequenceDetail(d, root){
            {value:'return',label:'návrat (-->)'},
            {value:'lostMsg',label:'ztracená (->x)'}],
           v=>{node.arrow=v;touchDiagram(d);renderApp();})));
+      root.appendChild(colorField('Barva šipky:', node.color||'',
+        v=>{node.color=v;touchDiagram(d);renderApp();}, 'sqMsgColor',
+        'Barva šipky zprávy (volitelné).'));
       root.appendChild(checkboxField('Aktivovat příjemce', node.activate, v=>{node.activate=v;touchDiagram(d);renderApp();}));
       root.appendChild(checkboxField('Deaktivovat příjemce po zprávě', node.deactivate, v=>{node.deactivate=v;touchDiagram(d);renderApp();}));
       root.appendChild(field('Poznámka u zprávy:', inputArea(node.note||'', v=>{node.note=v;touchDiagram(d);renderApp();})));
@@ -2313,6 +2453,9 @@ function renderUseCaseDetail(d, root){
          {value:'generalization',label:'generalizace'}],
         v=>{r.type=v;touchDiagram(d);renderApp();})));
     root.appendChild(field('Popisek:', inputText(r.label||'', v=>{r.label=v;touchDiagram(d);renderApp();})));
+    root.appendChild(colorField('Barva čáry:', r.color||'',
+      v=>{r.color=v;touchDiagram(d);renderApp();}, 'ucRelColor',
+      'Barva šipky/relace (volitelné).'));
   }
 }
 
