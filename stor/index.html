@@ -1357,6 +1357,39 @@ body.embed-mode #main {
   font-family: var(--font-mono);
 }
 
+/* Náhledy obsahu verze (obrázky / audio / video / pdf) */
+.version-preview-container {
+  display: flex;
+  justify-content: center;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+.version-preview-image {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  border-radius: var(--radius-sm);
+}
+.version-preview-audio {
+  width: 100%;
+  max-width: 600px;
+}
+.version-preview-video {
+  max-width: 100%;
+  max-height: 70vh;
+  display: block;
+}
+.version-preview-pdf {
+  width: 100%;
+  height: 70vh;
+  border: 0;
+}
+.preview-pdf {
+  padding: 0;
+}
+
 .known-repos {
   list-style: none;
   margin: 8px 0 0;
@@ -3240,20 +3273,29 @@ function renderFileView(view, found) {
     banner.appendChild(actionRow);
     view.appendChild(banner);
 
-    // 4) Markdown content (or fallback for non-md)
-    if (isMarkdownFilename(activeVersion.filename)) {
-      const mdSect = el("section", { class: "detail-section", "aria-label": "Obsah verze" });
-      const mdContainer = el("div", { class: "markdown-body", id: "md-render", "aria-live": "polite" }, "Načítám…");
-      mdSect.appendChild(mdContainer);
-      view.appendChild(mdSect);
-      loadAndRenderMarkdown(activeVersion, mdContainer);
+    // 4) Obsah aktivní verze — náhled podle typu
+    const activeKind = getVersionPreviewKind(activeVersion.filename);
+    if (activeKind === "markdown" || activeKind === "image" || activeKind === "audio" || activeKind === "video" || activeKind === "pdf") {
+      const cls = activeKind === "markdown" ? "markdown-body" : "version-preview-container preview-" + activeKind;
+      const previewSect = el("section", { class: "detail-section", "aria-label": "Obsah verze" });
+      const previewContainer = el("div", { class: cls, id: "version-preview", "aria-live": "polite" }, "Načítám…");
+      previewSect.appendChild(previewContainer);
+      view.appendChild(previewSect);
+      loadAndRenderVersion(activeVersion, previewContainer);
     } else {
       view.appendChild(el("section", { class: "detail-section" },
-        el("p", null, "Tato verze není markdown soubor — můžete ji ",
+        el("p", null, "Tento typ souboru nemá náhled v aplikaci. Můžete ho ",
           el("a", {
             href: "#",
             onclick: (e) => { e.preventDefault(); downloadVersion(activeVersion); },
           }, "stáhnout (" + activeVersion.filename + ")"),
+          (activeKind === "html" ? " nebo " : ""),
+          (activeKind === "html"
+            ? el("a", {
+                href: "#",
+                onclick: (e) => { e.preventDefault(); openVersionInNewTab(activeVersion); },
+              }, "zobrazit v novém okně")
+            : ""),
           "."
         ),
       ));
@@ -3421,21 +3463,106 @@ function isMarkdownFilename(fn) {
   return /\.md$/i.test(fn || "");
 }
 
-async function loadAndRenderMarkdown(version, container) {
+// Klasifikace typu souboru podle přípony — určuje, jak se má verze v aplikaci chovat.
+// Princip: aplikace nedělá rozhodnutí "spustit cizí HTML jako stránku v naší origin"
+// (to GitHub taky nedělá, RAW URL vrací text/plain). Místo toho otevírá náhledy
+// v izolovaném prostředí: blob URL v novém tabu (HTML), <img>/<audio>/<video>
+// v naší aplikaci přes blob URL (vlastní origin, nemá přístup k naší storage).
+function getVersionPreviewKind(filename) {
+  const ext = (getExt(filename || "") || "").toLowerCase();
+  if (!ext) return "download";
+  if (ext === "md" || ext === "markdown") return "markdown";
+  if (["png","jpg","jpeg","gif","webp","svg","bmp","ico","avif"].includes(ext)) return "image";
+  if (["mp3","wav","ogg","oga","m4a","flac","aac","opus"].includes(ext)) return "audio";
+  if (["mp4","webm","ogv","mov","m4v"].includes(ext)) return "video";
+  if (ext === "html" || ext === "htm") return "html";
+  if (ext === "pdf") return "pdf";
+  return "download";
+}
+
+// Otevře blob URL v novém tabu se správným Content-Type. Pro HTML to znamená
+// renderování stránky v izolovaném `blob:` originu (žádný přístup k naší storage,
+// cookies ani API klíči — blob origin je vlastní opaque origin).
+async function openVersionInNewTab(version) {
+  const handle = beginOp("Připravuji k zobrazení: " + version.filename, "download");
   try {
     const r = await ghReadFile(version.filename);
-    const text = new TextDecoder().decode(base64ToBlobBytes(r.contentBase64));
-    container.innerHTML = renderMarkdown(text);
-    // Make external links open in new tab
-    container.querySelectorAll("a[href^='http']").forEach(a => {
-      a.setAttribute("target", "_blank");
-      a.setAttribute("rel", "noopener noreferrer");
-    });
+    const blob = base64ToBlob(r.contentBase64, mimeFromExt(getExt(version.filename)));
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, "_blank", "noopener,noreferrer");
+    // Browser by se měl o blob URL postarat sám — ale po pár minutách release
+    setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
+    if (!win) {
+      // popup blocker
+      handle.fail(new Error("Prohlížeč zablokoval otevření nového okna. Povolte popups pro tento web."), () => openVersionInNewTab(version));
+      showStatus("Otevření okna zablokováno prohlížečem. Povolte popup pro tento web.", "error", 8000);
+    } else {
+      handle.succeed("Otevřeno: " + version.filename);
+    }
+  } catch (e) {
+    handle.fail(e, () => openVersionInNewTab(version));
+    showStatus("Načtení selhalo: " + e.message, "error", 8000);
+  }
+}
+
+// Stáhne verzi do paměti a vyrenderuje její obsah do containeru podle typu.
+// Funguje pro markdown, obrázky, audio, video, html (přes iframe), pdf (přes embed).
+async function loadAndRenderVersion(version, container) {
+  const kind = getVersionPreviewKind(version.filename);
+  try {
+    const r = await ghReadFile(version.filename);
+    const mime = mimeFromExt(getExt(version.filename));
+    const blob = base64ToBlob(r.contentBase64, mime);
+    const url = URL.createObjectURL(blob);
+    container.innerHTML = "";
+    if (kind === "markdown") {
+      const text = new TextDecoder().decode(base64ToBlobBytes(r.contentBase64));
+      container.innerHTML = renderMarkdown(text);
+      container.querySelectorAll("a[href^='http']").forEach(a => {
+        a.setAttribute("target", "_blank");
+        a.setAttribute("rel", "noopener noreferrer");
+      });
+      // markdown nemá blob URL k revoke
+      URL.revokeObjectURL(url);
+    } else if (kind === "image") {
+      const img = el("img", {
+        src: url,
+        alt: version.filename,
+        class: "version-preview-image",
+      });
+      container.appendChild(img);
+      // Po revoke obrázek přestane fungovat, takže URL držíme dlouho
+      setTimeout(() => URL.revokeObjectURL(url), 30 * 60 * 1000);
+    } else if (kind === "audio") {
+      const audio = el("audio", { src: url, controls: true, class: "version-preview-audio" });
+      container.appendChild(audio);
+      setTimeout(() => URL.revokeObjectURL(url), 30 * 60 * 1000);
+    } else if (kind === "video") {
+      const video = el("video", { src: url, controls: true, class: "version-preview-video" });
+      container.appendChild(video);
+      setTimeout(() => URL.revokeObjectURL(url), 30 * 60 * 1000);
+    } else if (kind === "pdf") {
+      // <embed> je nejspolehlivější napříč browsery
+      const emb = el("embed", { src: url, type: "application/pdf", class: "version-preview-pdf" });
+      container.appendChild(emb);
+      setTimeout(() => URL.revokeObjectURL(url), 30 * 60 * 1000);
+    } else {
+      // fallback — neumíme zobrazit
+      container.appendChild(el("div", { class: "empty-state" },
+        "Náhled tohoto typu souboru není k dispozici. Použijte odkaz pro stažení."
+      ));
+      URL.revokeObjectURL(url);
+    }
   } catch (e) {
     container.innerHTML = "";
-    container.appendChild(el("div", { class: "empty-state" }, "Nepodařilo se načíst markdown: " + e.message));
-    debug("MD load chyba: " + e.message, "err");
+    container.appendChild(el("div", { class: "empty-state" }, "Nepodařilo se načíst soubor: " + e.message));
+    debug("Náhled chyba: " + e.message, "err");
   }
+}
+
+async function loadAndRenderMarkdown(version, container) {
+  // Zachováno pro zpětnou kompatibilitu — interně volá loadAndRenderVersion.
+  return loadAndRenderVersion(version, container);
 }
 
 function renderVersionItem(file, version, isActive) {
@@ -3453,14 +3580,17 @@ function renderVersionItem(file, version, isActive) {
   const part = version.partId ? findPart(file, version.partId) : null;
   const linkText = (part ? part.name + " — " : "") + dateText + extText;
 
-  // Datum/část/extension JE primární odkaz. Akce závisí na typu:
-  // - markdown (a není pending, není aktivní) -> kliknutí zobrazí náhled
-  // - markdown (aktivní -> právě zobrazena) -> text + odkaz "skrýt náhled"
-  // - ostatní (a není pending) -> kliknutí stáhne
+  // Datum/část/extension JE primární odkaz. Chování závisí na typu:
+  // - markdown / image / audio / video / pdf -> kliknutí zobrazí inline náhled
+  // - html -> dva odkazy: "Zobrazit" (otevře v novém tabu jako blob) a "Stáhnout"
+  // - ostatní -> kliknutí stáhne
   // - pending upload -> jen text, žádný odkaz
+  const kind = getVersionPreviewKind(version.filename);
+  const isInlinePreview = (kind === "markdown" || kind === "image" || kind === "audio" || kind === "video" || kind === "pdf");
+
   if (version.pendingUpload) {
     head.appendChild(el("span", { class: "version-time" }, linkText));
-  } else if (isMarkdownFilename(version.filename)) {
+  } else if (isInlinePreview) {
     if (isActive) {
       // už zobrazeno — text bez odkazu, vedle "skrýt náhled"
       head.appendChild(el("span", { class: "version-time" }, linkText));
@@ -3479,6 +3609,20 @@ function renderVersionItem(file, version, isActive) {
         onclick: (e) => { e.preventDefault(); navigateToVersion(file, version); },
       }, linkText));
     }
+  } else if (kind === "html") {
+    // HTML: kliknutí na datum stáhne (default = bezpečný), vedle „Zobrazit" otevře v novém tabu
+    head.appendChild(el("a", {
+      href: "#",
+      class: "version-time",
+      onclick: (e) => { e.preventDefault(); downloadVersion(version); },
+    }, linkText));
+    head.appendChild(el("span", { class: "version-status-note" },
+      " — ",
+      el("a", {
+        href: "#",
+        onclick: (e) => { e.preventDefault(); openVersionInNewTab(version); },
+      }, "Zobrazit"),
+    ));
   } else {
     head.appendChild(el("a", {
       href: "#",
