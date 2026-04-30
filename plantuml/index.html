@@ -25,14 +25,19 @@ nav h3,main h3,aside h3{margin-top:1em;margin-bottom:.4em;font-size:.95em;color:
 nav h4,main h4,aside h4{margin:.6em 0 .3em 0;font-size:.92em;color:#444}
 [role=toolbar]{display:flex;flex-wrap:wrap;gap:.3em;margin-bottom:.5em}
 .tree{margin:0;padding:0}
-.tree ul{margin:0;padding-left:1.2em;list-style:none;border-left:1px dotted #aaa}
-.tree>ul{padding-left:0;border:none}
-.tree li{margin:.1em 0;list-style:none}
-.tree-item{display:flex;align-items:center;gap:.3em;padding:.15em .3em;border-radius:3px}
-.tree-item.selected{background:#cfe0f5;outline:1px solid #1e3a5f}
-.tree-item button.label{flex:1;text-align:left;background:transparent;border:1px solid transparent;padding:.15em .3em;border-radius:2px;font-size:.9em;color:#111}
-.tree-item button.label:hover{background:#eee}
-.tree-item button.label:focus{border-color:#f90}
+.tree ul{margin:0;padding-left:1.2em;list-style:none}
+.tree>ul{padding-left:0}
+.tree li{margin:.15em 0;list-style:none}
+.tree section{margin-bottom:.8em}
+.tree-item{display:flex;align-items:center;gap:.25em;padding:.2em .3em;border-radius:3px;border:1px solid transparent}
+.tree-item.selected{background:#cfe0f5;border-color:#1e3a5f}
+.tree-item:hover{background:#f0f4f9}
+.tree-item button.label{flex:1;text-align:left;background:transparent;border:1px solid transparent;padding:.2em .3em;border-radius:2px;font-size:.92em;color:#111;cursor:pointer}
+.tree-item button.label:hover{background:#e3ecf5}
+.tree-item button.label:focus{outline:2px solid #f90;outline-offset:1px}
+.tree-item button.action{background:#fff;border:1px solid #888;border-radius:3px;padding:.15em .45em;font-size:.85em;cursor:pointer;flex-shrink:0;min-width:1.8em;color:#333}
+.tree-item button.action:hover{background:#eef;border-color:#1e3a5f}
+.tree-item button.action:focus{outline:2px solid #f90;outline-offset:1px}
 .tree-item .badge{font-size:.7em;background:#1e3a5f;color:#fff;padding:.1em .35em;border-radius:2px;text-transform:uppercase;letter-spacing:.05em;flex-shrink:0}
 .tree-item .badge.act{background:#2e7d32}
 .tree-item .badge.if{background:#c62828}
@@ -96,8 +101,8 @@ hr{border:none;border-top:1px solid #ddd;margin:1em 0}
   <div class="row">
     <div role="toolbar" aria-label="Akce projektu">
       <button id="btnNewProject" accesskey="n" title="Nový projekt (Alt+N)">Nový projekt</button>
-      <button id="btnLoadProject" accesskey="o" title="Načíst projekt (Alt+O)">Načíst projekt</button>
-      <button id="btnSaveProject" accesskey="s" title="Uložit projekt (Alt+S)">Uložit projekt</button>
+      <button id="btnLoadProject" accesskey="o" title="Načíst projekt – libovolný soubor (Alt+O)">Načíst projekt</button>
+      <button id="btnSaveProject" accesskey="s" title="Uložit projekt jako .pup (Alt+S)">Uložit projekt</button>
       <button id="btnImportPuml" accesskey="i" title="Importovat .puml (Alt+I)">Importovat .puml</button>
       <button id="btnProjectSettings" title="Nastavení projektu (včetně názvu)">Nastavení projektu</button>
       <button id="btnHelp" accesskey="h" title="Nápověda (Alt+H)">Nápověda</button>
@@ -166,7 +171,7 @@ hr{border:none;border-top:1px solid #ddd;margin:1em 0}
 <div id="status" role="status" aria-live="polite"></div>
 <div id="debug" role="region" aria-label="Ladicí výstup"><strong>Ladění:</strong><pre id="debugContent"></pre><button id="btnDebugClose">Zavřít</button></div>
 
-<input type="file" id="fileInput" accept=".json,.puml,.txt">
+<input type="file" id="fileInput">
 
 <dialog id="dlgPrompt" aria-labelledby="dlgPromptTitle">
   <h2 id="dlgPromptTitle">Zadejte hodnotu</h2>
@@ -571,6 +576,23 @@ const LEGACY_SHAPE_TO_STEREOTYPE = {
   '/': '',
   '\\': ''
 };
+
+// Kardinalita (multiplicita) u vztahů v class diagramech.
+// Hodnota je to co se zapíše do PlantUML kódu, label je české vysvětlení.
+// Volba „custom" nechá uživatele zadat vlastní hodnotu textovým polem.
+const CARDINALITIES = [
+  {value:'',     label:'(neuvedeno)'},
+  {value:'1',    label:'1 — právě jeden'},
+  {value:'0..1', label:'0..1 — nula nebo jeden (nepovinný)'},
+  {value:'*',    label:'* — libovolný počet (i nula)'},
+  {value:'1..*', label:'1..* — alespoň jeden'},
+  {value:'0..*', label:'0..* — libovolný počet (i nula)'},
+  {value:'2',    label:'2 — právě dva'},
+  {value:'2..*', label:'2..* — alespoň dva'},
+  {value:'n',    label:'n — pevně daný počet n'},
+  {value:'1..n', label:'1..n — jeden až n'},
+  {value:'__custom__', label:'Vlastní hodnota…'}
+];
 function getDiagram(id){ if(!state.project) return null; return state.project.diagrams.find(d => d.id === id) || null; }
 function getCurrentDiagram(){ return state.selectedDiagramId ? getDiagram(state.selectedDiagramId) : null; }
 
@@ -1539,12 +1561,48 @@ function pathEqual(a, b){
 }
 
 function treeItem(label, badgeText, badgeClass, isSelected, onSelect, extraButtons){
-  const item = el('div',{class:'tree-item' + (isSelected ? ' selected' : '')});
-  const btn = el('button',{class:'label', type:'button', onclick:onSelect},
-                 el('span',{class:'badge ' + (badgeClass||'')}, badgeText), ' ', label);
+  // Vrací <div class="tree-item"> s tlačítkem pro otevření detailu (label + badge)
+  // a vedlejšími tlačítky (přesun, smazání). Používá obyčejnou strukturu –
+  // žádné ARIA tree role, jen čisté tlačítka uvnitř seznamu.
+  const item = document.createElement('div');
+  item.className = 'tree-item' + (isSelected ? ' selected' : '');
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'label';
+  // aria-label = celý popis pro screen reader (badge slovně + jméno + stav)
+  const ariaParts = [];
+  if(badgeText) ariaParts.push(badgeText);
+  ariaParts.push(label || '(bez názvu)');
+  btn.setAttribute('aria-label', 'Otevřít detail: ' + ariaParts.join(' ') + (isSelected ? ' (vybráno)' : ''));
+  if(isSelected) btn.setAttribute('aria-current', 'true');
+  // visuální obsah
+  if(badgeText){
+    const badge = document.createElement('span');
+    badge.className = 'badge ' + (badgeClass || '');
+    badge.setAttribute('aria-hidden', 'true');
+    badge.textContent = badgeText;
+    btn.appendChild(badge);
+    btn.appendChild(document.createTextNode(' '));
+  }
+  btn.appendChild(document.createTextNode(label || '(bez názvu)'));
+  btn.addEventListener('click', onSelect);
   item.appendChild(btn);
   if(extraButtons) extraButtons.forEach(b => item.appendChild(b));
   return item;
+}
+
+// Pomocné tlačítko pro akce (přesun, smazání...) s popisným aria-label.
+// symbol: krátká vizuální značka ('↑', '↓', '×')
+// ariaLabel: úplný textový popis akce pro screen reader
+function actionBtn(symbol, ariaLabel, onClick){
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'action';
+  b.setAttribute('aria-label', ariaLabel);
+  b.title = ariaLabel; // tooltip i pro myš
+  b.textContent = symbol;
+  b.addEventListener('click', onClick);
+  return b;
 }
 
 function renderDiagramTree(){
@@ -1562,14 +1620,14 @@ function renderDiagramTree(){
 
   function renderFolder(folder, parentList){
     const li = el('li');
-    const item = el('div',{class:'tree-item'});
-    item.appendChild(el('button',{class:'label', type:'button',
-      onclick:()=>renameFolderAction(folder.id), title:'Přejmenovat složku'},
-      el('span',{class:'badge package'},'složka'),' ', folder.name));
-    item.appendChild(el('button',{type:'button',
-      onclick:()=>deleteFolderAction(folder.id), title:'Smazat složku'},'×'));
+    const item = treeItem(folder.name, 'složka', 'package', false,
+      ()=>renameFolderAction(folder.id),
+      [actionBtn('×', 'Smazat složku ' + folder.name, ()=>deleteFolderAction(folder.id))]);
+    // přejmenování při kliknutí na label – upravme aria-label
+    const labelBtn = item.querySelector('button.label');
+    if(labelBtn) labelBtn.setAttribute('aria-label', 'Přejmenovat složku: ' + folder.name);
     li.appendChild(item);
-    const subList = el('ul',{role:'group'});
+    const subList = el('ul');
     (childrenOf[folder.id] || []).forEach(sub => renderFolder(sub, subList));
     (diagramsByFolder[folder.id] || []).forEach(d => renderDiagramItem(d, subList));
     li.appendChild(subList);
@@ -1577,14 +1635,18 @@ function renderDiagramTree(){
   }
   function renderDiagramItem(d, parentList){
     const li = el('li');
-    const item = el('div',{class:'tree-item' + (state.selectedDiagramId === d.id ? ' selected' : '')});
+    const isSel = state.selectedDiagramId === d.id;
     const typeBadge = ({activity:'flow',class:'class',sequence:'seq',usecase:'usecase'})[d.type] || d.type;
-    item.appendChild(el('button',{class:'label', type:'button', onclick:()=>selectDiagram(d.id)},
-      el('span',{class:'badge'},typeBadge),' ', d.name));
+    const item = treeItem(d.name, typeBadge, '', isSel,
+      ()=>selectDiagram(d.id),
+      []);
+    const labelBtn = item.querySelector('button.label');
+    if(labelBtn) labelBtn.setAttribute('aria-label',
+      'Otevřít diagram: ' + typeBadge + ' ' + d.name + (isSel ? ' (vybráno)' : ''));
     li.appendChild(item);
     parentList.appendChild(li);
   }
-  const ul = el('ul',{role:'tree','aria-label':'Diagramy a složky'});
+  const ul = el('ul',{'aria-label':'Diagramy a složky'});
   rootFolders.forEach(f => renderFolder(f, ul));
   (diagramsByFolder['__root__'] || []).forEach(d => renderDiagramItem(d, ul));
   if(!folders.length && !diagrams.length){
@@ -1656,29 +1718,29 @@ function renderModelToolbar(d){
           tb.appendChild(el('button',{type:'button',onclick:()=>addActivityNode(d, t)}, lab));
         }
        });
-      tb.appendChild(el('button',{type:'button',onclick:()=>manageSwimlanes(d)},'Plavací dráhy…'));
+      tb.appendChild(actionBtn('Plavací dráhy…', 'Plavací dráhy…', ()=>manageSwimlanes(d)));
       break;
     case 'class':
       ['class','interface','abstract','enum','struct','annotation','entity'].forEach(s =>
         tb.appendChild(el('button',{type:'button',onclick:()=>addClass(d,s)}, s.charAt(0).toUpperCase()+s.slice(1))));
-      tb.appendChild(el('button',{type:'button',onclick:()=>addRelationship(d)},'Vztah'));
-      tb.appendChild(el('button',{type:'button',onclick:()=>addPackage(d)},'Balíček'));
+      tb.appendChild(actionBtn('Vztah', 'Vztah', ()=>addRelationship(d)));
+      tb.appendChild(actionBtn('Balíček', 'Balíček', ()=>addPackage(d)));
       break;
     case 'sequence':
       ['actor','participant','boundary','control','entity','database','collections','queue'].forEach(t =>
         tb.appendChild(el('button',{type:'button',onclick:()=>addParticipant(d,t)}, t)));
-      tb.appendChild(el('button',{type:'button',onclick:()=>addSeqMessage(d)},'Zpráva'));
+      tb.appendChild(actionBtn('Zpráva', 'Zpráva', ()=>addSeqMessage(d)));
       ['alt','opt','loop','par','critical','break','group'].forEach(g =>
         tb.appendChild(el('button',{type:'button',onclick:()=>addSeqGroup(d,g)},'Skupina '+g)));
       [['Poznámka','note'],['Oddělovač','divider'],['Autonumber','autonumber'],['Pauza','delay'],['Reference (ref)','reference']].forEach(([lab,t]) =>
         tb.appendChild(el('button',{type:'button',onclick:()=>addSeqOther(d,t)},lab)));
       break;
     case 'usecase':
-      tb.appendChild(el('button',{type:'button',onclick:()=>addActor(d,'human')},'Aktér (osoba)'));
-      tb.appendChild(el('button',{type:'button',onclick:()=>addActor(d,'system')},'Aktér (systém)'));
-      tb.appendChild(el('button',{type:'button',onclick:()=>addUseCase(d)},'Use case'));
-      tb.appendChild(el('button',{type:'button',onclick:()=>addSystem(d)},'Systém (rectangle)'));
-      tb.appendChild(el('button',{type:'button',onclick:()=>addUcRelationship(d)},'Vztah'));
+      tb.appendChild(actionBtn('Aktér (osoba)', 'Aktér (osoba)', ()=>addActor(d,'human')));
+      tb.appendChild(actionBtn('Aktér (systém)', 'Aktér (systém)', ()=>addActor(d,'system')));
+      tb.appendChild(actionBtn('Use case', 'Use case', ()=>addUseCase(d)));
+      tb.appendChild(actionBtn('Systém (rectangle)', 'Systém (rectangle)', ()=>addSystem(d)));
+      tb.appendChild(actionBtn('Vztah', 'Vztah', ()=>addUcRelationship(d)));
       break;
   }
 }
@@ -1696,7 +1758,7 @@ function renderModelTree(d){
 
 // === STROM: ACTIVITY ==========================================
 function renderActivityTree(d, root){
-  const ul = el('ul',{role:'tree','aria-label':'Strom aktivitního diagramu'});
+  const ul = el('ul',{'aria-label':'Strom aktivitního diagramu'});
   function walk(children, basePath, parentList){
     children.forEach((n, idx) => {
       const path = basePath.concat([idx]);
@@ -1705,12 +1767,12 @@ function renderActivityTree(d, root){
       const labels = activityNodeLabel(n);
       const item = treeItem(labels.label, labels.badge, labels.cls, isSel,
         ()=>{ state.selectedPath = path; renderApp(); },
-        [ el('button',{type:'button',title:'Posunout nahoru',onclick:()=>moveActivityNode(d, path, -1)},'↑'),
-          el('button',{type:'button',title:'Posunout dolů',onclick:()=>moveActivityNode(d, path, 1)},'↓'),
-          el('button',{type:'button',title:'Smazat',onclick:()=>deleteActivityNode(d, path)},'×') ]);
+        [ actionBtn('↑', 'Posunout uzel nahoru', ()=>moveActivityNode(d, path, -1)),
+          actionBtn('↓', 'Posunout dolů', ()=>moveActivityNode(d, path, 1)),
+          actionBtn('×', 'Smazat uzel', ()=>deleteActivityNode(d, path)) ]);
       li.appendChild(item);
       if(n.branches){
-        const sub = el('ul',{role:'group'});
+        const sub = el('ul');
         n.branches.forEach((b, bidx) => {
           const bli = el('li');
           const bpath = path.concat(['branches', bidx]);
@@ -1720,8 +1782,8 @@ function renderActivityTree(d, root){
             : 'větev '+(bidx+1));
           bli.appendChild(treeItem(blab, 'br', 'branch', bSel,
             ()=>{ state.selectedPath = bpath; renderApp(); },
-            [ el('button',{type:'button',title:'Smazat větev',onclick:()=>deleteActivityBranch(d, path, bidx)},'×') ]));
-          const subUl = el('ul',{role:'group'});
+            [ actionBtn('×', 'Smazat větev', ()=>deleteActivityBranch(d, path, bidx)) ]));
+          const subUl = el('ul');
           walk(b.children||[], bpath.concat(['children']), subUl);
           bli.appendChild(subUl);
           sub.appendChild(bli);
@@ -1735,7 +1797,7 @@ function renderActivityTree(d, root){
         li.appendChild(sub);
       }
       if(n.children){
-        const sub = el('ul',{role:'group'});
+        const sub = el('ul');
         walk(n.children, path.concat(['children']), sub);
         li.appendChild(sub);
       }
@@ -1790,7 +1852,7 @@ function renderClassTree(d, root){
   const wrap = el('div');
   const ch = el('section');
   ch.appendChild(el('h4',null,'Třídy a balíčky'));
-  const ul = el('ul',{role:'tree','aria-label':'Třídy a balíčky'});
+  const ul = el('ul',{'aria-label':'Třídy a balíčky'});
   const childrenOf = {};
   (m.packages||[]).forEach(p => childrenOf[p.id] = []);
   (m.packages||[]).forEach(p => { if(p.parentId && childrenOf[p.parentId]) childrenOf[p.parentId].push(p); });
@@ -1804,10 +1866,10 @@ function renderClassTree(d, root){
     const isSel = pathEqual(state.selectedPath, path);
     li.appendChild(treeItem(p.name, 'pkg', 'package', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
-      [el('button',{type:'button',title:'Posunout nahoru',onclick:()=>moveModelItem(d, 'packages', idx, -1)},'↑'),
-       el('button',{type:'button',title:'Posunout dolů',onclick:()=>moveModelItem(d, 'packages', idx, 1)},'↓'),
-       el('button',{type:'button',title:'Smazat balíček',onclick:()=>deletePackage(d, p.id)},'×')]));
-    const sub = el('ul',{role:'group'});
+      [actionBtn('↑', 'Posunout balíček nahoru', ()=>moveModelItem(d, 'packages', idx, -1)),
+       actionBtn('↓', 'Posunout balíček dolů', ()=>moveModelItem(d, 'packages', idx, 1)),
+       actionBtn('×', 'Smazat balíček', ()=>deletePackage(d, p.id))]));
+    const sub = el('ul');
     (childrenOf[p.id] || []).forEach(c => renderPkg(c, sub));
     (classesByPkg[p.id] || []).forEach(c => renderCls(c, sub));
     li.appendChild(sub);
@@ -1821,9 +1883,9 @@ function renderClassTree(d, root){
     const badge = c.stereotype || 'class';
     li.appendChild(treeItem(c.name || '(bez názvu)', badge, badge, isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
-      [el('button',{type:'button',title:'Posunout nahoru',onclick:()=>moveModelItem(d, 'classes', idx, -1)},'↑'),
-       el('button',{type:'button',title:'Posunout dolů',onclick:()=>moveModelItem(d, 'classes', idx, 1)},'↓'),
-       el('button',{type:'button',title:'Smazat třídu',onclick:()=>deleteClass(d, c.id)},'×')]));
+      [actionBtn('↑', 'Posunout třídu nahoru', ()=>moveModelItem(d, 'classes', idx, -1)),
+       actionBtn('↓', 'Posunout třídu dolů', ()=>moveModelItem(d, 'classes', idx, 1)),
+       actionBtn('×', 'Smazat třídu', ()=>deleteClass(d, c.id))]));
     parentList.appendChild(li);
   }
   rootPkgs.forEach(p => renderPkg(p, ul));
@@ -1835,7 +1897,7 @@ function renderClassTree(d, root){
 
   const rs = el('section');
   rs.appendChild(el('h4',null,'Vztahy'));
-  const rul = el('ul',{role:'tree','aria-label':'Vztahy mezi třídami'});
+  const rul = el('ul',{'aria-label':'Vztahy mezi třídami'});
   (m.relationships||[]).forEach((r, idx) => {
     const li = el('li');
     const path = ['relationships', idx];
@@ -1845,9 +1907,9 @@ function renderClassTree(d, root){
     const lab = (from?from.name:'?') + ' — ' + r.type + ' → ' + (to?to.name:'?') + (r.label?' ('+r.label+')':'');
     li.appendChild(treeItem(lab, 'rel', 'relation', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
-      [el('button',{type:'button',title:'Posunout nahoru',onclick:()=>moveModelItem(d, 'relationships', idx, -1)},'↑'),
-       el('button',{type:'button',title:'Posunout dolů',onclick:()=>moveModelItem(d, 'relationships', idx, 1)},'↓'),
-       el('button',{type:'button',title:'Smazat vztah',onclick:()=>deleteRelationship(d, r.id)},'×')]));
+      [actionBtn('↑', 'Posunout vztah nahoru', ()=>moveModelItem(d, 'relationships', idx, -1)),
+       actionBtn('↓', 'Posunout vztah dolů', ()=>moveModelItem(d, 'relationships', idx, 1)),
+       actionBtn('×', 'Smazat vztah', ()=>deleteRelationship(d, r.id))]));
     rul.appendChild(li);
   });
   if(!(m.relationships||[]).length) rs.appendChild(el('p',{class:'empty'},'Žádné vztahy.'));
@@ -1862,7 +1924,7 @@ function renderSequenceTree(d, root){
   const wrap = el('div');
   const ps = el('section');
   ps.appendChild(el('h4',null,'Účastníci (v pořadí zobrazení)'));
-  const pul = el('ul',{role:'tree','aria-label':'Účastníci'});
+  const pul = el('ul',{'aria-label':'Účastníci'});
   (m.participants||[]).forEach((p, idx) => {
     const li = el('li');
     const path = ['participants', idx];
@@ -1870,9 +1932,9 @@ function renderSequenceTree(d, root){
     li.appendChild(treeItem((p.name||p.alias) + (p.alias && p.alias !== p.name ? ' ['+p.alias+']' : ''),
       p.type, 'actor', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
-      [ el('button',{type:'button',title:'Posunout nahoru',onclick:()=>moveParticipant(d, idx, -1)},'↑'),
-        el('button',{type:'button',title:'Posunout dolů',onclick:()=>moveParticipant(d, idx, 1)},'↓'),
-        el('button',{type:'button',title:'Smazat',onclick:()=>deleteParticipant(d, p.id)},'×') ]));
+      [ actionBtn('↑', 'Posunout účastníka nahoru', ()=>moveParticipant(d, idx, -1)),
+        actionBtn('↓', 'Posunout účastníka dolů', ()=>moveParticipant(d, idx, 1)),
+        actionBtn('×', 'Smazat účastníka', ()=>deleteParticipant(d, p.id)) ]));
     pul.appendChild(li);
   });
   if(!(m.participants||[]).length) ps.appendChild(el('p',{class:'empty'},'Žádní účastníci.'));
@@ -1881,7 +1943,7 @@ function renderSequenceTree(d, root){
 
   const ms = el('section');
   ms.appendChild(el('h4',null,'Zprávy a skupiny'));
-  const mul = el('ul',{role:'tree','aria-label':'Strom zpráv'});
+  const mul = el('ul',{'aria-label':'Strom zpráv'});
   const aliases = {};
   (m.participants||[]).forEach(p => aliases[p.id] = p.name || p.alias);
   function walk(children, basePath, parentList){
@@ -1892,11 +1954,11 @@ function renderSequenceTree(d, root){
       const labels = sequenceNodeLabel(n, aliases);
       li.appendChild(treeItem(labels.label, labels.badge, labels.cls, isSel,
         ()=>{ state.selectedPath = path; renderApp(); },
-        [ el('button',{type:'button',title:'Posunout nahoru',onclick:()=>moveSequenceNode(d, path, -1)},'↑'),
-          el('button',{type:'button',title:'Posunout dolů',onclick:()=>moveSequenceNode(d, path, 1)},'↓'),
-          el('button',{type:'button',title:'Smazat',onclick:()=>deleteSequenceNode(d, path)},'×') ]));
+        [ actionBtn('↑', 'Posunout prvek sekvence nahoru', ()=>moveSequenceNode(d, path, -1)),
+          actionBtn('↓', 'Posunout prvek sekvence dolů', ()=>moveSequenceNode(d, path, 1)),
+          actionBtn('×', 'Smazat prvek sekvence', ()=>deleteSequenceNode(d, path)) ]));
       if(n.branches){
-        const sub = el('ul',{role:'group'});
+        const sub = el('ul');
         n.branches.forEach((b, bidx) => {
           const bli = el('li');
           const bpath = path.concat(['branches', bidx]);
@@ -1904,18 +1966,18 @@ function renderSequenceTree(d, root){
           const blab = (bidx===0 ? '' : 'else: ') + (b.label||'(bez popisku)');
           bli.appendChild(treeItem(blab, 'br', 'branch', bSel,
             ()=>{ state.selectedPath = bpath; renderApp(); },
-            [el('button',{type:'button',title:'Smazat větev',onclick:()=>deleteSeqBranch(d, path, bidx)},'×')]));
-          const subUl = el('ul',{role:'group'});
+            [actionBtn('×', 'Smazat větev', ()=>deleteSeqBranch(d, path, bidx))]));
+          const subUl = el('ul');
           walk(b.children||[], bpath.concat(['children']), subUl);
           bli.appendChild(subUl);
           sub.appendChild(bli);
         });
         const addBr = el('li');
-        addBr.appendChild(el('button',{type:'button',onclick:()=>addSeqBranch(d, path)},'+ další větev'));
+        addBr.appendChild(actionBtn('+ další větev', '+ další větev', ()=>addSeqBranch(d, path)));
         sub.appendChild(addBr);
         li.appendChild(sub);
       } else if(n.children){
-        const sub = el('ul',{role:'group'});
+        const sub = el('ul');
         walk(n.children, path.concat(['children']), sub);
         li.appendChild(sub);
       }
@@ -1947,7 +2009,7 @@ function renderUseCaseTree(d, root){
   const wrap = el('div');
   const as = el('section');
   as.appendChild(el('h4',null,'Aktéři'));
-  const aul = el('ul',{role:'tree','aria-label':'Aktéři'});
+  const aul = el('ul',{'aria-label':'Aktéři'});
   (m.actors||[]).forEach((a, idx) => {
     const li = el('li');
     const path = ['actors', idx];
@@ -1955,9 +2017,9 @@ function renderUseCaseTree(d, root){
     li.appendChild(treeItem((a.name||'(bez názvu)') + ' ['+a.alias+']',
       a.type==='system'?'sys':'actor', 'actor', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
-      [el('button',{type:'button',title:'Posunout nahoru',onclick:()=>moveModelItem(d, 'actors', idx, -1)},'↑'),
-       el('button',{type:'button',title:'Posunout dolů',onclick:()=>moveModelItem(d, 'actors', idx, 1)},'↓'),
-       el('button',{type:'button',title:'Smazat aktéra',onclick:()=>deleteActor(d, a.id)},'×')]));
+      [actionBtn('↑', 'Posunout aktéra nahoru', ()=>moveModelItem(d, 'actors', idx, -1)),
+       actionBtn('↓', 'Posunout aktéra dolů', ()=>moveModelItem(d, 'actors', idx, 1)),
+       actionBtn('×', 'Smazat aktéra', ()=>deleteActor(d, a.id))]));
     aul.appendChild(li);
   });
   if(!(m.actors||[]).length) as.appendChild(el('p',{class:'empty'},'Žádní aktéři.'));
@@ -1966,7 +2028,7 @@ function renderUseCaseTree(d, root){
 
   const us = el('section');
   us.appendChild(el('h4',null,'Use cases a systémy'));
-  const uul = el('ul',{role:'tree','aria-label':'Use cases'});
+  const uul = el('ul',{'aria-label':'Use cases'});
   const ucBySys = {};
   (m.useCases||[]).forEach(u => { const k = u.systemId || '__root__'; (ucBySys[k] = ucBySys[k] || []).push(u); });
   function renderSys(s, parentList){
@@ -1976,10 +2038,10 @@ function renderUseCaseTree(d, root){
     const isSel = pathEqual(state.selectedPath, path);
     li.appendChild(treeItem(s.name, 'sys', 'system', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
-      [el('button',{type:'button',title:'Posunout nahoru',onclick:()=>moveModelItem(d, 'systems', idx, -1)},'↑'),
-       el('button',{type:'button',title:'Posunout dolů',onclick:()=>moveModelItem(d, 'systems', idx, 1)},'↓'),
-       el('button',{type:'button',title:'Smazat systém',onclick:()=>deleteSystem(d, s.id)},'×')]));
-    const sub = el('ul',{role:'group'});
+      [actionBtn('↑', 'Posunout systém nahoru', ()=>moveModelItem(d, 'systems', idx, -1)),
+       actionBtn('↓', 'Posunout systém dolů', ()=>moveModelItem(d, 'systems', idx, 1)),
+       actionBtn('×', 'Smazat systém', ()=>deleteSystem(d, s.id))]));
+    const sub = el('ul');
     (ucBySys[s.id] || []).forEach(u => renderUc(u, sub));
     li.appendChild(sub);
     parentList.appendChild(li);
@@ -1991,9 +2053,9 @@ function renderUseCaseTree(d, root){
     const isSel = pathEqual(state.selectedPath, path);
     li.appendChild(treeItem(u.name + ' ['+u.alias+']', 'uc', 'usecase', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
-      [el('button',{type:'button',title:'Posunout nahoru',onclick:()=>moveModelItem(d, 'useCases', idx, -1)},'↑'),
-       el('button',{type:'button',title:'Posunout dolů',onclick:()=>moveModelItem(d, 'useCases', idx, 1)},'↓'),
-       el('button',{type:'button',title:'Smazat use case',onclick:()=>deleteUseCase(d, u.id)},'×')]));
+      [actionBtn('↑', 'Posunout use case nahoru', ()=>moveModelItem(d, 'useCases', idx, -1)),
+       actionBtn('↓', 'Posunout use case dolů', ()=>moveModelItem(d, 'useCases', idx, 1)),
+       actionBtn('×', 'Smazat use case', ()=>deleteUseCase(d, u.id))]));
     parentList.appendChild(li);
   }
   (m.systems||[]).forEach(s => renderSys(s, uul));
@@ -2005,7 +2067,7 @@ function renderUseCaseTree(d, root){
 
   const rs = el('section');
   rs.appendChild(el('h4',null,'Vztahy'));
-  const rul = el('ul',{role:'tree','aria-label':'Vztahy use case'});
+  const rul = el('ul',{'aria-label':'Vztahy use case'});
   (m.relationships||[]).forEach((r, idx) => {
     const li = el('li');
     const path = ['relationships', idx];
@@ -2016,9 +2078,9 @@ function renderUseCaseTree(d, root){
     const lab = (src?src.name:'?') + ' — ' + r.type + ' → ' + (tgt?tgt.name:'?') + (r.label?' ('+r.label+')':'');
     li.appendChild(treeItem(lab, 'rel', 'relation', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
-      [el('button',{type:'button',title:'Posunout nahoru',onclick:()=>moveModelItem(d, 'relationships', idx, -1)},'↑'),
-       el('button',{type:'button',title:'Posunout dolů',onclick:()=>moveModelItem(d, 'relationships', idx, 1)},'↓'),
-       el('button',{type:'button',title:'Smazat vztah',onclick:()=>deleteUcRelationship(d, r.id)},'×')]));
+      [actionBtn('↑', 'Posunout vztah nahoru', ()=>moveModelItem(d, 'relationships', idx, -1)),
+       actionBtn('↓', 'Posunout vztah dolů', ()=>moveModelItem(d, 'relationships', idx, 1)),
+       actionBtn('×', 'Smazat vztah', ()=>deleteUcRelationship(d, r.id))]));
     rul.appendChild(li);
   });
   if(!(m.relationships||[]).length) rs.appendChild(el('p',{class:'empty'},'Žádné vztahy.'));
@@ -2110,7 +2172,68 @@ function checkboxField(label, value, onChange){
   return lab;
 }
 
-// Pole pro výběr barvy: select s českými názvy + náhledový čtvereček.
+// Pole pro výběr kardinality: select s běžnými hodnotami + možnost zadat vlastní.
+// Pokud aktuální hodnota není v paletě, zobrazí se jako „Vlastní: …" a textové pole je viditelné.
+function cardinalityField(label, value, onChange, id, helpText){
+  const f = el('div', {class:'field'});
+  const selectId = id + '_sel';
+  const inputId = id + '_inp';
+  if(label){
+    const lab = el('label', null, label);
+    lab.setAttribute('for', selectId);
+    f.appendChild(lab);
+  }
+  // Zjisti, jestli value je v paletě nebo je „custom"
+  const inPalette = CARDINALITIES.some(c => c.value === value && c.value !== '__custom__');
+  const isCustom = value && !inPalette;
+
+  // Select
+  const sel = document.createElement('select');
+  sel.id = selectId;
+  CARDINALITIES.forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = o.value;
+    opt.textContent = o.label;
+    sel.appendChild(opt);
+  });
+  sel.value = isCustom ? '__custom__' : (value || '');
+
+  // Textové pole pro vlastní hodnotu (zobrazené jen když je vybráno „custom")
+  const inputWrap = el('div', {class:'field'});
+  inputWrap.style.cssText = 'margin-top:.4em;display:' + (isCustom ? 'block' : 'none');
+  const inputLabel = el('label', null, 'Vlastní kardinalita:');
+  inputLabel.setAttribute('for', inputId);
+  inputLabel.style.fontWeight = 'normal';
+  inputLabel.style.fontSize = '.85em';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.id = inputId;
+  input.value = isCustom ? value : '';
+  input.placeholder = 'např. 3..7';
+  inputWrap.appendChild(inputLabel);
+  inputWrap.appendChild(input);
+
+  sel.addEventListener('change', e => {
+    const v = e.target.value;
+    if(v === '__custom__'){
+      inputWrap.style.display = 'block';
+      // při přechodu na custom použijeme aktuální obsah inputu (může být prázdný)
+      onChange(input.value);
+      setTimeout(() => input.focus(), 30);
+    } else {
+      inputWrap.style.display = 'none';
+      onChange(v);
+    }
+  });
+  input.addEventListener('input', e => onChange(e.target.value));
+
+  f.appendChild(sel);
+  f.appendChild(inputWrap);
+  if(helpText) f.appendChild(el('div', {class:'help'}, helpText));
+  return f;
+}
+
+
 // Pokud uložená hodnota není v paletě (např. import z PUML s vlastní barvou),
 // přidá se automaticky jako možnost „Vlastní: …" aby se neztratila.
 function colorField(label, value, onChange, id, helpText){
@@ -2322,8 +2445,8 @@ function renderClassForm(d, c, root){
     sub.appendChild(checkboxField('static', a.isStatic, v=>{a.isStatic=v;touchDiagram(d);renderApp();}));
     sub.appendChild(checkboxField('abstract', a.isAbstract, v=>{a.isAbstract=v;touchDiagram(d);renderApp();}));
     sub.appendChild(el('div',{class:'subitem-actions'},
-      el('button',{type:'button',onclick:()=>moveSubitem(c.attributes, idx, -1, d)},'↑'),
-      el('button',{type:'button',onclick:()=>moveSubitem(c.attributes, idx, 1, d)},'↓'),
+      actionBtn('↑', '↑', ()=>moveSubitem(c.attributes, idx, -1, d)),
+      actionBtn('↓', '↓', ()=>moveSubitem(c.attributes, idx, 1, d)),
       el('button',{type:'button',onclick:()=>{c.attributes.splice(idx,1);touchDiagram(d);renderApp();}},'Smazat')));
     ats.appendChild(sub);
   });
@@ -2364,8 +2487,8 @@ function renderClassForm(d, c, root){
       touchDiagram(d); renderApp();
     }}, '+ Přidat parametr'));
     sub.appendChild(el('div',{class:'subitem-actions'},
-      el('button',{type:'button',onclick:()=>moveSubitem(c.methods, idx, -1, d)},'↑'),
-      el('button',{type:'button',onclick:()=>moveSubitem(c.methods, idx, 1, d)},'↓'),
+      actionBtn('↑', '↑', ()=>moveSubitem(c.methods, idx, -1, d)),
+      actionBtn('↓', '↓', ()=>moveSubitem(c.methods, idx, 1, d)),
       el('button',{type:'button',onclick:()=>{c.methods.splice(idx,1);touchDiagram(d);renderApp();}},'Smazat metodu')));
     ms.appendChild(sub);
   });
@@ -2409,8 +2532,14 @@ function renderRelationshipForm(d, r, root){
        {value:'association',label:'asociace'},
        {value:'dependency',label:'závislost'}],
       v=>{r.type=v;touchDiagram(d);renderApp();})));
-  root.appendChild(field('Kardinalita u výchozí třídy:', inputText(r.sourceCardinality||'', v=>{r.sourceCardinality=v;softTouch(d);})));
-  root.appendChild(field('Kardinalita u cílové třídy:', inputText(r.targetCardinality||'', v=>{r.targetCardinality=v;softTouch(d);})));
+  root.appendChild(cardinalityField('Kardinalita u výchozí třídy:',
+    r.sourceCardinality||'', v=>{r.sourceCardinality=v;softTouch(d);},
+    'cfRelSrcCard',
+    'Kolik instancí výchozí třídy se vztahuje k jedné instanci cílové třídy.'));
+  root.appendChild(cardinalityField('Kardinalita u cílové třídy:',
+    r.targetCardinality||'', v=>{r.targetCardinality=v;softTouch(d);},
+    'cfRelTgtCard',
+    'Kolik instancí cílové třídy se vztahuje k jedné instanci výchozí třídy.'));
   root.appendChild(field('Popisek:', inputText(r.label||'', v=>{r.label=v;softTouch(d);})));
   root.appendChild(field('Směr šipky:',
     selectField(r.direction||'forward',
@@ -2855,7 +2984,7 @@ function moveModelItem(d, arrName, idx, dir){
   renderApp();
 }
 async function deleteParticipant(d, id){
-  const ok = await dlgConfirm('Smazat účastníka?', 'Zprávy odkazující na něj zůstanou ale budou v chybě validace.');
+  const ok = await dlgConfirm('Smazat účastníkaa?', 'Zprávy odkazující na něj zůstanou ale budou v chybě validace.');
   if(!ok) return;
   d.model.participants = d.model.participants.filter(p => p.id !== id);
   state.selectedPath = null;
@@ -3191,9 +3320,9 @@ function renderVersions(d){
     li.appendChild(el('div',{class:'version-header'}, v.label || '(bez popisku)'));
     li.appendChild(el('div',{class:'meta'}, fmtDate(v.timestamp)));
     li.appendChild(el('div',{class:'subitem-actions'},
-      el('button',{type:'button',onclick:()=>restoreVersionAction(d, v.id)},'Obnovit tuto verzi'),
-      el('button',{type:'button',onclick:()=>deleteVersionAction(d, v.id)},'Smazat verzi'),
-      el('button',{type:'button',onclick:()=>previewVersion(d, v.id)},'Náhled (SVG)')));
+      actionBtn('Obnovit tuto verzi', 'Obnovit tuto verzi', ()=>restoreVersionAction(d, v.id)),
+      actionBtn('Smazat verzi', 'Smazat verzi', ()=>deleteVersionAction(d, v.id)),
+      actionBtn('Náhled (SVG)', 'Náhled verze v SVG', ()=>previewVersion(d, v.id))));
     list.appendChild(li);
   });
 }
@@ -3267,8 +3396,7 @@ function triggerFile(mode){
   pendingFileMode = mode;
   const fi = document.getElementById('fileInput');
   fi.value = '';
-  if(mode === 'project') fi.accept = '.json';
-  else if(mode === 'puml') fi.accept = '.puml,.txt';
+  fi.removeAttribute('accept'); // žádné omezení – uživatel si vybere co chce
   fi.click();
 }
 
@@ -3288,37 +3416,39 @@ function downloadProjectJson(){
   if(!state.project){ status('Žádný projekt k uložení.', 'error'); return; }
   const json = JSON.stringify(state.project, null, 2);
   const safeName = (state.project.projectName || 'projekt').replace(/[^A-Za-z0-9_\u00C0-\u017F\- ]/g,'_').trim() || 'projekt';
-  downloadBlob(safeName + '.json', new Blob([json], {type:'application/json'}));
+  downloadBlob(safeName + '.pup', new Blob([json], {type:'application/json'}));
   status('Projekt uložen.', 'success');
 }
 
 function loadProjectJson(file){
   const reader = new FileReader();
-  reader.onload = e => {
-    try {
-      const obj = JSON.parse(e.target.result);
-      if(!obj || typeof obj !== 'object' || !Array.isArray(obj.diagrams)){
-        status('Soubor neobsahuje validní projekt.', 'error');
-        return;
-      }
-      // jednoduchá normalizace
-      obj.folders = obj.folders || [];
-      obj.diagrams.forEach(d => { d.versions = d.versions || []; d.settings = d.settings || {}; });
-      obj.settings = obj.settings || {theme:'',skinparam:'',header:'',footer:''};
-      // Migrace: starý atribut 'shape' u akcí v aktivitních diagramech → 'stereotype'
-      migrateActivityShapesToStereotypes(obj);
-      state.project = obj;
-      state.selectedDiagramId = obj.diagrams.length ? obj.diagrams[0].id : null;
-      state.selectedPath = null;
-      renderApp();
-      status('Projekt načten.', 'success');
-    } catch(err){
-      debug('Načtení projektu', err.message);
-      status('Chyba při načítání projektu: ' + err.message, 'error');
-    }
-  };
+  reader.onload = e => loadProjectJsonText(e.target.result, file.name);
   reader.onerror = () => status('Chyba při čtení souboru.', 'error');
   reader.readAsText(file, 'utf-8');
+}
+
+function loadProjectJsonText(text, fileName){
+  try {
+    const obj = JSON.parse(text);
+    if(!obj || typeof obj !== 'object' || !Array.isArray(obj.diagrams)){
+      status('Soubor neobsahuje validní projekt.', 'error');
+      return;
+    }
+    // jednoduchá normalizace
+    obj.folders = obj.folders || [];
+    obj.diagrams.forEach(d => { d.versions = d.versions || []; d.settings = d.settings || {}; });
+    obj.settings = obj.settings || {theme:'',skinparam:'',header:'',footer:''};
+    // Migrace: starý atribut 'shape' u akcí v aktivitních diagramech → 'stereotype'
+    migrateActivityShapesToStereotypes(obj);
+    state.project = obj;
+    state.selectedDiagramId = obj.diagrams.length ? obj.diagrams[0].id : null;
+    state.selectedPath = null;
+    renderApp();
+    status('Projekt načten.', 'success');
+  } catch(err){
+    debug('Načtení projektu', err.message);
+    status('Chyba při načítání projektu: ' + err.message, 'error');
+  }
 }
 
 function migrateActivityShapesToStereotypes(project){
@@ -3395,34 +3525,35 @@ async function copySourceAction(){
 
 function importPumlAction(file){
   const reader = new FileReader();
-  reader.onload = async e => {
-    const text = e.target.result;
-    try {
-      const result = parsePuml(text);
-      if(!result){
-        status('Nepodařilo se rozpoznat typ diagramu v souboru.', 'error');
-        return;
-      }
-      const name = await dlgPrompt('Importovat diagram', 'Název nového diagramu:',
-        (file.name || 'Importováno').replace(/\.puml$/i,''), 'Diagram bude přidán do aktuálního projektu.');
-      if(!name) return;
-      const dg = newDiagram(result.type, name);
-      dg.model = result.model;
-      // pokud projekt neexistuje, vytvoříme ho
-      if(!state.project) state.project = newProject('Importovaný projekt');
-      state.project.diagrams.push(dg);
-      state.selectedDiagramId = dg.id;
-      state.selectedPath = null;
-      state.project.modified = nowIso();
-      renderApp();
-      status('Diagram naimportován jako ' + result.type + '.', 'success');
-    } catch(err){
-      debug('Import PUML', err.stack || err.message);
-      status('Chyba při importu: ' + err.message, 'error');
-    }
-  };
+  reader.onload = e => importPumlText(e.target.result, file.name);
   reader.onerror = () => status('Chyba při čtení souboru.', 'error');
   reader.readAsText(file, 'utf-8');
+}
+
+async function importPumlText(text, fileName){
+  try {
+    const result = parsePuml(text);
+    if(!result){
+      status('Nepodařilo se rozpoznat typ diagramu v souboru.', 'error');
+      return;
+    }
+    const defaultName = (fileName || 'Importováno').replace(/\.[^.]+$/,'');
+    const name = await dlgPrompt('Importovat diagram', 'Název nového diagramu:',
+      defaultName, 'Diagram bude přidán do aktuálního projektu.');
+    if(!name) return;
+    const dg = newDiagram(result.type, name);
+    dg.model = result.model;
+    if(!state.project) state.project = newProject('Importovaný projekt');
+    state.project.diagrams.push(dg);
+    state.selectedDiagramId = dg.id;
+    state.selectedPath = null;
+    state.project.modified = nowIso();
+    renderApp();
+    status('Diagram naimportován jako ' + result.type + '.', 'success');
+  } catch(err){
+    debug('Import PUML', err.stack || err.message);
+    status('Chyba při importu: ' + err.message, 'error');
+  }
 }
 
 // === NASTAVENÍ ================================================
@@ -3502,6 +3633,9 @@ function openHelp(){
   make('Verze diagramu',
     'Verze nejsou automatické – uložíte je tlačítkem „Uložit verzi" s vlastním popiskem.',
     'Při obnovení starší verze se automaticky uloží aktuální stav jako nová verze, takže nikdy nepřijdete o data.');
+  make('Soubory projektu',
+    'Projekt se ukládá jako jediný soubor s příponou .pup (PlantUML Project) – obsahuje všechny diagramy, složky, verze a nastavení v JSON formátu.',
+    'Při načítání projektu si můžete vybrat jakýkoli soubor – aplikace si sama rozezná, zda je to projekt nebo PUML zdroj. Načtení tedy funguje i u souborů bez přípony nebo přejmenovaných.');
   make('Náhled a export',
     'Tlačítko „Náhled" otevře vykreslený SVG na plantuml.com v novém okně.',
     'Tlačítko „Stáhnout PNG" stáhne obrázek (pokud nedovolí prohlížeč CORS, otevře se okno s obrázkem k ručnímu uložení).',
@@ -3556,14 +3690,30 @@ function init(){
   document.getElementById('dlgSettingsCancel').addEventListener('click', () => document.getElementById('dlgSettings').close());
   document.getElementById('dlgHelpClose').addEventListener('click', () => document.getElementById('dlgHelp').close());
 
-  // File input
+  // File input – soubor se dispatchne podle obsahu (JSON projekt vs PUML zdroj),
+  // nikoliv podle přípony. Uživatel může nahrát .pup, .json, .puml, .txt nebo bez přípony.
   document.getElementById('fileInput').addEventListener('change', e => {
     const f = e.target.files[0];
     if(!f) return;
     if(pendingFileMode === 'project'){
-      // pokud má .puml extenzi, zkus puml
-      if(/\.puml$|\.txt$/i.test(f.name)) importPumlAction(f);
-      else loadProjectJson(f);
+      // Zkusíme rozhodnout podle prvního netriviálního znaku.
+      // JSON projekt začíná '{' (po případných whitespace).
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const text = ev.target.result || '';
+        const trimmed = text.trim();
+        if(trimmed.startsWith('{')){
+          // JSON projekt
+          loadProjectJsonText(text, f.name);
+        } else if(/@startuml/i.test(trimmed) || /^\s*(start|class\s+|interface\s+|actor\s+|participant\s+|usecase\s+)/m.test(trimmed)){
+          // PUML zdroj
+          importPumlText(text, f.name);
+        } else {
+          status('Nelze rozpoznat typ souboru. Očekává se projekt (.pup) nebo PUML (.puml).', 'error');
+        }
+      };
+      reader.onerror = () => status('Chyba při čtení souboru.', 'error');
+      reader.readAsText(f, 'utf-8');
     } else if(pendingFileMode === 'puml'){
       importPumlAction(f);
     }
