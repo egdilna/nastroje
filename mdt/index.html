@@ -252,6 +252,16 @@ nav#app-nav .load-or {
 nav#app-nav .load-grp {
   align-items: center;
 }
+nav#app-nav .load-grp label.load-file-label,
+nav#app-nav .load-grp label.load-url-label {
+  font-size: 0.95rem;
+  color: var(--fg);
+  font-weight: 500;
+}
+nav#app-nav .load-grp input[type="file"] {
+  font-size: 0.95rem;
+  padding: 0.2rem 0;
+}
 nav#app-nav #work-toolbar {
   display: inline-flex;
   flex-wrap: wrap;
@@ -642,12 +652,12 @@ nav#app-nav #work-toolbar .sep {
   <details id="load-details" open>
     <summary>📂 Načíst nebo změnit šablonu</summary>
     <div class="grp load-grp">
-      <button id="btn-open-file" type="button" class="primary">📂 Otevřít soubor (.mdt nebo .mdd)</button>
-      <input id="file-in" type="file" accept=".mdt,.mdd,.md,.txt,.json,application/json,text/plain,text/markdown" hidden>
+      <label for="file-in" class="load-file-label">📂 Soubor:</label>
+      <input id="file-in" type="file" accept=".mdt,.mdd,.md,.txt,.json,application/json,text/plain,text/markdown">
       <span class="load-or" aria-hidden="true">— nebo —</span>
-      <label for="url-in" class="load-url-label">Z URL:</label>
+      <label for="url-in" class="load-url-label">🌐 URL:</label>
       <input id="url-in" class="url-input" type="url" placeholder="https://..." aria-label="URL šablony">
-      <button id="btn-url" type="button">🌐 Načíst z URL</button>
+      <button id="btn-url" type="button">Načíst z URL</button>
     </div>
   </details>
 
@@ -965,7 +975,14 @@ function parseMarkdown(text) {
   const lines = text.split('\n');
   const blocks = [];
   let i = 0;
+  let safetyCounter = 0;
+  const safetyLimit = lines.length * 4 + 100;
   while (i < lines.length) {
+    if (++safetyCounter > safetyLimit) {
+      // Emergency exit — something would otherwise loop forever.
+      break;
+    }
+    const iAtStart = i;
     const line = lines[i];
     // Heading
     let m = line.match(/^(#{1,6})\s+(.*)$/);
@@ -1043,6 +1060,8 @@ function parseMarkdown(text) {
       i++;
     }
     blocks.push({type: 'paragraph', content: pl.join('\n')});
+    // Safety: if no advance happened in this iteration, force one to avoid infinite loop.
+    if (i === iAtStart) i++;
   }
   return blocks;
 }
@@ -1264,14 +1283,39 @@ function renderMode() {
     return;
   }
 
-  if (state.mode === 'preview') {
-    renderPreview(view);
-  } else if (state.mode === 'fill') {
-    renderFill(view);
-  } else {
-    renderResult(view);
+  let stage = 'inicializace';
+  try {
+    if (state.mode === 'preview') {
+      stage = 'vykreslení režimu Náhled vzoru (renderPreview)';
+      renderPreview(view);
+    } else if (state.mode === 'fill') {
+      stage = 'vykreslení režimu Vyplnění (renderFill)';
+      renderFill(view);
+    } else {
+      stage = 'vykreslení režimu Náhled výsledku (renderResult)';
+      renderResult(view);
+    }
+    stage = 'aktualizace stavu vyplněnosti';
+    updateMissingStatus();
+  } catch (err) {
+    // Show the failure inline in docview rather than letting it bubble up silently.
+    view.innerHTML = '';
+    const wrap = el('div', {style: {
+      padding: '0.8rem 1rem', background: '#fff5f5',
+      border: '1px solid #f5b5b5', borderRadius: '4px', margin: '1rem 0',
+    }});
+    wrap.appendChild(el('h2', {text: 'Chyba při vykreslení šablony', style: {marginTop: 0}}));
+    wrap.appendChild(el('p', {text: 'Selhalo: ' + stage}));
+    wrap.appendChild(el('p', {text: (err && err.message ? err.message : String(err))}));
+    if (err && err.stack) {
+      const pre = el('pre', {style: {fontSize: '0.8rem', whiteSpace: 'pre-wrap', maxHeight: '20rem', overflow: 'auto'}});
+      pre.textContent = String(err.stack);
+      wrap.appendChild(pre);
+    }
+    wrap.appendChild(el('p', {text: 'Můžeš zkusit otevřít zdroj šablony tlačítkem ✏ Zdroj v horním panelu a opravit ji.'}));
+    view.appendChild(wrap);
+    setStatus('err', 'Chyba ve vykreslení (' + stage + '): ' + (err && err.message ? err.message : String(err)));
   }
-  updateMissingStatus();
 }
 
 function renderWelcome(view) {
@@ -2167,12 +2211,47 @@ function loadDraft(draft, fallbackName, sourceLabel) {
 
 function loadFromText(text, name, sourceLabel) {
   // Auto-detect: JSON draft (.mdd) or raw template (.mdt).
-  const draft = tryParseDraft(text);
-  if (draft) {
-    loadDraft(draft, name, sourceLabel);
-  } else {
-    loadTemplate(text, name);
-    setStatus('ok', 'Načteno' + (sourceLabel ? ': ' + sourceLabel : '') + '.');
+  // Wrap each step so any error is reported with what we were doing when it threw.
+  let stage = 'detekce typu (.mdd vs .mdt)';
+  try {
+    const draft = tryParseDraft(text);
+    if (draft) {
+      stage = 'načtení rozpracované verze (.mdd)';
+      loadDraft(draft, name, sourceLabel);
+    } else {
+      stage = 'načtení šablony (.mdt)';
+      loadTemplate(text, name);
+      setStatus('ok', 'Načteno' + (sourceLabel ? ': ' + sourceLabel : '') + '.');
+    }
+  } catch (err) {
+    showLoadError('Chyba při ' + stage + ': ' + (err && err.message ? err.message : String(err)), err);
+    throw err; // let outer catch (in loadFromUrl) also see it
+  }
+}
+
+function showLoadError(msg, err) {
+  setStatus('err', msg);
+  // Show diagnostic detail directly on page (not in browser console).
+  const s = $('#status');
+  if (err && err.stack) {
+    const pre = el('pre', {style: {
+      fontSize: '0.8rem', whiteSpace: 'pre-wrap',
+      margin: '0.4rem 0 0', padding: '0.4rem 0.6rem',
+      background: '#fff5f5', border: '1px solid #f5b5b5', borderRadius: '4px',
+      maxHeight: '14rem', overflow: 'auto'
+    }});
+    pre.textContent = String(err.stack);
+    s.appendChild(pre);
+  }
+  // Also offer recovery: open the source editor with the raw text so the user can inspect/repair it.
+  if (state.templateText) {
+    const btn = el('button', {
+      type: 'button',
+      style: {marginTop: '0.4rem'},
+      text: '✏ Otevřít zdroj šablony k opravě',
+      onclick: openSourceEditor,
+    });
+    s.appendChild(btn);
   }
 }
 
@@ -2510,7 +2589,6 @@ function init() {
     if (f) loadFromFile(f);
     e.target.value = '';
   });
-  $('#btn-open-file').addEventListener('click', function() { $('#file-in').click(); });
   // URL load
   $('#btn-url').addEventListener('click', function() {
     const u = $('#url-in').value.trim();
