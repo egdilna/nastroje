@@ -243,6 +243,15 @@ nav#app-nav details .grp label[for="url-in"] {
   font-size: 0.9rem;
   color: var(--muted);
 }
+nav#app-nav .load-or {
+  font-size: 0.85rem;
+  color: var(--muted);
+  padding: 0 0.4rem;
+  white-space: nowrap;
+}
+nav#app-nav .load-grp {
+  align-items: center;
+}
 nav#app-nav #work-toolbar {
   display: inline-flex;
   flex-wrap: wrap;
@@ -632,13 +641,13 @@ nav#app-nav #work-toolbar .sep {
 <nav id="app-nav" aria-label="Akce s šablonou">
   <details id="load-details" open>
     <summary>📂 Načíst nebo změnit šablonu</summary>
-    <div class="grp">
-      <label class="btn" for="file-in">Otevřít .mdt nebo .mdd</label>
-      <input id="file-in" type="file" accept=".mdt,.mdd,.md,.txt,.json,application/json,text/plain,text/markdown" style="display:none">
-      <span aria-hidden="true">·</span>
-      <label for="url-in">URL:</label>
+    <div class="grp load-grp">
+      <button id="btn-open-file" type="button" class="primary">📂 Otevřít soubor (.mdt nebo .mdd)</button>
+      <input id="file-in" type="file" accept=".mdt,.mdd,.md,.txt,.json,application/json,text/plain,text/markdown" hidden>
+      <span class="load-or" aria-hidden="true">— nebo —</span>
+      <label for="url-in" class="load-url-label">Z URL:</label>
       <input id="url-in" class="url-input" type="url" placeholder="https://..." aria-label="URL šablony">
-      <button id="btn-url" type="button">🌐 Načíst</button>
+      <button id="btn-url" type="button">🌐 Načíst z URL</button>
     </div>
   </details>
 
@@ -2080,6 +2089,8 @@ function showWorkUI() {
 }
 
 function loadTemplate(text, name) {
+  // Normalize line endings: handle CR-only (old Mac) and CRLF (Windows) → LF.
+  text = String(text == null ? '' : text).replace(/\uFEFF/g, '').replace(/\r\n?/g, '\n');
   state.templateText = text;
   state.templateName = name || 'sablona';
   state.placeholders = parsePlaceholders(text);
@@ -2121,7 +2132,8 @@ function tryParseDraft(text) {
 }
 
 function loadDraft(draft, fallbackName, sourceLabel) {
-  state.templateText = draft.templateText;
+  // Normalize line endings in stored template text.
+  state.templateText = String(draft.templateText == null ? '' : draft.templateText).replace(/\uFEFF/g, '').replace(/\r\n?/g, '\n');
   state.templateName = draft.templateName || fallbackName || 'sablona';
   state.placeholders = parsePlaceholders(state.templateText);
   state.instructions = parseInstructions(state.templateText);
@@ -2167,9 +2179,19 @@ function loadFromText(text, name, sourceLabel) {
 function loadFromFile(file) {
   const reader = new FileReader();
   reader.onload = function() {
-    const text = String(reader.result);
-    const name = (file.name || 'sablona').replace(/\.[^.]+$/, '');
-    loadFromText(text, name, file.name);
+    try {
+      const text = String(reader.result);
+      const name = (file.name || 'sablona').replace(/\.[^.]+$/, '');
+      loadFromText(text, name, file.name);
+    } catch (err) {
+      setStatus('err', 'Chyba při zpracování souboru: ' + err.message);
+      if (err.stack) {
+        const s = $('#status');
+        const pre = el('pre', {style: {fontSize: '0.8rem', whiteSpace: 'pre-wrap', margin: '0.4rem 0 0', maxHeight: '12rem', overflow: 'auto'}});
+        pre.textContent = String(err.stack);
+        s.appendChild(pre);
+      }
+    }
   };
   reader.onerror = function() {
     setStatus('err', 'Chyba při čtení souboru.');
@@ -2189,7 +2211,18 @@ function loadFromUrl(url) {
       loadFromText(text, name, 'URL ' + url);
     })
     .catch(function(err) {
-      setStatus('err', 'Chyba načtení z URL: ' + err.message + ' (možná blokuje CORS)');
+      // Distinguish network/CORS errors from JS runtime errors during processing.
+      const isNetworkError = (err.name === 'TypeError' && /failed to fetch|networkerror|load failed/i.test(err.message))
+        || /^HTTP \d+$/.test(err.message);
+      const hint = isNetworkError ? ' (možná blokuje CORS nebo je URL nedostupná)' : '';
+      setStatus('err', 'Chyba načtení z URL: ' + err.message + hint);
+      // Surface the stack on the page for diagnosis (rather than a hidden console).
+      if (!isNetworkError && err.stack) {
+        const s = $('#status');
+        const pre = el('pre', {style: {fontSize: '0.8rem', whiteSpace: 'pre-wrap', margin: '0.4rem 0 0', maxHeight: '12rem', overflow: 'auto'}});
+        pre.textContent = String(err.stack);
+        s.appendChild(pre);
+      }
     });
 }
 
@@ -2436,7 +2469,7 @@ function openSourceEditor() {
     class: 'primary',
     text: '💾 Uložit změny do šablony',
     onclick: function() {
-      const newText = ta.value;
+      const newText = ta.value.replace(/\uFEFF/g, '').replace(/\r\n?/g, '\n');
       state.templateText = newText;
       state.placeholders = parsePlaceholders(newText);
       state.instructions = parseInstructions(newText);
@@ -2477,6 +2510,7 @@ function init() {
     if (f) loadFromFile(f);
     e.target.value = '';
   });
+  $('#btn-open-file').addEventListener('click', function() { $('#file-in').click(); });
   // URL load
   $('#btn-url').addEventListener('click', function() {
     const u = $('#url-in').value.trim();
