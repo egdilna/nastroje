@@ -909,13 +909,10 @@ a.version-time {
 
 /* Edit-mode panel */
 .edit-bar {
-  position: sticky;
-  bottom: 0;
   background: var(--bg);
   border-top: 1px solid var(--border);
   margin-top: 24px;
-  padding: 10px 0;
-  z-index: 50;
+  padding: 14px 0;
 }
 .edit-toggle {
   display: flex;
@@ -2549,6 +2546,9 @@ async function loadStorageFromGithub() {
     handle.succeed(`Načteno: ${st.folders} složek, ${st.files} souborů, ${st.versions} verzí (${fmtSize(st.totalSize)})`);
     showStatus("Úložiště načteno.", "success");
     markSaved();
+    // Aktualizuj title hned po načtení (init by render zavolal taky, ale tohle pokrývá
+    // další případy kdy se loadStorageFromGithub volá ručně, např. z openStorage).
+    render();
     return true;
   } catch (e) {
     if (/404/.test(e.message)) {
@@ -2900,16 +2900,27 @@ function renderHeader() {
     }
   }
 
-  // Aktualizace document.title — formát: „<název položky> · <název úložiště> – DMS"
+  // Aktualizace document.title — formát: „<název položky> · <název úložiště> – DMS".
+  // Pokud aktivní úložiště ještě není načtené, použijeme cachovaný název z knownRepos
+  // (aby se v záložce hned zobrazil správný název úložiště, ne výchozí „DMS úložiště").
   let title = "DMS úložiště";
+  let storageNameForTitle = "";
   if (s) {
-    const storageName = s.name || s.id || "Úložiště";
-    if (state.currentDetailId && state.currentDetailId !== "root") {
+    storageNameForTitle = s.name || s.id || "";
+  } else if (state.config.repoPath) {
+    // Fallback z lokální historie navštívených úložišť
+    try {
+      const known = listKnownRepos().find(r => r.repoPath === state.config.repoPath);
+      if (known) storageNameForTitle = known.storageName || known.storageId || "";
+    } catch {}
+  }
+  if (storageNameForTitle) {
+    if (s && state.currentDetailId && state.currentDetailId !== "root") {
       const found = findItem(state.currentDetailId);
       const itemName = (found && found.item && found.item.name) ? found.item.name : "";
-      title = (itemName ? itemName + " · " : "") + storageName + " – DMS";
+      title = (itemName ? itemName + " · " : "") + storageNameForTitle + " – DMS";
     } else {
-      title = storageName + " – DMS";
+      title = storageNameForTitle + " – DMS";
     }
   }
   if (document.title !== title) document.title = title;
@@ -4992,7 +5003,7 @@ function wireOpLogButtons() {
   if (retryBtn) retryBtn.addEventListener("click", retryAllFailed);
 }
 
-// Globální klávesové zkratky — holá písmena BEZ modifikátorů.
+// Globální klávesové zkratky — holá písmena, Shift jen u B.
 //
 // x — toggle režim úprav
 // f — přidat 📁 (jen v editmódu, ve složce)
@@ -5004,6 +5015,8 @@ function wireOpLogButtons() {
 // o — otevřít file picker pro novou verzi (jen na detailu souboru, ne v náhledu verze)
 // c — vyčistit dokončené z op-logu
 // r — opakovat všechny chybné z op-logu
+// b — o úroveň výš v navigaci (do parent složky)
+// Shift+B — na kořen úložiště
 //
 // Poznámka pro screen reader uživatele: NVDA/JAWS/VoiceOver v default browse modu
 // si některá písmena rezervují pro vlastní quick-navigation (X = další checkbox,
@@ -5019,12 +5032,14 @@ function handleGlobalKey(e) {
   const tag = t && t.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;
   if (document.querySelector("dialog[open]")) return;
-  // Žádné modifikátory (Ctrl/Cmd/Alt/Shift) — chceme holá písmena.
-  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+  // Ctrl/Cmd/Alt nikdy. Shift jen pro speciální navigační klávesy (B = root vs. parent).
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
   // Klávesa musí být jediný znak.
   if (!e.key || e.key.length !== 1) return;
-
   const key = e.key.toLowerCase();
+  // Pro většinu zkratek nesmí být Shift. Výjimka: B s Shiftem znamená navigaci na root.
+  if (e.shiftKey && key !== "b") return;
+  const shift = e.shiftKey;
   const isOnFile = (() => {
     if (!state.storage || state.currentDetailId === "root") return null;
     const found = findItem(state.currentDetailId);
@@ -5048,6 +5063,26 @@ function handleGlobalKey(e) {
         cb.checked = !cb.checked;
         cb.dispatchEvent(new Event("change"));
         consumed = true;
+      }
+      break;
+    }
+    case "b": {
+      // B = o úroveň výš (parent složka), Shift+B = na root úložiště
+      if (!state.storage) break;
+      if (state.currentDetailId === "root") break; // už jsme na rootu
+      if (shift) {
+        navigateTo("root");
+        consumed = true;
+      } else {
+        // o úroveň výš — najdi parent aktuální položky
+        const found = findItem(state.currentDetailId);
+        if (found) {
+          // root level item: parent === null → vrátíme se na root
+          // hlubší level: parent je předposlední v path (nebo null pokud rootItem)
+          const parentItem = found.parent;
+          navigateTo(parentItem ? parentItem.id : "root");
+          consumed = true;
+        }
       }
       break;
     }
