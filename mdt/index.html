@@ -498,6 +498,36 @@ nav#app-nav #work-toolbar .sep {
   padding-top: 0.4em;
   border-top: 1px dashed #b39ee0;
 }
+.rep-empty {
+  padding: 0.6em 0.8em;
+  margin: 0.4em 0;
+  background: #fcf5e3;
+  border: 1px dashed #d4a017;
+  border-radius: 4px;
+  color: #5c4400;
+  font-style: italic;
+}
+
+/* Tabulka activator (optional Tabulka placeholder, before user creates it) */
+.ph-tbl-activator {
+  background: #fdf2e6;
+  border-style: dashed;
+}
+.ph-tbl-activator .ph-tbl-act-hint {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0.3em 0 0.5em 0;
+  font-style: italic;
+}
+
+button.btn-danger {
+  background: #c0392b;
+  color: #fff;
+  border-color: #922b21;
+}
+button.btn-danger:hover, button.btn-danger:focus {
+  background: #922b21;
+}
 
 .ph-form-label {
   display: block;
@@ -944,8 +974,8 @@ function parseInstructions(text) {
  * ani pokynů, a pro které lze v režimu "Vyplnění" zobrazit editor tabulky.
  */
 
-const REP_OPEN_RE = /\[\[\[\s*Opakov[áa]n[íi]\s*:\s*([^\]]+?)\s*\]\]\]/g;
-const REP_CLOSE_RE = /\[\[\[\s*\/\s*Opakov[áa]n[íi]\s*\]\]\]/g;
+const REP_OPEN_RE = /\[\[\[\s*Opakov[áa]n[íi]\s*:\s*([^\]]+?)\s*\]\]\]/gi;
+const REP_CLOSE_RE = /\[\[\[\s*\/\s*Opakov[áa]n[íi]\s*\]\]\]/gi;
 
 function parseRepeats(text) {
   // Parse [[[Opakování: Name]]] ... [[[/Opakování]]] pairs.
@@ -1278,19 +1308,16 @@ function formatValueAsMarkdown(ph) {
     return v == null || v === '' ? '' : String(v);
   }
   if (ph.type === 'Tabulka') {
-    const cols = ph.content.split(',').map(c => c.trim());
     const rows = Array.isArray(v) ? v : [];
+    // Optional table — if not activated or no rows, skip entirely (renders nothing).
+    if (rows.length === 0) return '';
+    const cols = ph.content.split(',').map(c => c.trim());
     let out = '| ' + cols.join(' | ') + ' |\n';
     out += '| ' + cols.map(() => '---').join(' | ') + ' |\n';
-    if (rows.length === 0) {
-      out += '| ' + cols.map(() => '').join(' | ') + ' |';
-    } else {
-      for (const r of rows) {
-        out += '| ' + cols.map(c => (r[c] || '').replace(/\|/g, '\\|').replace(/\n/g, ' ')).join(' | ') + ' |\n';
-      }
-      out = out.replace(/\n$/, '');
+    for (const r of rows) {
+      out += '| ' + cols.map(c => (r[c] || '').replace(/\|/g, '\\|').replace(/\n/g, ' ')).join(' | ') + ' |\n';
     }
-    return out;
+    return out.replace(/\n$/, '');
   }
   return '';
 }
@@ -1599,8 +1626,13 @@ function renderResult(view) {
   for (const ph of state.placeholders) {
     const md = formatValueAsMarkdown(ph);
     const v = getValue(ph);
-    const isUnfilled = (md === '') ||
-      (ph.type === 'Tabulka' && (!Array.isArray(v) || v.length === 0));
+    let isUnfilled;
+    if (ph.type === 'Tabulka' || ph.type === 'Spot') {
+      // Tabulka is optional, Spot always renders — never marked unfilled.
+      isUnfilled = false;
+    } else {
+      isUnfilled = (md === '');
+    }
     events.push({
       kind: 'PH',
       start: ph.start,
@@ -1817,6 +1849,11 @@ function buildRepeatFillElement(rep) {
   function rerender() {
     instancesContainer.innerHTML = '';
     const arr = state.values[repKey];
+    if (arr.length === 0) {
+      const hint = el('div', {class: 'rep-empty', role: 'note',
+        text: 'Sekce „' + rep.name + '" nemá žádnou instanci. Pro vytvoření klikněte na tlačítko „Přidat instanci" níže — nebo nechte prázdné, sekce se ve výsledku přeskočí.'});
+      instancesContainer.appendChild(hint);
+    }
     for (let i = 0; i < arr.length; i++) {
       instancesContainer.appendChild(buildInstance(arr[i], i, arr.length));
     }
@@ -1876,12 +1913,7 @@ function buildRepeatFillElement(rep) {
       text: '🗑',
       onclick: function() {
         const arr = state.values[repKey];
-        if (arr.length <= 1) {
-          // Replace with a fresh empty instance instead of deleting (always keep at least one).
-          arr[0] = createEmptyRepeatInstance(rep);
-        } else {
-          arr.splice(instanceIdx, 1);
-        }
+        arr.splice(instanceIdx, 1);
         rerender();
       },
     });
@@ -1947,9 +1979,54 @@ function buildFillElement(ph) {
   if (ph.type === 'Volba') return buildChoiceInput(ph);
   if (ph.type === 'Odrážky') return buildItemsEditor(ph, 'bullet');
   if (ph.type === 'Číslované') return buildItemsEditor(ph, 'number');
-  if (ph.type === 'Tabulka') return buildTableEditor(ph);
+  if (ph.type === 'Tabulka') return buildTableSlot(ph);
   if (ph.type === 'Spot') return buildSpotElement(ph);
   return el('span', {text: ph.raw});
+}
+
+function buildTableSlot(ph) {
+  // For real Tabulka placeholders (not virtual proxies for inline markdown tables):
+  // a Tabulka is OPTIONAL — show an activation button until the user creates it.
+  // Once created, show the editor with a "Remove table" button to deactivate.
+  if (ph._virtualKey) {
+    // Virtual proxy (inline markdown table) — always show editor (table is mandatory in template).
+    return buildTableEditor(ph);
+  }
+  const v = getValue(ph);
+  if (Array.isArray(v)) {
+    return buildTableEditor(ph);
+  }
+  return buildTableActivator(ph);
+}
+
+function buildTableActivator(ph) {
+  const cols = ph.content.split(',').map(s => s.trim()).filter(Boolean);
+  const wrap = el('div', {class: 'ph-form ph-block ph-tbl ph-tbl-activator', role: 'group',
+    'aria-label': 'Volitelná tabulka: ' + ph.content});
+  wrap.appendChild(el('div', {class: 'ph-form-label'}, [
+    el('span', {class: 'ph-type', text: ph.type + ' (volitelná): '}),
+    cols.join(', '),
+  ]));
+  wrap.appendChild(el('div', {class: 'ph-tbl-act-hint',
+    text: 'Tabulka se ve výsledku zobrazí pouze pokud ji vytvoříte.'}));
+  const btn = el('button', {
+    type: 'button',
+    class: 'primary',
+    text: '➕ Vytvořit tabulku',
+    'aria-label': 'Vytvořit volitelnou tabulku se sloupci ' + cols.join(', '),
+    onclick: function() {
+      const initial = {};
+      for (const c of cols) initial[c] = '';
+      setValue(ph, [initial]);
+      const ed = buildTableEditor(ph);
+      wrap.replaceWith(ed);
+      const firstInput = ed.querySelector('input, textarea, [contenteditable="true"]');
+      if (firstInput) firstInput.focus();
+      updateMissingStatus();
+    },
+  });
+  wrap.appendChild(btn);
+  return wrap;
 }
 
 function buildMirrorElement(ph) {
@@ -2272,10 +2349,25 @@ function buildTableEditor(ph) {
   tbl.appendChild(tbody);
   teWrap.appendChild(tbl);
 
-  const foot = el('div', {class: 'te-foot'}, [
-    el('button', {type: 'button', text: '➕ Přidat řádek dolů',
-      onclick: function() { addRow(); }})
-  ]);
+  const foot = el('div', {class: 'te-foot'});
+  foot.appendChild(el('button', {type: 'button', text: '➕ Přidat řádek dolů',
+    onclick: function() { addRow(); }}));
+  // For real Tabulka placeholders (not virtual inline tables): allow removing the whole table.
+  if (ph.type === 'Tabulka' && !ph._virtualKey) {
+    foot.appendChild(el('button', {
+      type: 'button',
+      class: 'btn-danger',
+      text: '🗑 Odebrat tabulku celou',
+      'aria-label': 'Odebrat celou tabulku — bude přeskočena ve výsledku',
+      onclick: function() {
+        if (!confirm('Opravdu odebrat celou tabulku? Bude ve výsledku přeskočena.')) return;
+        setValue(ph, undefined);
+        const act = buildTableActivator(ph);
+        wrap.replaceWith(act);
+        updateMissingStatus();
+      },
+    }));
+  }
   teWrap.appendChild(foot);
 
   function getRows() {
@@ -2452,6 +2544,7 @@ function updateMissingStatus() {
   const seenKeys = new Set();
   function countPlaceholder(ph, src) {
     if (ph.type === 'Spot') return; // Spot has no fill state
+    if (ph.type === 'Tabulka') return; // Tabulka is optional
     if (ph.dedupKey) {
       if (seenKeys.has(ph.dedupKey)) return;
       seenKeys.add(ph.dedupKey);
