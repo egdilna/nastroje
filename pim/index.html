@@ -206,6 +206,14 @@ body.theme-dark .ca-field-row { background: rgba(255,255,255,0.04); }
 .comments-list { margin: 0.5em 0; }
 .comment { padding: 0.6em 0.8em; margin: 0.4em 0; background: rgba(0,102,204,0.06); border-left: 3px solid #0066cc; border-radius: 0 4px 4px 0; }
 body.theme-dark .comment { background: rgba(120,170,230,0.08); }
+.comment-related { background: rgba(120,120,120,0.07); border-left-color: #888; }
+body.theme-dark .comment-related { background: rgba(180,180,180,0.06); border-left-color: #aaa; }
+.comment-related-source { font-size: 0.92em; color: #555; margin-bottom: 0.3em; }
+body.theme-dark .comment-related-source { color: #bbb; }
+.related-comment-group { margin: 0.6em 0 1em 0; }
+.related-comments summary { cursor: pointer; padding: 0.3em 0; }
+.related-comments summary:hover { background: rgba(0,102,204,0.04); }
+body.theme-dark .related-comments summary:hover { background: rgba(120,170,230,0.06); }
 .comment-edited { background: rgba(240,180,0,0.08); border-left-color: #f0b400; }
 .comment-meta { display: flex; justify-content: space-between; gap: 0.5em; flex-wrap: wrap; font-size: 0.85em; color: #555; margin-bottom: 0.3em; padding-bottom: 0.3em; border-bottom: 1px dotted #ccc; }
 body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
@@ -2384,6 +2392,7 @@ function renderDetailRead(main, e) {
     '<section aria-labelledby="comments-h"><h3 id="comments-h">Komentáře' + (e.comments && e.comments.length ? ' (' + e.comments.length + ')' : '') + '</h3>' +
       renderCommentsSection(e) +
     '</section>' +
+    renderRelatedCommentsSection(e) +
     '<details><summary>Meta</summary><dl class="read-attrs">' +
       '<dt>Důvěra</dt><dd>' + escapeHtml(CONFIDENCE_LEVELS[e.confidence] || e.confidence) + '</dd>' +
       (e.valid_from ? '<dt>Platnost od</dt><dd>' + escapeHtml(fmtDate(e.valid_from)) + '</dd>' : '') +
@@ -2409,6 +2418,7 @@ function renderDetailRead(main, e) {
   attachMarkdownTaskHandlers(main, e);
   attachAttachmentReadHandlers(main, e);
   attachCommentHandlers(main, e);
+  attachRelatedCommentsHandlers(main, e);
   // Mazání vazeb v read módu
   main.querySelectorAll('button[data-remove-link-read]').forEach(b => {
     b.onclick = () => {
@@ -2600,6 +2610,10 @@ function renderDetailEdit(main, e) {
       '<div class="btn-group" style="margin-top:0.5em;"><button id="d-add-comment" class="primary">+ Přidat komentář</button></div>' +
     '</fieldset>' +
 
+    '<fieldset><legend>Komentáře v okolí entity</legend>' +
+      '<div id="d-related-comments"></div>' +
+    '</fieldset>' +
+
     '<fieldset><legend>Meta</legend>' +
       '<div class="attr-row">' +
         '<div style="flex:1"><label for="d-confidence">Důvěra</label><select id="d-confidence">' +
@@ -2616,6 +2630,13 @@ function renderDetailEdit(main, e) {
   renderEditLinks(e);
   renderEditAttachments(e);
   renderEditComments(e);
+  // Komentáře v okolí entity (read-only)
+  const relC = document.getElementById('d-related-comments');
+  if (relC) {
+    relC.innerHTML = renderRelatedCommentsSection(e) || '<p class="meta">Žádná navázaná entita nemá komentáře.</p>';
+    attachRelatedCommentsHandlers(relC, e);
+    attachMarkdownLinkHandlers(relC);
+  }
 
   document.getElementById('back-btn').onclick = goBack;
   document.getElementById('btn-done').onclick = () => { state.detailMode = 'read'; render(); };
@@ -2901,6 +2922,158 @@ function renderCommentsSection(entity) {
   sorted.forEach(c => h += renderCommentItem(entity.id, c));
   h += '</div>';
   return h;
+}
+
+// Komentáře z entit propojených vazbami (odchozími i příchozími)
+function getRelatedEntitiesComments(entity) {
+  const result = [];
+  const seen = new Set();
+  // Odchozí vazby z entity
+  (entity.links || []).forEach(l => {
+    const target = findEntity(l.to);
+    if (!target || seen.has(target.id)) return;
+    if ((target.comments || []).length === 0) return;
+    seen.add(target.id);
+    result.push({
+      entity: target,
+      comments: target.comments,
+      relations: [{ type: l.type, direction: 'outgoing' }]
+    });
+  });
+  // Příchozí vazby
+  db.entities.forEach(other => {
+    if (other.id === entity.id) return;
+    (other.links || []).forEach(l => {
+      if (l.to !== entity.id) return;
+      if ((other.comments || []).length === 0) return;
+      const existing = result.find(r => r.entity.id === other.id);
+      if (existing) {
+        existing.relations.push({ type: l.type, direction: 'incoming' });
+      } else if (!seen.has(other.id)) {
+        seen.add(other.id);
+        result.push({
+          entity: other,
+          comments: other.comments,
+          relations: [{ type: l.type, direction: 'incoming' }]
+        });
+      }
+    });
+  });
+  return result;
+}
+
+function describeRelations(relations, currentEntity) {
+  // Vrátí krátký popis vazby pro UI - např. "obsahuje" pro outgoing partOf reverse
+  return relations.map(r => {
+    const ti = RELATION_TYPES[r.type];
+    if (!ti) return r.type;
+    if (r.direction === 'outgoing') {
+      // currentEntity → other: ukazujeme směr "currentEntity je v <type> vztahu k other"
+      // Tj. "tato entita <r.type> sourozenec"
+      return ti.label;
+    } else {
+      // other → currentEntity: inverse
+      return ti.inverseLabel || ('zpětně: ' + ti.label);
+    }
+  }).join(', ');
+}
+
+function renderRelatedCommentsSection(entity) {
+  const groups = getRelatedEntitiesComments(entity);
+  if (groups.length === 0) return '';
+  // Spočítat celkový počet komentářů
+  const total = groups.reduce((s, g) => s + g.comments.length, 0);
+  let h = '<details class="related-comments" open>' +
+    '<summary><h3 style="display:inline;margin:0;">💬 Komentáře v okolí entity (' + total + ')</h3></summary>' +
+    '<p class="meta">Komentáře z ' + groups.length + ' entit, které mají vazbu s touto entitou. Kliknutím na název entity přejdete do její detailní stránky a tam můžete komentáře editovat.</p>';
+
+  // Filtr / přepínač řazení
+  h += '<div class="btn-group" style="margin:0.3em 0;">' +
+    '<button data-rel-c-sort="newest" class="primary" id="rel-c-sort-newest">Nejnovější první</button>' +
+    '<button data-rel-c-sort="grouped" id="rel-c-sort-grouped">Seskupit podle entity</button>' +
+    '</div>';
+
+  h += '<div id="related-comments-content" data-mode="newest">';
+  h += renderRelatedCommentsFlat(groups, entity);
+  h += '</div></details>';
+  return h;
+}
+
+function renderRelatedCommentsFlat(groups, currentEntity) {
+  // Sloučit všechny komentáře do jednoho seznamu, seřadit podle data sestupně
+  const flat = [];
+  groups.forEach(g => {
+    g.comments.forEach(c => {
+      flat.push({ comment: c, entity: g.entity, relations: g.relations });
+    });
+  });
+  flat.sort((a, b) => (b.comment.created_at || '').localeCompare(a.comment.created_at || ''));
+  if (flat.length === 0) return '<p class="meta">Žádné komentáře v navázaných entitách.</p>';
+  return '<div class="comments-list">' +
+    flat.map(item => renderRelatedCommentItem(item.comment, item.entity, item.relations, currentEntity)).join('') +
+    '</div>';
+}
+
+function renderRelatedCommentsGrouped(groups, currentEntity) {
+  // Seskupit podle entity, v rámci entity řadit chronologicky
+  return groups.map(g => {
+    const sorted = [...g.comments].sort((a,b) => (a.created_at || '').localeCompare(b.created_at || ''));
+    const relText = describeRelations(g.relations, currentEntity);
+    return '<div class="related-comment-group">' +
+      '<h4 style="margin:0.6em 0 0.3em;">' +
+        '<a href="#" class="wiki-link" data-entity="' + escapeHtml(g.entity.id) + '">' + escapeHtml(getDisplayTitle(g.entity)) + '</a> ' +
+        '<small class="meta">(' + escapeHtml(relText) + ', ' + g.comments.length + ' komentář' + (g.comments.length === 1 ? '' : (g.comments.length < 5 ? 'e' : 'ů')) + ')</small>' +
+      '</h4>' +
+      '<div class="comments-list">' +
+        sorted.map(c => renderRelatedCommentItem(c, g.entity, g.relations, currentEntity, true)).join('') +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function renderRelatedCommentItem(c, sourceEntity, relations, currentEntity, hideEntityHeader) {
+  const edited = c.updated_at && c.updated_at !== c.created_at;
+  const timeStr = fmtDateTime(c.created_at);
+  const editedStr = edited ? ' <span class="meta">(upraveno ' + escapeHtml(fmtRelative(c.updated_at)) + ')</span>' : '';
+  const relText = describeRelations(relations, currentEntity);
+  const entityHeader = hideEntityHeader ? '' :
+    '<div class="comment-related-source">' +
+      'Z entity <a href="#" class="wiki-link" data-entity="' + escapeHtml(sourceEntity.id) + '">' + escapeHtml(getDisplayTitle(sourceEntity)) + '</a>' +
+      ' <span class="meta">(' + escapeHtml(relText) + ')</span>' +
+    '</div>';
+  return '<article class="comment comment-related" aria-label="Komentář z entity ' + escapeHtml(getDisplayTitle(sourceEntity)) + '">' +
+    entityHeader +
+    '<div class="comment-meta">' +
+      '<span><span class="comment-author">' + escapeHtml(c.author || '(bez autora)') + '</span> · <time datetime="' + escapeHtml(c.created_at) + '">' + escapeHtml(timeStr) + '</time>' + editedStr + '</span>' +
+    '</div>' +
+    '<div class="comment-content">' + escapeHtml(c.content) + '</div>' +
+    '<div class="comment-actions">' +
+      '<a href="#" class="wiki-link" data-entity="' + escapeHtml(sourceEntity.id) + '">Otevřít zdrojovou entitu</a>' +
+    '</div>' +
+  '</article>';
+}
+
+function attachRelatedCommentsHandlers(root, entity) {
+  // Wiki-link handlery se postarají o navigaci, ale potřebuju ošetřit přepínač řazení
+  const sortNewest = root.querySelector('#rel-c-sort-newest');
+  const sortGrouped = root.querySelector('#rel-c-sort-grouped');
+  const content = root.querySelector('#related-comments-content');
+  if (!sortNewest || !sortGrouped || !content) return;
+  const groups = getRelatedEntitiesComments(entity);
+  sortNewest.onclick = () => {
+    content.dataset.mode = 'newest';
+    content.innerHTML = renderRelatedCommentsFlat(groups, entity);
+    sortNewest.classList.add('primary');
+    sortGrouped.classList.remove('primary');
+    attachMarkdownLinkHandlers(content);
+  };
+  sortGrouped.onclick = () => {
+    content.dataset.mode = 'grouped';
+    content.innerHTML = renderRelatedCommentsGrouped(groups, entity);
+    sortGrouped.classList.add('primary');
+    sortNewest.classList.remove('primary');
+    attachMarkdownLinkHandlers(content);
+  };
 }
 
 function renderCommentItem(entityId, c) {
