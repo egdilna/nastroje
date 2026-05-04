@@ -222,7 +222,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
     <button id="btn-new-entity" title="Klávesa: N">Nová entita</button>
     <button id="btn-new-from-template" title="Klávesa: Shift+N">Nová ze šablony</button>
     <button id="btn-help" title="Klávesa: ?">Klávesové zkratky</button>
-    <button id="btn-sync" title="Klávesa: S nebo Ctrl+S – uložit na GitHub" hidden>Sync</button>
+    <button id="btn-sync" accesskey="s" title="Klávesa: S nebo Ctrl+S nebo Alt+Shift+S – uložit na GitHub" hidden>Sync</button>
   </div>
 </header>
 <main id="main" tabindex="-1" aria-live="polite" aria-atomic="false"></main>
@@ -1699,8 +1699,8 @@ function renderSettings(main) {
     '<div class="btn-group" style="margin-top:0.5em;">' +
       '<button id="gh-save-btn" class="primary">Uložit nastavení</button>' +
       '<button id="gh-test">Test spojení</button>' +
-      '<button id="gh-load">Načíst z GitHubu</button>' +
-      '<button id="gh-upload" class="primary">Nahrát na GitHub</button>' +
+      '<button id="gh-load" accesskey="l">Načíst z GitHubu</button>' +
+      '<button id="gh-upload" class="primary" accesskey="u">Nahrát na GitHub</button>' +
     '</div>' +
     '<div id="gh-link-area" class="meta" style="margin-top:0.5em;"></div>' +
     '</section>' +
@@ -3233,20 +3233,22 @@ const GH = {
   async testConnection() {
     if (!this.isConfigured()) {
       this._setStatus('error', 'Nastavte vlastníka, repozitář a cestu.');
-      toast('Nastavte vlastníka, repozitář a cestu.');
+      toast('Nastavte vlastníka, repozitář a cestu.', 4000);
       return;
     }
     this._setStatus('syncing');
+    toast('Testuji spojení…', 30000);
     try {
       const meta = await this._getRemoteFile();
       this._setStatus('ok', 'Soubor existuje – ' + fmtBytes(meta.size || 0));
-      toast('Spojení OK. Soubor existuje (' + fmtBytes(meta.size || 0) + ').');
+      toast('✓ Spojení OK. Soubor existuje (' + fmtBytes(meta.size || 0) + ').', 4000);
     } catch (e) {
       if (e.status === 404) {
         this._setStatus('ok', 'Repozitář dosažitelný, soubor zatím neexistuje (vytvoří se při prvním nahrání).');
-        toast('Spojení OK. Soubor zatím neexistuje, vznikne při prvním nahrání.');
+        toast('✓ Spojení OK. Soubor zatím neexistuje, vznikne při prvním nahrání.', 4000);
       } else {
         this._setStatus('error', e.message);
+        toast('✗ Test spojení selhal: ' + e.message, 5000);
         alertMsg('Test spojení selhal: ' + e.message);
       }
     }
@@ -3255,6 +3257,7 @@ const GH = {
   async downloadAndLoad(silent = false) {
     if (!this.isConfigured()) { alertMsg('GitHub není nakonfigurován.'); return false; }
     this._setStatus('syncing');
+    if (!silent) toast('Načítám z GitHubu…', 60000); // dlouho – zruší se přes nový toast
     try {
       const meta = await this._getRemoteFile();
       const text = await this._fetchContent(meta);
@@ -3267,22 +3270,31 @@ const GH = {
       if (!db.customTemplates) db.customTemplates = [];
       if (!db.customAspects) db.customAspects = [];
       if (!db.ghMeta) db.ghMeta = {};
+      if (!db.title) db.title = 'PIM – osobní znalostní báze';
+      if (db.description === undefined) db.description = '';
+      db.entities.forEach(e => { if (!e.comments) e.comments = []; if (!e.attachments) e.attachments = []; });
       db.ghMeta.path = state.settings.github.owner + '/' + state.settings.github.repo + '/' + state.settings.github.path;
       db.ghMeta.sha = meta.sha;
       db.ghMeta.lastSyncAt = nowIso();
       db.ghMeta.branch = state.settings.github.branch || 'main';
       save();
       this._setStatus('ok', 'Načteno z GitHubu (' + db.entities.length + ' entit).');
-      if (!silent) toast('Načteno ' + db.entities.length + ' entit z GitHubu.');
+      if (!silent) toast('✓ Načteno z GitHubu: ' + db.entities.length + ' entit, ' + getAllTags().length + ' tagů, ' + db.savedViews.length + ' pohledů.');
       render();
       return true;
     } catch (e) {
       if (e.status === 404) {
         this._setStatus('error', 'Soubor na GitHubu zatím neexistuje – nahrajte ho stiskem „Nahrát na GitHub".');
-        if (!silent) alertMsg('Soubor zatím neexistuje. Nahrajte aktuální data tlačítkem „Nahrát na GitHub".');
+        if (!silent) {
+          toast('Soubor na GitHubu zatím neexistuje. Nahrajte ho z Nastavení.', 4000);
+          alertMsg('Soubor zatím neexistuje. Nahrajte aktuální data tlačítkem „Nahrát na GitHub".');
+        }
       } else {
         this._setStatus('error', e.message);
-        if (!silent) alertMsg('Načtení z GitHubu selhalo: ' + e.message);
+        if (!silent) {
+          toast('✗ Chyba při načítání: ' + e.message, 5000);
+          alertMsg('Načtení z GitHubu selhalo: ' + e.message);
+        }
       }
       return false;
     }
@@ -3291,10 +3303,16 @@ const GH = {
   async upload() {
     if (!this.isConfigured()) {
       alertMsg('GitHub není nakonfigurován – Nastavení → GitHub.');
+      toast('GitHub není nakonfigurován – Nastavení → GitHub.', 4000);
       return false;
     }
-    if (!this.getToken()) { alertMsg('Chybí GitHub token.'); return false; }
+    if (!this.getToken()) {
+      alertMsg('Chybí GitHub token.');
+      toast('Chybí GitHub token. Zadejte jej v Nastavení.', 4000);
+      return false;
+    }
     this._setStatus('syncing');
+    toast('Nahrávám na GitHub…', 60000);
     try {
       const g = state.settings.github;
       // 1) získat aktuální sha (pokud existuje)
@@ -3308,28 +3326,22 @@ const GH = {
       }
       // 2) připravit obsah
       const exportData = JSON.parse(JSON.stringify(db));
-      // odstranit přílohy z export (jsou potenciálně velké – stejně jako v export bez příloh)
-      // pro GH držíme metadata, ne data
       for (const e of exportData.entities) {
         if (e.attachments) {
           e.attachments = e.attachments.map(att => {
             const out = { ...att };
-            if (out.storage === 'embedded') {
-              // ponechat embedded (do ~256 KB) – jde to do JSON
-            } else if (out.storage === 'indexeddb') {
-              // jen metadata – binární data v IndexedDB nelze přenést přes JSON snadno
-              delete out.data;
-            }
+            if (out.storage === 'indexeddb') delete out.data;
             return out;
           });
         }
       }
       const content = JSON.stringify(exportData, null, 2);
+      const sizeBytes = new TextEncoder().encode(content).length;
       const b64 = this._utf8ToB64(content);
 
       const path = g.path.split('/').map(encodeURIComponent).join('/');
       const body = {
-        message: 'PIM update – ' + new Date().toISOString(),
+        message: 'PIM update – ' + new Date().toISOString() + ' (' + db.entities.length + ' entit)',
         content: b64,
         branch: g.branch || 'main'
       };
@@ -3344,10 +3356,13 @@ const GH = {
       db.ghMeta.branch = g.branch || 'main';
       save();
       this._setStatus('ok', 'Nahráno na GitHub.');
-      toast('Uloženo na GitHub.');
+      const wasNew = !currentSha;
+      toast('✓ Uloženo na GitHub: ' + db.entities.length + ' entit, ' + fmtBytes(sizeBytes) + (wasNew ? ' (vytvořen nový soubor)' : '') + '.', 4000);
+      if (state.settings.audioFeedback) playTone(660, 0.1);
       return true;
     } catch (e) {
       this._setStatus('error', e.message);
+      toast('✗ Nahrání selhalo: ' + e.message, 6000);
       alertMsg('Nahrání na GitHub selhalo: ' + e.message);
       return false;
     }
