@@ -262,6 +262,8 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <tr><td><kbd>Shift+N</kbd></td><td>Nová ze šablony</td></tr>
       <tr><td><kbd>/</kbd></td><td>Hledání</td></tr>
       <tr><td><kbd>E</kbd></td><td>V detailu: přepnout edit ↔ čtení</td></tr>
+      <tr><td><kbd>U</kbd></td><td>V edit módu: uložit a zpět na čtení</td></tr>
+      <tr><td><kbd>R</kbd></td><td>V detailu: přidat odchozí vazbu</td></tr>
       <tr><td><kbd>C</kbd></td><td>V detailu: přidat komentář</td></tr>
       <tr><td><kbd>S</kbd></td><td>Uložit na GitHub</td></tr>
       <tr><td><kbd>Esc</kbd></td><td>Zavřít dialog / opustit edit / zpět</td></tr>
@@ -273,6 +275,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
     <thead><tr><th scope="col">Klávesa</th><th scope="col">Akce</th></tr></thead>
     <tbody>
       <tr><td><kbd>Ctrl+S</kbd> / <kbd>Cmd+S</kbd></td><td>Uložit na GitHub – funguje i v editačním poli</td></tr>
+      <tr><td><kbd>Ctrl+U</kbd> / <kbd>Cmd+U</kbd></td><td>V editu: uložit a zpět na čtení – funguje i v editačním poli</td></tr>
       <tr><td><kbd>Esc</kbd></td><td>Zavřít dialog / opustit edit mód / zavřít editor komentáře</td></tr>
     </tbody>
   </table>
@@ -599,6 +602,21 @@ let state = {
 let saveTimer = null;
 let viewHistory = [];
 let fileDb = null;
+let suppressStorageEvent = false; // true během vlastního save
+
+// Klíč v localStorage podle URL parametru ?id=
+// Defaultní (bez ?id=) projekt: STORAGE_KEY
+// Projektový (s ?id=AAA): STORAGE_KEY + '::' + AAA
+function getProjectKey() {
+  try {
+    const idParam = new URL(location.href).searchParams.get('id');
+    return idParam ? STORAGE_KEY + '::' + idParam : STORAGE_KEY;
+  } catch (e) { return STORAGE_KEY; }
+}
+function isProjectTab() {
+  try { return !!new URL(location.href).searchParams.get('id'); }
+  catch (e) { return false; }
+}
 
 function createEmptyDb() {
   return {
@@ -618,8 +636,10 @@ function save() {
   try {
     db.updated_at = new Date().toISOString();
     const blob = { db, settings: state.settings };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(blob));
-    debug('Uloženo. ' + JSON.stringify(blob).length + ' B');
+    suppressStorageEvent = true;
+    localStorage.setItem(getProjectKey(), JSON.stringify(blob));
+    setTimeout(() => { suppressStorageEvent = false; }, 100);
+    debug('Uloženo pod klíčem ' + getProjectKey() + ': ' + JSON.stringify(blob).length + ' B');
   } catch (e) {
     alertMsg('Chyba ukládání: ' + e.message);
   }
@@ -628,7 +648,31 @@ function saveDebounced() { clearTimeout(saveTimer); saveTimer = setTimeout(save,
 
 function load() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const key = getProjectKey();
+    let raw = localStorage.getItem(key);
+    let migratedFromDefault = false;
+    // Migrace: pokud jsme v projektovém tabu (?id=AAA) a klíč je prázdný,
+    // ale default klíč obsahuje data odpovídající této GH cestě, přesuneme je
+    if (!raw && isProjectTab()) {
+      const defaultRaw = localStorage.getItem(STORAGE_KEY);
+      if (defaultRaw) {
+        try {
+          const defParsed = JSON.parse(defaultRaw);
+          const idParam = new URL(location.href).searchParams.get('id');
+          let urlPath = '';
+          try { urlPath = atob(idParam.replace(/-/g, '+').replace(/_/g, '/')); } catch (e) {}
+          const ghPath = defParsed.db && defParsed.db.ghMeta && defParsed.db.ghMeta.path;
+          if (ghPath && urlPath && ghPath === urlPath) {
+            // přenes data
+            localStorage.setItem(key, defaultRaw);
+            localStorage.removeItem(STORAGE_KEY);
+            raw = defaultRaw;
+            migratedFromDefault = true;
+            debug('Migrace: přesunuta data z defaultního klíče do ' + key);
+          }
+        } catch (e) { debug('Migrace selhala: ' + e.message); }
+      }
+    }
     if (!raw) return false;
     const blob = JSON.parse(raw);
     if (blob.db) {
@@ -650,6 +694,9 @@ function load() {
     if (blob.settings) Object.assign(state.settings, blob.settings);
     if (!state.settings.disabledAspects) state.settings.disabledAspects = [];
     if (!state.settings.github) state.settings.github = { owner: '', repo: '', path: '', branch: 'main', autoLoadOnStart: false };
+    if (migratedFromDefault) {
+      setTimeout(() => toast('Data automaticky migrována do projektového úložiště.', 4000), 500);
+    }
     return true;
   } catch (e) { alertMsg('Chyba načtení: ' + e.message); return false; }
 }
@@ -912,6 +959,17 @@ function renderInline(text, ctx) {
   text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, txt, url) => {
     return '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' + escapeHtml(txt) + '</a>';
   });
+  // Markdown autolink <https://...> a <mailto:...>
+  text = text.replace(/&lt;((?:https?|mailto|tel):[^\s&]+)&gt;/g, (m, url) => {
+    const u = url.replace(/&amp;/g, '&');
+    return '<a href="' + escapeHtml(u) + '" target="_blank" rel="noopener">' + escapeHtml(u) + '</a>';
+  });
+  text = text.replace(/<((?:https?|mailto|tel):[^\s>]+)>/g, (m, url) => {
+    return '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' + escapeHtml(url) + '</a>';
+  });
+  // Holé URL – jen pokud nejsou už uvnitř existujícího <a>
+  // Strategie: rozdělit na segmenty mimo a uvnitř <a>...</a> a transformovat jen mimo
+  text = autolinkBareUrls(text);
   const inlineCodes = [];
   text = text.replace(/`([^`]+)`/g, (m, c) => {
     inlineCodes.push(c);
@@ -923,6 +981,33 @@ function renderInline(text, ctx) {
     return '<code>' + escapeHtml(inlineCodes[Number(i)]) + '</code>';
   });
   return text;
+}
+
+// Holé URL a e-maily mimo již existujících <a>...</a> blocks
+function autolinkBareUrls(text) {
+  // rozdělit na části: mimo a uvnitř <a>...</a>
+  const parts = [];
+  let i = 0;
+  const re = /<a\b[^>]*>[\s\S]*?<\/a>/gi;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > i) parts.push({ outside: true, text: text.slice(i, m.index) });
+    parts.push({ outside: false, text: m[0] });
+    i = m.index + m[0].length;
+  }
+  if (i < text.length) parts.push({ outside: true, text: text.slice(i) });
+
+  return parts.map(p => {
+    if (!p.outside) return p.text;
+    let s = p.text;
+    // URL: http(s)://... – konzervativní hranice (bez koncových interpunkcí)
+    s = s.replace(/(^|\s|\(|\[|>)((?:https?|ftp):\/\/[^\s<>"']+[^\s<>"'.,;:!?\)\]])/g,
+      (mm, prefix, url) => prefix + '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' + escapeHtml(url) + '</a>');
+    // e-mail
+    s = s.replace(/(^|\s|\(|\[|>)([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g,
+      (mm, prefix, email) => prefix + '<a href="mailto:' + escapeHtml(email) + '">' + escapeHtml(email) + '</a>');
+    return s;
+  }).join('');
 }
 
 function resolveWikiLink(ref, alias) {
@@ -1726,6 +1811,7 @@ function renderSettings(main) {
     '<section aria-labelledby="about-h"><h3 id="about-h">O aplikaci</h3>' +
     '<p>Univerzální PIM. Jeden HTML soubor, žádné externí závislosti, žádné odesílání dat ven.</p>' +
     '<p>Verze schématu: ' + SCHEMA_VERSION + '. <strong>Důležité</strong>: Velké přílohy se ukládají do IndexedDB (oddělené úložiště), takže nezatěžují localStorage.</p>' +
+    '<p><strong>Více projektů na jednom zařízení:</strong> Každý projekt má vlastní klíč v localStorage podle URL parametru <code>?id=</code>. Můžete tedy mít otevřeno více projektů v různých kartách bez vzájemného přepisování. Aktuální klíč: <code>' + escapeHtml(getProjectKey()) + '</code>' + (isProjectTab() ? ' (projektový mód)' : ' (defaultní – po prvním uploadu na GitHub se automaticky převede na projektový)') + '. Pokud změníte data téhož projektu v jiné kartě, dostanete nahoře varování.</p>' +
     '</section>';
 
   document.getElementById('export-json').onclick = () => exportToFile(true);
@@ -1859,7 +1945,9 @@ function renderDetailRead(main, e) {
         (e.archived ? '<div class="meta">🗄 Archivováno</div>' : '') +
       '</div>' +
       '<div class="detail-actions">' +
-        '<button id="btn-edit" class="primary" accesskey="e" title="Klávesa: e">Upravit</button>' +
+        '<button id="btn-edit" class="primary" accesskey="e" title="Klávesa: E – upravit">Upravit</button>' +
+        '<button id="btn-add-link" accesskey="r" title="Klávesa: R – přidat odchozí vazbu">+ Vazba</button>' +
+        '<button id="btn-add-comment-top" accesskey="c" title="Klávesa: C – přidat komentář">+ Komentář</button>' +
         (e.inbox ? '<button id="leave-inbox">Vyjmout z Inboxu</button>' : '') +
         (isProject ? '<button id="open-outline">Outline</button>' : '') +
       '</div>' +
@@ -1884,6 +1972,8 @@ function renderDetailRead(main, e) {
 
   document.getElementById('back-btn').onclick = goBack;
   document.getElementById('btn-edit').onclick = () => { state.detailMode = 'edit'; render(); };
+  document.getElementById('btn-add-link').onclick = () => openLinkDialog(e);
+  document.getElementById('btn-add-comment-top').onclick = () => openCommentDialog(e);
   const lb = document.getElementById('leave-inbox');
   if (lb) lb.onclick = () => { e.inbox = false; e.updated_at = nowIso(); saveDebounced(); render(); toast('Vyjmuto z Inboxu.'); };
   const ob = document.getElementById('open-outline');
@@ -1893,6 +1983,25 @@ function renderDetailRead(main, e) {
   attachMarkdownLinkHandlers(main);
   attachAttachmentReadHandlers(main, e);
   attachCommentHandlers(main, e);
+  // Mazání vazeb v read módu
+  main.querySelectorAll('button[data-remove-link-read]').forEach(b => {
+    b.onclick = () => {
+      const idx = Number(b.dataset.removeLinkRead);
+      const ent = findEntity(b.dataset.entityId); if (!ent) return;
+      const link = ent.links[idx]; if (!link) return;
+      const target = findEntity(link.to);
+      const targetName = target ? getDisplayTitle(target) : '(smazáno)';
+      const ti = RELATION_TYPES[link.type];
+      const relLabel = ti ? ti.label : link.type;
+      confirmDialog('Odebrat vazbu „' + relLabel + ' ' + targetName + '"?', () => {
+        ent.links.splice(idx, 1);
+        ent.updated_at = nowIso();
+        saveDebounced();
+        render();
+        toast('Vazba odebrána.');
+      });
+    };
+  });
 }
 
 function renderAttributesReadOnly(e) {
@@ -1929,14 +2038,16 @@ function formatAttrValue(f, v) {
 function renderLinksReadOnly(e) {
   const links = e.links || [];
   if (links.length === 0) return '';
-  return '<ul style="list-style:none;padding-left:0;">' + links.map(l => {
+  return '<ul style="list-style:none;padding-left:0;">' + links.map((l, idx) => {
     const t = findEntity(l.to), ti = RELATION_TYPES[l.type];
     const lbl = ti ? ti.label : l.type;
     const tlbl = t ? getDisplayTitle(t) : '(smazáno)';
     const note = l.note ? ' <span class="meta">(' + escapeHtml(l.note) + ')</span>' : '';
     return '<li><strong>' + escapeHtml(lbl) + ':</strong> ' +
       (t ? '<a href="#" data-entity="' + escapeHtml(l.to) + '">' + escapeHtml(tlbl) + '</a>' : escapeHtml(tlbl)) +
-      note + '</li>';
+      note +
+      ' <button data-remove-link-read="' + idx + '" data-entity-id="' + escapeHtml(e.id) + '" title="Odebrat vazbu" style="padding:0.1em 0.5em;font-size:0.85em;">×</button>' +
+      '</li>';
   }).join('') + '</ul>';
 }
 function renderInverseLinksReadOnly(e) {
@@ -1993,7 +2104,7 @@ function renderDetailEdit(main, e) {
   main.innerHTML =
     '<div class="btn-group">' +
       '<button id="back-btn">← Zpět</button>' +
-      '<button id="btn-done" class="primary">Hotovo (zpět na čtení)</button>' +
+      '<button id="btn-done" class="primary" accesskey="u" title="Klávesa: U – uložit a zpět na čtení">Hotovo (uložit a zpět)</button>' +
       (e.inbox ? '<button id="leave-inbox">Vyjmout z Inboxu</button>' : '<button id="enter-inbox">Vrátit do Inboxu</button>') +
       (e.archived ? '<button id="unarchive">Obnovit</button>' : '<button id="archive">Archivovat</button>') +
       '<button class="danger" id="delete">Smazat</button>' +
@@ -2599,7 +2710,13 @@ function openLinkDialog(entity) {
       note: document.getElementById('link-note').value.trim()
     });
     entity.updated_at = nowIso(); saveDebounced();
-    d.close(); renderEditLinks(entity); toast('Vazba přidána.');
+    d.close();
+    if (state.view === 'detail' && state.detailMode === 'edit') {
+      renderEditLinks(entity);
+    } else {
+      render();
+    }
+    toast('Vazba přidána.');
   };
   document.getElementById('link-cancel').onclick = () => d.close();
   d.showModal();
@@ -2805,8 +2922,25 @@ function setupKeyboard() {
         if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
         GH.upload();
       } else {
-        toast('GitHub není nakonfigurován – Nastavení → GitHub.');
+        toast('GitHub není nakonfigurován – přesouvám do Nastavení.', 3000);
+        setView('settings');
+        setTimeout(() => {
+          const ghH = document.getElementById('gh-h');
+          if (ghH) ghH.scrollIntoView({ block: 'start' });
+          const o = document.getElementById('gh-owner');
+          if (o) o.focus();
+        }, 100);
       }
+      return;
+    }
+
+    // Ctrl+U / Cmd+U v edit módu – uložit a zpět na čtení (funguje i v editačním poli)
+    if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'u' || ev.key === 'U') && !ev.altKey && !ev.shiftKey
+        && state.view === 'detail' && state.detailMode === 'edit') {
+      ev.preventDefault();
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      // počkat tick, aby oninput/onchange dotekly
+      setTimeout(() => { state.detailMode = 'read'; render(); toast('Uloženo.'); }, 50);
       return;
     }
 
@@ -2848,6 +2982,17 @@ function setupKeyboard() {
       state.detailMode = state.detailMode === 'edit' ? 'read' : 'edit';
       render(); ev.preventDefault();
     }
+    // U v edit módu uloží a vrátí na čtení (mimo editační pole; v poli funguje Ctrl+U)
+    else if ((ev.key === 'u' || ev.key === 'U') && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey
+             && state.view === 'detail' && state.detailMode === 'edit') {
+      state.detailMode = 'read'; render(); toast('Uloženo.'); ev.preventDefault();
+    }
+    // R přidá odchozí vazbu v detailu (read i edit)
+    else if ((ev.key === 'r' || ev.key === 'R') && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey
+             && state.view === 'detail') {
+      const e = findEntity(state.detailId);
+      if (e) { openLinkDialog(e); ev.preventDefault(); }
+    }
     // C přidá komentář v detailu
     else if ((ev.key === 'c' || ev.key === 'C') && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey && state.view === 'detail') {
       const e = findEntity(state.detailId);
@@ -2856,7 +3001,17 @@ function setupKeyboard() {
     // S uloží na GitHub
     else if ((ev.key === 's' || ev.key === 'S') && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey) {
       if (GH.isConfigured()) { GH.upload(); ev.preventDefault(); }
-      else { toast('GitHub není nakonfigurován – Nastavení → GitHub.'); ev.preventDefault(); }
+      else {
+        toast('GitHub není nakonfigurován – přesouvám do Nastavení.', 3000);
+        setView('settings');
+        setTimeout(() => {
+          const ghH = document.getElementById('gh-h');
+          if (ghH) ghH.scrollIntoView({ block: 'start' });
+          const o = document.getElementById('gh-owner');
+          if (o) o.focus();
+        }, 100);
+        ev.preventDefault();
+      }
     }
   });
 }
@@ -2930,6 +3085,38 @@ async function init() {
       if (state.settings.theme === 'auto') applyTheme();
     });
   }
+
+  // Detekce změny dat v jiném tabu pro stejný projekt
+  window.addEventListener('storage', (ev) => {
+    if (suppressStorageEvent) return;
+    if (ev.key === getProjectKey() && ev.newValue) {
+      // Ignorovat pokud nejsou skutečné změny
+      try {
+        const newBlob = JSON.parse(ev.newValue);
+        const newUpdated = newBlob.db && newBlob.db.updated_at;
+        if (newUpdated === db.updated_at) return;
+      } catch (e) { /* ignore */ }
+      showCrossTabBanner();
+    }
+  });
+}
+
+// Banner při změně v jiném tabu
+let _crossTabBannerShown = false;
+function showCrossTabBanner() {
+  if (_crossTabBannerShown) return;
+  _crossTabBannerShown = true;
+  const div = document.createElement('div');
+  div.id = 'crosstab-banner';
+  div.setAttribute('role', 'alert');
+  div.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#f0b400;color:#000;padding:0.75em 1em;z-index:9999;display:flex;justify-content:space-between;align-items:center;gap:1em;flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,0.2);';
+  div.innerHTML = '<span><strong>⚠ Pozor:</strong> data tohoto projektu byla změněna v jiné kartě prohlížeče. Doporučuji obnovit stránku, jinak při dalším uložení přepíšete cizí změny.</span>' +
+    '<span><button id="crosstab-reload" class="primary" style="margin-right:0.5em;">Načíst znovu</button>' +
+    '<button id="crosstab-dismiss">Zavřít</button></span>';
+  document.body.appendChild(div);
+  document.getElementById('crosstab-reload').onclick = () => location.reload();
+  document.getElementById('crosstab-dismiss').onclick = () => { div.remove(); _crossTabBannerShown = false; };
+  alertMsg('Pozor: data byla změněna v jiném tabu prohlížeče.');
 }
 
 window.addEventListener('DOMContentLoaded', init);
@@ -3313,6 +3500,7 @@ const GH = {
     }
     this._setStatus('syncing');
     toast('Nahrávám na GitHub…', 60000);
+    if (state.settings.audioFeedback) playTone(440, 0.05);
     try {
       const g = state.settings.github;
       // 1) získat aktuální sha (pokud existuje)
@@ -3359,6 +3547,23 @@ const GH = {
       const wasNew = !currentSha;
       toast('✓ Uloženo na GitHub: ' + db.entities.length + ' entit, ' + fmtBytes(sizeBytes) + (wasNew ? ' (vytvořen nový soubor)' : '') + '.', 4000);
       if (state.settings.audioFeedback) playTone(660, 0.1);
+      // Pokud jsme v defaultním tabu (bez ?id=), aktualizovat URL aby tab získal projektovou identitu.
+      // Tím se data přesunou pod projektový klíč v localStorage a tab může bezpečně koexistovat s jinými.
+      if (!isProjectTab() && location.search === '') {
+        const path = g.owner + '/' + g.repo + '/' + g.path;
+        const id = this._utf8ToB64(path).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        const newUrl = location.pathname + '?id=' + id;
+        // Migrace: přesun dat z defaultního klíče do projektového
+        try {
+          const defaultData = localStorage.getItem(STORAGE_KEY);
+          if (defaultData) {
+            localStorage.setItem(STORAGE_KEY + '::' + id, defaultData);
+            localStorage.removeItem(STORAGE_KEY);
+          }
+        } catch (e) { debug('Migrace po uploadu selhala: ' + e.message); }
+        history.replaceState(null, '', newUrl);
+        toast('Tab převeden na projektový mód. URL: ' + newUrl, 5000);
+      }
       return true;
     } catch (e) {
       this._setStatus('error', e.message);
