@@ -265,6 +265,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <tr><td><kbd>U</kbd></td><td>V edit módu: uložit a zpět na čtení</td></tr>
       <tr><td><kbd>R</kbd></td><td>V detailu: přidat odchozí vazbu</td></tr>
       <tr><td><kbd>C</kbd></td><td>V detailu: přidat komentář</td></tr>
+      <tr><td><kbd>D</kbd></td><td>V detailu: duplikovat entitu</td></tr>
       <tr><td><kbd>S</kbd></td><td>Uložit na GitHub</td></tr>
       <tr><td><kbd>Esc</kbd></td><td>Zavřít dialog / opustit edit / zpět</td></tr>
       <tr><td><kbd>?</kbd></td><td>Tato nápověda</td></tr>
@@ -295,6 +296,18 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <tr><td><code>---</code></td><td>Horizontální čára</td></tr>
     </tbody>
   </table>
+  <h3>Stavy příloh</h3>
+  <table>
+    <thead><tr><th scope="col">Ikona</th><th scope="col">Stav</th><th scope="col">Význam</th></tr></thead>
+    <tbody>
+      <tr><td>☁</td><td>Na GitHubu</td><td>Příloha v repozitáři jako samostatný soubor. Stahuje se na vyžádání a cachuje lokálně.</td></tr>
+      <tr><td>⏳</td><td>Čeká na nahrání</td><td>Lokálně uložená příloha, nahraje se při příštím <kbd>S</kbd>.</td></tr>
+      <tr><td>💾</td><td>Lokálně</td><td>GitHub není nakonfigurován, příloha je jen na tomto zařízení.</td></tr>
+      <tr><td>📦</td><td>V JSONu</td><td>(starší formát) Vložená přímo v hlavním JSONu jako base64.</td></tr>
+      <tr><td>🔗</td><td>Externí odkaz</td><td>Pouze URL, soubor nikde neuložen.</td></tr>
+    </tbody>
+  </table>
+
   <div class="btn-group"><button type="button" id="help-close" class="primary">Zavřít</button></div>
 </dialog>
 
@@ -683,6 +696,7 @@ function load() {
       if (!db.customTemplates) db.customTemplates = [];
       if (!db.customAspects) db.customAspects = [];
       if (!db.ghMeta) db.ghMeta = { path: null, sha: null, lastSyncAt: null, branch: 'main' };
+      if (!db.ghMeta.pendingDeletes) db.ghMeta.pendingDeletes = [];
       if (!db.title) db.title = 'PIM – osobní znalostní báze';
       if (db.description === undefined) db.description = '';
       db.entities.forEach(e => {
@@ -1054,10 +1068,89 @@ function findEntityByTitle(title) {
   );
 }
 function addEntity(e) { db.entities.push(e); saveDebounced(); }
+async function duplicateEntity(orig) {
+  if (!orig) return;
+  const copy = newEntity({
+    title: (orig.title || '') + ' (kopie)',
+    aspects: [...(orig.aspects || [])],
+    attributes: JSON.parse(JSON.stringify(orig.attributes || {})),
+    tags: [...(orig.tags || [])],
+    body: orig.body || '',
+    links: (orig.links || []).map(l => ({ ...l })),
+    confidence: orig.confidence || 'definitive',
+    valid_from: orig.valid_from || null,
+    valid_to: orig.valid_to || null,
+    inbox: false,
+    archived: false,
+    // komentáře okopírujeme s novými ID
+    comments: (orig.comments || []).map(c => ({
+      ...c, id: 'c-' + uuid()
+    }))
+  });
+  // Duplikace příloh: pro každou přílohu v originálu vytvoříme novou s vlastním ID,
+  // okopírujeme blob v IDB (pokud existuje) a označíme jako pending-github
+  // (pokud je GH konfigurován), jinak indexeddb.
+  // Pro embedded přílohy: okopírujeme data přímo.
+  copy.attachments = [];
+  let attCopied = 0, attSkipped = 0;
+  for (const oa of (orig.attachments || [])) {
+    const newAtt = {
+      id: 'att-' + uuid(),
+      name: oa.name,
+      type: oa.type,
+      size: oa.size,
+      added_at: nowIso()
+    };
+    try {
+      if (oa.storage === 'embedded' && oa.data) {
+        newAtt.storage = 'embedded';
+        newAtt.data = oa.data;
+        copy.attachments.push(newAtt);
+        attCopied++;
+      } else if (oa.storage === 'reference') {
+        newAtt.storage = 'reference';
+        newAtt.ref = oa.ref;
+        copy.attachments.push(newAtt);
+        attCopied++;
+      } else {
+        // pending-github / indexeddb / github → potřebujeme blob z IDB nebo z GH
+        let blob = await getFileBlob(oa.id);
+        if (!blob && oa.storage === 'github') {
+          // zkusit stáhnout z GH
+          try { blob = await GH.downloadAttachment(oa); }
+          catch (e) { debug('Stažení přílohy "' + oa.name + '" z GH selhalo: ' + e.message); }
+        }
+        if (blob) {
+          await putFileBlob(newAtt.id, blob);
+          newAtt.storage = (typeof GH !== 'undefined' && GH.isConfigured()) ? 'pending-github' : 'indexeddb';
+          copy.attachments.push(newAtt);
+          attCopied++;
+        } else {
+          attSkipped++;
+        }
+      }
+    } catch (e) {
+      debug('Duplikace přílohy "' + oa.name + '" selhala: ' + e.message);
+      attSkipped++;
+    }
+  }
+  addEntity(copy);
+  setView('detail', { detailId: copy.id, detailMode: 'edit' });
+  let msg = 'Duplikováno: ' + getDisplayTitle(copy);
+  if (attCopied > 0) msg += ' (přílohy: ' + attCopied + (attSkipped > 0 ? ', ' + attSkipped + ' přeskočeno' : '') + ')';
+  toast(msg);
+}
+
 async function deleteEntity(id) {
   const e = findEntity(id); if (!e) return;
   if (e.attachments) for (const att of e.attachments) {
-    if (att.storage === 'indexeddb') await deleteFileBlob(att.id);
+    if (att.storage === 'indexeddb' || att.storage === 'pending-github') await deleteFileBlob(att.id);
+    if (att.storage === 'github' && att.ghPath) {
+      if (!db.ghMeta) db.ghMeta = {};
+      if (!db.ghMeta.pendingDeletes) db.ghMeta.pendingDeletes = [];
+      db.ghMeta.pendingDeletes.push({ path: att.ghPath, sha: att.ghSha || null, name: att.name });
+      await deleteFileBlob(att.id);
+    }
   }
   db.entities = db.entities.filter(x => x.id !== id);
   db.entities.forEach(x => { if (x.links) x.links = x.links.filter(l => l.to !== id); });
@@ -1204,17 +1297,19 @@ async function instantiateTemplate(tpl) {
 }
 
 // ==== ATTACHMENTS ====
+// Vždy ukládáme do IndexedDB. Pokud je GitHub nakonfigurován, příloha dostane
+// stav 'pending-github' a při příštím syncu se nahraje (bez ohledu na velikost).
+// Pokud GH není nakonfigurován, zůstává jako 'indexeddb'.
 async function attachFile(entity, file) {
   const att = {
     id: 'att-' + uuid(), name: file.name,
     type: file.type || 'application/octet-stream',
     size: file.size, added_at: nowIso()
   };
-  if (file.size <= EMBED_THRESHOLD_BYTES) {
-    att.storage = 'embedded';
-    att.data = await blobToBase64(file);
+  await putFileBlob(att.id, file);
+  if (typeof GH !== 'undefined' && GH.isConfigured()) {
+    att.storage = 'pending-github';
   } else {
-    await putFileBlob(att.id, file);
     att.storage = 'indexeddb';
   }
   if (!entity.attachments) entity.attachments = [];
@@ -1228,8 +1323,24 @@ async function getAttachmentBlobUrl(att) {
     const b = base64ToBlob(att.data, att.type);
     return URL.createObjectURL(b);
   }
-  if (att.storage === 'indexeddb') {
+  if (att.storage === 'indexeddb' || att.storage === 'pending-github') {
     const b = await getFileBlob(att.id);
+    if (!b) return null;
+    return URL.createObjectURL(b);
+  }
+  if (att.storage === 'github') {
+    // Zkusit IDB cache
+    let b = await getFileBlob(att.id);
+    if (!b) {
+      // Fetch z GH a cachovat do IDB
+      try {
+        b = await GH.downloadAttachment(att);
+        if (b) await putFileBlob(att.id, b);
+      } catch (e) {
+        debug('Stažení přílohy z GH selhalo: ' + e.message);
+        return null;
+      }
+    }
     if (!b) return null;
     return URL.createObjectURL(b);
   }
@@ -1239,10 +1350,44 @@ async function getAttachmentBlobUrl(att) {
 async function removeAttachment(entity, attId) {
   const att = entity.attachments.find(a => a.id === attId);
   if (!att) return;
-  if (att.storage === 'indexeddb') await deleteFileBlob(att.id);
+  // Pokud je na GitHubu, naplánovat smazání při příštím syncu
+  if (att.storage === 'github' && att.ghPath) {
+    if (!db.ghMeta) db.ghMeta = {};
+    if (!db.ghMeta.pendingDeletes) db.ghMeta.pendingDeletes = [];
+    db.ghMeta.pendingDeletes.push({ path: att.ghPath, sha: att.ghSha || null, name: att.name });
+  }
+  // Smazat lokální blob (cache nebo IDB)
+  if (att.storage === 'indexeddb' || att.storage === 'pending-github' || att.storage === 'github') {
+    await deleteFileBlob(att.id);
+  }
   entity.attachments = entity.attachments.filter(a => a.id !== attId);
   entity.updated_at = nowIso();
   saveDebounced();
+}
+
+// Pomocné: cesta k adresáři, kde je hlavní JSON v repu
+function getRepoDirBase() {
+  const p = (state.settings.github && state.settings.github.path) || '';
+  const i = p.lastIndexOf('/');
+  return i > 0 ? p.slice(0, i) : '';
+}
+function sanitizeFilename(name) {
+  return String(name).replace(/[\/\\\x00-\x1f]/g, '_').replace(/^\.+/, '_').slice(0, 200);
+}
+function attachmentGhPath(att) {
+  const dir = getRepoDirBase();
+  const fname = sanitizeFilename(att.name);
+  return (dir ? dir + '/' : '') + 'attachments/' + att.id + '/' + fname;
+}
+function attachmentStatusLabel(att) {
+  switch (att.storage) {
+    case 'embedded': return 'V JSONu';
+    case 'github': return 'Na GitHubu';
+    case 'pending-github': return 'Čeká na nahrání na GitHub';
+    case 'indexeddb': return 'Lokálně (zatím nesynchronizováno)';
+    case 'reference': return 'Externí odkaz';
+    default: return att.storage || '?';
+  }
 }
 function guessFileIcon(type, name) {
   type = type || '';
@@ -1781,6 +1926,7 @@ function renderSettings(main) {
     '<label for="gh-path">Cesta k souboru v repozitáři</label>' +
     '<input type="text" id="gh-path" value="' + escapeHtml(state.settings.github.path || '') + '" placeholder="pim.json nebo data/pim.json">' +
     '<label><input type="checkbox" id="gh-autoload"' + (state.settings.github.autoLoadOnStart ? ' checked' : '') + '> Při startu aplikace automaticky načíst z GitHubu (přepíše lokální data)</label>' +
+    '<p class="meta">Všechny přílohy se ukládají do <code>' + escapeHtml(getRepoDirBase() ? getRepoDirBase() + '/' : '') + 'attachments/&lt;id&gt;/&lt;název&gt;</code> ve stejném repozitáři, bez ohledu na velikost. Limit GitHubu na soubor: 100 MB.</p>' +
     '<div class="btn-group" style="margin-top:0.5em;">' +
       '<button id="gh-save-btn" class="primary">Uložit nastavení</button>' +
       '<button id="gh-test">Test spojení</button>' +
@@ -1948,6 +2094,7 @@ function renderDetailRead(main, e) {
         '<button id="btn-edit" class="primary" accesskey="e" title="Klávesa: E – upravit">Upravit</button>' +
         '<button id="btn-add-link" accesskey="r" title="Klávesa: R – přidat odchozí vazbu">+ Vazba</button>' +
         '<button id="btn-add-comment-top" accesskey="c" title="Klávesa: C – přidat komentář">+ Komentář</button>' +
+        '<button id="btn-duplicate" accesskey="d" title="Klávesa: D – duplikovat entitu">Duplikovat</button>' +
         (e.inbox ? '<button id="leave-inbox">Vyjmout z Inboxu</button>' : '') +
         (isProject ? '<button id="open-outline">Outline</button>' : '') +
       '</div>' +
@@ -1974,6 +2121,7 @@ function renderDetailRead(main, e) {
   document.getElementById('btn-edit').onclick = () => { state.detailMode = 'edit'; render(); };
   document.getElementById('btn-add-link').onclick = () => openLinkDialog(e);
   document.getElementById('btn-add-comment-top').onclick = () => openCommentDialog(e);
+  document.getElementById('btn-duplicate').onclick = () => duplicateEntity(e);
   const lb = document.getElementById('leave-inbox');
   if (lb) lb.onclick = () => { e.inbox = false; e.updated_at = nowIso(); saveDebounced(); render(); toast('Vyjmuto z Inboxu.'); };
   const ob = document.getElementById('open-outline');
@@ -2066,11 +2214,15 @@ function renderAttachmentsRead(e) {
   let h = '<div class="attachment-list">';
   e.attachments.forEach(att => {
     const isImg = att.type && att.type.startsWith('image/');
+    const statusIcon = att.storage === 'github' ? '☁' :
+                       att.storage === 'pending-github' ? '⏳' :
+                       att.storage === 'embedded' ? '📦' :
+                       att.storage === 'indexeddb' ? '💾' : '🔗';
     h += '<div class="attachment-item" data-att-id="' + escapeHtml(att.id) + '">' +
       '<div class="attachment-icon">' + guessFileIcon(att.type, att.name) + '</div>' +
       '<div class="attachment-info">' +
         '<div class="name">' + escapeHtml(att.name) + '</div>' +
-        '<div class="meta">' + escapeHtml(fmtBytes(att.size)) + ' · ' + escapeHtml(att.type || '?') + ' · ' + escapeHtml(att.storage) + '</div>' +
+        '<div class="meta">' + escapeHtml(fmtBytes(att.size)) + ' · ' + escapeHtml(att.type || '?') + ' · <span title="' + escapeHtml(attachmentStatusLabel(att)) + '">' + statusIcon + ' ' + escapeHtml(attachmentStatusLabel(att)) + '</span></div>' +
         (isImg ? '<img class="attachment-preview" data-att-preview="' + escapeHtml(att.id) + '" alt="' + escapeHtml(att.name) + '">' : '') +
       '</div>' +
       '<div class="attachment-actions"><button data-att-download="' + escapeHtml(att.id) + '">Stáhnout</button></div>' +
@@ -2105,6 +2257,7 @@ function renderDetailEdit(main, e) {
     '<div class="btn-group">' +
       '<button id="back-btn">← Zpět</button>' +
       '<button id="btn-done" class="primary" accesskey="u" title="Klávesa: U – uložit a zpět na čtení">Hotovo (uložit a zpět)</button>' +
+      '<button id="btn-duplicate-edit" title="Duplikovat tuto entitu">Duplikovat</button>' +
       (e.inbox ? '<button id="leave-inbox">Vyjmout z Inboxu</button>' : '<button id="enter-inbox">Vrátit do Inboxu</button>') +
       (e.archived ? '<button id="unarchive">Obnovit</button>' : '<button id="archive">Archivovat</button>') +
       '<button class="danger" id="delete">Smazat</button>' +
@@ -2175,6 +2328,7 @@ function renderDetailEdit(main, e) {
 
   document.getElementById('back-btn').onclick = goBack;
   document.getElementById('btn-done').onclick = () => { state.detailMode = 'read'; render(); };
+  document.getElementById('btn-duplicate-edit').onclick = () => duplicateEntity(e);
 
   document.getElementById('d-title').oninput = (ev) => { e.title = ev.target.value; e.updated_at = nowIso(); saveDebounced(); };
   document.getElementById('d-body').oninput = (ev) => { e.body = ev.target.value; e.updated_at = nowIso(); saveDebounced(); };
@@ -2314,16 +2468,22 @@ function renderEditAttachments(e) {
     c.innerHTML = '<p class="meta">Žádné přílohy.</p>'; return;
   }
   c.innerHTML = '<div class="attachment-list">' +
-    e.attachments.map(att => '<div class="attachment-item" data-att-id="' + escapeHtml(att.id) + '">' +
+    e.attachments.map(att => {
+      const statusIcon = att.storage === 'github' ? '☁' :
+                         att.storage === 'pending-github' ? '⏳' :
+                         att.storage === 'embedded' ? '📦' :
+                         att.storage === 'indexeddb' ? '💾' : '🔗';
+      return '<div class="attachment-item" data-att-id="' + escapeHtml(att.id) + '">' +
       '<div class="attachment-icon">' + guessFileIcon(att.type, att.name) + '</div>' +
       '<div class="attachment-info">' +
         '<div class="name">' + escapeHtml(att.name) + '</div>' +
-        '<div class="meta">' + escapeHtml(fmtBytes(att.size)) + ' · ' + escapeHtml(att.type || '?') + ' · ' + escapeHtml(att.storage) + '</div>' +
+        '<div class="meta">' + escapeHtml(fmtBytes(att.size)) + ' · ' + escapeHtml(att.type || '?') + ' · <span title="' + escapeHtml(attachmentStatusLabel(att)) + '">' + statusIcon + ' ' + escapeHtml(attachmentStatusLabel(att)) + '</span></div>' +
       '</div>' +
       '<div class="attachment-actions">' +
         '<button data-att-download="' + escapeHtml(att.id) + '">Stáhnout</button>' +
         '<button data-att-remove="' + escapeHtml(att.id) + '" class="danger">Odebrat</button>' +
-      '</div></div>').join('') + '</div>';
+      '</div></div>';
+    }).join('') + '</div>';
   c.querySelectorAll('button[data-att-download]').forEach(b => {
     b.onclick = async () => {
       const att = e.attachments.find(a => a.id === b.dataset.attDownload); if (!att) return;
@@ -2998,6 +3158,11 @@ function setupKeyboard() {
       const e = findEntity(state.detailId);
       if (e) { openCommentDialog(e); ev.preventDefault(); }
     }
+    // D duplikuje entitu v detailu
+    else if ((ev.key === 'd' || ev.key === 'D') && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey && state.view === 'detail') {
+      const e = findEntity(state.detailId);
+      if (e) { duplicateEntity(e); ev.preventDefault(); }
+    }
     // S uloží na GitHub
     else if ((ev.key === 's' || ev.key === 'S') && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey) {
       if (GH.isConfigured()) { GH.upload(); ev.preventDefault(); }
@@ -3397,12 +3562,82 @@ const GH = {
     return await res.json();
   },
 
-  async _getRemoteFile() {
+  async _getRemoteFile(customPath) {
     const g = state.settings.github;
-    const path = g.path.split('/').map(encodeURIComponent).join('/');
+    const path = (customPath || g.path).split('/').map(encodeURIComponent).join('/');
     const branch = g.branch || 'main';
     return await this._api('GET',
       `/repos/${encodeURIComponent(g.owner)}/${encodeURIComponent(g.repo)}/contents/${path}?ref=${encodeURIComponent(branch)}`);
+  },
+
+  // Upload binárního souboru (Blob) na zadanou cestu v repu
+  async _putBinaryFile(ghPath, blob, msg, sha) {
+    const g = state.settings.github;
+    // Blob → base64 (chunked, kvůli paměti pro >5 MB)
+    const buf = await blob.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    const b64 = btoa(bin);
+    const path = ghPath.split('/').map(encodeURIComponent).join('/');
+    const body = {
+      message: msg || ('PIM attachment – ' + new Date().toISOString()),
+      content: b64,
+      branch: g.branch || 'main'
+    };
+    if (sha) body.sha = sha;
+    return await this._api('PUT',
+      `/repos/${encodeURIComponent(g.owner)}/${encodeURIComponent(g.repo)}/contents/${path}`, body);
+  },
+
+  // Stáhnutí binárního souboru – pro velké soubory použije Git Blob API
+  async _getBinaryFile(ghPath, sha) {
+    const g = state.settings.github;
+    let blobSha = sha;
+    if (!blobSha) {
+      const meta = await this._getRemoteFile(ghPath);
+      blobSha = meta.sha;
+    }
+    const blobData = await this._api('GET',
+      `/repos/${encodeURIComponent(g.owner)}/${encodeURIComponent(g.repo)}/git/blobs/${blobSha}`);
+    // base64 → Blob
+    const cleanB64 = (blobData.content || '').replace(/\s+/g, '');
+    const bin = atob(cleanB64);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr]);
+  },
+
+  // Smazání souboru
+  async _deleteFile(ghPath, sha, msg) {
+    const g = state.settings.github;
+    const path = ghPath.split('/').map(encodeURIComponent).join('/');
+    let actualSha = sha;
+    if (!actualSha) {
+      // Získat aktuální sha
+      try {
+        const meta = await this._getRemoteFile(ghPath);
+        actualSha = meta.sha;
+      } catch (e) {
+        if (e.status === 404) return { ok: true, skipped: true }; // už neexistuje
+        throw e;
+      }
+    }
+    return await this._api('DELETE',
+      `/repos/${encodeURIComponent(g.owner)}/${encodeURIComponent(g.repo)}/contents/${path}`, {
+      message: msg || ('PIM attachment delete – ' + new Date().toISOString()),
+      sha: actualSha,
+      branch: g.branch || 'main'
+    });
+  },
+
+  // Stáhnutí přílohy: typicky volané z getAttachmentBlobUrl při cache miss
+  async downloadAttachment(att) {
+    if (!att.ghPath) throw new Error('Příloha nemá ghPath');
+    return await this._getBinaryFile(att.ghPath, att.ghSha);
   },
 
   // Načte obsah – pro velké soubory přes Blob API (Contents API nevrací content nad ~1 MB)
@@ -3503,22 +3738,59 @@ const GH = {
     if (state.settings.audioFeedback) playTone(440, 0.05);
     try {
       const g = state.settings.github;
-      // 1) získat aktuální sha (pokud existuje)
+
+      // 0) Najít přílohy čekající na nahrání (vždy, bez ohledu na velikost)
+      let pendingUploads = [];
+      for (const e of db.entities) {
+        for (const att of (e.attachments || [])) {
+          if (att.storage === 'pending-github') pendingUploads.push({ entity: e, att });
+        }
+      }
+      const pendingDeletes = (db.ghMeta && db.ghMeta.pendingDeletes) || [];
+
+      // 1) Nahrát čekající přílohy
+      let attUploaded = 0, attFailed = 0;
+      for (const item of pendingUploads) {
+        const { entity, att } = item;
+        try {
+          toast('Nahrávám přílohu ' + (attUploaded + 1) + '/' + pendingUploads.length + ': ' + att.name + '…', 60000);
+          const blob = await getFileBlob(att.id);
+          if (!blob) { debug('Příloha ' + att.id + ' nemá blob, přeskočena.'); attFailed++; continue; }
+          const ghPath = attachmentGhPath(att);
+          const res = await this._putBinaryFile(ghPath, blob,
+            'PIM příloha: ' + att.name + ' (' + att.id + ')');
+          // update att v entitě
+          att.storage = 'github';
+          att.ghPath = ghPath;
+          att.ghSha = res.content && res.content.sha;
+          attUploaded++;
+        } catch (e) {
+          attFailed++;
+          debug('Upload přílohy "' + att.name + '" selhal: ' + e.message);
+        }
+      }
+      if (pendingUploads.length > 0) {
+        toast('Přílohy nahrány: ' + attUploaded + '/' + pendingUploads.length + (attFailed > 0 ? ' (' + attFailed + ' selhalo)' : ''), 3000);
+      }
+
+      // 2) Získat aktuální sha hlavního JSONu
       let currentSha = (db.ghMeta && db.ghMeta.sha) || null;
       try {
         const meta = await this._getRemoteFile();
         currentSha = meta.sha;
       } catch (e) {
         if (e.status !== 404) throw e;
-        currentSha = null; // nový soubor
+        currentSha = null;
       }
-      // 2) připravit obsah
+
+      // 3) Připravit obsah JSONu
       const exportData = JSON.parse(JSON.stringify(db));
       for (const e of exportData.entities) {
         if (e.attachments) {
           e.attachments = e.attachments.map(att => {
             const out = { ...att };
-            if (out.storage === 'indexeddb') delete out.data;
+            // Odstranit data z indexeddb příloh (binární data nelze rozumně serializovat)
+            if (out.storage === 'indexeddb' || out.storage === 'pending-github' || out.storage === 'github') delete out.data;
             return out;
           });
         }
@@ -3527,9 +3799,11 @@ const GH = {
       const sizeBytes = new TextEncoder().encode(content).length;
       const b64 = this._utf8ToB64(content);
 
+      // 4) Nahrát hlavní JSON
+      toast('Nahrávám hlavní JSON…', 60000);
       const path = g.path.split('/').map(encodeURIComponent).join('/');
       const body = {
-        message: 'PIM update – ' + new Date().toISOString() + ' (' + db.entities.length + ' entit)',
+        message: 'PIM update – ' + new Date().toISOString() + ' (' + db.entities.length + ' entit' + (pendingUploads.length > 0 ? ', +' + attUploaded + ' příloh' : '') + ')',
         content: b64,
         branch: g.branch || 'main'
       };
@@ -3537,6 +3811,26 @@ const GH = {
 
       const res = await this._api('PUT',
         `/repos/${encodeURIComponent(g.owner)}/${encodeURIComponent(g.repo)}/contents/${path}`, body);
+
+      // 5) Zpracovat smazání odložená dříve
+      let attDeleted = 0;
+      if (pendingDeletes.length > 0) {
+        const remaining = [];
+        for (const d of pendingDeletes) {
+          try {
+            toast('Mažu na GitHubu: ' + d.name + ' (' + (attDeleted + 1) + '/' + pendingDeletes.length + ')…', 30000);
+            await this._deleteFile(d.path, d.sha, 'PIM delete: ' + d.name);
+            attDeleted++;
+          } catch (e) {
+            if (e.status === 404) { attDeleted++; continue; } // už neexistuje
+            debug('Smazání "' + d.path + '" selhalo: ' + e.message);
+            remaining.push(d);
+          }
+        }
+        db.ghMeta.pendingDeletes = remaining;
+      }
+
+      // 6) Update meta
       if (!db.ghMeta) db.ghMeta = {};
       db.ghMeta.path = g.owner + '/' + g.repo + '/' + g.path;
       db.ghMeta.sha = res.content && res.content.sha ? res.content.sha : currentSha;
@@ -3545,15 +3839,18 @@ const GH = {
       save();
       this._setStatus('ok', 'Nahráno na GitHub.');
       const wasNew = !currentSha;
-      toast('✓ Uloženo na GitHub: ' + db.entities.length + ' entit, ' + fmtBytes(sizeBytes) + (wasNew ? ' (vytvořen nový soubor)' : '') + '.', 4000);
+      const parts = ['✓ Uloženo na GitHub: ' + db.entities.length + ' entit, ' + fmtBytes(sizeBytes)];
+      if (attUploaded > 0) parts.push('+ ' + attUploaded + ' příloh');
+      if (attDeleted > 0) parts.push('- ' + attDeleted + ' smazáno');
+      if (wasNew) parts.push('(nový soubor)');
+      toast(parts.join(', ') + '.', 5000);
       if (state.settings.audioFeedback) playTone(660, 0.1);
-      // Pokud jsme v defaultním tabu (bez ?id=), aktualizovat URL aby tab získal projektovou identitu.
-      // Tím se data přesunou pod projektový klíč v localStorage a tab může bezpečně koexistovat s jinými.
+
+      // Migrace defaultního tabu na projektový mód
       if (!isProjectTab() && location.search === '') {
-        const path = g.owner + '/' + g.repo + '/' + g.path;
-        const id = this._utf8ToB64(path).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        const path2 = g.owner + '/' + g.repo + '/' + g.path;
+        const id = this._utf8ToB64(path2).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
         const newUrl = location.pathname + '?id=' + id;
-        // Migrace: přesun dat z defaultního klíče do projektového
         try {
           const defaultData = localStorage.getItem(STORAGE_KEY);
           if (defaultData) {
