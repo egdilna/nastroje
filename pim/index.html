@@ -117,6 +117,18 @@ body.theme-dark .stat { background: #222; }
 .checkbox-list label { display: block; font-weight: normal; margin: 0.25em 0; break-inside: avoid; }
 .checkbox-list label input { display: inline-block; width: auto; margin-right: 0.5em; }
 .toast { position: fixed; bottom: 1em; left: 50%; transform: translateX(-50%); background: #1a1a1a; color: #fff; padding: 0.75em 1.25em; border-radius: 6px; z-index: 1000; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+.relation-chip { display: inline-block; background: #e8f0fa; padding: 0.15em 0.5em; border-radius: 3px; margin: 0.15em 0.25em 0.15em 0; font-size: 0.95em; }
+body.theme-dark .relation-chip { background: #2a3950; color: #cfe; }
+.relation-chip button { background: transparent; border: 0; color: #c33; font-weight: bold; padding: 0 0.2em; cursor: pointer; }
+.relation-chip button:hover { color: #f00; }
+.relation-field { display: flex; flex-direction: column; gap: 0.4em; }
+.relation-chips { min-height: 1.5em; }
+#rp-list li { padding: 0.5em 0.7em; cursor: pointer; border-bottom: 1px solid #eee; }
+#rp-list li:hover, #rp-list li[aria-selected="true"] { background: #e8f0fa; }
+body.theme-dark #rp-list li { border-bottom-color: #333; }
+body.theme-dark #rp-list li:hover, body.theme-dark #rp-list li[aria-selected="true"] { background: #2a3950; }
+#rp-list li.checked { background: #d4eaff; }
+body.theme-dark #rp-list li.checked { background: #2a4a70; }
 .detail-header { display: flex; justify-content: space-between; align-items: start; gap: 1em; flex-wrap: wrap; margin-bottom: 1em; padding-bottom: 0.5em; border-bottom: 1px solid #ddd; }
 body.theme-dark .detail-header { border-bottom-color: #333; }
 .detail-header h2 { margin: 0.25em 0; }
@@ -392,8 +404,15 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <option value="datetime-local">Datum a čas</option><option value="tel">Telefon</option>
       <option value="email">E-mail</option><option value="url">URL</option>
       <option value="checkbox">Ano/Ne</option>
+      <option value="relation">Relace (odkaz na entitu)</option>
     </select>
-    <label for="attr-value">Hodnota</label><input type="text" id="attr-value">
+    <div id="attr-relation-options" hidden>
+      <label><input type="checkbox" id="attr-rel-multiple"> Více entit</label>
+      <label for="attr-rel-aspects">Omezit na aspekty (volitelné, žádný = jakýkoli)</label>
+      <select id="attr-rel-aspects" multiple size="6"></select>
+    </div>
+    <label for="attr-value">Hodnota (pro relaci nepoužito, vyberete v editoru)</label>
+    <input type="text" id="attr-value">
     <div class="btn-group" style="margin-top:1em;">
       <button type="button" class="primary" id="attr-save">Přidat</button>
       <button type="button" id="attr-cancel">Zrušit</button>
@@ -461,7 +480,6 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
     <input type="text" id="comment-author">
     <label for="comment-content">Obsah komentáře</label>
     <textarea id="comment-content" rows="6" required></textarea>
-    <p class="meta">Datum a čas se zaznamená automaticky. <kbd>Ctrl+Enter</kbd> uloží.</p>
     <div class="btn-group" style="margin-top:1em;">
       <button type="button" class="primary" id="comment-save">Uložit komentář</button>
       <button type="button" id="comment-cancel">Zrušit</button>
@@ -529,6 +547,28 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
 
 <dialog id="export-dialog" aria-labelledby="export-dialog-title"></dialog>
 <dialog id="import-dialog" aria-labelledby="import-dialog-title"></dialog>
+
+<dialog id="relation-picker" aria-labelledby="relation-picker-title">
+  <form method="dialog" id="relation-picker-form">
+    <h2 id="relation-picker-title">Vybrat entitu</h2>
+    <div>
+      <label for="rp-search">Hledat</label>
+      <input type="search" id="rp-search" autocomplete="off" placeholder="Začněte psát název…">
+    </div>
+    <div>
+      <label for="rp-aspect">Filtr aspektu</label>
+      <select id="rp-aspect"></select>
+    </div>
+    <div id="rp-list-wrap" style="margin-top:0.5em;border:1px solid #ccc;border-radius:4px;max-height:280px;overflow-y:auto;">
+      <ul id="rp-list" role="listbox" aria-label="Nalezené entity" style="list-style:none;padding:0;margin:0;"></ul>
+    </div>
+    <p class="meta" id="rp-status" aria-live="polite"></p>
+    <div class="btn-group">
+      <button type="button" id="rp-cancel">Zrušit</button>
+      <button type="submit" id="rp-confirm" class="primary">Potvrdit</button>
+    </div>
+  </form>
+</dialog>
 
 <script>
 'use strict';
@@ -652,6 +692,20 @@ const ASPECTS = {
       options: ['want','reading','read','abandoned'],
       optionLabels: { want:'Chci přečíst', reading:'Čtu', read:'Přečtené', abandoned:'Opustil' } },
     { key: 'rating', label: 'Hodnocení (1-5)', type: 'number' }
+  ]},
+  Communication: { label: 'Komunikace', fields: [
+    { key: 'comm_direction', label: 'Směr', type: 'select',
+      options: ['inbound','outbound','internal'],
+      optionLabels: { inbound:'Doručené', outbound:'Odeslané', internal:'Interní' } },
+    { key: 'comm_channel', label: 'Kanál', type: 'select',
+      options: ['email','phone','teams','letter','sms','meeting','chat','videocall','other'],
+      optionLabels: { email:'E-mail', phone:'Telefon', teams:'Teams', letter:'Dopis', sms:'SMS', meeting:'Osobní schůzka', chat:'Chat', videocall:'Videohovor', other:'Jiný' } },
+    { key: 'comm_subject', label: 'Předmět', type: 'text' },
+    { key: 'comm_from', label: 'Od', type: 'relation', multiple: false, aspectFilter: ['Person','Organization'] },
+    { key: 'comm_to', label: 'Komu', type: 'relation', multiple: true, aspectFilter: ['Person','Organization'] },
+    { key: 'comm_cc', label: 'Kopie', type: 'relation', multiple: true, aspectFilter: ['Person','Organization'] },
+    { key: 'comm_at', label: 'Kdy proběhla', type: 'datetime-local' },
+    { key: 'comm_outcome', label: 'Shrnutí / výsledek', type: 'textarea' }
   ]}
 };
 
@@ -1445,6 +1499,56 @@ function getInverseLinks(id) {
     e.links.forEach(l => { if (l.to === id) r.push({ from: e, link: l }); });
   });
   return r;
+}
+
+// Najde entity, které mají v atributu typu 'relation' odkaz na entitu s id
+// Vrací pole { from: entity, fieldKey, fieldLabel, aspectKey }
+function getInverseRelations(id) {
+  const r = [];
+  db.entities.forEach(e => {
+    if (!e.attributes || e.id === id) return;
+    // Projdi všechny aspekty entity a podívej se na pole typu relation
+    const allFields = collectAllFields(e);
+    allFields.forEach(f => {
+      if (f.field.type !== 'relation') return;
+      const v = e.attributes[f.field.key];
+      if (!v) return;
+      const arr = Array.isArray(v) ? v : [v];
+      if (arr.indexOf(id) !== -1) {
+        r.push({
+          from: e,
+          fieldKey: f.field.key,
+          fieldLabel: f.field.label,
+          aspectKey: f.aspectKey,
+          aspectLabel: f.aspectLabel
+        });
+      }
+    });
+  });
+  return r;
+}
+
+// Vrací všechna pole entity (z aspektů + custom field defs uložené na entitě)
+// Custom field defs jsou v entity.customFields = [{key, label, type, multiple, aspectFilter}]
+function collectAllFields(entity) {
+  const out = [];
+  (entity.aspects || []).forEach(ak => {
+    const fields = aspectFields(ak);
+    const aLabel = aspectLabel(ak);
+    fields.forEach(f => out.push({ field: f, aspectKey: ak, aspectLabel: aLabel }));
+  });
+  // Custom fields uložené přímo na entitě (popis typu pro vlastní atributy)
+  if (Array.isArray(entity.customFields)) {
+    entity.customFields.forEach(f => out.push({ field: f, aspectKey: null, aspectLabel: null }));
+  }
+  return out;
+}
+
+// Normalizuje hodnotu relace na pole ID (pro multiple: true vždy pole, pro false pole délky 0/1)
+function normalizeRelationValue(v) {
+  if (v === null || v === undefined || v === '') return [];
+  if (Array.isArray(v)) return v.filter(x => x !== null && x !== undefined && x !== '');
+  return [v];
 }
 function getEntityDate(e) {
   return e.attributes.deadline || e.attributes.start || e.attributes.target_date ||
@@ -2708,12 +2812,22 @@ function renderAttributesReadOnly(e) {
     const a = getAspect(ak); if (!a) return;
     a.fields.forEach(f => { if (!fieldMap.has(f.key)) fieldMap.set(f.key, f); });
   });
+  // Custom field defs uložené přímo na entitě
+  if (Array.isArray(e.customFields)) {
+    e.customFields.forEach(f => { if (!fieldMap.has(f.key)) fieldMap.set(f.key, { ...f, custom: true }); });
+  }
   const customKeys = Object.keys(e.attributes || {}).filter(k => !fieldMap.has(k));
   let h = '';
   fieldMap.forEach((f, k) => {
     const v = e.attributes[k];
     if (v === undefined || v === null || v === '') return;
-    h += '<dt>' + escapeHtml(f.label) + '</dt><dd>' + formatAttrValue(f, v) + '</dd>';
+    // Pro relation field: prázdné pole = nic
+    if (f.type === 'relation') {
+      const ids = normalizeRelationValue(v);
+      if (ids.length === 0) return;
+    }
+    h += '<dt>' + escapeHtml(f.label) + (f.custom ? ' <small>(vlastní)</small>' : '') + '</dt>' +
+      '<dd>' + formatAttrValue(f, v) + '</dd>';
   });
   customKeys.forEach(k => {
     const v = e.attributes[k];
@@ -2731,6 +2845,15 @@ function formatAttrValue(f, v) {
   if (f.type === 'select' && f.optionLabels && f.optionLabels[v]) return escapeHtml(f.optionLabels[v]);
   if (f.type === 'textarea') return '<div class="markdown attr-textarea">' + renderMarkdown(String(v), { ctx: { depth: 1, includeStack: new Set() } }) + '</div>';
   if (f.type === 'checkbox') return v ? 'Ano' : 'Ne';
+  if (f.type === 'relation') {
+    const ids = normalizeRelationValue(v);
+    if (ids.length === 0) return '<em class="meta">(žádná)</em>';
+    return ids.map(id => {
+      const tgt = findEntity(id);
+      if (!tgt) return '<span class="meta">(smazáno: ' + escapeHtml(id) + ')</span>';
+      return '<a href="#" data-entity="' + escapeHtml(id) + '">' + escapeHtml(getDisplayTitle(tgt)) + '</a>';
+    }).join(', ');
+  }
   return escapeHtml(String(v));
 }
 function renderLinksReadOnly(e) {
@@ -2750,14 +2873,24 @@ function renderLinksReadOnly(e) {
 }
 function renderInverseLinksReadOnly(e) {
   const inv = getInverseLinks(e.id);
-  if (inv.length === 0) return '';
-  return '<ul style="list-style:none;padding-left:0;">' + inv.map(({from,link}) => {
+  const invRel = getInverseRelations(e.id);
+  if (inv.length === 0 && invRel.length === 0) return '';
+  let h = '<ul style="list-style:none;padding-left:0;">';
+  inv.forEach(({from,link}) => {
     const ti = RELATION_TYPES[link.type];
     const il = ti ? ti.inverseLabel : link.type;
-    return '<li><strong>' + escapeHtml(il) + ':</strong> ' +
+    h += '<li><strong>' + escapeHtml(il) + ':</strong> ' +
       '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
       (link.note ? ' <span class="meta">(' + escapeHtml(link.note) + ')</span>' : '') + '</li>';
-  }).join('') + '</ul>';
+  });
+  invRel.forEach(({ from, fieldLabel, aspectLabel: alab }) => {
+    const ctx = alab ? '[' + escapeHtml(alab) + '] ' : '';
+    h += '<li>' + ctx + '<strong>' + escapeHtml(fieldLabel) + ':</strong> ' +
+      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+      ' <span class="meta">(relace)</span></li>';
+  });
+  h += '</ul>';
+  return h;
 }
 function renderAttachmentsRead(e) {
   if (!e.attachments || e.attachments.length === 0) return '';
@@ -2826,7 +2959,6 @@ function renderDetailEdit(main, e) {
       '<button id="btn-save-as-template" title="Vytvořit šablonu z této entity">Uložit jako šablonu</button>' +
     '</div>' +
     '<h2>Úprava entity</h2>' +
-    '<p class="meta">Změny se ukládají automaticky. <kbd>Esc</kbd> nebo „Hotovo“ pro návrat.</p>' +
 
     '<section><h3>Základní</h3>' +
       '<label for="d-title">Název</label><input type="text" id="d-title" value="' + escapeHtml(e.title) + '">' +
@@ -2837,7 +2969,6 @@ function renderDetailEdit(main, e) {
     '</section>' +
 
     '<section><h3>Tělo (Markdown)</h3>' +
-      '<p class="meta">Podporuje <code>[[wiki-linky]]</code>, <code>{{include:id}}</code>, <code>**tučně**</code>, seznamy, citace, kód.</p>' +
       '<label for="d-body" class="sr-only">Tělo</label>' +
       '<textarea id="d-body" class="body-edit" rows="20">' + escapeHtml(e.body) + '</textarea>' +
     '</section>' +
@@ -2870,7 +3001,6 @@ function renderDetailEdit(main, e) {
     '</section>' +
 
     '<section><h3>Aspekty</h3>' +
-      '<p class="meta">Zaškrtnuté aspekty určují, jaké atributy se nabízejí výše.</p>' +
       '<div class="checkbox-list" id="d-aspects">' +
         Object.entries(getActiveAspects()).map(([k,v]) =>
           '<label><input type="checkbox" value="' + k + '"' + ((e.aspects || []).includes(k) ? ' checked' : '') + '> ' + escapeHtml(v.label) + '</label>'
@@ -2976,6 +3106,10 @@ function renderEditAttributes(e) {
     const a = getAspect(ak); if (!a) return;
     a.fields.forEach(f => { if (!fm.has(f.key)) fm.set(f.key, { ...f }); });
   });
+  // Custom field defs (uložené přímo na entitě)
+  if (Array.isArray(e.customFields)) {
+    e.customFields.forEach(f => { if (!fm.has(f.key)) fm.set(f.key, { ...f, custom: true }); });
+  }
   const customKeys = Object.keys(e.attributes || {}).filter(k => !fm.has(k));
   if (fm.size === 0 && customKeys.length === 0) {
     c.innerHTML = '<p class="meta">Žádné atributy. Zaškrtněte aspekt nebo přidejte vlastní.</p>';
@@ -3003,8 +3137,57 @@ function renderEditAttributes(e) {
   c.querySelectorAll('button[data-remove-attr]').forEach(b => {
     b.onclick = () => {
       const k = b.dataset.removeAttr;
-      delete e.attributes[k]; e.updated_at = nowIso(); saveDebounced();
+      delete e.attributes[k];
+      // Smazat i custom field def, pokud je
+      if (Array.isArray(e.customFields)) {
+        e.customFields = e.customFields.filter(f => f.key !== k);
+      }
+      e.updated_at = nowIso(); saveDebounced();
       renderEditAttributes(e); toast('Atribut „' + k + '“ odstraněn.');
+    };
+  });
+  // Relace: tlačítko "vybrat"
+  c.querySelectorAll('button[data-rel-pick]').forEach(b => {
+    b.onclick = () => {
+      const fieldKey = b.dataset.relPick;
+      const fieldDef = fm.get(fieldKey);
+      if (!fieldDef) return;
+      const currentIds = normalizeRelationValue(e.attributes && e.attributes[fieldKey]);
+      openRelationPicker({
+        fieldLabel: fieldDef.label,
+        multiple: !!fieldDef.multiple,
+        aspectFilter: fieldDef.aspectFilter || null,
+        excludeIds: [e.id],
+        currentIds: currentIds,
+        onSelect: (ids) => {
+          if (fieldDef.multiple) {
+            if (ids.length === 0) delete e.attributes[fieldKey];
+            else e.attributes[fieldKey] = ids;
+          } else {
+            if (ids.length === 0) delete e.attributes[fieldKey];
+            else e.attributes[fieldKey] = ids[0];
+          }
+          e.updated_at = nowIso(); save();
+          renderEditAttributes(e);
+          toast('Relace „' + fieldDef.label + '“ aktualizována.');
+        }
+      });
+    };
+  });
+  // Relace: odebrání jedné položky
+  c.querySelectorAll('button[data-rel-remove]').forEach(b => {
+    b.onclick = () => {
+      const fieldKey = b.dataset.relRemove;
+      const idx = parseInt(b.dataset.relIdx, 10);
+      const fieldDef = fm.get(fieldKey);
+      if (!fieldDef) return;
+      const ids = normalizeRelationValue(e.attributes && e.attributes[fieldKey]);
+      ids.splice(idx, 1);
+      if (ids.length === 0) delete e.attributes[fieldKey];
+      else if (fieldDef.multiple) e.attributes[fieldKey] = ids;
+      else e.attributes[fieldKey] = ids[0];
+      e.updated_at = nowIso(); save();
+      renderEditAttributes(e);
     };
   });
 }
@@ -3020,6 +3203,25 @@ function attributeFieldHtml(e, f) {
         escapeHtml((f.optionLabels && f.optionLabels[o]) || o) + '</option>').join('') + '</select>';
   }
   else if (f.type === 'checkbox') inp = '<input type="checkbox" id="' + id + '" data-attr-key="' + escapeHtml(f.key) + '"' + (val === true ? ' checked' : '') + '>';
+  else if (f.type === 'relation') {
+    const ids = normalizeRelationValue(val);
+    const items = ids.map((tid, idx) => {
+      const tgt = findEntity(tid);
+      const lbl = tgt ? getDisplayTitle(tgt) : '(smazáno: ' + tid + ')';
+      return '<span class="relation-chip">' + escapeHtml(lbl) +
+        ' <button type="button" data-rel-remove="' + escapeHtml(f.key) + '" data-rel-idx="' + idx + '" aria-label="Odebrat ' + escapeHtml(lbl) + '">×</button>' +
+        '</span>';
+    }).join(' ');
+    const filterDesc = (f.aspectFilter && f.aspectFilter.length > 0) ?
+      ' <small>(' + f.aspectFilter.map(a => escapeHtml(aspectLabel(a))).join(', ') + ')</small>' : '';
+    const multipleDesc = f.multiple ? ' <small>(více)</small>' : ' <small>(jedna)</small>';
+    inp = '<div class="relation-field" data-rel-key="' + escapeHtml(f.key) + '" id="' + id + '">' +
+      '<div class="relation-chips">' + (items || '<span class="meta">žádná</span>') + '</div>' +
+      '<button type="button" data-rel-pick="' + escapeHtml(f.key) + '">' +
+        (f.multiple ? '+ Vybrat entity…' : (ids.length > 0 ? 'Změnit…' : 'Vybrat entitu…')) + filterDesc + multipleDesc +
+      '</button>' +
+    '</div>';
+  }
   else inp = '<input type="' + escapeHtml(f.type || 'text') + '" id="' + id + '" data-attr-key="' + escapeHtml(f.key) + '" value="' + v + '">';
   const rm = f.custom ? '<button data-remove-attr="' + escapeHtml(f.key) + '" title="Odebrat">×</button>' : '';
   return '<div class="attr-row">' +
@@ -3043,13 +3245,26 @@ function renderEditLinks(e) {
         note + '</span><button data-remove-link="' + idx + '">Odebrat</button></div>';
     }).join('');
   const inv = getInverseLinks(e.id);
-  ic.innerHTML = inv.length === 0 ? '<p class="meta">Žádné příchozí vazby.</p>' :
-    inv.map(({from, link}) => {
+  const invRel = getInverseRelations(e.id);
+  if (inv.length === 0 && invRel.length === 0) {
+    ic.innerHTML = '<p class="meta">Žádné příchozí vazby.</p>';
+  } else {
+    let invH = '';
+    inv.forEach(({from, link}) => {
       const ti = RELATION_TYPES[link.type], il = ti ? ti.inverseLabel : link.type;
-      return '<div class="link-row"><span class="link-target"><strong>' + escapeHtml(il) + ':</strong> ' +
+      invH += '<div class="link-row"><span class="link-target"><strong>' + escapeHtml(il) + ':</strong> ' +
         '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
         (link.note ? ' <span class="meta">(' + escapeHtml(link.note) + ')</span>' : '') + '</span></div>';
-    }).join('');
+    });
+    invRel.forEach(({ from, fieldLabel, aspectLabel: alab }) => {
+      const ctx = alab ? '[' + escapeHtml(alab) + '] ' : '';
+      invH += '<div class="link-row"><span class="link-target">' + ctx +
+        '<strong>' + escapeHtml(fieldLabel) + ':</strong> ' +
+        '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+        ' <span class="meta">(relace)</span></span></div>';
+    });
+    ic.innerHTML = invH;
+  }
   attachEntityRowHandlers(c); attachEntityRowHandlers(ic);
   c.querySelectorAll('button[data-remove-link]').forEach(b => {
     b.onclick = () => {
@@ -3612,21 +3827,240 @@ function openCustomAttrDialog(entity) {
   document.getElementById('attr-key').value = '';
   document.getElementById('attr-type').value = 'text';
   document.getElementById('attr-value').value = '';
+  document.getElementById('attr-rel-multiple').checked = false;
+
+  // Naplnit aspect select
+  const aspectsSel = document.getElementById('attr-rel-aspects');
+  const aspectMap = getActiveAspects();
+  aspectsSel.innerHTML = Object.keys(aspectMap).map(k =>
+    '<option value="' + escapeHtml(k) + '">' + escapeHtml(aspectMap[k].label) + '</option>').join('');
+  // Vyčistit selekci
+  Array.from(aspectsSel.options).forEach(o => o.selected = false);
+
+  // Reagovat na změnu typu
+  const typeSelect = document.getElementById('attr-type');
+  const relOpts = document.getElementById('attr-relation-options');
+  const valueInput = document.getElementById('attr-value');
+  function refreshTypeUI() {
+    const isRel = typeSelect.value === 'relation';
+    relOpts.hidden = !isRel;
+    valueInput.disabled = isRel;
+    if (isRel) valueInput.value = '';
+  }
+  typeSelect.onchange = refreshTypeUI;
+  refreshTypeUI();
+
   d.showModal();
   document.getElementById('attr-key').focus();
   document.getElementById('attr-save').onclick = () => {
     const k = document.getElementById('attr-key').value.trim();
-    const t = document.getElementById('attr-type').value;
+    const t = typeSelect.value;
     const r = document.getElementById('attr-value').value;
     if (!k) { alertMsg('Klíč je prázdný.'); return; }
+
+    if (t === 'relation') {
+      // Uložíme definici typu na entitě (customFields), hodnotu zatím nenastavujeme
+      const multiple = document.getElementById('attr-rel-multiple').checked;
+      const aspectFilter = Array.from(aspectsSel.selectedOptions).map(o => o.value);
+      if (!entity.customFields) entity.customFields = [];
+      entity.customFields.push({
+        key: k, label: k, type: 'relation',
+        multiple: multiple,
+        aspectFilter: aspectFilter.length > 0 ? aspectFilter : null
+      });
+      // Inicializovat hodnotu (prázdná)
+      entity.attributes[k] = multiple ? [] : null;
+      entity.updated_at = nowIso(); save();
+      d.close(); renderEditAttributes(entity); toast('Relační atribut „' + k + '“ přidán. Otevřete editor a vyberte entity.');
+      return;
+    }
+
     let v = r;
     if (t === 'number') v = r === '' ? null : Number(r);
     if (t === 'checkbox') v = r.toLowerCase() === 'true' || r === '1';
     entity.attributes[k] = v;
+    // Přidat custom field def pro typ jiný než text (aby si formátování pamatoval)
+    if (t !== 'text') {
+      if (!entity.customFields) entity.customFields = [];
+      // Přepsat existující stejného klíče
+      entity.customFields = entity.customFields.filter(f => f.key !== k);
+      entity.customFields.push({ key: k, label: k, type: t });
+    }
     entity.updated_at = nowIso(); saveDebounced();
     d.close(); renderEditAttributes(entity); toast('Atribut přidán.');
   };
   document.getElementById('attr-cancel').onclick = () => d.close();
+}
+
+// Picker dialog pro výběr entity (atribut typu 'relation').
+// opts: {
+//   fieldLabel: string,
+//   multiple: boolean,
+//   aspectFilter: string[] | null,    // null nebo prázdný array = jakékoli
+//   excludeIds: string[],             // ID entit, které se nemají nabízet (např. self)
+//   currentIds: string[],             // aktuálně vybraná ID
+//   onSelect: (ids: string[]) => void
+// }
+function openRelationPicker(opts) {
+  const d = document.getElementById('relation-picker');
+  if (!d) return;
+  const titleEl = document.getElementById('relation-picker-title');
+  titleEl.textContent = (opts.multiple ? 'Vybrat entity: ' : 'Vybrat entitu: ') + (opts.fieldLabel || '');
+
+  const searchInput = document.getElementById('rp-search');
+  const aspectSelect = document.getElementById('rp-aspect');
+  const list = document.getElementById('rp-list');
+  const status = document.getElementById('rp-status');
+  const confirmBtn = document.getElementById('rp-confirm');
+  const cancelBtn = document.getElementById('rp-cancel');
+
+  // Stav výběru – modifikujeme přímo, podle multiple
+  let selectedIds = (opts.currentIds || []).slice();
+
+  // Naplnit aspectSelect
+  const allowedAspects = (opts.aspectFilter && opts.aspectFilter.length > 0) ? opts.aspectFilter : null;
+  let aspectOptions = '<option value="">— jakýkoli aspekt —</option>';
+  const aspectMap = getActiveAspects();
+  Object.keys(aspectMap).forEach(ak => {
+    if (allowedAspects && !allowedAspects.includes(ak)) return;
+    aspectOptions += '<option value="' + escapeHtml(ak) + '">' + escapeHtml(aspectMap[ak].label) + '</option>';
+  });
+  aspectSelect.innerHTML = aspectOptions;
+  // Pokud filtr má jen jednu možnost, předvybrat ji
+  if (allowedAspects && allowedAspects.length === 1) {
+    aspectSelect.value = allowedAspects[0];
+  } else {
+    aspectSelect.value = '';
+  }
+
+  searchInput.value = '';
+
+  let activeIndex = 0;
+  let renderedItems = [];
+
+  function refreshList() {
+    const q = searchInput.value.trim().toLowerCase();
+    const aspectFilter = aspectSelect.value || null;
+    const exclude = new Set(opts.excludeIds || []);
+    let items = db.entities.filter(e => {
+      if (e.archived) return false;
+      if (exclude.has(e.id)) return false;
+      // Aplikovat allowedAspects pokud jsou zadané
+      if (allowedAspects && allowedAspects.length > 0) {
+        const has = (e.aspects || []).some(a => allowedAspects.includes(a));
+        if (!has) return false;
+      }
+      // Aplikovat aspect filter
+      if (aspectFilter) {
+        if (!(e.aspects || []).includes(aspectFilter)) return false;
+      }
+      // Hledání podle názvu
+      if (q) {
+        const title = (getDisplayTitle(e) || '').toLowerCase();
+        if (!title.includes(q)) return false;
+      }
+      return true;
+    });
+    // Setřídit: vybrané první, pak abecedně
+    items.sort((a, b) => {
+      const aSel = selectedIds.includes(a.id) ? 0 : 1;
+      const bSel = selectedIds.includes(b.id) ? 0 : 1;
+      if (aSel !== bSel) return aSel - bSel;
+      return getDisplayTitle(a).localeCompare(getDisplayTitle(b), 'cs');
+    });
+    items = items.slice(0, 200);
+    renderedItems = items;
+    list.innerHTML = items.map((e, i) => {
+      const checked = selectedIds.includes(e.id);
+      const aspectsTxt = (e.aspects || []).map(a => aspectLabel(a)).join(', ');
+      const indicator = opts.multiple
+        ? '<input type="checkbox" tabindex="-1"' + (checked ? ' checked' : '') + ' style="pointer-events:none;"> '
+        : (checked ? '● ' : '○ ');
+      return '<li role="option" data-id="' + escapeHtml(e.id) + '" data-idx="' + i + '"' +
+        (checked ? ' aria-selected="true" class="checked"' : '') + '>' +
+        indicator + escapeHtml(getDisplayTitle(e)) +
+        (aspectsTxt ? ' <small class="meta">(' + escapeHtml(aspectsTxt) + ')</small>' : '') +
+        '</li>';
+    }).join('');
+    if (items.length === 0) {
+      list.innerHTML = '<li class="meta" style="padding:0.7em;cursor:default;">Žádná entita neodpovídá.</li>';
+    }
+    status.textContent = items.length + ' entit nalezeno' + (selectedIds.length > 0 ? ', ' + selectedIds.length + ' vybráno' : '');
+    activeIndex = 0;
+    list.setAttribute('aria-activedescendant', '');
+  }
+
+  refreshList();
+
+  // Live search
+  searchInput.oninput = refreshList;
+  aspectSelect.onchange = refreshList;
+
+  // Klik / Enter → toggle položka
+  function toggleItemAt(idx) {
+    if (idx < 0 || idx >= renderedItems.length) return;
+    const e = renderedItems[idx];
+    const id = e.id;
+    if (selectedIds.includes(id)) {
+      selectedIds = selectedIds.filter(x => x !== id);
+    } else {
+      if (opts.multiple) selectedIds.push(id);
+      else selectedIds = [id];
+    }
+    if (!opts.multiple) {
+      // Pro single režim okamžitě potvrdíme
+      opts.onSelect(selectedIds);
+      d.close();
+      return;
+    }
+    refreshList();
+  }
+
+  list.onclick = (ev) => {
+    const li = ev.target.closest('li[data-idx]');
+    if (!li) return;
+    const idx = parseInt(li.dataset.idx, 10);
+    toggleItemAt(idx);
+  };
+
+  // Klávesnice ve search inputu i v listu
+  function handleKey(ev) {
+    if (ev.key === 'ArrowDown') {
+      ev.preventDefault();
+      activeIndex = Math.min(activeIndex + 1, renderedItems.length - 1);
+      const items = list.querySelectorAll('li[data-idx]');
+      items.forEach(i => i.removeAttribute('aria-selected'));
+      const cur = items[activeIndex];
+      if (cur) {
+        cur.setAttribute('aria-selected', 'true');
+        cur.scrollIntoView({ block: 'nearest' });
+      }
+    } else if (ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      activeIndex = Math.max(activeIndex - 1, 0);
+      const items = list.querySelectorAll('li[data-idx]');
+      items.forEach(i => i.removeAttribute('aria-selected'));
+      const cur = items[activeIndex];
+      if (cur) {
+        cur.setAttribute('aria-selected', 'true');
+        cur.scrollIntoView({ block: 'nearest' });
+      }
+    } else if (ev.key === 'Enter' && document.activeElement === searchInput) {
+      ev.preventDefault();
+      toggleItemAt(activeIndex);
+    }
+  }
+  searchInput.onkeydown = handleKey;
+
+  cancelBtn.onclick = (ev) => { ev.preventDefault(); d.close(); };
+  document.getElementById('relation-picker-form').onsubmit = (ev) => {
+    ev.preventDefault();
+    opts.onSelect(selectedIds);
+    d.close();
+  };
+
+  d.showModal();
+  setTimeout(() => searchInput.focus(), 50);
 }
 
 function openLinkDialog(entity) {
@@ -4365,6 +4799,12 @@ function openCustomAspectEditor(existing) {
     const fieldsClean = _caFields.filter(f => f.key && f.label).map(f => {
       const out = { key: f.key, label: f.label, type: f.type || 'text' };
       if (f.type === 'select' && f.options) out.options = f.options;
+      if (f.type === 'relation') {
+        out.multiple = !!f.multiple;
+        if (Array.isArray(f.aspectFilter) && f.aspectFilter.length > 0) {
+          out.aspectFilter = f.aspectFilter;
+        }
+      }
       return out;
     });
     if (existing) {
@@ -4403,18 +4843,36 @@ function caRenderFields() {
     c.innerHTML = '<p class="meta">Zatím žádná pole. Přidejte alespoň jedno tlačítkem níže.</p>';
     return;
   }
-  c.innerHTML = _caFields.map((f, i) =>
-    '<div class="ca-field-row">' +
+  const aspectMap = getActiveAspects();
+  const aspectKeys = Object.keys(aspectMap);
+  c.innerHTML = _caFields.map((f, i) => {
+    const isRel = f.type === 'relation';
+    let extra = '';
+    if (f.type === 'select') {
+      extra = '<div style="grid-column:1/-1;"><label>Volby (oddělené čárkou)<input type="text" data-cf-options="' + i + '" value="' + escapeHtml((f.options || []).join(', ')) + '" placeholder="možnost A, možnost B"></label></div>';
+    }
+    if (isRel) {
+      const filter = f.aspectFilter || [];
+      extra = '<div style="grid-column:1/-1;">' +
+        '<label><input type="checkbox" data-cf-multiple="' + i + '"' + (f.multiple ? ' checked' : '') + '> Více entit (jinak jedna)</label><br>' +
+        '<label>Omezit na aspekty (žádný = jakýkoli)<br>' +
+        '<select data-cf-aspect-filter="' + i + '" multiple size="5">' +
+        aspectKeys.map(ak =>
+          '<option value="' + escapeHtml(ak) + '"' + (filter.includes(ak) ? ' selected' : '') + '>' + escapeHtml(aspectMap[ak].label) + '</option>'
+        ).join('') +
+        '</select></label></div>';
+    }
+    return '<div class="ca-field-row">' +
       '<div><label>Klíč<input type="text" data-cf-key="' + i + '" value="' + escapeHtml(f.key || '') + '" placeholder="muj_klic"></label></div>' +
       '<div><label>Štítek<input type="text" data-cf-label="' + i + '" value="' + escapeHtml(f.label || '') + '" placeholder="Název pole"></label></div>' +
       '<div><label>Typ<select data-cf-type="' + i + '">' +
-        ['text','textarea','number','date','datetime-local','tel','email','url','checkbox','select'].map(t =>
+        ['text','textarea','number','date','datetime-local','tel','email','url','checkbox','select','relation'].map(t =>
           '<option value="' + t + '"' + (f.type === t ? ' selected' : '') + '>' + t + '</option>').join('') +
       '</select></label></div>' +
       '<div><button type="button" class="danger" data-cf-remove="' + i + '" title="Odebrat pole">×</button></div>' +
-      (f.type === 'select' ? '<div style="grid-column:1/-1;"><label>Volby (oddělené čárkou)<input type="text" data-cf-options="' + i + '" value="' + escapeHtml((f.options || []).join(', ')) + '" placeholder="možnost A, možnost B"></label></div>' : '') +
-    '</div>'
-  ).join('');
+      extra +
+    '</div>';
+  }).join('');
   c.querySelectorAll('[data-cf-key]').forEach(inp => {
     inp.oninput = () => { _caFields[Number(inp.dataset.cfKey)].key = inp.value.trim(); };
   });
@@ -4423,7 +4881,12 @@ function caRenderFields() {
   });
   c.querySelectorAll('[data-cf-type]').forEach(sel => {
     sel.onchange = () => {
-      const i = Number(sel.dataset.cfType); _caFields[i].type = sel.value;
+      const i = Number(sel.dataset.cfType);
+      _caFields[i].type = sel.value;
+      if (sel.value === 'relation') {
+        if (_caFields[i].multiple === undefined) _caFields[i].multiple = false;
+        if (!_caFields[i].aspectFilter) _caFields[i].aspectFilter = [];
+      }
       caRenderFields();
     };
   });
@@ -4431,6 +4894,18 @@ function caRenderFields() {
     inp.oninput = () => {
       const i = Number(inp.dataset.cfOptions);
       _caFields[i].options = inp.value.split(',').map(s => s.trim()).filter(Boolean);
+    };
+  });
+  c.querySelectorAll('[data-cf-multiple]').forEach(inp => {
+    inp.onchange = () => {
+      const i = Number(inp.dataset.cfMultiple);
+      _caFields[i].multiple = inp.checked;
+    };
+  });
+  c.querySelectorAll('[data-cf-aspect-filter]').forEach(sel => {
+    sel.onchange = () => {
+      const i = Number(sel.dataset.cfAspectFilter);
+      _caFields[i].aspectFilter = Array.from(sel.selectedOptions).map(o => o.value);
     };
   });
   c.querySelectorAll('[data-cf-remove]').forEach(btn => {
@@ -4983,10 +5458,22 @@ function buildEntityExportModel(entity) {
       });
     }
   });
+  // Custom field defs uložené přímo na entitě
+  const customFieldDefs = Array.isArray(e.customFields) ? e.customFields : [];
+  const customFieldByKey = new Map();
+  customFieldDefs.forEach(f => { customFieldByKey.set(f.key, f); knownKeys.add(f.key); });
+
   Object.entries(e.attributes || {}).forEach(([k, v]) => {
-    if (knownKeys.has(k)) return;
+    if (knownKeys.has(k) && !customFieldByKey.has(k)) return;
     if (v === undefined || v === '' || v === null) return;
-    model.customAttributes.push({ key: k, value: String(v) });
+    if (customFieldByKey.has(k)) {
+      const f = customFieldByKey.get(k);
+      const formatted = formatAttrValuePlain(f, v);
+      if (!formatted) return;
+      model.customAttributes.push({ key: f.label || k, value: formatted });
+    } else {
+      model.customAttributes.push({ key: k, value: String(v) });
+    }
   });
 
   const g = (state.settings && state.settings.github) || {};
@@ -5072,6 +5559,13 @@ function formatAttrValuePlain(f, v) {
   if (f.type === 'datetime-local') return fmtDateTime(v);
   if (f.type === 'checkbox') return v ? 'Ano' : 'Ne';
   if (f.type === 'select' && f.optionLabels && f.optionLabels[v]) return f.optionLabels[v];
+  if (f.type === 'relation') {
+    const ids = normalizeRelationValue(v);
+    return ids.map(id => {
+      const t = findEntity(id);
+      return t ? getDisplayTitle(t) : '(smazáno)';
+    }).join(', ');
+  }
   return String(v);
 }
 
@@ -6245,6 +6739,13 @@ function formatAttrValueForXlsx(f, v) {
     return isNaN(n) ? v : n;
   }
   if (f.type === 'select' && f.optionLabels && f.optionLabels[v]) return f.optionLabels[v];
+  if (f.type === 'relation') {
+    const ids = normalizeRelationValue(v);
+    return ids.map(id => {
+      const t = findEntity(id);
+      return t ? getDisplayTitle(t) : '(smazáno)';
+    }).join(', ');
+  }
   return String(v);
 }
 
@@ -7026,6 +7527,18 @@ body.theme-dark .stat { background: #222; }
 .checkbox-list label { display: block; font-weight: normal; margin: 0.25em 0; break-inside: avoid; }
 .checkbox-list label input { display: inline-block; width: auto; margin-right: 0.5em; }
 .toast { position: fixed; bottom: 1em; left: 50%; transform: translateX(-50%); background: #1a1a1a; color: #fff; padding: 0.75em 1.25em; border-radius: 6px; z-index: 1000; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+.relation-chip { display: inline-block; background: #e8f0fa; padding: 0.15em 0.5em; border-radius: 3px; margin: 0.15em 0.25em 0.15em 0; font-size: 0.95em; }
+body.theme-dark .relation-chip { background: #2a3950; color: #cfe; }
+.relation-chip button { background: transparent; border: 0; color: #c33; font-weight: bold; padding: 0 0.2em; cursor: pointer; }
+.relation-chip button:hover { color: #f00; }
+.relation-field { display: flex; flex-direction: column; gap: 0.4em; }
+.relation-chips { min-height: 1.5em; }
+#rp-list li { padding: 0.5em 0.7em; cursor: pointer; border-bottom: 1px solid #eee; }
+#rp-list li:hover, #rp-list li[aria-selected="true"] { background: #e8f0fa; }
+body.theme-dark #rp-list li { border-bottom-color: #333; }
+body.theme-dark #rp-list li:hover, body.theme-dark #rp-list li[aria-selected="true"] { background: #2a3950; }
+#rp-list li.checked { background: #d4eaff; }
+body.theme-dark #rp-list li.checked { background: #2a4a70; }
 .detail-header { display: flex; justify-content: space-between; align-items: start; gap: 1em; flex-wrap: wrap; margin-bottom: 1em; padding-bottom: 0.5em; border-bottom: 1px solid #ddd; }
 body.theme-dark .detail-header { border-bottom-color: #333; }
 .detail-header h2 { margin: 0.25em 0; }
@@ -7341,8 +7854,15 @@ body.viewer-mode .btn-group:has(#d-add-comment) { display: none !important; }
       <option value="datetime-local">Datum a čas</option><option value="tel">Telefon</option>
       <option value="email">E-mail</option><option value="url">URL</option>
       <option value="checkbox">Ano/Ne</option>
+      <option value="relation">Relace (odkaz na entitu)</option>
     </select>
-    <label for="attr-value">Hodnota</label><input type="text" id="attr-value">
+    <div id="attr-relation-options" hidden>
+      <label><input type="checkbox" id="attr-rel-multiple"> Více entit</label>
+      <label for="attr-rel-aspects">Omezit na aspekty (volitelné, žádný = jakýkoli)</label>
+      <select id="attr-rel-aspects" multiple size="6"></select>
+    </div>
+    <label for="attr-value">Hodnota (pro relaci nepoužito, vyberete v editoru)</label>
+    <input type="text" id="attr-value">
     <div class="btn-group" style="margin-top:1em;">
       <button type="button" class="primary" id="attr-save">Přidat</button>
       <button type="button" id="attr-cancel">Zrušit</button>
@@ -7410,7 +7930,6 @@ body.viewer-mode .btn-group:has(#d-add-comment) { display: none !important; }
     <input type="text" id="comment-author">
     <label for="comment-content">Obsah komentáře</label>
     <textarea id="comment-content" rows="6" required></textarea>
-    <p class="meta">Datum a čas se zaznamená automaticky. <kbd>Ctrl+Enter</kbd> uloží.</p>
     <div class="btn-group" style="margin-top:1em;">
       <button type="button" class="primary" id="comment-save">Uložit komentář</button>
       <button type="button" id="comment-cancel">Zrušit</button>
@@ -7478,6 +7997,28 @@ body.viewer-mode .btn-group:has(#d-add-comment) { display: none !important; }
 
 <dialog id="export-dialog" aria-labelledby="export-dialog-title"></dialog>
 <dialog id="import-dialog" aria-labelledby="import-dialog-title"></dialog>
+
+<dialog id="relation-picker" aria-labelledby="relation-picker-title">
+  <form method="dialog" id="relation-picker-form">
+    <h2 id="relation-picker-title">Vybrat entitu</h2>
+    <div>
+      <label for="rp-search">Hledat</label>
+      <input type="search" id="rp-search" autocomplete="off" placeholder="Začněte psát název…">
+    </div>
+    <div>
+      <label for="rp-aspect">Filtr aspektu</label>
+      <select id="rp-aspect"></select>
+    </div>
+    <div id="rp-list-wrap" style="margin-top:0.5em;border:1px solid #ccc;border-radius:4px;max-height:280px;overflow-y:auto;">
+      <ul id="rp-list" role="listbox" aria-label="Nalezené entity" style="list-style:none;padding:0;margin:0;"></ul>
+    </div>
+    <p class="meta" id="rp-status" aria-live="polite"></p>
+    <div class="btn-group">
+      <button type="button" id="rp-cancel">Zrušit</button>
+      <button type="submit" id="rp-confirm" class="primary">Potvrdit</button>
+    </div>
+  </form>
+</dialog>
 
 <script>
 'use strict';
@@ -7601,6 +8142,20 @@ const ASPECTS = {
       options: ['want','reading','read','abandoned'],
       optionLabels: { want:'Chci přečíst', reading:'Čtu', read:'Přečtené', abandoned:'Opustil' } },
     { key: 'rating', label: 'Hodnocení (1-5)', type: 'number' }
+  ]},
+  Communication: { label: 'Komunikace', fields: [
+    { key: 'comm_direction', label: 'Směr', type: 'select',
+      options: ['inbound','outbound','internal'],
+      optionLabels: { inbound:'Doručené', outbound:'Odeslané', internal:'Interní' } },
+    { key: 'comm_channel', label: 'Kanál', type: 'select',
+      options: ['email','phone','teams','letter','sms','meeting','chat','videocall','other'],
+      optionLabels: { email:'E-mail', phone:'Telefon', teams:'Teams', letter:'Dopis', sms:'SMS', meeting:'Osobní schůzka', chat:'Chat', videocall:'Videohovor', other:'Jiný' } },
+    { key: 'comm_subject', label: 'Předmět', type: 'text' },
+    { key: 'comm_from', label: 'Od', type: 'relation', multiple: false, aspectFilter: ['Person','Organization'] },
+    { key: 'comm_to', label: 'Komu', type: 'relation', multiple: true, aspectFilter: ['Person','Organization'] },
+    { key: 'comm_cc', label: 'Kopie', type: 'relation', multiple: true, aspectFilter: ['Person','Organization'] },
+    { key: 'comm_at', label: 'Kdy proběhla', type: 'datetime-local' },
+    { key: 'comm_outcome', label: 'Shrnutí / výsledek', type: 'textarea' }
   ]}
 };
 
@@ -8394,6 +8949,56 @@ function getInverseLinks(id) {
     e.links.forEach(l => { if (l.to === id) r.push({ from: e, link: l }); });
   });
   return r;
+}
+
+// Najde entity, které mají v atributu typu 'relation' odkaz na entitu s id
+// Vrací pole { from: entity, fieldKey, fieldLabel, aspectKey }
+function getInverseRelations(id) {
+  const r = [];
+  db.entities.forEach(e => {
+    if (!e.attributes || e.id === id) return;
+    // Projdi všechny aspekty entity a podívej se na pole typu relation
+    const allFields = collectAllFields(e);
+    allFields.forEach(f => {
+      if (f.field.type !== 'relation') return;
+      const v = e.attributes[f.field.key];
+      if (!v) return;
+      const arr = Array.isArray(v) ? v : [v];
+      if (arr.indexOf(id) !== -1) {
+        r.push({
+          from: e,
+          fieldKey: f.field.key,
+          fieldLabel: f.field.label,
+          aspectKey: f.aspectKey,
+          aspectLabel: f.aspectLabel
+        });
+      }
+    });
+  });
+  return r;
+}
+
+// Vrací všechna pole entity (z aspektů + custom field defs uložené na entitě)
+// Custom field defs jsou v entity.customFields = [{key, label, type, multiple, aspectFilter}]
+function collectAllFields(entity) {
+  const out = [];
+  (entity.aspects || []).forEach(ak => {
+    const fields = aspectFields(ak);
+    const aLabel = aspectLabel(ak);
+    fields.forEach(f => out.push({ field: f, aspectKey: ak, aspectLabel: aLabel }));
+  });
+  // Custom fields uložené přímo na entitě (popis typu pro vlastní atributy)
+  if (Array.isArray(entity.customFields)) {
+    entity.customFields.forEach(f => out.push({ field: f, aspectKey: null, aspectLabel: null }));
+  }
+  return out;
+}
+
+// Normalizuje hodnotu relace na pole ID (pro multiple: true vždy pole, pro false pole délky 0/1)
+function normalizeRelationValue(v) {
+  if (v === null || v === undefined || v === '') return [];
+  if (Array.isArray(v)) return v.filter(x => x !== null && x !== undefined && x !== '');
+  return [v];
 }
 function getEntityDate(e) {
   return e.attributes.deadline || e.attributes.start || e.attributes.target_date ||
@@ -9657,12 +10262,22 @@ function renderAttributesReadOnly(e) {
     const a = getAspect(ak); if (!a) return;
     a.fields.forEach(f => { if (!fieldMap.has(f.key)) fieldMap.set(f.key, f); });
   });
+  // Custom field defs uložené přímo na entitě
+  if (Array.isArray(e.customFields)) {
+    e.customFields.forEach(f => { if (!fieldMap.has(f.key)) fieldMap.set(f.key, { ...f, custom: true }); });
+  }
   const customKeys = Object.keys(e.attributes || {}).filter(k => !fieldMap.has(k));
   let h = '';
   fieldMap.forEach((f, k) => {
     const v = e.attributes[k];
     if (v === undefined || v === null || v === '') return;
-    h += '<dt>' + escapeHtml(f.label) + '</dt><dd>' + formatAttrValue(f, v) + '</dd>';
+    // Pro relation field: prázdné pole = nic
+    if (f.type === 'relation') {
+      const ids = normalizeRelationValue(v);
+      if (ids.length === 0) return;
+    }
+    h += '<dt>' + escapeHtml(f.label) + (f.custom ? ' <small>(vlastní)</small>' : '') + '</dt>' +
+      '<dd>' + formatAttrValue(f, v) + '</dd>';
   });
   customKeys.forEach(k => {
     const v = e.attributes[k];
@@ -9680,6 +10295,15 @@ function formatAttrValue(f, v) {
   if (f.type === 'select' && f.optionLabels && f.optionLabels[v]) return escapeHtml(f.optionLabels[v]);
   if (f.type === 'textarea') return '<div class="markdown attr-textarea">' + renderMarkdown(String(v), { ctx: { depth: 1, includeStack: new Set() } }) + '</div>';
   if (f.type === 'checkbox') return v ? 'Ano' : 'Ne';
+  if (f.type === 'relation') {
+    const ids = normalizeRelationValue(v);
+    if (ids.length === 0) return '<em class="meta">(žádná)</em>';
+    return ids.map(id => {
+      const tgt = findEntity(id);
+      if (!tgt) return '<span class="meta">(smazáno: ' + escapeHtml(id) + ')</span>';
+      return '<a href="#" data-entity="' + escapeHtml(id) + '">' + escapeHtml(getDisplayTitle(tgt)) + '</a>';
+    }).join(', ');
+  }
   return escapeHtml(String(v));
 }
 function renderLinksReadOnly(e) {
@@ -9699,14 +10323,24 @@ function renderLinksReadOnly(e) {
 }
 function renderInverseLinksReadOnly(e) {
   const inv = getInverseLinks(e.id);
-  if (inv.length === 0) return '';
-  return '<ul style="list-style:none;padding-left:0;">' + inv.map(({from,link}) => {
+  const invRel = getInverseRelations(e.id);
+  if (inv.length === 0 && invRel.length === 0) return '';
+  let h = '<ul style="list-style:none;padding-left:0;">';
+  inv.forEach(({from,link}) => {
     const ti = RELATION_TYPES[link.type];
     const il = ti ? ti.inverseLabel : link.type;
-    return '<li><strong>' + escapeHtml(il) + ':</strong> ' +
+    h += '<li><strong>' + escapeHtml(il) + ':</strong> ' +
       '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
       (link.note ? ' <span class="meta">(' + escapeHtml(link.note) + ')</span>' : '') + '</li>';
-  }).join('') + '</ul>';
+  });
+  invRel.forEach(({ from, fieldLabel, aspectLabel: alab }) => {
+    const ctx = alab ? '[' + escapeHtml(alab) + '] ' : '';
+    h += '<li>' + ctx + '<strong>' + escapeHtml(fieldLabel) + ':</strong> ' +
+      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+      ' <span class="meta">(relace)</span></li>';
+  });
+  h += '</ul>';
+  return h;
 }
 function renderAttachmentsRead(e) {
   if (!e.attachments || e.attachments.length === 0) return '';
@@ -9775,7 +10409,6 @@ function renderDetailEdit(main, e) {
       '<button id="btn-save-as-template" title="Vytvořit šablonu z této entity">Uložit jako šablonu</button>' +
     '</div>' +
     '<h2>Úprava entity</h2>' +
-    '<p class="meta">Změny se ukládají automaticky. <kbd>Esc</kbd> nebo „Hotovo“ pro návrat.</p>' +
 
     '<section><h3>Základní</h3>' +
       '<label for="d-title">Název</label><input type="text" id="d-title" value="' + escapeHtml(e.title) + '">' +
@@ -9786,7 +10419,6 @@ function renderDetailEdit(main, e) {
     '</section>' +
 
     '<section><h3>Tělo (Markdown)</h3>' +
-      '<p class="meta">Podporuje <code>[[wiki-linky]]</code>, <code>{{include:id}}</code>, <code>**tučně**</code>, seznamy, citace, kód.</p>' +
       '<label for="d-body" class="sr-only">Tělo</label>' +
       '<textarea id="d-body" class="body-edit" rows="20">' + escapeHtml(e.body) + '</textarea>' +
     '</section>' +
@@ -9819,7 +10451,6 @@ function renderDetailEdit(main, e) {
     '</section>' +
 
     '<section><h3>Aspekty</h3>' +
-      '<p class="meta">Zaškrtnuté aspekty určují, jaké atributy se nabízejí výše.</p>' +
       '<div class="checkbox-list" id="d-aspects">' +
         Object.entries(getActiveAspects()).map(([k,v]) =>
           '<label><input type="checkbox" value="' + k + '"' + ((e.aspects || []).includes(k) ? ' checked' : '') + '> ' + escapeHtml(v.label) + '</label>'
@@ -9925,6 +10556,10 @@ function renderEditAttributes(e) {
     const a = getAspect(ak); if (!a) return;
     a.fields.forEach(f => { if (!fm.has(f.key)) fm.set(f.key, { ...f }); });
   });
+  // Custom field defs (uložené přímo na entitě)
+  if (Array.isArray(e.customFields)) {
+    e.customFields.forEach(f => { if (!fm.has(f.key)) fm.set(f.key, { ...f, custom: true }); });
+  }
   const customKeys = Object.keys(e.attributes || {}).filter(k => !fm.has(k));
   if (fm.size === 0 && customKeys.length === 0) {
     c.innerHTML = '<p class="meta">Žádné atributy. Zaškrtněte aspekt nebo přidejte vlastní.</p>';
@@ -9952,8 +10587,57 @@ function renderEditAttributes(e) {
   c.querySelectorAll('button[data-remove-attr]').forEach(b => {
     b.onclick = () => {
       const k = b.dataset.removeAttr;
-      delete e.attributes[k]; e.updated_at = nowIso(); saveDebounced();
+      delete e.attributes[k];
+      // Smazat i custom field def, pokud je
+      if (Array.isArray(e.customFields)) {
+        e.customFields = e.customFields.filter(f => f.key !== k);
+      }
+      e.updated_at = nowIso(); saveDebounced();
       renderEditAttributes(e); toast('Atribut „' + k + '“ odstraněn.');
+    };
+  });
+  // Relace: tlačítko "vybrat"
+  c.querySelectorAll('button[data-rel-pick]').forEach(b => {
+    b.onclick = () => {
+      const fieldKey = b.dataset.relPick;
+      const fieldDef = fm.get(fieldKey);
+      if (!fieldDef) return;
+      const currentIds = normalizeRelationValue(e.attributes && e.attributes[fieldKey]);
+      openRelationPicker({
+        fieldLabel: fieldDef.label,
+        multiple: !!fieldDef.multiple,
+        aspectFilter: fieldDef.aspectFilter || null,
+        excludeIds: [e.id],
+        currentIds: currentIds,
+        onSelect: (ids) => {
+          if (fieldDef.multiple) {
+            if (ids.length === 0) delete e.attributes[fieldKey];
+            else e.attributes[fieldKey] = ids;
+          } else {
+            if (ids.length === 0) delete e.attributes[fieldKey];
+            else e.attributes[fieldKey] = ids[0];
+          }
+          e.updated_at = nowIso(); save();
+          renderEditAttributes(e);
+          toast('Relace „' + fieldDef.label + '“ aktualizována.');
+        }
+      });
+    };
+  });
+  // Relace: odebrání jedné položky
+  c.querySelectorAll('button[data-rel-remove]').forEach(b => {
+    b.onclick = () => {
+      const fieldKey = b.dataset.relRemove;
+      const idx = parseInt(b.dataset.relIdx, 10);
+      const fieldDef = fm.get(fieldKey);
+      if (!fieldDef) return;
+      const ids = normalizeRelationValue(e.attributes && e.attributes[fieldKey]);
+      ids.splice(idx, 1);
+      if (ids.length === 0) delete e.attributes[fieldKey];
+      else if (fieldDef.multiple) e.attributes[fieldKey] = ids;
+      else e.attributes[fieldKey] = ids[0];
+      e.updated_at = nowIso(); save();
+      renderEditAttributes(e);
     };
   });
 }
@@ -9969,6 +10653,25 @@ function attributeFieldHtml(e, f) {
         escapeHtml((f.optionLabels && f.optionLabels[o]) || o) + '</option>').join('') + '</select>';
   }
   else if (f.type === 'checkbox') inp = '<input type="checkbox" id="' + id + '" data-attr-key="' + escapeHtml(f.key) + '"' + (val === true ? ' checked' : '') + '>';
+  else if (f.type === 'relation') {
+    const ids = normalizeRelationValue(val);
+    const items = ids.map((tid, idx) => {
+      const tgt = findEntity(tid);
+      const lbl = tgt ? getDisplayTitle(tgt) : '(smazáno: ' + tid + ')';
+      return '<span class="relation-chip">' + escapeHtml(lbl) +
+        ' <button type="button" data-rel-remove="' + escapeHtml(f.key) + '" data-rel-idx="' + idx + '" aria-label="Odebrat ' + escapeHtml(lbl) + '">×</button>' +
+        '</span>';
+    }).join(' ');
+    const filterDesc = (f.aspectFilter && f.aspectFilter.length > 0) ?
+      ' <small>(' + f.aspectFilter.map(a => escapeHtml(aspectLabel(a))).join(', ') + ')</small>' : '';
+    const multipleDesc = f.multiple ? ' <small>(více)</small>' : ' <small>(jedna)</small>';
+    inp = '<div class="relation-field" data-rel-key="' + escapeHtml(f.key) + '" id="' + id + '">' +
+      '<div class="relation-chips">' + (items || '<span class="meta">žádná</span>') + '</div>' +
+      '<button type="button" data-rel-pick="' + escapeHtml(f.key) + '">' +
+        (f.multiple ? '+ Vybrat entity…' : (ids.length > 0 ? 'Změnit…' : 'Vybrat entitu…')) + filterDesc + multipleDesc +
+      '</button>' +
+    '</div>';
+  }
   else inp = '<input type="' + escapeHtml(f.type || 'text') + '" id="' + id + '" data-attr-key="' + escapeHtml(f.key) + '" value="' + v + '">';
   const rm = f.custom ? '<button data-remove-attr="' + escapeHtml(f.key) + '" title="Odebrat">×</button>' : '';
   return '<div class="attr-row">' +
@@ -9992,13 +10695,26 @@ function renderEditLinks(e) {
         note + '</span><button data-remove-link="' + idx + '">Odebrat</button></div>';
     }).join('');
   const inv = getInverseLinks(e.id);
-  ic.innerHTML = inv.length === 0 ? '<p class="meta">Žádné příchozí vazby.</p>' :
-    inv.map(({from, link}) => {
+  const invRel = getInverseRelations(e.id);
+  if (inv.length === 0 && invRel.length === 0) {
+    ic.innerHTML = '<p class="meta">Žádné příchozí vazby.</p>';
+  } else {
+    let invH = '';
+    inv.forEach(({from, link}) => {
       const ti = RELATION_TYPES[link.type], il = ti ? ti.inverseLabel : link.type;
-      return '<div class="link-row"><span class="link-target"><strong>' + escapeHtml(il) + ':</strong> ' +
+      invH += '<div class="link-row"><span class="link-target"><strong>' + escapeHtml(il) + ':</strong> ' +
         '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
         (link.note ? ' <span class="meta">(' + escapeHtml(link.note) + ')</span>' : '') + '</span></div>';
-    }).join('');
+    });
+    invRel.forEach(({ from, fieldLabel, aspectLabel: alab }) => {
+      const ctx = alab ? '[' + escapeHtml(alab) + '] ' : '';
+      invH += '<div class="link-row"><span class="link-target">' + ctx +
+        '<strong>' + escapeHtml(fieldLabel) + ':</strong> ' +
+        '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+        ' <span class="meta">(relace)</span></span></div>';
+    });
+    ic.innerHTML = invH;
+  }
   attachEntityRowHandlers(c); attachEntityRowHandlers(ic);
   c.querySelectorAll('button[data-remove-link]').forEach(b => {
     b.onclick = () => {
@@ -10561,21 +11277,240 @@ function openCustomAttrDialog(entity) {
   document.getElementById('attr-key').value = '';
   document.getElementById('attr-type').value = 'text';
   document.getElementById('attr-value').value = '';
+  document.getElementById('attr-rel-multiple').checked = false;
+
+  // Naplnit aspect select
+  const aspectsSel = document.getElementById('attr-rel-aspects');
+  const aspectMap = getActiveAspects();
+  aspectsSel.innerHTML = Object.keys(aspectMap).map(k =>
+    '<option value="' + escapeHtml(k) + '">' + escapeHtml(aspectMap[k].label) + '</option>').join('');
+  // Vyčistit selekci
+  Array.from(aspectsSel.options).forEach(o => o.selected = false);
+
+  // Reagovat na změnu typu
+  const typeSelect = document.getElementById('attr-type');
+  const relOpts = document.getElementById('attr-relation-options');
+  const valueInput = document.getElementById('attr-value');
+  function refreshTypeUI() {
+    const isRel = typeSelect.value === 'relation';
+    relOpts.hidden = !isRel;
+    valueInput.disabled = isRel;
+    if (isRel) valueInput.value = '';
+  }
+  typeSelect.onchange = refreshTypeUI;
+  refreshTypeUI();
+
   d.showModal();
   document.getElementById('attr-key').focus();
   document.getElementById('attr-save').onclick = () => {
     const k = document.getElementById('attr-key').value.trim();
-    const t = document.getElementById('attr-type').value;
+    const t = typeSelect.value;
     const r = document.getElementById('attr-value').value;
     if (!k) { alertMsg('Klíč je prázdný.'); return; }
+
+    if (t === 'relation') {
+      // Uložíme definici typu na entitě (customFields), hodnotu zatím nenastavujeme
+      const multiple = document.getElementById('attr-rel-multiple').checked;
+      const aspectFilter = Array.from(aspectsSel.selectedOptions).map(o => o.value);
+      if (!entity.customFields) entity.customFields = [];
+      entity.customFields.push({
+        key: k, label: k, type: 'relation',
+        multiple: multiple,
+        aspectFilter: aspectFilter.length > 0 ? aspectFilter : null
+      });
+      // Inicializovat hodnotu (prázdná)
+      entity.attributes[k] = multiple ? [] : null;
+      entity.updated_at = nowIso(); save();
+      d.close(); renderEditAttributes(entity); toast('Relační atribut „' + k + '“ přidán. Otevřete editor a vyberte entity.');
+      return;
+    }
+
     let v = r;
     if (t === 'number') v = r === '' ? null : Number(r);
     if (t === 'checkbox') v = r.toLowerCase() === 'true' || r === '1';
     entity.attributes[k] = v;
+    // Přidat custom field def pro typ jiný než text (aby si formátování pamatoval)
+    if (t !== 'text') {
+      if (!entity.customFields) entity.customFields = [];
+      // Přepsat existující stejného klíče
+      entity.customFields = entity.customFields.filter(f => f.key !== k);
+      entity.customFields.push({ key: k, label: k, type: t });
+    }
     entity.updated_at = nowIso(); saveDebounced();
     d.close(); renderEditAttributes(entity); toast('Atribut přidán.');
   };
   document.getElementById('attr-cancel').onclick = () => d.close();
+}
+
+// Picker dialog pro výběr entity (atribut typu 'relation').
+// opts: {
+//   fieldLabel: string,
+//   multiple: boolean,
+//   aspectFilter: string[] | null,    // null nebo prázdný array = jakékoli
+//   excludeIds: string[],             // ID entit, které se nemají nabízet (např. self)
+//   currentIds: string[],             // aktuálně vybraná ID
+//   onSelect: (ids: string[]) => void
+// }
+function openRelationPicker(opts) {
+  const d = document.getElementById('relation-picker');
+  if (!d) return;
+  const titleEl = document.getElementById('relation-picker-title');
+  titleEl.textContent = (opts.multiple ? 'Vybrat entity: ' : 'Vybrat entitu: ') + (opts.fieldLabel || '');
+
+  const searchInput = document.getElementById('rp-search');
+  const aspectSelect = document.getElementById('rp-aspect');
+  const list = document.getElementById('rp-list');
+  const status = document.getElementById('rp-status');
+  const confirmBtn = document.getElementById('rp-confirm');
+  const cancelBtn = document.getElementById('rp-cancel');
+
+  // Stav výběru – modifikujeme přímo, podle multiple
+  let selectedIds = (opts.currentIds || []).slice();
+
+  // Naplnit aspectSelect
+  const allowedAspects = (opts.aspectFilter && opts.aspectFilter.length > 0) ? opts.aspectFilter : null;
+  let aspectOptions = '<option value="">— jakýkoli aspekt —</option>';
+  const aspectMap = getActiveAspects();
+  Object.keys(aspectMap).forEach(ak => {
+    if (allowedAspects && !allowedAspects.includes(ak)) return;
+    aspectOptions += '<option value="' + escapeHtml(ak) + '">' + escapeHtml(aspectMap[ak].label) + '</option>';
+  });
+  aspectSelect.innerHTML = aspectOptions;
+  // Pokud filtr má jen jednu možnost, předvybrat ji
+  if (allowedAspects && allowedAspects.length === 1) {
+    aspectSelect.value = allowedAspects[0];
+  } else {
+    aspectSelect.value = '';
+  }
+
+  searchInput.value = '';
+
+  let activeIndex = 0;
+  let renderedItems = [];
+
+  function refreshList() {
+    const q = searchInput.value.trim().toLowerCase();
+    const aspectFilter = aspectSelect.value || null;
+    const exclude = new Set(opts.excludeIds || []);
+    let items = db.entities.filter(e => {
+      if (e.archived) return false;
+      if (exclude.has(e.id)) return false;
+      // Aplikovat allowedAspects pokud jsou zadané
+      if (allowedAspects && allowedAspects.length > 0) {
+        const has = (e.aspects || []).some(a => allowedAspects.includes(a));
+        if (!has) return false;
+      }
+      // Aplikovat aspect filter
+      if (aspectFilter) {
+        if (!(e.aspects || []).includes(aspectFilter)) return false;
+      }
+      // Hledání podle názvu
+      if (q) {
+        const title = (getDisplayTitle(e) || '').toLowerCase();
+        if (!title.includes(q)) return false;
+      }
+      return true;
+    });
+    // Setřídit: vybrané první, pak abecedně
+    items.sort((a, b) => {
+      const aSel = selectedIds.includes(a.id) ? 0 : 1;
+      const bSel = selectedIds.includes(b.id) ? 0 : 1;
+      if (aSel !== bSel) return aSel - bSel;
+      return getDisplayTitle(a).localeCompare(getDisplayTitle(b), 'cs');
+    });
+    items = items.slice(0, 200);
+    renderedItems = items;
+    list.innerHTML = items.map((e, i) => {
+      const checked = selectedIds.includes(e.id);
+      const aspectsTxt = (e.aspects || []).map(a => aspectLabel(a)).join(', ');
+      const indicator = opts.multiple
+        ? '<input type="checkbox" tabindex="-1"' + (checked ? ' checked' : '') + ' style="pointer-events:none;"> '
+        : (checked ? '● ' : '○ ');
+      return '<li role="option" data-id="' + escapeHtml(e.id) + '" data-idx="' + i + '"' +
+        (checked ? ' aria-selected="true" class="checked"' : '') + '>' +
+        indicator + escapeHtml(getDisplayTitle(e)) +
+        (aspectsTxt ? ' <small class="meta">(' + escapeHtml(aspectsTxt) + ')</small>' : '') +
+        '</li>';
+    }).join('');
+    if (items.length === 0) {
+      list.innerHTML = '<li class="meta" style="padding:0.7em;cursor:default;">Žádná entita neodpovídá.</li>';
+    }
+    status.textContent = items.length + ' entit nalezeno' + (selectedIds.length > 0 ? ', ' + selectedIds.length + ' vybráno' : '');
+    activeIndex = 0;
+    list.setAttribute('aria-activedescendant', '');
+  }
+
+  refreshList();
+
+  // Live search
+  searchInput.oninput = refreshList;
+  aspectSelect.onchange = refreshList;
+
+  // Klik / Enter → toggle položka
+  function toggleItemAt(idx) {
+    if (idx < 0 || idx >= renderedItems.length) return;
+    const e = renderedItems[idx];
+    const id = e.id;
+    if (selectedIds.includes(id)) {
+      selectedIds = selectedIds.filter(x => x !== id);
+    } else {
+      if (opts.multiple) selectedIds.push(id);
+      else selectedIds = [id];
+    }
+    if (!opts.multiple) {
+      // Pro single režim okamžitě potvrdíme
+      opts.onSelect(selectedIds);
+      d.close();
+      return;
+    }
+    refreshList();
+  }
+
+  list.onclick = (ev) => {
+    const li = ev.target.closest('li[data-idx]');
+    if (!li) return;
+    const idx = parseInt(li.dataset.idx, 10);
+    toggleItemAt(idx);
+  };
+
+  // Klávesnice ve search inputu i v listu
+  function handleKey(ev) {
+    if (ev.key === 'ArrowDown') {
+      ev.preventDefault();
+      activeIndex = Math.min(activeIndex + 1, renderedItems.length - 1);
+      const items = list.querySelectorAll('li[data-idx]');
+      items.forEach(i => i.removeAttribute('aria-selected'));
+      const cur = items[activeIndex];
+      if (cur) {
+        cur.setAttribute('aria-selected', 'true');
+        cur.scrollIntoView({ block: 'nearest' });
+      }
+    } else if (ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      activeIndex = Math.max(activeIndex - 1, 0);
+      const items = list.querySelectorAll('li[data-idx]');
+      items.forEach(i => i.removeAttribute('aria-selected'));
+      const cur = items[activeIndex];
+      if (cur) {
+        cur.setAttribute('aria-selected', 'true');
+        cur.scrollIntoView({ block: 'nearest' });
+      }
+    } else if (ev.key === 'Enter' && document.activeElement === searchInput) {
+      ev.preventDefault();
+      toggleItemAt(activeIndex);
+    }
+  }
+  searchInput.onkeydown = handleKey;
+
+  cancelBtn.onclick = (ev) => { ev.preventDefault(); d.close(); };
+  document.getElementById('relation-picker-form').onsubmit = (ev) => {
+    ev.preventDefault();
+    opts.onSelect(selectedIds);
+    d.close();
+  };
+
+  d.showModal();
+  setTimeout(() => searchInput.focus(), 50);
 }
 
 function openLinkDialog(entity) {
@@ -11314,6 +12249,12 @@ function openCustomAspectEditor(existing) {
     const fieldsClean = _caFields.filter(f => f.key && f.label).map(f => {
       const out = { key: f.key, label: f.label, type: f.type || 'text' };
       if (f.type === 'select' && f.options) out.options = f.options;
+      if (f.type === 'relation') {
+        out.multiple = !!f.multiple;
+        if (Array.isArray(f.aspectFilter) && f.aspectFilter.length > 0) {
+          out.aspectFilter = f.aspectFilter;
+        }
+      }
       return out;
     });
     if (existing) {
@@ -11352,18 +12293,36 @@ function caRenderFields() {
     c.innerHTML = '<p class="meta">Zatím žádná pole. Přidejte alespoň jedno tlačítkem níže.</p>';
     return;
   }
-  c.innerHTML = _caFields.map((f, i) =>
-    '<div class="ca-field-row">' +
+  const aspectMap = getActiveAspects();
+  const aspectKeys = Object.keys(aspectMap);
+  c.innerHTML = _caFields.map((f, i) => {
+    const isRel = f.type === 'relation';
+    let extra = '';
+    if (f.type === 'select') {
+      extra = '<div style="grid-column:1/-1;"><label>Volby (oddělené čárkou)<input type="text" data-cf-options="' + i + '" value="' + escapeHtml((f.options || []).join(', ')) + '" placeholder="možnost A, možnost B"></label></div>';
+    }
+    if (isRel) {
+      const filter = f.aspectFilter || [];
+      extra = '<div style="grid-column:1/-1;">' +
+        '<label><input type="checkbox" data-cf-multiple="' + i + '"' + (f.multiple ? ' checked' : '') + '> Více entit (jinak jedna)</label><br>' +
+        '<label>Omezit na aspekty (žádný = jakýkoli)<br>' +
+        '<select data-cf-aspect-filter="' + i + '" multiple size="5">' +
+        aspectKeys.map(ak =>
+          '<option value="' + escapeHtml(ak) + '"' + (filter.includes(ak) ? ' selected' : '') + '>' + escapeHtml(aspectMap[ak].label) + '</option>'
+        ).join('') +
+        '</select></label></div>';
+    }
+    return '<div class="ca-field-row">' +
       '<div><label>Klíč<input type="text" data-cf-key="' + i + '" value="' + escapeHtml(f.key || '') + '" placeholder="muj_klic"></label></div>' +
       '<div><label>Štítek<input type="text" data-cf-label="' + i + '" value="' + escapeHtml(f.label || '') + '" placeholder="Název pole"></label></div>' +
       '<div><label>Typ<select data-cf-type="' + i + '">' +
-        ['text','textarea','number','date','datetime-local','tel','email','url','checkbox','select'].map(t =>
+        ['text','textarea','number','date','datetime-local','tel','email','url','checkbox','select','relation'].map(t =>
           '<option value="' + t + '"' + (f.type === t ? ' selected' : '') + '>' + t + '</option>').join('') +
       '</select></label></div>' +
       '<div><button type="button" class="danger" data-cf-remove="' + i + '" title="Odebrat pole">×</button></div>' +
-      (f.type === 'select' ? '<div style="grid-column:1/-1;"><label>Volby (oddělené čárkou)<input type="text" data-cf-options="' + i + '" value="' + escapeHtml((f.options || []).join(', ')) + '" placeholder="možnost A, možnost B"></label></div>' : '') +
-    '</div>'
-  ).join('');
+      extra +
+    '</div>';
+  }).join('');
   c.querySelectorAll('[data-cf-key]').forEach(inp => {
     inp.oninput = () => { _caFields[Number(inp.dataset.cfKey)].key = inp.value.trim(); };
   });
@@ -11372,7 +12331,12 @@ function caRenderFields() {
   });
   c.querySelectorAll('[data-cf-type]').forEach(sel => {
     sel.onchange = () => {
-      const i = Number(sel.dataset.cfType); _caFields[i].type = sel.value;
+      const i = Number(sel.dataset.cfType);
+      _caFields[i].type = sel.value;
+      if (sel.value === 'relation') {
+        if (_caFields[i].multiple === undefined) _caFields[i].multiple = false;
+        if (!_caFields[i].aspectFilter) _caFields[i].aspectFilter = [];
+      }
       caRenderFields();
     };
   });
@@ -11380,6 +12344,18 @@ function caRenderFields() {
     inp.oninput = () => {
       const i = Number(inp.dataset.cfOptions);
       _caFields[i].options = inp.value.split(',').map(s => s.trim()).filter(Boolean);
+    };
+  });
+  c.querySelectorAll('[data-cf-multiple]').forEach(inp => {
+    inp.onchange = () => {
+      const i = Number(inp.dataset.cfMultiple);
+      _caFields[i].multiple = inp.checked;
+    };
+  });
+  c.querySelectorAll('[data-cf-aspect-filter]').forEach(sel => {
+    sel.onchange = () => {
+      const i = Number(sel.dataset.cfAspectFilter);
+      _caFields[i].aspectFilter = Array.from(sel.selectedOptions).map(o => o.value);
     };
   });
   c.querySelectorAll('[data-cf-remove]').forEach(btn => {
