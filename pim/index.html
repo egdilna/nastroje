@@ -15,7 +15,7 @@ body.theme-light { color: #1a1a1a; background: #fafafa; }
 .skip-link { position: absolute; top: -100px; left: 0; padding: 0.5em 1em; background: #000; color: #fff; z-index: 1000; }
 .skip-link:focus { top: 0; }
 :focus-visible { outline: 3px solid #0066cc; outline-offset: 2px; }
-header[role="banner"] { background: #fff; border-bottom: 1px solid #ddd; padding: 0.75em 1em; position: sticky; top: 0; z-index: 10; }
+header[role="banner"] { background: #fff; border-bottom: 1px solid #ddd; padding: 0.75em 1em; }
 @media (prefers-color-scheme: dark) { header[role="banner"] { background: #222; border-bottom-color: #333; } }
 body.theme-dark header[role="banner"] { background: #222; border-bottom-color: #333; }
 body.theme-light header[role="banner"] { background: #fff; border-bottom-color: #ddd; }
@@ -279,9 +279,8 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
 
 <dialog id="dialog-help" aria-labelledby="dialog-help-title">
   <h2 id="dialog-help-title">Klávesové zkratky a syntaxe</h2>
-  <p class="meta">Na dotykových zařízeních (mobil, tablet) jsou přímé klávesové zkratky vypnuté – používejte tlačítka v rozhraní.</p>
   <table>
-    <caption>Globální zkratky (mimo editační pole, jen na zařízení s klávesnicí)</caption>
+    <caption>Globální zkratky (mimo editační pole)</caption>
     <thead><tr><th scope="col">Klávesa</th><th scope="col">Akce</th></tr></thead>
     <tbody>
       <tr><td><kbd>I</kbd></td><td>Inbox</td></tr>
@@ -715,7 +714,7 @@ let db = createEmptyDb();
 let state = {
   view: 'inbox', detailId: null, detailMode: 'read', savedViewId: null,
   filter: { aspect: '', tag: '', text: '', status: '' },
-  settings: { theme: 'auto', audioFeedback: false, debugMode: false, userName: '',
+  settings: { theme: 'auto', audioFeedback: true, debugMode: false, userName: '',
     disabledAspects: [],
     github: { owner: '', repo: '', path: '', branch: 'main', autoLoadOnStart: false } },
   justNavigated: false
@@ -819,6 +818,7 @@ function load() {
     if (migratedFromDefault) {
       setTimeout(() => toast('Data automaticky migrována do projektového úložiště.', 4000), 500);
     }
+    setTimeout(() => playSound('load'), 100);
     return true;
   } catch (e) { alertMsg('Chyba načtení: ' + e.message); return false; }
 }
@@ -891,6 +891,7 @@ async function exportToFile(includeFiles = true) {
   a.href = url; a.download = `pim-${ts}.json`; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 100);
   toast('Export stažen.');
+  playSound('save');
 }
 
 async function importFromFile(file) {
@@ -989,14 +990,23 @@ function statusMsgDebounced(msg) {
   clearTimeout(_statusMsgTimer);
   _statusMsgTimer = setTimeout(() => statusMsg(msg), 600);
 }
-function alertMsg(msg) { document.getElementById('alert-region').textContent = msg; console.warn(msg); }
+function alertMsg(msg) {
+  document.getElementById('alert-region').textContent = msg;
+  console.warn(msg);
+  playSound('error');
+}
 function toast(msg, ms = 2500) {
   statusMsg(msg);
   let t = document.querySelector('.toast'); if (t) t.remove();
-  t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
+  t = document.createElement('div');
+  t.className = 'toast';
+  // Toast je vizuální notifikace; text je už v aria-live status-region.
+  // aria-hidden zabrání screen readeru číst toast podruhé / "navštívit" ho.
+  t.setAttribute('aria-hidden', 'true');
+  t.textContent = msg;
   document.body.appendChild(t);
   setTimeout(() => { if (t.parentNode) t.remove(); }, ms);
-  if (state.settings.audioFeedback) playTone(880, 0.05);
+  // Bez zvuku – konkrétní zvuky nastavují volající podle typu události
 }
 function debug(msg) {
   if (!state.settings.debugMode) return;
@@ -1021,6 +1031,49 @@ function playTone(freq, duration) {
     gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
     osc.start(); osc.stop(audioCtx.currentTime + duration);
   } catch (e) { /* ignore */ }
+}
+
+// Zvukové efekty pro různé události. Každá má charakteristický krátký motiv,
+// aby uživatel slyšel rozdíl mezi „načteno", „uloženo", „chyba" atd.
+function playSound(kind) {
+  if (!state.settings || !state.settings.audioFeedback) return;
+  switch (kind) {
+    case 'load':
+      // Načtení dat – stoupavé dva tóny (C5 → E5)
+      playTone(523, 0.08);
+      setTimeout(() => playTone(659, 0.08), 90);
+      break;
+    case 'save':
+      // Uložení – jeden krátký jemný tón (G5)
+      playTone(784, 0.07);
+      break;
+    case 'save-gh':
+      // Uložení na GitHub – tři krátké tóny stoupající (C5-E5-G5)
+      playTone(523, 0.06);
+      setTimeout(() => playTone(659, 0.06), 70);
+      setTimeout(() => playTone(784, 0.08), 140);
+      break;
+    case 'save-entity':
+      // Uložení entity z editu – jeden krátký vyšší tón (A5)
+      playTone(880, 0.06);
+      break;
+    case 'success':
+      // Obecný úspěch – stoupavé dva tóny
+      playTone(659, 0.06);
+      setTimeout(() => playTone(880, 0.08), 80);
+      break;
+    case 'error':
+      // Chyba – klesavé dva tóny (A4 → E4)
+      playTone(440, 0.1);
+      setTimeout(() => playTone(330, 0.15), 110);
+      break;
+    case 'click':
+      // Velmi tichý cvak (toast)
+      playTone(880, 0.03);
+      break;
+    default:
+      playTone(880, 0.05);
+  }
 }
 // ==== MARKDOWN ====
 function renderMarkdown(text, options = {}) {
@@ -2855,7 +2908,12 @@ function renderDetailEdit(main, e) {
   }
 
   document.getElementById('back-btn').onclick = goBack;
-  document.getElementById('btn-done').onclick = () => { state.detailMode = 'read'; render(); };
+  document.getElementById('btn-done').onclick = () => {
+    save(); // explicitní uložení (saveDebounced má 300ms zpoždění)
+    state.detailMode = 'read';
+    render();
+    playSound('save-entity');
+  };
   document.getElementById('btn-duplicate-edit').onclick = () => duplicateEntity(e);
 
   document.getElementById('d-title').oninput = (ev) => { e.title = ev.target.value; e.updated_at = nowIso(); saveDebounced(); };
@@ -3933,13 +3991,6 @@ function loadSampleData() {
 }
 
 // ==== KLÁVESOVÉ ZKRATKY ====
-// Detekce dotykového zařízení – na mobilu vypneme přímé klávesy (S, N, I, atd.),
-// protože screen reader gesta mohou klávesy emulovat a nechtěně triggerovat akce.
-// Modifikátorové zkratky (Alt+Shift+písmeno přes accesskey, Esc, Ctrl+...) zůstávají.
-function isTouchDevice() {
-  return ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-}
-
 function setupKeyboard() {
   document.addEventListener('keydown', (ev) => {
     const openDlg = document.querySelector('dialog[open]');
@@ -3950,15 +4001,13 @@ function setupKeyboard() {
     const tag = (document.activeElement.tagName || '').toLowerCase();
     const inField = tag === 'input' || tag === 'textarea' || tag === 'select';
 
-    // Esc v edit módu detailu = zpět na read (vždy, i mobilní)
+    // Esc v edit módu detailu = zpět na read
     if (ev.key === 'Escape' && state.view === 'detail' && state.detailMode === 'edit') {
       state.detailMode = 'read'; render(); ev.preventDefault(); return;
     }
 
     // Vše ostatní jen MIMO editační pole; v editačních polích slouží accesskey (Alt+Shift+písmeno)
     if (inField) return;
-    // Na mobilu/dotykovém zařízení vypneme přímé klávesy zcela – screen reader by je mohl spouštět nechtěně.
-    if (isTouchDevice()) return;
 
     // Hlavní záložky – přímé klávesy (jen mimo editační pole)
     if (!ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey) {
@@ -3997,7 +4046,12 @@ function setupKeyboard() {
     // U v edit módu uloží a vrátí na čtení (mimo editační pole; v poli funguje Ctrl+U)
     else if ((ev.key === 'u' || ev.key === 'U') && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey
              && state.view === 'detail' && state.detailMode === 'edit') {
-      state.detailMode = 'read'; render(); toast('Uloženo.'); ev.preventDefault();
+      save();
+      state.detailMode = 'read';
+      render();
+      toast('Uloženo.');
+      playSound('save-entity');
+      ev.preventDefault();
     }
     // R přidá odchozí vazbu na existující entitu (bez shiftu)
     // Shift+R vytvoří novou související entitu
@@ -4643,6 +4697,7 @@ const GH = {
       save();
       this._setStatus('ok', 'Načteno z GitHubu (' + db.entities.length + ' entit).');
       if (!silent) toast('✓ Načteno z GitHubu: ' + db.entities.length + ' entit, ' + getAllTags().length + ' tagů, ' + db.savedViews.length + ' pohledů.');
+      playSound('load');
       render();
       return true;
     } catch (e) {
@@ -4676,7 +4731,7 @@ const GH = {
     }
     this._setStatus('syncing');
     toast('Nahrávám na GitHub…', 60000);
-    if (state.settings.audioFeedback) playTone(440, 0.05);
+    playSound('click');
     try {
       const g = state.settings.github;
 
@@ -4803,7 +4858,7 @@ const GH = {
       if (attDeleted > 0) parts.push('- ' + attDeleted + ' smazáno');
       if (wasNew) parts.push('(nový soubor)');
       toast(parts.join(', ') + '.', 5000);
-      if (state.settings.audioFeedback) playTone(660, 0.1);
+      playSound('save-gh');
 
       // Migrace defaultního tabu na projektový mód
       if (!isProjectTab() && location.search === '') {
@@ -5550,6 +5605,7 @@ function downloadEntityAsMarkdown(entity) {
   a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   toast('Staženo: ' + fname);
+  playSound('save');
 }
 
 async function copyEntityAsMarkdown(entity) {
@@ -5588,6 +5644,7 @@ function downloadEntityAsDocx(entity) {
     a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
     toast('Staženo: ' + fname);
+    playSound('save');
   } catch (e) {
     alertMsg('Generování DOCX selhalo: ' + e.message);
     if (typeof debug === 'function') debug('DOCX error: ' + e.message);
@@ -5763,6 +5820,7 @@ function exportEntityAsPdf(entity) {
     // Drobné zpoždění a pak focus, aby měl uživatel vše připravené
     setTimeout(() => { try { win.focus(); } catch (e) {} }, 200);
     toast('Otevřeno tiskové okno. Pro PDF zvolte v dialogu tisku „Uložit jako PDF".');
+    playSound('save');
   } catch (e) {
     alertMsg('PDF export selhal: ' + e.message);
   }
@@ -5944,6 +6002,7 @@ function downloadJsonExport(scope, options) {
     a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
     toast('✓ JSON export: ' + fname + ' (' + exportObj.db.entities.length + ' entit, ' + Math.round(json.length/1024) + ' KB)');
+    playSound('save');
   } catch (e) {
     alertMsg('Export selhal: ' + e.message);
   }
@@ -6402,6 +6461,7 @@ async function downloadXlsxExport(opts) {
 
     XLSX.writeFile(wb, opts.fname);
     toast('✓ Excel export: ' + opts.fname + ' (' + opts.entities.length + ' entit)');
+    playSound('save');
   } catch (e) {
     alertMsg('Excel export selhal: ' + e.message);
     if (typeof debug === 'function') debug('XLSX error: ' + e.message);
@@ -6869,7 +6929,7 @@ body.theme-light { color: #1a1a1a; background: #fafafa; }
 .skip-link { position: absolute; top: -100px; left: 0; padding: 0.5em 1em; background: #000; color: #fff; z-index: 1000; }
 .skip-link:focus { top: 0; }
 :focus-visible { outline: 3px solid #0066cc; outline-offset: 2px; }
-header[role="banner"] { background: #fff; border-bottom: 1px solid #ddd; padding: 0.75em 1em; position: sticky; top: 0; z-index: 10; }
+header[role="banner"] { background: #fff; border-bottom: 1px solid #ddd; padding: 0.75em 1em; }
 @media (prefers-color-scheme: dark) { header[role="banner"] { background: #222; border-bottom-color: #333; } }
 body.theme-dark header[role="banner"] { background: #222; border-bottom-color: #333; }
 body.theme-light header[role="banner"] { background: #fff; border-bottom-color: #ddd; }
@@ -7173,9 +7233,8 @@ body.viewer-mode .btn-group:has(#d-add-comment) { display: none !important; }
 
 <dialog id="dialog-help" aria-labelledby="dialog-help-title">
   <h2 id="dialog-help-title">Klávesové zkratky a syntaxe</h2>
-  <p class="meta">Na dotykových zařízeních (mobil, tablet) jsou přímé klávesové zkratky vypnuté – používejte tlačítka v rozhraní.</p>
   <table>
-    <caption>Globální zkratky (mimo editační pole, jen na zařízení s klávesnicí)</caption>
+    <caption>Globální zkratky (mimo editační pole)</caption>
     <thead><tr><th scope="col">Klávesa</th><th scope="col">Akce</th></tr></thead>
     <tbody>
       <tr><td><kbd>I</kbd></td><td>Inbox</td></tr>
@@ -7609,7 +7668,7 @@ let db = createEmptyDb();
 let state = {
   view: 'inbox', detailId: null, detailMode: 'read', savedViewId: null,
   filter: { aspect: '', tag: '', text: '', status: '' },
-  settings: { theme: 'auto', audioFeedback: false, debugMode: false, userName: '',
+  settings: { theme: 'auto', audioFeedback: true, debugMode: false, userName: '',
     disabledAspects: [],
     github: { owner: '', repo: '', path: '', branch: 'main', autoLoadOnStart: false } },
   justNavigated: false
@@ -7713,6 +7772,7 @@ function load() {
     if (migratedFromDefault) {
       setTimeout(() => toast('Data automaticky migrována do projektového úložiště.', 4000), 500);
     }
+    setTimeout(() => playSound('load'), 100);
     return true;
   } catch (e) { alertMsg('Chyba načtení: ' + e.message); return false; }
 }
@@ -7785,6 +7845,7 @@ async function exportToFile(includeFiles = true) {
   a.href = url; a.download = \`pim-\${ts}.json\`; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 100);
   toast('Export stažen.');
+  playSound('save');
 }
 
 async function importFromFile(file) {
@@ -7883,14 +7944,23 @@ function statusMsgDebounced(msg) {
   clearTimeout(_statusMsgTimer);
   _statusMsgTimer = setTimeout(() => statusMsg(msg), 600);
 }
-function alertMsg(msg) { document.getElementById('alert-region').textContent = msg; console.warn(msg); }
+function alertMsg(msg) {
+  document.getElementById('alert-region').textContent = msg;
+  console.warn(msg);
+  playSound('error');
+}
 function toast(msg, ms = 2500) {
   statusMsg(msg);
   let t = document.querySelector('.toast'); if (t) t.remove();
-  t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
+  t = document.createElement('div');
+  t.className = 'toast';
+  // Toast je vizuální notifikace; text je už v aria-live status-region.
+  // aria-hidden zabrání screen readeru číst toast podruhé / "navštívit" ho.
+  t.setAttribute('aria-hidden', 'true');
+  t.textContent = msg;
   document.body.appendChild(t);
   setTimeout(() => { if (t.parentNode) t.remove(); }, ms);
-  if (state.settings.audioFeedback) playTone(880, 0.05);
+  // Bez zvuku – konkrétní zvuky nastavují volající podle typu události
 }
 function debug(msg) {
   if (!state.settings.debugMode) return;
@@ -7915,6 +7985,49 @@ function playTone(freq, duration) {
     gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
     osc.start(); osc.stop(audioCtx.currentTime + duration);
   } catch (e) { /* ignore */ }
+}
+
+// Zvukové efekty pro různé události. Každá má charakteristický krátký motiv,
+// aby uživatel slyšel rozdíl mezi „načteno", „uloženo", „chyba" atd.
+function playSound(kind) {
+  if (!state.settings || !state.settings.audioFeedback) return;
+  switch (kind) {
+    case 'load':
+      // Načtení dat – stoupavé dva tóny (C5 → E5)
+      playTone(523, 0.08);
+      setTimeout(() => playTone(659, 0.08), 90);
+      break;
+    case 'save':
+      // Uložení – jeden krátký jemný tón (G5)
+      playTone(784, 0.07);
+      break;
+    case 'save-gh':
+      // Uložení na GitHub – tři krátké tóny stoupající (C5-E5-G5)
+      playTone(523, 0.06);
+      setTimeout(() => playTone(659, 0.06), 70);
+      setTimeout(() => playTone(784, 0.08), 140);
+      break;
+    case 'save-entity':
+      // Uložení entity z editu – jeden krátký vyšší tón (A5)
+      playTone(880, 0.06);
+      break;
+    case 'success':
+      // Obecný úspěch – stoupavé dva tóny
+      playTone(659, 0.06);
+      setTimeout(() => playTone(880, 0.08), 80);
+      break;
+    case 'error':
+      // Chyba – klesavé dva tóny (A4 → E4)
+      playTone(440, 0.1);
+      setTimeout(() => playTone(330, 0.15), 110);
+      break;
+    case 'click':
+      // Velmi tichý cvak (toast)
+      playTone(880, 0.03);
+      break;
+    default:
+      playTone(880, 0.05);
+  }
 }
 // ==== MARKDOWN ====
 function renderMarkdown(text, options = {}) {
@@ -9749,7 +9862,12 @@ function renderDetailEdit(main, e) {
   }
 
   document.getElementById('back-btn').onclick = goBack;
-  document.getElementById('btn-done').onclick = () => { state.detailMode = 'read'; render(); };
+  document.getElementById('btn-done').onclick = () => {
+    save(); // explicitní uložení (saveDebounced má 300ms zpoždění)
+    state.detailMode = 'read';
+    render();
+    playSound('save-entity');
+  };
   document.getElementById('btn-duplicate-edit').onclick = () => duplicateEntity(e);
 
   document.getElementById('d-title').oninput = (ev) => { e.title = ev.target.value; e.updated_at = nowIso(); saveDebounced(); };
@@ -10827,13 +10945,6 @@ function loadSampleData() {
 }
 
 // ==== KLÁVESOVÉ ZKRATKY ====
-// Detekce dotykového zařízení – na mobilu vypneme přímé klávesy (S, N, I, atd.),
-// protože screen reader gesta mohou klávesy emulovat a nechtěně triggerovat akce.
-// Modifikátorové zkratky (Alt+Shift+písmeno přes accesskey, Esc, Ctrl+...) zůstávají.
-function isTouchDevice() {
-  return ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-}
-
 function setupKeyboard() {
   document.addEventListener('keydown', (ev) => {
     const openDlg = document.querySelector('dialog[open]');
@@ -10844,15 +10955,13 @@ function setupKeyboard() {
     const tag = (document.activeElement.tagName || '').toLowerCase();
     const inField = tag === 'input' || tag === 'textarea' || tag === 'select';
 
-    // Esc v edit módu detailu = zpět na read (vždy, i mobilní)
+    // Esc v edit módu detailu = zpět na read
     if (ev.key === 'Escape' && state.view === 'detail' && state.detailMode === 'edit') {
       state.detailMode = 'read'; render(); ev.preventDefault(); return;
     }
 
     // Vše ostatní jen MIMO editační pole; v editačních polích slouží accesskey (Alt+Shift+písmeno)
     if (inField) return;
-    // Na mobilu/dotykovém zařízení vypneme přímé klávesy zcela – screen reader by je mohl spouštět nechtěně.
-    if (isTouchDevice()) return;
 
     // Hlavní záložky – přímé klávesy (jen mimo editační pole)
     if (!ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey) {
@@ -10891,7 +11000,12 @@ function setupKeyboard() {
     // U v edit módu uloží a vrátí na čtení (mimo editační pole; v poli funguje Ctrl+U)
     else if ((ev.key === 'u' || ev.key === 'U') && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey
              && state.view === 'detail' && state.detailMode === 'edit') {
-      state.detailMode = 'read'; render(); toast('Uloženo.'); ev.preventDefault();
+      save();
+      state.detailMode = 'read';
+      render();
+      toast('Uloženo.');
+      playSound('save-entity');
+      ev.preventDefault();
     }
     // R přidá odchozí vazbu na existující entitu (bez shiftu)
     // Shift+R vytvoří novou související entitu
@@ -11619,7 +11733,8 @@ function downloadStaticViewer() {
       msg += '. Pro funkční přílohy vytvořte vedle souboru podadresář attachments/ s ' + attCount + ' soubory.';
     }
     toast(msg, 8000);
-    alertMsg(msg);
+    statusMsg(msg);
+    playSound('save');
   } catch (e) {
     alertMsg('Generování statického prohlížeče selhalo: ' + e.message);
     debug('Static viewer error: ' + e.message);
