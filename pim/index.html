@@ -163,6 +163,7 @@ body.theme-dark .markdown aside.cm-comment { background: rgba(255,210,80,0.15); 
 .markdown li.task-item { list-style: none; margin-left: -1.5em; padding-left: 0; }
 .markdown li.task-item input[type="checkbox"] { margin-right: 0.5em; vertical-align: middle; }
 .markdown li.task-item.task-done { color: #888; }
+.task-counter { margin: 0.2em 0 0.4em; font-style: italic; }
 .markdown li.task-item.task-done > .task-text { text-decoration: line-through; }
 .markdown code { background: #f0f0f0; padding: 0.1em 0.3em; border-radius: 3px; font-size: 0.9em; font-family: ui-monospace, monospace; }
 body.theme-dark .markdown code { background: #2a2a2a; }
@@ -1164,13 +1165,15 @@ function renderBlock(block, ctx) {
       const taskMatch = l.match(/^(\s*[-*]\s+)\[([ xX])\]\s*(.*)$/);
       if (taskMatch) {
         const checked = taskMatch[2] !== ' ';
-        // Pokud jsme v hlavním těle (ne transklusi), tasky jsou interaktivní
-        const interactive = ctx && ctx.depth === 0 && !ctx.disableTaskInteractivity;
+        // Interaktivní v body (depth 0), nebo když ctx specifikuje taskSource (atribut textarea)
+        const interactive = ctx && !ctx.disableTaskInteractivity &&
+          (ctx.depth === 0 || ctx.taskSource);
         if (!ctx._taskCounter) ctx._taskCounter = 0;
         const idx = ctx._taskCounter++;
         const cls = 'task-item' + (checked ? ' task-done' : '');
+        const sourceAttr = ctx.taskSource ? ' data-md-task-source="' + escapeHtml(ctx.taskSource) + '"' : '';
         const cb = interactive
-          ? '<input type="checkbox"' + (checked ? ' checked' : '') + ' data-md-task="' + idx + '">'
+          ? '<input type="checkbox"' + (checked ? ' checked' : '') + ' data-md-task="' + idx + '"' + sourceAttr + '>'
           : '<input type="checkbox"' + (checked ? ' checked' : '') + ' disabled aria-disabled="true">';
         return '<li class="' + cls + '">' + cb + '<span class="task-text">' + renderInline(taskMatch[3], ctx) + '</span></li>';
       }
@@ -1308,7 +1311,60 @@ function findEntityByTitle(title) {
     getDisplayTitle(e).toLowerCase() === t
   );
 }
+// Spočítá markdown task položky `- [ ]` / `- [x]` v textu.
+// Vrací { total, done, undone } nebo null pokud žádné neexistují.
+function countMarkdownTasks(text) {
+  if (!text) return null;
+  const re = /^\s*[-*]\s+\[([ xX])\]/gm;
+  let total = 0, done = 0;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    total++;
+    if (m[1] !== ' ') done++;
+  }
+  if (total === 0) return null;
+  return { total, done, undone: total - done };
+}
+
+// Vrátí lidský popis stavu tasků: "2 z 4 nedokončené" / "Vše hotové (3)" / "1 nedokončený (z 1)"
+function describeTaskCounts(counts) {
+  if (!counts) return '';
+  if (counts.undone === 0) return 'Vše hotové (' + counts.total + ')';
+  if (counts.total === 1) return '1 nedokončený';
+  return counts.undone + ' z ' + counts.total + ' nedokončené' + (counts.undone === 1 ? '' : (counts.undone < 5 ? '' : 'ch'));
+}
+
 function addEntity(e) { db.entities.push(e); saveDebounced(); }
+
+// Pokud je název ve tvaru "[Label](https://url)" (případně s okolním whitespace),
+// převede entitu na záložku: nastaví název na Label, doplní URL atribut, zaškrtne
+// aspekt Bookmark a původní markdown link uloží do těla entity.
+// Vrací true pokud transformace proběhla.
+function tryExtractMarkdownLinkFromTitle(entity) {
+  if (!entity || !entity.title) return false;
+  const m = entity.title.match(/^\s*\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)\s*$/);
+  if (!m) return false;
+  const label = m[1].trim();
+  const url = m[2].trim();
+  const original = entity.title;
+  if (!label) return false;
+  entity.title = label;
+  // Aspekt Bookmark
+  if (!entity.aspects) entity.aspects = [];
+  if (!entity.aspects.includes('Bookmark')) entity.aspects.push('Bookmark');
+  // Atribut URL
+  if (!entity.attributes) entity.attributes = {};
+  entity.attributes.url = url;
+  // Tělo – odkaz vždy na začátek, prázdný řádek mezi ním a zbytkem
+  const linkBlock = original.trim();
+  if (!entity.body || !entity.body.trim()) {
+    entity.body = linkBlock;
+  } else if (!entity.body.includes(linkBlock)) {
+    entity.body = linkBlock + '\n\n' + entity.body.trimStart();
+  }
+  entity.updated_at = nowIso();
+  return true;
+}
 
 // Parsuje z názvu úkolu termín v přirozeném jazyce. Vrací { deadline, cleanedTitle, matched }
 // nebo null pokud nic nenalezeno. Volá se při zaškrtnutí aspektu Task.
@@ -2025,30 +2081,43 @@ function attachMarkdownLinkHandlers(root) {
   });
 }
 
-// Interaktivní MD task checkboxy: kliknutí přepne [ ] ↔ [x] v body source
+// Interaktivní MD task checkboxy: kliknutí přepne [ ] ↔ [x] ve zdroji
+// Zdrojem je buď entity.body (default) nebo entity.attributes[attrKey], 
+// rozlišeno přes data-md-task-source atribut na checkboxu.
 function attachMarkdownTaskHandlers(root, entity) {
   if (!entity) return;
   root.querySelectorAll('input[type="checkbox"][data-md-task]').forEach(cb => {
     cb.onchange = () => {
       const idx = Number(cb.dataset.mdTask);
       if (isNaN(idx)) return;
-      // Najít N-tý výskyt `\[[ xX]\]` v body a přepnout
+      const source = cb.dataset.mdTaskSource || 'body';
+      let text;
+      if (source === 'body') text = entity.body || '';
+      else if (source.startsWith('attr:')) {
+        const k = source.slice(5);
+        text = (entity.attributes && entity.attributes[k]) || '';
+      } else return;
+
+      // Najít N-tý výskyt `\[[ xX]\]` a přepnout
+      // Reset indexu pro každý input zvlášť - každý source má vlastní counter
       const re = /\[([ xX])\]/g;
-      let body = entity.body || '';
       let count = 0;
-      const newBody = body.replace(re, (match, ch) => {
+      const newText = text.replace(re, (match, ch) => {
         if (count++ === idx) {
           const isChecked = ch !== ' ';
           return isChecked ? '[ ]' : '[x]';
         }
         return match;
       });
-      if (newBody === body) return;
-      entity.body = newBody;
+      if (newText === text) return;
+      if (source === 'body') entity.body = newText;
+      else if (source.startsWith('attr:')) {
+        const k = source.slice(5);
+        entity.attributes[k] = newText;
+      }
       entity.updated_at = nowIso();
       saveDebounced();
-      // Re-render samotné body sekce nestačí (musíme znovu vygenerovat checkboxy)
-      // Pro read mód přerendrujeme detail:
+      // Re-render: přepočtou se countery i checkboxy. V read módu detail.
       if (state.view === 'detail' && state.detailMode === 'read') render();
     };
   });
@@ -2717,6 +2786,8 @@ function renderDetailRead(main, e) {
   const tags = (e.tags || []).map(t => '<a href="#" class="tag" data-tag="' + escapeHtml(t) + '">' + escapeHtml(t) + '</a>').join(' ');
   const attrsHtml = renderAttributesReadOnly(e);
   const bodyHtml = e.body ? '<div class="markdown" id="body-rendered">' + renderMarkdown(e.body) + '</div>' : '';
+  const bodyTaskCounts = e.body ? countMarkdownTasks(e.body) : null;
+  const bodyTaskCounter = bodyTaskCounts ? '<p class="task-counter meta">' + escapeHtml(describeTaskCounts(bodyTaskCounts)) + '</p>' : '';
   const linksHtml = renderLinksReadOnly(e);
   const inverseHtml = renderInverseLinksReadOnly(e);
   const attachmentsHtml = renderAttachmentsRead(e);
@@ -2751,6 +2822,7 @@ function renderDetailRead(main, e) {
         '<button id="btn-copy-body-source" title="Zkopírovat zdroj (Markdown)">📋 Zkopírovat zdroj</button>' +
         '<button id="btn-copy-body-formatted" title="Zkopírovat formátovaný (vložitelný do Wordu, Outlooku, Gmailu…)">✨ Zkopírovat formátované</button>' +
       '</div>' +
+      bodyTaskCounter +
       bodyHtml +
     '</section>' : '') +
     (attachmentsHtml ? '<section aria-labelledby="att-h"><h3 id="att-h">Přílohy (' + e.attachments.length + ')</h3>' + attachmentsHtml + '</section>' : '') +
@@ -2950,7 +3022,15 @@ function formatAttrValue(f, v) {
   if (f.type === 'email') return '<a href="mailto:' + escapeHtml(v) + '">' + escapeHtml(v) + '</a>';
   if (f.type === 'tel') return '<a href="tel:' + escapeHtml(v) + '">' + escapeHtml(v) + '</a>';
   if (f.type === 'select' && f.optionLabels && f.optionLabels[v]) return escapeHtml(f.optionLabels[v]);
-  if (f.type === 'textarea') return '<div class="markdown attr-textarea">' + renderMarkdown(String(v), { ctx: { depth: 1, includeStack: new Set() } }) + '</div>';
+  if (f.type === 'textarea') {
+    const text = String(v);
+    const counts = countMarkdownTasks(text);
+    const counter = counts ? '<p class="task-counter meta">' + escapeHtml(describeTaskCounts(counts)) + '</p>' : '';
+    const rendered = renderMarkdown(text, {
+      ctx: { depth: 1, includeStack: new Set(), taskSource: 'attr:' + f.key }
+    });
+    return counter + '<div class="markdown attr-textarea">' + rendered + '</div>';
+  }
   if (f.type === 'checkbox') return v ? 'Ano' : 'Ne';
   if (f.type === 'relation') {
     const ids = normalizeRelationValue(v);
@@ -3149,6 +3229,17 @@ function renderDetailEdit(main, e) {
   document.getElementById('btn-duplicate-edit').onclick = () => duplicateEntity(e);
 
   document.getElementById('d-title').oninput = (ev) => { e.title = ev.target.value; e.updated_at = nowIso(); saveDebounced(); };
+  document.getElementById('d-title').onchange = (ev) => {
+    e.title = ev.target.value;
+    if (tryExtractMarkdownLinkFromTitle(e)) {
+      save();
+      render();
+      toast('Vytvořena záložka: „' + e.title + '" (URL přidána).');
+      playSound('save-entity');
+    } else {
+      saveDebounced();
+    }
+  };
   document.getElementById('d-body').oninput = (ev) => { e.body = ev.target.value; e.updated_at = nowIso(); saveDebounced(); };
   document.getElementById('d-tags').oninput = (ev) => {
     e.tags = ev.target.value.split(/[,]+/).map(t => t.trim()).filter(Boolean);
@@ -3922,9 +4013,16 @@ function doQuickSave(thenOpen) {
     title, body, aspects: ['Note'], inbox: true,
     tags: tagStr.split(/[,]+/).map(t => t.trim()).filter(Boolean)
   });
+  // Pokud je název samotný markdown link, převedeme entitu na záložku
+  const wasLink = tryExtractMarkdownLinkFromTitle(e);
+  if (wasLink) {
+    // Nahradíme aspekty (Note → Bookmark) – Note byl jen default
+    e.aspects = e.aspects.filter(a => a !== 'Note');
+    if (!e.aspects.includes('Bookmark')) e.aspects.push('Bookmark');
+  }
   addEntity(e);
   document.getElementById('dialog-quick').close();
-  toast('Uloženo do Inboxu.');
+  toast(wasLink ? 'Záložka „' + e.title + '" uložena do Inboxu.' : 'Uloženo do Inboxu.');
   if (thenOpen) setView('detail', { detailId: e.id, detailMode: 'edit' });
   else render();
 }
@@ -7680,6 +7778,7 @@ body.theme-dark .markdown aside.cm-comment { background: rgba(255,210,80,0.15); 
 .markdown li.task-item { list-style: none; margin-left: -1.5em; padding-left: 0; }
 .markdown li.task-item input[type="checkbox"] { margin-right: 0.5em; vertical-align: middle; }
 .markdown li.task-item.task-done { color: #888; }
+.task-counter { margin: 0.2em 0 0.4em; font-style: italic; }
 .markdown li.task-item.task-done > .task-text { text-decoration: line-through; }
 .markdown code { background: #f0f0f0; padding: 0.1em 0.3em; border-radius: 3px; font-size: 0.9em; font-family: ui-monospace, monospace; }
 body.theme-dark .markdown code { background: #2a2a2a; }
@@ -8721,13 +8820,15 @@ function renderBlock(block, ctx) {
       const taskMatch = l.match(/^(\\s*[-*]\\s+)\\[([ xX])\\]\\s*(.*)$/);
       if (taskMatch) {
         const checked = taskMatch[2] !== ' ';
-        // Pokud jsme v hlavním těle (ne transklusi), tasky jsou interaktivní
-        const interactive = ctx && ctx.depth === 0 && !ctx.disableTaskInteractivity;
+        // Interaktivní v body (depth 0), nebo když ctx specifikuje taskSource (atribut textarea)
+        const interactive = ctx && !ctx.disableTaskInteractivity &&
+          (ctx.depth === 0 || ctx.taskSource);
         if (!ctx._taskCounter) ctx._taskCounter = 0;
         const idx = ctx._taskCounter++;
         const cls = 'task-item' + (checked ? ' task-done' : '');
+        const sourceAttr = ctx.taskSource ? ' data-md-task-source="' + escapeHtml(ctx.taskSource) + '"' : '';
         const cb = interactive
-          ? '<input type="checkbox"' + (checked ? ' checked' : '') + ' data-md-task="' + idx + '">'
+          ? '<input type="checkbox"' + (checked ? ' checked' : '') + ' data-md-task="' + idx + '"' + sourceAttr + '>'
           : '<input type="checkbox"' + (checked ? ' checked' : '') + ' disabled aria-disabled="true">';
         return '<li class="' + cls + '">' + cb + '<span class="task-text">' + renderInline(taskMatch[3], ctx) + '</span></li>';
       }
@@ -8865,7 +8966,60 @@ function findEntityByTitle(title) {
     getDisplayTitle(e).toLowerCase() === t
   );
 }
+// Spočítá markdown task položky \`- [ ]\` / \`- [x]\` v textu.
+// Vrací { total, done, undone } nebo null pokud žádné neexistují.
+function countMarkdownTasks(text) {
+  if (!text) return null;
+  const re = /^\\s*[-*]\\s+\\[([ xX])\\]/gm;
+  let total = 0, done = 0;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    total++;
+    if (m[1] !== ' ') done++;
+  }
+  if (total === 0) return null;
+  return { total, done, undone: total - done };
+}
+
+// Vrátí lidský popis stavu tasků: "2 z 4 nedokončené" / "Vše hotové (3)" / "1 nedokončený (z 1)"
+function describeTaskCounts(counts) {
+  if (!counts) return '';
+  if (counts.undone === 0) return 'Vše hotové (' + counts.total + ')';
+  if (counts.total === 1) return '1 nedokončený';
+  return counts.undone + ' z ' + counts.total + ' nedokončené' + (counts.undone === 1 ? '' : (counts.undone < 5 ? '' : 'ch'));
+}
+
 function addEntity(e) { db.entities.push(e); saveDebounced(); }
+
+// Pokud je název ve tvaru "[Label](https://url)" (případně s okolním whitespace),
+// převede entitu na záložku: nastaví název na Label, doplní URL atribut, zaškrtne
+// aspekt Bookmark a původní markdown link uloží do těla entity.
+// Vrací true pokud transformace proběhla.
+function tryExtractMarkdownLinkFromTitle(entity) {
+  if (!entity || !entity.title) return false;
+  const m = entity.title.match(/^\\s*\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)\\s*$/);
+  if (!m) return false;
+  const label = m[1].trim();
+  const url = m[2].trim();
+  const original = entity.title;
+  if (!label) return false;
+  entity.title = label;
+  // Aspekt Bookmark
+  if (!entity.aspects) entity.aspects = [];
+  if (!entity.aspects.includes('Bookmark')) entity.aspects.push('Bookmark');
+  // Atribut URL
+  if (!entity.attributes) entity.attributes = {};
+  entity.attributes.url = url;
+  // Tělo – odkaz vždy na začátek, prázdný řádek mezi ním a zbytkem
+  const linkBlock = original.trim();
+  if (!entity.body || !entity.body.trim()) {
+    entity.body = linkBlock;
+  } else if (!entity.body.includes(linkBlock)) {
+    entity.body = linkBlock + '\\n\\n' + entity.body.trimStart();
+  }
+  entity.updated_at = nowIso();
+  return true;
+}
 
 // Parsuje z názvu úkolu termín v přirozeném jazyce. Vrací { deadline, cleanedTitle, matched }
 // nebo null pokud nic nenalezeno. Volá se při zaškrtnutí aspektu Task.
@@ -9582,30 +9736,43 @@ function attachMarkdownLinkHandlers(root) {
   });
 }
 
-// Interaktivní MD task checkboxy: kliknutí přepne [ ] ↔ [x] v body source
+// Interaktivní MD task checkboxy: kliknutí přepne [ ] ↔ [x] ve zdroji
+// Zdrojem je buď entity.body (default) nebo entity.attributes[attrKey], 
+// rozlišeno přes data-md-task-source atribut na checkboxu.
 function attachMarkdownTaskHandlers(root, entity) {
   if (!entity) return;
   root.querySelectorAll('input[type="checkbox"][data-md-task]').forEach(cb => {
     cb.onchange = () => {
       const idx = Number(cb.dataset.mdTask);
       if (isNaN(idx)) return;
-      // Najít N-tý výskyt \`\\[[ xX]\\]\` v body a přepnout
+      const source = cb.dataset.mdTaskSource || 'body';
+      let text;
+      if (source === 'body') text = entity.body || '';
+      else if (source.startsWith('attr:')) {
+        const k = source.slice(5);
+        text = (entity.attributes && entity.attributes[k]) || '';
+      } else return;
+
+      // Najít N-tý výskyt \`\\[[ xX]\\]\` a přepnout
+      // Reset indexu pro každý input zvlášť - každý source má vlastní counter
       const re = /\\[([ xX])\\]/g;
-      let body = entity.body || '';
       let count = 0;
-      const newBody = body.replace(re, (match, ch) => {
+      const newText = text.replace(re, (match, ch) => {
         if (count++ === idx) {
           const isChecked = ch !== ' ';
           return isChecked ? '[ ]' : '[x]';
         }
         return match;
       });
-      if (newBody === body) return;
-      entity.body = newBody;
+      if (newText === text) return;
+      if (source === 'body') entity.body = newText;
+      else if (source.startsWith('attr:')) {
+        const k = source.slice(5);
+        entity.attributes[k] = newText;
+      }
       entity.updated_at = nowIso();
       saveDebounced();
-      // Re-render samotné body sekce nestačí (musíme znovu vygenerovat checkboxy)
-      // Pro read mód přerendrujeme detail:
+      // Re-render: přepočtou se countery i checkboxy. V read módu detail.
       if (state.view === 'detail' && state.detailMode === 'read') render();
     };
   });
@@ -10274,6 +10441,8 @@ function renderDetailRead(main, e) {
   const tags = (e.tags || []).map(t => '<a href="#" class="tag" data-tag="' + escapeHtml(t) + '">' + escapeHtml(t) + '</a>').join(' ');
   const attrsHtml = renderAttributesReadOnly(e);
   const bodyHtml = e.body ? '<div class="markdown" id="body-rendered">' + renderMarkdown(e.body) + '</div>' : '';
+  const bodyTaskCounts = e.body ? countMarkdownTasks(e.body) : null;
+  const bodyTaskCounter = bodyTaskCounts ? '<p class="task-counter meta">' + escapeHtml(describeTaskCounts(bodyTaskCounts)) + '</p>' : '';
   const linksHtml = renderLinksReadOnly(e);
   const inverseHtml = renderInverseLinksReadOnly(e);
   const attachmentsHtml = renderAttachmentsRead(e);
@@ -10308,6 +10477,7 @@ function renderDetailRead(main, e) {
         '<button id="btn-copy-body-source" title="Zkopírovat zdroj (Markdown)">📋 Zkopírovat zdroj</button>' +
         '<button id="btn-copy-body-formatted" title="Zkopírovat formátovaný (vložitelný do Wordu, Outlooku, Gmailu…)">✨ Zkopírovat formátované</button>' +
       '</div>' +
+      bodyTaskCounter +
       bodyHtml +
     '</section>' : '') +
     (attachmentsHtml ? '<section aria-labelledby="att-h"><h3 id="att-h">Přílohy (' + e.attachments.length + ')</h3>' + attachmentsHtml + '</section>' : '') +
@@ -10507,7 +10677,15 @@ function formatAttrValue(f, v) {
   if (f.type === 'email') return '<a href="mailto:' + escapeHtml(v) + '">' + escapeHtml(v) + '</a>';
   if (f.type === 'tel') return '<a href="tel:' + escapeHtml(v) + '">' + escapeHtml(v) + '</a>';
   if (f.type === 'select' && f.optionLabels && f.optionLabels[v]) return escapeHtml(f.optionLabels[v]);
-  if (f.type === 'textarea') return '<div class="markdown attr-textarea">' + renderMarkdown(String(v), { ctx: { depth: 1, includeStack: new Set() } }) + '</div>';
+  if (f.type === 'textarea') {
+    const text = String(v);
+    const counts = countMarkdownTasks(text);
+    const counter = counts ? '<p class="task-counter meta">' + escapeHtml(describeTaskCounts(counts)) + '</p>' : '';
+    const rendered = renderMarkdown(text, {
+      ctx: { depth: 1, includeStack: new Set(), taskSource: 'attr:' + f.key }
+    });
+    return counter + '<div class="markdown attr-textarea">' + rendered + '</div>';
+  }
   if (f.type === 'checkbox') return v ? 'Ano' : 'Ne';
   if (f.type === 'relation') {
     const ids = normalizeRelationValue(v);
@@ -10706,6 +10884,17 @@ function renderDetailEdit(main, e) {
   document.getElementById('btn-duplicate-edit').onclick = () => duplicateEntity(e);
 
   document.getElementById('d-title').oninput = (ev) => { e.title = ev.target.value; e.updated_at = nowIso(); saveDebounced(); };
+  document.getElementById('d-title').onchange = (ev) => {
+    e.title = ev.target.value;
+    if (tryExtractMarkdownLinkFromTitle(e)) {
+      save();
+      render();
+      toast('Vytvořena záložka: „' + e.title + '" (URL přidána).');
+      playSound('save-entity');
+    } else {
+      saveDebounced();
+    }
+  };
   document.getElementById('d-body').oninput = (ev) => { e.body = ev.target.value; e.updated_at = nowIso(); saveDebounced(); };
   document.getElementById('d-tags').oninput = (ev) => {
     e.tags = ev.target.value.split(/[,]+/).map(t => t.trim()).filter(Boolean);
@@ -11479,9 +11668,16 @@ function doQuickSave(thenOpen) {
     title, body, aspects: ['Note'], inbox: true,
     tags: tagStr.split(/[,]+/).map(t => t.trim()).filter(Boolean)
   });
+  // Pokud je název samotný markdown link, převedeme entitu na záložku
+  const wasLink = tryExtractMarkdownLinkFromTitle(e);
+  if (wasLink) {
+    // Nahradíme aspekty (Note → Bookmark) – Note byl jen default
+    e.aspects = e.aspects.filter(a => a !== 'Note');
+    if (!e.aspects.includes('Bookmark')) e.aspects.push('Bookmark');
+  }
   addEntity(e);
   document.getElementById('dialog-quick').close();
-  toast('Uloženo do Inboxu.');
+  toast(wasLink ? 'Záložka „' + e.title + '" uložena do Inboxu.' : 'Uloženo do Inboxu.');
   if (thenOpen) setView('detail', { detailId: e.id, detailMode: 'edit' });
   else render();
 }
