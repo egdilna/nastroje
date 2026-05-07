@@ -905,6 +905,49 @@ function typeClass(type) {
 const PH_REGEX = /\[\[\[\s*([A-Za-zÁÉÍÓÚÝČĎĚŇŘŠŤŮŽáéíóúýčďěňřšťůž]+)\s*:\s*([^\]]+?)\s*\]\]\]/g;
 const INS_REGEX = /\{\{\{([\s\S]*?)\}\}\}/g;
 
+function normalizeForDedup(content) {
+  // Used for dedup key generation only — keeps original case in ph.content for display.
+  // Normalizes:
+  //  - Unicode (NFC) so composed and decomposed diacritics match
+  //  - Lowercase (locale-aware for Czech)
+  //  - Collapses internal whitespace (incl. tabs, NBSP) to single spaces
+  //  - Trims
+  return content
+    .normalize('NFC')
+    .toLocaleLowerCase('cs-CZ')
+    .replace(/[\s\u00A0]+/g, ' ')
+    .trim();
+}
+
+function migrateLegacyDedupKeys(valuesObj) {
+  // Walk a values map, migrating any DEDUP-shaped keys (Type::Content) from
+  // legacy casing to the current normalized form. Used when loading older .mdd files
+  // saved before the case-insensitive dedup change.
+  // If both legacy and canonical keys exist, the non-empty value wins; canonical is preferred on tie.
+  if (!valuesObj || typeof valuesObj !== 'object') return valuesObj;
+  const out = {};
+  function isEmpty(v) {
+    return v == null || v === '' || (Array.isArray(v) && v.length === 0);
+  }
+  for (const k of Object.keys(valuesObj)) {
+    const m = k.match(/^([^:]+)::(.+)$/);
+    let newKey = k;
+    if (m && DEDUP_TYPES.indexOf(m[1]) >= 0) {
+      newKey = m[1] + '::' + normalizeForDedup(m[2]);
+    }
+    const incoming = valuesObj[k];
+    if (newKey in out) {
+      // Conflict: prefer non-empty; if both non-empty, keep already-stored (which came earlier in iteration).
+      if (isEmpty(out[newKey]) && !isEmpty(incoming)) {
+        out[newKey] = incoming;
+      }
+    } else {
+      out[newKey] = incoming;
+    }
+  }
+  return out;
+}
+
 function parsePlaceholders(text) {
   const placeholders = [];
   PH_REGEX.lastIndex = 0;
@@ -914,7 +957,7 @@ function parsePlaceholders(text) {
     if (!type) continue;
     const content = m[2].trim();
     const idx = placeholders.length;
-    const dedupKey = DEDUP_TYPES.indexOf(type) >= 0 ? (type + '::' + content) : null;
+    const dedupKey = DEDUP_TYPES.indexOf(type) >= 0 ? (type + '::' + normalizeForDedup(content)) : null;
     placeholders.push({
       idx: idx,
       type: type,
@@ -1802,18 +1845,31 @@ function buildSpotElement(ph) {
  * REPEAT (Opakování) BUILDERS
  * ============================================================ */
 
+const _scopeIdMap = new WeakMap();
+let _nextScopeId = 0;
+function scopeIdFor(valuesSrc) {
+  // Unique per-object scope token used to limit mirror refresh to the right DOM subtree.
+  // Uses a WeakMap so the IDs don't pollute serialized .mdd data.
+  if (!valuesSrc || valuesSrc === state.values) return 'g';
+  if (!_scopeIdMap.has(valuesSrc)) _scopeIdMap.set(valuesSrc, 's' + (++_nextScopeId));
+  return _scopeIdMap.get(valuesSrc);
+}
+
 function makeScopedItems(rep, instanceObj) {
   // Return shallow-copied placeholders/instructions/inlineTables with _valuesSrc set to instanceObj.
   // Used to render the body of a single repeat instance against its own values namespace.
+  const sid = scopeIdFor(instanceObj);
   const phs = rep.placeholders.map(function(ph) {
     const c = Object.assign({}, ph);
     c._valuesSrc = instanceObj;
+    c._scopeId = sid;
     return c;
   });
   const ins = rep.instructions; // instructions have no values, no scoping needed
   const tbls = rep.inlineTables.map(function(tbl) {
     const c = Object.assign({}, tbl);
     c._valuesSrc = instanceObj;
+    c._scopeId = sid;
     return c;
   });
   return {placeholders: phs, instructions: ins, inlineTables: tbls};
@@ -2036,11 +2092,12 @@ function buildMirrorElement(ph) {
   const display = formatMirrorDisplay(ph, cur);
   const cls = 'ph-mirror' + (isEmpty ? ' ph-empty' : '') + (ph.isBlock ? ' block' : '');
   const aria = 'Synchronizovaná hodnota: ' + ph.type + ' ' + ph.content;
+  const scopeId = ph._scopeId || scopeIdFor(ph._valuesSrc);
   const e = el('span', {
     class: cls,
     'aria-label': aria,
     role: 'note',
-    data: {phMirror: ph.dedupKey || ('idx_' + ph.idx)},
+    data: {phMirror: ph.dedupKey || ('idx_' + ph.idx), phScope: scopeId},
   });
   e.textContent = display;
   return e;
@@ -2058,11 +2115,14 @@ function formatMirrorDisplay(ph, v) {
 function refreshMirrors(ph) {
   const key = ph.dedupKey;
   if (!key) return;
-  const sel = '[data-ph-mirror="' + key.replace(/"/g, '\\"') + '"]';
+  const scopeId = ph._scopeId || scopeIdFor(ph._valuesSrc);
+  const valuesSrc = ph._valuesSrc || state.values;
+  const v = valuesSrc[key];
+  const isEmpty = v == null || v === '' || (Array.isArray(v) && v.length === 0);
+  const sel = '[data-ph-mirror="' + key.replace(/"/g, '\\"') +
+              '"][data-ph-scope="' + scopeId + '"]';
   const mirrors = $all(sel);
   for (const m of mirrors) {
-    const v = state.values[key];
-    const isEmpty = v == null || v === '' || (Array.isArray(v) && v.length === 0);
     m.textContent = formatMirrorDisplay(ph, v);
     m.classList.toggle('ph-empty', isEmpty);
   }
@@ -2772,6 +2832,16 @@ function loadDraft(draft, fallbackName, sourceLabel) {
   state.inlineTables = parsed.inlineTables;
   state.repeats = parsed.repeats;
   state.values = (draft.values && typeof draft.values === 'object') ? draft.values : {};
+  // Migrate legacy case-sensitive dedup keys to current normalized form.
+  state.values = migrateLegacyDedupKeys(state.values);
+  // Also migrate inside each repeat instance.
+  for (const k of Object.keys(state.values)) {
+    if (/^__repeat_\d+$/.test(k) && Array.isArray(state.values[k])) {
+      state.values[k] = state.values[k].map(function(inst) {
+        return (inst && typeof inst === 'object') ? migrateLegacyDedupKeys(inst) : inst;
+      });
+    }
+  }
   // Ensure inline tables have at least their original content if the draft didn't include them.
   for (const tbl of state.inlineTables) {
     const key = '__inline_table_' + tbl.idx;
