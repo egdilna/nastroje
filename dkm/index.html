@@ -171,6 +171,7 @@ dialog.dlg::backdrop{background:rgba(0,0,0,.4)}
 <button class="btn btn-sm" id="b-load" type="button" accesskey="l"></button>
 <button class="btn btn-sm" id="b-save" type="button" accesskey="s"></button>
 <button class="btn btn-sm" id="b-exp" type="button"></button>
+<button class="btn btn-sm" id="b-imp" type="button"></button>
 <button class="btn btn-sm" id="b-set" type="button"></button>
 <button class="btn btn-sm btn-gh" id="b-lang" type="button"></button>
 </div>
@@ -187,7 +188,7 @@ dialog.dlg::backdrop{background:rgba(0,0,0,.4)}
 /* I18N */
 const I18N={cs:{
 appName:'DKM',appSubtitle:'Dynamický správce znalostí',languageLabel:'EN',
-btnLoad:'Načíst',btnSave:'Uložit',btnExport:'Export TSV',btnSettings:'Nastavení',
+btnLoad:'Načíst',btnSave:'Uložit',btnExport:'Export',btnImport:'Import TSV',btnSettings:'Nastavení',
 save:'Uložit',cancel:'Zrušit',delete:'Smazat',edit:'Upravit',add:'Přidat',create:'Vytvořit',close:'Zavřít',back:'Zpět',confirm:'Potvrdit',yes:'Ano',no:'Ne',
 name:'Název',title:'Titulek',type:'Typ',icon:'Ikona',required:'Povinné',none:'Žádné',any:'Jakýkoliv',
 moveUp:'Posunout nahoru',moveDown:'Posunout dolů',duplicate:'Duplikovat',
@@ -268,6 +269,13 @@ outlineCycle:'už zobrazeno výše',toggle:'Rozbalit/sbalit',
 filterUpdated:'Upraveno',filterAny:'Cokoliv',filterToday:'Dnes',filter7d:'Posledních 7 dní',filter30d:'Posledních 30 dní',filterOlder:'Starší než měsíc',
 tabArchive:'Archiv',archive:'Archivovat',restore:'Obnovit',archived:'Archivováno.',restored:'Obnoveno.',
 duplicate:'Duplikovat',duplicated:'Duplikováno. Uprav podle potřeby a ulož.',copySuffix:'(kopie)',
+xlsxLoading:'Načítám XLSX knihovnu…',xlsxFail:'XLSX export selhal',
+importTSVDesc:'Naimportuj entity z tabulky (Excel → uložit jako TSV/CSV, nebo zkopíruj řádky ze schránky).<br>Sloupec <b>Název</b> je povinný. Sloupec <b>Typ</b> namapuje typ entity podle jména. Ostatní sloupce, jejichž název odpovídá názvu atributu typu nebo aspektu (klidně ve formátu „Typ / Atribut"), se naimportují. Neznámé sloupce se ignorují.',
+importTSVFile:'Soubor',importTSVPaste:'Vložit ze schránky',importTSVPastePh:'Sem vlož řádky z Excelu nebo libovolnou TSV/CSV tabulku. První řádek = hlavička.',
+importTSVDelimHint:'Oddělovač se detekuje automaticky (TAB, středník nebo čárka).',
+importTSVProcess:'Naimportovat',importTSVNothingToImport:'Vyber soubor nebo vlož data.',importTSVEmpty:'Tabulka je prázdná.',
+importTSVNeedNameColumn:'Tabulka musí mít sloupec „Název" (nebo „Name"/„Title"/„Jméno").',
+importTSVResult:'Import: přidáno {a}, aktualizováno {u}, přeskočeno {s}.',
 aspectAdded:'Aspekt „{name}" přidán. Atributy najdeš ve formuláři výše.',aspectRemoved:'Aspekt „{name}" odebrán.',
 projectActive:'Aktivní projekt',
 projectsAll:'Všechny projekty',
@@ -305,7 +313,7 @@ ghStatus:'Stav',ghStatusNotConfigured:'Nepřipojeno',ghStatusReady:'Připraveno'
 ghShowToken:'Ukázat',ghHideToken:'Skrýt'
 },en:{
 appName:'DKM',appSubtitle:'Dynamic Knowledge Manager',languageLabel:'CS',
-btnLoad:'Load',btnSave:'Save',btnExport:'Export TSV',btnSettings:'Settings',
+btnLoad:'Load',btnSave:'Save',btnExport:'Export',btnImport:'Import TSV',btnSettings:'Settings',
 save:'Save',cancel:'Cancel',delete:'Delete',edit:'Edit',add:'Add',create:'Create',close:'Close',back:'Back',confirm:'Confirm',yes:'Yes',no:'No',
 name:'Name',title:'Title',type:'Type',icon:'Icon',required:'Required',none:'None',any:'Any',
 moveUp:'Move up',moveDown:'Move down',duplicate:'Duplicate',
@@ -386,6 +394,13 @@ outlineCycle:'already shown above',toggle:'Expand/collapse',
 filterUpdated:'Updated',filterAny:'Any',filterToday:'Today',filter7d:'Last 7 days',filter30d:'Last 30 days',filterOlder:'Older than month',
 tabArchive:'Archive',archive:'Archive',restore:'Restore',archived:'Archived.',restored:'Restored.',
 duplicate:'Duplicate',duplicated:'Duplicated. Edit as needed and save.',copySuffix:'(copy)',
+xlsxLoading:'Loading XLSX library…',xlsxFail:'XLSX export failed',
+importTSVDesc:'Import entities from a table (Excel → save as TSV/CSV, or paste rows from clipboard).<br>The <b>Name</b> column is required. The <b>Type</b> column maps to entity type by name. Other columns whose name matches an attribute name (in „Type / Attribute" format too) will be imported. Unknown columns are ignored.',
+importTSVFile:'File',importTSVPaste:'Paste from clipboard',importTSVPastePh:'Paste rows from Excel or any TSV/CSV table here. First row = header.',
+importTSVDelimHint:'Delimiter detected automatically (TAB, semicolon or comma).',
+importTSVProcess:'Import',importTSVNothingToImport:'Choose a file or paste data.',importTSVEmpty:'Table is empty.',
+importTSVNeedNameColumn:'Table must have a „Name" column (or „Title"/„Jméno"/„Název").',
+importTSVResult:'Import: added {a}, updated {u}, skipped {s}.',
 aspectAdded:'Aspect „{name}" added. Find its attributes in the form above.',aspectRemoved:'Aspect „{name}" removed.',
 projectActive:'Active project',
 projectsAll:'All projects',
@@ -741,42 +756,275 @@ document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeOb
 toast('✓ '+t('viewerGenBtn'));dbg('Static viewer generated, size='+html.length+' B');
 }
 
-function exportTSV(){
+/* SHEETJS LAZY LOADER */
+let _sheetJsPromise=null;
+function loadSheetJS(){
+if(window.XLSX)return Promise.resolve(window.XLSX);
+if(_sheetJsPromise)return _sheetJsPromise;
+_sheetJsPromise=new Promise((res,rej)=>{
+const sc=document.createElement('script');
+sc.src='https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+sc.onload=()=>{if(window.XLSX)res(window.XLSX);else rej(new Error('XLSX missing after load'))};
+sc.onerror=()=>rej(new Error('SheetJS load failed (offline?)'));
+document.head.appendChild(sc);
+});
+return _sheetJsPromise;
+}
+
+/* EXPORT XLSX */
+function exportXLSX(){
 const list=getList();
 if(!list.length){toast(t('emptyList'));return}
-const cols=new Map();const add=(id,lbl)=>{if(!cols.has(id))cols.set(id,{id,label:lbl})};
-add('__id','ID');add('__type',t('type'));add('__inbox',t('tabInbox'));add('__aspects',t('detailAspects'));
+toast(t('xlsxLoading'));
+loadSheetJS().then(XLSX=>{
+const cols=new Map();const add=(id,lbl,attr)=>{if(!cols.has(id))cols.set(id,{id,label:lbl,attr:attr||null})};
+add('__id','ID');add('__name',t('entityName'));add('__type',t('type'));add('__inbox',t('tabInbox'));add('__archive',t('tabArchive'));add('__aspects',t('detailAspects'));
 list.forEach(e=>{
-if(e.typeId){const ty=findType(e.typeId);if(ty)ty.attributes.forEach(a=>add('attr:'+a.id,ty.name+' / '+a.name))}
-(e.aspects||[]).forEach(aid=>{const asp=findAspect(aid);if(asp)asp.attributes.forEach(a=>add('attr:'+a.id,asp.name+' / '+a.name))});
-(e.customAttributes||[]).forEach(a=>add('cattr:'+a.id,'* '+a.name))
+if(e.typeId){const ty=findType(e.typeId);if(ty)ty.attributes.forEach(a=>add('attr:'+a.id,ty.name+' / '+a.name,a))}
+(e.aspects||[]).forEach(aid=>{const asp=findAspect(aid);if(asp)asp.attributes.forEach(a=>add('attr:'+a.id,asp.name+' / '+a.name,a))});
+(e.customAttributes||[]).forEach(a=>add('cattr:'+a.id,'* '+a.name,a))
 });
 add('__relations',t('detailRelations'));add('__created',t('created'));add('__updated',t('updated'));
 const all=Array.from(cols.values());
-const escTSV=v=>v==null?'':String(v).replace(/\t/g,' ').replace(/\r?\n/g,' \\n ');
-const lines=[all.map(c=>escTSV(c.label)).join('\t')];
+const rows=[all.map(c=>c.label)];
 list.forEach(e=>{
 const row=all.map(c=>{
 if(c.id==='__id')return e.id;
+if(c.id==='__name')return getTitle(e);
 if(c.id==='__type'){const ty=findType(e.typeId);return ty?ty.name:''}
 if(c.id==='__inbox')return e.inInbox?'1':'';
+if(c.id==='__archive')return e.archived?'1':'';
 if(c.id==='__aspects')return(e.aspects||[]).map(aid=>{const a=findAspect(aid);return a?a.name:aid}).join('; ');
 if(c.id==='__relations')return(e.relations||[]).map(r=>{const rt=findRT(r.relationTypeId),tgt=findEntity(r.targetId);return(rt?rt.name:'?')+' → '+(tgt?getTitle(tgt):r.targetId)}).join('; ');
-if(c.id==='__created')return e.createdAt||'';
-if(c.id==='__updated')return e.updatedAt||'';
-if(c.id.startsWith('attr:')){const aid=c.id.slice(5);const v=e.attributes&&e.attributes[aid];return fmtAttrExp(aid,v,e)}
-if(c.id.startsWith('cattr:')){const aid=c.id.slice(6);const ca=(e.customAttributes||[]).find(x=>x.id===aid);return ca?fmtCAExp(ca):''}
+if(c.id==='__created'){if(!e.createdAt)return'';const d=new Date(e.createdAt);return isNaN(d)?e.createdAt:d}
+if(c.id==='__updated'){if(!e.updatedAt)return'';const d=new Date(e.updatedAt);return isNaN(d)?e.updatedAt:d}
+if(c.id.startsWith('attr:')){const aid=c.id.slice(5);const v=e.attributes&&e.attributes[aid];return xlsxAttrVal(c.attr,v)}
+if(c.id.startsWith('cattr:')){const aid=c.id.slice(6);const ca=(e.customAttributes||[]).find(x=>x.id===aid);return ca?xlsxAttrVal(ca,ca.value):''}
 return'';
 });
-lines.push(row.map(escTSV).join('\t'));
+rows.push(row);
 });
-const b=new Blob([lines.join('\n')],{type:'text/tab-separated-values'});
-const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='dkm-export-'+new Date().toISOString().slice(0,10)+'.tsv';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(u);
-toast('TSV ✓');
+const ws=XLSX.utils.aoa_to_sheet(rows);
+/* Column widths and text wrapping for multiline / Markdown */
+const colWidths=all.map((c,i)=>{
+let maxLen=String(c.label).length;
+for(let r=1;r<rows.length;r++){const v=rows[r][i];if(v==null)continue;const s=String(v).split(/\r?\n/)[0];if(s.length>maxLen)maxLen=s.length}
+return{wch:Math.min(Math.max(maxLen+2,8),60)};
+});
+ws['!cols']=colWidths;
+const range=XLSX.utils.decode_range(ws['!ref']);
+for(let R=range.s.r;R<=range.e.r;R++){
+for(let C=range.s.c;C<=range.e.c;C++){
+const ad=XLSX.utils.encode_cell({r:R,c:C});const cell=ws[ad];if(!cell)continue;
+const colDef=all[C];const a=colDef&&colDef.attr;const isMulti=a&&(a.type==='textarea'||a.type==='url')||(C===0&&R===0);
+if(a&&a.type==='textarea'){cell.s=cell.s||{};cell.s.alignment={wrapText:true,vertical:'top'}}
+if(R===0){cell.s=cell.s||{};cell.s.font={bold:true};cell.s.fill={fgColor:{rgb:'EEEEEE'}}}
 }
-function fmtAttrExp(aid,v,e){const all=getAllAttrs(e);const def=all.find(x=>x.attr.id===aid);if(!def)return v==null?'':String(v);const a=def.attr;if(v==null)return'';if(a.type==='yesno')return v?t('yes'):t('no');if(a.type==='relation'){if(Array.isArray(v))return v.map(x=>{const z=findEntity(x);return z?getTitle(z):x}).join('; ');const z=findEntity(v);return z?getTitle(z):(v||'')}return String(v)}
-function fmtCAExp(ca){if(ca.value==null)return'';if(ca.type==='yesno')return ca.value?t('yes'):t('no');if(ca.type==='relation'){if(Array.isArray(ca.value))return ca.value.map(v=>{const z=findEntity(v);return z?getTitle(z):v}).join('; ');const z=findEntity(ca.value);return z?getTitle(z):(ca.value||'')}return String(ca.value)}
+}
+ws['!freeze']={xSplit:0,ySplit:1};
+if(ws['!ref'])ws['!autofilter']={ref:ws['!ref']};
+const wb=XLSX.utils.book_new();
+const sheetName=((state.data.projectName||'Export').slice(0,28)||'Export');
+XLSX.utils.book_append_sheet(wb,ws,sheetName);
+const fname=((state.data.projectName||'dkm').replace(/[^\w\u00C0-\u017F-]+/g,'_').slice(0,40))+'-'+new Date().toISOString().slice(0,10)+'.xlsx';
+XLSX.writeFile(wb,fname);
+toast('XLSX ✓ ('+list.length+')');
+}).catch(err=>{toast(t('xlsxFail')+': '+err.message);dbg('XLSX export failed: '+err.message,true)});
+}
+function xlsxAttrVal(a,v){
+if(v==null||v==='')return'';
+if(!a)return String(v);
+if(a.type==='yesno')return v?t('yes'):t('no');
+if(a.type==='date'){const d=new Date(v);return isNaN(d)?String(v):d}
+if(a.type==='number'){const n=Number(v);return isNaN(n)?String(v):n}
+if(a.type==='relation'){
+const ids=Array.isArray(v)?v:[v];
+return ids.map(x=>{const z=findEntity(x);return z?getTitle(z):x}).filter(Boolean).join('; ');
+}
+return String(v);
+}
 
+/* IMPORT TSV — dialog with file or paste */
+function openImportTSVDialog(){
+const body=document.createElement('div');
+const intro=document.createElement('p');intro.style.color='var(--mu)';intro.style.marginTop='0';intro.innerHTML=esc(t('importTSVDesc'));body.appendChild(intro);
+
+const tabs=document.createElement('div');tabs.style.display='flex';tabs.style.gap='.5rem';tabs.style.marginBottom='.5rem';
+const tFile=document.createElement('button');tFile.type='button';tFile.className='tab';tFile.setAttribute('aria-selected','true');tFile.textContent='📄 '+t('importTSVFile');
+const tPaste=document.createElement('button');tPaste.type='button';tPaste.className='tab';tPaste.setAttribute('aria-selected','false');tPaste.textContent='📋 '+t('importTSVPaste');
+tabs.appendChild(tFile);tabs.appendChild(tPaste);body.appendChild(tabs);
+
+const fileBox=document.createElement('div');
+const fileIn=document.createElement('input');fileIn.type='file';fileIn.id='imp-file';fileIn.accept='.tsv,.txt,.csv';
+fileBox.appendChild(fileIn);body.appendChild(fileBox);
+
+const pasteBox=document.createElement('div');pasteBox.hidden=true;
+const ta=document.createElement('textarea');ta.id='imp-text';ta.rows=10;ta.style.width='100%';ta.style.fontFamily='monospace';ta.style.fontSize='.85rem';ta.placeholder=t('importTSVPastePh');
+pasteBox.appendChild(ta);
+const dHint=document.createElement('div');dHint.style.fontSize='.85rem';dHint.style.color='var(--mu)';dHint.style.marginTop='.3rem';dHint.textContent=t('importTSVDelimHint');pasteBox.appendChild(dHint);
+body.appendChild(pasteBox);
+
+tFile.addEventListener('click',()=>{tFile.setAttribute('aria-selected','true');tPaste.setAttribute('aria-selected','false');fileBox.hidden=false;pasteBox.hidden=true});
+tPaste.addEventListener('click',()=>{tFile.setAttribute('aria-selected','false');tPaste.setAttribute('aria-selected','true');fileBox.hidden=true;pasteBox.hidden=false;setTimeout(()=>ta.focus(),20)});
+
+showDialog(t('btnImport'),body,[
+{label:t('cancel'),action:closeDialog},
+{label:t('importTSVProcess'),primary:true,action:()=>{
+const ti=document.getElementById('imp-text').value;
+if(ti&&ti.trim()){processTSVImport(ti);return}
+const f=document.getElementById('imp-file').files[0];
+if(!f){toast(t('importTSVNothingToImport'));return}
+const r=new FileReader();r.onload=ev=>processTSVImport(ev.target.result);r.readAsText(f);
+}}
+]);
+}
+
+function detectDelimiter(firstLine){
+const tabs=(firstLine.match(/\t/g)||[]).length;
+const semis=(firstLine.match(/;/g)||[]).length;
+const commas=(firstLine.match(/,/g)||[]).length;
+if(tabs>=semis&&tabs>=commas&&tabs>0)return'\t';
+if(semis>=commas&&semis>0)return';';
+if(commas>0)return',';
+return'\t';
+}
+
+function parseDSV(text,delim){
+/* Simple DSV parser supporting quoted fields with embedded delimiter and newlines */
+const rows=[];let cur=[];let buf='';let inQ=false;
+for(let i=0;i<text.length;i++){
+const c=text[i];
+if(inQ){
+if(c==='"'){if(text[i+1]==='"'){buf+='"';i++}else{inQ=false}}
+else buf+=c;
+}else{
+if(c==='"'&&buf===''){inQ=true}
+else if(c===delim){cur.push(buf);buf=''}
+else if(c==='\r'){/* skip */}
+else if(c==='\n'){cur.push(buf);rows.push(cur);cur=[];buf=''}
+else buf+=c;
+}
+}
+if(buf!==''||cur.length>0){cur.push(buf);rows.push(cur)}
+return rows;
+}
+
+function processTSVImport(text){
+if(!text||!text.trim()){toast(t('importTSVNothingToImport'));return}
+const lines=text.split(/\r?\n/);
+const firstLine=lines.find(l=>l.trim())||'';
+const delim=detectDelimiter(firstLine);
+dbg('TSV import: detected delimiter '+(delim==='\t'?'TAB':delim)+', '+lines.length+' lines');
+const rows=parseDSV(text,delim).filter(r=>r.length>0&&r.some(c=>c&&c.trim()));
+if(!rows.length){toast(t('importTSVEmpty'));return}
+const headers=rows[0].map(h=>(h||'').trim());
+const dataRows=rows.slice(1);
+if(!headers.length){toast(t('importTSVEmpty'));return}
+
+/* Map columns:
+   - 'Název' or 'Name' or 'Title' → name
+   - 'Typ' or 'Type' → type
+   - 'Aspekty' or 'Aspects' → aspects (semicolon-separated)
+   - Anything else → attribute name (resolved per-row using type info)
+*/
+const nameAliases=['název','nazev','name','title','jméno','jmeno','titul'];
+const typeAliases=['typ','type','kategorie','category'];
+const aspectAliases=['aspekty','aspects','aspekt','aspect'];
+const archAliases=['archiv','archive','archivováno','archived'];
+const inboxAliases=['inbox','schránka','schranka'];
+const idAliases=['id','identifikátor','identifikator'];
+const idCol={name:-1,type:-1,aspects:-1,archive:-1,inbox:-1,id:-1};
+/* attribute candidates: list of {col, attrName, prefix}; resolved per-row */
+const attrCols=[];
+headers.forEach((h,i)=>{
+const lh=h.toLowerCase();
+if(idCol.name<0&&nameAliases.includes(lh)){idCol.name=i;return}
+if(idCol.type<0&&typeAliases.includes(lh)){idCol.type=i;return}
+if(idCol.aspects<0&&aspectAliases.includes(lh)){idCol.aspects=i;return}
+if(idCol.archive<0&&archAliases.includes(lh)){idCol.archive=i;return}
+if(idCol.inbox<0&&inboxAliases.includes(lh)){idCol.inbox=i;return}
+if(idCol.id<0&&idAliases.includes(lh)){idCol.id=i;return}
+let prefix='';let attrName=h;
+const slash=h.indexOf('/');if(slash>=0){prefix=h.slice(0,slash).trim();attrName=h.slice(slash+1).trim()}
+attrName=attrName.replace(/^\*\s*/,'').trim();
+attrCols.push({col:i,attrName:attrName.toLowerCase(),prefix:prefix.toLowerCase(),header:h});
+});
+dbg('Mapped: name='+idCol.name+' type='+idCol.type+' aspects='+idCol.aspects+' archive='+idCol.archive+' inbox='+idCol.inbox+' id='+idCol.id+' attrCandidates='+attrCols.map(x=>x.header).join(', '));
+function resolveAttr(attrCand,rowTypeId,rowAspectIds){
+const lan=attrCand.attrName;const lap=attrCand.prefix;
+if(!lan)return null;
+/* If header has prefix matching rowTypeId or rowAspectIds, prefer that scope */
+if(lap){
+if(rowTypeId){const ty=findType(rowTypeId);if(ty&&(ty.name||'').toLowerCase()===lap){const a=ty.attributes.find(x=>(x.name||'').toLowerCase()===lan);if(a)return a}}
+for(const aid of(rowAspectIds||[])){const asp=findAspect(aid);if(asp&&(asp.name||'').toLowerCase()===lap){const a=asp.attributes.find(x=>(x.name||'').toLowerCase()===lan);if(a)return a}}
+/* Even if prefix doesn't match row, try global by prefix */
+for(const ty of state.data.entityTypes){if((ty.name||'').toLowerCase()===lap){const a=ty.attributes.find(x=>(x.name||'').toLowerCase()===lan);if(a)return a}}
+for(const asp of state.data.aspects){if((asp.name||'').toLowerCase()===lap){const a=asp.attributes.find(x=>(x.name||'').toLowerCase()===lan);if(a)return a}}
+}
+/* No prefix or prefix didn't match: prefer attribute from rowTypeId */
+if(rowTypeId){const ty=findType(rowTypeId);if(ty){const a=ty.attributes.find(x=>(x.name||'').toLowerCase()===lan);if(a)return a}}
+for(const aid of(rowAspectIds||[])){const asp=findAspect(aid);if(asp){const a=asp.attributes.find(x=>(x.name||'').toLowerCase()===lan);if(a)return a}}
+/* Fallback: first match across types and aspects */
+for(const ty of state.data.entityTypes){const a=ty.attributes.find(x=>(x.name||'').toLowerCase()===lan);if(a)return a}
+for(const asp of state.data.aspects){const a=asp.attributes.find(x=>(x.name||'').toLowerCase()===lan);if(a)return a}
+return null;
+}
+
+if(idCol.name<0){toast(t('importTSVNeedNameColumn'));dbg('Import aborted: no name column found in headers: '+headers.join(', '),true);return}
+
+let added=0,updated=0,skipped=0;
+const now=new Date().toISOString();
+dataRows.forEach(row=>{
+const name=(row[idCol.name]||'').trim();
+if(!name){skipped++;return}
+const typeName=idCol.type>=0?(row[idCol.type]||'').trim():'';
+let typeId=null;
+if(typeName){const ty=state.data.entityTypes.find(x=>(x.name||'').toLowerCase()===typeName.toLowerCase());if(ty)typeId=ty.id}
+const aspectsStr=idCol.aspects>=0?(row[idCol.aspects]||'').trim():'';
+const aspectIds=[];
+if(aspectsStr){aspectsStr.split(/[;,]/).map(s=>s.trim()).filter(Boolean).forEach(an=>{const asp=state.data.aspects.find(x=>(x.name||'').toLowerCase()===an.toLowerCase());if(asp&&!aspectIds.includes(asp.id))aspectIds.push(asp.id)})}
+const wantArch=idCol.archive>=0&&['1','true','ano','yes','x'].includes(((row[idCol.archive]||'').trim().toLowerCase()));
+const wantInbox=idCol.inbox>=0&&['1','true','ano','yes','x'].includes(((row[idCol.inbox]||'').trim().toLowerCase()));
+const idVal=idCol.id>=0?(row[idCol.id]||'').trim():'';
+const attributes={};
+attrCols.forEach(ac=>{
+let raw=(row[ac.col]||'').trim();
+if(raw==='')return;
+const a=resolveAttr(ac,typeId,aspectIds);
+if(!a)return;
+if(a.type==='yesno'){const lr=raw.toLowerCase();if(['1','true','ano','yes','x'].includes(lr))attributes[a.id]=true;else if(['0','false','ne','no'].includes(lr))attributes[a.id]=false}
+else if(a.type==='number'){const n=Number(raw.replace(',','.'));if(!isNaN(n))attributes[a.id]=n}
+else if(a.type==='relation'){
+const titles=raw.split(';').map(s=>s.trim()).filter(Boolean);
+const ids=[];
+titles.forEach(ttl=>{const ent=state.data.entities.find(x=>!x.archived&&getTitle(x).toLowerCase()===ttl.toLowerCase());if(ent)ids.push(ent.id)});
+if(ids.length)attributes[a.id]=a.multi?ids:ids[0];
+}
+else attributes[a.id]=raw;
+});
+let target=null;
+if(idVal)target=state.data.entities.find(x=>x.id===idVal);
+if(!target&&typeId)target=state.data.entities.find(x=>x.typeId===typeId&&getTitle(x).toLowerCase()===name.toLowerCase());
+if(target){
+target.name=name;
+if(typeId)target.typeId=typeId;
+target.attributes=Object.assign(target.attributes||{},attributes);
+if(aspectIds.length)target.aspects=Array.from(new Set([...(target.aspects||[]),...aspectIds]));
+if(wantArch)target.archived=true;
+if(wantInbox)target.inInbox=true;
+if(typeId&&!wantInbox)target.inInbox=false;
+target.updatedAt=now;
+updated++;
+}else{
+const ne={id:uid('e'),name:name,typeId:typeId,inInbox:!typeId||wantInbox,archived:wantArch,attributes:attributes,customAttributes:[],relations:[],aspects:aspectIds,createdAt:now,updatedAt:now};
+state.data.entities.push(ne);
+added++;
+}
+});
+setDirty(true);closeDialog();render();
+toast(t('importTSVResult',{a:added,u:updated,s:skipped}));
+dbg('TSV import: added='+added+' updated='+updated+' skipped='+skipped);
+}
 
 /* MARKDOWN + CRITICMARKUP */
 function renderMD(src){
@@ -862,6 +1110,8 @@ sb.textContent=(ghMode?'⬆ ':'')+t('btnSave');
 sb.title=(ghMode?t('ghSave')+' ('+state.data.ghPath+')':t('btnSave'))+' ('+t('keyAlt')+'+S, '+t('keyOr')+' S)';
 sb.setAttribute('aria-label',ghMode?t('ghSave'):t('btnSave'));
 document.getElementById('b-exp').textContent=t('btnExport');
+document.getElementById('b-imp').textContent=t('btnImport');
+document.getElementById('b-imp').title=t('importTSVDesc').replace(/<[^>]+>/g,'');
 document.getElementById('b-set').textContent=t('btnSettings');
 document.getElementById('b-lang').textContent=t('languageLabel');
 document.documentElement.lang=state.language;
@@ -2376,7 +2626,8 @@ function setupEvents(){
 document.getElementById('b-load').addEventListener('click',()=>{document.getElementById('fin').click()});
 document.getElementById('fin').addEventListener('change',ev=>{const f=ev.target.files&&ev.target.files[0];if(!f)return;loadFile(f);ev.target.value=''});
 document.getElementById('b-save').addEventListener('click',smartSave);
-document.getElementById('b-exp').addEventListener('click',exportTSV);
+document.getElementById('b-exp').addEventListener('click',exportXLSX);
+document.getElementById('b-imp').addEventListener('click',openImportTSVDialog);
 document.getElementById('b-set').addEventListener('click',()=>navigateTo({name:'settings',settingsTab:state.view.settingsTab||'project'}));
 document.getElementById('b-lang').addEventListener('click',()=>{state.language=state.language==='cs'?'en':'cs';localStorage.setItem(SK_LANG,state.language);render()});
 document.getElementById('dbg-x').addEventListener('click',()=>{state.showDebug=false;localStorage.setItem(SK_DBG,'false');document.getElementById('dbg').hidden=true});
