@@ -884,6 +884,11 @@ function load() {
     if (blob.settings) Object.assign(state.settings, blob.settings);
     if (!state.settings.disabledAspects) state.settings.disabledAspects = [];
     if (!state.settings.github) state.settings.github = { owner: '', repo: '', path: '', branch: 'main', autoLoadOnStart: false };
+    // Migrace tagů na lowercase + dedupe
+    const tagChanges = migrateTagsToLowerCase();
+    if (tagChanges > 0) {
+      setTimeout(() => toast('Tagy migrovány na malá písmena (' + tagChanges + ' úprav).', 3000), 800);
+    }
     if (migratedFromDefault) {
       setTimeout(() => toast('Data automaticky migrována do projektového úložiště.', 4000), 500);
     }
@@ -1732,7 +1737,48 @@ function getStatusLabel(s) {
 function getAllTags() {
   const set = new Set();
   db.entities.forEach(e => (e.tags || []).forEach(t => set.add(t)));
+  (db.tags || []).forEach(t => set.add(t));
   return [...set].sort((a,b) => a.localeCompare(b,'cs'));
+}
+
+// Normalizace tagu: trim + lowercase. Vrací '' pokud prázdný po trim.
+function normalizeTag(t) {
+  if (!t) return '';
+  return String(t).trim().toLowerCase();
+}
+
+// Migrace: projde všechny entity i db.tags a normalizuje (lowercase, dedupe).
+// Vrací počet změněných položek.
+function migrateTagsToLowerCase() {
+  let changed = 0;
+  db.entities.forEach(e => {
+    if (!Array.isArray(e.tags)) return;
+    const orig = e.tags;
+    const seen = new Set();
+    const norm = [];
+    orig.forEach(t => {
+      const n = normalizeTag(t);
+      if (n && !seen.has(n)) { seen.add(n); norm.push(n); }
+    });
+    // Detekce změny: jiná délka nebo jiné položky
+    if (orig.length !== norm.length || orig.some((t, i) => t !== norm[i])) {
+      e.tags = norm;
+      changed++;
+    }
+  });
+  if (Array.isArray(db.tags)) {
+    const seen = new Set();
+    const norm = [];
+    db.tags.forEach(t => {
+      const n = normalizeTag(t);
+      if (n && !seen.has(n)) { seen.add(n); norm.push(n); }
+    });
+    if (db.tags.length !== norm.length || db.tags.some((t, i) => t !== norm[i])) {
+      db.tags = norm;
+      changed++;
+    }
+  }
+  return changed;
 }
 
 // ==== SEARCH ====
@@ -2661,6 +2707,17 @@ function renderSettings(main) {
     '<div class="btn-group" style="margin-top:0.5em;"><button id="add-custom-aspect" class="primary">+ Nový vlastní aspekt</button></div>' +
     '</section>' +
 
+    '<section aria-labelledby="tags-h"><h3 id="tags-h">Tagy</h3>' +
+    '<p>Všechny tagy oddělené čárkou. Editujte – po uložení se přidají nové, smazané se odstraní ze všech entit.</p>' +
+    '<label for="tags-text" class="sr-only">Tagy</label>' +
+    '<textarea id="tags-text" rows="6" style="width:100%;"></textarea>' +
+    '<div class="btn-group" style="margin-top:0.5em;">' +
+      '<button id="tags-save" class="primary">Uložit změny</button>' +
+      '<button id="tags-reset">Vrátit</button>' +
+    '</div>' +
+    '<p class="meta" id="tags-meta"></p>' +
+    '</section>' +
+
     '<section aria-labelledby="static-h"><h3 id="static-h">Statický prohlížeč ke stažení</h3>' +
     '<p>Vygeneruje samostatný HTML soubor s vašimi daty, který lze sdílet a otevřít kdekoli (offline, bez přihlášení, bez GitHubu). Příjemce může data jen prohlížet, nemůže nic upravovat.</p>' +
     '<ul>' +
@@ -2682,6 +2739,68 @@ function renderSettings(main) {
   document.getElementById('gen-static').onclick = () => downloadStaticViewer();
   document.getElementById('exim-export').onclick = () => openExportDialog();
   document.getElementById('exim-import').onclick = () => openImportDialog();
+
+  // === Správa tagů ===
+  const tagsText = document.getElementById('tags-text');
+  const tagsMeta = document.getElementById('tags-meta');
+  const tagsSaveBtn = document.getElementById('tags-save');
+  const tagsResetBtn = document.getElementById('tags-reset');
+  function loadTagsField() {
+    const all = getAllTags();
+    tagsText.value = all.join(', ');
+    tagsMeta.textContent = all.length + ' tagů celkem.';
+  }
+  loadTagsField();
+  tagsResetBtn.onclick = () => { loadTagsField(); toast('Vráceno.'); };
+  tagsSaveBtn.onclick = () => {
+    const raw = tagsText.value;
+    const incoming = raw.split(/[,\n]+/).map(t => normalizeTag(t)).filter(Boolean);
+    const newSet = new Set(incoming);
+    const oldSet = new Set(getAllTags());
+    const removed = [...oldSet].filter(t => !newSet.has(t));
+    const added = [...newSet].filter(t => !oldSet.has(t));
+    if (removed.length === 0 && added.length === 0) {
+      toast('Žádné změny.');
+      return;
+    }
+    // Spočítat dotčené entity pro removed tagy
+    let entitiesAffected = 0;
+    if (removed.length > 0) {
+      const removedSet = new Set(removed);
+      db.entities.forEach(e => {
+        if (e.tags && e.tags.some(t => removedSet.has(t))) entitiesAffected++;
+      });
+    }
+    // Potvrzovací dialog
+    const msg = (removed.length > 0
+        ? 'Smazat tagy: ' + removed.map(t => '"' + t + '"').join(', ') +
+          ' (z ' + entitiesAffected + ' entit)\n\n'
+        : '') +
+      (added.length > 0
+        ? 'Přidat tagy: ' + added.map(t => '"' + t + '"').join(', ')
+        : '');
+    confirmDialog('Potvrdit změny tagů?\n\n' + msg, () => {
+      // Smazat odstraněné tagy ze všech entit
+      const removedSet = new Set(removed);
+      db.entities.forEach(e => {
+        if (!e.tags) return;
+        const before = e.tags.length;
+        e.tags = e.tags.filter(t => !removedSet.has(t));
+        if (e.tags.length !== before) e.updated_at = nowIso();
+      });
+      // Aktualizovat db.tags
+      const finalList = [...newSet].sort((a, b) => a.localeCompare(b, 'cs'));
+      db.tags = finalList;
+      save();
+      const parts = [];
+      if (added.length > 0) parts.push('+' + added.length);
+      if (removed.length > 0) parts.push('-' + removed.length);
+      if (entitiesAffected > 0) parts.push('upraveno ' + entitiesAffected + ' entit');
+      toast('Tagy uloženy: ' + parts.join(', '));
+      playSound('save');
+      loadTagsField();
+    });
+  };
 
   document.getElementById('export-json').onclick = () => exportToFile(true);
   document.getElementById('export-json-nofiles').onclick = () => exportToFile(false);
@@ -3160,12 +3279,11 @@ function renderDetailEdit(main, e) {
   main.innerHTML =
     '<div class="btn-group">' +
       '<button id="back-btn">← Zpět</button>' +
-      '<button id="btn-done" class="primary" accesskey="u">Hotovo (uložit a zpět)</button>' +
       '<button id="btn-duplicate-edit" title="Duplikovat tuto entitu">Duplikovat</button>' +
       (e.inbox ? '<button id="leave-inbox">Vyjmout z Inboxu</button>' : '<button id="enter-inbox">Vrátit do Inboxu</button>') +
       (e.archived ? '<button id="unarchive">Obnovit</button>' : '<button id="archive">Archivovat</button>') +
       '<button class="danger" id="delete">Smazat</button>' +
-      '<button id="btn-save-as-template" title="Vytvořit šablonu z této entity">Uložit jako šablonu</button>' +
+      '<button id="btn-done" class="primary" accesskey="u">Hotovo (uložit a zpět)</button>' +
     '</div>' +
     '<h2>Úprava entity</h2>' +
 
@@ -3183,9 +3301,20 @@ function renderDetailEdit(main, e) {
     '</section>' +
 
     '<section><h3>Tagy</h3>' +
-      '<label for="d-tags">Tagy (oddělené čárkou)</label>' +
-      '<input type="text" id="d-tags" value="' + escapeHtml((e.tags || []).join(', ')) + '" list="d-tag-suggestions">' +
-      '<datalist id="d-tag-suggestions">' + allTags.map(t => '<option value="' + escapeHtml(t) + '">').join('') + '</datalist>' +
+      '<div id="d-tags-checkboxes" class="checkbox-list">' +
+        (allTags.length === 0
+          ? '<p class="meta">Zatím žádné tagy. Přidejte první níže.</p>'
+          : allTags.map(t => {
+              const checked = (e.tags || []).includes(t);
+              return '<label><input type="checkbox" data-tag-cb value="' + escapeHtml(t) + '"' +
+                (checked ? ' checked' : '') + '> ' + escapeHtml(t) + '</label>';
+            }).join('')
+        ) +
+      '</div>' +
+      '<div class="btn-group" style="margin-top:0.5em;">' +
+        '<input type="text" id="d-tag-new" placeholder="Nový tag" style="flex:1;min-width:8em;">' +
+        '<button type="button" id="d-tag-add">+ Přidat tag</button>' +
+      '</div>' +
     '</section>' +
 
     '<section><h3>Přílohy</h3>' +
@@ -3194,7 +3323,7 @@ function renderDetailEdit(main, e) {
       '<div id="d-audio-recorder" style="margin:0.7em 0;">' +
         '<button type="button" id="d-rec-start" class="primary">🎤 Nahrát hlasovou poznámku</button>' +
         '<div id="d-rec-controls" hidden>' +
-          '<div id="d-rec-status" aria-live="polite" role="status">Připraveno</div>' +
+          '<div id="d-rec-status" aria-hidden="true">Připraveno</div>' +
           '<div class="btn-group" style="margin-top:0.4em;">' +
             '<button type="button" id="d-rec-stop" class="primary">⏹ Zastavit</button>' +
             '<button type="button" id="d-rec-pause">⏸ Pauza</button>' +
@@ -3283,9 +3412,45 @@ function renderDetailEdit(main, e) {
     }
   };
   document.getElementById('d-body').oninput = (ev) => { e.body = ev.target.value; e.updated_at = nowIso(); saveDebounced(); };
-  document.getElementById('d-tags').oninput = (ev) => {
-    e.tags = ev.target.value.split(/[,]+/).map(t => t.trim()).filter(Boolean);
-    e.updated_at = nowIso(); saveDebounced();
+  // Tagy jako zaškrtávátka
+  document.querySelectorAll('input[data-tag-cb]').forEach(cb => {
+    cb.onchange = () => {
+      const tag = cb.value;
+      e.tags = e.tags || [];
+      if (cb.checked) {
+        if (!e.tags.includes(tag)) e.tags.push(tag);
+      } else {
+        e.tags = e.tags.filter(t => t !== tag);
+      }
+      // Zachovat řazení po česku
+      e.tags.sort((a, b) => a.localeCompare(b, 'cs'));
+      e.updated_at = nowIso();
+      saveDebounced();
+    };
+  });
+  // Přidání nového tagu
+  const newTagInput = document.getElementById('d-tag-new');
+  const addTagBtn = document.getElementById('d-tag-add');
+  function addNewTag() {
+    const raw = newTagInput.value;
+    const t = normalizeTag(raw);
+    if (!t) return;
+    if (!db.tags) db.tags = [];
+    if (!db.tags.includes(t)) db.tags.push(t);
+    db.tags.sort((a, b) => a.localeCompare(b, 'cs'));
+    e.tags = e.tags || [];
+    if (!e.tags.includes(t)) e.tags.push(t);
+    e.tags.sort((a, b) => a.localeCompare(b, 'cs'));
+    e.updated_at = nowIso();
+    save();
+    newTagInput.value = '';
+    // Re-render edit aby se objevil nový tag v seznamu
+    render();
+    toast('Tag „' + t + '" přidán.');
+  }
+  if (addTagBtn) addTagBtn.onclick = addNewTag;
+  if (newTagInput) newTagInput.onkeydown = (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); addNewTag(); }
   };
   document.getElementById('d-confidence').onchange = (ev) => { e.confidence = ev.target.value; e.updated_at = nowIso(); saveDebounced(); };
   document.getElementById('d-valid-from').onchange = (ev) => { e.valid_from = ev.target.value || null; e.updated_at = nowIso(); saveDebounced(); };
@@ -3326,7 +3491,6 @@ function renderDetailEdit(main, e) {
       await deleteEntity(e.id); toast('Smazáno.'); goBack();
     });
   };
-  document.getElementById('btn-save-as-template').onclick = () => createTemplateFromEntity(e);
   const lb = document.getElementById('leave-inbox');
   if (lb) lb.onclick = () => { e.inbox = false; e.updated_at = nowIso(); saveDebounced(); render(); toast('Vyjmuto.'); };
   const eb = document.getElementById('enter-inbox');
@@ -8784,6 +8948,11 @@ function load() {
     if (blob.settings) Object.assign(state.settings, blob.settings);
     if (!state.settings.disabledAspects) state.settings.disabledAspects = [];
     if (!state.settings.github) state.settings.github = { owner: '', repo: '', path: '', branch: 'main', autoLoadOnStart: false };
+    // Migrace tagů na lowercase + dedupe
+    const tagChanges = migrateTagsToLowerCase();
+    if (tagChanges > 0) {
+      setTimeout(() => toast('Tagy migrovány na malá písmena (' + tagChanges + ' úprav).', 3000), 800);
+    }
     if (migratedFromDefault) {
       setTimeout(() => toast('Data automaticky migrována do projektového úložiště.', 4000), 500);
     }
@@ -9632,7 +9801,48 @@ function getStatusLabel(s) {
 function getAllTags() {
   const set = new Set();
   db.entities.forEach(e => (e.tags || []).forEach(t => set.add(t)));
+  (db.tags || []).forEach(t => set.add(t));
   return [...set].sort((a,b) => a.localeCompare(b,'cs'));
+}
+
+// Normalizace tagu: trim + lowercase. Vrací '' pokud prázdný po trim.
+function normalizeTag(t) {
+  if (!t) return '';
+  return String(t).trim().toLowerCase();
+}
+
+// Migrace: projde všechny entity i db.tags a normalizuje (lowercase, dedupe).
+// Vrací počet změněných položek.
+function migrateTagsToLowerCase() {
+  let changed = 0;
+  db.entities.forEach(e => {
+    if (!Array.isArray(e.tags)) return;
+    const orig = e.tags;
+    const seen = new Set();
+    const norm = [];
+    orig.forEach(t => {
+      const n = normalizeTag(t);
+      if (n && !seen.has(n)) { seen.add(n); norm.push(n); }
+    });
+    // Detekce změny: jiná délka nebo jiné položky
+    if (orig.length !== norm.length || orig.some((t, i) => t !== norm[i])) {
+      e.tags = norm;
+      changed++;
+    }
+  });
+  if (Array.isArray(db.tags)) {
+    const seen = new Set();
+    const norm = [];
+    db.tags.forEach(t => {
+      const n = normalizeTag(t);
+      if (n && !seen.has(n)) { seen.add(n); norm.push(n); }
+    });
+    if (db.tags.length !== norm.length || db.tags.some((t, i) => t !== norm[i])) {
+      db.tags = norm;
+      changed++;
+    }
+  }
+  return changed;
 }
 
 // ==== SEARCH ====
@@ -10561,6 +10771,17 @@ function renderSettings(main) {
     '<div class="btn-group" style="margin-top:0.5em;"><button id="add-custom-aspect" class="primary">+ Nový vlastní aspekt</button></div>' +
     '</section>' +
 
+    '<section aria-labelledby="tags-h"><h3 id="tags-h">Tagy</h3>' +
+    '<p>Všechny tagy oddělené čárkou. Editujte – po uložení se přidají nové, smazané se odstraní ze všech entit.</p>' +
+    '<label for="tags-text" class="sr-only">Tagy</label>' +
+    '<textarea id="tags-text" rows="6" style="width:100%;"></textarea>' +
+    '<div class="btn-group" style="margin-top:0.5em;">' +
+      '<button id="tags-save" class="primary">Uložit změny</button>' +
+      '<button id="tags-reset">Vrátit</button>' +
+    '</div>' +
+    '<p class="meta" id="tags-meta"></p>' +
+    '</section>' +
+
     '<section aria-labelledby="static-h"><h3 id="static-h">Statický prohlížeč ke stažení</h3>' +
     '<p>Vygeneruje samostatný HTML soubor s vašimi daty, který lze sdílet a otevřít kdekoli (offline, bez přihlášení, bez GitHubu). Příjemce může data jen prohlížet, nemůže nic upravovat.</p>' +
     '<ul>' +
@@ -10582,6 +10803,68 @@ function renderSettings(main) {
   document.getElementById('gen-static').onclick = () => downloadStaticViewer();
   document.getElementById('exim-export').onclick = () => openExportDialog();
   document.getElementById('exim-import').onclick = () => openImportDialog();
+
+  // === Správa tagů ===
+  const tagsText = document.getElementById('tags-text');
+  const tagsMeta = document.getElementById('tags-meta');
+  const tagsSaveBtn = document.getElementById('tags-save');
+  const tagsResetBtn = document.getElementById('tags-reset');
+  function loadTagsField() {
+    const all = getAllTags();
+    tagsText.value = all.join(', ');
+    tagsMeta.textContent = all.length + ' tagů celkem.';
+  }
+  loadTagsField();
+  tagsResetBtn.onclick = () => { loadTagsField(); toast('Vráceno.'); };
+  tagsSaveBtn.onclick = () => {
+    const raw = tagsText.value;
+    const incoming = raw.split(/[,\\n]+/).map(t => normalizeTag(t)).filter(Boolean);
+    const newSet = new Set(incoming);
+    const oldSet = new Set(getAllTags());
+    const removed = [...oldSet].filter(t => !newSet.has(t));
+    const added = [...newSet].filter(t => !oldSet.has(t));
+    if (removed.length === 0 && added.length === 0) {
+      toast('Žádné změny.');
+      return;
+    }
+    // Spočítat dotčené entity pro removed tagy
+    let entitiesAffected = 0;
+    if (removed.length > 0) {
+      const removedSet = new Set(removed);
+      db.entities.forEach(e => {
+        if (e.tags && e.tags.some(t => removedSet.has(t))) entitiesAffected++;
+      });
+    }
+    // Potvrzovací dialog
+    const msg = (removed.length > 0
+        ? 'Smazat tagy: ' + removed.map(t => '"' + t + '"').join(', ') +
+          ' (z ' + entitiesAffected + ' entit)\\n\\n'
+        : '') +
+      (added.length > 0
+        ? 'Přidat tagy: ' + added.map(t => '"' + t + '"').join(', ')
+        : '');
+    confirmDialog('Potvrdit změny tagů?\\n\\n' + msg, () => {
+      // Smazat odstraněné tagy ze všech entit
+      const removedSet = new Set(removed);
+      db.entities.forEach(e => {
+        if (!e.tags) return;
+        const before = e.tags.length;
+        e.tags = e.tags.filter(t => !removedSet.has(t));
+        if (e.tags.length !== before) e.updated_at = nowIso();
+      });
+      // Aktualizovat db.tags
+      const finalList = [...newSet].sort((a, b) => a.localeCompare(b, 'cs'));
+      db.tags = finalList;
+      save();
+      const parts = [];
+      if (added.length > 0) parts.push('+' + added.length);
+      if (removed.length > 0) parts.push('-' + removed.length);
+      if (entitiesAffected > 0) parts.push('upraveno ' + entitiesAffected + ' entit');
+      toast('Tagy uloženy: ' + parts.join(', '));
+      playSound('save');
+      loadTagsField();
+    });
+  };
 
   document.getElementById('export-json').onclick = () => exportToFile(true);
   document.getElementById('export-json-nofiles').onclick = () => exportToFile(false);
@@ -11060,12 +11343,11 @@ function renderDetailEdit(main, e) {
   main.innerHTML =
     '<div class="btn-group">' +
       '<button id="back-btn">← Zpět</button>' +
-      '<button id="btn-done" class="primary" accesskey="u">Hotovo (uložit a zpět)</button>' +
       '<button id="btn-duplicate-edit" title="Duplikovat tuto entitu">Duplikovat</button>' +
       (e.inbox ? '<button id="leave-inbox">Vyjmout z Inboxu</button>' : '<button id="enter-inbox">Vrátit do Inboxu</button>') +
       (e.archived ? '<button id="unarchive">Obnovit</button>' : '<button id="archive">Archivovat</button>') +
       '<button class="danger" id="delete">Smazat</button>' +
-      '<button id="btn-save-as-template" title="Vytvořit šablonu z této entity">Uložit jako šablonu</button>' +
+      '<button id="btn-done" class="primary" accesskey="u">Hotovo (uložit a zpět)</button>' +
     '</div>' +
     '<h2>Úprava entity</h2>' +
 
@@ -11083,9 +11365,20 @@ function renderDetailEdit(main, e) {
     '</section>' +
 
     '<section><h3>Tagy</h3>' +
-      '<label for="d-tags">Tagy (oddělené čárkou)</label>' +
-      '<input type="text" id="d-tags" value="' + escapeHtml((e.tags || []).join(', ')) + '" list="d-tag-suggestions">' +
-      '<datalist id="d-tag-suggestions">' + allTags.map(t => '<option value="' + escapeHtml(t) + '">').join('') + '</datalist>' +
+      '<div id="d-tags-checkboxes" class="checkbox-list">' +
+        (allTags.length === 0
+          ? '<p class="meta">Zatím žádné tagy. Přidejte první níže.</p>'
+          : allTags.map(t => {
+              const checked = (e.tags || []).includes(t);
+              return '<label><input type="checkbox" data-tag-cb value="' + escapeHtml(t) + '"' +
+                (checked ? ' checked' : '') + '> ' + escapeHtml(t) + '</label>';
+            }).join('')
+        ) +
+      '</div>' +
+      '<div class="btn-group" style="margin-top:0.5em;">' +
+        '<input type="text" id="d-tag-new" placeholder="Nový tag" style="flex:1;min-width:8em;">' +
+        '<button type="button" id="d-tag-add">+ Přidat tag</button>' +
+      '</div>' +
     '</section>' +
 
     '<section><h3>Přílohy</h3>' +
@@ -11094,7 +11387,7 @@ function renderDetailEdit(main, e) {
       '<div id="d-audio-recorder" style="margin:0.7em 0;">' +
         '<button type="button" id="d-rec-start" class="primary">🎤 Nahrát hlasovou poznámku</button>' +
         '<div id="d-rec-controls" hidden>' +
-          '<div id="d-rec-status" aria-live="polite" role="status">Připraveno</div>' +
+          '<div id="d-rec-status" aria-hidden="true">Připraveno</div>' +
           '<div class="btn-group" style="margin-top:0.4em;">' +
             '<button type="button" id="d-rec-stop" class="primary">⏹ Zastavit</button>' +
             '<button type="button" id="d-rec-pause">⏸ Pauza</button>' +
@@ -11183,9 +11476,45 @@ function renderDetailEdit(main, e) {
     }
   };
   document.getElementById('d-body').oninput = (ev) => { e.body = ev.target.value; e.updated_at = nowIso(); saveDebounced(); };
-  document.getElementById('d-tags').oninput = (ev) => {
-    e.tags = ev.target.value.split(/[,]+/).map(t => t.trim()).filter(Boolean);
-    e.updated_at = nowIso(); saveDebounced();
+  // Tagy jako zaškrtávátka
+  document.querySelectorAll('input[data-tag-cb]').forEach(cb => {
+    cb.onchange = () => {
+      const tag = cb.value;
+      e.tags = e.tags || [];
+      if (cb.checked) {
+        if (!e.tags.includes(tag)) e.tags.push(tag);
+      } else {
+        e.tags = e.tags.filter(t => t !== tag);
+      }
+      // Zachovat řazení po česku
+      e.tags.sort((a, b) => a.localeCompare(b, 'cs'));
+      e.updated_at = nowIso();
+      saveDebounced();
+    };
+  });
+  // Přidání nového tagu
+  const newTagInput = document.getElementById('d-tag-new');
+  const addTagBtn = document.getElementById('d-tag-add');
+  function addNewTag() {
+    const raw = newTagInput.value;
+    const t = normalizeTag(raw);
+    if (!t) return;
+    if (!db.tags) db.tags = [];
+    if (!db.tags.includes(t)) db.tags.push(t);
+    db.tags.sort((a, b) => a.localeCompare(b, 'cs'));
+    e.tags = e.tags || [];
+    if (!e.tags.includes(t)) e.tags.push(t);
+    e.tags.sort((a, b) => a.localeCompare(b, 'cs'));
+    e.updated_at = nowIso();
+    save();
+    newTagInput.value = '';
+    // Re-render edit aby se objevil nový tag v seznamu
+    render();
+    toast('Tag „' + t + '" přidán.');
+  }
+  if (addTagBtn) addTagBtn.onclick = addNewTag;
+  if (newTagInput) newTagInput.onkeydown = (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); addNewTag(); }
   };
   document.getElementById('d-confidence').onchange = (ev) => { e.confidence = ev.target.value; e.updated_at = nowIso(); saveDebounced(); };
   document.getElementById('d-valid-from').onchange = (ev) => { e.valid_from = ev.target.value || null; e.updated_at = nowIso(); saveDebounced(); };
@@ -11226,7 +11555,6 @@ function renderDetailEdit(main, e) {
       await deleteEntity(e.id); toast('Smazáno.'); goBack();
     });
   };
-  document.getElementById('btn-save-as-template').onclick = () => createTemplateFromEntity(e);
   const lb = document.getElementById('leave-inbox');
   if (lb) lb.onclick = () => { e.inbox = false; e.updated_at = nowIso(); saveDebounced(); render(); toast('Vyjmuto.'); };
   const eb = document.getElementById('enter-inbox');
