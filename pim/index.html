@@ -106,6 +106,9 @@ body.theme-dark .calendar-row { border-bottom-color: #333; }
 .attr-row > * { flex: 1 1 auto; }
 .attr-row .attr-actions { flex: 0 0 auto; }
 .attr-row label { margin: 0; }
+.date-with-clear { display: inline-flex; align-items: center; gap: 0.3em; }
+.date-with-clear input { flex: 1; }
+.date-with-clear button { padding: 0.2em 0.5em; font-size: 0.95em; line-height: 1; }
 .link-row { display: flex; gap: 0.5em; align-items: center; padding: 0.25em 0; }
 .link-row .link-target { flex: 1; }
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1em; }
@@ -274,6 +277,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <li><button data-view="calendar">Kalendář</button></li>
       <li><button data-view="search">Hledání</button></li>
       <li><button data-view="tags">Tagy</button></li>
+      <li><button data-view="links">Vazby</button></li>
       <li><button data-view="views">Pohledy</button></li>
       <li><button data-view="templates">Šablony</button></li>
       <li><button data-view="settings">Nastavení</button></li>
@@ -389,7 +393,13 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
 <dialog id="dialog-link" aria-labelledby="dialog-link-title">
   <h2 id="dialog-link-title">Přidat vazbu</h2>
   <form method="dialog">
+    <fieldset style="border:1px solid #ccc;padding:0.5em;margin-bottom:0.5em;">
+      <legend>Směr vazby</legend>
+      <label><input type="radio" name="link-direction" value="outgoing" checked> Odchozí — z této entity směrem na cíl</label><br>
+      <label><input type="radio" name="link-direction" value="incoming"> Příchozí — z cíle směrem sem (vazba se uloží u cílové entity)</label>
+    </fieldset>
     <label for="link-type">Typ vazby</label><select id="link-type"></select>
+    <p class="meta" id="link-type-preview" aria-live="polite"></p>
     <label for="link-search">Cílová entita (vyhledat)</label>
     <input type="search" id="link-search" placeholder="Začněte psát…">
     <div id="link-results" role="listbox" aria-label="Nalezené entity" style="max-height:200px;overflow-y:auto;margin-top:0.5em;border:1px solid #ccc;border-radius:4px;"></div>
@@ -765,7 +775,7 @@ const RELATION_TYPES = {
   partner: { label: 'partner', inverse: 'partner', inverseLabel: 'partner' },
   parentOf: { label: 'rodič', inverse: 'childOf', inverseLabel: 'dítě' },
   answers: { label: 'odpovídá na', inverse: 'answeredBy', inverseLabel: 'zodpovězeno' },
-  attendedBy: { label: 'účastník', inverse: 'attended', inverseLabel: 'účastnil se' },
+  attendedBy: { label: 'účastní se', inverse: 'attended', inverseLabel: 'má účastníka' },
   locatedAt: { label: 'koná se v', inverse: 'hostsEvent', inverseLabel: 'hostí událost' },
   relatedTo: { label: 'souvisí s', inverse: 'relatedTo', inverseLabel: 'souvisí s' }
 };
@@ -1114,58 +1124,131 @@ function debug(msg) {
   div.appendChild(line); div.scrollTop = div.scrollHeight;
 }
 let audioCtx = null;
-function playTone(freq, duration) {
+// Zahraje tón s ADSR-style envelope. Volitelné parametry pro zachování zpětné kompatibility.
+// Výchozí hlasitost ~0.25 (5× silnější než dříve), výchozí typ 'triangle' (lepší slyšitelnost než sine).
+function playTone(freq, duration, opts) {
   try {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
-    osc.frequency.value = freq; osc.type = 'sine';
-    osc.connect(gain); gain.connect(audioCtx.destination);
-    gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
-    osc.start(); osc.stop(audioCtx.currentTime + duration);
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    opts = opts || {};
+    const type = opts.type || 'triangle';
+    const peak = opts.peak !== undefined ? opts.peak : 0.25;
+    const attack = opts.attack !== undefined ? opts.attack : 0.01;
+    const decay = opts.decay !== undefined ? opts.decay : Math.max(0.05, duration * 0.3);
+    const sustain = opts.sustain !== undefined ? opts.sustain : peak * 0.6;
+    const release = opts.release !== undefined ? opts.release : Math.max(0.05, duration * 0.3);
+    const totalTime = attack + decay + duration + release;
+
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.frequency.value = freq;
+    osc.type = type;
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    const t = audioCtx.currentTime;
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(Math.max(peak, 0.001), t + attack);
+    gain.gain.exponentialRampToValueAtTime(Math.max(sustain, 0.0001), t + attack + decay);
+    gain.gain.setValueAtTime(Math.max(sustain, 0.0001), t + attack + decay + duration);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + totalTime);
+    osc.start(t);
+    osc.stop(t + totalTime + 0.02);
   } catch (e) { /* ignore */ }
 }
 
-// Zvukové efekty pro různé události. Každá má charakteristický krátký motiv,
+// Krátký šumový "puk" pro chyby a důraz. Použije bandpass filtr a volume envelope.
+function playNoise(duration, opts) {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    opts = opts || {};
+    const peak = opts.peak !== undefined ? opts.peak : 0.15;
+    const centerFreq = opts.freq || 800;
+    const bufferSize = Math.floor(audioCtx.sampleRate * duration);
+    const buf = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = centerFreq;
+    filter.Q.value = 5;
+    const gain = audioCtx.createGain();
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioCtx.destination);
+    const t = audioCtx.currentTime;
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(peak, t + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+    src.start(t);
+    src.stop(t + duration + 0.05);
+  } catch (e) { /* ignore */ }
+}
+
+// Zvukové efekty pro různé události. Každá má charakteristický krátký motiv (200-500 ms),
 // aby uživatel slyšel rozdíl mezi „načteno", „uloženo", „chyba" atd.
 function playSound(kind) {
   if (!state.settings || !state.settings.audioFeedback) return;
   switch (kind) {
     case 'load':
-      // Načtení dat – stoupavé dva tóny (C5 → E5)
-      playTone(523, 0.08);
-      setTimeout(() => playTone(659, 0.08), 90);
+      // Načtení dat – stoupavé tři tóny (C5 → E5 → G5), durmolový rozklad
+      playTone(523, 0.12, { peak: 0.25 });
+      setTimeout(() => playTone(659, 0.12, { peak: 0.25 }), 100);
+      setTimeout(() => playTone(784, 0.18, { peak: 0.3 }), 200);
       break;
     case 'save':
-      // Uložení – jeden krátký jemný tón (G5)
-      playTone(784, 0.07);
+      // Uložení – výrazný zvonkový tón (G5 → C6) s lehkým zazvoněním
+      playTone(784, 0.1, { peak: 0.28, type: 'triangle' });
+      setTimeout(() => playTone(1047, 0.18, { peak: 0.25, type: 'triangle' }), 60);
       break;
     case 'save-gh':
-      // Uložení na GitHub – tři krátké tóny stoupající (C5-E5-G5)
-      playTone(523, 0.06);
-      setTimeout(() => playTone(659, 0.06), 70);
-      setTimeout(() => playTone(784, 0.08), 140);
+      // Uložení na GitHub – 4-tónový triumf (C5-E5-G5-C6) zvonkový
+      playTone(523, 0.1, { peak: 0.28 });
+      setTimeout(() => playTone(659, 0.1, { peak: 0.28 }), 90);
+      setTimeout(() => playTone(784, 0.1, { peak: 0.28 }), 180);
+      setTimeout(() => playTone(1047, 0.25, { peak: 0.32, type: 'triangle' }), 270);
       break;
     case 'save-entity':
-      // Uložení entity z editu – jeden krátký vyšší tón (A5)
-      playTone(880, 0.06);
+      // Uložení entity z editu – výrazný tón A5 → C6 (krátký dvojtón)
+      playTone(880, 0.1, { peak: 0.28 });
+      setTimeout(() => playTone(1047, 0.16, { peak: 0.28 }), 80);
       break;
     case 'success':
-      // Obecný úspěch – stoupavé dva tóny
-      playTone(659, 0.06);
-      setTimeout(() => playTone(880, 0.08), 80);
+      // Obecný úspěch – majorové trio (E5 → G5 → C6)
+      playTone(659, 0.1, { peak: 0.28 });
+      setTimeout(() => playTone(784, 0.1, { peak: 0.28 }), 90);
+      setTimeout(() => playTone(1047, 0.2, { peak: 0.3, type: 'triangle' }), 180);
       break;
     case 'error':
-      // Chyba – klesavé dva tóny (A4 → E4)
-      playTone(440, 0.1);
-      setTimeout(() => playTone(330, 0.15), 110);
+      // Chyba – klesající dvojtón (A4 → E4) výrazně, square pro pevnost
+      playTone(440, 0.18, { peak: 0.3, type: 'square' });
+      setTimeout(() => playTone(330, 0.28, { peak: 0.3, type: 'square' }), 170);
+      break;
+    case 'warning':
+      // Varování – dva stejné tóny (A4-A4) s pauzou
+      playTone(440, 0.1, { peak: 0.28, type: 'square' });
+      setTimeout(() => playTone(440, 0.15, { peak: 0.28, type: 'square' }), 180);
       break;
     case 'click':
-      // Velmi tichý cvak (toast)
-      playTone(880, 0.03);
+      // Krátký, ale slyšitelný cvak — kratší, ale s výraznější amplitudou
+      playTone(1200, 0.05, { peak: 0.18, type: 'triangle' });
+      break;
+    case 'delete':
+      // Smazání – sestupný motiv (C5 → A4 → F4) s důrazem
+      playTone(523, 0.1, { peak: 0.28, type: 'square' });
+      setTimeout(() => playTone(440, 0.1, { peak: 0.28, type: 'square' }), 90);
+      setTimeout(() => playTone(349, 0.2, { peak: 0.28, type: 'square' }), 180);
+      break;
+    case 'notify':
+      // Výrazný „Hej, něco se stalo" — jednoduchý, ale slyšitelný motiv (E5-G5)
+      playTone(659, 0.12, { peak: 0.3, type: 'triangle' });
+      setTimeout(() => playTone(784, 0.18, { peak: 0.3, type: 'triangle' }), 110);
       break;
     default:
-      playTone(880, 0.05);
+      playTone(880, 0.1, { peak: 0.25 });
   }
 }
 // ==== MARKDOWN ====
@@ -2370,6 +2453,7 @@ function render() {
     case 'calendar': renderCalendar(main); break;
     case 'search': renderSearch(main); break;
     case 'tags': renderTags(main); break;
+    case 'links': renderLinksView(main); break;
     case 'views': renderViewsList(main); break;
     case 'savedView': renderSavedView(main, state.savedViewId); break;
     case 'templates': renderTemplatesList(main); break;
@@ -3366,6 +3450,167 @@ function renderSearch(main) {
   if (i.value) update();
 }
 
+// ==== VIEW: VAZBY (všechny vazby napříč databází) ====
+function renderLinksView(main) {
+  // Sebrat všechny vazby — strukturované linky + relace + wiki/include z textu
+  const allLinks = [];
+  db.entities.forEach(from => {
+    if (from.archived) return;
+    // Strukturované odchozí vazby
+    (from.links || []).forEach(l => {
+      const target = findEntity(l.to);
+      if (!target || target.archived) return;
+      allLinks.push({
+        from: from,
+        to: target,
+        type: l.type,
+        kind: 'link',
+        typeLabel: (RELATION_TYPES[l.type] && RELATION_TYPES[l.type].label) || l.type,
+        note: l.note || ''
+      });
+    });
+    // Relace v atributech
+    const allFields = collectAllFields(from);
+    allFields.forEach(f => {
+      if (f.field.type !== 'relation') return;
+      const v = from.attributes && from.attributes[f.field.key];
+      if (!v) return;
+      const ids = normalizeRelationValue(v);
+      ids.forEach(targetId => {
+        const target = findEntity(targetId);
+        if (!target || target.archived) return;
+        allLinks.push({
+          from: from,
+          to: target,
+          type: '__relation__',
+          kind: 'relation',
+          typeLabel: (f.aspectLabel ? '[' + f.aspectLabel + '] ' : '') + f.field.label,
+          note: 'relace'
+        });
+      });
+    });
+    // Wiki + include z textových zdrojů
+    collectEntityTextSources(from).forEach(src => {
+      extractWikiTargetsFromText(src.text).forEach(t => {
+        const target = findEntityByIdOrTitle(t);
+        if (!target || target.id === from.id || target.archived) return;
+        allLinks.push({
+          from: from,
+          to: target,
+          type: '__wiki__',
+          kind: 'wiki',
+          typeLabel: 'wiki odkaz',
+          note: ''
+        });
+      });
+      extractIncludeTargetsFromText(src.text).forEach(t => {
+        const target = findEntityByIdOrTitle(t);
+        if (!target || target.id === from.id || target.archived) return;
+        allLinks.push({
+          from: from,
+          to: target,
+          type: '__include__',
+          kind: 'include',
+          typeLabel: 'include',
+          note: ''
+        });
+      });
+    });
+  });
+
+  // Stav filtrů
+  if (!state._linksFilter) state._linksFilter = { type: '', from: '', to: '', kind: '' };
+  const f = state._linksFilter;
+
+  // Aktivní entity pro datalist
+  const allEntitiesSorted = [...db.entities]
+    .filter(e => !e.archived)
+    .sort((a,b) => getDisplayTitle(a).localeCompare(getDisplayTitle(b), 'cs'));
+  const entityOptions = allEntitiesSorted.map(e =>
+    '<option value="' + escapeHtml(getDisplayTitle(e)) + '">').join('');
+
+  // Aplikovat filtry
+  let filtered = allLinks;
+  if (f.kind) filtered = filtered.filter(l => l.kind === f.kind);
+  if (f.type) {
+    filtered = filtered.filter(l => l.kind === 'link' && l.type === f.type);
+  }
+  if (f.from) {
+    const q = f.from.toLowerCase();
+    filtered = filtered.filter(l => getDisplayTitle(l.from).toLowerCase().includes(q));
+  }
+  if (f.to) {
+    const q = f.to.toLowerCase();
+    filtered = filtered.filter(l => getDisplayTitle(l.to).toLowerCase().includes(q));
+  }
+
+  // Setřídit podle from name
+  filtered.sort((a, b) => {
+    const c = getDisplayTitle(a.from).localeCompare(getDisplayTitle(b.from), 'cs');
+    return c !== 0 ? c : getDisplayTitle(a.to).localeCompare(getDisplayTitle(b.to), 'cs');
+  });
+
+  const typeOpts = Object.entries(RELATION_TYPES).map(([k, v]) =>
+    '<option value="' + escapeHtml(k) + '"' + (f.type === k ? ' selected' : '') + '>' + escapeHtml(v.label) + '</option>').join('');
+
+  main.innerHTML = '<h2>Vazby</h2>' +
+    '<p>Všechny vazby v databázi: strukturované odchozí vazby, relace v atributech, wiki odkazy a include v textu.</p>' +
+    '<details open style="margin-bottom:0.7em;"><summary>Filtry</summary>' +
+    '<div class="filter-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(14em,1fr));gap:0.5em;margin-top:0.5em;">' +
+      '<div><label for="lf-kind">Druh vazby</label><select id="lf-kind">' +
+        '<option value="">— všechny —</option>' +
+        '<option value="link"' + (f.kind === 'link' ? ' selected' : '') + '>Strukturovaná vazba</option>' +
+        '<option value="relation"' + (f.kind === 'relation' ? ' selected' : '') + '>Relace (atribut)</option>' +
+        '<option value="wiki"' + (f.kind === 'wiki' ? ' selected' : '') + '>Wiki odkaz [[…]]</option>' +
+        '<option value="include"' + (f.kind === 'include' ? ' selected' : '') + '>Include {{include:…}}</option>' +
+      '</select></div>' +
+      '<div><label for="lf-type">Typ (jen pro strukturované)</label><select id="lf-type">' +
+        '<option value="">— libovolný —</option>' + typeOpts +
+      '</select></div>' +
+      '<div><label for="lf-from">Z entity</label>' +
+        '<input type="search" id="lf-from" list="lf-entity-list" value="' + escapeHtml(f.from) + '" placeholder="Začněte psát název"></div>' +
+      '<div><label for="lf-to">Do entity</label>' +
+        '<input type="search" id="lf-to" list="lf-entity-list" value="' + escapeHtml(f.to) + '" placeholder="Začněte psát název"></div>' +
+    '</div>' +
+    '<datalist id="lf-entity-list">' + entityOptions + '</datalist>' +
+    '<div class="btn-group" style="margin-top:0.5em;"><button id="lf-reset">Reset filtrů</button></div>' +
+    '</details>' +
+    '<p class="meta">Nalezeno ' + filtered.length + ' z ' + allLinks.length + ' vazeb.</p>' +
+    (filtered.length === 0
+      ? '<div class="empty">Žádné vazby neodpovídají filtrům.</div>'
+      : '<table><caption class="sr-only">Vazby</caption><thead><tr>' +
+          '<th scope="col">Z entity</th>' +
+          '<th scope="col">Typ vazby</th>' +
+          '<th scope="col">Do entity</th>' +
+          '<th scope="col">Aspekt cíle</th>' +
+        '</tr></thead><tbody>' +
+        filtered.map(l => {
+          const fromAspects = (l.from.aspects || []).map(a => aspectLabel(a)).join(', ');
+          const toAspects = (l.to.aspects || []).map(a => aspectLabel(a)).join(', ');
+          const noteTxt = l.note ? ' <span class="meta">(' + escapeHtml(l.note) + ')</span>' : '';
+          return '<tr>' +
+            '<td><a href="#" data-entity="' + escapeHtml(l.from.id) + '">' + escapeHtml(getDisplayTitle(l.from)) + '</a>' +
+              (fromAspects ? ' <span class="meta">(' + escapeHtml(fromAspects) + ')</span>' : '') + '</td>' +
+            '<td>' + escapeHtml(l.typeLabel) + noteTxt + '</td>' +
+            '<td><a href="#" data-entity="' + escapeHtml(l.to.id) + '">' + escapeHtml(getDisplayTitle(l.to)) + '</a></td>' +
+            '<td>' + escapeHtml(toAspects) + '</td>' +
+          '</tr>';
+        }).join('') +
+        '</tbody></table>');
+
+  // Handlery
+  attachEntityRowHandlers(main);
+  function reload() { renderLinksView(main); }
+  document.getElementById('lf-kind').onchange = (ev) => { f.kind = ev.target.value; reload(); };
+  document.getElementById('lf-type').onchange = (ev) => { f.type = ev.target.value; reload(); };
+  document.getElementById('lf-from').oninput = (ev) => { f.from = ev.target.value; reload(); };
+  document.getElementById('lf-to').oninput = (ev) => { f.to = ev.target.value; reload(); };
+  document.getElementById('lf-reset').onclick = () => {
+    state._linksFilter = { type: '', from: '', to: '', kind: '' };
+    reload();
+  };
+}
+
 // ==== VIEW: TAGY ====
 function renderTags(main) {
   const counts = {};
@@ -3613,6 +3858,21 @@ function renderSettings(main) {
         '<option value="dark"' + (state.settings.theme === 'dark' ? ' selected' : '') + '>Tmavé</option>' +
       '</select>' +
       '<label><input type="checkbox" id="pref-audio"' + (state.settings.audioFeedback ? ' checked' : '') + '> Zvuková zpětná vazba</label>' +
+      '<div id="audio-test-area" style="margin:0.5em 0 0.5em 1.5em;">' +
+        '<p class="meta" style="margin-bottom:0.3em;">Vyzkoušet jednotlivé zvuky:</p>' +
+        '<div class="btn-group" style="flex-wrap:wrap;">' +
+          '<button type="button" data-test-sound="load">Načtení</button>' +
+          '<button type="button" data-test-sound="save">Uložit</button>' +
+          '<button type="button" data-test-sound="save-gh">Uložit GitHub</button>' +
+          '<button type="button" data-test-sound="save-entity">Uložit entitu</button>' +
+          '<button type="button" data-test-sound="success">Úspěch</button>' +
+          '<button type="button" data-test-sound="notify">Oznámení</button>' +
+          '<button type="button" data-test-sound="warning">Varování</button>' +
+          '<button type="button" data-test-sound="error">Chyba</button>' +
+          '<button type="button" data-test-sound="delete">Smazání</button>' +
+          '<button type="button" data-test-sound="click">Cvak</button>' +
+        '</div>' +
+      '</div>' +
       '<label><input type="checkbox" id="pref-debug"' + (state.settings.debugMode ? ' checked' : '') + '> Ladicí mód</label>' +
     '</section>' +
 
@@ -3779,8 +4039,19 @@ function renderSettings(main) {
   document.getElementById('pref-theme').onchange = (ev) => { state.settings.theme = ev.target.value; applyTheme(); save(); };
   document.getElementById('pref-audio').onchange = (ev) => {
     state.settings.audioFeedback = ev.target.checked; save();
-    if (ev.target.checked) playTone(880, 0.05);
+    if (ev.target.checked) playSound('notify');
   };
+  // Test tlačítka pro zvuky – fungují i když je zvuková zpětná vazba vypnutá
+  document.querySelectorAll('button[data-test-sound]').forEach(b => {
+    b.onclick = () => {
+      const k = b.dataset.testSound;
+      // Dočasně zapnout (kvůli playSound check)
+      const wasEnabled = state.settings.audioFeedback;
+      state.settings.audioFeedback = true;
+      playSound(k);
+      state.settings.audioFeedback = wasEnabled;
+    };
+  });
   document.getElementById('pref-debug').onchange = (ev) => {
     state.settings.debugMode = ev.target.checked; save();
     if (!ev.target.checked) {
@@ -4398,8 +4669,12 @@ function renderDetailEdit(main, e) {
           Object.entries(CONFIDENCE_LEVELS).map(([k,v]) =>
             '<option value="' + k + '"' + (e.confidence === k ? ' selected' : '') + '>' + escapeHtml(v) + '</option>').join('') +
         '</select></div>' +
-        '<div style="flex:1"><label for="d-valid-from">Platnost od</label><input type="date" id="d-valid-from" value="' + (e.valid_from || '') + '"></div>' +
-        '<div style="flex:1"><label for="d-valid-to">Platnost do</label><input type="date" id="d-valid-to" value="' + (e.valid_to || '') + '"></div>' +
+        '<div style="flex:1"><label for="d-valid-from">Platnost od</label><span class="date-with-clear"><input type="date" id="d-valid-from" value="' + (e.valid_from || '') + '">' +
+          (e.valid_from ? ' <button type="button" id="d-valid-from-clear" aria-label="Odstranit datum" title="Odstranit datum">×</button>' : '') +
+          '</span></div>' +
+        '<div style="flex:1"><label for="d-valid-to">Platnost do</label><span class="date-with-clear"><input type="date" id="d-valid-to" value="' + (e.valid_to || '') + '">' +
+          (e.valid_to ? ' <button type="button" id="d-valid-to-clear" aria-label="Odstranit datum" title="Odstranit datum">×</button>' : '') +
+          '</span></div>' +
       '</div>' +
       '<p class="meta">Vytvořeno: ' + escapeHtml(fmtDateTime(e.created_at)) + ' · Změněno: ' + escapeHtml(fmtDateTime(e.updated_at)) + ' · ID: <code>' + escapeHtml(e.id) + '</code></p>' +
     '</section>';
@@ -4512,6 +4787,14 @@ function renderDetailEdit(main, e) {
   document.getElementById('d-confidence').onchange = (ev) => { e.confidence = ev.target.value; e.updated_at = nowIso(); saveDebounced(); };
   document.getElementById('d-valid-from').onchange = (ev) => { e.valid_from = ev.target.value || null; e.updated_at = nowIso(); saveDebounced(); };
   document.getElementById('d-valid-to').onchange = (ev) => { e.valid_to = ev.target.value || null; e.updated_at = nowIso(); saveDebounced(); };
+  const vfClear = document.getElementById('d-valid-from-clear');
+  if (vfClear) vfClear.onclick = () => {
+    e.valid_from = null; e.updated_at = nowIso(); save(); render(); toast('Datum odstraněno.');
+  };
+  const vtClear = document.getElementById('d-valid-to-clear');
+  if (vtClear) vtClear.onclick = () => {
+    e.valid_to = null; e.updated_at = nowIso(); save(); render(); toast('Datum odstraněno.');
+  };
 
   document.querySelectorAll('#d-aspects input[type="checkbox"]').forEach(c => {
     c.onchange = () => {
@@ -4607,6 +4890,16 @@ function renderEditAttributes(e) {
       renderEditAttributes(e); toast('Atribut „' + k + '“ odstraněn.');
     };
   });
+  // Tlačítka pro vyčištění data
+  c.querySelectorAll('button[data-clear-date]').forEach(b => {
+    b.onclick = () => {
+      const k = b.dataset.clearDate;
+      delete e.attributes[k];
+      e.updated_at = nowIso(); save();
+      renderEditAttributes(e);
+      toast('Datum odstraněno.');
+    };
+  });
   // Relace: tlačítko "vybrat"
   c.querySelectorAll('button[data-rel-pick]').forEach(b => {
     b.onclick = () => {
@@ -4683,6 +4976,12 @@ function attributeFieldHtml(e, f) {
         (f.multiple ? '+ Vybrat entity…' : (ids.length > 0 ? 'Změnit…' : 'Vybrat entitu…')) + filterDesc + multipleDesc +
       '</button>' +
     '</div>';
+  }
+  else if (f.type === 'date' || f.type === 'datetime-local') {
+    inp = '<span class="date-with-clear">' +
+      '<input type="' + escapeHtml(f.type) + '" id="' + id + '" data-attr-key="' + escapeHtml(f.key) + '" value="' + v + '">' +
+      (val ? ' <button type="button" data-clear-date="' + escapeHtml(f.key) + '" aria-label="Odstranit datum" title="Odstranit datum">×</button>' : '') +
+      '</span>';
   }
   else inp = '<input type="' + escapeHtml(f.type || 'text') + '" id="' + id + '" data-attr-key="' + escapeHtml(f.key) + '" value="' + v + '">';
   const rm = f.custom ? '<button data-remove-attr="' + escapeHtml(f.key) + '" title="Odebrat">×</button>' : '';
@@ -5759,8 +6058,39 @@ function openLinkDialog(entity) {
   document.getElementById('link-search').value = '';
   document.getElementById('link-note').value = '';
   document.getElementById('link-results').innerHTML = '';
+  // Reset směru na odchozí
+  document.querySelectorAll('input[name="link-direction"]').forEach(r => {
+    r.checked = (r.value === 'outgoing');
+  });
   let selected = null;
+  let selectedTitle = '';
   document.getElementById('link-save').disabled = true;
+
+  function getDirection() {
+    return document.querySelector('input[name="link-direction"]:checked').value;
+  }
+
+  function updatePreview() {
+    const preview = document.getElementById('link-type-preview');
+    const rel = RELATION_TYPES[ts.value];
+    if (!rel) { preview.textContent = ''; return; }
+    const dir = getDirection();
+    const meHere = '⟨tato entita⟩';
+    const targetHere = selectedTitle || '⟨vybraná entita⟩';
+    if (dir === 'outgoing') {
+      preview.textContent = 'Vznikne: ' + meHere + ' ' + rel.label + ' → ' + targetHere +
+        '. V příchozích u cíle: „' + rel.inverseLabel + ': …".';
+    } else {
+      preview.textContent = 'Vznikne: ' + targetHere + ' ' + rel.label + ' → ' + meHere +
+        '. Vazba se zapíše u cílové entity. Tato entita ji uvidí v Příchozích jako „' + rel.inverseLabel + ': …".';
+    }
+  }
+
+  ts.onchange = updatePreview;
+  document.querySelectorAll('input[name="link-direction"]').forEach(r => {
+    r.onchange = updatePreview;
+  });
+  updatePreview();
 
   document.getElementById('link-search').oninput = (ev) => {
     const q = ev.target.value.trim().toLowerCase();
@@ -5778,28 +6108,41 @@ function openLinkDialog(entity) {
     out.querySelectorAll('button[data-target]').forEach(b => {
       b.onclick = () => {
         selected = b.dataset.target;
-        document.getElementById('link-search').value = b.textContent.trim();
+        selectedTitle = b.textContent.trim().split(/\s+–/)[0].trim();
+        document.getElementById('link-search').value = selectedTitle;
         out.innerHTML = '<p class="meta" style="padding:0.5em;">Vybráno.</p>';
         document.getElementById('link-save').disabled = false;
+        updatePreview();
       };
     });
   };
 
   document.getElementById('link-save').onclick = () => {
     if (!selected) return;
-    if (!entity.links) entity.links = [];
-    entity.links.push({
-      to: selected, type: ts.value,
-      note: document.getElementById('link-note').value.trim()
-    });
-    entity.updated_at = nowIso(); saveDebounced();
+    const direction = getDirection();
+    const type = ts.value;
+    const note = document.getElementById('link-note').value.trim();
+    if (direction === 'outgoing') {
+      // Vazba na této entitě
+      if (!entity.links) entity.links = [];
+      entity.links.push({ to: selected, type: type, note: note });
+      entity.updated_at = nowIso();
+    } else {
+      // Vazba na cílové entitě (směrem sem)
+      const target = findEntity(selected);
+      if (!target) { alertMsg('Cíl už neexistuje.'); return; }
+      if (!target.links) target.links = [];
+      target.links.push({ to: entity.id, type: type, note: note });
+      target.updated_at = nowIso();
+    }
+    save();
     d.close();
     if (state.view === 'detail' && state.detailMode === 'edit') {
       renderEditLinks(entity);
     } else {
       render();
     }
-    toast('Vazba přidána.');
+    toast(direction === 'outgoing' ? 'Vazba přidána.' : 'Příchozí vazba přidána (uložena u cíle).');
   };
   document.getElementById('link-cancel').onclick = () => d.close();
   d.showModal();
@@ -9204,6 +9547,9 @@ body.theme-dark .calendar-row { border-bottom-color: #333; }
 .attr-row > * { flex: 1 1 auto; }
 .attr-row .attr-actions { flex: 0 0 auto; }
 .attr-row label { margin: 0; }
+.date-with-clear { display: inline-flex; align-items: center; gap: 0.3em; }
+.date-with-clear input { flex: 1; }
+.date-with-clear button { padding: 0.2em 0.5em; font-size: 0.95em; line-height: 1; }
 .link-row { display: flex; gap: 0.5em; align-items: center; padding: 0.25em 0; }
 .link-row .link-target { flex: 1; }
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1em; }
@@ -9412,6 +9758,7 @@ body.viewer-mode .btn-group:has(#d-add-comment) { display: none !important; }
       <li><button data-view="calendar">Kalendář</button></li>
       <li><button data-view="search">Hledání</button></li>
       <li><button data-view="tags">Tagy</button></li>
+      <li><button data-view="links">Vazby</button></li>
       <li><button data-view="views">Pohledy</button></li>
       <li><button data-view="templates">Šablony</button></li>
       <li><button data-view="settings">Nastavení</button></li>
@@ -9527,7 +9874,13 @@ body.viewer-mode .btn-group:has(#d-add-comment) { display: none !important; }
 <dialog id="dialog-link" aria-labelledby="dialog-link-title">
   <h2 id="dialog-link-title">Přidat vazbu</h2>
   <form method="dialog">
+    <fieldset style="border:1px solid #ccc;padding:0.5em;margin-bottom:0.5em;">
+      <legend>Směr vazby</legend>
+      <label><input type="radio" name="link-direction" value="outgoing" checked> Odchozí — z této entity směrem na cíl</label><br>
+      <label><input type="radio" name="link-direction" value="incoming"> Příchozí — z cíle směrem sem (vazba se uloží u cílové entity)</label>
+    </fieldset>
     <label for="link-type">Typ vazby</label><select id="link-type"></select>
+    <p class="meta" id="link-type-preview" aria-live="polite"></p>
     <label for="link-search">Cílová entita (vyhledat)</label>
     <input type="search" id="link-search" placeholder="Začněte psát…">
     <div id="link-results" role="listbox" aria-label="Nalezené entity" style="max-height:200px;overflow-y:auto;margin-top:0.5em;border:1px solid #ccc;border-radius:4px;"></div>
@@ -9903,7 +10256,7 @@ const RELATION_TYPES = {
   partner: { label: 'partner', inverse: 'partner', inverseLabel: 'partner' },
   parentOf: { label: 'rodič', inverse: 'childOf', inverseLabel: 'dítě' },
   answers: { label: 'odpovídá na', inverse: 'answeredBy', inverseLabel: 'zodpovězeno' },
-  attendedBy: { label: 'účastník', inverse: 'attended', inverseLabel: 'účastnil se' },
+  attendedBy: { label: 'účastní se', inverse: 'attended', inverseLabel: 'má účastníka' },
   locatedAt: { label: 'koná se v', inverse: 'hostsEvent', inverseLabel: 'hostí událost' },
   relatedTo: { label: 'souvisí s', inverse: 'relatedTo', inverseLabel: 'souvisí s' }
 };
@@ -10252,58 +10605,131 @@ function debug(msg) {
   div.appendChild(line); div.scrollTop = div.scrollHeight;
 }
 let audioCtx = null;
-function playTone(freq, duration) {
+// Zahraje tón s ADSR-style envelope. Volitelné parametry pro zachování zpětné kompatibility.
+// Výchozí hlasitost ~0.25 (5× silnější než dříve), výchozí typ 'triangle' (lepší slyšitelnost než sine).
+function playTone(freq, duration, opts) {
   try {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
-    osc.frequency.value = freq; osc.type = 'sine';
-    osc.connect(gain); gain.connect(audioCtx.destination);
-    gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
-    osc.start(); osc.stop(audioCtx.currentTime + duration);
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    opts = opts || {};
+    const type = opts.type || 'triangle';
+    const peak = opts.peak !== undefined ? opts.peak : 0.25;
+    const attack = opts.attack !== undefined ? opts.attack : 0.01;
+    const decay = opts.decay !== undefined ? opts.decay : Math.max(0.05, duration * 0.3);
+    const sustain = opts.sustain !== undefined ? opts.sustain : peak * 0.6;
+    const release = opts.release !== undefined ? opts.release : Math.max(0.05, duration * 0.3);
+    const totalTime = attack + decay + duration + release;
+
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.frequency.value = freq;
+    osc.type = type;
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    const t = audioCtx.currentTime;
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(Math.max(peak, 0.001), t + attack);
+    gain.gain.exponentialRampToValueAtTime(Math.max(sustain, 0.0001), t + attack + decay);
+    gain.gain.setValueAtTime(Math.max(sustain, 0.0001), t + attack + decay + duration);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + totalTime);
+    osc.start(t);
+    osc.stop(t + totalTime + 0.02);
   } catch (e) { /* ignore */ }
 }
 
-// Zvukové efekty pro různé události. Každá má charakteristický krátký motiv,
+// Krátký šumový "puk" pro chyby a důraz. Použije bandpass filtr a volume envelope.
+function playNoise(duration, opts) {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    opts = opts || {};
+    const peak = opts.peak !== undefined ? opts.peak : 0.15;
+    const centerFreq = opts.freq || 800;
+    const bufferSize = Math.floor(audioCtx.sampleRate * duration);
+    const buf = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = centerFreq;
+    filter.Q.value = 5;
+    const gain = audioCtx.createGain();
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioCtx.destination);
+    const t = audioCtx.currentTime;
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(peak, t + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+    src.start(t);
+    src.stop(t + duration + 0.05);
+  } catch (e) { /* ignore */ }
+}
+
+// Zvukové efekty pro různé události. Každá má charakteristický krátký motiv (200-500 ms),
 // aby uživatel slyšel rozdíl mezi „načteno", „uloženo", „chyba" atd.
 function playSound(kind) {
   if (!state.settings || !state.settings.audioFeedback) return;
   switch (kind) {
     case 'load':
-      // Načtení dat – stoupavé dva tóny (C5 → E5)
-      playTone(523, 0.08);
-      setTimeout(() => playTone(659, 0.08), 90);
+      // Načtení dat – stoupavé tři tóny (C5 → E5 → G5), durmolový rozklad
+      playTone(523, 0.12, { peak: 0.25 });
+      setTimeout(() => playTone(659, 0.12, { peak: 0.25 }), 100);
+      setTimeout(() => playTone(784, 0.18, { peak: 0.3 }), 200);
       break;
     case 'save':
-      // Uložení – jeden krátký jemný tón (G5)
-      playTone(784, 0.07);
+      // Uložení – výrazný zvonkový tón (G5 → C6) s lehkým zazvoněním
+      playTone(784, 0.1, { peak: 0.28, type: 'triangle' });
+      setTimeout(() => playTone(1047, 0.18, { peak: 0.25, type: 'triangle' }), 60);
       break;
     case 'save-gh':
-      // Uložení na GitHub – tři krátké tóny stoupající (C5-E5-G5)
-      playTone(523, 0.06);
-      setTimeout(() => playTone(659, 0.06), 70);
-      setTimeout(() => playTone(784, 0.08), 140);
+      // Uložení na GitHub – 4-tónový triumf (C5-E5-G5-C6) zvonkový
+      playTone(523, 0.1, { peak: 0.28 });
+      setTimeout(() => playTone(659, 0.1, { peak: 0.28 }), 90);
+      setTimeout(() => playTone(784, 0.1, { peak: 0.28 }), 180);
+      setTimeout(() => playTone(1047, 0.25, { peak: 0.32, type: 'triangle' }), 270);
       break;
     case 'save-entity':
-      // Uložení entity z editu – jeden krátký vyšší tón (A5)
-      playTone(880, 0.06);
+      // Uložení entity z editu – výrazný tón A5 → C6 (krátký dvojtón)
+      playTone(880, 0.1, { peak: 0.28 });
+      setTimeout(() => playTone(1047, 0.16, { peak: 0.28 }), 80);
       break;
     case 'success':
-      // Obecný úspěch – stoupavé dva tóny
-      playTone(659, 0.06);
-      setTimeout(() => playTone(880, 0.08), 80);
+      // Obecný úspěch – majorové trio (E5 → G5 → C6)
+      playTone(659, 0.1, { peak: 0.28 });
+      setTimeout(() => playTone(784, 0.1, { peak: 0.28 }), 90);
+      setTimeout(() => playTone(1047, 0.2, { peak: 0.3, type: 'triangle' }), 180);
       break;
     case 'error':
-      // Chyba – klesavé dva tóny (A4 → E4)
-      playTone(440, 0.1);
-      setTimeout(() => playTone(330, 0.15), 110);
+      // Chyba – klesající dvojtón (A4 → E4) výrazně, square pro pevnost
+      playTone(440, 0.18, { peak: 0.3, type: 'square' });
+      setTimeout(() => playTone(330, 0.28, { peak: 0.3, type: 'square' }), 170);
+      break;
+    case 'warning':
+      // Varování – dva stejné tóny (A4-A4) s pauzou
+      playTone(440, 0.1, { peak: 0.28, type: 'square' });
+      setTimeout(() => playTone(440, 0.15, { peak: 0.28, type: 'square' }), 180);
       break;
     case 'click':
-      // Velmi tichý cvak (toast)
-      playTone(880, 0.03);
+      // Krátký, ale slyšitelný cvak — kratší, ale s výraznější amplitudou
+      playTone(1200, 0.05, { peak: 0.18, type: 'triangle' });
+      break;
+    case 'delete':
+      // Smazání – sestupný motiv (C5 → A4 → F4) s důrazem
+      playTone(523, 0.1, { peak: 0.28, type: 'square' });
+      setTimeout(() => playTone(440, 0.1, { peak: 0.28, type: 'square' }), 90);
+      setTimeout(() => playTone(349, 0.2, { peak: 0.28, type: 'square' }), 180);
+      break;
+    case 'notify':
+      // Výrazný „Hej, něco se stalo" — jednoduchý, ale slyšitelný motiv (E5-G5)
+      playTone(659, 0.12, { peak: 0.3, type: 'triangle' });
+      setTimeout(() => playTone(784, 0.18, { peak: 0.3, type: 'triangle' }), 110);
       break;
     default:
-      playTone(880, 0.05);
+      playTone(880, 0.1, { peak: 0.25 });
   }
 }
 // ==== MARKDOWN ====
@@ -11508,6 +11934,7 @@ function render() {
     case 'calendar': renderCalendar(main); break;
     case 'search': renderSearch(main); break;
     case 'tags': renderTags(main); break;
+    case 'links': renderLinksView(main); break;
     case 'views': renderViewsList(main); break;
     case 'savedView': renderSavedView(main, state.savedViewId); break;
     case 'templates': renderTemplatesList(main); break;
@@ -12504,6 +12931,167 @@ function renderSearch(main) {
   if (i.value) update();
 }
 
+// ==== VIEW: VAZBY (všechny vazby napříč databází) ====
+function renderLinksView(main) {
+  // Sebrat všechny vazby — strukturované linky + relace + wiki/include z textu
+  const allLinks = [];
+  db.entities.forEach(from => {
+    if (from.archived) return;
+    // Strukturované odchozí vazby
+    (from.links || []).forEach(l => {
+      const target = findEntity(l.to);
+      if (!target || target.archived) return;
+      allLinks.push({
+        from: from,
+        to: target,
+        type: l.type,
+        kind: 'link',
+        typeLabel: (RELATION_TYPES[l.type] && RELATION_TYPES[l.type].label) || l.type,
+        note: l.note || ''
+      });
+    });
+    // Relace v atributech
+    const allFields = collectAllFields(from);
+    allFields.forEach(f => {
+      if (f.field.type !== 'relation') return;
+      const v = from.attributes && from.attributes[f.field.key];
+      if (!v) return;
+      const ids = normalizeRelationValue(v);
+      ids.forEach(targetId => {
+        const target = findEntity(targetId);
+        if (!target || target.archived) return;
+        allLinks.push({
+          from: from,
+          to: target,
+          type: '__relation__',
+          kind: 'relation',
+          typeLabel: (f.aspectLabel ? '[' + f.aspectLabel + '] ' : '') + f.field.label,
+          note: 'relace'
+        });
+      });
+    });
+    // Wiki + include z textových zdrojů
+    collectEntityTextSources(from).forEach(src => {
+      extractWikiTargetsFromText(src.text).forEach(t => {
+        const target = findEntityByIdOrTitle(t);
+        if (!target || target.id === from.id || target.archived) return;
+        allLinks.push({
+          from: from,
+          to: target,
+          type: '__wiki__',
+          kind: 'wiki',
+          typeLabel: 'wiki odkaz',
+          note: ''
+        });
+      });
+      extractIncludeTargetsFromText(src.text).forEach(t => {
+        const target = findEntityByIdOrTitle(t);
+        if (!target || target.id === from.id || target.archived) return;
+        allLinks.push({
+          from: from,
+          to: target,
+          type: '__include__',
+          kind: 'include',
+          typeLabel: 'include',
+          note: ''
+        });
+      });
+    });
+  });
+
+  // Stav filtrů
+  if (!state._linksFilter) state._linksFilter = { type: '', from: '', to: '', kind: '' };
+  const f = state._linksFilter;
+
+  // Aktivní entity pro datalist
+  const allEntitiesSorted = [...db.entities]
+    .filter(e => !e.archived)
+    .sort((a,b) => getDisplayTitle(a).localeCompare(getDisplayTitle(b), 'cs'));
+  const entityOptions = allEntitiesSorted.map(e =>
+    '<option value="' + escapeHtml(getDisplayTitle(e)) + '">').join('');
+
+  // Aplikovat filtry
+  let filtered = allLinks;
+  if (f.kind) filtered = filtered.filter(l => l.kind === f.kind);
+  if (f.type) {
+    filtered = filtered.filter(l => l.kind === 'link' && l.type === f.type);
+  }
+  if (f.from) {
+    const q = f.from.toLowerCase();
+    filtered = filtered.filter(l => getDisplayTitle(l.from).toLowerCase().includes(q));
+  }
+  if (f.to) {
+    const q = f.to.toLowerCase();
+    filtered = filtered.filter(l => getDisplayTitle(l.to).toLowerCase().includes(q));
+  }
+
+  // Setřídit podle from name
+  filtered.sort((a, b) => {
+    const c = getDisplayTitle(a.from).localeCompare(getDisplayTitle(b.from), 'cs');
+    return c !== 0 ? c : getDisplayTitle(a.to).localeCompare(getDisplayTitle(b.to), 'cs');
+  });
+
+  const typeOpts = Object.entries(RELATION_TYPES).map(([k, v]) =>
+    '<option value="' + escapeHtml(k) + '"' + (f.type === k ? ' selected' : '') + '>' + escapeHtml(v.label) + '</option>').join('');
+
+  main.innerHTML = '<h2>Vazby</h2>' +
+    '<p>Všechny vazby v databázi: strukturované odchozí vazby, relace v atributech, wiki odkazy a include v textu.</p>' +
+    '<details open style="margin-bottom:0.7em;"><summary>Filtry</summary>' +
+    '<div class="filter-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(14em,1fr));gap:0.5em;margin-top:0.5em;">' +
+      '<div><label for="lf-kind">Druh vazby</label><select id="lf-kind">' +
+        '<option value="">— všechny —</option>' +
+        '<option value="link"' + (f.kind === 'link' ? ' selected' : '') + '>Strukturovaná vazba</option>' +
+        '<option value="relation"' + (f.kind === 'relation' ? ' selected' : '') + '>Relace (atribut)</option>' +
+        '<option value="wiki"' + (f.kind === 'wiki' ? ' selected' : '') + '>Wiki odkaz [[…]]</option>' +
+        '<option value="include"' + (f.kind === 'include' ? ' selected' : '') + '>Include {{include:…}}</option>' +
+      '</select></div>' +
+      '<div><label for="lf-type">Typ (jen pro strukturované)</label><select id="lf-type">' +
+        '<option value="">— libovolný —</option>' + typeOpts +
+      '</select></div>' +
+      '<div><label for="lf-from">Z entity</label>' +
+        '<input type="search" id="lf-from" list="lf-entity-list" value="' + escapeHtml(f.from) + '" placeholder="Začněte psát název"></div>' +
+      '<div><label for="lf-to">Do entity</label>' +
+        '<input type="search" id="lf-to" list="lf-entity-list" value="' + escapeHtml(f.to) + '" placeholder="Začněte psát název"></div>' +
+    '</div>' +
+    '<datalist id="lf-entity-list">' + entityOptions + '</datalist>' +
+    '<div class="btn-group" style="margin-top:0.5em;"><button id="lf-reset">Reset filtrů</button></div>' +
+    '</details>' +
+    '<p class="meta">Nalezeno ' + filtered.length + ' z ' + allLinks.length + ' vazeb.</p>' +
+    (filtered.length === 0
+      ? '<div class="empty">Žádné vazby neodpovídají filtrům.</div>'
+      : '<table><caption class="sr-only">Vazby</caption><thead><tr>' +
+          '<th scope="col">Z entity</th>' +
+          '<th scope="col">Typ vazby</th>' +
+          '<th scope="col">Do entity</th>' +
+          '<th scope="col">Aspekt cíle</th>' +
+        '</tr></thead><tbody>' +
+        filtered.map(l => {
+          const fromAspects = (l.from.aspects || []).map(a => aspectLabel(a)).join(', ');
+          const toAspects = (l.to.aspects || []).map(a => aspectLabel(a)).join(', ');
+          const noteTxt = l.note ? ' <span class="meta">(' + escapeHtml(l.note) + ')</span>' : '';
+          return '<tr>' +
+            '<td><a href="#" data-entity="' + escapeHtml(l.from.id) + '">' + escapeHtml(getDisplayTitle(l.from)) + '</a>' +
+              (fromAspects ? ' <span class="meta">(' + escapeHtml(fromAspects) + ')</span>' : '') + '</td>' +
+            '<td>' + escapeHtml(l.typeLabel) + noteTxt + '</td>' +
+            '<td><a href="#" data-entity="' + escapeHtml(l.to.id) + '">' + escapeHtml(getDisplayTitle(l.to)) + '</a></td>' +
+            '<td>' + escapeHtml(toAspects) + '</td>' +
+          '</tr>';
+        }).join('') +
+        '</tbody></table>');
+
+  // Handlery
+  attachEntityRowHandlers(main);
+  function reload() { renderLinksView(main); }
+  document.getElementById('lf-kind').onchange = (ev) => { f.kind = ev.target.value; reload(); };
+  document.getElementById('lf-type').onchange = (ev) => { f.type = ev.target.value; reload(); };
+  document.getElementById('lf-from').oninput = (ev) => { f.from = ev.target.value; reload(); };
+  document.getElementById('lf-to').oninput = (ev) => { f.to = ev.target.value; reload(); };
+  document.getElementById('lf-reset').onclick = () => {
+    state._linksFilter = { type: '', from: '', to: '', kind: '' };
+    reload();
+  };
+}
+
 // ==== VIEW: TAGY ====
 function renderTags(main) {
   const counts = {};
@@ -12751,6 +13339,21 @@ function renderSettings(main) {
         '<option value="dark"' + (state.settings.theme === 'dark' ? ' selected' : '') + '>Tmavé</option>' +
       '</select>' +
       '<label><input type="checkbox" id="pref-audio"' + (state.settings.audioFeedback ? ' checked' : '') + '> Zvuková zpětná vazba</label>' +
+      '<div id="audio-test-area" style="margin:0.5em 0 0.5em 1.5em;">' +
+        '<p class="meta" style="margin-bottom:0.3em;">Vyzkoušet jednotlivé zvuky:</p>' +
+        '<div class="btn-group" style="flex-wrap:wrap;">' +
+          '<button type="button" data-test-sound="load">Načtení</button>' +
+          '<button type="button" data-test-sound="save">Uložit</button>' +
+          '<button type="button" data-test-sound="save-gh">Uložit GitHub</button>' +
+          '<button type="button" data-test-sound="save-entity">Uložit entitu</button>' +
+          '<button type="button" data-test-sound="success">Úspěch</button>' +
+          '<button type="button" data-test-sound="notify">Oznámení</button>' +
+          '<button type="button" data-test-sound="warning">Varování</button>' +
+          '<button type="button" data-test-sound="error">Chyba</button>' +
+          '<button type="button" data-test-sound="delete">Smazání</button>' +
+          '<button type="button" data-test-sound="click">Cvak</button>' +
+        '</div>' +
+      '</div>' +
       '<label><input type="checkbox" id="pref-debug"' + (state.settings.debugMode ? ' checked' : '') + '> Ladicí mód</label>' +
     '</section>' +
 
@@ -12917,8 +13520,19 @@ function renderSettings(main) {
   document.getElementById('pref-theme').onchange = (ev) => { state.settings.theme = ev.target.value; applyTheme(); save(); };
   document.getElementById('pref-audio').onchange = (ev) => {
     state.settings.audioFeedback = ev.target.checked; save();
-    if (ev.target.checked) playTone(880, 0.05);
+    if (ev.target.checked) playSound('notify');
   };
+  // Test tlačítka pro zvuky – fungují i když je zvuková zpětná vazba vypnutá
+  document.querySelectorAll('button[data-test-sound]').forEach(b => {
+    b.onclick = () => {
+      const k = b.dataset.testSound;
+      // Dočasně zapnout (kvůli playSound check)
+      const wasEnabled = state.settings.audioFeedback;
+      state.settings.audioFeedback = true;
+      playSound(k);
+      state.settings.audioFeedback = wasEnabled;
+    };
+  });
   document.getElementById('pref-debug').onchange = (ev) => {
     state.settings.debugMode = ev.target.checked; save();
     if (!ev.target.checked) {
@@ -13536,8 +14150,12 @@ function renderDetailEdit(main, e) {
           Object.entries(CONFIDENCE_LEVELS).map(([k,v]) =>
             '<option value="' + k + '"' + (e.confidence === k ? ' selected' : '') + '>' + escapeHtml(v) + '</option>').join('') +
         '</select></div>' +
-        '<div style="flex:1"><label for="d-valid-from">Platnost od</label><input type="date" id="d-valid-from" value="' + (e.valid_from || '') + '"></div>' +
-        '<div style="flex:1"><label for="d-valid-to">Platnost do</label><input type="date" id="d-valid-to" value="' + (e.valid_to || '') + '"></div>' +
+        '<div style="flex:1"><label for="d-valid-from">Platnost od</label><span class="date-with-clear"><input type="date" id="d-valid-from" value="' + (e.valid_from || '') + '">' +
+          (e.valid_from ? ' <button type="button" id="d-valid-from-clear" aria-label="Odstranit datum" title="Odstranit datum">×</button>' : '') +
+          '</span></div>' +
+        '<div style="flex:1"><label for="d-valid-to">Platnost do</label><span class="date-with-clear"><input type="date" id="d-valid-to" value="' + (e.valid_to || '') + '">' +
+          (e.valid_to ? ' <button type="button" id="d-valid-to-clear" aria-label="Odstranit datum" title="Odstranit datum">×</button>' : '') +
+          '</span></div>' +
       '</div>' +
       '<p class="meta">Vytvořeno: ' + escapeHtml(fmtDateTime(e.created_at)) + ' · Změněno: ' + escapeHtml(fmtDateTime(e.updated_at)) + ' · ID: <code>' + escapeHtml(e.id) + '</code></p>' +
     '</section>';
@@ -13650,6 +14268,14 @@ function renderDetailEdit(main, e) {
   document.getElementById('d-confidence').onchange = (ev) => { e.confidence = ev.target.value; e.updated_at = nowIso(); saveDebounced(); };
   document.getElementById('d-valid-from').onchange = (ev) => { e.valid_from = ev.target.value || null; e.updated_at = nowIso(); saveDebounced(); };
   document.getElementById('d-valid-to').onchange = (ev) => { e.valid_to = ev.target.value || null; e.updated_at = nowIso(); saveDebounced(); };
+  const vfClear = document.getElementById('d-valid-from-clear');
+  if (vfClear) vfClear.onclick = () => {
+    e.valid_from = null; e.updated_at = nowIso(); save(); render(); toast('Datum odstraněno.');
+  };
+  const vtClear = document.getElementById('d-valid-to-clear');
+  if (vtClear) vtClear.onclick = () => {
+    e.valid_to = null; e.updated_at = nowIso(); save(); render(); toast('Datum odstraněno.');
+  };
 
   document.querySelectorAll('#d-aspects input[type="checkbox"]').forEach(c => {
     c.onchange = () => {
@@ -13745,6 +14371,16 @@ function renderEditAttributes(e) {
       renderEditAttributes(e); toast('Atribut „' + k + '“ odstraněn.');
     };
   });
+  // Tlačítka pro vyčištění data
+  c.querySelectorAll('button[data-clear-date]').forEach(b => {
+    b.onclick = () => {
+      const k = b.dataset.clearDate;
+      delete e.attributes[k];
+      e.updated_at = nowIso(); save();
+      renderEditAttributes(e);
+      toast('Datum odstraněno.');
+    };
+  });
   // Relace: tlačítko "vybrat"
   c.querySelectorAll('button[data-rel-pick]').forEach(b => {
     b.onclick = () => {
@@ -13821,6 +14457,12 @@ function attributeFieldHtml(e, f) {
         (f.multiple ? '+ Vybrat entity…' : (ids.length > 0 ? 'Změnit…' : 'Vybrat entitu…')) + filterDesc + multipleDesc +
       '</button>' +
     '</div>';
+  }
+  else if (f.type === 'date' || f.type === 'datetime-local') {
+    inp = '<span class="date-with-clear">' +
+      '<input type="' + escapeHtml(f.type) + '" id="' + id + '" data-attr-key="' + escapeHtml(f.key) + '" value="' + v + '">' +
+      (val ? ' <button type="button" data-clear-date="' + escapeHtml(f.key) + '" aria-label="Odstranit datum" title="Odstranit datum">×</button>' : '') +
+      '</span>';
   }
   else inp = '<input type="' + escapeHtml(f.type || 'text') + '" id="' + id + '" data-attr-key="' + escapeHtml(f.key) + '" value="' + v + '">';
   const rm = f.custom ? '<button data-remove-attr="' + escapeHtml(f.key) + '" title="Odebrat">×</button>' : '';
@@ -14897,8 +15539,39 @@ function openLinkDialog(entity) {
   document.getElementById('link-search').value = '';
   document.getElementById('link-note').value = '';
   document.getElementById('link-results').innerHTML = '';
+  // Reset směru na odchozí
+  document.querySelectorAll('input[name="link-direction"]').forEach(r => {
+    r.checked = (r.value === 'outgoing');
+  });
   let selected = null;
+  let selectedTitle = '';
   document.getElementById('link-save').disabled = true;
+
+  function getDirection() {
+    return document.querySelector('input[name="link-direction"]:checked').value;
+  }
+
+  function updatePreview() {
+    const preview = document.getElementById('link-type-preview');
+    const rel = RELATION_TYPES[ts.value];
+    if (!rel) { preview.textContent = ''; return; }
+    const dir = getDirection();
+    const meHere = '⟨tato entita⟩';
+    const targetHere = selectedTitle || '⟨vybraná entita⟩';
+    if (dir === 'outgoing') {
+      preview.textContent = 'Vznikne: ' + meHere + ' ' + rel.label + ' → ' + targetHere +
+        '. V příchozích u cíle: „' + rel.inverseLabel + ': …".';
+    } else {
+      preview.textContent = 'Vznikne: ' + targetHere + ' ' + rel.label + ' → ' + meHere +
+        '. Vazba se zapíše u cílové entity. Tato entita ji uvidí v Příchozích jako „' + rel.inverseLabel + ': …".';
+    }
+  }
+
+  ts.onchange = updatePreview;
+  document.querySelectorAll('input[name="link-direction"]').forEach(r => {
+    r.onchange = updatePreview;
+  });
+  updatePreview();
 
   document.getElementById('link-search').oninput = (ev) => {
     const q = ev.target.value.trim().toLowerCase();
@@ -14916,28 +15589,41 @@ function openLinkDialog(entity) {
     out.querySelectorAll('button[data-target]').forEach(b => {
       b.onclick = () => {
         selected = b.dataset.target;
-        document.getElementById('link-search').value = b.textContent.trim();
+        selectedTitle = b.textContent.trim().split(/\\s+–/)[0].trim();
+        document.getElementById('link-search').value = selectedTitle;
         out.innerHTML = '<p class="meta" style="padding:0.5em;">Vybráno.</p>';
         document.getElementById('link-save').disabled = false;
+        updatePreview();
       };
     });
   };
 
   document.getElementById('link-save').onclick = () => {
     if (!selected) return;
-    if (!entity.links) entity.links = [];
-    entity.links.push({
-      to: selected, type: ts.value,
-      note: document.getElementById('link-note').value.trim()
-    });
-    entity.updated_at = nowIso(); saveDebounced();
+    const direction = getDirection();
+    const type = ts.value;
+    const note = document.getElementById('link-note').value.trim();
+    if (direction === 'outgoing') {
+      // Vazba na této entitě
+      if (!entity.links) entity.links = [];
+      entity.links.push({ to: selected, type: type, note: note });
+      entity.updated_at = nowIso();
+    } else {
+      // Vazba na cílové entitě (směrem sem)
+      const target = findEntity(selected);
+      if (!target) { alertMsg('Cíl už neexistuje.'); return; }
+      if (!target.links) target.links = [];
+      target.links.push({ to: entity.id, type: type, note: note });
+      target.updated_at = nowIso();
+    }
+    save();
     d.close();
     if (state.view === 'detail' && state.detailMode === 'edit') {
       renderEditLinks(entity);
     } else {
       render();
     }
-    toast('Vazba přidána.');
+    toast(direction === 'outgoing' ? 'Vazba přidána.' : 'Příchozí vazba přidána (uložena u cíle).');
   };
   document.getElementById('link-cancel').onclick = () => d.close();
   d.showModal();
@@ -16436,7 +17122,9 @@ function openDatabaseRecordDialog(entity, recordIndex, onSave) {
     } else if (f.type === 'number') {
       inp = '<input type="number" step="any" id="' + id + '" data-dbr-key="' + escapeHtml(f.key) + '" value="' + escapeHtml(v == null ? '' : String(v)) + '">';
     } else if (f.type === 'date') {
-      inp = '<input type="date" id="' + id + '" data-dbr-key="' + escapeHtml(f.key) + '" value="' + escapeHtml(v == null ? '' : String(v)) + '">';
+      inp = '<span class="date-with-clear"><input type="date" id="' + id + '" data-dbr-key="' + escapeHtml(f.key) + '" value="' + escapeHtml(v == null ? '' : String(v)) + '">' +
+        ' <button type="button" data-dbr-clear="' + escapeHtml(f.key) + '" aria-label="Odstranit datum" title="Odstranit datum">×</button>' +
+        '</span>';
     } else if (f.type === 'bool') {
       inp = '<select id="' + id + '" data-dbr-key="' + escapeHtml(f.key) + '">' +
         '<option value=""' + (v === undefined || v === null ? ' selected' : '') + '>—</option>' +
@@ -16457,6 +17145,15 @@ function openDatabaseRecordDialog(entity, recordIndex, onSave) {
     const first = body.querySelector('input,select');
     if (first) first.focus();
   }, 50);
+
+  // Tlačítka pro vyčištění data v dialogu
+  body.querySelectorAll('button[data-dbr-clear]').forEach(b => {
+    b.onclick = () => {
+      const k = b.dataset.dbrClear;
+      const inp = body.querySelector('input[data-dbr-key="' + k + '"]');
+      if (inp) inp.value = '';
+    };
+  });
 
   document.getElementById('db-rec-save').onclick = () => {
     const newRec = isNew ? { id: 'r_' + Date.now().toString(36) } : { ...rec };
