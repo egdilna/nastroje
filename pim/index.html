@@ -257,6 +257,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
   <p id="app-description" class="meta" hidden></p>
   <nav aria-label="Hlavní navigace">
     <ul id="main-nav">
+      <li><button id="btn-sync" accesskey="s" title="Uložit na GitHub" hidden>☁ Sync</button></li>
       <li><button data-view="inbox">Inbox <span class="count" id="count-inbox" aria-hidden="true"></span></button></li>
       <li><button data-view="all">Vše <span class="count" id="count-all" aria-hidden="true"></span></button></li>
       <li><button data-view="tasks">Úkoly <span class="count" id="count-tasks" aria-hidden="true"></span></button></li>
@@ -274,7 +275,6 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
     <button id="btn-new-entity">Nová entita</button>
     <button id="btn-new-from-template">Nová ze šablony</button>
     <button id="btn-help">Klávesové zkratky</button>
-    <button id="btn-sync" accesskey="s" title="Uložit na GitHub" hidden>Sync</button>
   </div>
 </header>
 <main id="main" tabindex="-1"></main>
@@ -1293,7 +1293,10 @@ function resolveWikiLink(ref, alias) {
   else target = findEntityByTitle(ref);
   if (target) {
     const label = alias || ref;
-    return '<a href="#" class="wiki-link" data-entity="' + escapeHtml(target.id) + '">' + escapeHtml(label) + '</a>';
+    const aspectsTxt = (target.aspects || []).length > 0
+      ? ' <span class="wiki-aspects meta">(' + escapeHtml((target.aspects || []).map(a => aspectLabel(a)).join(', ')) + ')</span>'
+      : '';
+    return '<a href="#" class="wiki-link" data-entity="' + escapeHtml(target.id) + '">' + escapeHtml(label) + '</a>' + aspectsTxt;
   }
   return '<a href="#" class="wiki-link broken" data-create-name="' + escapeHtml(ref) + '" title="Entita neexistuje – kliknutí ji vytvoří">' + escapeHtml(alias || ref) + '</a>';
 }
@@ -1625,6 +1628,150 @@ function normalizeRelationValue(v) {
   if (Array.isArray(v)) return v.filter(x => x !== null && x !== undefined && x !== '');
   return [v];
 }
+
+// Extrahuje z textu všechny URL (bare http/https + URL z markdown linků [text](url) + autolinks <url>)
+// Vrací pole unikátních URL v pořadí výskytu.
+function extractUrlsFromText(text) {
+  if (!text) return [];
+  const out = [];
+  const seen = new Set();
+  function add(u) {
+    if (!u) return;
+    u = u.trim();
+    if (!/^https?:\/\//i.test(u)) return;
+    if (seen.has(u)) return;
+    seen.add(u);
+    out.push(u);
+  }
+  // Markdown linky [text](url)
+  const mdRe = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+  let m;
+  while ((m = mdRe.exec(text)) !== null) add(m[2]);
+  // Angle brackets <url>
+  const angleRe = /<(https?:\/\/[^>\s]+)>/g;
+  while ((m = angleRe.exec(text)) !== null) add(m[1]);
+  // Bare URL – musí být oddělené whitespace nebo začátkem řetězce
+  // Vyhneme se URL uvnitř markdown linků (už zachycené výše) – jednoduché řešení: nahradíme markdown linky placeholderem
+  let cleaned = text.replace(/\[[^\]]+\]\((https?:\/\/[^\s)]+)\)/g, '');
+  cleaned = cleaned.replace(/<https?:\/\/[^>\s]+>/g, '');
+  const bareRe = /(https?:\/\/[^\s<>"'`,;)\]]+)/g;
+  while ((m = bareRe.exec(cleaned)) !== null) {
+    let u = m[1];
+    // Trim trailing punctuation
+    u = u.replace(/[.,;:!?]+$/, '');
+    add(u);
+  }
+  return out;
+}
+
+// Extrahuje wiki-linky [[entityIdNebo Title]] nebo [[id|alias]]
+// Vrací pole unikátních cílových identifikátorů (ID nebo title – jak jsou napsané)
+function extractWikiTargetsFromText(text) {
+  if (!text) return [];
+  const out = [];
+  const seen = new Set();
+  const re = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const target = m[1].trim();
+    if (!target || seen.has(target)) continue;
+    seen.add(target);
+    out.push(target);
+  }
+  return out;
+}
+
+// Extrahuje include identifikátory {{include:id}}
+function extractIncludeTargetsFromText(text) {
+  if (!text) return [];
+  const out = [];
+  const seen = new Set();
+  const re = /\{\{include:([^}]+)\}\}/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const target = m[1].trim();
+    if (!target || seen.has(target)) continue;
+    seen.add(target);
+    out.push(target);
+  }
+  return out;
+}
+
+// Najde entitu podle ID nebo podle názvu (case-insensitive). Vrací první nalezenou.
+function findEntityByIdOrTitle(target) {
+  if (!target) return null;
+  const byId = findEntity(target);
+  if (byId) return byId;
+  const lc = target.toLowerCase();
+  return db.entities.find(e => (e.title || '').toLowerCase() === lc) || null;
+}
+
+// Sebere všechny zdroje textu z entity (body + textarea atributy)
+function collectEntityTextSources(entity) {
+  const sources = [];
+  if (entity.body) sources.push({ name: 'body', text: entity.body });
+  const allFields = collectAllFields(entity);
+  allFields.forEach(f => {
+    if (f.field.type !== 'textarea') return;
+    const v = entity.attributes && entity.attributes[f.field.key];
+    if (v) sources.push({ name: 'attr:' + f.field.key, text: String(v), fieldLabel: f.field.label });
+  });
+  return sources;
+}
+
+// Sebere všechny URL/Wiki/Include z entity. Vrací { urls: [...], wikis: [...entity], includes: [...entity] }
+function collectEntityOutgoingReferences(entity) {
+  const urls = [];
+  const urlSeen = new Set();
+  const wikis = [];
+  const wikiSeen = new Set();
+  const includes = [];
+  const includeSeen = new Set();
+  collectEntityTextSources(entity).forEach(src => {
+    extractUrlsFromText(src.text).forEach(u => {
+      if (!urlSeen.has(u)) { urlSeen.add(u); urls.push(u); }
+    });
+    extractWikiTargetsFromText(src.text).forEach(target => {
+      const t = findEntityByIdOrTitle(target);
+      if (!t || t.id === entity.id) return;
+      if (!wikiSeen.has(t.id)) { wikiSeen.add(t.id); wikis.push(t); }
+    });
+    extractIncludeTargetsFromText(src.text).forEach(target => {
+      const t = findEntityByIdOrTitle(target);
+      if (!t || t.id === entity.id) return;
+      if (!includeSeen.has(t.id)) { includeSeen.add(t.id); includes.push(t); }
+    });
+  });
+  return { urls, wikis, includes };
+}
+
+// Najde entity, které referují tuto entitu přes wiki-link nebo include v jakémkoli textovém zdroji.
+// Vrací { wikiFrom: [entity], includeFrom: [entity] }
+function getInverseTextReferences(entity) {
+  const wikiFromMap = new Map();   // id → entity
+  const includeFromMap = new Map();
+  const targetId = entity.id;
+  const targetTitleLc = (entity.title || '').toLowerCase();
+  db.entities.forEach(e => {
+    if (e.id === targetId) return;
+    collectEntityTextSources(e).forEach(src => {
+      extractWikiTargetsFromText(src.text).forEach(t => {
+        if (t === targetId || t.toLowerCase() === targetTitleLc) {
+          if (!wikiFromMap.has(e.id)) wikiFromMap.set(e.id, e);
+        }
+      });
+      extractIncludeTargetsFromText(src.text).forEach(t => {
+        if (t === targetId || t.toLowerCase() === targetTitleLc) {
+          if (!includeFromMap.has(e.id)) includeFromMap.set(e.id, e);
+        }
+      });
+    });
+  });
+  return {
+    wikiFrom: [...wikiFromMap.values()],
+    includeFrom: [...includeFromMap.values()]
+  };
+}
 function getEntityDate(e) {
   return e.attributes.deadline || e.attributes.start || e.attributes.target_date ||
     e.attributes.review_date || e.attributes.last_done || null;
@@ -1821,6 +1968,102 @@ function deleteSavedView(id) { db.savedViews = db.savedViews.filter(v => v.id !=
 function findSavedView(id) { return db.savedViews.find(v => v.id === id); }
 function applySavedView(v) {
   let r = searchEntities(v.filters.text || '', v.filters || {});
+  const f = v.filters || {};
+  // Archiv
+  if (f.archived === true) r = r.filter(e => e.archived);
+  else if (f.archived === false) r = r.filter(e => !e.archived);
+  // Inbox
+  if (f.inbox === 'in') r = r.filter(e => !!e.inbox);
+  else if (f.inbox === 'out') r = r.filter(e => !e.inbox);
+  // Datum změny
+  if (f.updatedDays) {
+    const cutoff = Date.now() - Number(f.updatedDays) * 86400000;
+    r = r.filter(e => e.updated_at && new Date(e.updated_at).getTime() >= cutoff);
+  }
+  // Datum vytvoření
+  if (f.createdDays) {
+    const cutoff = Date.now() - Number(f.createdDays) * 86400000;
+    r = r.filter(e => e.created_at && new Date(e.created_at).getTime() >= cutoff);
+  }
+  // Stav úkolu
+  if (f.taskStatus) {
+    if (f.taskStatus === 'open') {
+      r = r.filter(e => ['todo','doing','blocked'].includes(e.attributes && e.attributes.status));
+    } else {
+      r = r.filter(e => e.attributes && e.attributes.status === f.taskStatus);
+    }
+  }
+  // Priorita
+  if (f.priority) r = r.filter(e => e.attributes && e.attributes.priority === f.priority);
+  // Termín
+  if (f.deadline) {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const tomorrow = today + 86400000;
+    const dow = new Date(today).getDay() === 0 ? 7 : new Date(today).getDay();
+    const weekStart = today - (dow - 1) * 86400000;
+    const weekEnd = weekStart + 7 * 86400000;
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+    const getDl = (e) => {
+      const d = (e.attributes && (e.attributes.deadline || e.attributes.target_date || e.attributes.start));
+      if (!d) return null;
+      const t = new Date(d).getTime();
+      return isNaN(t) ? null : t;
+    };
+    if (f.deadline === 'overdue') {
+      r = r.filter(e => { const dl = getDl(e); return dl != null && dl < today && (e.attributes && e.attributes.status !== 'done'); });
+    } else if (f.deadline === 'today') {
+      r = r.filter(e => { const dl = getDl(e); return dl != null && dl >= today && dl < tomorrow; });
+    } else if (f.deadline === 'week') {
+      r = r.filter(e => { const dl = getDl(e); return dl != null && dl >= weekStart && dl < weekEnd; });
+    } else if (f.deadline === 'month') {
+      r = r.filter(e => { const dl = getDl(e); return dl != null && dl >= monthStart && dl < monthEnd; });
+    } else if (f.deadline === 'future') {
+      r = r.filter(e => { const dl = getDl(e); return dl != null && dl >= today; });
+    } else if (f.deadline === 'none') {
+      r = r.filter(e => (e.aspects || []).includes('Task') && !getDl(e));
+    }
+  }
+  // Obsah
+  if (f.content) {
+    r = r.filter(e => {
+      const refs = collectEntityOutgoingReferences(e);
+      if (f.content === 'hasUrl') return refs.urls.length > 0;
+      if (f.content === 'hasWiki') return refs.wikis.length > 0;
+      if (f.content === 'hasInclude') return refs.includes.length > 0;
+      if (f.content === 'hasAttachments') return e.attachments && e.attachments.length > 0;
+      if (f.content === 'hasComments') return e.comments && e.comments.length > 0;
+      if (f.content === 'hasOpenTasks') {
+        const sources = collectEntityTextSources(e);
+        for (const src of sources) {
+          const c = countMarkdownTasks(src.text);
+          if (c && c.undone > 0) return true;
+        }
+        return false;
+      }
+      return true;
+    });
+  }
+  // Vazby
+  if (f.relations) {
+    r = r.filter(e => {
+      const inLinks = getInverseLinks(e.id).length + getInverseRelations(e.id).length;
+      const inText = (() => { const i = getInverseTextReferences(e); return i.wikiFrom.length + i.includeFrom.length; })();
+      const incoming = inLinks + inText;
+      const outRefs = collectEntityOutgoingReferences(e);
+      const outgoing = (e.links || []).length + outRefs.wikis.length + outRefs.includes.length;
+      if (f.relations === 'orphans') return incoming === 0 && outgoing === 0;
+      if (f.relations === 'noIncoming') return incoming === 0;
+      if (f.relations === 'noOutgoing') return outgoing === 0;
+      if (f.relations === 'hasIncoming') return incoming > 0;
+      if (f.relations === 'hasOutgoing') return outgoing > 0;
+      return true;
+    });
+  }
+  // Důvěra
+  if (f.confidence) r = r.filter(e => e.confidence === f.confidence);
+
   if (v.sort && v.sort.by) {
     const dir = v.sort.dir === 'desc' ? -1 : 1;
     r.sort((a,b) => {
@@ -1851,6 +2094,28 @@ function describeFilter(f) {
   if (f.text) p.push('text: „' + f.text + '“');
   if (f.status) p.push('stav: ' + getStatusLabel(f.status));
   if (f.archived === true) p.push('jen archiv');
+  if (f.inbox === 'in') p.push('v Inboxu');
+  else if (f.inbox === 'out') p.push('mimo Inbox');
+  if (f.updatedDays) p.push('změněno: ' + f.updatedDays + ' d');
+  if (f.createdDays) p.push('vytvořeno: ' + f.createdDays + ' d');
+  if (f.taskStatus) {
+    const labels = { todo:'k vyřízení', doing:'probíhá', done:'hotovo', blocked:'blokováno', open:'nedokončeno' };
+    p.push('stav úkolu: ' + (labels[f.taskStatus] || f.taskStatus));
+  }
+  if (f.priority) p.push('priorita: ' + f.priority);
+  if (f.deadline) {
+    const labels = { overdue:'po termínu', today:'dnes', week:'tento týden', month:'tento měsíc', future:'v budoucnu', none:'bez termínu' };
+    p.push('termín: ' + (labels[f.deadline] || f.deadline));
+  }
+  if (f.content) {
+    const labels = { hasUrl:'má URL', hasWiki:'má wiki', hasInclude:'má include', hasAttachments:'s přílohou', hasComments:'s komentáři', hasOpenTasks:'s nedokončenými úkoly' };
+    p.push(labels[f.content] || f.content);
+  }
+  if (f.relations) {
+    const labels = { orphans:'sirotci', noIncoming:'bez příchozích', noOutgoing:'bez odchozích', hasIncoming:'s příchozími', hasOutgoing:'s odchozími' };
+    p.push(labels[f.relations] || f.relations);
+  }
+  if (f.confidence) p.push('důvěra: ' + f.confidence);
   return p.join(', ') || '(bez omezení)';
 }
 
@@ -2283,26 +2548,241 @@ function renderAll(main) {
   const tagOpts = getAllTags().map(t => '<option value="' + escapeHtml(t) + '"' + (f.tag === t ? ' selected' : '') + '>' + escapeHtml(t) + '</option>').join('');
   main.innerHTML =
     '<h2>Vše</h2>' +
-    '<div class="toolbar" role="search" aria-label="Filtry">' +
-      '<div><label for="filter-text">Hledaný text</label><input type="search" id="filter-text" value="' + escapeHtml(f.text || '') + '"></div>' +
-      '<div><label for="filter-aspect">Aspekt</label><select id="filter-aspect"><option value="">— všechny —</option>' + aspectOpts + '</select></div>' +
-      '<div><label for="filter-tag">Tag</label><select id="filter-tag"><option value="">— všechny —</option>' + tagOpts + '</select></div>' +
-      '<div><label for="filter-archived">Archiv</label><select id="filter-archived"><option value="active">Jen aktivní</option><option value="all">+ archiv</option><option value="archived">Jen archiv</option></select></div>' +
+    '<div class="toolbar" role="search" aria-label="Hledání">' +
+      '<div style="flex:1;min-width:14em;"><label for="filter-text">Hledaný text</label><input type="search" id="filter-text" value="' + escapeHtml(f.text || '') + '"></div>' +
       '<div style="flex:0 0 auto;"><button id="filter-reset">Reset</button> <button id="filter-save">Uložit jako pohled</button></div>' +
     '</div>' +
+    '<details id="filters-details" style="margin-bottom:0.7em;">' +
+      '<summary>Filtry <span id="filters-summary" class="meta"></span></summary>' +
+      '<div class="filter-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(14em,1fr));gap:0.5em;margin-top:0.5em;">' +
+        '<div><label for="filter-aspect">Aspekt</label><select id="filter-aspect"><option value="">— všechny —</option>' + aspectOpts + '</select></div>' +
+        '<div><label for="filter-tag">Tag</label><select id="filter-tag"><option value="">— všechny —</option>' + tagOpts + '</select></div>' +
+        '<div><label for="filter-archived">Archiv</label><select id="filter-archived">' +
+          '<option value="active">Jen aktivní</option>' +
+          '<option value="all">+ archiv</option>' +
+          '<option value="archived">Jen archiv</option>' +
+        '</select></div>' +
+        '<div><label for="filter-inbox">Inbox</label><select id="filter-inbox">' +
+          '<option value="">— vše —</option>' +
+          '<option value="in">Pouze v Inboxu</option>' +
+          '<option value="out">Pouze mimo Inbox</option>' +
+        '</select></div>' +
+        '<div><label for="filter-updated">Změněno</label><select id="filter-updated">' +
+          '<option value="">— kdykoli —</option>' +
+          '<option value="1">Za posledních 24 h</option>' +
+          '<option value="7">Za posledních 7 dní</option>' +
+          '<option value="30">Za posledních 30 dní</option>' +
+          '<option value="90">Za posledních 90 dní</option>' +
+          '<option value="365">Za poslední rok</option>' +
+        '</select></div>' +
+        '<div><label for="filter-created">Vytvořeno</label><select id="filter-created">' +
+          '<option value="">— kdykoli —</option>' +
+          '<option value="1">Za posledních 24 h</option>' +
+          '<option value="7">Za posledních 7 dní</option>' +
+          '<option value="30">Za posledních 30 dní</option>' +
+          '<option value="90">Za posledních 90 dní</option>' +
+        '</select></div>' +
+        '<div><label for="filter-task-status">Stav úkolu</label><select id="filter-task-status">' +
+          '<option value="">— libovolný —</option>' +
+          '<option value="todo">K vyřízení</option>' +
+          '<option value="doing">Probíhá</option>' +
+          '<option value="done">Hotovo</option>' +
+          '<option value="blocked">Blokováno</option>' +
+          '<option value="open">Nedokončeno (todo+doing+blocked)</option>' +
+        '</select></div>' +
+        '<div><label for="filter-priority">Priorita</label><select id="filter-priority">' +
+          '<option value="">— libovolná —</option>' +
+          '<option value="urgent">Urgentní</option>' +
+          '<option value="high">Vysoká</option>' +
+          '<option value="normal">Normální</option>' +
+          '<option value="low">Nízká</option>' +
+        '</select></div>' +
+        '<div><label for="filter-deadline">Termín</label><select id="filter-deadline">' +
+          '<option value="">— libovolný —</option>' +
+          '<option value="overdue">Po termínu (a nedokončeno)</option>' +
+          '<option value="today">Dnes</option>' +
+          '<option value="week">Tento týden</option>' +
+          '<option value="month">Tento měsíc</option>' +
+          '<option value="future">V budoucnu</option>' +
+          '<option value="none">Bez termínu (úkoly)</option>' +
+        '</select></div>' +
+        '<div><label for="filter-content">Obsah obsahuje</label><select id="filter-content">' +
+          '<option value="">— libovolný obsah —</option>' +
+          '<option value="hasUrl">Má URL odkaz</option>' +
+          '<option value="hasWiki">Má wiki odkaz</option>' +
+          '<option value="hasInclude">Má include</option>' +
+          '<option value="hasAttachments">Má přílohu</option>' +
+          '<option value="hasComments">Má komentáře</option>' +
+          '<option value="hasOpenTasks">Má nedokončený MD úkol</option>' +
+        '</select></div>' +
+        '<div><label for="filter-relations">Vazby</label><select id="filter-relations">' +
+          '<option value="">— libovolné —</option>' +
+          '<option value="orphans">Sirotci (bez vazeb)</option>' +
+          '<option value="noIncoming">Bez příchozích vazeb</option>' +
+          '<option value="noOutgoing">Bez odchozích vazeb</option>' +
+          '<option value="hasIncoming">Má příchozí vazby</option>' +
+          '<option value="hasOutgoing">Má odchozí vazby</option>' +
+        '</select></div>' +
+        '<div><label for="filter-confidence">Důvěra</label><select id="filter-confidence">' +
+          '<option value="">— libovolná —</option>' +
+          (Object.entries(CONFIDENCE_LEVELS || {}).map(([k,v]) =>
+            '<option value="' + escapeHtml(k) + '">' + escapeHtml(v) + '</option>').join('')) +
+        '</select></div>' +
+      '</div>' +
+    '</details>' +
     '<div id="all-results"></div>';
-  const it = document.getElementById('filter-text'), sa = document.getElementById('filter-aspect'),
-    st = document.getElementById('filter-tag'), sar = document.getElementById('filter-archived');
-  // Lokální stav řazení (default: nejnověji změněné nahoře)
+  const it = document.getElementById('filter-text'),
+    sa = document.getElementById('filter-aspect'),
+    st = document.getElementById('filter-tag'),
+    sar = document.getElementById('filter-archived'),
+    sib = document.getElementById('filter-inbox'),
+    su = document.getElementById('filter-updated'),
+    sc = document.getElementById('filter-created'),
+    sts = document.getElementById('filter-task-status'),
+    spr = document.getElementById('filter-priority'),
+    sdl = document.getElementById('filter-deadline'),
+    sct = document.getElementById('filter-content'),
+    srl = document.getElementById('filter-relations'),
+    scf = document.getElementById('filter-confidence');
   if (!state._allSort) state._allSort = { key: 'updated', dir: 'desc' };
-  function update() {
-    state.filter.text = it.value; state.filter.aspect = sa.value; state.filter.tag = st.value;
+
+  function applyAllFilters() {
     let r = db.entities;
+    // Archiv
     if (sar.value === 'active') r = r.filter(e => !e.archived);
     else if (sar.value === 'archived') r = r.filter(e => e.archived);
-    r = searchEntities(state.filter.text, { aspect: state.filter.aspect, tag: state.filter.tag }).filter(e => r.includes(e));
+    // Inbox
+    if (sib.value === 'in') r = r.filter(e => !!e.inbox);
+    else if (sib.value === 'out') r = r.filter(e => !e.inbox);
+    // Aspekt + tag + text
+    r = searchEntities(it.value, { aspect: sa.value, tag: st.value }).filter(e => r.includes(e));
+    // Datum změny
+    if (su.value) {
+      const days = Number(su.value);
+      const cutoff = Date.now() - days * 86400000;
+      r = r.filter(e => e.updated_at && new Date(e.updated_at).getTime() >= cutoff);
+    }
+    // Datum vytvoření
+    if (sc.value) {
+      const days = Number(sc.value);
+      const cutoff = Date.now() - days * 86400000;
+      r = r.filter(e => e.created_at && new Date(e.created_at).getTime() >= cutoff);
+    }
+    // Stav úkolu
+    if (sts.value) {
+      if (sts.value === 'open') {
+        r = r.filter(e => ['todo','doing','blocked'].includes(e.attributes && e.attributes.status));
+      } else {
+        r = r.filter(e => e.attributes && e.attributes.status === sts.value);
+      }
+    }
+    // Priorita
+    if (spr.value) r = r.filter(e => e.attributes && e.attributes.priority === spr.value);
+    // Termín
+    if (sdl.value) {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const todayMs = today.getTime();
+      const tomorrowMs = todayMs + 86400000;
+      const dow = today.getDay() === 0 ? 7 : today.getDay();
+      const weekStart = todayMs - (dow - 1) * 86400000;
+      const weekEnd = weekStart + 7 * 86400000;
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+      const getDl = (e) => {
+        const d = (e.attributes && (e.attributes.deadline || e.attributes.target_date || e.attributes.start));
+        if (!d) return null;
+        const t = new Date(d).getTime();
+        return isNaN(t) ? null : t;
+      };
+      if (sdl.value === 'overdue') {
+        r = r.filter(e => {
+          const dl = getDl(e); if (!dl) return false;
+          return dl < todayMs && (e.attributes && e.attributes.status !== 'done');
+        });
+      } else if (sdl.value === 'today') {
+        r = r.filter(e => { const dl = getDl(e); return dl != null && dl >= todayMs && dl < tomorrowMs; });
+      } else if (sdl.value === 'week') {
+        r = r.filter(e => { const dl = getDl(e); return dl != null && dl >= weekStart && dl < weekEnd; });
+      } else if (sdl.value === 'month') {
+        r = r.filter(e => { const dl = getDl(e); return dl != null && dl >= monthStart && dl < monthEnd; });
+      } else if (sdl.value === 'future') {
+        r = r.filter(e => { const dl = getDl(e); return dl != null && dl >= todayMs; });
+      } else if (sdl.value === 'none') {
+        r = r.filter(e => (e.aspects || []).includes('Task') && !getDl(e));
+      }
+    }
+    // Obsah
+    if (sct.value) {
+      r = r.filter(e => {
+        const refs = collectEntityOutgoingReferences(e);
+        if (sct.value === 'hasUrl') return refs.urls.length > 0;
+        if (sct.value === 'hasWiki') return refs.wikis.length > 0;
+        if (sct.value === 'hasInclude') return refs.includes.length > 0;
+        if (sct.value === 'hasAttachments') return e.attachments && e.attachments.length > 0;
+        if (sct.value === 'hasComments') return e.comments && e.comments.length > 0;
+        if (sct.value === 'hasOpenTasks') {
+          // Tasky v body i v textových atributech
+          const sources = collectEntityTextSources(e);
+          for (const src of sources) {
+            const c = countMarkdownTasks(src.text);
+            if (c && c.undone > 0) return true;
+          }
+          return false;
+        }
+        return true;
+      });
+    }
+    // Vazby
+    if (srl.value) {
+      r = r.filter(e => {
+        const inLinks = getInverseLinks(e.id).length + getInverseRelations(e.id).length;
+        const inText = (() => { const i = getInverseTextReferences(e); return i.wikiFrom.length + i.includeFrom.length; })();
+        const incoming = inLinks + inText;
+        const outRefs = collectEntityOutgoingReferences(e);
+        const outgoing = (e.links || []).length + outRefs.wikis.length + outRefs.includes.length;
+        if (srl.value === 'orphans') return incoming === 0 && outgoing === 0;
+        if (srl.value === 'noIncoming') return incoming === 0;
+        if (srl.value === 'noOutgoing') return outgoing === 0;
+        if (srl.value === 'hasIncoming') return incoming > 0;
+        if (srl.value === 'hasOutgoing') return outgoing > 0;
+        return true;
+      });
+    }
+    // Důvěra
+    if (scf.value) r = r.filter(e => e.confidence === scf.value);
+
+    return r;
+  }
+
+  // Spočítání aktivních filtrů pro shrnutí
+  function countActiveFilters() {
+    let n = 0;
+    if (sa.value) n++;
+    if (st.value) n++;
+    if (sar.value !== 'active') n++;
+    if (sib.value) n++;
+    if (su.value) n++;
+    if (sc.value) n++;
+    if (sts.value) n++;
+    if (spr.value) n++;
+    if (sdl.value) n++;
+    if (sct.value) n++;
+    if (srl.value) n++;
+    if (scf.value) n++;
+    return n;
+  }
+
+  function update() {
+    state.filter.text = it.value;
+    state.filter.aspect = sa.value;
+    state.filter.tag = st.value;
+    let r = applyAllFilters();
     r = sortEntitiesBy(r, state._allSort);
     const out = document.getElementById('all-results');
+    const sumEl = document.getElementById('filters-summary');
+    const active = countActiveFilters();
+    if (sumEl) sumEl.textContent = active > 0 ? '(' + active + ' aktivních)' : '';
     if (r.length === 0) { out.innerHTML = '<div class="empty">Žádné výsledky.</div>'; statusMsgDebounced('0 výsledků.'); return; }
     out.innerHTML = '<p class="meta">Nalezeno ' + r.length + ' entit.</p>' +
       renderEntityTableHtml(r, state._allSort);
@@ -2312,15 +2792,35 @@ function renderAll(main) {
       state._allSort = newSort; update();
     });
   }
-  it.oninput = update; sa.onchange = update; st.onchange = update; sar.onchange = update;
+
+  [it, sa, st, sar, sib, su, sc, sts, spr, sdl, sct, srl, scf].forEach(el => {
+    if (!el) return;
+    if (el.tagName === 'INPUT') el.oninput = update;
+    el.onchange = update;
+  });
   document.getElementById('filter-reset').onclick = () => {
     state.filter = { aspect:'', tag:'', text:'', status:'' };
-    it.value = ''; sa.value = ''; st.value = ''; sar.value = 'active'; update();
+    it.value = ''; sa.value = ''; st.value = ''; sar.value = 'active';
+    sib.value = ''; su.value = ''; sc.value = '';
+    sts.value = ''; spr.value = ''; sdl.value = '';
+    sct.value = ''; srl.value = ''; scf.value = '';
+    update();
   };
   document.getElementById('filter-save').onclick = () => {
     openSaveViewDialog({ filters: {
-      aspect: sa.value || null, tag: st.value || null, text: it.value || null,
-      archived: sar.value === 'archived' ? true : (sar.value === 'active' ? false : null)
+      aspect: sa.value || null,
+      tag: st.value || null,
+      text: it.value || null,
+      archived: sar.value === 'archived' ? true : (sar.value === 'active' ? false : null),
+      inbox: sib.value || null,
+      updatedDays: su.value ? Number(su.value) : null,
+      createdDays: sc.value ? Number(sc.value) : null,
+      taskStatus: sts.value || null,
+      priority: spr.value || null,
+      deadline: sdl.value || null,
+      content: sct.value || null,
+      relations: srl.value || null,
+      confidence: scf.value || null
     }, render: 'table' });
   };
   sar.value = 'active'; update();
@@ -2488,8 +2988,10 @@ function renderViewsList(main) {
     '<p>Uložené dotazy, ke kterým se rychle vracíte. Připnuté pohledy se zobrazí v záhlaví.</p>' +
     (db.savedViews.length === 0
       ? '<div class="empty">Žádné uložené pohledy. Vytvořte filtr v záložce „Vše“ a uložte tlačítkem „Uložit jako pohled“.</div>'
-      : '<table><caption class="sr-only">Pohledy</caption><thead><tr><th scope="col">Název</th><th scope="col">Filtr</th><th scope="col">Připnutý</th><th scope="col">Akce</th></tr></thead><tbody>' +
-        db.savedViews.map(v => '<tr>' +
+      : '<table><caption class="sr-only">Pohledy</caption><thead><tr><th scope="col">Pořadí</th><th scope="col">Název</th><th scope="col">Filtr</th><th scope="col">Připnutý</th><th scope="col">Akce</th></tr></thead><tbody>' +
+        db.savedViews.map((v, i) => '<tr>' +
+          '<td><button data-move-up="' + escapeHtml(v.id) + '" aria-label="Posunout pohled nahoru"' + (i === 0 ? ' disabled' : '') + '>↑</button> ' +
+              '<button data-move-down="' + escapeHtml(v.id) + '" aria-label="Posunout pohled dolů"' + (i === db.savedViews.length - 1 ? ' disabled' : '') + '>↓</button></td>' +
           '<td><a href="#" data-saved-view="' + escapeHtml(v.id) + '">' + (v.icon ? escapeHtml(v.icon) + ' ' : '') + escapeHtml(v.name) + '</a></td>' +
           '<td>' + escapeHtml(describeFilter(v.filters || {})) + '</td>' +
           '<td>' + (v.pinned ? 'Ano' : 'Ne') + '</td>' +
@@ -2510,6 +3012,28 @@ function renderViewsList(main) {
       confirmDialog('Smazat pohled „' + v.name + '“?', () => {
         deleteSavedView(v.id); render(); toast('Pohled smazán.');
       });
+    };
+  });
+  main.querySelectorAll('button[data-move-up]').forEach(b => {
+    b.onclick = () => {
+      const id = b.dataset.moveUp;
+      const i = db.savedViews.findIndex(v => v.id === id);
+      if (i > 0) {
+        const arr = db.savedViews;
+        [arr[i-1], arr[i]] = [arr[i], arr[i-1]];
+        save(); render();
+      }
+    };
+  });
+  main.querySelectorAll('button[data-move-down]').forEach(b => {
+    b.onclick = () => {
+      const id = b.dataset.moveDown;
+      const i = db.savedViews.findIndex(v => v.id === id);
+      if (i >= 0 && i < db.savedViews.length - 1) {
+        const arr = db.savedViews;
+        [arr[i], arr[i+1]] = [arr[i+1], arr[i]];
+        save(); render();
+      }
     };
   });
 }
@@ -2923,6 +3447,7 @@ function renderDetailRead(main, e) {
   const bodyTaskCounter = bodyTaskCounts ? '<p class="task-counter meta">' + escapeHtml(describeTaskCounts(bodyTaskCounts)) + '</p>' : '';
   const linksHtml = renderLinksReadOnly(e);
   const inverseHtml = renderInverseLinksReadOnly(e);
+  const refsHtml = renderOutgoingReferences(e);
   const attachmentsHtml = renderAttachmentsRead(e);
   const isProject = e.aspects && e.aspects.includes('Project');
   const projectDashHtml = isProject ? renderProjectDashboard(e) : '';
@@ -2950,7 +3475,7 @@ function renderDetailRead(main, e) {
       '</div>' +
     '</div>' +
     (attrsHtml ? '<dl class="read-attrs">' + attrsHtml + '</dl>' : '') +
-    (bodyHtml ? '<section aria-labelledby="body-h"><h3 id="body-h">Tělo</h3>' +
+    (bodyHtml ? '<section aria-labelledby="body-h"><h3 id="body-h">Obsah</h3>' +
       '<div class="btn-group" style="margin-bottom:0.5em;">' +
         '<button id="btn-copy-body-source" title="Zkopírovat zdroj (Markdown)">📋 Zkopírovat zdroj</button>' +
         '<button id="btn-copy-body-formatted" title="Zkopírovat formátovaný (vložitelný do Wordu, Outlooku, Gmailu…)">✨ Zkopírovat formátované</button>' +
@@ -2960,6 +3485,7 @@ function renderDetailRead(main, e) {
     '</section>' : '') +
     (attachmentsHtml ? '<section aria-labelledby="att-h"><h3 id="att-h">Přílohy (' + e.attachments.length + ')</h3>' + attachmentsHtml + '</section>' : '') +
     projectDashHtml +
+    (refsHtml ? '<section aria-labelledby="refs-h"><h3 id="refs-h">Odkazy</h3>' + refsHtml + '</section>' : '') +
     (linksHtml ? '<section aria-labelledby="links-h"><h3 id="links-h">Vazby</h3>' + linksHtml + '</section>' : '') +
     (inverseHtml ? '<section aria-labelledby="ilinks-h"><h3 id="ilinks-h">Příchozí vazby</h3>' + inverseHtml + '</section>' : '') +
     '<section aria-labelledby="comments-h"><h3 id="comments-h">Komentáře' + (e.comments && e.comments.length ? ' (' + e.comments.length + ')' : '') + '</h3>' +
@@ -3183,10 +3709,13 @@ function renderLinksReadOnly(e) {
     const t = findEntity(l.to), ti = RELATION_TYPES[l.type];
     const lbl = ti ? ti.label : l.type;
     const tlbl = t ? getDisplayTitle(t) : '(smazáno)';
+    const aspectsTxt = t && t.aspects && t.aspects.length > 0
+      ? ' <span class="meta">(' + escapeHtml(t.aspects.map(a => aspectLabel(a)).join(', ')) + ')</span>'
+      : '';
     const note = l.note ? ' <span class="meta">(' + escapeHtml(l.note) + ')</span>' : '';
     return '<li><strong>' + escapeHtml(lbl) + ':</strong> ' +
       (t ? '<a href="#" data-entity="' + escapeHtml(l.to) + '">' + escapeHtml(tlbl) + '</a>' : escapeHtml(tlbl)) +
-      note +
+      aspectsTxt + note +
       ' <button data-remove-link-read="' + idx + '" data-entity-id="' + escapeHtml(e.id) + '" title="Odebrat vazbu" style="padding:0.1em 0.5em;font-size:0.85em;">×</button>' +
       '</li>';
   }).join('') + '</ul>';
@@ -3194,22 +3723,81 @@ function renderLinksReadOnly(e) {
 function renderInverseLinksReadOnly(e) {
   const inv = getInverseLinks(e.id);
   const invRel = getInverseRelations(e.id);
-  if (inv.length === 0 && invRel.length === 0) return '';
+  const invText = getInverseTextReferences(e);
+  if (inv.length === 0 && invRel.length === 0 && invText.wikiFrom.length === 0 && invText.includeFrom.length === 0) return '';
   let h = '<ul style="list-style:none;padding-left:0;">';
   inv.forEach(({from,link}) => {
     const ti = RELATION_TYPES[link.type];
     const il = ti ? ti.inverseLabel : link.type;
+    const aspectsTxt = (from.aspects || []).length > 0
+      ? ' <span class="meta">(' + escapeHtml((from.aspects || []).map(a => aspectLabel(a)).join(', ')) + ')</span>'
+      : '';
     h += '<li><strong>' + escapeHtml(il) + ':</strong> ' +
       '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+      aspectsTxt +
       (link.note ? ' <span class="meta">(' + escapeHtml(link.note) + ')</span>' : '') + '</li>';
   });
   invRel.forEach(({ from, fieldLabel, aspectLabel: alab }) => {
     const ctx = alab ? '[' + escapeHtml(alab) + '] ' : '';
+    const aspectsTxt = (from.aspects || []).length > 0
+      ? ' <span class="meta">(' + escapeHtml((from.aspects || []).map(a => aspectLabel(a)).join(', ')) + ')</span>'
+      : '';
     h += '<li>' + ctx + '<strong>' + escapeHtml(fieldLabel) + ':</strong> ' +
       '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+      aspectsTxt +
       ' <span class="meta">(relace)</span></li>';
   });
+  invText.wikiFrom.forEach(from => {
+    const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
+    h += '<li><strong>zmiňuje wiki:</strong> ' +
+      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+      (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
+      '</li>';
+  });
+  invText.includeFrom.forEach(from => {
+    const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
+    h += '<li><strong>includuje:</strong> ' +
+      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+      (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
+      '</li>';
+  });
   h += '</ul>';
+  return h;
+}
+
+// Sekce „Odkazy" – URL, wiki-linky a include z těla a textových atributů.
+function renderOutgoingReferences(e) {
+  const refs = collectEntityOutgoingReferences(e);
+  if (refs.urls.length === 0 && refs.wikis.length === 0 && refs.includes.length === 0) return '';
+  let h = '';
+  if (refs.urls.length > 0) {
+    h += '<h4>URL</h4><ul>';
+    refs.urls.forEach(u => {
+      const safe = escapeHtml(u);
+      h += '<li><a href="' + safe + '" target="_blank" rel="noopener">' + safe + '</a></li>';
+    });
+    h += '</ul>';
+  }
+  if (refs.wikis.length > 0) {
+    h += '<h4>Wiki</h4><ul>';
+    refs.wikis.forEach(t => {
+      const aspectsTxt = (t.aspects || []).map(a => aspectLabel(a)).join(', ');
+      h += '<li><a href="#" data-entity="' + escapeHtml(t.id) + '">' + escapeHtml(getDisplayTitle(t)) + '</a>' +
+        (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
+        '</li>';
+    });
+    h += '</ul>';
+  }
+  if (refs.includes.length > 0) {
+    h += '<h4>Include</h4><ul>';
+    refs.includes.forEach(t => {
+      const aspectsTxt = (t.aspects || []).map(a => aspectLabel(a)).join(', ');
+      h += '<li><a href="#" data-entity="' + escapeHtml(t.id) + '">' + escapeHtml(getDisplayTitle(t)) + '</a>' +
+        (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
+        '</li>';
+    });
+    h += '</ul>';
+  }
   return h;
 }
 function renderAttachmentsRead(e) {
@@ -3295,7 +3883,7 @@ function renderDetailEdit(main, e) {
       '<div class="btn-group"><button id="add-custom-attr">+ Přidat vlastní atribut</button></div>' +
     '</section>' +
 
-    '<section><h3>Tělo (Markdown)</h3>' +
+    '<section><h3>Obsah (Markdown)</h3>' +
       '<label for="d-body" class="sr-only">Tělo</label>' +
       '<textarea id="d-body" class="body-edit" rows="20">' + escapeHtml(e.body) + '</textarea>' +
     '</section>' +
@@ -3650,7 +4238,8 @@ function renderEditLinks(e) {
     }).join('');
   const inv = getInverseLinks(e.id);
   const invRel = getInverseRelations(e.id);
-  if (inv.length === 0 && invRel.length === 0) {
+  const invText = getInverseTextReferences(e);
+  if (inv.length === 0 && invRel.length === 0 && invText.wikiFrom.length === 0 && invText.includeFrom.length === 0) {
     ic.innerHTML = '<p class="meta">Žádné příchozí vazby.</p>';
   } else {
     let invH = '';
@@ -3666,6 +4255,20 @@ function renderEditLinks(e) {
         '<strong>' + escapeHtml(fieldLabel) + ':</strong> ' +
         '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
         ' <span class="meta">(relace)</span></span></div>';
+    });
+    invText.wikiFrom.forEach(from => {
+      const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
+      invH += '<div class="link-row"><span class="link-target"><strong>zmiňuje wiki:</strong> ' +
+        '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+        (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
+        '</span></div>';
+    });
+    invText.includeFrom.forEach(from => {
+      const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
+      invH += '<div class="link-row"><span class="link-target"><strong>includuje:</strong> ' +
+        '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+        (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
+        '</span></div>';
     });
     ic.innerHTML = invH;
   }
@@ -8321,6 +8924,7 @@ body.viewer-mode .btn-group:has(#d-add-comment) { display: none !important; }
   <p id="app-description" class="meta" hidden></p>
   <nav aria-label="Hlavní navigace">
     <ul id="main-nav">
+      <li><button id="btn-sync" accesskey="s" title="Uložit na GitHub" hidden>☁ Sync</button></li>
       <li><button data-view="inbox">Inbox <span class="count" id="count-inbox" aria-hidden="true"></span></button></li>
       <li><button data-view="all">Vše <span class="count" id="count-all" aria-hidden="true"></span></button></li>
       <li><button data-view="tasks">Úkoly <span class="count" id="count-tasks" aria-hidden="true"></span></button></li>
@@ -8338,7 +8942,6 @@ body.viewer-mode .btn-group:has(#d-add-comment) { display: none !important; }
     <button id="btn-new-entity">Nová entita</button>
     <button id="btn-new-from-template">Nová ze šablony</button>
     <button id="btn-help">Klávesové zkratky</button>
-    <button id="btn-sync" accesskey="s" title="Uložit na GitHub" hidden>Sync</button>
   </div>
 </header>
 <main id="main" tabindex="-1"></main>
@@ -9357,7 +9960,10 @@ function resolveWikiLink(ref, alias) {
   else target = findEntityByTitle(ref);
   if (target) {
     const label = alias || ref;
-    return '<a href="#" class="wiki-link" data-entity="' + escapeHtml(target.id) + '">' + escapeHtml(label) + '</a>';
+    const aspectsTxt = (target.aspects || []).length > 0
+      ? ' <span class="wiki-aspects meta">(' + escapeHtml((target.aspects || []).map(a => aspectLabel(a)).join(', ')) + ')</span>'
+      : '';
+    return '<a href="#" class="wiki-link" data-entity="' + escapeHtml(target.id) + '">' + escapeHtml(label) + '</a>' + aspectsTxt;
   }
   return '<a href="#" class="wiki-link broken" data-create-name="' + escapeHtml(ref) + '" title="Entita neexistuje – kliknutí ji vytvoří">' + escapeHtml(alias || ref) + '</a>';
 }
@@ -9689,6 +10295,150 @@ function normalizeRelationValue(v) {
   if (Array.isArray(v)) return v.filter(x => x !== null && x !== undefined && x !== '');
   return [v];
 }
+
+// Extrahuje z textu všechny URL (bare http/https + URL z markdown linků [text](url) + autolinks <url>)
+// Vrací pole unikátních URL v pořadí výskytu.
+function extractUrlsFromText(text) {
+  if (!text) return [];
+  const out = [];
+  const seen = new Set();
+  function add(u) {
+    if (!u) return;
+    u = u.trim();
+    if (!/^https?:\\/\\//i.test(u)) return;
+    if (seen.has(u)) return;
+    seen.add(u);
+    out.push(u);
+  }
+  // Markdown linky [text](url)
+  const mdRe = /\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)/g;
+  let m;
+  while ((m = mdRe.exec(text)) !== null) add(m[2]);
+  // Angle brackets <url>
+  const angleRe = /<(https?:\\/\\/[^>\\s]+)>/g;
+  while ((m = angleRe.exec(text)) !== null) add(m[1]);
+  // Bare URL – musí být oddělené whitespace nebo začátkem řetězce
+  // Vyhneme se URL uvnitř markdown linků (už zachycené výše) – jednoduché řešení: nahradíme markdown linky placeholderem
+  let cleaned = text.replace(/\\[[^\\]]+\\]\\((https?:\\/\\/[^\\s)]+)\\)/g, '');
+  cleaned = cleaned.replace(/<https?:\\/\\/[^>\\s]+>/g, '');
+  const bareRe = /(https?:\\/\\/[^\\s<>"'\`,;)\\]]+)/g;
+  while ((m = bareRe.exec(cleaned)) !== null) {
+    let u = m[1];
+    // Trim trailing punctuation
+    u = u.replace(/[.,;:!?]+$/, '');
+    add(u);
+  }
+  return out;
+}
+
+// Extrahuje wiki-linky [[entityIdNebo Title]] nebo [[id|alias]]
+// Vrací pole unikátních cílových identifikátorů (ID nebo title – jak jsou napsané)
+function extractWikiTargetsFromText(text) {
+  if (!text) return [];
+  const out = [];
+  const seen = new Set();
+  const re = /\\[\\[([^\\]|]+)(?:\\|[^\\]]+)?\\]\\]/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const target = m[1].trim();
+    if (!target || seen.has(target)) continue;
+    seen.add(target);
+    out.push(target);
+  }
+  return out;
+}
+
+// Extrahuje include identifikátory {{include:id}}
+function extractIncludeTargetsFromText(text) {
+  if (!text) return [];
+  const out = [];
+  const seen = new Set();
+  const re = /\\{\\{include:([^}]+)\\}\\}/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const target = m[1].trim();
+    if (!target || seen.has(target)) continue;
+    seen.add(target);
+    out.push(target);
+  }
+  return out;
+}
+
+// Najde entitu podle ID nebo podle názvu (case-insensitive). Vrací první nalezenou.
+function findEntityByIdOrTitle(target) {
+  if (!target) return null;
+  const byId = findEntity(target);
+  if (byId) return byId;
+  const lc = target.toLowerCase();
+  return db.entities.find(e => (e.title || '').toLowerCase() === lc) || null;
+}
+
+// Sebere všechny zdroje textu z entity (body + textarea atributy)
+function collectEntityTextSources(entity) {
+  const sources = [];
+  if (entity.body) sources.push({ name: 'body', text: entity.body });
+  const allFields = collectAllFields(entity);
+  allFields.forEach(f => {
+    if (f.field.type !== 'textarea') return;
+    const v = entity.attributes && entity.attributes[f.field.key];
+    if (v) sources.push({ name: 'attr:' + f.field.key, text: String(v), fieldLabel: f.field.label });
+  });
+  return sources;
+}
+
+// Sebere všechny URL/Wiki/Include z entity. Vrací { urls: [...], wikis: [...entity], includes: [...entity] }
+function collectEntityOutgoingReferences(entity) {
+  const urls = [];
+  const urlSeen = new Set();
+  const wikis = [];
+  const wikiSeen = new Set();
+  const includes = [];
+  const includeSeen = new Set();
+  collectEntityTextSources(entity).forEach(src => {
+    extractUrlsFromText(src.text).forEach(u => {
+      if (!urlSeen.has(u)) { urlSeen.add(u); urls.push(u); }
+    });
+    extractWikiTargetsFromText(src.text).forEach(target => {
+      const t = findEntityByIdOrTitle(target);
+      if (!t || t.id === entity.id) return;
+      if (!wikiSeen.has(t.id)) { wikiSeen.add(t.id); wikis.push(t); }
+    });
+    extractIncludeTargetsFromText(src.text).forEach(target => {
+      const t = findEntityByIdOrTitle(target);
+      if (!t || t.id === entity.id) return;
+      if (!includeSeen.has(t.id)) { includeSeen.add(t.id); includes.push(t); }
+    });
+  });
+  return { urls, wikis, includes };
+}
+
+// Najde entity, které referují tuto entitu přes wiki-link nebo include v jakémkoli textovém zdroji.
+// Vrací { wikiFrom: [entity], includeFrom: [entity] }
+function getInverseTextReferences(entity) {
+  const wikiFromMap = new Map();   // id → entity
+  const includeFromMap = new Map();
+  const targetId = entity.id;
+  const targetTitleLc = (entity.title || '').toLowerCase();
+  db.entities.forEach(e => {
+    if (e.id === targetId) return;
+    collectEntityTextSources(e).forEach(src => {
+      extractWikiTargetsFromText(src.text).forEach(t => {
+        if (t === targetId || t.toLowerCase() === targetTitleLc) {
+          if (!wikiFromMap.has(e.id)) wikiFromMap.set(e.id, e);
+        }
+      });
+      extractIncludeTargetsFromText(src.text).forEach(t => {
+        if (t === targetId || t.toLowerCase() === targetTitleLc) {
+          if (!includeFromMap.has(e.id)) includeFromMap.set(e.id, e);
+        }
+      });
+    });
+  });
+  return {
+    wikiFrom: [...wikiFromMap.values()],
+    includeFrom: [...includeFromMap.values()]
+  };
+}
 function getEntityDate(e) {
   return e.attributes.deadline || e.attributes.start || e.attributes.target_date ||
     e.attributes.review_date || e.attributes.last_done || null;
@@ -9885,6 +10635,102 @@ function deleteSavedView(id) { db.savedViews = db.savedViews.filter(v => v.id !=
 function findSavedView(id) { return db.savedViews.find(v => v.id === id); }
 function applySavedView(v) {
   let r = searchEntities(v.filters.text || '', v.filters || {});
+  const f = v.filters || {};
+  // Archiv
+  if (f.archived === true) r = r.filter(e => e.archived);
+  else if (f.archived === false) r = r.filter(e => !e.archived);
+  // Inbox
+  if (f.inbox === 'in') r = r.filter(e => !!e.inbox);
+  else if (f.inbox === 'out') r = r.filter(e => !e.inbox);
+  // Datum změny
+  if (f.updatedDays) {
+    const cutoff = Date.now() - Number(f.updatedDays) * 86400000;
+    r = r.filter(e => e.updated_at && new Date(e.updated_at).getTime() >= cutoff);
+  }
+  // Datum vytvoření
+  if (f.createdDays) {
+    const cutoff = Date.now() - Number(f.createdDays) * 86400000;
+    r = r.filter(e => e.created_at && new Date(e.created_at).getTime() >= cutoff);
+  }
+  // Stav úkolu
+  if (f.taskStatus) {
+    if (f.taskStatus === 'open') {
+      r = r.filter(e => ['todo','doing','blocked'].includes(e.attributes && e.attributes.status));
+    } else {
+      r = r.filter(e => e.attributes && e.attributes.status === f.taskStatus);
+    }
+  }
+  // Priorita
+  if (f.priority) r = r.filter(e => e.attributes && e.attributes.priority === f.priority);
+  // Termín
+  if (f.deadline) {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const tomorrow = today + 86400000;
+    const dow = new Date(today).getDay() === 0 ? 7 : new Date(today).getDay();
+    const weekStart = today - (dow - 1) * 86400000;
+    const weekEnd = weekStart + 7 * 86400000;
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+    const getDl = (e) => {
+      const d = (e.attributes && (e.attributes.deadline || e.attributes.target_date || e.attributes.start));
+      if (!d) return null;
+      const t = new Date(d).getTime();
+      return isNaN(t) ? null : t;
+    };
+    if (f.deadline === 'overdue') {
+      r = r.filter(e => { const dl = getDl(e); return dl != null && dl < today && (e.attributes && e.attributes.status !== 'done'); });
+    } else if (f.deadline === 'today') {
+      r = r.filter(e => { const dl = getDl(e); return dl != null && dl >= today && dl < tomorrow; });
+    } else if (f.deadline === 'week') {
+      r = r.filter(e => { const dl = getDl(e); return dl != null && dl >= weekStart && dl < weekEnd; });
+    } else if (f.deadline === 'month') {
+      r = r.filter(e => { const dl = getDl(e); return dl != null && dl >= monthStart && dl < monthEnd; });
+    } else if (f.deadline === 'future') {
+      r = r.filter(e => { const dl = getDl(e); return dl != null && dl >= today; });
+    } else if (f.deadline === 'none') {
+      r = r.filter(e => (e.aspects || []).includes('Task') && !getDl(e));
+    }
+  }
+  // Obsah
+  if (f.content) {
+    r = r.filter(e => {
+      const refs = collectEntityOutgoingReferences(e);
+      if (f.content === 'hasUrl') return refs.urls.length > 0;
+      if (f.content === 'hasWiki') return refs.wikis.length > 0;
+      if (f.content === 'hasInclude') return refs.includes.length > 0;
+      if (f.content === 'hasAttachments') return e.attachments && e.attachments.length > 0;
+      if (f.content === 'hasComments') return e.comments && e.comments.length > 0;
+      if (f.content === 'hasOpenTasks') {
+        const sources = collectEntityTextSources(e);
+        for (const src of sources) {
+          const c = countMarkdownTasks(src.text);
+          if (c && c.undone > 0) return true;
+        }
+        return false;
+      }
+      return true;
+    });
+  }
+  // Vazby
+  if (f.relations) {
+    r = r.filter(e => {
+      const inLinks = getInverseLinks(e.id).length + getInverseRelations(e.id).length;
+      const inText = (() => { const i = getInverseTextReferences(e); return i.wikiFrom.length + i.includeFrom.length; })();
+      const incoming = inLinks + inText;
+      const outRefs = collectEntityOutgoingReferences(e);
+      const outgoing = (e.links || []).length + outRefs.wikis.length + outRefs.includes.length;
+      if (f.relations === 'orphans') return incoming === 0 && outgoing === 0;
+      if (f.relations === 'noIncoming') return incoming === 0;
+      if (f.relations === 'noOutgoing') return outgoing === 0;
+      if (f.relations === 'hasIncoming') return incoming > 0;
+      if (f.relations === 'hasOutgoing') return outgoing > 0;
+      return true;
+    });
+  }
+  // Důvěra
+  if (f.confidence) r = r.filter(e => e.confidence === f.confidence);
+
   if (v.sort && v.sort.by) {
     const dir = v.sort.dir === 'desc' ? -1 : 1;
     r.sort((a,b) => {
@@ -9915,6 +10761,28 @@ function describeFilter(f) {
   if (f.text) p.push('text: „' + f.text + '“');
   if (f.status) p.push('stav: ' + getStatusLabel(f.status));
   if (f.archived === true) p.push('jen archiv');
+  if (f.inbox === 'in') p.push('v Inboxu');
+  else if (f.inbox === 'out') p.push('mimo Inbox');
+  if (f.updatedDays) p.push('změněno: ' + f.updatedDays + ' d');
+  if (f.createdDays) p.push('vytvořeno: ' + f.createdDays + ' d');
+  if (f.taskStatus) {
+    const labels = { todo:'k vyřízení', doing:'probíhá', done:'hotovo', blocked:'blokováno', open:'nedokončeno' };
+    p.push('stav úkolu: ' + (labels[f.taskStatus] || f.taskStatus));
+  }
+  if (f.priority) p.push('priorita: ' + f.priority);
+  if (f.deadline) {
+    const labels = { overdue:'po termínu', today:'dnes', week:'tento týden', month:'tento měsíc', future:'v budoucnu', none:'bez termínu' };
+    p.push('termín: ' + (labels[f.deadline] || f.deadline));
+  }
+  if (f.content) {
+    const labels = { hasUrl:'má URL', hasWiki:'má wiki', hasInclude:'má include', hasAttachments:'s přílohou', hasComments:'s komentáři', hasOpenTasks:'s nedokončenými úkoly' };
+    p.push(labels[f.content] || f.content);
+  }
+  if (f.relations) {
+    const labels = { orphans:'sirotci', noIncoming:'bez příchozích', noOutgoing:'bez odchozích', hasIncoming:'s příchozími', hasOutgoing:'s odchozími' };
+    p.push(labels[f.relations] || f.relations);
+  }
+  if (f.confidence) p.push('důvěra: ' + f.confidence);
   return p.join(', ') || '(bez omezení)';
 }
 
@@ -10347,26 +11215,241 @@ function renderAll(main) {
   const tagOpts = getAllTags().map(t => '<option value="' + escapeHtml(t) + '"' + (f.tag === t ? ' selected' : '') + '>' + escapeHtml(t) + '</option>').join('');
   main.innerHTML =
     '<h2>Vše</h2>' +
-    '<div class="toolbar" role="search" aria-label="Filtry">' +
-      '<div><label for="filter-text">Hledaný text</label><input type="search" id="filter-text" value="' + escapeHtml(f.text || '') + '"></div>' +
-      '<div><label for="filter-aspect">Aspekt</label><select id="filter-aspect"><option value="">— všechny —</option>' + aspectOpts + '</select></div>' +
-      '<div><label for="filter-tag">Tag</label><select id="filter-tag"><option value="">— všechny —</option>' + tagOpts + '</select></div>' +
-      '<div><label for="filter-archived">Archiv</label><select id="filter-archived"><option value="active">Jen aktivní</option><option value="all">+ archiv</option><option value="archived">Jen archiv</option></select></div>' +
+    '<div class="toolbar" role="search" aria-label="Hledání">' +
+      '<div style="flex:1;min-width:14em;"><label for="filter-text">Hledaný text</label><input type="search" id="filter-text" value="' + escapeHtml(f.text || '') + '"></div>' +
       '<div style="flex:0 0 auto;"><button id="filter-reset">Reset</button> <button id="filter-save">Uložit jako pohled</button></div>' +
     '</div>' +
+    '<details id="filters-details" style="margin-bottom:0.7em;">' +
+      '<summary>Filtry <span id="filters-summary" class="meta"></span></summary>' +
+      '<div class="filter-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(14em,1fr));gap:0.5em;margin-top:0.5em;">' +
+        '<div><label for="filter-aspect">Aspekt</label><select id="filter-aspect"><option value="">— všechny —</option>' + aspectOpts + '</select></div>' +
+        '<div><label for="filter-tag">Tag</label><select id="filter-tag"><option value="">— všechny —</option>' + tagOpts + '</select></div>' +
+        '<div><label for="filter-archived">Archiv</label><select id="filter-archived">' +
+          '<option value="active">Jen aktivní</option>' +
+          '<option value="all">+ archiv</option>' +
+          '<option value="archived">Jen archiv</option>' +
+        '</select></div>' +
+        '<div><label for="filter-inbox">Inbox</label><select id="filter-inbox">' +
+          '<option value="">— vše —</option>' +
+          '<option value="in">Pouze v Inboxu</option>' +
+          '<option value="out">Pouze mimo Inbox</option>' +
+        '</select></div>' +
+        '<div><label for="filter-updated">Změněno</label><select id="filter-updated">' +
+          '<option value="">— kdykoli —</option>' +
+          '<option value="1">Za posledních 24 h</option>' +
+          '<option value="7">Za posledních 7 dní</option>' +
+          '<option value="30">Za posledních 30 dní</option>' +
+          '<option value="90">Za posledních 90 dní</option>' +
+          '<option value="365">Za poslední rok</option>' +
+        '</select></div>' +
+        '<div><label for="filter-created">Vytvořeno</label><select id="filter-created">' +
+          '<option value="">— kdykoli —</option>' +
+          '<option value="1">Za posledních 24 h</option>' +
+          '<option value="7">Za posledních 7 dní</option>' +
+          '<option value="30">Za posledních 30 dní</option>' +
+          '<option value="90">Za posledních 90 dní</option>' +
+        '</select></div>' +
+        '<div><label for="filter-task-status">Stav úkolu</label><select id="filter-task-status">' +
+          '<option value="">— libovolný —</option>' +
+          '<option value="todo">K vyřízení</option>' +
+          '<option value="doing">Probíhá</option>' +
+          '<option value="done">Hotovo</option>' +
+          '<option value="blocked">Blokováno</option>' +
+          '<option value="open">Nedokončeno (todo+doing+blocked)</option>' +
+        '</select></div>' +
+        '<div><label for="filter-priority">Priorita</label><select id="filter-priority">' +
+          '<option value="">— libovolná —</option>' +
+          '<option value="urgent">Urgentní</option>' +
+          '<option value="high">Vysoká</option>' +
+          '<option value="normal">Normální</option>' +
+          '<option value="low">Nízká</option>' +
+        '</select></div>' +
+        '<div><label for="filter-deadline">Termín</label><select id="filter-deadline">' +
+          '<option value="">— libovolný —</option>' +
+          '<option value="overdue">Po termínu (a nedokončeno)</option>' +
+          '<option value="today">Dnes</option>' +
+          '<option value="week">Tento týden</option>' +
+          '<option value="month">Tento měsíc</option>' +
+          '<option value="future">V budoucnu</option>' +
+          '<option value="none">Bez termínu (úkoly)</option>' +
+        '</select></div>' +
+        '<div><label for="filter-content">Obsah obsahuje</label><select id="filter-content">' +
+          '<option value="">— libovolný obsah —</option>' +
+          '<option value="hasUrl">Má URL odkaz</option>' +
+          '<option value="hasWiki">Má wiki odkaz</option>' +
+          '<option value="hasInclude">Má include</option>' +
+          '<option value="hasAttachments">Má přílohu</option>' +
+          '<option value="hasComments">Má komentáře</option>' +
+          '<option value="hasOpenTasks">Má nedokončený MD úkol</option>' +
+        '</select></div>' +
+        '<div><label for="filter-relations">Vazby</label><select id="filter-relations">' +
+          '<option value="">— libovolné —</option>' +
+          '<option value="orphans">Sirotci (bez vazeb)</option>' +
+          '<option value="noIncoming">Bez příchozích vazeb</option>' +
+          '<option value="noOutgoing">Bez odchozích vazeb</option>' +
+          '<option value="hasIncoming">Má příchozí vazby</option>' +
+          '<option value="hasOutgoing">Má odchozí vazby</option>' +
+        '</select></div>' +
+        '<div><label for="filter-confidence">Důvěra</label><select id="filter-confidence">' +
+          '<option value="">— libovolná —</option>' +
+          (Object.entries(CONFIDENCE_LEVELS || {}).map(([k,v]) =>
+            '<option value="' + escapeHtml(k) + '">' + escapeHtml(v) + '</option>').join('')) +
+        '</select></div>' +
+      '</div>' +
+    '</details>' +
     '<div id="all-results"></div>';
-  const it = document.getElementById('filter-text'), sa = document.getElementById('filter-aspect'),
-    st = document.getElementById('filter-tag'), sar = document.getElementById('filter-archived');
-  // Lokální stav řazení (default: nejnověji změněné nahoře)
+  const it = document.getElementById('filter-text'),
+    sa = document.getElementById('filter-aspect'),
+    st = document.getElementById('filter-tag'),
+    sar = document.getElementById('filter-archived'),
+    sib = document.getElementById('filter-inbox'),
+    su = document.getElementById('filter-updated'),
+    sc = document.getElementById('filter-created'),
+    sts = document.getElementById('filter-task-status'),
+    spr = document.getElementById('filter-priority'),
+    sdl = document.getElementById('filter-deadline'),
+    sct = document.getElementById('filter-content'),
+    srl = document.getElementById('filter-relations'),
+    scf = document.getElementById('filter-confidence');
   if (!state._allSort) state._allSort = { key: 'updated', dir: 'desc' };
-  function update() {
-    state.filter.text = it.value; state.filter.aspect = sa.value; state.filter.tag = st.value;
+
+  function applyAllFilters() {
     let r = db.entities;
+    // Archiv
     if (sar.value === 'active') r = r.filter(e => !e.archived);
     else if (sar.value === 'archived') r = r.filter(e => e.archived);
-    r = searchEntities(state.filter.text, { aspect: state.filter.aspect, tag: state.filter.tag }).filter(e => r.includes(e));
+    // Inbox
+    if (sib.value === 'in') r = r.filter(e => !!e.inbox);
+    else if (sib.value === 'out') r = r.filter(e => !e.inbox);
+    // Aspekt + tag + text
+    r = searchEntities(it.value, { aspect: sa.value, tag: st.value }).filter(e => r.includes(e));
+    // Datum změny
+    if (su.value) {
+      const days = Number(su.value);
+      const cutoff = Date.now() - days * 86400000;
+      r = r.filter(e => e.updated_at && new Date(e.updated_at).getTime() >= cutoff);
+    }
+    // Datum vytvoření
+    if (sc.value) {
+      const days = Number(sc.value);
+      const cutoff = Date.now() - days * 86400000;
+      r = r.filter(e => e.created_at && new Date(e.created_at).getTime() >= cutoff);
+    }
+    // Stav úkolu
+    if (sts.value) {
+      if (sts.value === 'open') {
+        r = r.filter(e => ['todo','doing','blocked'].includes(e.attributes && e.attributes.status));
+      } else {
+        r = r.filter(e => e.attributes && e.attributes.status === sts.value);
+      }
+    }
+    // Priorita
+    if (spr.value) r = r.filter(e => e.attributes && e.attributes.priority === spr.value);
+    // Termín
+    if (sdl.value) {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const todayMs = today.getTime();
+      const tomorrowMs = todayMs + 86400000;
+      const dow = today.getDay() === 0 ? 7 : today.getDay();
+      const weekStart = todayMs - (dow - 1) * 86400000;
+      const weekEnd = weekStart + 7 * 86400000;
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+      const getDl = (e) => {
+        const d = (e.attributes && (e.attributes.deadline || e.attributes.target_date || e.attributes.start));
+        if (!d) return null;
+        const t = new Date(d).getTime();
+        return isNaN(t) ? null : t;
+      };
+      if (sdl.value === 'overdue') {
+        r = r.filter(e => {
+          const dl = getDl(e); if (!dl) return false;
+          return dl < todayMs && (e.attributes && e.attributes.status !== 'done');
+        });
+      } else if (sdl.value === 'today') {
+        r = r.filter(e => { const dl = getDl(e); return dl != null && dl >= todayMs && dl < tomorrowMs; });
+      } else if (sdl.value === 'week') {
+        r = r.filter(e => { const dl = getDl(e); return dl != null && dl >= weekStart && dl < weekEnd; });
+      } else if (sdl.value === 'month') {
+        r = r.filter(e => { const dl = getDl(e); return dl != null && dl >= monthStart && dl < monthEnd; });
+      } else if (sdl.value === 'future') {
+        r = r.filter(e => { const dl = getDl(e); return dl != null && dl >= todayMs; });
+      } else if (sdl.value === 'none') {
+        r = r.filter(e => (e.aspects || []).includes('Task') && !getDl(e));
+      }
+    }
+    // Obsah
+    if (sct.value) {
+      r = r.filter(e => {
+        const refs = collectEntityOutgoingReferences(e);
+        if (sct.value === 'hasUrl') return refs.urls.length > 0;
+        if (sct.value === 'hasWiki') return refs.wikis.length > 0;
+        if (sct.value === 'hasInclude') return refs.includes.length > 0;
+        if (sct.value === 'hasAttachments') return e.attachments && e.attachments.length > 0;
+        if (sct.value === 'hasComments') return e.comments && e.comments.length > 0;
+        if (sct.value === 'hasOpenTasks') {
+          // Tasky v body i v textových atributech
+          const sources = collectEntityTextSources(e);
+          for (const src of sources) {
+            const c = countMarkdownTasks(src.text);
+            if (c && c.undone > 0) return true;
+          }
+          return false;
+        }
+        return true;
+      });
+    }
+    // Vazby
+    if (srl.value) {
+      r = r.filter(e => {
+        const inLinks = getInverseLinks(e.id).length + getInverseRelations(e.id).length;
+        const inText = (() => { const i = getInverseTextReferences(e); return i.wikiFrom.length + i.includeFrom.length; })();
+        const incoming = inLinks + inText;
+        const outRefs = collectEntityOutgoingReferences(e);
+        const outgoing = (e.links || []).length + outRefs.wikis.length + outRefs.includes.length;
+        if (srl.value === 'orphans') return incoming === 0 && outgoing === 0;
+        if (srl.value === 'noIncoming') return incoming === 0;
+        if (srl.value === 'noOutgoing') return outgoing === 0;
+        if (srl.value === 'hasIncoming') return incoming > 0;
+        if (srl.value === 'hasOutgoing') return outgoing > 0;
+        return true;
+      });
+    }
+    // Důvěra
+    if (scf.value) r = r.filter(e => e.confidence === scf.value);
+
+    return r;
+  }
+
+  // Spočítání aktivních filtrů pro shrnutí
+  function countActiveFilters() {
+    let n = 0;
+    if (sa.value) n++;
+    if (st.value) n++;
+    if (sar.value !== 'active') n++;
+    if (sib.value) n++;
+    if (su.value) n++;
+    if (sc.value) n++;
+    if (sts.value) n++;
+    if (spr.value) n++;
+    if (sdl.value) n++;
+    if (sct.value) n++;
+    if (srl.value) n++;
+    if (scf.value) n++;
+    return n;
+  }
+
+  function update() {
+    state.filter.text = it.value;
+    state.filter.aspect = sa.value;
+    state.filter.tag = st.value;
+    let r = applyAllFilters();
     r = sortEntitiesBy(r, state._allSort);
     const out = document.getElementById('all-results');
+    const sumEl = document.getElementById('filters-summary');
+    const active = countActiveFilters();
+    if (sumEl) sumEl.textContent = active > 0 ? '(' + active + ' aktivních)' : '';
     if (r.length === 0) { out.innerHTML = '<div class="empty">Žádné výsledky.</div>'; statusMsgDebounced('0 výsledků.'); return; }
     out.innerHTML = '<p class="meta">Nalezeno ' + r.length + ' entit.</p>' +
       renderEntityTableHtml(r, state._allSort);
@@ -10376,15 +11459,35 @@ function renderAll(main) {
       state._allSort = newSort; update();
     });
   }
-  it.oninput = update; sa.onchange = update; st.onchange = update; sar.onchange = update;
+
+  [it, sa, st, sar, sib, su, sc, sts, spr, sdl, sct, srl, scf].forEach(el => {
+    if (!el) return;
+    if (el.tagName === 'INPUT') el.oninput = update;
+    el.onchange = update;
+  });
   document.getElementById('filter-reset').onclick = () => {
     state.filter = { aspect:'', tag:'', text:'', status:'' };
-    it.value = ''; sa.value = ''; st.value = ''; sar.value = 'active'; update();
+    it.value = ''; sa.value = ''; st.value = ''; sar.value = 'active';
+    sib.value = ''; su.value = ''; sc.value = '';
+    sts.value = ''; spr.value = ''; sdl.value = '';
+    sct.value = ''; srl.value = ''; scf.value = '';
+    update();
   };
   document.getElementById('filter-save').onclick = () => {
     openSaveViewDialog({ filters: {
-      aspect: sa.value || null, tag: st.value || null, text: it.value || null,
-      archived: sar.value === 'archived' ? true : (sar.value === 'active' ? false : null)
+      aspect: sa.value || null,
+      tag: st.value || null,
+      text: it.value || null,
+      archived: sar.value === 'archived' ? true : (sar.value === 'active' ? false : null),
+      inbox: sib.value || null,
+      updatedDays: su.value ? Number(su.value) : null,
+      createdDays: sc.value ? Number(sc.value) : null,
+      taskStatus: sts.value || null,
+      priority: spr.value || null,
+      deadline: sdl.value || null,
+      content: sct.value || null,
+      relations: srl.value || null,
+      confidence: scf.value || null
     }, render: 'table' });
   };
   sar.value = 'active'; update();
@@ -10552,8 +11655,10 @@ function renderViewsList(main) {
     '<p>Uložené dotazy, ke kterým se rychle vracíte. Připnuté pohledy se zobrazí v záhlaví.</p>' +
     (db.savedViews.length === 0
       ? '<div class="empty">Žádné uložené pohledy. Vytvořte filtr v záložce „Vše“ a uložte tlačítkem „Uložit jako pohled“.</div>'
-      : '<table><caption class="sr-only">Pohledy</caption><thead><tr><th scope="col">Název</th><th scope="col">Filtr</th><th scope="col">Připnutý</th><th scope="col">Akce</th></tr></thead><tbody>' +
-        db.savedViews.map(v => '<tr>' +
+      : '<table><caption class="sr-only">Pohledy</caption><thead><tr><th scope="col">Pořadí</th><th scope="col">Název</th><th scope="col">Filtr</th><th scope="col">Připnutý</th><th scope="col">Akce</th></tr></thead><tbody>' +
+        db.savedViews.map((v, i) => '<tr>' +
+          '<td><button data-move-up="' + escapeHtml(v.id) + '" aria-label="Posunout pohled nahoru"' + (i === 0 ? ' disabled' : '') + '>↑</button> ' +
+              '<button data-move-down="' + escapeHtml(v.id) + '" aria-label="Posunout pohled dolů"' + (i === db.savedViews.length - 1 ? ' disabled' : '') + '>↓</button></td>' +
           '<td><a href="#" data-saved-view="' + escapeHtml(v.id) + '">' + (v.icon ? escapeHtml(v.icon) + ' ' : '') + escapeHtml(v.name) + '</a></td>' +
           '<td>' + escapeHtml(describeFilter(v.filters || {})) + '</td>' +
           '<td>' + (v.pinned ? 'Ano' : 'Ne') + '</td>' +
@@ -10574,6 +11679,28 @@ function renderViewsList(main) {
       confirmDialog('Smazat pohled „' + v.name + '“?', () => {
         deleteSavedView(v.id); render(); toast('Pohled smazán.');
       });
+    };
+  });
+  main.querySelectorAll('button[data-move-up]').forEach(b => {
+    b.onclick = () => {
+      const id = b.dataset.moveUp;
+      const i = db.savedViews.findIndex(v => v.id === id);
+      if (i > 0) {
+        const arr = db.savedViews;
+        [arr[i-1], arr[i]] = [arr[i], arr[i-1]];
+        save(); render();
+      }
+    };
+  });
+  main.querySelectorAll('button[data-move-down]').forEach(b => {
+    b.onclick = () => {
+      const id = b.dataset.moveDown;
+      const i = db.savedViews.findIndex(v => v.id === id);
+      if (i >= 0 && i < db.savedViews.length - 1) {
+        const arr = db.savedViews;
+        [arr[i], arr[i+1]] = [arr[i+1], arr[i]];
+        save(); render();
+      }
     };
   });
 }
@@ -10987,6 +12114,7 @@ function renderDetailRead(main, e) {
   const bodyTaskCounter = bodyTaskCounts ? '<p class="task-counter meta">' + escapeHtml(describeTaskCounts(bodyTaskCounts)) + '</p>' : '';
   const linksHtml = renderLinksReadOnly(e);
   const inverseHtml = renderInverseLinksReadOnly(e);
+  const refsHtml = renderOutgoingReferences(e);
   const attachmentsHtml = renderAttachmentsRead(e);
   const isProject = e.aspects && e.aspects.includes('Project');
   const projectDashHtml = isProject ? renderProjectDashboard(e) : '';
@@ -11014,7 +12142,7 @@ function renderDetailRead(main, e) {
       '</div>' +
     '</div>' +
     (attrsHtml ? '<dl class="read-attrs">' + attrsHtml + '</dl>' : '') +
-    (bodyHtml ? '<section aria-labelledby="body-h"><h3 id="body-h">Tělo</h3>' +
+    (bodyHtml ? '<section aria-labelledby="body-h"><h3 id="body-h">Obsah</h3>' +
       '<div class="btn-group" style="margin-bottom:0.5em;">' +
         '<button id="btn-copy-body-source" title="Zkopírovat zdroj (Markdown)">📋 Zkopírovat zdroj</button>' +
         '<button id="btn-copy-body-formatted" title="Zkopírovat formátovaný (vložitelný do Wordu, Outlooku, Gmailu…)">✨ Zkopírovat formátované</button>' +
@@ -11024,6 +12152,7 @@ function renderDetailRead(main, e) {
     '</section>' : '') +
     (attachmentsHtml ? '<section aria-labelledby="att-h"><h3 id="att-h">Přílohy (' + e.attachments.length + ')</h3>' + attachmentsHtml + '</section>' : '') +
     projectDashHtml +
+    (refsHtml ? '<section aria-labelledby="refs-h"><h3 id="refs-h">Odkazy</h3>' + refsHtml + '</section>' : '') +
     (linksHtml ? '<section aria-labelledby="links-h"><h3 id="links-h">Vazby</h3>' + linksHtml + '</section>' : '') +
     (inverseHtml ? '<section aria-labelledby="ilinks-h"><h3 id="ilinks-h">Příchozí vazby</h3>' + inverseHtml + '</section>' : '') +
     '<section aria-labelledby="comments-h"><h3 id="comments-h">Komentáře' + (e.comments && e.comments.length ? ' (' + e.comments.length + ')' : '') + '</h3>' +
@@ -11247,10 +12376,13 @@ function renderLinksReadOnly(e) {
     const t = findEntity(l.to), ti = RELATION_TYPES[l.type];
     const lbl = ti ? ti.label : l.type;
     const tlbl = t ? getDisplayTitle(t) : '(smazáno)';
+    const aspectsTxt = t && t.aspects && t.aspects.length > 0
+      ? ' <span class="meta">(' + escapeHtml(t.aspects.map(a => aspectLabel(a)).join(', ')) + ')</span>'
+      : '';
     const note = l.note ? ' <span class="meta">(' + escapeHtml(l.note) + ')</span>' : '';
     return '<li><strong>' + escapeHtml(lbl) + ':</strong> ' +
       (t ? '<a href="#" data-entity="' + escapeHtml(l.to) + '">' + escapeHtml(tlbl) + '</a>' : escapeHtml(tlbl)) +
-      note +
+      aspectsTxt + note +
       ' <button data-remove-link-read="' + idx + '" data-entity-id="' + escapeHtml(e.id) + '" title="Odebrat vazbu" style="padding:0.1em 0.5em;font-size:0.85em;">×</button>' +
       '</li>';
   }).join('') + '</ul>';
@@ -11258,22 +12390,81 @@ function renderLinksReadOnly(e) {
 function renderInverseLinksReadOnly(e) {
   const inv = getInverseLinks(e.id);
   const invRel = getInverseRelations(e.id);
-  if (inv.length === 0 && invRel.length === 0) return '';
+  const invText = getInverseTextReferences(e);
+  if (inv.length === 0 && invRel.length === 0 && invText.wikiFrom.length === 0 && invText.includeFrom.length === 0) return '';
   let h = '<ul style="list-style:none;padding-left:0;">';
   inv.forEach(({from,link}) => {
     const ti = RELATION_TYPES[link.type];
     const il = ti ? ti.inverseLabel : link.type;
+    const aspectsTxt = (from.aspects || []).length > 0
+      ? ' <span class="meta">(' + escapeHtml((from.aspects || []).map(a => aspectLabel(a)).join(', ')) + ')</span>'
+      : '';
     h += '<li><strong>' + escapeHtml(il) + ':</strong> ' +
       '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+      aspectsTxt +
       (link.note ? ' <span class="meta">(' + escapeHtml(link.note) + ')</span>' : '') + '</li>';
   });
   invRel.forEach(({ from, fieldLabel, aspectLabel: alab }) => {
     const ctx = alab ? '[' + escapeHtml(alab) + '] ' : '';
+    const aspectsTxt = (from.aspects || []).length > 0
+      ? ' <span class="meta">(' + escapeHtml((from.aspects || []).map(a => aspectLabel(a)).join(', ')) + ')</span>'
+      : '';
     h += '<li>' + ctx + '<strong>' + escapeHtml(fieldLabel) + ':</strong> ' +
       '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+      aspectsTxt +
       ' <span class="meta">(relace)</span></li>';
   });
+  invText.wikiFrom.forEach(from => {
+    const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
+    h += '<li><strong>zmiňuje wiki:</strong> ' +
+      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+      (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
+      '</li>';
+  });
+  invText.includeFrom.forEach(from => {
+    const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
+    h += '<li><strong>includuje:</strong> ' +
+      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+      (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
+      '</li>';
+  });
   h += '</ul>';
+  return h;
+}
+
+// Sekce „Odkazy" – URL, wiki-linky a include z těla a textových atributů.
+function renderOutgoingReferences(e) {
+  const refs = collectEntityOutgoingReferences(e);
+  if (refs.urls.length === 0 && refs.wikis.length === 0 && refs.includes.length === 0) return '';
+  let h = '';
+  if (refs.urls.length > 0) {
+    h += '<h4>URL</h4><ul>';
+    refs.urls.forEach(u => {
+      const safe = escapeHtml(u);
+      h += '<li><a href="' + safe + '" target="_blank" rel="noopener">' + safe + '</a></li>';
+    });
+    h += '</ul>';
+  }
+  if (refs.wikis.length > 0) {
+    h += '<h4>Wiki</h4><ul>';
+    refs.wikis.forEach(t => {
+      const aspectsTxt = (t.aspects || []).map(a => aspectLabel(a)).join(', ');
+      h += '<li><a href="#" data-entity="' + escapeHtml(t.id) + '">' + escapeHtml(getDisplayTitle(t)) + '</a>' +
+        (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
+        '</li>';
+    });
+    h += '</ul>';
+  }
+  if (refs.includes.length > 0) {
+    h += '<h4>Include</h4><ul>';
+    refs.includes.forEach(t => {
+      const aspectsTxt = (t.aspects || []).map(a => aspectLabel(a)).join(', ');
+      h += '<li><a href="#" data-entity="' + escapeHtml(t.id) + '">' + escapeHtml(getDisplayTitle(t)) + '</a>' +
+        (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
+        '</li>';
+    });
+    h += '</ul>';
+  }
   return h;
 }
 function renderAttachmentsRead(e) {
@@ -11359,7 +12550,7 @@ function renderDetailEdit(main, e) {
       '<div class="btn-group"><button id="add-custom-attr">+ Přidat vlastní atribut</button></div>' +
     '</section>' +
 
-    '<section><h3>Tělo (Markdown)</h3>' +
+    '<section><h3>Obsah (Markdown)</h3>' +
       '<label for="d-body" class="sr-only">Tělo</label>' +
       '<textarea id="d-body" class="body-edit" rows="20">' + escapeHtml(e.body) + '</textarea>' +
     '</section>' +
@@ -11714,7 +12905,8 @@ function renderEditLinks(e) {
     }).join('');
   const inv = getInverseLinks(e.id);
   const invRel = getInverseRelations(e.id);
-  if (inv.length === 0 && invRel.length === 0) {
+  const invText = getInverseTextReferences(e);
+  if (inv.length === 0 && invRel.length === 0 && invText.wikiFrom.length === 0 && invText.includeFrom.length === 0) {
     ic.innerHTML = '<p class="meta">Žádné příchozí vazby.</p>';
   } else {
     let invH = '';
@@ -11730,6 +12922,20 @@ function renderEditLinks(e) {
         '<strong>' + escapeHtml(fieldLabel) + ':</strong> ' +
         '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
         ' <span class="meta">(relace)</span></span></div>';
+    });
+    invText.wikiFrom.forEach(from => {
+      const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
+      invH += '<div class="link-row"><span class="link-target"><strong>zmiňuje wiki:</strong> ' +
+        '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+        (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
+        '</span></div>';
+    });
+    invText.includeFrom.forEach(from => {
+      const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
+      invH += '<div class="link-row"><span class="link-target"><strong>includuje:</strong> ' +
+        '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+        (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
+        '</span></div>';
     });
     ic.innerHTML = invH;
   }
