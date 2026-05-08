@@ -164,6 +164,16 @@ body.theme-dark .markdown aside.cm-comment { background: rgba(255,210,80,0.15); 
 .markdown li.task-item input[type="checkbox"] { margin-right: 0.5em; vertical-align: middle; }
 .markdown li.task-item.task-done { color: #888; }
 .task-counter { margin: 0.2em 0 0.4em; font-style: italic; }
+.db-table { width: 100%; border-collapse: collapse; margin: 0.5em 0; }
+.db-table th, .db-table td { border: 1px solid #ccc; padding: 0.3em 0.5em; text-align: left; vertical-align: top; }
+body.theme-dark .db-table th, body.theme-dark .db-table td { border-color: #444; }
+.db-table thead { background: #f0f0f0; }
+body.theme-dark .db-table thead { background: #2a2a2a; }
+.db-filter-row td { padding: 0.2em; background: #fafafa; }
+body.theme-dark .db-filter-row td { background: #1c1c1c; }
+.db-edit-fields, .db-edit-records { width: 100%; border-collapse: collapse; margin: 0.5em 0; font-size: 0.95em; }
+.db-edit-fields th, .db-edit-fields td, .db-edit-records th, .db-edit-records td { border: 1px solid #ccc; padding: 0.3em 0.4em; }
+body.theme-dark .db-edit-fields th, body.theme-dark .db-edit-fields td, body.theme-dark .db-edit-records th, body.theme-dark .db-edit-records td { border-color: #444; }
 .markdown li.task-item.task-done > .task-text { text-decoration: line-through; }
 .markdown code { background: #f0f0f0; padding: 0.1em 0.3em; border-radius: 3px; font-size: 0.9em; font-family: ui-monospace, monospace; }
 body.theme-dark .markdown code { background: #2a2a2a; }
@@ -555,6 +565,15 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
 <dialog id="export-dialog" aria-labelledby="export-dialog-title"></dialog>
 <dialog id="import-dialog" aria-labelledby="import-dialog-title"></dialog>
 
+<dialog id="db-record-dialog" aria-labelledby="db-rec-title">
+  <h2 id="db-rec-title">Záznam</h2>
+  <div id="db-rec-body"></div>
+  <div class="btn-group" style="margin-top:0.7em;">
+    <button type="button" id="db-rec-save" class="primary">Uložit</button>
+    <button type="button" id="db-rec-cancel">Zrušit</button>
+  </div>
+</dialog>
+
 <dialog id="relation-picker" aria-labelledby="relation-picker-title">
   <form method="dialog" id="relation-picker-form">
     <h2 id="relation-picker-title">Vybrat entitu</h2>
@@ -721,6 +740,11 @@ const ASPECTS = {
     { key: 'audio_speakers', label: 'Mluvčí', type: 'relation', multiple: true, aspectFilter: ['Person'] },
     { key: 'audio_recorded_at', label: 'Zaznamenáno', type: 'datetime-local' },
     { key: 'audio_transcript', label: 'Přepis', type: 'textarea' }
+  ]},
+  Database: { label: 'Databáze', fields: [
+    { key: 'db_description', label: 'Popis databáze', type: 'textarea' },
+    { key: 'db_fields', label: '_DB_FIELDS', type: 'hidden' },
+    { key: 'db_records', label: '_DB_RECORDS', type: 'hidden' }
   ]}
 };
 
@@ -1308,12 +1332,48 @@ function resolveInclude(ref, alias, ctx) {
   else target = findEntity(ref) || findEntityByTitle(ref);
   if (!target) return '<div class="transclusion-broken">⚠ Entita „' + escapeHtml(ref) + '“ nenalezena.</div>';
   if (ctx.includeStack.has(target.id)) return '<div class="transclusion-broken">⚠ Cyklická transkluze (' + escapeHtml(getDisplayTitle(target)) + ').</div>';
-  const newCtx = { depth: ctx.depth + 1, includeStack: new Set(ctx.includeStack) };
-  newCtx.includeStack.add(target.id);
-  const inner = renderMarkdown(target.body || '', { ctx: newCtx });
+  // Pokud cíl má aspekt Database, vykresli tabulku databáze
+  let inner;
+  if ((target.aspects || []).includes('Database')) {
+    inner = renderDatabaseInclude(target);
+  } else {
+    const newCtx = { depth: ctx.depth + 1, includeStack: new Set(ctx.includeStack) };
+    newCtx.includeStack.add(target.id);
+    inner = renderMarkdown(target.body || '', { ctx: newCtx });
+  }
   return '<div class="transclusion">' +
     '<div class="transclusion-meta">↪ Z entity <a href="#" class="wiki-link" data-entity="' + escapeHtml(target.id) + '">' + escapeHtml(getDisplayTitle(target)) + '</a></div>' +
     inner + '</div>';
+}
+
+// Vykreslí jednoduchou (nesortovanou) tabulku databáze pro include
+function renderDatabaseInclude(entity) {
+  const fields = (typeof getDbFields === 'function') ? getDbFields(entity) : [];
+  const records = (typeof getDbRecords === 'function') ? getDbRecords(entity) : [];
+  if (fields.length === 0) return '<p class="meta">Databáze bez polí.</p>';
+  let h = '<table class="db-table"><thead><tr>';
+  fields.forEach(f => h += '<th>' + escapeHtml(f.label) + '</th>');
+  h += '</tr></thead><tbody>';
+  if (records.length === 0) {
+    h += '<tr><td colspan="' + fields.length + '" class="meta">(žádný záznam)</td></tr>';
+  } else {
+    records.forEach(rec => {
+      h += '<tr>';
+      fields.forEach(f => {
+        const v = rec[f.key];
+        let cell = '';
+        if (v != null && v !== '') {
+          if (f.type === 'bool') cell = v ? 'Ano' : 'Ne';
+          else if (f.type === 'date') cell = fmtDate(v);
+          else cell = String(v);
+        }
+        h += '<td>' + escapeHtml(cell) + '</td>';
+      });
+      h += '</tr>';
+    });
+  }
+  h += '</tbody></table>';
+  return h;
 }
 
 // ==== ENTITY API ====
@@ -2473,7 +2533,10 @@ function renderInbox(main) {
 // Společná tabulka entit pro pohledy "Vše" a "Pohled".
 // `entities` – seznam k zobrazení, `sort` – objekt {key, dir}.
 // Vrací HTML.
-function renderEntityTableHtml(entities, sort) {
+function renderEntityTableHtml(entities, sort, options) {
+  options = options || {};
+  const selectionMode = !!options.selectionMode;
+  const selected = options.selected || new Set();
   const cols = [
     { key: 'title', label: 'Název' },
     { key: 'details', label: 'Podrobnosti' },
@@ -2493,11 +2556,19 @@ function renderEntityTableHtml(entities, sort) {
     return '<th scope="col" aria-sort="' + ariaSort + '">' +
       '<button type="button" class="th-sort" data-sort-key="' + c.key + '">' + escapeHtml(c.label) + arrow + '</button></th>';
   }
-  let h = '<table><caption class="sr-only">Seznam entit</caption><thead><tr>' +
-    cols.map(header).join('') + '</tr></thead><tbody>';
+  let h = '<table><caption class="sr-only">Seznam entit</caption><thead><tr>';
+  if (selectionMode) {
+    h += '<th scope="col" style="width:2em;"><input type="checkbox" id="bulk-select-all" aria-label="Vybrat vše"></th>';
+  }
+  h += cols.map(header).join('') + '</tr></thead><tbody>';
   entities.forEach(e => {
-    h += '<tr>' +
-      '<td><a href="#" data-entity="' + escapeHtml(e.id) + '">' + escapeHtml(getDisplayTitle(e)) + '</a></td>' +
+    h += '<tr>';
+    if (selectionMode) {
+      const isSel = selected.has(e.id);
+      h += '<td><input type="checkbox" class="bulk-select" data-entity-id="' + escapeHtml(e.id) + '"' +
+        (isSel ? ' checked' : '') + ' aria-label="Vybrat ' + escapeHtml(getDisplayTitle(e)) + '"></td>';
+    }
+    h += '<td><a href="#" data-entity="' + escapeHtml(e.id) + '">' + escapeHtml(getDisplayTitle(e)) + '</a></td>' +
       '<td>' + getEntityDetailsHtml(e) + '</td>' +
       '<td>' + (e.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + '</td>' +
       '<td>' + (e.tags || []).map(t => '<a href="#" class="tag" data-tag="' + escapeHtml(t) + '">' + escapeHtml(t) + '</a>').join(' ') + '</td>' +
@@ -2508,6 +2579,357 @@ function renderEntityTableHtml(entities, sort) {
   });
   h += '</tbody></table>';
   return h;
+}
+
+// === HROMADNÉ OPERACE ===
+const _bulk = { active: false, selected: new Set(), context: null };
+
+function bulkToggle(active) {
+  _bulk.active = !!active;
+  if (!_bulk.active) _bulk.selected.clear();
+  render();
+}
+
+function bulkRenderToolbarHtml() {
+  if (!_bulk.active) return '';
+  const count = _bulk.selected.size;
+  return '<div class="bulk-toolbar" role="region" aria-label="Hromadné operace">' +
+    '<strong>Vybráno: ' + count + '</strong>' +
+    '<button id="bulk-cancel">Zrušit režim výběru</button>' +
+    (count > 0
+      ? '<button id="bulk-add-aspect">Přidat aspekt</button>' +
+        '<button id="bulk-add-tag">Přidat tag</button>' +
+        '<button id="bulk-remove-tag">Odebrat tag</button>' +
+        '<button id="bulk-add-link">Přidat vazbu</button>' +
+        '<button id="bulk-set-attr">Změnit atribut</button>' +
+        '<button id="bulk-archive">Archivovat</button>' +
+        '<button id="bulk-delete" class="danger">Smazat</button>'
+      : '<span class="meta">Vyberte entity zaškrtnutím v tabulce.</span>') +
+    '</div>';
+}
+
+function bulkAttachHandlers(container) {
+  if (!_bulk.active) return;
+  // Checkboxy v tabulce
+  container.querySelectorAll('input.bulk-select').forEach(cb => {
+    cb.onchange = () => {
+      const id = cb.dataset.entityId;
+      if (cb.checked) _bulk.selected.add(id);
+      else _bulk.selected.delete(id);
+      // Update toolbar bez re-renderu
+      const tb = document.querySelector('.bulk-toolbar');
+      if (tb) {
+        tb.outerHTML = bulkRenderToolbarHtml();
+        bulkAttachHandlers(document);
+      }
+    };
+  });
+  // Select all
+  const sa = container.querySelector('#bulk-select-all');
+  if (sa) {
+    sa.onchange = () => {
+      const cbs = container.querySelectorAll('input.bulk-select');
+      cbs.forEach(cb => {
+        cb.checked = sa.checked;
+        const id = cb.dataset.entityId;
+        if (sa.checked) _bulk.selected.add(id);
+        else _bulk.selected.delete(id);
+      });
+      const tb = document.querySelector('.bulk-toolbar');
+      if (tb) {
+        tb.outerHTML = bulkRenderToolbarHtml();
+        bulkAttachHandlers(document);
+      }
+    };
+  }
+  // Toolbar tlačítka
+  const cancelBtn = container.querySelector('#bulk-cancel');
+  if (cancelBtn) cancelBtn.onclick = () => bulkToggle(false);
+
+  const addAspBtn = container.querySelector('#bulk-add-aspect');
+  if (addAspBtn) addAspBtn.onclick = () => bulkAddAspect();
+  const addTagBtn = container.querySelector('#bulk-add-tag');
+  if (addTagBtn) addTagBtn.onclick = () => bulkAddTag();
+  const remTagBtn = container.querySelector('#bulk-remove-tag');
+  if (remTagBtn) remTagBtn.onclick = () => bulkRemoveTag();
+  const addLinkBtn = container.querySelector('#bulk-add-link');
+  if (addLinkBtn) addLinkBtn.onclick = () => bulkAddLink();
+  const setAttrBtn = container.querySelector('#bulk-set-attr');
+  if (setAttrBtn) setAttrBtn.onclick = () => bulkSetAttribute();
+  const archBtn = container.querySelector('#bulk-archive');
+  if (archBtn) archBtn.onclick = () => bulkArchive();
+  const delBtn = container.querySelector('#bulk-delete');
+  if (delBtn) delBtn.onclick = () => bulkDelete();
+}
+
+function bulkSelectedEntities() {
+  return [...db.entities.filter(e => _bulk.selected.has(e.id))];
+}
+
+// === BULK ACTIONS ===
+function bulkAddAspect() {
+  const aspects = getActiveAspects();
+  const opts = Object.entries(aspects).map(([k,v]) =>
+    '<option value="' + escapeHtml(k) + '">' + escapeHtml(v.label) + '</option>').join('');
+  promptDialogCustom({
+    title: 'Přidat aspekt všem vybraným',
+    bodyHtml: '<label for="bulk-asp-sel">Aspekt</label><select id="bulk-asp-sel">' + opts + '</select>',
+    onConfirm: (root) => {
+      const sel = root.querySelector('#bulk-asp-sel');
+      const ak = sel.value;
+      const ents = bulkSelectedEntities();
+      let n = 0;
+      ents.forEach(e => {
+        if (!e.aspects) e.aspects = [];
+        if (!e.aspects.includes(ak)) { e.aspects.push(ak); e.updated_at = nowIso(); n++; }
+      });
+      save();
+      toast('Aspekt přidán k ' + n + ' entit.');
+      render();
+    }
+  });
+}
+
+function bulkAddTag() {
+  const allTags = getAllTags();
+  if (allTags.length === 0) {
+    alertMsg('Zatím nejsou žádné tagy. Vytvořte první v editaci entity nebo v Nastavení.');
+    return;
+  }
+  const opts = allTags.map(t => '<option value="' + escapeHtml(t) + '">' + escapeHtml(t) + '</option>').join('');
+  promptDialogCustom({
+    title: 'Přidat tag všem vybraným',
+    bodyHtml: '<label for="bulk-tag-sel">Tag</label><select id="bulk-tag-sel">' + opts + '</select>',
+    onConfirm: (root) => {
+      const tag = root.querySelector('#bulk-tag-sel').value;
+      if (!tag) { alertMsg('Vyberte tag.'); return; }
+      const ents = bulkSelectedEntities();
+      let n = 0;
+      ents.forEach(e => {
+        if (!e.tags) e.tags = [];
+        if (!e.tags.includes(tag)) {
+          e.tags.push(tag);
+          e.tags.sort((a,b) => a.localeCompare(b,'cs'));
+          e.updated_at = nowIso();
+          n++;
+        }
+      });
+      save();
+      toast('Tag „' + tag + '" přidán k ' + n + ' entit.');
+      render();
+    }
+  });
+}
+
+function bulkRemoveTag() {
+  // Sebrat tagy z vybraných entit
+  const ents = bulkSelectedEntities();
+  const tagSet = new Set();
+  ents.forEach(e => (e.tags || []).forEach(t => tagSet.add(t)));
+  if (tagSet.size === 0) { alertMsg('Vybrané entity nemají žádné tagy.'); return; }
+  const opts = [...tagSet].sort((a,b) => a.localeCompare(b,'cs')).map(t =>
+    '<option value="' + escapeHtml(t) + '">' + escapeHtml(t) + '</option>').join('');
+  promptDialogCustom({
+    title: 'Odebrat tag z vybraných',
+    bodyHtml: '<label for="bulk-rem-tag">Tag</label><select id="bulk-rem-tag">' + opts + '</select>',
+    onConfirm: (root) => {
+      const tag = root.querySelector('#bulk-rem-tag').value;
+      let n = 0;
+      ents.forEach(e => {
+        if (e.tags && e.tags.includes(tag)) {
+          e.tags = e.tags.filter(t => t !== tag);
+          e.updated_at = nowIso(); n++;
+        }
+      });
+      save();
+      toast('Tag „' + tag + '" odebrán z ' + n + ' entit.');
+      render();
+    }
+  });
+}
+
+function bulkAddLink() {
+  // Pro každou vybranou entitu přidá vazbu na cíl s vybraným typem
+  const relOpts = Object.entries(RELATION_TYPES).map(([k,v]) =>
+    '<option value="' + escapeHtml(k) + '">' + escapeHtml(v.label) + '</option>').join('');
+  promptDialogCustom({
+    title: 'Přidat vazbu všem vybraným',
+    bodyHtml: '<label for="bulk-rel-type">Typ vazby</label><select id="bulk-rel-type">' + relOpts + '</select>' +
+      '<label for="bulk-rel-target">Cíl (vyberte přes tlačítko níže)</label>' +
+      '<div><span id="bulk-rel-target-name" class="meta">(žádný)</span> <button type="button" id="bulk-rel-pick">Vybrat entitu…</button></div>',
+    onConfirm: (root) => {
+      const type = root.querySelector('#bulk-rel-type').value;
+      const targetId = root.querySelector('#bulk-rel-pick').dataset.targetId;
+      if (!targetId) { alertMsg('Vyberte cílovou entitu.'); return; }
+      const ents = bulkSelectedEntities();
+      let n = 0;
+      ents.forEach(e => {
+        if (e.id === targetId) return;
+        if (!e.links) e.links = [];
+        // Nepřidávej duplicitu
+        if (e.links.some(l => l.to === targetId && l.type === type)) return;
+        e.links.push({ to: targetId, type: type });
+        e.updated_at = nowIso(); n++;
+      });
+      save();
+      toast('Vazba přidána k ' + n + ' entit.');
+      render();
+    },
+    onSetup: (root) => {
+      root.querySelector('#bulk-rel-pick').onclick = () => {
+        openRelationPicker({
+          fieldLabel: 'Cíl vazby',
+          multiple: false,
+          aspectFilter: null,
+          excludeIds: [...bulkSelectedEntities().map(e => e.id)],
+          currentIds: [],
+          onSelect: (ids) => {
+            if (ids.length === 0) return;
+            const target = findEntity(ids[0]);
+            const btn = root.querySelector('#bulk-rel-pick');
+            btn.dataset.targetId = ids[0];
+            btn.textContent = 'Změnit…';
+            root.querySelector('#bulk-rel-target-name').textContent = target ? getDisplayTitle(target) : ids[0];
+          }
+        });
+      };
+    }
+  });
+}
+
+function bulkSetAttribute() {
+  // Najdi všechny aspekty mezi vybranými entitami → seznam jejich polí
+  const ents = bulkSelectedEntities();
+  const aspectsAll = new Set();
+  ents.forEach(e => (e.aspects || []).forEach(a => aspectsAll.add(a)));
+  // Možnosti = aspect + field. Vyfiltruj typy hidden, textarea, relation pro jednoduchost
+  const choices = [];
+  aspectsAll.forEach(ak => {
+    const a = getAspect(ak);
+    if (!a) return;
+    a.fields.forEach(f => {
+      if (f.type === 'hidden') return;
+      choices.push({ key: ak + '|' + f.key, aspect: ak, field: f, label: aspectLabel(ak) + ' → ' + f.label + ' (' + (f.type || 'text') + ')' });
+    });
+  });
+  if (choices.length === 0) { alertMsg('Vybrané entity nemají žádné aspekty s editovatelnými poli.'); return; }
+  const opts = choices.map(c => '<option value="' + escapeHtml(c.key) + '">' + escapeHtml(c.label) + '</option>').join('');
+  promptDialogCustom({
+    title: 'Hromadná změna atributu',
+    bodyHtml: '<p class="meta">Změna se aplikuje pouze na entity, které mají daný aspekt zaškrtnut.</p>' +
+      '<label for="bulk-attr-sel">Atribut</label><select id="bulk-attr-sel">' + opts + '</select>' +
+      '<div id="bulk-attr-value-wrap" style="margin-top:0.5em;"></div>' +
+      '<label style="margin-top:0.5em;display:block;"><input type="checkbox" id="bulk-attr-clear"> Místo nastavení hodnoty atribut <strong>vymazat</strong></label>',
+    onSetup: (root) => {
+      const sel = root.querySelector('#bulk-attr-sel');
+      const wrap = root.querySelector('#bulk-attr-value-wrap');
+      function refresh() {
+        const c = choices.find(x => x.key === sel.value);
+        if (!c) { wrap.innerHTML = ''; return; }
+        const f = c.field;
+        let inp = '';
+        if (f.type === 'textarea') inp = '<textarea id="bulk-attr-val" rows="3"></textarea>';
+        else if (f.type === 'select') {
+          inp = '<select id="bulk-attr-val"><option value="">— vyberte —</option>' +
+            (f.options || []).map(o => '<option value="' + escapeHtml(o) + '">' +
+              escapeHtml((f.optionLabels && f.optionLabels[o]) || o) + '</option>').join('') + '</select>';
+        }
+        else if (f.type === 'checkbox') inp = '<select id="bulk-attr-val"><option value="">—</option><option value="true">Ano</option><option value="false">Ne</option></select>';
+        else if (f.type === 'relation') inp = '<p class="meta">Relace: zatím nepodporováno hromadně, použijte ručně.</p><input type="hidden" id="bulk-attr-val" value="" disabled>';
+        else inp = '<input type="' + escapeHtml(f.type || 'text') + '" id="bulk-attr-val">';
+        wrap.innerHTML = '<label for="bulk-attr-val">Nová hodnota</label>' + inp;
+      }
+      sel.onchange = refresh;
+      refresh();
+    },
+    onConfirm: (root) => {
+      const sel = root.querySelector('#bulk-attr-sel');
+      const c = choices.find(x => x.key === sel.value);
+      if (!c) return;
+      const clearBox = root.querySelector('#bulk-attr-clear');
+      const doClear = clearBox && clearBox.checked;
+      const valEl = root.querySelector('#bulk-attr-val');
+      let v = null;
+      if (!doClear) {
+        if (!valEl) { alertMsg('Hodnota nezvolena.'); return; }
+        if (valEl.disabled) { alertMsg('Tento typ pole nelze hromadně měnit.'); return; }
+        if (valEl.type === 'checkbox' || c.field.type === 'checkbox') v = valEl.value === 'true' ? true : (valEl.value === 'false' ? false : null);
+        else if (c.field.type === 'number') v = valEl.value === '' ? null : Number(valEl.value);
+        else v = valEl.value;
+        if (v === '' || v === null) { alertMsg('Hodnota je prázdná. Pro vymazání zaškrtněte "vymazat".'); return; }
+      }
+      let n = 0, skipped = 0;
+      ents.forEach(e => {
+        if (!(e.aspects || []).includes(c.aspect)) { skipped++; return; }
+        if (!e.attributes) e.attributes = {};
+        if (doClear) delete e.attributes[c.field.key];
+        else e.attributes[c.field.key] = v;
+        e.updated_at = nowIso(); n++;
+      });
+      save();
+      const msg = 'Atribut "' + c.field.label + '" ' + (doClear ? 'vymazán' : 'nastaven') +
+        ' u ' + n + ' entit' + (skipped > 0 ? ', ' + skipped + ' přeskočeno (nemá aspekt)' : '') + '.';
+      toast(msg, 5000);
+      render();
+    }
+  });
+}
+
+function bulkArchive() {
+  const ents = bulkSelectedEntities();
+  if (ents.length === 0) return;
+  confirmDialog('Archivovat ' + ents.length + ' vybraných entit?', () => {
+    ents.forEach(e => { e.archived = true; e.updated_at = nowIso(); });
+    save();
+    toast(ents.length + ' entit archivováno.');
+    _bulk.selected.clear();
+    render();
+  });
+}
+
+function bulkDelete() {
+  const ents = bulkSelectedEntities();
+  if (ents.length === 0) return;
+  confirmDialog('Trvale smazat ' + ents.length + ' vybraných entit? Tato akce je nevratná!', () => {
+    const ids = new Set(_bulk.selected);
+    db.entities = db.entities.filter(e => !ids.has(e.id));
+    // Také smazat odkazy na ně
+    db.entities.forEach(e => {
+      if (e.links) e.links = e.links.filter(l => !ids.has(l.to));
+    });
+    save();
+    toast(ids.size + ' entit smazáno.');
+    _bulk.selected.clear();
+    render();
+  });
+}
+
+// Pomocný univerzální dialog pro promptování
+function promptDialogCustom(opts) {
+  // Jednoduchý <dialog> vyrobený dynamicky
+  const existing = document.getElementById('bulk-prompt-dialog');
+  if (existing) existing.remove();
+  const d = document.createElement('dialog');
+  d.id = 'bulk-prompt-dialog';
+  d.setAttribute('aria-labelledby', 'bulk-prompt-title');
+  d.innerHTML = '<h2 id="bulk-prompt-title">' + escapeHtml(opts.title || 'Akce') + '</h2>' +
+    '<div id="bulk-prompt-body">' + (opts.bodyHtml || '') + '</div>' +
+    '<div class="btn-group" style="margin-top:0.7em;">' +
+      '<button type="button" class="primary" id="bulk-prompt-ok">Provést</button>' +
+      '<button type="button" id="bulk-prompt-cancel">Zrušit</button>' +
+    '</div>';
+  document.body.appendChild(d);
+  if (opts.onSetup) opts.onSetup(d);
+  d.showModal();
+  setTimeout(() => {
+    const first = d.querySelector('input, select, textarea, button.primary');
+    if (first) first.focus();
+  }, 50);
+  d.querySelector('#bulk-prompt-ok').onclick = () => {
+    try { opts.onConfirm(d); d.close(); d.remove(); }
+    catch (err) { alertMsg('Chyba: ' + err.message); }
+  };
+  d.querySelector('#bulk-prompt-cancel').onclick = () => { d.close(); d.remove(); };
 }
 
 function sortEntitiesBy(entities, sort) {
@@ -2550,8 +2972,11 @@ function renderAll(main) {
     '<h2>Vše</h2>' +
     '<div class="toolbar" role="search" aria-label="Hledání">' +
       '<div style="flex:1;min-width:14em;"><label for="filter-text">Hledaný text</label><input type="search" id="filter-text" value="' + escapeHtml(f.text || '') + '"></div>' +
-      '<div style="flex:0 0 auto;"><button id="filter-reset">Reset</button> <button id="filter-save">Uložit jako pohled</button></div>' +
+      '<div style="flex:0 0 auto;"><button id="filter-reset">Reset</button> <button id="filter-save">Uložit jako pohled</button>' +
+        ' <button id="bulk-toggle">' + (_bulk.active ? 'Ukončit režim výběru' : 'Režim výběru') + '</button>' +
+      '</div>' +
     '</div>' +
+    bulkRenderToolbarHtml() +
     '<details id="filters-details" style="margin-bottom:0.7em;">' +
       '<summary>Filtry <span id="filters-summary" class="meta"></span></summary>' +
       '<div class="filter-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(14em,1fr));gap:0.5em;margin-top:0.5em;">' +
@@ -2785,9 +3210,10 @@ function renderAll(main) {
     if (sumEl) sumEl.textContent = active > 0 ? '(' + active + ' aktivních)' : '';
     if (r.length === 0) { out.innerHTML = '<div class="empty">Žádné výsledky.</div>'; statusMsgDebounced('0 výsledků.'); return; }
     out.innerHTML = '<p class="meta">Nalezeno ' + r.length + ' entit.</p>' +
-      renderEntityTableHtml(r, state._allSort);
+      renderEntityTableHtml(r, state._allSort, { selectionMode: _bulk.active, selected: _bulk.selected });
     statusMsgDebounced(r.length + ' výsledků.');
     attachEntityRowHandlers(out);
+    bulkAttachHandlers(document);
     attachSortHandlers(out, state._allSort, (newSort) => {
       state._allSort = newSort; update();
     });
@@ -2806,6 +3232,8 @@ function renderAll(main) {
     sct.value = ''; srl.value = ''; scf.value = '';
     update();
   };
+  const bulkBtn = document.getElementById('bulk-toggle');
+  if (bulkBtn) bulkBtn.onclick = () => bulkToggle(!_bulk.active);
   document.getElementById('filter-save').onclick = () => {
     openSaveViewDialog({ filters: {
       aspect: sa.value || null,
@@ -3451,6 +3879,8 @@ function renderDetailRead(main, e) {
   const attachmentsHtml = renderAttachmentsRead(e);
   const isProject = e.aspects && e.aspects.includes('Project');
   const projectDashHtml = isProject ? renderProjectDashboard(e) : '';
+  const isDatabase = e.aspects && e.aspects.includes('Database');
+  const databaseHtml = isDatabase ? renderDatabaseSection(e) : '';
 
   main.innerHTML =
     '<div class="btn-group"><button id="back-btn">← Zpět</button></div>' +
@@ -3485,6 +3915,7 @@ function renderDetailRead(main, e) {
     '</section>' : '') +
     (attachmentsHtml ? '<section aria-labelledby="att-h"><h3 id="att-h">Přílohy (' + e.attachments.length + ')</h3>' + attachmentsHtml + '</section>' : '') +
     projectDashHtml +
+    databaseHtml +
     (refsHtml ? '<section aria-labelledby="refs-h"><h3 id="refs-h">Odkazy</h3>' + refsHtml + '</section>' : '') +
     (linksHtml ? '<section aria-labelledby="links-h"><h3 id="links-h">Vazby</h3>' + linksHtml + '</section>' : '') +
     (inverseHtml ? '<section aria-labelledby="ilinks-h"><h3 id="ilinks-h">Příchozí vazby</h3>' + inverseHtml + '</section>' : '') +
@@ -3525,6 +3956,7 @@ function renderDetailRead(main, e) {
   attachMarkdownLinkHandlers(main);
   attachMarkdownTaskHandlers(main, e);
   attachAttachmentReadHandlers(main, e);
+  if (isDatabase) attachDatabaseReadHandlers(main, e);
   attachCommentHandlers(main, e);
   attachRelatedCommentsHandlers(main, e);
   // Mazání vazeb v read módu
@@ -3657,6 +4089,7 @@ function renderAttributesReadOnly(e) {
   const customKeys = Object.keys(e.attributes || {}).filter(k => !fieldMap.has(k));
   let h = '';
   fieldMap.forEach((f, k) => {
+    if (f.type === 'hidden') return;
     const v = e.attributes[k];
     if (v === undefined || v === null || v === '') return;
     // Pro relation field: prázdné pole = nic
@@ -3675,6 +4108,7 @@ function renderAttributesReadOnly(e) {
   return h;
 }
 function formatAttrValue(f, v) {
+  if (f.type === 'hidden') return '';
   if (f.type === 'date') return escapeHtml(fmtDate(v));
   if (f.type === 'datetime-local') return escapeHtml(fmtDateTime(v));
   if (f.type === 'url') return '<a href="' + escapeHtml(v) + '" target="_blank" rel="noopener">' + escapeHtml(v) + '</a>';
@@ -3822,11 +4256,12 @@ function renderAttachmentsRead(e) {
     if (att.uploadError) {
       statusContent += ' <span style="color:#c33;">⚠ ' + escapeHtml(att.uploadError) + '</span>';
     }
+    const addedTxt = att.added_at ? ' · přidáno ' + escapeHtml(fmtDateTime(att.added_at)) : '';
     h += '<div class="attachment-item" data-att-id="' + escapeHtml(att.id) + '">' +
       '<div class="attachment-icon">' + guessFileIcon(att.type, att.name) + '</div>' +
       '<div class="attachment-info">' +
         '<div class="name">' + escapeHtml(att.name) + '</div>' +
-        '<div class="meta">' + escapeHtml(fmtBytes(att.size)) + ' · ' + escapeHtml(att.type || '?') + ' · ' + statusContent + '</div>' +
+        '<div class="meta">' + escapeHtml(fmtBytes(att.size)) + ' · ' + escapeHtml(att.type || '?') + addedTxt + ' · ' + statusContent + '</div>' +
         (isImg ? '<img class="attachment-preview" data-att-preview="' + escapeHtml(att.id) + '" alt="' + escapeHtml(att.name) + '">' : '') +
         (isAudio ? '<audio class="attachment-audio" controls preload="metadata" data-att-audio="' + escapeHtml(att.id) + '" aria-label="Přehrávač: ' + escapeHtml(att.name) + '"></audio>' : '') +
       '</div>' +
@@ -3945,6 +4380,10 @@ function renderDetailEdit(main, e) {
       '<div id="d-related-comments"></div>' +
     '</section>' +
 
+    ((e.aspects || []).includes('Database')
+      ? '<div id="db-editor-wrapper">' + renderDatabaseEditor(e) + '</div>'
+      : '') +
+
     '<section><h3>Aspekty</h3>' +
       '<div class="checkbox-list" id="d-aspects">' +
         Object.entries(getActiveAspects()).map(([k,v]) =>
@@ -3969,6 +4408,9 @@ function renderDetailEdit(main, e) {
   renderEditLinks(e);
   renderEditAttachments(e);
   setupAudioRecorder(e);
+  // Databáze – pokud je aspekt zaškrtnut
+  const dbWrapper = document.getElementById('db-editor-wrapper');
+  if (dbWrapper) attachDatabaseEditHandlers(dbWrapper, e);
   renderEditComments(e);
   // Komentáře v okolí entity (read-only)
   const relC = document.getElementById('d-related-comments');
@@ -4211,6 +4653,7 @@ function renderEditAttributes(e) {
   });
 }
 function attributeFieldHtml(e, f) {
+  if (f.type === 'hidden') return '';
   const id = 'attr-' + f.key;
   const val = e.attributes && e.attributes[f.key] !== undefined ? e.attributes[f.key] : '';
   const v = escapeHtml(val);
@@ -4337,11 +4780,12 @@ function renderEditAttachments(e) {
       const verifyBtn = att.storage === 'github' && att.ghPath && GH.isConfigured()
         ? '<button data-att-verify="' + escapeHtml(att.id) + '" title="Ověřit, že soubor je na GitHubu">Ověřit</button>' : '';
       const isAudio = att.type && att.type.startsWith('audio/');
+      const addedTxt = att.added_at ? ' · přidáno ' + escapeHtml(fmtDateTime(att.added_at)) : '';
       return '<div class="attachment-item" data-att-id="' + escapeHtml(att.id) + '">' +
       '<div class="attachment-icon">' + guessFileIcon(att.type, att.name) + '</div>' +
       '<div class="attachment-info">' +
         '<div class="name">' + escapeHtml(att.name) + '</div>' +
-        '<div class="meta">' + escapeHtml(fmtBytes(att.size)) + ' · ' + escapeHtml(att.type || '?') + ' · ' + statusContent + '</div>' +
+        '<div class="meta">' + escapeHtml(fmtBytes(att.size)) + ' · ' + escapeHtml(att.type || '?') + addedTxt + ' · ' + statusContent + '</div>' +
         (isAudio ? '<audio class="attachment-audio" controls preload="metadata" data-att-audio="' + escapeHtml(att.id) + '" aria-label="Přehrávač: ' + escapeHtml(att.name) + '"></audio>' : '') +
       '</div>' +
       '<div class="attachment-actions">' +
@@ -8818,6 +9262,16 @@ body.theme-dark .markdown aside.cm-comment { background: rgba(255,210,80,0.15); 
 .markdown li.task-item input[type="checkbox"] { margin-right: 0.5em; vertical-align: middle; }
 .markdown li.task-item.task-done { color: #888; }
 .task-counter { margin: 0.2em 0 0.4em; font-style: italic; }
+.db-table { width: 100%; border-collapse: collapse; margin: 0.5em 0; }
+.db-table th, .db-table td { border: 1px solid #ccc; padding: 0.3em 0.5em; text-align: left; vertical-align: top; }
+body.theme-dark .db-table th, body.theme-dark .db-table td { border-color: #444; }
+.db-table thead { background: #f0f0f0; }
+body.theme-dark .db-table thead { background: #2a2a2a; }
+.db-filter-row td { padding: 0.2em; background: #fafafa; }
+body.theme-dark .db-filter-row td { background: #1c1c1c; }
+.db-edit-fields, .db-edit-records { width: 100%; border-collapse: collapse; margin: 0.5em 0; font-size: 0.95em; }
+.db-edit-fields th, .db-edit-fields td, .db-edit-records th, .db-edit-records td { border: 1px solid #ccc; padding: 0.3em 0.4em; }
+body.theme-dark .db-edit-fields th, body.theme-dark .db-edit-fields td, body.theme-dark .db-edit-records th, body.theme-dark .db-edit-records td { border-color: #444; }
 .markdown li.task-item.task-done > .task-text { text-decoration: line-through; }
 .markdown code { background: #f0f0f0; padding: 0.1em 0.3em; border-radius: 3px; font-size: 0.9em; font-family: ui-monospace, monospace; }
 body.theme-dark .markdown code { background: #2a2a2a; }
@@ -9249,6 +9703,15 @@ body.viewer-mode .btn-group:has(#d-add-comment) { display: none !important; }
 <dialog id="export-dialog" aria-labelledby="export-dialog-title"></dialog>
 <dialog id="import-dialog" aria-labelledby="import-dialog-title"></dialog>
 
+<dialog id="db-record-dialog" aria-labelledby="db-rec-title">
+  <h2 id="db-rec-title">Záznam</h2>
+  <div id="db-rec-body"></div>
+  <div class="btn-group" style="margin-top:0.7em;">
+    <button type="button" id="db-rec-save" class="primary">Uložit</button>
+    <button type="button" id="db-rec-cancel">Zrušit</button>
+  </div>
+</dialog>
+
 <dialog id="relation-picker" aria-labelledby="relation-picker-title">
   <form method="dialog" id="relation-picker-form">
     <h2 id="relation-picker-title">Vybrat entitu</h2>
@@ -9415,6 +9878,11 @@ const ASPECTS = {
     { key: 'audio_speakers', label: 'Mluvčí', type: 'relation', multiple: true, aspectFilter: ['Person'] },
     { key: 'audio_recorded_at', label: 'Zaznamenáno', type: 'datetime-local' },
     { key: 'audio_transcript', label: 'Přepis', type: 'textarea' }
+  ]},
+  Database: { label: 'Databáze', fields: [
+    { key: 'db_description', label: 'Popis databáze', type: 'textarea' },
+    { key: 'db_fields', label: '_DB_FIELDS', type: 'hidden' },
+    { key: 'db_records', label: '_DB_RECORDS', type: 'hidden' }
   ]}
 };
 
@@ -10002,12 +10470,48 @@ function resolveInclude(ref, alias, ctx) {
   else target = findEntity(ref) || findEntityByTitle(ref);
   if (!target) return '<div class="transclusion-broken">⚠ Entita „' + escapeHtml(ref) + '“ nenalezena.</div>';
   if (ctx.includeStack.has(target.id)) return '<div class="transclusion-broken">⚠ Cyklická transkluze (' + escapeHtml(getDisplayTitle(target)) + ').</div>';
-  const newCtx = { depth: ctx.depth + 1, includeStack: new Set(ctx.includeStack) };
-  newCtx.includeStack.add(target.id);
-  const inner = renderMarkdown(target.body || '', { ctx: newCtx });
+  // Pokud cíl má aspekt Database, vykresli tabulku databáze
+  let inner;
+  if ((target.aspects || []).includes('Database')) {
+    inner = renderDatabaseInclude(target);
+  } else {
+    const newCtx = { depth: ctx.depth + 1, includeStack: new Set(ctx.includeStack) };
+    newCtx.includeStack.add(target.id);
+    inner = renderMarkdown(target.body || '', { ctx: newCtx });
+  }
   return '<div class="transclusion">' +
     '<div class="transclusion-meta">↪ Z entity <a href="#" class="wiki-link" data-entity="' + escapeHtml(target.id) + '">' + escapeHtml(getDisplayTitle(target)) + '</a></div>' +
     inner + '</div>';
+}
+
+// Vykreslí jednoduchou (nesortovanou) tabulku databáze pro include
+function renderDatabaseInclude(entity) {
+  const fields = (typeof getDbFields === 'function') ? getDbFields(entity) : [];
+  const records = (typeof getDbRecords === 'function') ? getDbRecords(entity) : [];
+  if (fields.length === 0) return '<p class="meta">Databáze bez polí.</p>';
+  let h = '<table class="db-table"><thead><tr>';
+  fields.forEach(f => h += '<th>' + escapeHtml(f.label) + '</th>');
+  h += '</tr></thead><tbody>';
+  if (records.length === 0) {
+    h += '<tr><td colspan="' + fields.length + '" class="meta">(žádný záznam)</td></tr>';
+  } else {
+    records.forEach(rec => {
+      h += '<tr>';
+      fields.forEach(f => {
+        const v = rec[f.key];
+        let cell = '';
+        if (v != null && v !== '') {
+          if (f.type === 'bool') cell = v ? 'Ano' : 'Ne';
+          else if (f.type === 'date') cell = fmtDate(v);
+          else cell = String(v);
+        }
+        h += '<td>' + escapeHtml(cell) + '</td>';
+      });
+      h += '</tr>';
+    });
+  }
+  h += '</tbody></table>';
+  return h;
 }
 
 // ==== ENTITY API ====
@@ -11167,7 +11671,10 @@ function renderInbox(main) {
 // Společná tabulka entit pro pohledy "Vše" a "Pohled".
 // \`entities\` – seznam k zobrazení, \`sort\` – objekt {key, dir}.
 // Vrací HTML.
-function renderEntityTableHtml(entities, sort) {
+function renderEntityTableHtml(entities, sort, options) {
+  options = options || {};
+  const selectionMode = !!options.selectionMode;
+  const selected = options.selected || new Set();
   const cols = [
     { key: 'title', label: 'Název' },
     { key: 'details', label: 'Podrobnosti' },
@@ -11187,11 +11694,19 @@ function renderEntityTableHtml(entities, sort) {
     return '<th scope="col" aria-sort="' + ariaSort + '">' +
       '<button type="button" class="th-sort" data-sort-key="' + c.key + '">' + escapeHtml(c.label) + arrow + '</button></th>';
   }
-  let h = '<table><caption class="sr-only">Seznam entit</caption><thead><tr>' +
-    cols.map(header).join('') + '</tr></thead><tbody>';
+  let h = '<table><caption class="sr-only">Seznam entit</caption><thead><tr>';
+  if (selectionMode) {
+    h += '<th scope="col" style="width:2em;"><input type="checkbox" id="bulk-select-all" aria-label="Vybrat vše"></th>';
+  }
+  h += cols.map(header).join('') + '</tr></thead><tbody>';
   entities.forEach(e => {
-    h += '<tr>' +
-      '<td><a href="#" data-entity="' + escapeHtml(e.id) + '">' + escapeHtml(getDisplayTitle(e)) + '</a></td>' +
+    h += '<tr>';
+    if (selectionMode) {
+      const isSel = selected.has(e.id);
+      h += '<td><input type="checkbox" class="bulk-select" data-entity-id="' + escapeHtml(e.id) + '"' +
+        (isSel ? ' checked' : '') + ' aria-label="Vybrat ' + escapeHtml(getDisplayTitle(e)) + '"></td>';
+    }
+    h += '<td><a href="#" data-entity="' + escapeHtml(e.id) + '">' + escapeHtml(getDisplayTitle(e)) + '</a></td>' +
       '<td>' + getEntityDetailsHtml(e) + '</td>' +
       '<td>' + (e.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + '</td>' +
       '<td>' + (e.tags || []).map(t => '<a href="#" class="tag" data-tag="' + escapeHtml(t) + '">' + escapeHtml(t) + '</a>').join(' ') + '</td>' +
@@ -11202,6 +11717,357 @@ function renderEntityTableHtml(entities, sort) {
   });
   h += '</tbody></table>';
   return h;
+}
+
+// === HROMADNÉ OPERACE ===
+const _bulk = { active: false, selected: new Set(), context: null };
+
+function bulkToggle(active) {
+  _bulk.active = !!active;
+  if (!_bulk.active) _bulk.selected.clear();
+  render();
+}
+
+function bulkRenderToolbarHtml() {
+  if (!_bulk.active) return '';
+  const count = _bulk.selected.size;
+  return '<div class="bulk-toolbar" role="region" aria-label="Hromadné operace">' +
+    '<strong>Vybráno: ' + count + '</strong>' +
+    '<button id="bulk-cancel">Zrušit režim výběru</button>' +
+    (count > 0
+      ? '<button id="bulk-add-aspect">Přidat aspekt</button>' +
+        '<button id="bulk-add-tag">Přidat tag</button>' +
+        '<button id="bulk-remove-tag">Odebrat tag</button>' +
+        '<button id="bulk-add-link">Přidat vazbu</button>' +
+        '<button id="bulk-set-attr">Změnit atribut</button>' +
+        '<button id="bulk-archive">Archivovat</button>' +
+        '<button id="bulk-delete" class="danger">Smazat</button>'
+      : '<span class="meta">Vyberte entity zaškrtnutím v tabulce.</span>') +
+    '</div>';
+}
+
+function bulkAttachHandlers(container) {
+  if (!_bulk.active) return;
+  // Checkboxy v tabulce
+  container.querySelectorAll('input.bulk-select').forEach(cb => {
+    cb.onchange = () => {
+      const id = cb.dataset.entityId;
+      if (cb.checked) _bulk.selected.add(id);
+      else _bulk.selected.delete(id);
+      // Update toolbar bez re-renderu
+      const tb = document.querySelector('.bulk-toolbar');
+      if (tb) {
+        tb.outerHTML = bulkRenderToolbarHtml();
+        bulkAttachHandlers(document);
+      }
+    };
+  });
+  // Select all
+  const sa = container.querySelector('#bulk-select-all');
+  if (sa) {
+    sa.onchange = () => {
+      const cbs = container.querySelectorAll('input.bulk-select');
+      cbs.forEach(cb => {
+        cb.checked = sa.checked;
+        const id = cb.dataset.entityId;
+        if (sa.checked) _bulk.selected.add(id);
+        else _bulk.selected.delete(id);
+      });
+      const tb = document.querySelector('.bulk-toolbar');
+      if (tb) {
+        tb.outerHTML = bulkRenderToolbarHtml();
+        bulkAttachHandlers(document);
+      }
+    };
+  }
+  // Toolbar tlačítka
+  const cancelBtn = container.querySelector('#bulk-cancel');
+  if (cancelBtn) cancelBtn.onclick = () => bulkToggle(false);
+
+  const addAspBtn = container.querySelector('#bulk-add-aspect');
+  if (addAspBtn) addAspBtn.onclick = () => bulkAddAspect();
+  const addTagBtn = container.querySelector('#bulk-add-tag');
+  if (addTagBtn) addTagBtn.onclick = () => bulkAddTag();
+  const remTagBtn = container.querySelector('#bulk-remove-tag');
+  if (remTagBtn) remTagBtn.onclick = () => bulkRemoveTag();
+  const addLinkBtn = container.querySelector('#bulk-add-link');
+  if (addLinkBtn) addLinkBtn.onclick = () => bulkAddLink();
+  const setAttrBtn = container.querySelector('#bulk-set-attr');
+  if (setAttrBtn) setAttrBtn.onclick = () => bulkSetAttribute();
+  const archBtn = container.querySelector('#bulk-archive');
+  if (archBtn) archBtn.onclick = () => bulkArchive();
+  const delBtn = container.querySelector('#bulk-delete');
+  if (delBtn) delBtn.onclick = () => bulkDelete();
+}
+
+function bulkSelectedEntities() {
+  return [...db.entities.filter(e => _bulk.selected.has(e.id))];
+}
+
+// === BULK ACTIONS ===
+function bulkAddAspect() {
+  const aspects = getActiveAspects();
+  const opts = Object.entries(aspects).map(([k,v]) =>
+    '<option value="' + escapeHtml(k) + '">' + escapeHtml(v.label) + '</option>').join('');
+  promptDialogCustom({
+    title: 'Přidat aspekt všem vybraným',
+    bodyHtml: '<label for="bulk-asp-sel">Aspekt</label><select id="bulk-asp-sel">' + opts + '</select>',
+    onConfirm: (root) => {
+      const sel = root.querySelector('#bulk-asp-sel');
+      const ak = sel.value;
+      const ents = bulkSelectedEntities();
+      let n = 0;
+      ents.forEach(e => {
+        if (!e.aspects) e.aspects = [];
+        if (!e.aspects.includes(ak)) { e.aspects.push(ak); e.updated_at = nowIso(); n++; }
+      });
+      save();
+      toast('Aspekt přidán k ' + n + ' entit.');
+      render();
+    }
+  });
+}
+
+function bulkAddTag() {
+  const allTags = getAllTags();
+  if (allTags.length === 0) {
+    alertMsg('Zatím nejsou žádné tagy. Vytvořte první v editaci entity nebo v Nastavení.');
+    return;
+  }
+  const opts = allTags.map(t => '<option value="' + escapeHtml(t) + '">' + escapeHtml(t) + '</option>').join('');
+  promptDialogCustom({
+    title: 'Přidat tag všem vybraným',
+    bodyHtml: '<label for="bulk-tag-sel">Tag</label><select id="bulk-tag-sel">' + opts + '</select>',
+    onConfirm: (root) => {
+      const tag = root.querySelector('#bulk-tag-sel').value;
+      if (!tag) { alertMsg('Vyberte tag.'); return; }
+      const ents = bulkSelectedEntities();
+      let n = 0;
+      ents.forEach(e => {
+        if (!e.tags) e.tags = [];
+        if (!e.tags.includes(tag)) {
+          e.tags.push(tag);
+          e.tags.sort((a,b) => a.localeCompare(b,'cs'));
+          e.updated_at = nowIso();
+          n++;
+        }
+      });
+      save();
+      toast('Tag „' + tag + '" přidán k ' + n + ' entit.');
+      render();
+    }
+  });
+}
+
+function bulkRemoveTag() {
+  // Sebrat tagy z vybraných entit
+  const ents = bulkSelectedEntities();
+  const tagSet = new Set();
+  ents.forEach(e => (e.tags || []).forEach(t => tagSet.add(t)));
+  if (tagSet.size === 0) { alertMsg('Vybrané entity nemají žádné tagy.'); return; }
+  const opts = [...tagSet].sort((a,b) => a.localeCompare(b,'cs')).map(t =>
+    '<option value="' + escapeHtml(t) + '">' + escapeHtml(t) + '</option>').join('');
+  promptDialogCustom({
+    title: 'Odebrat tag z vybraných',
+    bodyHtml: '<label for="bulk-rem-tag">Tag</label><select id="bulk-rem-tag">' + opts + '</select>',
+    onConfirm: (root) => {
+      const tag = root.querySelector('#bulk-rem-tag').value;
+      let n = 0;
+      ents.forEach(e => {
+        if (e.tags && e.tags.includes(tag)) {
+          e.tags = e.tags.filter(t => t !== tag);
+          e.updated_at = nowIso(); n++;
+        }
+      });
+      save();
+      toast('Tag „' + tag + '" odebrán z ' + n + ' entit.');
+      render();
+    }
+  });
+}
+
+function bulkAddLink() {
+  // Pro každou vybranou entitu přidá vazbu na cíl s vybraným typem
+  const relOpts = Object.entries(RELATION_TYPES).map(([k,v]) =>
+    '<option value="' + escapeHtml(k) + '">' + escapeHtml(v.label) + '</option>').join('');
+  promptDialogCustom({
+    title: 'Přidat vazbu všem vybraným',
+    bodyHtml: '<label for="bulk-rel-type">Typ vazby</label><select id="bulk-rel-type">' + relOpts + '</select>' +
+      '<label for="bulk-rel-target">Cíl (vyberte přes tlačítko níže)</label>' +
+      '<div><span id="bulk-rel-target-name" class="meta">(žádný)</span> <button type="button" id="bulk-rel-pick">Vybrat entitu…</button></div>',
+    onConfirm: (root) => {
+      const type = root.querySelector('#bulk-rel-type').value;
+      const targetId = root.querySelector('#bulk-rel-pick').dataset.targetId;
+      if (!targetId) { alertMsg('Vyberte cílovou entitu.'); return; }
+      const ents = bulkSelectedEntities();
+      let n = 0;
+      ents.forEach(e => {
+        if (e.id === targetId) return;
+        if (!e.links) e.links = [];
+        // Nepřidávej duplicitu
+        if (e.links.some(l => l.to === targetId && l.type === type)) return;
+        e.links.push({ to: targetId, type: type });
+        e.updated_at = nowIso(); n++;
+      });
+      save();
+      toast('Vazba přidána k ' + n + ' entit.');
+      render();
+    },
+    onSetup: (root) => {
+      root.querySelector('#bulk-rel-pick').onclick = () => {
+        openRelationPicker({
+          fieldLabel: 'Cíl vazby',
+          multiple: false,
+          aspectFilter: null,
+          excludeIds: [...bulkSelectedEntities().map(e => e.id)],
+          currentIds: [],
+          onSelect: (ids) => {
+            if (ids.length === 0) return;
+            const target = findEntity(ids[0]);
+            const btn = root.querySelector('#bulk-rel-pick');
+            btn.dataset.targetId = ids[0];
+            btn.textContent = 'Změnit…';
+            root.querySelector('#bulk-rel-target-name').textContent = target ? getDisplayTitle(target) : ids[0];
+          }
+        });
+      };
+    }
+  });
+}
+
+function bulkSetAttribute() {
+  // Najdi všechny aspekty mezi vybranými entitami → seznam jejich polí
+  const ents = bulkSelectedEntities();
+  const aspectsAll = new Set();
+  ents.forEach(e => (e.aspects || []).forEach(a => aspectsAll.add(a)));
+  // Možnosti = aspect + field. Vyfiltruj typy hidden, textarea, relation pro jednoduchost
+  const choices = [];
+  aspectsAll.forEach(ak => {
+    const a = getAspect(ak);
+    if (!a) return;
+    a.fields.forEach(f => {
+      if (f.type === 'hidden') return;
+      choices.push({ key: ak + '|' + f.key, aspect: ak, field: f, label: aspectLabel(ak) + ' → ' + f.label + ' (' + (f.type || 'text') + ')' });
+    });
+  });
+  if (choices.length === 0) { alertMsg('Vybrané entity nemají žádné aspekty s editovatelnými poli.'); return; }
+  const opts = choices.map(c => '<option value="' + escapeHtml(c.key) + '">' + escapeHtml(c.label) + '</option>').join('');
+  promptDialogCustom({
+    title: 'Hromadná změna atributu',
+    bodyHtml: '<p class="meta">Změna se aplikuje pouze na entity, které mají daný aspekt zaškrtnut.</p>' +
+      '<label for="bulk-attr-sel">Atribut</label><select id="bulk-attr-sel">' + opts + '</select>' +
+      '<div id="bulk-attr-value-wrap" style="margin-top:0.5em;"></div>' +
+      '<label style="margin-top:0.5em;display:block;"><input type="checkbox" id="bulk-attr-clear"> Místo nastavení hodnoty atribut <strong>vymazat</strong></label>',
+    onSetup: (root) => {
+      const sel = root.querySelector('#bulk-attr-sel');
+      const wrap = root.querySelector('#bulk-attr-value-wrap');
+      function refresh() {
+        const c = choices.find(x => x.key === sel.value);
+        if (!c) { wrap.innerHTML = ''; return; }
+        const f = c.field;
+        let inp = '';
+        if (f.type === 'textarea') inp = '<textarea id="bulk-attr-val" rows="3"></textarea>';
+        else if (f.type === 'select') {
+          inp = '<select id="bulk-attr-val"><option value="">— vyberte —</option>' +
+            (f.options || []).map(o => '<option value="' + escapeHtml(o) + '">' +
+              escapeHtml((f.optionLabels && f.optionLabels[o]) || o) + '</option>').join('') + '</select>';
+        }
+        else if (f.type === 'checkbox') inp = '<select id="bulk-attr-val"><option value="">—</option><option value="true">Ano</option><option value="false">Ne</option></select>';
+        else if (f.type === 'relation') inp = '<p class="meta">Relace: zatím nepodporováno hromadně, použijte ručně.</p><input type="hidden" id="bulk-attr-val" value="" disabled>';
+        else inp = '<input type="' + escapeHtml(f.type || 'text') + '" id="bulk-attr-val">';
+        wrap.innerHTML = '<label for="bulk-attr-val">Nová hodnota</label>' + inp;
+      }
+      sel.onchange = refresh;
+      refresh();
+    },
+    onConfirm: (root) => {
+      const sel = root.querySelector('#bulk-attr-sel');
+      const c = choices.find(x => x.key === sel.value);
+      if (!c) return;
+      const clearBox = root.querySelector('#bulk-attr-clear');
+      const doClear = clearBox && clearBox.checked;
+      const valEl = root.querySelector('#bulk-attr-val');
+      let v = null;
+      if (!doClear) {
+        if (!valEl) { alertMsg('Hodnota nezvolena.'); return; }
+        if (valEl.disabled) { alertMsg('Tento typ pole nelze hromadně měnit.'); return; }
+        if (valEl.type === 'checkbox' || c.field.type === 'checkbox') v = valEl.value === 'true' ? true : (valEl.value === 'false' ? false : null);
+        else if (c.field.type === 'number') v = valEl.value === '' ? null : Number(valEl.value);
+        else v = valEl.value;
+        if (v === '' || v === null) { alertMsg('Hodnota je prázdná. Pro vymazání zaškrtněte "vymazat".'); return; }
+      }
+      let n = 0, skipped = 0;
+      ents.forEach(e => {
+        if (!(e.aspects || []).includes(c.aspect)) { skipped++; return; }
+        if (!e.attributes) e.attributes = {};
+        if (doClear) delete e.attributes[c.field.key];
+        else e.attributes[c.field.key] = v;
+        e.updated_at = nowIso(); n++;
+      });
+      save();
+      const msg = 'Atribut "' + c.field.label + '" ' + (doClear ? 'vymazán' : 'nastaven') +
+        ' u ' + n + ' entit' + (skipped > 0 ? ', ' + skipped + ' přeskočeno (nemá aspekt)' : '') + '.';
+      toast(msg, 5000);
+      render();
+    }
+  });
+}
+
+function bulkArchive() {
+  const ents = bulkSelectedEntities();
+  if (ents.length === 0) return;
+  confirmDialog('Archivovat ' + ents.length + ' vybraných entit?', () => {
+    ents.forEach(e => { e.archived = true; e.updated_at = nowIso(); });
+    save();
+    toast(ents.length + ' entit archivováno.');
+    _bulk.selected.clear();
+    render();
+  });
+}
+
+function bulkDelete() {
+  const ents = bulkSelectedEntities();
+  if (ents.length === 0) return;
+  confirmDialog('Trvale smazat ' + ents.length + ' vybraných entit? Tato akce je nevratná!', () => {
+    const ids = new Set(_bulk.selected);
+    db.entities = db.entities.filter(e => !ids.has(e.id));
+    // Také smazat odkazy na ně
+    db.entities.forEach(e => {
+      if (e.links) e.links = e.links.filter(l => !ids.has(l.to));
+    });
+    save();
+    toast(ids.size + ' entit smazáno.');
+    _bulk.selected.clear();
+    render();
+  });
+}
+
+// Pomocný univerzální dialog pro promptování
+function promptDialogCustom(opts) {
+  // Jednoduchý <dialog> vyrobený dynamicky
+  const existing = document.getElementById('bulk-prompt-dialog');
+  if (existing) existing.remove();
+  const d = document.createElement('dialog');
+  d.id = 'bulk-prompt-dialog';
+  d.setAttribute('aria-labelledby', 'bulk-prompt-title');
+  d.innerHTML = '<h2 id="bulk-prompt-title">' + escapeHtml(opts.title || 'Akce') + '</h2>' +
+    '<div id="bulk-prompt-body">' + (opts.bodyHtml || '') + '</div>' +
+    '<div class="btn-group" style="margin-top:0.7em;">' +
+      '<button type="button" class="primary" id="bulk-prompt-ok">Provést</button>' +
+      '<button type="button" id="bulk-prompt-cancel">Zrušit</button>' +
+    '</div>';
+  document.body.appendChild(d);
+  if (opts.onSetup) opts.onSetup(d);
+  d.showModal();
+  setTimeout(() => {
+    const first = d.querySelector('input, select, textarea, button.primary');
+    if (first) first.focus();
+  }, 50);
+  d.querySelector('#bulk-prompt-ok').onclick = () => {
+    try { opts.onConfirm(d); d.close(); d.remove(); }
+    catch (err) { alertMsg('Chyba: ' + err.message); }
+  };
+  d.querySelector('#bulk-prompt-cancel').onclick = () => { d.close(); d.remove(); };
 }
 
 function sortEntitiesBy(entities, sort) {
@@ -11244,8 +12110,11 @@ function renderAll(main) {
     '<h2>Vše</h2>' +
     '<div class="toolbar" role="search" aria-label="Hledání">' +
       '<div style="flex:1;min-width:14em;"><label for="filter-text">Hledaný text</label><input type="search" id="filter-text" value="' + escapeHtml(f.text || '') + '"></div>' +
-      '<div style="flex:0 0 auto;"><button id="filter-reset">Reset</button> <button id="filter-save">Uložit jako pohled</button></div>' +
+      '<div style="flex:0 0 auto;"><button id="filter-reset">Reset</button> <button id="filter-save">Uložit jako pohled</button>' +
+        ' <button id="bulk-toggle">' + (_bulk.active ? 'Ukončit režim výběru' : 'Režim výběru') + '</button>' +
+      '</div>' +
     '</div>' +
+    bulkRenderToolbarHtml() +
     '<details id="filters-details" style="margin-bottom:0.7em;">' +
       '<summary>Filtry <span id="filters-summary" class="meta"></span></summary>' +
       '<div class="filter-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(14em,1fr));gap:0.5em;margin-top:0.5em;">' +
@@ -11479,9 +12348,10 @@ function renderAll(main) {
     if (sumEl) sumEl.textContent = active > 0 ? '(' + active + ' aktivních)' : '';
     if (r.length === 0) { out.innerHTML = '<div class="empty">Žádné výsledky.</div>'; statusMsgDebounced('0 výsledků.'); return; }
     out.innerHTML = '<p class="meta">Nalezeno ' + r.length + ' entit.</p>' +
-      renderEntityTableHtml(r, state._allSort);
+      renderEntityTableHtml(r, state._allSort, { selectionMode: _bulk.active, selected: _bulk.selected });
     statusMsgDebounced(r.length + ' výsledků.');
     attachEntityRowHandlers(out);
+    bulkAttachHandlers(document);
     attachSortHandlers(out, state._allSort, (newSort) => {
       state._allSort = newSort; update();
     });
@@ -11500,6 +12370,8 @@ function renderAll(main) {
     sct.value = ''; srl.value = ''; scf.value = '';
     update();
   };
+  const bulkBtn = document.getElementById('bulk-toggle');
+  if (bulkBtn) bulkBtn.onclick = () => bulkToggle(!_bulk.active);
   document.getElementById('filter-save').onclick = () => {
     openSaveViewDialog({ filters: {
       aspect: sa.value || null,
@@ -12145,6 +13017,8 @@ function renderDetailRead(main, e) {
   const attachmentsHtml = renderAttachmentsRead(e);
   const isProject = e.aspects && e.aspects.includes('Project');
   const projectDashHtml = isProject ? renderProjectDashboard(e) : '';
+  const isDatabase = e.aspects && e.aspects.includes('Database');
+  const databaseHtml = isDatabase ? renderDatabaseSection(e) : '';
 
   main.innerHTML =
     '<div class="btn-group"><button id="back-btn">← Zpět</button></div>' +
@@ -12179,6 +13053,7 @@ function renderDetailRead(main, e) {
     '</section>' : '') +
     (attachmentsHtml ? '<section aria-labelledby="att-h"><h3 id="att-h">Přílohy (' + e.attachments.length + ')</h3>' + attachmentsHtml + '</section>' : '') +
     projectDashHtml +
+    databaseHtml +
     (refsHtml ? '<section aria-labelledby="refs-h"><h3 id="refs-h">Odkazy</h3>' + refsHtml + '</section>' : '') +
     (linksHtml ? '<section aria-labelledby="links-h"><h3 id="links-h">Vazby</h3>' + linksHtml + '</section>' : '') +
     (inverseHtml ? '<section aria-labelledby="ilinks-h"><h3 id="ilinks-h">Příchozí vazby</h3>' + inverseHtml + '</section>' : '') +
@@ -12219,6 +13094,7 @@ function renderDetailRead(main, e) {
   attachMarkdownLinkHandlers(main);
   attachMarkdownTaskHandlers(main, e);
   attachAttachmentReadHandlers(main, e);
+  if (isDatabase) attachDatabaseReadHandlers(main, e);
   attachCommentHandlers(main, e);
   attachRelatedCommentsHandlers(main, e);
   // Mazání vazeb v read módu
@@ -12351,6 +13227,7 @@ function renderAttributesReadOnly(e) {
   const customKeys = Object.keys(e.attributes || {}).filter(k => !fieldMap.has(k));
   let h = '';
   fieldMap.forEach((f, k) => {
+    if (f.type === 'hidden') return;
     const v = e.attributes[k];
     if (v === undefined || v === null || v === '') return;
     // Pro relation field: prázdné pole = nic
@@ -12369,6 +13246,7 @@ function renderAttributesReadOnly(e) {
   return h;
 }
 function formatAttrValue(f, v) {
+  if (f.type === 'hidden') return '';
   if (f.type === 'date') return escapeHtml(fmtDate(v));
   if (f.type === 'datetime-local') return escapeHtml(fmtDateTime(v));
   if (f.type === 'url') return '<a href="' + escapeHtml(v) + '" target="_blank" rel="noopener">' + escapeHtml(v) + '</a>';
@@ -12516,11 +13394,12 @@ function renderAttachmentsRead(e) {
     if (att.uploadError) {
       statusContent += ' <span style="color:#c33;">⚠ ' + escapeHtml(att.uploadError) + '</span>';
     }
+    const addedTxt = att.added_at ? ' · přidáno ' + escapeHtml(fmtDateTime(att.added_at)) : '';
     h += '<div class="attachment-item" data-att-id="' + escapeHtml(att.id) + '">' +
       '<div class="attachment-icon">' + guessFileIcon(att.type, att.name) + '</div>' +
       '<div class="attachment-info">' +
         '<div class="name">' + escapeHtml(att.name) + '</div>' +
-        '<div class="meta">' + escapeHtml(fmtBytes(att.size)) + ' · ' + escapeHtml(att.type || '?') + ' · ' + statusContent + '</div>' +
+        '<div class="meta">' + escapeHtml(fmtBytes(att.size)) + ' · ' + escapeHtml(att.type || '?') + addedTxt + ' · ' + statusContent + '</div>' +
         (isImg ? '<img class="attachment-preview" data-att-preview="' + escapeHtml(att.id) + '" alt="' + escapeHtml(att.name) + '">' : '') +
         (isAudio ? '<audio class="attachment-audio" controls preload="metadata" data-att-audio="' + escapeHtml(att.id) + '" aria-label="Přehrávač: ' + escapeHtml(att.name) + '"></audio>' : '') +
       '</div>' +
@@ -12639,6 +13518,10 @@ function renderDetailEdit(main, e) {
       '<div id="d-related-comments"></div>' +
     '</section>' +
 
+    ((e.aspects || []).includes('Database')
+      ? '<div id="db-editor-wrapper">' + renderDatabaseEditor(e) + '</div>'
+      : '') +
+
     '<section><h3>Aspekty</h3>' +
       '<div class="checkbox-list" id="d-aspects">' +
         Object.entries(getActiveAspects()).map(([k,v]) =>
@@ -12663,6 +13546,9 @@ function renderDetailEdit(main, e) {
   renderEditLinks(e);
   renderEditAttachments(e);
   setupAudioRecorder(e);
+  // Databáze – pokud je aspekt zaškrtnut
+  const dbWrapper = document.getElementById('db-editor-wrapper');
+  if (dbWrapper) attachDatabaseEditHandlers(dbWrapper, e);
   renderEditComments(e);
   // Komentáře v okolí entity (read-only)
   const relC = document.getElementById('d-related-comments');
@@ -12905,6 +13791,7 @@ function renderEditAttributes(e) {
   });
 }
 function attributeFieldHtml(e, f) {
+  if (f.type === 'hidden') return '';
   const id = 'attr-' + f.key;
   const val = e.attributes && e.attributes[f.key] !== undefined ? e.attributes[f.key] : '';
   const v = escapeHtml(val);
@@ -13031,11 +13918,12 @@ function renderEditAttachments(e) {
       const verifyBtn = att.storage === 'github' && att.ghPath && GH.isConfigured()
         ? '<button data-att-verify="' + escapeHtml(att.id) + '" title="Ověřit, že soubor je na GitHubu">Ověřit</button>' : '';
       const isAudio = att.type && att.type.startsWith('audio/');
+      const addedTxt = att.added_at ? ' · přidáno ' + escapeHtml(fmtDateTime(att.added_at)) : '';
       return '<div class="attachment-item" data-att-id="' + escapeHtml(att.id) + '">' +
       '<div class="attachment-icon">' + guessFileIcon(att.type, att.name) + '</div>' +
       '<div class="attachment-info">' +
         '<div class="name">' + escapeHtml(att.name) + '</div>' +
-        '<div class="meta">' + escapeHtml(fmtBytes(att.size)) + ' · ' + escapeHtml(att.type || '?') + ' · ' + statusContent + '</div>' +
+        '<div class="meta">' + escapeHtml(fmtBytes(att.size)) + ' · ' + escapeHtml(att.type || '?') + addedTxt + ' · ' + statusContent + '</div>' +
         (isAudio ? '<audio class="attachment-audio" controls preload="metadata" data-att-audio="' + escapeHtml(att.id) + '" aria-label="Přehrávač: ' + escapeHtml(att.name) + '"></audio>' : '') +
       '</div>' +
       '<div class="attachment-actions">' +
@@ -15163,6 +16051,434 @@ function buildStaticViewerHtml() {
   return STATIC_VIEWER_TEMPLATE
     .replace(/__TITLE__/g, title)
     .replace('__PIM_DATA_PLACEHOLDER__', jsonStr);
+}
+
+// =================================================================
+// === DATABÁZE (aspekt Database) ===
+// =================================================================
+// db_fields = [{ key, label, type: 'text'|'number'|'date'|'bool'|'select', options: [string] }]
+// db_records = [{ id, [field.key]: value }]
+
+function getDbFields(entity) {
+  const raw = entity.attributes && entity.attributes.db_fields;
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; } catch (e) { return []; }
+  }
+  return [];
+}
+function getDbRecords(entity) {
+  const raw = entity.attributes && entity.attributes.db_records;
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; } catch (e) { return []; }
+  }
+  return [];
+}
+function setDbFields(entity, fields) {
+  if (!entity.attributes) entity.attributes = {};
+  entity.attributes.db_fields = fields;
+  entity.updated_at = nowIso();
+}
+function setDbRecords(entity, records) {
+  if (!entity.attributes) entity.attributes = {};
+  entity.attributes.db_records = records;
+  entity.updated_at = nowIso();
+}
+
+const DB_FIELD_TYPES = {
+  text: 'Text',
+  number: 'Číslo',
+  date: 'Datum',
+  bool: 'Ano/Ne',
+  select: 'Výběr'
+};
+
+// State pro řazení a filtry per entity (in-memory, neukládá se)
+const _dbState = {};
+function getDbState(entityId) {
+  if (!_dbState[entityId]) _dbState[entityId] = { sortKey: null, sortDir: 'asc', filters: {} };
+  return _dbState[entityId];
+}
+
+// === Render database section v read mode ===
+function renderDatabaseSection(entity) {
+  const fields = getDbFields(entity);
+  const records = getDbRecords(entity);
+  const description = entity.attributes && entity.attributes.db_description;
+  const st = getDbState(entity.id);
+
+  let h = '<section aria-labelledby="db-h"><h3 id="db-h">Databáze</h3>';
+  if (description) {
+    h += '<div class="markdown" style="margin-bottom:0.7em;">' + renderMarkdown(description, { ctx: { depth: 1, includeStack: new Set() } }) + '</div>';
+  }
+  if (fields.length === 0) {
+    h += '<p class="meta">Databáze nemá žádná pole. Přepněte na Upravit a definujte sloupce.</p>';
+    h += '</section>';
+    return h;
+  }
+  // Aplikuj filtry
+  const filtered = records.filter(rec => {
+    for (const f of fields) {
+      const filt = st.filters[f.key];
+      if (filt === undefined || filt === '' || filt === null) continue;
+      const val = rec[f.key];
+      if (f.type === 'bool' || f.type === 'select') {
+        if (String(val) !== String(filt)) return false;
+      } else {
+        if (val == null) return false;
+        if (!String(val).toLowerCase().includes(String(filt).toLowerCase())) return false;
+      }
+    }
+    return true;
+  });
+  // Aplikuj řazení
+  const sortKey = st.sortKey;
+  const sortDir = st.sortDir;
+  let sorted = filtered;
+  if (sortKey) {
+    const sf = fields.find(f => f.key === sortKey);
+    sorted = [...filtered].sort((a, b) => {
+      const va = a[sortKey], vb = b[sortKey];
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      if (sf && sf.type === 'number') return (Number(va) - Number(vb)) * (sortDir === 'asc' ? 1 : -1);
+      if (sf && sf.type === 'date') return (String(va).localeCompare(String(vb))) * (sortDir === 'asc' ? 1 : -1);
+      if (sf && sf.type === 'bool') return ((va ? 1 : 0) - (vb ? 1 : 0)) * (sortDir === 'asc' ? 1 : -1);
+      return String(va).localeCompare(String(vb), 'cs') * (sortDir === 'asc' ? 1 : -1);
+    });
+  }
+  // Hlavička
+  h += '<p class="meta">' + filtered.length + ' / ' + records.length + ' záznamů</p>';
+  h += '<table class="db-table"><caption class="sr-only">Databáze ' + escapeHtml(getDisplayTitle(entity)) + '</caption>';
+  h += '<thead><tr>';
+  fields.forEach(f => {
+    const isSorted = sortKey === f.key;
+    const dir = isSorted ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+    h += '<th scope="col"><button data-db-sort="' + escapeHtml(f.key) + '" style="all:unset;cursor:pointer;font-weight:bold;">' + escapeHtml(f.label) + dir + '</button></th>';
+  });
+  h += '</tr>';
+  // Filtr řádek
+  h += '<tr class="db-filter-row">';
+  fields.forEach(f => {
+    const v = st.filters[f.key] || '';
+    if (f.type === 'bool') {
+      h += '<td><select data-db-filter="' + escapeHtml(f.key) + '">' +
+        '<option value=""' + (v === '' ? ' selected' : '') + '>—</option>' +
+        '<option value="true"' + (v === 'true' ? ' selected' : '') + '>Ano</option>' +
+        '<option value="false"' + (v === 'false' ? ' selected' : '') + '>Ne</option>' +
+        '</select></td>';
+    } else if (f.type === 'select') {
+      h += '<td><select data-db-filter="' + escapeHtml(f.key) + '">' +
+        '<option value=""' + (v === '' ? ' selected' : '') + '>—</option>' +
+        (f.options || []).map(o => '<option value="' + escapeHtml(o) + '"' + (v === o ? ' selected' : '') + '>' + escapeHtml(o) + '</option>').join('') +
+        '</select></td>';
+    } else {
+      h += '<td><input type="search" data-db-filter="' + escapeHtml(f.key) + '" value="' + escapeHtml(v) + '" aria-label="Filtr ' + escapeHtml(f.label) + '" style="width:100%;font-size:0.85em;"></td>';
+    }
+  });
+  h += '</tr>';
+  h += '</thead><tbody>';
+  if (sorted.length === 0) {
+    h += '<tr><td colspan="' + fields.length + '" class="meta">(žádný záznam)</td></tr>';
+  } else {
+    sorted.forEach(rec => {
+      const recIdx = records.indexOf(rec);
+      h += '<tr>';
+      fields.forEach((f, fi) => {
+        const v = rec[f.key];
+        // První sloupec udělej klikatelný link na úpravu
+        if (fi === 0) {
+          h += '<td><a href="#" data-db-rec-edit="' + recIdx + '" title="Upravit záznam">' + dbFormatCellValue(f, v) + '</a></td>';
+        } else {
+          h += '<td>' + dbFormatCellValue(f, v) + '</td>';
+        }
+      });
+      h += '</tr>';
+    });
+  }
+  h += '</tbody></table>';
+  // Tlačítka pro přidání + reset filtrů
+  h += '<div class="btn-group" style="margin-top:0.4em;">';
+  h += '<button id="db-add-record-read" class="primary">+ Přidat záznam</button>';
+  if (Object.values(st.filters).some(v => v && v !== '')) {
+    h += '<button id="db-filter-reset">Reset filtrů</button>';
+  }
+  h += '</div>';
+  h += '</section>';
+  return h;
+}
+
+function dbFormatCellValue(f, v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (f.type === 'bool') return v ? 'Ano' : 'Ne';
+  if (f.type === 'date') return escapeHtml(fmtDate(v));
+  if (f.type === 'number') return escapeHtml(String(v));
+  return escapeHtml(String(v));
+}
+
+function attachDatabaseReadHandlers(root, entity) {
+  const st = getDbState(entity.id);
+  root.querySelectorAll('button[data-db-sort]').forEach(b => {
+    b.onclick = () => {
+      const k = b.dataset.dbSort;
+      if (st.sortKey === k) st.sortDir = (st.sortDir === 'asc' ? 'desc' : 'asc');
+      else { st.sortKey = k; st.sortDir = 'asc'; }
+      render();
+    };
+  });
+  root.querySelectorAll('[data-db-filter]').forEach(el => {
+    const handler = () => {
+      st.filters[el.dataset.dbFilter] = el.value;
+      render();
+    };
+    if (el.tagName === 'INPUT') el.oninput = handler;
+    el.onchange = handler;
+  });
+  const resetBtn = root.querySelector('#db-filter-reset');
+  if (resetBtn) resetBtn.onclick = () => { st.filters = {}; render(); };
+  // Klik na záznam → edit dialog
+  root.querySelectorAll('a[data-db-rec-edit]').forEach(a => {
+    a.onclick = (ev) => {
+      ev.preventDefault();
+      const idx = Number(a.dataset.dbRecEdit);
+      openDatabaseRecordDialog(entity, idx, () => render());
+    };
+  });
+  // Přidat záznam
+  const addBtn = root.querySelector('#db-add-record-read');
+  if (addBtn) addBtn.onclick = () => {
+    openDatabaseRecordDialog(entity, -1, () => render());
+  };
+}
+
+// === Edit mode database ===
+// Editor sloupců + záznamů s tlačítky
+function renderDatabaseEditor(entity) {
+  const fields = getDbFields(entity);
+  const records = getDbRecords(entity);
+
+  let h = '<section><h3>Databáze – sloupce</h3>';
+  if (fields.length === 0) {
+    h += '<p class="meta">Žádné sloupce. Přidejte první níže.</p>';
+  } else {
+    h += '<table class="db-edit-fields"><thead><tr><th>Pořadí</th><th>Název</th><th>Typ</th><th>Volby</th><th>Akce</th></tr></thead><tbody>';
+    fields.forEach((f, i) => {
+      h += '<tr>';
+      h += '<td><button data-dbf-up="' + i + '" aria-label="Posunout sloupec nahoru"' + (i === 0 ? ' disabled' : '') + '>↑</button> ' +
+            '<button data-dbf-down="' + i + '" aria-label="Posunout sloupec dolů"' + (i === fields.length - 1 ? ' disabled' : '') + '>↓</button></td>';
+      h += '<td><input type="text" data-dbf-label="' + i + '" value="' + escapeHtml(f.label || '') + '" style="width:100%"></td>';
+      h += '<td><select data-dbf-type="' + i + '">' +
+        Object.entries(DB_FIELD_TYPES).map(([k, lbl]) =>
+          '<option value="' + k + '"' + (f.type === k ? ' selected' : '') + '>' + escapeHtml(lbl) + '</option>').join('') +
+        '</select></td>';
+      h += '<td>' + (f.type === 'select'
+        ? '<input type="text" data-dbf-options="' + i + '" value="' + escapeHtml((f.options || []).join(', ')) + '" placeholder="A, B, C" style="width:100%">'
+        : '<span class="meta">—</span>') + '</td>';
+      h += '<td><button class="danger" data-dbf-del="' + i + '" title="Smazat sloupec">×</button></td>';
+      h += '</tr>';
+    });
+    h += '</tbody></table>';
+  }
+  h += '<div class="btn-group" style="margin-top:0.4em;"><button id="db-add-field">+ Přidat sloupec</button></div>';
+  h += '</section>';
+
+  h += '<section><h3>Databáze – záznamy (' + records.length + ')</h3>';
+  if (fields.length === 0) {
+    h += '<p class="meta">Nejprve definujte sloupce výše.</p>';
+  } else if (records.length === 0) {
+    h += '<p class="meta">Zatím žádné záznamy.</p>';
+  } else {
+    h += '<table class="db-edit-records"><thead><tr>';
+    fields.forEach(f => h += '<th>' + escapeHtml(f.label) + '</th>');
+    h += '<th>Akce</th></tr></thead><tbody>';
+    records.forEach((rec, ri) => {
+      h += '<tr>';
+      fields.forEach(f => {
+        h += '<td>' + dbFormatCellValue(f, rec[f.key]) + '</td>';
+      });
+      h += '<td><button data-dbr-edit="' + ri + '">Upravit</button> <button class="danger" data-dbr-del="' + ri + '">×</button></td>';
+      h += '</tr>';
+    });
+    h += '</tbody></table>';
+  }
+  h += '<div class="btn-group" style="margin-top:0.4em;"><button id="db-add-record"' + (fields.length === 0 ? ' disabled' : '') + '>+ Přidat záznam</button></div>';
+  h += '</section>';
+  return h;
+}
+
+function attachDatabaseEditHandlers(root, entity) {
+  function refresh() {
+    const newH = renderDatabaseEditor(entity);
+    const wrapper = root.querySelector('#db-editor-wrapper');
+    if (wrapper) {
+      wrapper.innerHTML = newH;
+      attachDatabaseEditHandlers(wrapper, entity);
+    }
+  }
+
+  // Sloupce
+  root.querySelectorAll('[data-dbf-label]').forEach(inp => {
+    inp.oninput = () => {
+      const i = Number(inp.dataset.dbfLabel);
+      const fields = getDbFields(entity);
+      fields[i].label = inp.value;
+      // generate key from label (normalized) if missing
+      if (!fields[i].key) fields[i].key = 'col_' + (Date.now() + i).toString(36);
+      setDbFields(entity, fields);
+      saveDebounced();
+    };
+  });
+  root.querySelectorAll('[data-dbf-type]').forEach(sel => {
+    sel.onchange = () => {
+      const i = Number(sel.dataset.dbfType);
+      const fields = getDbFields(entity);
+      fields[i].type = sel.value;
+      if (sel.value === 'select' && !fields[i].options) fields[i].options = [];
+      setDbFields(entity, fields);
+      save();
+      refresh();
+    };
+  });
+  root.querySelectorAll('[data-dbf-options]').forEach(inp => {
+    inp.oninput = () => {
+      const i = Number(inp.dataset.dbfOptions);
+      const fields = getDbFields(entity);
+      fields[i].options = inp.value.split(',').map(s => s.trim()).filter(Boolean);
+      setDbFields(entity, fields);
+      saveDebounced();
+    };
+  });
+  root.querySelectorAll('[data-dbf-up]').forEach(b => {
+    b.onclick = () => {
+      const i = Number(b.dataset.dbfUp);
+      if (i <= 0) return;
+      const fields = getDbFields(entity);
+      [fields[i-1], fields[i]] = [fields[i], fields[i-1]];
+      setDbFields(entity, fields);
+      save(); refresh();
+    };
+  });
+  root.querySelectorAll('[data-dbf-down]').forEach(b => {
+    b.onclick = () => {
+      const i = Number(b.dataset.dbfDown);
+      const fields = getDbFields(entity);
+      if (i >= fields.length - 1) return;
+      [fields[i], fields[i+1]] = [fields[i+1], fields[i]];
+      setDbFields(entity, fields);
+      save(); refresh();
+    };
+  });
+  root.querySelectorAll('[data-dbf-del]').forEach(b => {
+    b.onclick = () => {
+      const i = Number(b.dataset.dbfDel);
+      const fields = getDbFields(entity);
+      const f = fields[i];
+      confirmDialog('Smazat sloupec „' + f.label + '" včetně všech jeho hodnot v záznamech?', () => {
+        const records = getDbRecords(entity);
+        records.forEach(r => { delete r[f.key]; });
+        fields.splice(i, 1);
+        setDbFields(entity, fields);
+        setDbRecords(entity, records);
+        save(); refresh(); toast('Sloupec smazán.');
+      });
+    };
+  });
+  const addField = root.querySelector('#db-add-field');
+  if (addField) addField.onclick = () => {
+    const fields = getDbFields(entity);
+    const newKey = 'col_' + Date.now().toString(36) + '_' + fields.length;
+    fields.push({ key: newKey, label: 'Sloupec ' + (fields.length + 1), type: 'text' });
+    setDbFields(entity, fields);
+    save(); refresh();
+  };
+
+  // Záznamy
+  root.querySelectorAll('[data-dbr-edit]').forEach(b => {
+    b.onclick = () => {
+      const i = Number(b.dataset.dbrEdit);
+      openDatabaseRecordDialog(entity, i, refresh);
+    };
+  });
+  root.querySelectorAll('[data-dbr-del]').forEach(b => {
+    b.onclick = () => {
+      const i = Number(b.dataset.dbrDel);
+      confirmDialog('Smazat záznam?', () => {
+        const records = getDbRecords(entity);
+        records.splice(i, 1);
+        setDbRecords(entity, records);
+        save(); refresh(); toast('Záznam smazán.');
+      });
+    };
+  });
+  const addRec = root.querySelector('#db-add-record');
+  if (addRec) addRec.onclick = () => openDatabaseRecordDialog(entity, -1, refresh);
+}
+
+// Dialog pro vytvoření / úpravu záznamu
+function openDatabaseRecordDialog(entity, recordIndex, onSave) {
+  const d = document.getElementById('db-record-dialog');
+  const fields = getDbFields(entity);
+  const records = getDbRecords(entity);
+  const isNew = recordIndex < 0;
+  const rec = isNew ? {} : { ...records[recordIndex] };
+
+  document.getElementById('db-rec-title').textContent = isNew ? 'Nový záznam' : 'Upravit záznam';
+
+  const body = document.getElementById('db-rec-body');
+  body.innerHTML = fields.map(f => {
+    const v = rec[f.key];
+    const id = 'dbr-f-' + f.key;
+    let inp;
+    if (f.type === 'text') {
+      inp = '<input type="text" id="' + id + '" data-dbr-key="' + escapeHtml(f.key) + '" value="' + escapeHtml(v == null ? '' : String(v)) + '">';
+    } else if (f.type === 'number') {
+      inp = '<input type="number" step="any" id="' + id + '" data-dbr-key="' + escapeHtml(f.key) + '" value="' + escapeHtml(v == null ? '' : String(v)) + '">';
+    } else if (f.type === 'date') {
+      inp = '<input type="date" id="' + id + '" data-dbr-key="' + escapeHtml(f.key) + '" value="' + escapeHtml(v == null ? '' : String(v)) + '">';
+    } else if (f.type === 'bool') {
+      inp = '<select id="' + id + '" data-dbr-key="' + escapeHtml(f.key) + '">' +
+        '<option value=""' + (v === undefined || v === null ? ' selected' : '') + '>—</option>' +
+        '<option value="true"' + (v === true ? ' selected' : '') + '>Ano</option>' +
+        '<option value="false"' + (v === false ? ' selected' : '') + '>Ne</option>' +
+        '</select>';
+    } else if (f.type === 'select') {
+      inp = '<select id="' + id + '" data-dbr-key="' + escapeHtml(f.key) + '">' +
+        '<option value=""' + (!v ? ' selected' : '') + '>—</option>' +
+        (f.options || []).map(o => '<option value="' + escapeHtml(o) + '"' + (v === o ? ' selected' : '') + '>' + escapeHtml(o) + '</option>').join('') +
+        '</select>';
+    }
+    return '<div style="margin-bottom:0.5em;"><label for="' + id + '">' + escapeHtml(f.label) + '</label>' + inp + '</div>';
+  }).join('');
+
+  d.showModal();
+  setTimeout(() => {
+    const first = body.querySelector('input,select');
+    if (first) first.focus();
+  }, 50);
+
+  document.getElementById('db-rec-save').onclick = () => {
+    const newRec = isNew ? { id: 'r_' + Date.now().toString(36) } : { ...rec };
+    body.querySelectorAll('[data-dbr-key]').forEach(el => {
+      const k = el.dataset.dbrKey;
+      const f = fields.find(ff => ff.key === k);
+      if (!f) return;
+      let v = el.value;
+      if (v === '') { delete newRec[k]; return; }
+      if (f.type === 'number') v = Number(v);
+      if (f.type === 'bool') v = (v === 'true');
+      newRec[k] = v;
+    });
+    if (isNew) records.push(newRec);
+    else records[recordIndex] = newRec;
+    setDbRecords(entity, records);
+    save();
+    d.close();
+    if (onSave) onSave();
+    toast(isNew ? 'Záznam přidán.' : 'Záznam uložen.');
+  };
+  document.getElementById('db-rec-cancel').onclick = () => d.close();
 }
 
 function downloadStaticViewer() {
