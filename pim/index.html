@@ -5652,23 +5652,35 @@ function renderProjectDashboard(project) {
     return '<section class="project-dashboard"><h3>Dashboard projektu</h3>' +
       '<p class="meta">Žádné podřízené entity. Připojte úkoly nebo dokumenty vazbou „je součástí“.</p></section>';
   }
-  const tasks = children.filter(e => e.aspects && e.aspects.includes('Task'));
-  const docs = children.filter(e => e.aspects && (e.aspects.includes('Document') || e.aspects.includes('Note')));
-  const others = children.filter(e => !tasks.includes(e) && !docs.includes(e));
-  const peopleSet = new Set();
+  const has = (e, ...aspects) => e.aspects && aspects.some(a => e.aspects.includes(a));
+
+  // Skupiny v požadovaném pořadí
+  const goals = children.filter(e => has(e, 'Goal'));
+  const tasks = children.filter(e => has(e, 'Task'));
+  const questionsDecisions = children.filter(e => has(e, 'Question', 'Decision'));
+  const docsResources = children.filter(e => has(e, 'Document', 'Reference', 'Bookmark'));
+  const notesEtc = children.filter(e => has(e, 'Note', 'Audio', 'Idea'));
+
+  // Lidé a organizace – z přímých vazeb projektu i podřízených
+  const peopleOrgsSet = new Set();
   children.concat([project]).forEach(e => {
     (e.links || []).forEach(l => {
       const t = findEntity(l.to);
-      if (t && t.aspects && t.aspects.includes('Person')) peopleSet.add(t.id);
+      if (t && has(t, 'Person', 'Organization')) peopleOrgsSet.add(t.id);
     });
   });
   db.entities.forEach(e => {
-    if (e.aspects && e.aspects.includes('Person')) {
-      if ((e.links || []).some(l => l.to === project.id || children.some(c => c.id === l.to))) peopleSet.add(e.id);
+    if (has(e, 'Person', 'Organization')) {
+      if ((e.links || []).some(l => l.to === project.id || children.some(c => c.id === l.to))) peopleOrgsSet.add(e.id);
     }
   });
-  const people = [...peopleSet].map(findEntity).filter(Boolean);
+  const peopleOrgs = [...peopleOrgsSet].map(findEntity).filter(Boolean);
 
+  // Ostatní = vše co neslepuje žádnou skupinu (Person/Organization se zobrazí v Lidé a organizace, ne v Ostatní)
+  const grouped = new Set([...goals, ...tasks, ...questionsDecisions, ...docsResources, ...notesEtc].map(e => e.id));
+  const others = children.filter(e => !grouped.has(e.id) && !has(e, 'Person', 'Organization'));
+
+  // Statistiky úkolů
   const totalT = tasks.length;
   const doneT = tasks.filter(t => t.attributes.status === 'done').length;
   const cancT = tasks.filter(t => t.attributes.status === 'cancelled').length;
@@ -5681,7 +5693,26 @@ function renderProjectDashboard(project) {
   };
   tasks.forEach(t => { const s = t.attributes.status || 'todo'; if (kanban[s]) kanban[s].items.push(t); });
 
+  function listSection(title, items, showAspects) {
+    if (items.length === 0) return '';
+    let h = '<h4>' + escapeHtml(title) + ' (' + items.length + ')</h4><ul style="list-style:none;padding-left:0;">';
+    items.forEach(it => {
+      const aspectsTxt = showAspects
+        ? ' <span class="meta">(' + (it.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + ')</span>'
+        : '';
+      const updTxt = ' <span class="meta">' + escapeHtml(fmtRelative(it.updated_at)) + '</span>';
+      h += '<li><a href="#" data-entity="' + escapeHtml(it.id) + '">' + escapeHtml(getDisplayTitle(it)) + '</a>' + aspectsTxt + updTxt + '</li>';
+    });
+    h += '</ul>';
+    return h;
+  }
+
   let h = '<section class="project-dashboard"><h3>Dashboard projektu</h3>';
+
+  // Cíle nahoře
+  h += listSection('Cíle', goals, false);
+
+  // Pokrok úkolů + Kanban
   h += '<div style="margin:0.75em 0;">' +
     '<div class="meta">Postup: ' + doneT + ' z ' + totalT + ' úkolů (' + pct + '%)</div>' +
     '<div class="progress-bar"><div class="progress-bar-fill" style="width:' + pct + '%"></div>' +
@@ -5699,21 +5730,31 @@ function renderProjectDashboard(project) {
     });
     h += '</div>';
   }
-  if (docs.length > 0) {
-    h += '<h4>Dokumenty a poznámky (' + docs.length + ')</h4><ul style="list-style:none;padding-left:0;">';
-    docs.forEach(d => h += '<li><a href="#" data-entity="' + escapeHtml(d.id) + '">' + escapeHtml(getDisplayTitle(d)) + '</a> <span class="meta">' + escapeHtml(fmtRelative(d.updated_at)) + '</span></li>');
+
+  // Otázky a rozhodnutí
+  h += listSection('Otázky a rozhodnutí', questionsDecisions, true);
+
+  // Dokumenty a zdroje
+  h += listSection('Dokumenty a zdroje', docsResources, true);
+
+  // Poznámky
+  h += listSection('Poznámky', notesEtc, true);
+
+  // Lidé a organizace
+  if (peopleOrgs.length > 0) {
+    h += '<h4>Lidé a organizace (' + peopleOrgs.length + ')</h4><ul style="list-style:none;padding-left:0;">';
+    peopleOrgs.forEach(p => {
+      const aspectsTxt = ' <span class="meta">(' + (p.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + ')</span>';
+      h += '<li><a href="#" data-entity="' + escapeHtml(p.id) + '">' + escapeHtml(getDisplayTitle(p)) + '</a>' + aspectsTxt + '</li>';
+    });
     h += '</ul>';
   }
-  if (people.length > 0) {
-    h += '<h4>Lidé (' + people.length + ')</h4><ul style="list-style:none;padding-left:0;">';
-    people.forEach(p => h += '<li><a href="#" data-entity="' + escapeHtml(p.id) + '">' + escapeHtml(getDisplayTitle(p)) + '</a></li>');
-    h += '</ul>';
-  }
+
+  // Ostatní entity, které nezapadly nikam
   if (others.length > 0) {
-    h += '<h4>Ostatní (' + others.length + ')</h4><ul style="list-style:none;padding-left:0;">';
-    others.forEach(o => h += '<li><a href="#" data-entity="' + escapeHtml(o.id) + '">' + escapeHtml(getDisplayTitle(o)) + '</a> <span class="meta">' + (o.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + '</span></li>');
-    h += '</ul>';
+    h += listSection('Ostatní', others, true);
   }
+
   h += '</section>';
   return h;
 }
@@ -5926,7 +5967,8 @@ function openRelationPicker(opts) {
   let renderedItems = [];
 
   function refreshList() {
-    const q = searchInput.value.trim().toLowerCase();
+    const raw = searchInput.value.trim().toLowerCase();
+    const words = raw ? raw.split(/\s+/).filter(w => w.length > 0) : [];
     const aspectFilter = aspectSelect.value || null;
     const exclude = new Set(opts.excludeIds || []);
     let items = db.entities.filter(e => {
@@ -5941,10 +5983,19 @@ function openRelationPicker(opts) {
       if (aspectFilter) {
         if (!(e.aspects || []).includes(aspectFilter)) return false;
       }
-      // Hledání podle názvu
-      if (q) {
+      // Hledání po slovech v názvu, tagách a aspektech
+      if (words.length > 0) {
         const title = (getDisplayTitle(e) || '').toLowerCase();
-        if (!title.includes(q)) return false;
+        const altTitle = (e.title || '').toLowerCase();
+        const tags = (e.tags || []).map(t => t.toLowerCase());
+        const aspects = (e.aspects || []).map(a => (aspectLabel(a) || '').toLowerCase());
+        const allMatch = words.every(w =>
+          title.includes(w) ||
+          altTitle.includes(w) ||
+          tags.some(t => t.includes(w)) ||
+          aspects.some(a => a.includes(w))
+        );
+        if (!allMatch) return false;
       }
       return true;
     });
@@ -6093,14 +6144,27 @@ function openLinkDialog(entity) {
   updatePreview();
 
   document.getElementById('link-search').oninput = (ev) => {
-    const q = ev.target.value.trim().toLowerCase();
+    const raw = ev.target.value.trim().toLowerCase();
     const out = document.getElementById('link-results');
-    if (!q) { out.innerHTML = ''; return; }
+    if (!raw) { out.innerHTML = ''; return; }
+    // Rozdělit na slova
+    const words = raw.split(/\s+/).filter(w => w.length > 0);
+    function matches(e) {
+      const title = (getDisplayTitle(e) || '').toLowerCase();
+      const altTitle = (e.title || '').toLowerCase();
+      const tags = (e.tags || []).map(t => t.toLowerCase());
+      const aspects = (e.aspects || []).map(a => (aspectLabel(a) || '').toLowerCase());
+      // Každé slovo z dotazu musí najít shodu v alespoň jednom z polí
+      return words.every(w =>
+        title.includes(w) ||
+        altTitle.includes(w) ||
+        tags.some(t => t.includes(w)) ||
+        aspects.some(a => a.includes(w))
+      );
+    }
     const r = db.entities
       .filter(e => e.id !== entity.id && !e.archived)
-      .filter(e => getDisplayTitle(e).toLowerCase().includes(q) ||
-                   (e.title && e.title.toLowerCase().includes(q)) ||
-                   (e.tags || []).some(t => t.toLowerCase().includes(q)))
+      .filter(matches)
       .slice(0, 30);
     if (r.length === 0) { out.innerHTML = '<p class="meta" style="padding:0.5em;">Žádné výsledky.</p>'; return; }
     out.innerHTML = r.map(e => '<button type="button" data-target="' + escapeHtml(e.id) + '" style="display:block;width:100%;text-align:left;padding:0.5em;border:none;border-bottom:1px solid #eee;background:transparent;color:inherit;">' +
@@ -6108,7 +6172,8 @@ function openLinkDialog(entity) {
     out.querySelectorAll('button[data-target]').forEach(b => {
       b.onclick = () => {
         selected = b.dataset.target;
-        selectedTitle = b.textContent.trim().split(/\s+–/)[0].trim();
+        const target = findEntity(selected);
+        selectedTitle = target ? getDisplayTitle(target) : b.textContent.trim().split(/\s+–/)[0].trim();
         document.getElementById('link-search').value = selectedTitle;
         out.innerHTML = '<p class="meta" style="padding:0.5em;">Vybráno.</p>';
         document.getElementById('link-save').disabled = false;
@@ -9436,6 +9501,23 @@ function setupSyncButton() {
   const btn = document.getElementById('btn-sync');
   if (btn) btn.onclick = () => GH.upload();
   GH.refreshUI();
+  // Periodicky překreslit title (relativní čas „naposledy …“)
+  if (!window._syncTitleInterval) {
+    window._syncTitleInterval = setInterval(() => {
+      try {
+        const b = document.getElementById('btn-sync');
+        if (!b || b.hidden) return;
+        if (!db || !db.ghMeta || !db.ghMeta.lastSyncAt) return;
+        const title = 'Uložit na GitHub – naposledy ' + fmtRelative(db.ghMeta.lastSyncAt);
+        b.title = title;
+        b.setAttribute('aria-label', title);
+        // Pokud jsme v Nastavení, ať se i status řádek aktualizuje
+        if (state.view === 'settings' && document.getElementById('gh-status')) {
+          GH.refreshUI();
+        }
+      } catch (e) { /* ignore */ }
+    }, 30 * 1000); // co 30 s
+  }
 }
 
 // ==== STATIC VIEWER GENERATOR ====
@@ -15133,23 +15215,35 @@ function renderProjectDashboard(project) {
     return '<section class="project-dashboard"><h3>Dashboard projektu</h3>' +
       '<p class="meta">Žádné podřízené entity. Připojte úkoly nebo dokumenty vazbou „je součástí“.</p></section>';
   }
-  const tasks = children.filter(e => e.aspects && e.aspects.includes('Task'));
-  const docs = children.filter(e => e.aspects && (e.aspects.includes('Document') || e.aspects.includes('Note')));
-  const others = children.filter(e => !tasks.includes(e) && !docs.includes(e));
-  const peopleSet = new Set();
+  const has = (e, ...aspects) => e.aspects && aspects.some(a => e.aspects.includes(a));
+
+  // Skupiny v požadovaném pořadí
+  const goals = children.filter(e => has(e, 'Goal'));
+  const tasks = children.filter(e => has(e, 'Task'));
+  const questionsDecisions = children.filter(e => has(e, 'Question', 'Decision'));
+  const docsResources = children.filter(e => has(e, 'Document', 'Reference', 'Bookmark'));
+  const notesEtc = children.filter(e => has(e, 'Note', 'Audio', 'Idea'));
+
+  // Lidé a organizace – z přímých vazeb projektu i podřízených
+  const peopleOrgsSet = new Set();
   children.concat([project]).forEach(e => {
     (e.links || []).forEach(l => {
       const t = findEntity(l.to);
-      if (t && t.aspects && t.aspects.includes('Person')) peopleSet.add(t.id);
+      if (t && has(t, 'Person', 'Organization')) peopleOrgsSet.add(t.id);
     });
   });
   db.entities.forEach(e => {
-    if (e.aspects && e.aspects.includes('Person')) {
-      if ((e.links || []).some(l => l.to === project.id || children.some(c => c.id === l.to))) peopleSet.add(e.id);
+    if (has(e, 'Person', 'Organization')) {
+      if ((e.links || []).some(l => l.to === project.id || children.some(c => c.id === l.to))) peopleOrgsSet.add(e.id);
     }
   });
-  const people = [...peopleSet].map(findEntity).filter(Boolean);
+  const peopleOrgs = [...peopleOrgsSet].map(findEntity).filter(Boolean);
 
+  // Ostatní = vše co neslepuje žádnou skupinu (Person/Organization se zobrazí v Lidé a organizace, ne v Ostatní)
+  const grouped = new Set([...goals, ...tasks, ...questionsDecisions, ...docsResources, ...notesEtc].map(e => e.id));
+  const others = children.filter(e => !grouped.has(e.id) && !has(e, 'Person', 'Organization'));
+
+  // Statistiky úkolů
   const totalT = tasks.length;
   const doneT = tasks.filter(t => t.attributes.status === 'done').length;
   const cancT = tasks.filter(t => t.attributes.status === 'cancelled').length;
@@ -15162,7 +15256,26 @@ function renderProjectDashboard(project) {
   };
   tasks.forEach(t => { const s = t.attributes.status || 'todo'; if (kanban[s]) kanban[s].items.push(t); });
 
+  function listSection(title, items, showAspects) {
+    if (items.length === 0) return '';
+    let h = '<h4>' + escapeHtml(title) + ' (' + items.length + ')</h4><ul style="list-style:none;padding-left:0;">';
+    items.forEach(it => {
+      const aspectsTxt = showAspects
+        ? ' <span class="meta">(' + (it.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + ')</span>'
+        : '';
+      const updTxt = ' <span class="meta">' + escapeHtml(fmtRelative(it.updated_at)) + '</span>';
+      h += '<li><a href="#" data-entity="' + escapeHtml(it.id) + '">' + escapeHtml(getDisplayTitle(it)) + '</a>' + aspectsTxt + updTxt + '</li>';
+    });
+    h += '</ul>';
+    return h;
+  }
+
   let h = '<section class="project-dashboard"><h3>Dashboard projektu</h3>';
+
+  // Cíle nahoře
+  h += listSection('Cíle', goals, false);
+
+  // Pokrok úkolů + Kanban
   h += '<div style="margin:0.75em 0;">' +
     '<div class="meta">Postup: ' + doneT + ' z ' + totalT + ' úkolů (' + pct + '%)</div>' +
     '<div class="progress-bar"><div class="progress-bar-fill" style="width:' + pct + '%"></div>' +
@@ -15180,21 +15293,31 @@ function renderProjectDashboard(project) {
     });
     h += '</div>';
   }
-  if (docs.length > 0) {
-    h += '<h4>Dokumenty a poznámky (' + docs.length + ')</h4><ul style="list-style:none;padding-left:0;">';
-    docs.forEach(d => h += '<li><a href="#" data-entity="' + escapeHtml(d.id) + '">' + escapeHtml(getDisplayTitle(d)) + '</a> <span class="meta">' + escapeHtml(fmtRelative(d.updated_at)) + '</span></li>');
+
+  // Otázky a rozhodnutí
+  h += listSection('Otázky a rozhodnutí', questionsDecisions, true);
+
+  // Dokumenty a zdroje
+  h += listSection('Dokumenty a zdroje', docsResources, true);
+
+  // Poznámky
+  h += listSection('Poznámky', notesEtc, true);
+
+  // Lidé a organizace
+  if (peopleOrgs.length > 0) {
+    h += '<h4>Lidé a organizace (' + peopleOrgs.length + ')</h4><ul style="list-style:none;padding-left:0;">';
+    peopleOrgs.forEach(p => {
+      const aspectsTxt = ' <span class="meta">(' + (p.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + ')</span>';
+      h += '<li><a href="#" data-entity="' + escapeHtml(p.id) + '">' + escapeHtml(getDisplayTitle(p)) + '</a>' + aspectsTxt + '</li>';
+    });
     h += '</ul>';
   }
-  if (people.length > 0) {
-    h += '<h4>Lidé (' + people.length + ')</h4><ul style="list-style:none;padding-left:0;">';
-    people.forEach(p => h += '<li><a href="#" data-entity="' + escapeHtml(p.id) + '">' + escapeHtml(getDisplayTitle(p)) + '</a></li>');
-    h += '</ul>';
-  }
+
+  // Ostatní entity, které nezapadly nikam
   if (others.length > 0) {
-    h += '<h4>Ostatní (' + others.length + ')</h4><ul style="list-style:none;padding-left:0;">';
-    others.forEach(o => h += '<li><a href="#" data-entity="' + escapeHtml(o.id) + '">' + escapeHtml(getDisplayTitle(o)) + '</a> <span class="meta">' + (o.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + '</span></li>');
-    h += '</ul>';
+    h += listSection('Ostatní', others, true);
   }
+
   h += '</section>';
   return h;
 }
@@ -15407,7 +15530,8 @@ function openRelationPicker(opts) {
   let renderedItems = [];
 
   function refreshList() {
-    const q = searchInput.value.trim().toLowerCase();
+    const raw = searchInput.value.trim().toLowerCase();
+    const words = raw ? raw.split(/\\s+/).filter(w => w.length > 0) : [];
     const aspectFilter = aspectSelect.value || null;
     const exclude = new Set(opts.excludeIds || []);
     let items = db.entities.filter(e => {
@@ -15422,10 +15546,19 @@ function openRelationPicker(opts) {
       if (aspectFilter) {
         if (!(e.aspects || []).includes(aspectFilter)) return false;
       }
-      // Hledání podle názvu
-      if (q) {
+      // Hledání po slovech v názvu, tagách a aspektech
+      if (words.length > 0) {
         const title = (getDisplayTitle(e) || '').toLowerCase();
-        if (!title.includes(q)) return false;
+        const altTitle = (e.title || '').toLowerCase();
+        const tags = (e.tags || []).map(t => t.toLowerCase());
+        const aspects = (e.aspects || []).map(a => (aspectLabel(a) || '').toLowerCase());
+        const allMatch = words.every(w =>
+          title.includes(w) ||
+          altTitle.includes(w) ||
+          tags.some(t => t.includes(w)) ||
+          aspects.some(a => a.includes(w))
+        );
+        if (!allMatch) return false;
       }
       return true;
     });
@@ -15574,14 +15707,27 @@ function openLinkDialog(entity) {
   updatePreview();
 
   document.getElementById('link-search').oninput = (ev) => {
-    const q = ev.target.value.trim().toLowerCase();
+    const raw = ev.target.value.trim().toLowerCase();
     const out = document.getElementById('link-results');
-    if (!q) { out.innerHTML = ''; return; }
+    if (!raw) { out.innerHTML = ''; return; }
+    // Rozdělit na slova
+    const words = raw.split(/\\s+/).filter(w => w.length > 0);
+    function matches(e) {
+      const title = (getDisplayTitle(e) || '').toLowerCase();
+      const altTitle = (e.title || '').toLowerCase();
+      const tags = (e.tags || []).map(t => t.toLowerCase());
+      const aspects = (e.aspects || []).map(a => (aspectLabel(a) || '').toLowerCase());
+      // Každé slovo z dotazu musí najít shodu v alespoň jednom z polí
+      return words.every(w =>
+        title.includes(w) ||
+        altTitle.includes(w) ||
+        tags.some(t => t.includes(w)) ||
+        aspects.some(a => a.includes(w))
+      );
+    }
     const r = db.entities
       .filter(e => e.id !== entity.id && !e.archived)
-      .filter(e => getDisplayTitle(e).toLowerCase().includes(q) ||
-                   (e.title && e.title.toLowerCase().includes(q)) ||
-                   (e.tags || []).some(t => t.toLowerCase().includes(q)))
+      .filter(matches)
       .slice(0, 30);
     if (r.length === 0) { out.innerHTML = '<p class="meta" style="padding:0.5em;">Žádné výsledky.</p>'; return; }
     out.innerHTML = r.map(e => '<button type="button" data-target="' + escapeHtml(e.id) + '" style="display:block;width:100%;text-align:left;padding:0.5em;border:none;border-bottom:1px solid #eee;background:transparent;color:inherit;">' +
@@ -15589,7 +15735,8 @@ function openLinkDialog(entity) {
     out.querySelectorAll('button[data-target]').forEach(b => {
       b.onclick = () => {
         selected = b.dataset.target;
-        selectedTitle = b.textContent.trim().split(/\\s+–/)[0].trim();
+        const target = findEntity(selected);
+        selectedTitle = target ? getDisplayTitle(target) : b.textContent.trim().split(/\\s+–/)[0].trim();
         document.getElementById('link-search').value = selectedTitle;
         out.innerHTML = '<p class="meta" style="padding:0.5em;">Vybráno.</p>';
         document.getElementById('link-save').disabled = false;
