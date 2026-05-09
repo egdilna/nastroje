@@ -774,9 +774,13 @@ const RELATION_TYPES = {
   sameAs: { label: 'totéž jako', inverse: 'sameAs', inverseLabel: 'totéž jako' },
   partner: { label: 'partner', inverse: 'partner', inverseLabel: 'partner' },
   parentOf: { label: 'rodič', inverse: 'childOf', inverseLabel: 'dítě' },
+  superiorOf: { label: 'je nadřízený', inverse: 'subordinateOf', inverseLabel: 'má nadřízeného' },
   answers: { label: 'odpovídá na', inverse: 'answeredBy', inverseLabel: 'zodpovězeno' },
   attendedBy: { label: 'účastní se', inverse: 'attended', inverseLabel: 'má účastníka' },
   locatedAt: { label: 'koná se v', inverse: 'hostsEvent', inverseLabel: 'hostí událost' },
+  createdBy: { label: 'vytvořil', inverse: 'creates', inverseLabel: 'autor' },
+  assignedTo: { label: 'přiřazeno', inverse: 'assignedFrom', inverseLabel: 'řešitel' },
+  ownedBy: { label: 'vlastní', inverse: 'owns', inverseLabel: 'vlastník' },
   relatedTo: { label: 'souvisí s', inverse: 'relatedTo', inverseLabel: 'souvisí s' }
 };
 
@@ -3457,7 +3461,7 @@ function renderLinksView(main) {
   db.entities.forEach(from => {
     if (from.archived) return;
     // Strukturované odchozí vazby
-    (from.links || []).forEach(l => {
+    (from.links || []).forEach((l, idx) => {
       const target = findEntity(l.to);
       if (!target || target.archived) return;
       allLinks.push({
@@ -3465,6 +3469,7 @@ function renderLinksView(main) {
         to: target,
         type: l.type,
         kind: 'link',
+        linkIndex: idx,
         typeLabel: (RELATION_TYPES[l.type] && RELATION_TYPES[l.type].label) || l.type,
         note: l.note || ''
       });
@@ -3583,17 +3588,29 @@ function renderLinksView(main) {
           '<th scope="col">Typ vazby</th>' +
           '<th scope="col">Do entity</th>' +
           '<th scope="col">Aspekt cíle</th>' +
+          '<th scope="col">Akce</th>' +
         '</tr></thead><tbody>' +
-        filtered.map(l => {
+        filtered.map((l, idx) => {
           const fromAspects = (l.from.aspects || []).map(a => aspectLabel(a)).join(', ');
           const toAspects = (l.to.aspects || []).map(a => aspectLabel(a)).join(', ');
           const noteTxt = l.note ? ' <span class="meta">(' + escapeHtml(l.note) + ')</span>' : '';
+          let actions = '';
+          if (l.kind === 'link') {
+            actions =
+              '<button data-edit-link="' + idx + '" title="Upravit vazbu (typ, poznámka, směr)">Upravit</button> ' +
+              '<button class="danger" data-delete-link="' + idx + '" title="Smazat vazbu">Smazat</button>';
+          } else if (l.kind === 'relation') {
+            actions = '<span class="meta">Upravit přes detail entity „z"</span>';
+          } else {
+            actions = '<span class="meta">Vazba v textu — upravte v entitě „z"</span>';
+          }
           return '<tr>' +
             '<td><a href="#" data-entity="' + escapeHtml(l.from.id) + '">' + escapeHtml(getDisplayTitle(l.from)) + '</a>' +
               (fromAspects ? ' <span class="meta">(' + escapeHtml(fromAspects) + ')</span>' : '') + '</td>' +
             '<td>' + escapeHtml(l.typeLabel) + noteTxt + '</td>' +
             '<td><a href="#" data-entity="' + escapeHtml(l.to.id) + '">' + escapeHtml(getDisplayTitle(l.to)) + '</a></td>' +
             '<td>' + escapeHtml(toAspects) + '</td>' +
+            '<td>' + actions + '</td>' +
           '</tr>';
         }).join('') +
         '</tbody></table>');
@@ -3609,6 +3626,31 @@ function renderLinksView(main) {
     state._linksFilter = { type: '', from: '', to: '', kind: '' };
     reload();
   };
+  // Tlačítka pro úpravu/smazání vazby
+  main.querySelectorAll('button[data-edit-link]').forEach(b => {
+    b.onclick = () => {
+      const idx = Number(b.dataset.editLink);
+      const l = filtered[idx];
+      if (!l || l.kind !== 'link') return;
+      openEditLinkDialog(l.from, l.linkIndex, () => reload());
+    };
+  });
+  main.querySelectorAll('button[data-delete-link]').forEach(b => {
+    b.onclick = () => {
+      const idx = Number(b.dataset.deleteLink);
+      const l = filtered[idx];
+      if (!l || l.kind !== 'link') return;
+      const desc = getDisplayTitle(l.from) + ' — ' + l.typeLabel + ' → ' + getDisplayTitle(l.to);
+      confirmDialog('Smazat vazbu „' + desc + '"?', () => {
+        if (!l.from.links) return;
+        l.from.links.splice(l.linkIndex, 1);
+        l.from.updated_at = nowIso();
+        save();
+        toast('Vazba smazána.');
+        reload();
+      });
+    };
+  });
 }
 
 // ==== VIEW: TAGY ====
@@ -6212,6 +6254,95 @@ function openLinkDialog(entity) {
   document.getElementById('link-cancel').onclick = () => d.close();
   d.showModal();
   document.getElementById('link-search').focus();
+}
+
+// Editace existující vazby — typ, poznámka, otočení směru.
+// fromEntity: entita, kde je vazba uložena
+// linkIndex: index v fromEntity.links
+// onSaved: callback po uložení
+function openEditLinkDialog(fromEntity, linkIndex, onSaved) {
+  const link = (fromEntity.links || [])[linkIndex];
+  if (!link) { alertMsg('Vazba již neexistuje.'); return; }
+  const target = findEntity(link.to);
+  const fromTitle = getDisplayTitle(fromEntity);
+  const toTitle = target ? getDisplayTitle(target) : '(neznámý cíl)';
+
+  // Postavit dynamický dialog
+  const existing = document.getElementById('edit-link-dialog');
+  if (existing) existing.remove();
+  const d = document.createElement('dialog');
+  d.id = 'edit-link-dialog';
+  d.setAttribute('aria-labelledby', 'edit-link-title');
+
+  const typeOpts = Object.entries(RELATION_TYPES).map(([k, v]) =>
+    '<option value="' + escapeHtml(k) + '"' + (link.type === k ? ' selected' : '') + '>' + escapeHtml(v.label) + '</option>').join('');
+
+  d.innerHTML = '<h2 id="edit-link-title">Upravit vazbu</h2>' +
+    '<p class="meta" id="el-preview" aria-live="polite"></p>' +
+    '<label for="el-type">Typ vazby</label>' +
+    '<select id="el-type">' + typeOpts + '</select>' +
+    '<label for="el-note">Poznámka (volitelně)</label>' +
+    '<input type="text" id="el-note" value="' + escapeHtml(link.note || '') + '">' +
+    '<fieldset style="border:1px solid #ccc;padding:0.5em;margin-top:0.5em;">' +
+      '<legend>Směr</legend>' +
+      '<p class="meta" style="margin:0 0 0.4em;">Aktuálně: ' + escapeHtml(fromTitle) + ' → ' + escapeHtml(toTitle) + '</p>' +
+      '<label><input type="checkbox" id="el-flip"> Obrátit směr (vazba povede z cíle do zdroje)</label>' +
+    '</fieldset>' +
+    '<div class="btn-group" style="margin-top:1em;">' +
+      '<button type="button" class="primary" id="el-save">Uložit změny</button>' +
+      '<button type="button" id="el-cancel">Zrušit</button>' +
+    '</div>';
+  document.body.appendChild(d);
+
+  function updatePreview() {
+    const t = d.querySelector('#el-type').value;
+    const flip = d.querySelector('#el-flip').checked;
+    const rel = RELATION_TYPES[t];
+    const lbl = rel ? rel.label : t;
+    const inv = rel ? rel.inverseLabel : '';
+    const preview = d.querySelector('#el-preview');
+    if (flip) {
+      preview.textContent = 'Po uložení: ' + toTitle + ' ' + lbl + ' → ' + fromTitle +
+        '. V příchozích u „' + fromTitle + '": „' + inv + ': ' + toTitle + '".';
+    } else {
+      preview.textContent = 'Po uložení: ' + fromTitle + ' ' + lbl + ' → ' + toTitle +
+        '. V příchozích u „' + toTitle + '": „' + inv + ': ' + fromTitle + '".';
+    }
+  }
+  d.querySelector('#el-type').onchange = updatePreview;
+  d.querySelector('#el-flip').onchange = updatePreview;
+  updatePreview();
+
+  d.querySelector('#el-save').onclick = () => {
+    const newType = d.querySelector('#el-type').value;
+    const newNote = d.querySelector('#el-note').value.trim();
+    const flip = d.querySelector('#el-flip').checked;
+
+    if (flip) {
+      // Obrátit směr: smazat vazbu z fromEntity a přidat ji k cílové entitě
+      if (!target) { alertMsg('Nelze obrátit — cílová entita neexistuje.'); return; }
+      fromEntity.links.splice(linkIndex, 1);
+      fromEntity.updated_at = nowIso();
+      if (!target.links) target.links = [];
+      target.links.push({ to: fromEntity.id, type: newType, note: newNote });
+      target.updated_at = nowIso();
+      toast('Vazba upravena a směr obrácen.');
+    } else {
+      // Jen aktualizovat
+      link.type = newType;
+      if (newNote) link.note = newNote;
+      else delete link.note;
+      fromEntity.updated_at = nowIso();
+      toast('Vazba upravena.');
+    }
+    save();
+    d.close();
+    d.remove();
+    if (onSaved) onSaved();
+  };
+  d.querySelector('#el-cancel').onclick = () => { d.close(); d.remove(); };
+  d.showModal();
+  setTimeout(() => { const f = d.querySelector('#el-type'); if (f) f.focus(); }, 50);
 }
 
 // Chytrý odhad výchozí vazby pro novou entitu související s aktuální.
