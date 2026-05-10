@@ -3874,7 +3874,12 @@ function renderSettings(main) {
     '<section aria-labelledby="data-h"><h3 id="data-h">Data</h3>' +
     '<p>Vše uloženo lokálně v prohlížeči. Pravidelně zálohujte exportem.</p>' +
     '<div class="btn-group">' +
-      '<button id="export-json" class="primary">Stáhnout JSON</button>' +
+      '<button id="export-zip" class="primary">📦 Stáhnout ZIP (s přílohami)</button>' +
+      '<label for="import-zip-file" style="display:inline-block;margin:0;"><span class="sr-only">Načíst ZIP</span><input type="file" id="import-zip-file" accept=".zip,application/zip"></label>' +
+    '</div>' +
+    '<p class="meta">ZIP obsahuje <code>pim.json</code> a samostatné soubory příloh v podadresáři <code>attachments/</code>. Zachovává binární data příloh v originální velikosti (na rozdíl od JSON, který je base64 a má ~33 % overhead).</p>' +
+    '<div class="btn-group" style="margin-top:0.5em;">' +
+      '<button id="export-json">Stáhnout JSON (s přílohami v base64)</button>' +
       '<button id="export-json-nofiles">Stáhnout JSON bez příloh</button>' +
       '<label for="import-file" style="display:inline-block;margin:0;"><span class="sr-only">Načíst JSON</span><input type="file" id="import-file" accept=".json,application/json"></label>' +
       '<button id="load-sample">Načíst ukázku</button>' +
@@ -4058,6 +4063,11 @@ function renderSettings(main) {
 
   document.getElementById('export-json').onclick = () => exportToFile(true);
   document.getElementById('export-json-nofiles').onclick = () => exportToFile(false);
+  document.getElementById('export-zip').onclick = () => exportToZip();
+  const zipFileInput = document.getElementById('import-zip-file');
+  if (zipFileInput) zipFileInput.onchange = (ev) => {
+    const f = ev.target.files[0]; if (f) importFromZip(f);
+  };
   document.getElementById('import-file').onchange = (ev) => {
     const f = ev.target.files[0]; if (f) importFromFile(f);
   };
@@ -8542,6 +8552,304 @@ function exportEntityAsPdf(entity) {
   }
 }
 
+
+// ==== ZIP EXPORT / IMPORT (s přílohami) ====
+//
+// ZIP STORE method (bez komprese) — soubory se v archivu uloží 1:1.
+// Důvod: přílohy jsou typicky už komprimované (PDF, JPEG, MP3) — ZIP komprese by
+// nepřinesla úsporu, jen by stála CPU. JSON pim.json je malý a komprese mu nepomůže
+// citelně.
+
+// CRC-32 tabulka pro ZIP
+const _CRC32_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function _crc32(uint8) {
+  let c = 0xffffffff;
+  for (let i = 0; i < uint8.length; i++) c = _CRC32_TABLE[(c ^ uint8[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+// DOS time/date pro ZIP (z Date)
+function _dosDateTime(date) {
+  const d = date || new Date();
+  const time = ((d.getHours() & 0x1f) << 11) | ((d.getMinutes() & 0x3f) << 5) | ((Math.floor(d.getSeconds() / 2)) & 0x1f);
+  const dt = (((d.getFullYear() - 1980) & 0x7f) << 9) | (((d.getMonth() + 1) & 0x0f) << 5) | (d.getDate() & 0x1f);
+  return { time, dt };
+}
+
+// Vytvoří ZIP archiv (STORE, žádná komprese) z entries: [{name: string, data: Uint8Array}, ...]
+function buildZipStore(entries) {
+  const enc = new TextEncoder();
+  const fileBlocks = [];
+  const centralDir = [];
+  let offset = 0;
+  const { time: dosTime, dt: dosDate } = _dosDateTime();
+
+  for (const entry of entries) {
+    const nameBytes = enc.encode(entry.name);
+    const data = entry.data;
+    const crc = _crc32(data);
+    const size = data.length;
+
+    // Local file header (30 bytes + filename)
+    const lfh = new Uint8Array(30 + nameBytes.length);
+    const dvLfh = new DataView(lfh.buffer);
+    dvLfh.setUint32(0, 0x04034b50, true);   // signature
+    dvLfh.setUint16(4, 20, true);            // version needed
+    dvLfh.setUint16(6, 0x0800, true);        // general purpose bit flag (UTF-8 names)
+    dvLfh.setUint16(8, 0, true);             // compression method = STORE
+    dvLfh.setUint16(10, dosTime, true);      // mod time
+    dvLfh.setUint16(12, dosDate, true);      // mod date
+    dvLfh.setUint32(14, crc, true);          // CRC-32
+    dvLfh.setUint32(18, size, true);         // compressed size
+    dvLfh.setUint32(22, size, true);         // uncompressed size
+    dvLfh.setUint16(26, nameBytes.length, true); // filename length
+    dvLfh.setUint16(28, 0, true);            // extra field length
+    lfh.set(nameBytes, 30);
+
+    fileBlocks.push(lfh);
+    fileBlocks.push(data);
+
+    // Central directory record (46 bytes + filename)
+    const cdh = new Uint8Array(46 + nameBytes.length);
+    const dvCdh = new DataView(cdh.buffer);
+    dvCdh.setUint32(0, 0x02014b50, true);    // signature
+    dvCdh.setUint16(4, 20, true);            // version made by
+    dvCdh.setUint16(6, 20, true);            // version needed
+    dvCdh.setUint16(8, 0x0800, true);        // gp flag (UTF-8)
+    dvCdh.setUint16(10, 0, true);            // method
+    dvCdh.setUint16(12, dosTime, true);
+    dvCdh.setUint16(14, dosDate, true);
+    dvCdh.setUint32(16, crc, true);
+    dvCdh.setUint32(20, size, true);
+    dvCdh.setUint32(24, size, true);
+    dvCdh.setUint16(28, nameBytes.length, true);
+    dvCdh.setUint16(30, 0, true);            // extra
+    dvCdh.setUint16(32, 0, true);            // comment
+    dvCdh.setUint16(34, 0, true);            // disk number
+    dvCdh.setUint16(36, 0, true);            // internal attr
+    dvCdh.setUint32(38, 0, true);            // external attr
+    dvCdh.setUint32(42, offset, true);       // offset of local header
+    cdh.set(nameBytes, 46);
+    centralDir.push(cdh);
+
+    offset += lfh.length + data.length;
+  }
+
+  const cdStart = offset;
+  let cdSize = 0;
+  for (const c of centralDir) cdSize += c.length;
+
+  // End of central directory (22 bytes)
+  const eocd = new Uint8Array(22);
+  const dvEocd = new DataView(eocd.buffer);
+  dvEocd.setUint32(0, 0x06054b50, true);
+  dvEocd.setUint16(4, 0, true);              // disk
+  dvEocd.setUint16(6, 0, true);              // disk with cd
+  dvEocd.setUint16(8, entries.length, true); // total entries on this disk
+  dvEocd.setUint16(10, entries.length, true);// total entries
+  dvEocd.setUint32(12, cdSize, true);        // cd size
+  dvEocd.setUint32(16, cdStart, true);       // cd offset
+  dvEocd.setUint16(20, 0, true);             // comment length
+
+  // Spoj
+  const totalSize = offset + cdSize + eocd.length;
+  const out = new Uint8Array(totalSize);
+  let p = 0;
+  for (const b of fileBlocks) { out.set(b, p); p += b.length; }
+  for (const c of centralDir) { out.set(c, p); p += c.length; }
+  out.set(eocd, p);
+  return out;
+}
+
+// Parsování ZIP — najde EOCD, projde central directory, čte STORE entries
+async function parseZipStore(arrayBuffer) {
+  const view = new DataView(arrayBuffer);
+  const u8 = new Uint8Array(arrayBuffer);
+  // Najít EOCD signaturu od konce
+  let eocdPos = -1;
+  for (let i = view.byteLength - 22; i >= 0 && i >= view.byteLength - 22 - 0xffff; i--) {
+    if (view.getUint32(i, true) === 0x06054b50) { eocdPos = i; break; }
+  }
+  if (eocdPos < 0) throw new Error('Soubor nevypadá jako ZIP (chybí EOCD).');
+  const totalEntries = view.getUint16(eocdPos + 10, true);
+  const cdSize = view.getUint32(eocdPos + 12, true);
+  const cdOffset = view.getUint32(eocdPos + 16, true);
+
+  const dec = new TextDecoder('utf-8');
+  const entries = [];
+  let pos = cdOffset;
+  for (let i = 0; i < totalEntries; i++) {
+    if (view.getUint32(pos, true) !== 0x02014b50) throw new Error('Poškozený central directory.');
+    const method = view.getUint16(pos + 10, true);
+    const compressedSize = view.getUint32(pos + 20, true);
+    const uncompressedSize = view.getUint32(pos + 24, true);
+    const nameLen = view.getUint16(pos + 28, true);
+    const extraLen = view.getUint16(pos + 30, true);
+    const commentLen = view.getUint16(pos + 32, true);
+    const lfhOffset = view.getUint32(pos + 42, true);
+    const name = dec.decode(u8.subarray(pos + 46, pos + 46 + nameLen));
+    pos += 46 + nameLen + extraLen + commentLen;
+
+    // Číst data z local file header
+    if (view.getUint32(lfhOffset, true) !== 0x04034b50) throw new Error('Poškozený local file header.');
+    const lfhNameLen = view.getUint16(lfhOffset + 26, true);
+    const lfhExtraLen = view.getUint16(lfhOffset + 28, true);
+    const dataStart = lfhOffset + 30 + lfhNameLen + lfhExtraLen;
+    const data = u8.subarray(dataStart, dataStart + compressedSize);
+
+    if (method === 0) {
+      entries.push({ name, data: new Uint8Array(data) });
+    } else if (method === 8) {
+      // DEFLATE — zkusíme přes DecompressionStream (moderní browsery)
+      try {
+        const ds = new DecompressionStream('deflate-raw');
+        const stream = new Blob([data]).stream().pipeThrough(ds);
+        const decompressed = await new Response(stream).arrayBuffer();
+        entries.push({ name, data: new Uint8Array(decompressed) });
+      } catch (e) {
+        throw new Error('Soubor v ZIP používá DEFLATE kompresi a tento prohlížeč ji neumí dekomprimovat: ' + name);
+      }
+    } else {
+      throw new Error('Nepodporovaná ZIP komprese (' + method + ') pro: ' + name);
+    }
+  }
+  return entries;
+}
+
+// Export celé databáze do ZIP
+async function exportToZip() {
+  try {
+    statusMsg('Vytvářím ZIP…');
+    const exportDb = JSON.parse(JSON.stringify(db));
+    const enc = new TextEncoder();
+    const entries = [];
+
+    // Sebrat všechny přílohy
+    let attachmentCount = 0;
+    let totalSize = 0;
+    for (const e of exportDb.entities) {
+      if (!e.attachments || e.attachments.length === 0) continue;
+      for (const att of e.attachments) {
+        // Načíst blob z IndexedDB
+        try {
+          const blob = await getFileBlob(att.id);
+          if (!blob) continue;
+          const arrayBuf = await blob.arrayBuffer();
+          // Cesta v ZIPu: attachments/<att-id>/<sanitizovaný název>
+          const fname = sanitizeFilename(att.name);
+          const path = 'attachments/' + att.id + '/' + fname;
+          entries.push({ name: path, data: new Uint8Array(arrayBuf) });
+          attachmentCount++;
+          totalSize += arrayBuf.byteLength;
+          // V exportu označit, že příloha je v ZIPu
+          att._zipPath = path;
+        } catch (err) {
+          debug('ZIP: nelze načíst přílohu ' + att.id + ': ' + err.message);
+        }
+      }
+    }
+
+    // pim.json
+    const jsonStr = JSON.stringify(exportDb, null, 2);
+    entries.unshift({ name: 'pim.json', data: enc.encode(jsonStr) });
+
+    // README
+    const readme = '# PIM ZIP backup\n\nTento ZIP soubor obsahuje úplnou zálohu PIM databáze.\n\n## Struktura\n\n- `pim.json` — strukturovaná databáze (entity, vazby, šablony, nastavení)\n- `attachments/<att-id>/<název souboru>` — binární přílohy v originální velikosti\n\n## Obnovení\n\nV PIM aplikaci jděte do Nastavení → Data → vyberte tento ZIP soubor v poli „Načíst ZIP".\n\n## Statistiky\n\n- Vytvořeno: ' + new Date().toISOString() + '\n- Entit: ' + exportDb.entities.length + '\n- Příloh: ' + attachmentCount + '\n- Velikost příloh: ' + Math.round(totalSize / 1024) + ' KB\n';
+    entries.push({ name: 'README.md', data: enc.encode(readme) });
+
+    statusMsg('Skládám ZIP archiv…');
+    const zipBytes = buildZipStore(entries);
+    const blob = new Blob([zipBytes], { type: 'application/zip' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+    a.href = url;
+    a.download = 'pim-' + ts + '.zip';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 200);
+    const totalKb = Math.round(zipBytes.length / 1024);
+    toast('ZIP stažen: ' + totalKb + ' KB (' + exportDb.entities.length + ' entit, ' + attachmentCount + ' příloh).', 5000);
+    statusMsg('ZIP stažen.');
+    playSound('save');
+  } catch (err) {
+    alertMsg('Export ZIP selhal: ' + err.message);
+    playSound('error');
+  }
+}
+
+// Import z ZIP
+async function importFromZip(file) {
+  try {
+    statusMsg('Čtu ZIP…');
+    const arrayBuf = await file.arrayBuffer();
+    const entries = await parseZipStore(arrayBuf);
+
+    // Najít pim.json
+    const jsonEntry = entries.find(e => e.name === 'pim.json' || e.name.endsWith('/pim.json'));
+    if (!jsonEntry) throw new Error('ZIP neobsahuje pim.json.');
+    const dec = new TextDecoder('utf-8');
+    const jsonText = dec.decode(jsonEntry.data);
+    const parsed = JSON.parse(jsonText);
+    if (!parsed.entities) throw new Error('pim.json nemá pole „entities".');
+
+    if (parsed.schemaVersion && parsed.schemaVersion > SCHEMA_VERSION) {
+      if (!confirm('Soubor má novější verzi schématu (' + parsed.schemaVersion + ' > ' + SCHEMA_VERSION + '). Pokračovat?')) return;
+    }
+
+    // Mapa: filename → data
+    const fileMap = {};
+    entries.forEach(e => { fileMap[e.name] = e.data; });
+
+    // Pro každou entitu/přílohu obnovit blob v IndexedDB
+    let restoredCount = 0;
+    for (const e of parsed.entities) {
+      if (!Array.isArray(e.attachments)) e.attachments = [];
+      for (const att of e.attachments) {
+        if (att._zipPath && fileMap[att._zipPath]) {
+          const blob = new Blob([fileMap[att._zipPath]], { type: att.type || 'application/octet-stream' });
+          await putFileBlob(att.id, blob);
+          delete att._zipPath;
+          // Označit, že příloha je teď lokálně v IndexedDB (čeká na sync)
+          if (att.storage === 'github' || att.storage === 'pending-github') {
+            att.storage = 'pending-github';
+          } else {
+            att.storage = 'indexeddb';
+          }
+          restoredCount++;
+        }
+      }
+    }
+
+    // Dosadit do db
+    db = parsed;
+    if (!db.tags) db.tags = [];
+    if (!db.savedViews) db.savedViews = [];
+    if (!db.customTemplates) db.customTemplates = [];
+    if (!db.customAspects) db.customAspects = [];
+    if (!db.ghMeta) db.ghMeta = { path: null, sha: null, lastSyncAt: null, branch: 'main' };
+    if (!db.title) db.title = 'PIM – osobní znalostní báze';
+    if (db.description === undefined) db.description = '';
+    db.entities.forEach(e => { if (!e.comments) e.comments = []; });
+
+    save();
+    render();
+    toast('ZIP importován: ' + db.entities.length + ' entit, ' + restoredCount + ' příloh obnoveno.', 5000);
+    statusMsg('Import ZIP hotov.');
+    playSound('load');
+  } catch (err) {
+    alertMsg('Import ZIP selhal: ' + err.message);
+    playSound('error');
+  }
+}
 
 // ==== DATA EXPORT/IMPORT (JSON, XLSX) ====
 // Cíle:
