@@ -6237,15 +6237,7 @@ var advEd = {
     var slides = [];
     slides.push({type:"title", hd:s.hd, bd:s.bd||""});
     this._collectSlides(s.kids, slides);
-    this.presState = {active:true, slides:slides, idx:0, title:s.hd, start:Date.now(), timer:null, overview:false};
-    this._renderPres();
-    var self = this;
-    this.presState.timer = setInterval(function() {
-      var el = document.getElementById("pres-timer");
-      if (el && self.presState && self.presState.active) el.textContent = self._formatTime();
-    }, 1000);
-    this._presKeyHandler = function(e) { self._presKey(e); };
-    document.addEventListener("keydown", this._presKeyHandler);
+    this._openPresWindow(slides, s.hd);
   },
   _collectSlides: function(secs, slides) {
     for (var i=0;i<secs.length;i++) {
@@ -6258,63 +6250,121 @@ var advEd = {
       }
     }
   },
-  _formatTime: function() {
-    if (!this.presState) return "0:00";
-    var el = Math.floor((Date.now()-this.presState.start)/1000);
-    var h=Math.floor(el/3600), m=Math.floor((el%3600)/60), s=el%60;
-    var ms = (m<10?"0":"")+m, ss = (s<10?"0":"")+s;
-    return h>0 ? h+":"+ms+":"+ss : m+":"+ss;
-  },
-  _renderPres: function() {
-    var st=this.presState; if (!st||!st.active) return;
-    var slide=st.slides[st.idx], total=st.slides.length, cur=st.idx+1;
-    var ex=document.getElementById("pres-container"); if (ex) ex.remove();
-    var isOv=st.overview;
-    var c=document.createElement("div"); c.id="pres-container";
-    var h='<div class="pres-overlay" role="dialog" aria-modal="true">';
-    h+='<header class="pres-hdr">';
-    h+='<div class="pres-timer" id="pres-timer">'+this._formatTime()+'</div>';
-    h+='<div class="pres-nav">';
-    h+='<button onclick="advEd.prevSlide()"'+(cur===1||isOv?" disabled":"")+' title="P\u0159edchoz\u00ED (\u2190)">\u2190 P\u0159edchoz\u00ED</button>';
-    h+='<span class="pres-counter">'+cur+" / "+total+"</span>";
-    h+='<button onclick="advEd.nextSlide()"'+(cur===total||isOv?" disabled":"")+' title="Dal\u0161\u00ED (\u2192)">Dal\u0161\u00ED \u2192</button>';
-    h+='<button onclick="advEd.toggleOverview()" title="P\u0159ehled (O)" style="margin-left:8px">'+(isOv?"\uD83C\uDFAC Slajdy":"\uD83D\uDCCB P\u0159ehled")+"</button>";
-    h+="</div>";
-    h+='<button class="pres-close" onclick="advEd.endPresentation()">\u2715 Zav\u0159\u00EDt</button>';
-    h+="</header>";
-    h+='<div class="pres-title-bar"><div class="pres-title-text">\uD83D\uDCFD\uFE0F '+esc(st.title||"Prezentace")+"</div></div>";
-    if (isOv) {
-      h+='<div class="pres-overview">';
-      for (var i=0;i<st.slides.length;i++) {
-        h+='<button class="pres-ov-item'+(i===st.idx?" active":"")+'" onclick="advEd.goToSlideOv('+i+')">';
-        h+='<div class="pres-ov-num">'+(i+1)+"</div>";
-        h+='<div class="pres-ov-cnt '+st.slides[i].type+'"><h3>'+esc(st.slides[i].hd||"")+"</h3></div>";
-        h+="</button>";
-      }
-      h+="</div>";
-    } else {
-      h+='<main class="pres-main" tabindex="-1">'+this._renderSlide(slide)+"</main>";
+  _openPresWindow: function(slides, title) {
+    var nid = this.noteId;
+    // Pre-render all slides
+    var rendered = [];
+    for (var i = 0; i < slides.length; i++) {
+      rendered.push(this._renderSlide(slides[i]));
     }
-    h+='<div class="pres-sr" role="status" aria-live="polite">Kl\u00E1vesy: \u2190\u2192 navigace, O p\u0159ehled, Home/End, Esc zav\u0159\u00EDt</div>';
-    h+="</div>";
-    c.innerHTML=h;
-    document.body.appendChild(c);
-    if (isOv) { var fi=c.querySelector(".pres-ov-item"); if (fi) fi.focus(); }
-    else { var mc=c.querySelector(".pres-main"); if (mc) mc.focus(); }
+    var slidesJson = JSON.stringify(rendered).replace(/<\/script>/gi, "<\\/script>");
+    var titlesJson = JSON.stringify(slides.map(function(s) { return { type: s.type, hd: s.hd || "" }; }));
+    var titleEsc = (title || "Prezentace").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+    var css = 'body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#fff;display:flex;flex-direction:column;height:100vh;overflow:hidden}'
+      + '.hdr{display:flex;justify-content:space-between;align-items:center;padding:12px 24px;background:#1a1a2e;color:#fff;flex-shrink:0;gap:16px}'
+      + '.timer{font-size:18px;font-weight:600;font-family:Consolas,Monaco,monospace;min-width:80px;color:#ffd700}'
+      + '.nav{display:flex;align-items:center;gap:12px}'
+      + '.nav button,.cbtn{background:rgba(255,255,255,.1);border:none;color:#fff;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:16px}'
+      + '.nav button:hover:not(:disabled),.cbtn:hover{background:rgba(255,255,255,.2)}'
+      + '.nav button:disabled{opacity:.4;cursor:not-allowed}'
+      + '.nav button:focus,.cbtn:focus{outline:2px solid #ffd700;outline-offset:2px}'
+      + '.cnt{font-size:14px;color:rgba(255,255,255,.8);min-width:100px;text-align:center}'
+      + '.cbtn:hover{background:rgba(255,0,0,.3)}'
+      + '.tbar{background:#2d2d4a;padding:10px 24px;text-align:center;flex-shrink:0}'
+      + '.ttxt{font-size:18px;font-weight:600;color:rgba(255,255,255,.9)}'
+      + '.main{flex:1;display:flex;align-items:center;justify-content:center;padding:60px;overflow:auto}'
+      + '.sl{max-width:1200px;width:100%;text-align:left}'
+      + '.sl.sl-t{text-align:center}'
+      + '.sl.sl-s{text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:400px}'
+      + '.sl h1{font-size:56px;font-weight:700;margin:0 0 24px;color:#1a1a2e;line-height:1.2}'
+      + '.sl h2{font-size:44px;font-weight:600;margin:0 0 32px;color:#1a1a2e;line-height:1.2}'
+      + '.sl.sl-s h2{font-size:52px;color:#4a4a6a}'
+      + '.sl-body{font-size:24px;line-height:1.6;color:#333;margin-bottom:32px}'
+      + '.sl-body img{max-width:100%;height:auto}'
+      + '.sl-body table{border-collapse:collapse;margin:12px 0;font-size:20px}'
+      + '.sl-body td,.sl-body th{border:1px solid #ccc;padding:6px 10px}'
+      + '.sl ul{list-style:none;padding:0;margin:0}'
+      + '.sl li{font-size:28px;line-height:1.5;margin:16px 0;padding-left:40px;position:relative;color:#333}'
+      + '.sl li::before{content:"\\2022";position:absolute;left:0;color:#4a90d9;font-size:32px;line-height:1.3}'
+      + '.sl li li{font-size:24px;margin:12px 0}.sl li li::before{content:"\\25E6";font-size:24px}'
+      + '.ov{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:20px;padding:30px;overflow:auto;flex:1;background:#f0f0f0}'
+      + '.ovi{background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.1);cursor:pointer;overflow:hidden;aspect-ratio:16/10;display:flex;flex-direction:column;border:none;text-align:left;padding:0;font-family:inherit}'
+      + '.ovi:hover{transform:scale(1.03);box-shadow:0 4px 16px rgba(0,0,0,.15)}'
+      + '.ovi:focus{outline:3px solid #4a90d9;outline-offset:2px}'
+      + '.ovi.act{outline:3px solid #ffd700}'
+      + '.ovc{flex:1;padding:16px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;overflow:hidden}'
+      + '.ovc h3{font-size:14px;margin:0;color:#333;line-height:1.3}'
+      + '.ovn{background:#1a1a2e;color:#fff;padding:4px 10px;font-size:12px;font-weight:600}'
+      + '.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}'
+      + '@media(max-width:768px){.main{padding:30px}.sl h1{font-size:36px}.sl h2{font-size:28px}.sl li{font-size:20px}.sl-body{font-size:18px}}';
+
+    var js = 'var SL=' + slidesJson + ',TT=' + titlesJson + ',idx=0,ov=false,st=Date.now();'
+      + 'function fmt(){var e=Math.floor((Date.now()-st)/1000),h=Math.floor(e/3600),m=Math.floor((e%3600)/60),s=e%60;return(h?h+":":"")+(m<10?"0":"")+m+":"+(s<10?"0":"")+s;}'
+      + 'setInterval(function(){var e=document.getElementById("tm");if(e)e.textContent=fmt();},1000);'
+      + 'function go(i){if(i<0||i>=SL.length)return;idx=i;ov=false;render();}'
+      + 'function next(){if(!ov&&idx<SL.length-1){idx++;render();}}'
+      + 'function prev(){if(!ov&&idx>0){idx--;render();}}'
+      + 'function togOv(){ov=!ov;render();}'
+      + 'function render(){'
+      + 'var c=idx+1,t=SL.length,h="";'
+      + 'document.getElementById("cnt").textContent=c+" / "+t;'
+      + 'document.getElementById("pb").disabled=(c===1||ov);'
+      + 'document.getElementById("nb").disabled=(c===t||ov);'
+      + 'document.getElementById("ob").textContent=ov?"Slajdy":"Přehled";'
+      + 'if(ov){'
+      + 'h=\'<div class="ov">\';'
+      + 'for(var i=0;i<SL.length;i++){'
+      + 'h+=\'<button class="ovi\'+(i===idx?\' act\':\'\')+\'" onclick="go(\'+i+\')"><div class="ovn">\'+(i+1)+\'</div><div class="ovc"><h3>\'+TT[i].hd+\'</h3></div></button>\';'
+      + '}h+="</div>";'
+      + '}else{h=\'<main class="main" tabindex="-1">\'+SL[idx]+\'</main>\';}'
+      + 'document.getElementById("content").innerHTML=h;'
+      + 'if(!ov){var mc=document.querySelector(".main");if(mc)mc.focus();}'
+      + '}'
+      + 'document.addEventListener("keydown",function(e){'
+      + 'switch(e.key){'
+      + 'case"ArrowRight":case" ":case"PageDown":e.preventDefault();next();break;'
+      + 'case"ArrowLeft":case"PageUp":e.preventDefault();prev();break;'
+      + 'case"Home":e.preventDefault();go(0);break;'
+      + 'case"End":e.preventDefault();go(SL.length-1);break;'
+      + 'case"Escape":e.preventDefault();if(ov)togOv();else window.close();break;'
+      + 'case"o":case"O":e.preventDefault();togOv();break;'
+      + 'case"f":case"F":case"F11":e.preventDefault();if(document.fullscreenElement)document.exitFullscreen();else document.documentElement.requestFullscreen();break;'
+      + '}});'
+      + 'render();';
+
+    var html = '<!DOCTYPE html><html lang="cs"><head><meta charset="UTF-8"><title>' + titleEsc + '</title><style>' + css + '</style></head><body>'
+      + '<header class="hdr"><div class="timer" id="tm">0:00</div>'
+      + '<div class="nav"><button id="pb" onclick="prev()" title="Předchozí (←)">← Předchozí</button>'
+      + '<span class="cnt" id="cnt">1 / ' + slides.length + '</span>'
+      + '<button id="nb" onclick="next()" title="Další (→)">Další →</button>'
+      + '<button id="ob" onclick="togOv()" title="Přehled (O)" style="margin-left:8px">Přehled</button>'
+      + '<button onclick="if(document.fullscreenElement)document.exitFullscreen();else document.documentElement.requestFullscreen()" title="Celá obrazovka (F)" style="margin-left:8px">Celá obrazovka</button>'
+      + '</div>'
+      + '<button class="cbtn" onclick="window.close()">✕ Zavřít</button></header>'
+      + '<div class="tbar"><div class="ttxt">' + titleEsc + '</div></div>'
+      + '<div id="content"></div>'
+      + '<div class="sr" role="status" aria-live="polite">Klávesy: ←→ navigace, O přehled, F celá obrazovka, Home/End, Esc zavřít</div>'
+      + '<script>' + js + '<\/script></body></html>';
+
+    var w = window.open("", "_blank", "popup,width=" + screen.availWidth + ",height=" + screen.availHeight);
+    if (!w) { alert("Prohlížeč zablokoval vyskakovací okno. Povolte pop-upy pro tuto stránku."); return; }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
   },
   _renderSlide: function(slide) {
     var nid = this.noteId;
     if (slide.type==="title") {
       var bh=""; try { bh=slide.bd?renderMarkdown(slide.bd, nid):""; } catch(e){}
-      return '<div class="pres-slide pres-title"><h1>'+esc(slide.hd||"")+"</h1>"+(bh?'<div class="pres-slide-body">'+bh+"</div>":"")+"</div>";
+      return '<div class="sl sl-t"><h1>'+esc(slide.hd||"")+"</h1>"+(bh?'<div class="sl-body">'+bh+"</div>":"")+"</div>";
     }
     if (slide.type==="section") {
-      return '<div class="pres-slide pres-section"><h2>'+esc(slide.hd||"")+"</h2></div>";
+      return '<div class="sl sl-s"><h2>'+esc(slide.hd||"")+"</h2></div>";
     }
     var bh2=""; try { bh2=slide.bd?renderMarkdown(slide.bd, nid):""; } catch(e){}
     var ch="";
     if (slide.kids&&slide.kids.length) ch="<ul>"+this._renderSlideKids(slide.kids)+"</ul>";
-    return '<div class="pres-slide"><h2>'+esc(slide.hd||"")+"</h2>"+(bh2?'<div class="pres-slide-body">'+bh2+"</div>":"")+ch+"</div>";
+    return '<div class="sl"><h2>'+esc(slide.hd||"")+"</h2>"+(bh2?'<div class="sl-body">'+bh2+"</div>":"")+ch+"</div>";
   },
   _renderSlideKids: function(kids) {
     var h="";
@@ -6325,38 +6375,13 @@ var advEd = {
     }
     return h;
   },
-  _presKey: function(e) {
-    if (!this.presState||!this.presState.active) return;
-    var ov=this.presState.overview;
-    switch(e.key) {
-      case "ArrowRight": case " ": case "PageDown": if (!ov) { e.preventDefault(); this.nextSlide(); } break;
-      case "ArrowLeft": case "PageUp": if (!ov) { e.preventDefault(); this.prevSlide(); } break;
-      case "Home": e.preventDefault(); this.goToSlide(0); break;
-      case "End": e.preventDefault(); this.goToSlide(this.presState.slides.length-1); break;
-      case "Escape": e.preventDefault(); if (ov) this.toggleOverview(); else this.endPresentation(); break;
-      case "o": case "O": e.preventDefault(); this.toggleOverview(); break;
-    }
-  },
-  nextSlide: function() { if (this.presState&&this.presState.idx<this.presState.slides.length-1) { this.presState.idx++; this._renderPres(); } },
-  prevSlide: function() { if (this.presState&&this.presState.idx>0) { this.presState.idx--; this._renderPres(); } },
-  goToSlide: function(i) { if (this.presState&&i>=0&&i<this.presState.slides.length) { this.presState.idx=i; this.presState.overview=false; this._renderPres(); } },
-  goToSlideOv: function(i) { if (this.presState) { this.presState.idx=i; this.presState.overview=false; this._renderPres(); } },
-  toggleOverview: function() { if (this.presState) { this.presState.overview=!this.presState.overview; this._renderPres(); } },
   endPresentation: function() {
-    if (!this.presState) return;
-    if (this.presState.timer) clearInterval(this.presState.timer);
-    this.presState.active=false;
-    var c=document.getElementById("pres-container"); if (c) c.remove();
-    if (this._presKeyHandler) { document.removeEventListener("keydown",this._presKeyHandler); this._presKeyHandler=null; }
-    this.presState=null;
+    // No-op, window manages itself
   },
   startPresFromRoot: function() {
-    // If hoisted, present that section; otherwise present first section with kids, or build virtual root
     if (this.hoisted) { this.startPresentation(this.hoisted); return; }
     if (this.sections.length===0) { alert("Žádné sekce k prezentaci."); return; }
-    // If there's one top-level section with kids, present it
     if (this.sections.length===1 && this.sections[0].kids.length>0) { this.startPresentation(this.sections[0].id); return; }
-    // Build virtual presentation from all top-level sections
     var slides=[], n=getNote(this.noteId);
     slides.push({type:"title", hd:n?n.name:"Prezentace", bd:""});
     for (var i=0;i<this.sections.length;i++) {
@@ -6364,12 +6389,7 @@ var advEd = {
       if (!hb&&hk) { slides.push({type:"section",hd:s.hd}); this._collectSlides(s.kids,slides); }
       else { slides.push({type:"content",hd:s.hd,bd:s.bd||"",kids:s.kids||[]}); }
     }
-    this.presState={active:true,slides:slides,idx:0,title:n?n.name:"Prezentace",start:Date.now(),timer:null,overview:false};
-    this._renderPres();
-    var self=this;
-    this.presState.timer=setInterval(function(){ var el=document.getElementById("pres-timer"); if (el&&self.presState&&self.presState.active) el.textContent=self._formatTime(); },1000);
-    this._presKeyHandler=function(e){ self._presKey(e); };
-    document.addEventListener("keydown",this._presKeyHandler);
+    this._openPresWindow(slides, n?n.name:"Prezentace");
   },
 
   // DOCX export of visible sections
