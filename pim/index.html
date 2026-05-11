@@ -119,6 +119,9 @@ body.theme-dark .panel-tab[aria-selected="true"] { background: #0d0d0d; }
 #panels-bar .panel-add { padding: 0.4em 0.7em; border: 1px dashed #999; background: transparent; border-radius: 6px 6px 0 0; cursor: pointer; color: inherit; }
 #panels-bar .panel-close { padding: 0.4em 0.7em; border: 1px solid #ccc; background: transparent; border-radius: 6px 6px 0 0; cursor: pointer; color: inherit; }
 #panels-bar .panel-close:disabled { opacity: 0.5; cursor: not-allowed; }
+.entity-actions-list { display: flex; flex-direction: column; gap: 0.3em; }
+.entity-actions-list button { text-align: left; padding: 0.5em 0.8em; }
+sup.entity-badge-comments { font-size: 0.8em; margin-left: 0.2em; opacity: 0.85; }
 .link-row { display: flex; gap: 0.5em; align-items: center; padding: 0.25em 0; }
 .link-row .link-target { flex: 1; }
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1em; }
@@ -282,7 +285,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
     <ul id="main-nav">
       <li><button id="btn-sync" accesskey="s" title="Uložit na GitHub" hidden>☁ Sync</button></li>
       <li><button data-view="inbox">Inbox <span class="count" id="count-inbox" aria-hidden="true"></span></button></li>
-      <li><button data-view="all">Vše <span class="count" id="count-all" aria-hidden="true"></span></button></li>
+      <li><button data-view="all" accesskey="a">Vše <span class="count" id="count-all" aria-hidden="true"></span></button></li>
       <li><button data-view="tasks">Úkoly <span class="count" id="count-tasks" aria-hidden="true"></span></button></li>
       <li><button data-view="calendar">Kalendář</button></li>
       <li><button data-view="search">Hledání</button></li>
@@ -298,6 +301,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
     <button id="btn-quick" class="primary">+ Rychlé zachycení</button>
     <button id="btn-new-entity">Nová entita</button>
     <button id="btn-new-from-template">Nová ze šablony</button>
+    <button id="btn-sticky" accesskey="m" title="Odkládací prostor (Alt+Shift+M)">📌 Odkládací prostor</button>
     <button id="btn-help">Klávesové zkratky</button>
   </div>
 </header>
@@ -769,6 +773,14 @@ const ASPECTS = {
   ]}
 };
 
+// Globální pole — dostupná napříč všemi entitami bez ohledu na aspekt
+const GLOBAL_FIELDS = [
+  { key: 'priority', label: 'Priorita', type: 'select',
+    options: ['', 'low', 'normal', 'high', 'urgent'],
+    optionLabels: { '':'(nevyplněno)', low:'Nízká', normal:'Normální', high:'Vysoká', urgent:'Naléhavá' },
+    global: true }
+];
+
 const RELATION_TYPES = {
   partOf: { label: 'je součástí', inverse: 'contains', inverseLabel: 'obsahuje' },
   dependsOn: { label: 'závisí na', inverse: 'blocks', inverseLabel: 'blokuje' },
@@ -930,6 +942,17 @@ function load() {
       db.entities.forEach(e => {
         if (!e.attachments) e.attachments = [];
         if (!e.comments) e.comments = [];
+      });
+      // Migrace: doplnit numericId k entitám, které ho nemají (pokračuj od max)
+      let nextId = 0;
+      db.entities.forEach(e => {
+        if (typeof e.numericId === 'number' && e.numericId > nextId) nextId = e.numericId;
+      });
+      db.entities.forEach(e => {
+        if (typeof e.numericId !== 'number') {
+          nextId++;
+          e.numericId = nextId;
+        }
       });
       db.schemaVersion = SCHEMA_VERSION;
     }
@@ -1349,6 +1372,18 @@ function renderInline(text, ctx) {
   text = text.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (m, ref, alias) => {
     return resolveWikiLink(ref.trim(), alias ? alias.trim() : null);
   });
+  // Numerický alias entity: #42 → odkaz na entitu s numericId 42
+  text = text.replace(/(^|\s|[(\[{])#(\d+)\b/g, (m, before, num) => {
+    const target = findEntityByNumericId(num);
+    if (target) {
+      const label = '#' + num + ' ' + getDisplayTitle(target);
+      const aspectsTxt = (target.aspects || []).length > 0
+        ? ' <span class="wiki-aspects meta">(' + escapeHtml((target.aspects || []).map(a => aspectLabel(a)).join(', ')) + ')</span>'
+        : '';
+      return before + '<a href="#" class="wiki-link" data-entity="' + escapeHtml(target.id) + '">' + escapeHtml(label) + '</a>' + aspectsTxt;
+    }
+    return m;
+  });
   text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, txt, url) => {
     return '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' + escapeHtml(txt) + '</a>';
   });
@@ -1443,7 +1478,7 @@ function resolveInclude(ref, alias, ctx) {
     inner = renderMarkdown(target.body || '', { ctx: newCtx });
   }
   return '<div class="transclusion">' +
-    '<div class="transclusion-meta">↪ Z entity <a href="#" class="wiki-link" data-entity="' + escapeHtml(target.id) + '">' + escapeHtml(getDisplayTitle(target)) + '</a></div>' +
+    '<div class="transclusion-meta">↪ Z entity <a href="#" class="wiki-link" data-entity="' + escapeHtml(target.id) + '">' + getDisplayTitleWithBadges(target) + '</a></div>' +
     inner + '</div>';
 }
 
@@ -1478,15 +1513,32 @@ function renderDatabaseInclude(entity) {
 }
 
 // ==== ENTITY API ====
+// Najde nejvyšší použité numericId v db a vrátí o jedna větší
+function nextNumericId() {
+  let max = 0;
+  if (db && Array.isArray(db.entities)) {
+    db.entities.forEach(e => {
+      if (typeof e.numericId === 'number' && e.numericId > max) max = e.numericId;
+    });
+  }
+  return max + 1;
+}
+
 function newEntity(o = {}) {
   return Object.assign({
-    id: uuid(), title: '', aspects: [], attributes: {}, tags: [], body: '',
+    id: uuid(), numericId: nextNumericId(),
+    title: '', aspects: [], attributes: {}, tags: [], body: '',
     links: [], attachments: [], comments: [], confidence: 'definitive', inbox: false,
     archived: false, valid_from: null, valid_to: null,
     created_at: nowIso(), updated_at: nowIso()
   }, o);
 }
 function findEntity(id) { return db.entities.find(e => e.id === id); }
+function findEntityByNumericId(n) {
+  if (typeof n === 'string') n = Number(n);
+  if (!Number.isFinite(n)) return null;
+  return db.entities.find(e => e.numericId === n);
+}
 function findEntityByTitle(title) {
   const t = title.toLowerCase();
   return db.entities.find(e =>
@@ -2028,6 +2080,228 @@ function getEntityDetailsHtml(e) {
   }
   return parts.slice(0, 4).join(' · ');
 }
+// === AUTOCOMPLETE pro [[wiki]] a {{include:}} v textareach ===
+// Nasazuje keydown/input handlery na předaný textarea. Po napsání "[[" otevře
+// roletku s návrhy entit; klávesa Šipky + Enter vloží. Esc zruší.
+function setupAutocomplete(textarea) {
+  if (!textarea || textarea._autocompleteAttached) return;
+  textarea._autocompleteAttached = true;
+
+  let menu = null;
+  let mode = null; // 'wiki' nebo 'include'
+  let startPos = -1; // pozice za '[[' nebo '{{include:'
+  let items = [];
+  let selectedIdx = 0;
+
+  function closeMenu() {
+    if (menu) { menu.remove(); menu = null; }
+    mode = null; startPos = -1; items = []; selectedIdx = 0;
+  }
+
+  function openMenu() {
+    if (menu) menu.remove();
+    menu = document.createElement('ul');
+    menu.setAttribute('role', 'listbox');
+    menu.setAttribute('aria-label', mode === 'wiki' ? 'Návrhy wiki odkazů' : 'Návrhy include');
+    menu.className = 'autocomplete-menu';
+    menu.style.position = 'absolute';
+    menu.style.zIndex = '1000';
+    menu.style.maxHeight = '14em';
+    menu.style.overflowY = 'auto';
+    menu.style.background = 'var(--bg, #fff)';
+    menu.style.border = '1px solid #999';
+    menu.style.borderRadius = '4px';
+    menu.style.listStyle = 'none';
+    menu.style.padding = '0.25em 0';
+    menu.style.margin = '0';
+    menu.style.minWidth = '20em';
+    menu.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+    document.body.appendChild(menu);
+    positionMenu();
+  }
+
+  function positionMenu() {
+    if (!menu) return;
+    // Hrubě – pod textarea, pozice kurzoru těžko spočítat přesně
+    const r = textarea.getBoundingClientRect();
+    menu.style.left = (r.left + window.scrollX + 8) + 'px';
+    menu.style.top = (r.top + window.scrollY + Math.min(r.height, 60)) + 'px';
+  }
+
+  function renderItems() {
+    if (!menu) openMenu();
+    menu.innerHTML = items.length === 0
+      ? '<li class="meta" style="padding:0.3em 0.6em;">Žádné návrhy. Pokračujte v psaní.</li>'
+      : items.map((e, i) => {
+          const aspects = (e.aspects || []).map(a => aspectLabel(a)).join(', ');
+          return '<li role="option"' +
+            (i === selectedIdx ? ' aria-selected="true" style="background:#cce4ff;color:#000;"' : '') +
+            ' data-idx="' + i + '" style="padding:0.3em 0.6em;cursor:pointer;">' +
+            escapeHtml(getDisplayTitle(e)) +
+            (aspects ? ' <small class="meta">(' + escapeHtml(aspects) + ')</small>' : '') +
+            (e.numericId ? ' <small class="meta">#' + e.numericId + '</small>' : '') +
+            '</li>';
+        }).join('');
+    menu.querySelectorAll('li[data-idx]').forEach(li => {
+      li.onmousedown = (ev) => {
+        ev.preventDefault();
+        selectedIdx = Number(li.dataset.idx);
+        insertSelection();
+      };
+    });
+  }
+
+  function updateItems() {
+    const val = textarea.value;
+    const caret = textarea.selectionStart;
+    if (startPos < 0 || caret < startPos) { closeMenu(); return; }
+    // Pokud uživatel napsal "]]" nebo "}}" mezitím, zavři
+    const between = val.slice(startPos, caret);
+    if (mode === 'wiki' && between.includes(']]')) { closeMenu(); return; }
+    if (mode === 'include' && between.includes('}}')) { closeMenu(); return; }
+    // Pokud je tam newline, ukončit
+    if (between.includes('\n')) { closeMenu(); return; }
+    const q = between.trim().toLowerCase();
+    const words = q ? q.split(/\s+/) : [];
+    items = db.entities.filter(e => {
+      if (e.archived) return false;
+      if (words.length === 0) return true;
+      const title = (getDisplayTitle(e) || '').toLowerCase();
+      const alt = (e.title || '').toLowerCase();
+      const tags = (e.tags || []).map(t => t.toLowerCase());
+      const aspects = (e.aspects || []).map(a => (aspectLabel(a) || '').toLowerCase());
+      const numId = e.numericId ? String(e.numericId) : '';
+      return words.every(w =>
+        title.includes(w) || alt.includes(w) ||
+        tags.some(t => t.includes(w)) ||
+        aspects.some(a => a.includes(w)) ||
+        (numId && numId === w) || (numId && ('#' + numId) === w)
+      );
+    }).slice(0, 20);
+    selectedIdx = 0;
+    renderItems();
+  }
+
+  function insertSelection() {
+    if (!items.length) { closeMenu(); return; }
+    const target = items[selectedIdx];
+    const val = textarea.value;
+    const caret = textarea.selectionStart;
+    // Vložit název entity místo psaného hledání
+    const before = val.slice(0, startPos);
+    const after = val.slice(caret);
+    let insert;
+    if (mode === 'wiki') {
+      insert = getDisplayTitle(target) + ']]';
+    } else {
+      insert = getDisplayTitle(target) + '}}';
+    }
+    const newVal = before + insert + after;
+    textarea.value = newVal;
+    const newCaret = before.length + insert.length;
+    textarea.setSelectionRange(newCaret, newCaret);
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    closeMenu();
+  }
+
+  textarea.addEventListener('input', () => {
+    const val = textarea.value;
+    const caret = textarea.selectionStart;
+    if (!mode) {
+      // Hledat "[[" hned před kurzorem
+      if (caret >= 2 && val.slice(caret - 2, caret) === '[[') {
+        mode = 'wiki';
+        startPos = caret;
+        updateItems();
+        return;
+      }
+      // Hledat "{{include:" hned před kurzorem
+      if (caret >= 10 && val.slice(caret - 10, caret) === '{{include:') {
+        mode = 'include';
+        startPos = caret;
+        updateItems();
+        return;
+      }
+    } else {
+      updateItems();
+    }
+  });
+
+  textarea.addEventListener('keydown', (ev) => {
+    if (!menu) return;
+    if (ev.key === 'ArrowDown') {
+      ev.preventDefault();
+      if (items.length > 0) {
+        selectedIdx = (selectedIdx + 1) % items.length;
+        renderItems();
+      }
+    } else if (ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      if (items.length > 0) {
+        selectedIdx = (selectedIdx - 1 + items.length) % items.length;
+        renderItems();
+      }
+    } else if (ev.key === 'Enter' || ev.key === 'Tab') {
+      if (items.length > 0) {
+        ev.preventDefault();
+        insertSelection();
+      }
+    } else if (ev.key === 'Escape') {
+      ev.preventDefault();
+      closeMenu();
+    }
+  });
+
+  textarea.addEventListener('blur', () => {
+    setTimeout(closeMenu, 200);
+  });
+}
+
+// === STICKY PROSTOR (rychlá textarea) ===
+function openStickyDialog() {
+  const existing = document.getElementById('sticky-dialog');
+  if (existing) { existing.showModal(); return; }
+  const d = document.createElement('dialog');
+  d.id = 'sticky-dialog';
+  d.setAttribute('aria-labelledby', 'sticky-title');
+  // Načíst dříve uložený obsah
+  const saved = localStorage.getItem('pim_sticky_v1') || '';
+  d.innerHTML =
+    '<h2 id="sticky-title">Odkládací prostor</h2>' +
+    '<p class="meta">Rychlé poznámky, výstřižky, dočasné nápady. Obsah se ukládá automaticky a přetrvává mezi sezeními. Není součástí databáze (nemigrují se s exportem).</p>' +
+    '<label for="sticky-text" class="sr-only">Odkládací prostor</label>' +
+    '<textarea id="sticky-text" rows="15" style="width:100%;font-family:inherit;font-size:1rem;">' +
+      escapeHtml(saved) + '</textarea>' +
+    '<div class="btn-group" style="margin-top:0.5em;">' +
+      '<button type="button" class="primary" id="sticky-close">Zavřít</button>' +
+      '<button type="button" id="sticky-clear">Vymazat vše</button>' +
+      '<button type="button" id="sticky-copy">Kopírovat</button>' +
+    '</div>';
+  document.body.appendChild(d);
+  const ta = d.querySelector('#sticky-text');
+  ta.oninput = () => {
+    localStorage.setItem('pim_sticky_v1', ta.value);
+  };
+  d.querySelector('#sticky-close').onclick = () => d.close();
+  d.querySelector('#sticky-clear').onclick = () => {
+    if (confirm('Vymazat veškerý obsah odkládacího prostoru?')) {
+      ta.value = '';
+      localStorage.setItem('pim_sticky_v1', '');
+      ta.focus();
+    }
+  };
+  d.querySelector('#sticky-copy').onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(ta.value);
+      toast('Odkládací prostor zkopírován.');
+    } catch (e) {
+      alertMsg('Nelze zkopírovat: ' + e.message);
+    }
+  };
+  d.showModal();
+  setTimeout(() => ta.focus(), 50);
+}
+
 function getDisplayTitle(e) {
   if (e.title) return e.title;
   if (e.attributes.given_name || e.attributes.family_name)
@@ -2035,6 +2309,47 @@ function getDisplayTitle(e) {
   if (e.attributes.legal_name) return e.attributes.legal_name;
   if (e.body) return e.body.slice(0,60).replace(/\n/g,' ');
   return '(bez názvu)';
+}
+
+// Vizuální štítky před/za názvem entity (jednotný formát pro celou aplikaci).
+// Vrací { prefix, suffix } jako stringy s emoji a značkami pro screen reader.
+function getEntityBadgePrefix(e) {
+  let prefix = '';
+  // Osoba → 👤
+  if (e.aspects && e.aspects.includes('Person')) prefix += '👤 ';
+  // Organizace → 🏢
+  if (e.aspects && e.aspects.includes('Organization')) prefix += '🏢 ';
+  // Hotový úkol → ☑️
+  if (e.aspects && e.aspects.includes('Task') && e.attributes && e.attributes.status === 'done') prefix += '☑️ ';
+  // Naléhavá priorita → ❗
+  if (e.attributes && e.attributes.priority === 'urgent') prefix += '❗ ';
+  // Nezodpovězená otázka → ❓
+  if (e.aspects && e.aspects.includes('Question') && !hasAnswerLink(e)) prefix += '❓ ';
+  return prefix;
+}
+function getEntityBadgeSuffix(e) {
+  let suffix = '';
+  // Počet komentářů → 💬N (v horním indexu)
+  if (e.comments && e.comments.length > 0) {
+    suffix += '<sup class="entity-badge-comments">💬' + e.comments.length + '</sup>';
+  }
+  return suffix;
+}
+// Pomocná: má entita (jako Otázka) nějaký příchozí "odpovídá na" odkaz?
+function hasAnswerLink(question) {
+  for (const e of db.entities) {
+    if (e.id === question.id) continue;
+    if (e.archived) continue;
+    if (Array.isArray(e.links) && e.links.some(l => l.to === question.id && l.type === 'answers')) {
+      return true;
+    }
+  }
+  return false;
+}
+// Helper: vrátí title obalený badgemi pro zobrazení v odkazu.
+// Volat tam, kde se entita zobrazuje jako klikací odkaz.
+function getDisplayTitleWithBadges(e) {
+  return getEntityBadgePrefix(e) + escapeHtml(getDisplayTitle(e)) + getEntityBadgeSuffix(e);
 }
 function getStatusLabel(s) {
   for (const a of Object.values(ASPECTS))
@@ -2687,7 +3002,7 @@ function entityRowHtml(e) {
   const dateStr = date ? '<span class="meta">' + escapeHtml(fmtDate(date)) + '</span>' : '';
   const att = (e.attachments && e.attachments.length > 0) ? '<span class="meta" title="přílohy">📎' + e.attachments.length + '</span>' : '';
   return '<div class="entity-row">' +
-    '<div><a href="#" data-entity="' + escapeHtml(e.id) + '">' + escapeHtml(getDisplayTitle(e)) + '</a> ' + status + ' ' + dateStr + ' ' + att + '</div>' +
+    '<div><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a> ' + status + ' ' + dateStr + ' ' + att + '</div>' +
     '<div>' + aspects + ' ' + tags + '</div>' +
     '<div class="meta">Změněno ' + escapeHtml(fmtRelative(e.updated_at)) + '</div></div>';
 }
@@ -2698,6 +3013,106 @@ function attachEntityRowHandlers(root) {
   root.querySelectorAll('a[data-tag]').forEach(a => {
     a.onclick = (ev) => { ev.preventDefault(); state.filter.tag = a.dataset.tag; setView('all'); };
   });
+  // Tlačítko Akce (⋮)
+  root.querySelectorAll('button[data-row-actions]').forEach(b => {
+    b.onclick = (ev) => {
+      ev.stopPropagation();
+      openEntityActionsMenu(b.dataset.rowActions, b);
+    };
+  });
+  // Pravé tlačítko myši na řádku
+  root.querySelectorAll('tr[data-row-entity]').forEach(tr => {
+    tr.oncontextmenu = (ev) => {
+      ev.preventDefault();
+      openEntityActionsMenu(tr.dataset.rowEntity, null);
+    };
+  });
+}
+
+// Menu akcí na entitě
+function openEntityActionsMenu(entityId, triggerEl) {
+  const e = findEntity(entityId);
+  if (!e) return;
+  // Vytvořit modální dialog s tlačítky
+  const existing = document.getElementById('entity-actions-dialog');
+  if (existing) existing.remove();
+  const d = document.createElement('dialog');
+  d.id = 'entity-actions-dialog';
+  d.setAttribute('aria-labelledby', 'ea-title');
+  d.innerHTML =
+    '<h2 id="ea-title">Akce na entitě: ' + escapeHtml(getDisplayTitle(e)) + '</h2>' +
+    '<div class="entity-actions-list" role="group" aria-label="Dostupné akce">' +
+      '<button type="button" data-action="open">📂 Otevřít</button>' +
+      '<button type="button" data-action="open-new-panel">📑 Otevřít v novém panelu</button>' +
+      '<button type="button" data-action="edit">✏️ Upravit</button>' +
+      '<button type="button" data-action="add-link">🔗 Přidat vazbu</button>' +
+      '<button type="button" data-action="create-related">➕ Vytvořit související</button>' +
+      '<button type="button" data-action="add-comment">💬 Přidat komentář</button>' +
+      '<button type="button" data-action="duplicate">📄 Duplikovat</button>' +
+      '<button type="button" data-action="' + (e.inbox ? 'remove-inbox' : 'to-inbox') + '">' +
+        (e.inbox ? '📥 Odebrat z Inboxu' : '📨 Do Inboxu') + '</button>' +
+      '<button type="button" data-action="' + (e.archived ? 'unarchive' : 'archive') + '">' +
+        (e.archived ? '🔓 Obnovit z archivu' : '📦 Archivovat') + '</button>' +
+      '<button type="button" data-action="delete" class="danger">🗑️ Smazat</button>' +
+    '</div>' +
+    '<div class="btn-group" style="margin-top:0.7em;"><button type="button" id="ea-cancel">Zavřít menu</button></div>';
+  document.body.appendChild(d);
+
+  function doAction(action) {
+    d.close(); d.remove();
+    if (action === 'open') {
+      setView('detail', { detailId: e.id, detailMode: 'read' });
+    } else if (action === 'open-new-panel') {
+      addPanel();
+      setView('detail', { detailId: e.id, detailMode: 'read' });
+    } else if (action === 'edit') {
+      setView('detail', { detailId: e.id, detailMode: 'edit' });
+    } else if (action === 'add-link') {
+      openLinkDialog(e);
+    } else if (action === 'create-related') {
+      openCreateRelatedDialog(e);
+    } else if (action === 'add-comment') {
+      openCommentDialog(e);
+    } else if (action === 'duplicate') {
+      duplicateEntity(e);
+    } else if (action === 'to-inbox') {
+      e.inbox = true; e.updated_at = nowIso(); save(); render(); toast('Přidáno do Inboxu.');
+    } else if (action === 'remove-inbox') {
+      e.inbox = false; e.updated_at = nowIso(); save(); render(); toast('Odebráno z Inboxu.');
+    } else if (action === 'archive') {
+      e.archived = true; e.updated_at = nowIso(); save(); render(); toast('Archivováno.');
+    } else if (action === 'unarchive') {
+      e.archived = false; e.updated_at = nowIso(); save(); render(); toast('Obnoveno z archivu.');
+    } else if (action === 'delete') {
+      confirmDialog('Smazat „' + getDisplayTitle(e) + '" trvale?', () => {
+        const idx = db.entities.findIndex(x => x.id === e.id);
+        if (idx >= 0) {
+          db.entities.splice(idx, 1);
+          // Vyčistit vazby
+          db.entities.forEach(x => { if (x.links) x.links = x.links.filter(l => l.to !== e.id); });
+          save(); render(); toast('Entita smazána.');
+        }
+      });
+    }
+  }
+
+  d.querySelectorAll('button[data-action]').forEach(b => {
+    b.onclick = () => doAction(b.dataset.action);
+  });
+  d.querySelector('#ea-cancel').onclick = () => {
+    d.close(); d.remove();
+    if (triggerEl) triggerEl.focus();
+  };
+  // Esc handler (browser ho dělá auto, ale potřebujeme cleanup)
+  d.addEventListener('close', () => {
+    d.remove();
+    if (triggerEl) triggerEl.focus();
+  });
+  d.showModal();
+  setTimeout(() => {
+    const first = d.querySelector('button[data-action]');
+    if (first) first.focus();
+  }, 50);
 }
 function attachMarkdownLinkHandlers(root) {
   root.querySelectorAll('a.wiki-link[data-entity]').forEach(a => {
@@ -2810,21 +3225,24 @@ function renderEntityTableHtml(entities, sort, options) {
   if (selectionMode) {
     h += '<th scope="col" style="width:2em;"><input type="checkbox" id="bulk-select-all" aria-label="Vybrat vše"></th>';
   }
-  h += cols.map(header).join('') + '</tr></thead><tbody>';
+  h += cols.map(header).join('');
+  h += '<th scope="col" style="width:2.5em;">Akce</th>';
+  h += '</tr></thead><tbody>';
   entities.forEach(e => {
-    h += '<tr>';
+    h += '<tr data-row-entity="' + escapeHtml(e.id) + '">';
     if (selectionMode) {
       const isSel = selected.has(e.id);
       h += '<td><input type="checkbox" class="bulk-select" data-entity-id="' + escapeHtml(e.id) + '"' +
         (isSel ? ' checked' : '') + ' aria-label="Vybrat ' + escapeHtml(getDisplayTitle(e)) + '"></td>';
     }
-    h += '<td><a href="#" data-entity="' + escapeHtml(e.id) + '">' + escapeHtml(getDisplayTitle(e)) + '</a></td>' +
+    h += '<td><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></td>' +
       '<td>' + getEntityDetailsHtml(e) + '</td>' +
       '<td>' + (e.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + '</td>' +
       '<td>' + (e.tags || []).map(t => '<a href="#" class="tag" data-tag="' + escapeHtml(t) + '">' + escapeHtml(t) + '</a>').join(' ') + '</td>' +
       '<td>' + escapeHtml(getEntityDate(e) ? fmtDate(getEntityDate(e)) : '') + '</td>' +
       '<td>' + (e.attributes.status ? escapeHtml(getStatusLabel(e.attributes.status)) : '') + '</td>' +
       '<td>' + escapeHtml(fmtRelative(e.updated_at)) + '</td>' +
+      '<td><button type="button" data-row-actions="' + escapeHtml(e.id) + '" aria-label="Akce pro ' + escapeHtml(getDisplayTitle(e)) + '" aria-haspopup="dialog" title="Akce">⋮</button></td>' +
       '</tr>';
   });
   h += '</tbody></table>';
@@ -3546,7 +3964,7 @@ function taskRowHtml(e) {
     '<input type="checkbox" data-task-id="' + escapeHtml(e.id) + '"' + (done ? ' checked' : '') +
     ' aria-label="Hotovo: ' + escapeHtml(getDisplayTitle(e)) + '">' +
     '<span style="' + (done ? 'text-decoration:line-through;color:#888;' : '') + '">' +
-    '<a href="#" data-entity="' + escapeHtml(e.id) + '">' + escapeHtml(getDisplayTitle(e)) + '</a> ' + pr + ' ' + dl +
+    '<a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a> ' + pr + ' ' + dl +
     '</span></label><div>' + tags + '</div></div>';
 }
 
@@ -3586,7 +4004,7 @@ function renderCalendar(main) {
         return '<section class="day-group ' + cls + '"><h3>' + escapeHtml(lbl) + (today ? ' (dnes)' : '') + '</h3>' +
           byDay[k].sort((a,b) => a.iso.localeCompare(b.iso)).map(it =>
             '<div class="calendar-row"><span><strong>' + escapeHtml(it.key) + ':</strong> ' +
-            '<a href="#" data-entity="' + escapeHtml(it.entity.id) + '">' + escapeHtml(getDisplayTitle(it.entity)) + '</a></span>' +
+            '<a href="#" data-entity="' + escapeHtml(it.entity.id) + '">' + getDisplayTitleWithBadges(it.entity) + '</a></span>' +
             '<span class="meta">' + escapeHtml(fmtDateTime(it.iso)) + '</span></div>'
           ).join('') + '</section>';
       }).join('');
@@ -3767,10 +4185,10 @@ function renderLinksView(main) {
             actions = '<span class="meta">Vazba v textu — upravte v entitě „z"</span>';
           }
           return '<tr>' +
-            '<td><a href="#" data-entity="' + escapeHtml(l.from.id) + '">' + escapeHtml(getDisplayTitle(l.from)) + '</a>' +
+            '<td><a href="#" data-entity="' + escapeHtml(l.from.id) + '">' + getDisplayTitleWithBadges(l.from) + '</a>' +
               (fromAspects ? ' <span class="meta">(' + escapeHtml(fromAspects) + ')</span>' : '') + '</td>' +
             '<td>' + escapeHtml(l.typeLabel) + noteTxt + '</td>' +
-            '<td><a href="#" data-entity="' + escapeHtml(l.to.id) + '">' + escapeHtml(getDisplayTitle(l.to)) + '</a></td>' +
+            '<td><a href="#" data-entity="' + escapeHtml(l.to.id) + '">' + getDisplayTitleWithBadges(l.to) + '</a></td>' +
             '<td>' + escapeHtml(toAspects) + '</td>' +
             '<td>' + actions + '</td>' +
           '</tr>';
@@ -4414,7 +4832,7 @@ function renderDetailRead(main, e) {
       (e.valid_to ? '<dt>Platnost do</dt><dd>' + escapeHtml(fmtDate(e.valid_to)) + '</dd>' : '') +
       '<dt>Vytvořeno</dt><dd>' + escapeHtml(fmtDateTime(e.created_at)) + '</dd>' +
       '<dt>Změněno</dt><dd>' + escapeHtml(fmtDateTime(e.updated_at)) + '</dd>' +
-      '<dt>ID</dt><dd><code>' + escapeHtml(e.id) + '</code></dd>' +
+      '<dt>ID</dt><dd>' + (e.numericId ? '<strong>#' + e.numericId + '</strong> · ' : '') + '<code>' + escapeHtml(e.id) + '</code></dd>' +
     '</dl></details>';
 
   document.getElementById('back-btn').onclick = goBack;
@@ -4563,6 +4981,8 @@ async function copyBodyFormatted(entity) {
 
 function renderAttributesReadOnly(e) {
   const fieldMap = new Map();
+  // Globální pole jdou jako první
+  GLOBAL_FIELDS.forEach(f => fieldMap.set(f.key, f));
   (e.aspects || []).forEach(ak => {
     const a = getAspect(ak); if (!a) return;
     a.fields.forEach(f => { if (!fieldMap.has(f.key)) fieldMap.set(f.key, f); });
@@ -4616,7 +5036,7 @@ function formatAttrValue(f, v) {
     return ids.map(id => {
       const tgt = findEntity(id);
       if (!tgt) return '<span class="meta">(smazáno: ' + escapeHtml(id) + ')</span>';
-      return '<a href="#" data-entity="' + escapeHtml(id) + '">' + escapeHtml(getDisplayTitle(tgt)) + '</a>';
+      return '<a href="#" data-entity="' + escapeHtml(id) + '">' + getDisplayTitleWithBadges(tgt) + '</a>';
     }).join(', ');
   }
   return escapeHtml(String(v));
@@ -4652,7 +5072,7 @@ function renderInverseLinksReadOnly(e) {
       ? ' <span class="meta">(' + escapeHtml((from.aspects || []).map(a => aspectLabel(a)).join(', ')) + ')</span>'
       : '';
     h += '<li><strong>' + escapeHtml(il) + ':</strong> ' +
-      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' +
       aspectsTxt +
       (link.note ? ' <span class="meta">(' + escapeHtml(link.note) + ')</span>' : '') + '</li>';
   });
@@ -4662,21 +5082,21 @@ function renderInverseLinksReadOnly(e) {
       ? ' <span class="meta">(' + escapeHtml((from.aspects || []).map(a => aspectLabel(a)).join(', ')) + ')</span>'
       : '';
     h += '<li>' + ctx + '<strong>' + escapeHtml(fieldLabel) + ':</strong> ' +
-      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' +
       aspectsTxt +
       ' <span class="meta">(relace)</span></li>';
   });
   invText.wikiFrom.forEach(from => {
     const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
     h += '<li><strong>zmiňuje wiki:</strong> ' +
-      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' +
       (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
       '</li>';
   });
   invText.includeFrom.forEach(from => {
     const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
     h += '<li><strong>includuje:</strong> ' +
-      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' +
       (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
       '</li>';
   });
@@ -4701,7 +5121,7 @@ function renderOutgoingReferences(e) {
     h += '<h4>Wiki</h4><ul>';
     refs.wikis.forEach(t => {
       const aspectsTxt = (t.aspects || []).map(a => aspectLabel(a)).join(', ');
-      h += '<li><a href="#" data-entity="' + escapeHtml(t.id) + '">' + escapeHtml(getDisplayTitle(t)) + '</a>' +
+      h += '<li><a href="#" data-entity="' + escapeHtml(t.id) + '">' + getDisplayTitleWithBadges(t) + '</a>' +
         (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
         '</li>';
     });
@@ -4711,7 +5131,7 @@ function renderOutgoingReferences(e) {
     h += '<h4>Include</h4><ul>';
     refs.includes.forEach(t => {
       const aspectsTxt = (t.aspects || []).map(a => aspectLabel(a)).join(', ');
-      h += '<li><a href="#" data-entity="' + escapeHtml(t.id) + '">' + escapeHtml(getDisplayTitle(t)) + '</a>' +
+      h += '<li><a href="#" data-entity="' + escapeHtml(t.id) + '">' + getDisplayTitleWithBadges(t) + '</a>' +
         (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
         '</li>';
     });
@@ -4797,6 +5217,23 @@ function renderDetailEdit(main, e) {
 
     '<section><h3>Základní</h3>' +
       '<label for="d-title">Název</label><input type="text" id="d-title" value="' + escapeHtml(e.title) + '">' +
+    '</section>' +
+
+    '<section><h3>Globální vlastnosti</h3>' +
+      GLOBAL_FIELDS.map(f => {
+        const v = (e.attributes && e.attributes[f.key]) || '';
+        let inp;
+        if (f.type === 'select') {
+          inp = '<select id="d-global-' + escapeHtml(f.key) + '" data-global-key="' + escapeHtml(f.key) + '">' +
+            f.options.map(o =>
+              '<option value="' + escapeHtml(o) + '"' + (String(v) === String(o) ? ' selected' : '') + '>' +
+              escapeHtml((f.optionLabels && f.optionLabels[o]) || o || '(nevyplněno)') + '</option>'
+            ).join('') + '</select>';
+        } else {
+          inp = '<input type="' + escapeHtml(f.type || 'text') + '" id="d-global-' + escapeHtml(f.key) + '" data-global-key="' + escapeHtml(f.key) + '" value="' + escapeHtml(String(v)) + '">';
+        }
+        return '<label for="d-global-' + escapeHtml(f.key) + '">' + escapeHtml(f.label) + '</label>' + inp;
+      }).join('') +
     '</section>' +
 
     '<section><h3>Atributy</h3><div id="d-attrs"></div>' +
@@ -4890,10 +5327,23 @@ function renderDetailEdit(main, e) {
           ' <button type="button" id="d-valid-to-clear" aria-label="Odstranit datum platnosti do" title="Odstranit datum">×</button>' +
           '</span></div>' +
       '</div>' +
-      '<p class="meta">Vytvořeno: ' + escapeHtml(fmtDateTime(e.created_at)) + ' · Změněno: ' + escapeHtml(fmtDateTime(e.updated_at)) + ' · ID: <code>' + escapeHtml(e.id) + '</code></p>' +
+      '<p class="meta">Vytvořeno: ' + escapeHtml(fmtDateTime(e.created_at)) + ' · Změněno: ' + escapeHtml(fmtDateTime(e.updated_at)) + ' · ' + (e.numericId ? '#' + e.numericId + ' · ' : '') + 'ID: <code>' + escapeHtml(e.id) + '</code></p>' +
     '</section>';
 
   renderEditAttributes(e);
+  // Globální pole (priorita atd.) – fungují bez ohledu na aspekt
+  document.querySelectorAll('[data-global-key]').forEach(el => {
+    el.onchange = () => {
+      const k = el.dataset.globalKey;
+      if (!e.attributes) e.attributes = {};
+      if (el.value === '') delete e.attributes[k];
+      else e.attributes[k] = el.value;
+      e.updated_at = nowIso();
+      saveDebounced();
+      // Re-render Atributy, kdyby tam také zobrazovaly priority
+      renderEditAttributes(e);
+    };
+  });
   renderEditLinks(e);
   renderEditAttachments(e);
   setupAudioRecorder(e);
@@ -4958,6 +5408,7 @@ function renderDetailEdit(main, e) {
     saveDebounced();
   };
   document.getElementById('d-body').oninput = (ev) => { e.body = ev.target.value; e.updated_at = nowIso(); saveDebounced(); };
+  setupAutocomplete(document.getElementById('d-body'));
   // Tagy jako zaškrtávátka
   document.querySelectorAll('input[data-tag-cb]').forEach(cb => {
     cb.onchange = () => {
@@ -5229,27 +5680,27 @@ function renderEditLinks(e) {
     inv.forEach(({from, link}) => {
       const ti = RELATION_TYPES[link.type], il = ti ? ti.inverseLabel : link.type;
       invH += '<div class="link-row"><span class="link-target"><strong>' + escapeHtml(il) + ':</strong> ' +
-        '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+        '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' +
         (link.note ? ' <span class="meta">(' + escapeHtml(link.note) + ')</span>' : '') + '</span></div>';
     });
     invRel.forEach(({ from, fieldLabel, aspectLabel: alab }) => {
       const ctx = alab ? '[' + escapeHtml(alab) + '] ' : '';
       invH += '<div class="link-row"><span class="link-target">' + ctx +
         '<strong>' + escapeHtml(fieldLabel) + ':</strong> ' +
-        '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+        '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' +
         ' <span class="meta">(relace)</span></span></div>';
     });
     invText.wikiFrom.forEach(from => {
       const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
       invH += '<div class="link-row"><span class="link-target"><strong>zmiňuje wiki:</strong> ' +
-        '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+        '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' +
         (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
         '</span></div>';
     });
     invText.includeFrom.forEach(from => {
       const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
       invH += '<div class="link-row"><span class="link-target"><strong>includuje:</strong> ' +
-        '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + escapeHtml(getDisplayTitle(from)) + '</a>' +
+        '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' +
         (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
         '</span></div>';
     });
@@ -5772,7 +6223,7 @@ function renderRelatedCommentsGrouped(groups, currentEntity) {
     const relText = describeRelations(g.relations, currentEntity);
     return '<div class="related-comment-group">' +
       '<h4 style="margin:0.6em 0 0.3em;">' +
-        '<a href="#" class="wiki-link" data-entity="' + escapeHtml(g.entity.id) + '">' + escapeHtml(getDisplayTitle(g.entity)) + '</a> ' +
+        '<a href="#" class="wiki-link" data-entity="' + escapeHtml(g.entity.id) + '">' + getDisplayTitleWithBadges(g.entity) + '</a> ' +
         '<small class="meta">(' + escapeHtml(relText) + ', ' + g.comments.length + ' komentář' + (g.comments.length === 1 ? '' : (g.comments.length < 5 ? 'e' : 'ů')) + ')</small>' +
       '</h4>' +
       '<div class="comments-list">' +
@@ -5789,7 +6240,7 @@ function renderRelatedCommentItem(c, sourceEntity, relations, currentEntity, hid
   const relText = describeRelations(relations, currentEntity);
   const entityHeader = hideEntityHeader ? '' :
     '<div class="comment-related-source">' +
-      'Z entity <a href="#" class="wiki-link" data-entity="' + escapeHtml(sourceEntity.id) + '">' + escapeHtml(getDisplayTitle(sourceEntity)) + '</a>' +
+      'Z entity <a href="#" class="wiki-link" data-entity="' + escapeHtml(sourceEntity.id) + '">' + getDisplayTitleWithBadges(sourceEntity) + '</a>' +
       ' <span class="meta">(' + escapeHtml(relText) + ')</span>' +
     '</div>';
   return '<article class="comment comment-related" aria-label="Komentář z entity ' + escapeHtml(getDisplayTitle(sourceEntity)) + '">' +
@@ -5988,7 +6439,7 @@ function renderProjectDashboard(project) {
         ? ' <span class="meta">(' + (it.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + ')</span>'
         : '';
       const updTxt = ' <span class="meta">' + escapeHtml(fmtRelative(it.updated_at)) + '</span>';
-      h += '<li><a href="#" data-entity="' + escapeHtml(it.id) + '">' + escapeHtml(getDisplayTitle(it)) + '</a>' + aspectsTxt + updTxt + '</li>';
+      h += '<li><a href="#" data-entity="' + escapeHtml(it.id) + '">' + getDisplayTitleWithBadges(it) + '</a>' + aspectsTxt + updTxt + '</li>';
     });
     h += '</ul>';
     return h;
@@ -6009,7 +6460,7 @@ function renderProjectDashboard(project) {
     Object.entries(kanban).forEach(([k, col]) => {
       h += '<div class="kanban-col"><h4>' + escapeHtml(col.label) + ' (' + col.items.length + ')</h4>';
       col.items.forEach(t => {
-        h += '<div class="kanban-card"><a href="#" data-entity="' + escapeHtml(t.id) + '">' + escapeHtml(getDisplayTitle(t)) + '</a>';
+        h += '<div class="kanban-card"><a href="#" data-entity="' + escapeHtml(t.id) + '">' + getDisplayTitleWithBadges(t) + '</a>';
         if (t.attributes.deadline) h += '<div class="meta">' + escapeHtml(fmtDate(t.attributes.deadline)) + '</div>';
         h += '</div>';
       });
@@ -6032,7 +6483,7 @@ function renderProjectDashboard(project) {
     h += '<h4>Lidé a organizace (' + peopleOrgs.length + ')</h4><ul style="list-style:none;padding-left:0;">';
     peopleOrgs.forEach(p => {
       const aspectsTxt = ' <span class="meta">(' + (p.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + ')</span>';
-      h += '<li><a href="#" data-entity="' + escapeHtml(p.id) + '">' + escapeHtml(getDisplayTitle(p)) + '</a>' + aspectsTxt + '</li>';
+      h += '<li><a href="#" data-entity="' + escapeHtml(p.id) + '">' + getDisplayTitleWithBadges(p) + '</a>' + aspectsTxt + '</li>';
     });
     h += '</ul>';
   }
@@ -6070,7 +6521,7 @@ function renderOutline(main, rootId) {
       '<button class="outline-toggle' + (children.length === 0 ? ' empty' : '') + '" aria-expanded="true">' +
       (children.length === 0 ? '·' : '▾') + '</button>' +
       '<div class="outline-content">' +
-      '<a href="#" data-entity="' + escapeHtml(entity.id) + '">' + escapeHtml(getDisplayTitle(entity)) + '</a> ' +
+      '<a href="#" data-entity="' + escapeHtml(entity.id) + '">' + getDisplayTitleWithBadges(entity) + '</a> ' +
       status + ' ' + aspects +
       '</div></div>';
     if (children.length > 0) {
@@ -6999,6 +7450,8 @@ function setupNav() {
   };
   document.getElementById('btn-new-from-template').onclick = openTemplatePicker;
   document.getElementById('btn-help').onclick = () => document.getElementById('dialog-help').showModal();
+  const stickyBtn = document.getElementById('btn-sticky');
+  if (stickyBtn) stickyBtn.onclick = openStickyDialog;
   document.getElementById('help-close').onclick = () => document.getElementById('dialog-help').close();
 
   // Quick dialog tlačítka
@@ -16860,6 +17313,8 @@ function setupNav() {
   };
   document.getElementById('btn-new-from-template').onclick = openTemplatePicker;
   document.getElementById('btn-help').onclick = () => document.getElementById('dialog-help').showModal();
+  const stickyBtn2 = document.getElementById('btn-sticky');
+  if (stickyBtn2) stickyBtn2.onclick = openStickyDialog;
   document.getElementById('help-close').onclick = () => document.getElementById('dialog-help').close();
 
   // Quick dialog tlačítka
