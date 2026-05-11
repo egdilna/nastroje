@@ -5943,6 +5943,17 @@ function renderDetailEdit(main, e) {
       '<div id="d-related-comments"></div>' +
     '</section>' +
 
+    '<section><h3>Možné souvislosti</h3>' +
+      '<details class="related-edit-details">' +
+        '<summary>🧠 Najít entity, které možná souvisí s touto</summary>' +
+        '<div class="toolbar" style="margin-top:0.5em;">' +
+          '<div><label for="dre-min">Min. skóre</label><input type="number" id="dre-min" min="1" max="20" value="3" style="width:5em;"></div>' +
+          '<div style="align-self:end;"><button type="button" id="dre-go">Vyhledat</button></div>' +
+        '</div>' +
+        '<div id="dre-results" class="meta">Stisknutím <strong>Vyhledat</strong> najdete entity se společnými slovy, tagy nebo aspekty, které nejsou zatím propojeny vazbou.</div>' +
+      '</details>' +
+    '</section>' +
+
     ((e.aspects || []).includes('Database')
       ? '<div id="db-editor-wrapper">' + renderDatabaseEditor(e) + '</div>'
       : '') +
@@ -5998,6 +6009,40 @@ function renderDetailEdit(main, e) {
     relC.innerHTML = renderRelatedCommentsSection(e) || '<p class="meta">Žádná navázaná entita nemá komentáře.</p>';
     attachRelatedCommentsHandlers(relC, e);
     attachMarkdownLinkHandlers(relC);
+  }
+  // Možné souvislosti (on-demand v edit režimu)
+  const dreGo = document.getElementById('dre-go');
+  if (dreGo) {
+    dreGo.onclick = () => {
+      const min = Math.max(1, Number(document.getElementById('dre-min').value) || 3);
+      const out = document.getElementById('dre-results');
+      // Aktuálně edituje entita — uložit nejdřív tu rozpracovanou verzi, aby výpočet
+      // bral aktuální stav (tagy, body, aspekty)
+      save();
+      const results = computeRelatedSuggestions(e.id, min);
+      if (results.length === 0) {
+        out.innerHTML = '<p class="empty">Žádné možné souvislosti nalezeny. Zkuste snížit minimální skóre.</p>';
+        return;
+      }
+      out.innerHTML = '<p class="meta">Nalezeno ' + results.length + ' kandidátů (řazeno podle skóre).</p>' +
+        '<table><thead><tr><th scope="col">Entita</th><th scope="col">Aspekty</th><th scope="col">Skóre</th><th scope="col">Důvody</th><th scope="col">Akce</th></tr></thead><tbody>' +
+        results.map((x, idx) => {
+          return '<tr>' +
+            '<td><a href="#" data-entity="' + escapeHtml(x.entity.id) + '">' + getDisplayTitleWithBadges(x.entity) + '</a></td>' +
+            '<td>' + (x.entity.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + '</td>' +
+            '<td>' + x.score + '</td>' +
+            '<td class="meta">' + escapeHtml(x.reasons.join('; ')) + '</td>' +
+            '<td><button type="button" data-dre-link="' + idx + '">Přidat vazbu</button></td>' +
+          '</tr>';
+        }).join('') +
+        '</tbody></table>';
+      attachEntityRowHandlers(out);
+      out.querySelectorAll('button[data-dre-link]').forEach(b => {
+        b.onclick = () => {
+          openLinkDialog(e);
+        };
+      });
+    };
   }
 
   document.getElementById('back-btn').onclick = goBack;
@@ -18984,7 +19029,8 @@ function renderDatabaseEditor(entity) {
 function attachDatabaseEditHandlers(root, entity) {
   function refresh() {
     const newH = renderDatabaseEditor(entity);
-    const wrapper = root.querySelector('#db-editor-wrapper');
+    // root může BÝT samotný wrapper (id="db-editor-wrapper") nebo jeho rodič.
+    const wrapper = (root.id === 'db-editor-wrapper') ? root : root.querySelector('#db-editor-wrapper');
     if (wrapper) {
       wrapper.innerHTML = newH;
       attachDatabaseEditHandlers(wrapper, entity);
