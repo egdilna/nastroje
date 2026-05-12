@@ -2454,12 +2454,25 @@ function searchEntities(query, filters = {}) {
   else if (filters.archived === true) r = r.filter(e => e.archived);
   if (filters.status) r = r.filter(e => e.attributes && e.attributes.status === filters.status);
   if (query) {
-    const q = query.toLowerCase().trim();
-    if (q) r = r.filter(e => {
-      const haystack = [e.title, e.body, ...(e.tags||[]),
-        ...Object.values(e.attributes||{}).map(v => String(v))].join(' ').toLowerCase();
-      return haystack.includes(q);
-    });
+    const raw = query.toLowerCase().trim();
+    if (raw) {
+      // Rozdělit na slova podle mezer; každé slovo musí být v entitě obsaženo
+      const words = raw.split(/\s+/).filter(w => w.length > 0);
+      r = r.filter(e => {
+        const haystack = [
+          e.title || '',
+          e.body || '',
+          ...(e.tags || []),
+          ...(e.aspects || []).map(a => aspectLabel(a) || a),
+          ...Object.values(e.attributes || {}).map(v => String(v)),
+          // Komentáře
+          ...(e.comments || []).map(c => c.content || ''),
+          // numericId
+          e.numericId ? '#' + e.numericId : ''
+        ].join(' ').toLowerCase();
+        return words.every(w => haystack.includes(w));
+      });
+    }
   }
   return r;
 }
@@ -5056,7 +5069,7 @@ function renderSettings(main) {
     '<p><strong>Více projektů na jednom zařízení:</strong> Každý projekt má vlastní klíč v localStorage podle URL parametru <code>?id=</code>. Můžete tedy mít otevřeno více projektů v různých kartách bez vzájemného přepisování. Aktuální klíč: <code>' + escapeHtml(getProjectKey()) + '</code>' + (isProjectTab() ? ' (projektový mód)' : ' (defaultní – po prvním uploadu na GitHub se automaticky převede na projektový)') + '. Pokud změníte data téhož projektu v jiné kartě, dostanete nahoře varování.</p>' +
     '</section>';
 
-  document.getElementById('gen-static').onclick = () => downloadStaticViewer();
+  document.getElementById('gen-static').onclick = () => openStaticViewerDialog();
   document.getElementById('exim-export').onclick = () => openExportDialog();
   document.getElementById('exim-import').onclick = () => openImportDialog();
 
@@ -10435,6 +10448,14 @@ function buildJsonExport(scope, options) {
     const usedTags = new Set();
     entities.forEach(e => (e.tags || []).forEach(t => usedTags.add(t)));
     result.db.tags = [...usedTags];
+  } else if (scope === 'tags') {
+    const tags = options.tags || [];
+    entities = db.entities.filter(e => !e.archived && (e.tags || []).some(t => tags.includes(t)));
+    const usedAspects = new Set();
+    entities.forEach(e => (e.aspects || []).forEach(a => usedAspects.add(a)));
+    result.db.customAspects = (db.customAspects || []).filter(ca => usedAspects.has(ca.key));
+    result.db.tags = [...tags];
+    result.exportTags = tags;
   } else if (scope === 'view') {
     entities = getCurrentScopeEntities();
     const usedAspects = new Set();
@@ -10447,7 +10468,19 @@ function buildJsonExport(scope, options) {
     throw new Error('Neplatný scope: ' + scope);
   }
 
-  result.db.entities = entities.map(sanitizeEntityForExport);
+  // Vyfiltrovat vazby na entity, které nejsou součástí exportu (kromě full scope)
+  if (scope !== 'full') {
+    const includedIds = new Set(entities.map(e => e.id));
+    result.db.entities = entities.map(e => {
+      const clean = sanitizeEntityForExport(e);
+      if (Array.isArray(clean.links)) {
+        clean.links = clean.links.filter(l => includedIds.has(l.to));
+      }
+      return clean;
+    });
+  } else {
+    result.db.entities = entities.map(sanitizeEntityForExport);
+  }
   return result;
 }
 
@@ -10961,9 +10994,11 @@ function openExportDialog() {
     '<fieldset><legend>Co exportovat</legend>' +
       '<label><input type="radio" name="exp-scope" value="full" checked> Celá databáze (' + allCount + ' entit)</label><br>' +
       '<label><input type="radio" name="exp-scope" value="view"' + (viewCount === 0 ? ' disabled' : '') + '> Aktuální pohled (' + viewCount + ' entit)</label><br>' +
+      '<label><input type="radio" name="exp-scope" value="tags"> Podle tagů (alespoň jeden ze zaškrtnutých)…</label><br>' +
       '<label><input type="radio" name="exp-scope" value="selected"> Vybrané entity ručně…</label>' +
     '</fieldset>' +
 
+    '<div id="exp-tags-area" style="display:none;"></div>' +
     '<div id="exp-selected-area" style="display:none;"></div>' +
     '<div id="exp-xlsx-options" style="display:none;"></div>' +
 
@@ -10981,6 +11016,42 @@ function openExportDialog() {
     '<div id="exp-entity-list" style="max-height:200px;overflow:auto;border:1px solid #ccc;padding:0.3em;"></div>' +
     '<p class="meta"><label><input type="checkbox" id="exp-include-related"> Zahrnout také navazované entity</label></p>' +
     '</fieldset>';
+
+  // Výběr podle tagů
+  const tagsArea = document.getElementById('exp-tags-area');
+  const allTags = getAllTags().sort((a, b) => a.localeCompare(b, 'cs'));
+  if (allTags.length === 0) {
+    tagsArea.innerHTML = '<fieldset><legend>Tagy</legend><p class="meta">V databázi nejsou žádné tagy.</p></fieldset>';
+  } else {
+    tagsArea.innerHTML = '<fieldset><legend>Tagy (alespoň jeden ze zaškrtnutých)</legend>' +
+      '<div class="btn-group" style="margin-bottom:0.5em;">' +
+        '<button type="button" id="exp-tags-all">Vybrat vše</button>' +
+        '<button type="button" id="exp-tags-none">Zrušit výběr</button>' +
+        '<span class="meta" id="exp-tags-count"></span>' +
+      '</div>' +
+      '<div class="checkbox-list" style="max-height:200px;overflow:auto;border:1px solid #ccc;padding:0.3em;">' +
+        allTags.map(t => {
+          const n = db.entities.filter(e => !e.archived && (e.tags || []).includes(t)).length;
+          return '<label><input type="checkbox" name="exp-tag" value="' + escapeHtml(t) + '"> ' + escapeHtml(t) + ' <span class="meta">(' + n + ')</span></label>';
+        }).join('') +
+      '</div>' +
+    '</fieldset>';
+    function updateTagCount() {
+      const sel = [...document.querySelectorAll('input[name="exp-tag"]:checked')].map(c => c.value);
+      const n = sel.length === 0 ? 0 : db.entities.filter(e => !e.archived && (e.tags || []).some(t => sel.includes(t))).length;
+      document.getElementById('exp-tags-count').textContent = ' Vyhovuje ' + n + ' entit.';
+    }
+    document.querySelectorAll('input[name="exp-tag"]').forEach(cb => cb.onchange = updateTagCount);
+    document.getElementById('exp-tags-all').onclick = () => {
+      document.querySelectorAll('input[name="exp-tag"]').forEach(cb => cb.checked = true);
+      updateTagCount();
+    };
+    document.getElementById('exp-tags-none').onclick = () => {
+      document.querySelectorAll('input[name="exp-tag"]').forEach(cb => cb.checked = false);
+      updateTagCount();
+    };
+    updateTagCount();
+  }
 
   // Naplnit list entit
   function refreshEntityList(filter) {
@@ -11000,9 +11071,9 @@ function openExportDialog() {
   // Reagovat na změnu scope
   document.querySelectorAll('input[name="exp-scope"]').forEach(r => {
     r.onchange = () => {
-      selArea.style.display = (r.value === 'selected' && r.checked) ? 'block' : 'none';
-      if (r.value === 'selected' && r.checked) selArea.style.display = 'block';
-      else if (r.checked) selArea.style.display = 'none';
+      const v = document.querySelector('input[name="exp-scope"]:checked').value;
+      selArea.style.display = (v === 'selected') ? 'block' : 'none';
+      tagsArea.style.display = (v === 'tags') ? 'block' : 'none';
     };
   });
 
@@ -11077,6 +11148,10 @@ function openExportDialog() {
         if (ids.length === 0) { alertMsg('Vyber alespoň jednu entitu.'); return; }
         const includeRelated = document.getElementById('exp-include-related').checked;
         downloadJsonExport('selected', { entityIds: ids, includeRelated });
+      } else if (scope === 'tags') {
+        const tags = [...document.querySelectorAll('input[name="exp-tag"]:checked')].map(c => c.value);
+        if (tags.length === 0) { alertMsg('Vyber alespoň jeden tag.'); return; }
+        downloadJsonExport('tags', { tags });
       } else {
         downloadJsonExport(scope);
       }
@@ -11087,7 +11162,11 @@ function openExportDialog() {
       let entities;
       if (scope === 'full') entities = db.entities;
       else if (scope === 'view') entities = getCurrentScopeEntities();
-      else if (scope === 'selected') {
+      else if (scope === 'tags') {
+        const tags = [...document.querySelectorAll('input[name="exp-tag"]:checked')].map(c => c.value);
+        if (tags.length === 0) { alertMsg('Vyber alespoň jeden tag.'); return; }
+        entities = db.entities.filter(e => !e.archived && (e.tags || []).some(t => tags.includes(t)));
+      } else if (scope === 'selected') {
         const ids = [...document.querySelectorAll('input[name="exp-eid"]:checked')].map(c => c.value);
         if (ids.length === 0) { alertMsg('Vyber alespoň jednu entitu.'); return; }
         entities = db.entities.filter(e => ids.includes(e.id));
@@ -15390,7 +15469,7 @@ function renderSettings(main) {
     '<p><strong>Více projektů na jednom zařízení:</strong> Každý projekt má vlastní klíč v localStorage podle URL parametru <code>?id=</code>. Můžete tedy mít otevřeno více projektů v různých kartách bez vzájemného přepisování. Aktuální klíč: <code>' + escapeHtml(getProjectKey()) + '</code>' + (isProjectTab() ? ' (projektový mód)' : ' (defaultní – po prvním uploadu na GitHub se automaticky převede na projektový)') + '. Pokud změníte data téhož projektu v jiné kartě, dostanete nahoře varování.</p>' +
     '</section>';
 
-  document.getElementById('gen-static').onclick = () => downloadStaticViewer();
+  document.getElementById('gen-static').onclick = () => openStaticViewerDialog();
   document.getElementById('exim-export').onclick = () => openExportDialog();
   document.getElementById('exim-import').onclick = () => openImportDialog();
 
@@ -18691,12 +18770,37 @@ if (document.readyState === 'loading') {
 </html>
 `;
 
-function sanitizeDbForStaticViewer() {
+function sanitizeDbForStaticViewer(filterTags) {
   // Hluboká kopie db
   const clean = JSON.parse(JSON.stringify(db));
 
   // Odstranit GitHub metadata zcela
   delete clean.ghMeta;
+
+  // Filtrování podle tagů — pokud zadáno, ponech jen entity, které mají alespoň jeden ze zaškrtnutých tagů
+  if (Array.isArray(filterTags) && filterTags.length > 0) {
+    const tagSet = new Set(filterTags);
+    const beforeCount = clean.entities.length;
+    clean.entities = (clean.entities || []).filter(e => {
+      if (e.archived) return false;
+      return (e.tags || []).some(t => tagSet.has(t));
+    });
+    const includedIds = new Set(clean.entities.map(e => e.id));
+    // Vyfiltrovat vazby na entity, které nejsou součástí výběru
+    clean.entities.forEach(e => {
+      if (Array.isArray(e.links)) {
+        e.links = e.links.filter(l => includedIds.has(l.to));
+      }
+    });
+    // Zúžit i seznam dostupných tagů na vyfiltrované
+    if (Array.isArray(clean.tags)) {
+      const usedTags = new Set();
+      clean.entities.forEach(e => (e.tags || []).forEach(t => usedTags.add(t)));
+      clean.tags = clean.tags.filter(t => usedTags.has(t));
+    }
+    // Uložené pohledy a šablony nechat (jsou meta-data, ne entity)
+    clean._filterInfo = { tags: filterTags, beforeCount, afterCount: clean.entities.length };
+  }
 
   // Vyčistit přílohy z GH stop a embed dat
   (clean.entities || []).forEach(e => {
@@ -18722,8 +18826,12 @@ function sanitizeDbForStaticViewer() {
   return clean;
 }
 
-function buildStaticViewerHtml() {
-  const cleanDb = sanitizeDbForStaticViewer();
+function buildStaticViewerHtml(opts) {
+  opts = opts || {};
+  const cleanDb = sanitizeDbForStaticViewer(opts.filterTags);
+  // Aplikovat přepis názvu/popisu, pokud zadán
+  if (opts.overrideTitle !== undefined) cleanDb.title = opts.overrideTitle;
+  if (opts.overrideDescription !== undefined) cleanDb.description = opts.overrideDescription;
   // Sanitizovat ASPECTS – vyhodit funkce (computed labels apod.) pokud nějaké jsou
   const cleanAspects = {};
   Object.entries(getActiveAspects()).forEach(([k, v]) => {
@@ -18763,7 +18871,10 @@ function buildStaticViewerHtml() {
     .replace(/\u2028/g, '\\u2028')
     .replace(/\u2029/g, '\\u2029');
 
-  const title = (db.title || 'PIM export').replace(/[<>&"]/g, c =>
+  const titleSource = (opts.overrideTitle !== undefined && opts.overrideTitle !== null)
+    ? (opts.overrideTitle || 'PIM export')
+    : (db.title || 'PIM export');
+  const title = titleSource.replace(/[<>&"]/g, c =>
     ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
 
   return STATIC_VIEWER_TEMPLATE
@@ -19211,12 +19322,16 @@ function openDatabaseRecordDialog(entity, recordIndex, onSave) {
   document.getElementById('db-rec-cancel').onclick = () => d.close();
 }
 
-function downloadStaticViewer() {
+function downloadStaticViewer(opts) {
+  opts = opts || {};
   try {
-    const html = buildStaticViewerHtml();
+    const html = buildStaticViewerHtml(opts);
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const dateStamp = new Date().toISOString().slice(0, 10);
-    const baseName = (db.title || 'pim-export').replace(/[^\w\sěščřžýáíéúůďťňĚŠČŘŽÝÁÍÉÚŮĎŤŇ-]/g, '').replace(/\s+/g, '-').toLowerCase() || 'pim-export';
+    const titleForName = (opts.overrideTitle !== undefined && opts.overrideTitle)
+      ? opts.overrideTitle
+      : (db.title || 'pim-export');
+    const baseName = titleForName.replace(/[^\w\sěščřžýáíéúůďťňĚŠČŘŽÝÁÍÉÚŮĎŤŇ-]/g, '').replace(/\s+/g, '-').toLowerCase() || 'pim-export';
     const filename = baseName + '-' + dateStamp + '.html';
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -19226,9 +19341,17 @@ function downloadStaticViewer() {
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 
     // Spočítat statistiky pro toast
+    let exportedEntityCount = db.entities.length;
+    if (Array.isArray(opts.filterTags) && opts.filterTags.length > 0) {
+      const set = new Set(opts.filterTags);
+      exportedEntityCount = db.entities.filter(e => !e.archived && (e.tags || []).some(t => set.has(t))).length;
+    }
     const attCount = db.entities.reduce((s, e) => s + ((e.attachments || []).length), 0);
     const sizeKb = Math.round(html.length / 1024);
-    let msg = '✓ Vygenerován statický prohlížeč „' + filename + '“ (' + sizeKb + ' KB, ' + db.entities.length + ' entit)';
+    let msg = '✓ Vygenerován statický prohlížeč „' + filename + '" (' + sizeKb + ' KB, ' + exportedEntityCount + ' entit)';
+    if (opts.filterTags && opts.filterTags.length > 0) {
+      msg += ', filtrováno na tagy: ' + opts.filterTags.join(', ');
+    }
     if (attCount > 0) {
       msg += '. Pro funkční přílohy vytvořte vedle souboru podadresář attachments/ s ' + attCount + ' soubory.';
     }
@@ -19239,6 +19362,99 @@ function downloadStaticViewer() {
     alertMsg('Generování statického prohlížeče selhalo: ' + e.message);
     debug('Static viewer error: ' + e.message);
   }
+}
+
+// Dialog pro výběr tagů před stažením statického prohlížeče
+function openStaticViewerDialog() {
+  const existing = document.getElementById('static-viewer-dialog');
+  if (existing) existing.remove();
+  const allTags = getAllTags().sort((a, b) => a.localeCompare(b, 'cs'));
+  const d = document.createElement('dialog');
+  d.id = 'static-viewer-dialog';
+  d.setAttribute('aria-labelledby', 'sv-title');
+  d.innerHTML =
+    '<h2 id="sv-title">Stáhnout statický prohlížeč</h2>' +
+    '<p class="meta">Vygeneruje samostatný HTML soubor s read-only zobrazením entit. Nelze v něm upravovat data.</p>' +
+    '<fieldset>' +
+      '<legend>Název a popis prohlížeče</legend>' +
+      '<label for="sv-name">Název</label>' +
+      '<input type="text" id="sv-name" value="' + escapeHtml(db.title || '') + '" style="width:100%;">' +
+      '<label for="sv-desc">Popis</label>' +
+      '<textarea id="sv-desc" rows="3" style="width:100%;">' + escapeHtml(db.description || '') + '</textarea>' +
+      '<p class="meta">Tyto hodnoty se použijí jen pro tento prohlížeč, vaše PIM databáze zůstane beze změny.</p>' +
+    '</fieldset>' +
+    '<fieldset>' +
+      '<legend>Co zahrnout</legend>' +
+      '<label style="display:block;"><input type="radio" name="sv-scope" value="all" checked> Všechny entity (' + db.entities.length + ')</label>' +
+      '<label style="display:block;"><input type="radio" name="sv-scope" value="tags"' + (allTags.length === 0 ? ' disabled' : '') + '> Jen entity s alespoň jedním vybraným tagem' + (allTags.length === 0 ? ' <span class="meta">(databáze nemá tagy)</span>' : '') + '</label>' +
+    '</fieldset>' +
+    '<div id="sv-tags-area" style="display:none;">' +
+      '<fieldset>' +
+        '<legend>Tagy</legend>' +
+        '<div class="btn-group" style="margin-bottom:0.5em;">' +
+          '<button type="button" id="sv-tags-all">Vybrat vše</button>' +
+          '<button type="button" id="sv-tags-none">Zrušit výběr</button>' +
+          '<span class="meta" id="sv-tags-count"></span>' +
+        '</div>' +
+        '<div class="checkbox-list" style="max-height:240px;overflow:auto;border:1px solid #ccc;padding:0.3em;">' +
+          allTags.map(t => {
+            const n = db.entities.filter(e => !e.archived && (e.tags || []).includes(t)).length;
+            return '<label><input type="checkbox" name="sv-tag" value="' + escapeHtml(t) + '"> ' + escapeHtml(t) + ' <span class="meta">(' + n + ')</span></label>';
+          }).join('') +
+        '</div>' +
+        '<p class="meta">Vazby na entity, které nejsou součástí výběru, budou odstraněny.</p>' +
+      '</fieldset>' +
+    '</div>' +
+    '<div class="btn-group" style="margin-top:1em;">' +
+      '<button type="button" class="primary" id="sv-go">Stáhnout</button>' +
+      '<button type="button" id="sv-cancel">Zrušit</button>' +
+    '</div>';
+  document.body.appendChild(d);
+
+  const tagsArea = d.querySelector('#sv-tags-area');
+  document.querySelectorAll('input[name="sv-scope"]').forEach(r => {
+    r.onchange = () => {
+      const v = d.querySelector('input[name="sv-scope"]:checked').value;
+      tagsArea.style.display = (v === 'tags') ? 'block' : 'none';
+    };
+  });
+
+  function updateCount() {
+    const sel = [...d.querySelectorAll('input[name="sv-tag"]:checked')].map(c => c.value);
+    const n = sel.length === 0 ? 0 : db.entities.filter(e => !e.archived && (e.tags || []).some(t => sel.includes(t))).length;
+    d.querySelector('#sv-tags-count').textContent = ' Vyhovuje ' + n + ' entit.';
+  }
+  d.querySelectorAll('input[name="sv-tag"]').forEach(cb => cb.onchange = updateCount);
+  const allBtn = d.querySelector('#sv-tags-all');
+  if (allBtn) allBtn.onclick = () => {
+    d.querySelectorAll('input[name="sv-tag"]').forEach(cb => cb.checked = true);
+    updateCount();
+  };
+  const noneBtn = d.querySelector('#sv-tags-none');
+  if (noneBtn) noneBtn.onclick = () => {
+    d.querySelectorAll('input[name="sv-tag"]').forEach(cb => cb.checked = false);
+    updateCount();
+  };
+  updateCount();
+
+  d.querySelector('#sv-go').onclick = () => {
+    const scope = d.querySelector('input[name="sv-scope"]:checked').value;
+    const overrideTitle = d.querySelector('#sv-name').value.trim();
+    const overrideDescription = d.querySelector('#sv-desc').value;
+    const opts = {};
+    if (overrideTitle) opts.overrideTitle = overrideTitle;
+    if (overrideDescription !== undefined) opts.overrideDescription = overrideDescription;
+    if (scope === 'tags') {
+      const tags = [...d.querySelectorAll('input[name="sv-tag"]:checked')].map(c => c.value);
+      if (tags.length === 0) { alertMsg('Vyber alespoň jeden tag.'); return; }
+      opts.filterTags = tags;
+    }
+    d.close(); d.remove();
+    downloadStaticViewer(opts);
+  };
+  d.querySelector('#sv-cancel').onclick = () => { d.close(); d.remove(); };
+
+  d.showModal();
 }
 </script>
 </body>
