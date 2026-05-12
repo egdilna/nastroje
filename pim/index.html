@@ -144,6 +144,19 @@ body.theme-dark aside.private-section { background: #2a2410; border-left-color: 
 .task-convert-btn { font-size: 0.85em; padding: 0.1em 0.5em; margin-left: 0.4em; }
 .critic-comments-list { margin-top: 1em; padding: 0.5em; background: rgba(255, 255, 0, 0.1); border-radius: 4px; }
 .critic-comments-list summary { cursor: pointer; font-weight: 600; }
+/* Propojení citátů z komentářů s textem těla */
+mark.comment-quote-anchor { background: #ffe9a8; padding: 0.05em 0.15em; border-radius: 3px; }
+body.theme-dark mark.comment-quote-anchor { background: #5a4a1a; color: inherit; }
+a.comment-anchor-link { display: inline-block; text-decoration: none; margin-left: 0.15em; font-size: 0.85em; opacity: 0.85; vertical-align: super; }
+a.comment-anchor-link:hover { opacity: 1; }
+a.comment-anchor-link:focus-visible { outline: 2px solid #0066cc; outline-offset: 2px; border-radius: 3px; }
+@keyframes commentAnchorFlash {
+  0% { background: #ffe900; box-shadow: 0 0 0 4px #ffe900; }
+  100% { background: inherit; box-shadow: none; }
+}
+.comment-anchor-flash { animation: commentAnchorFlash 1.5s ease-out; }
+mark.comment-quote-anchor.comment-anchor-flash { animation: commentAnchorFlash 1.5s ease-out; }
+article.comment.comment-anchor-flash { animation: commentAnchorFlash 1.5s ease-out; }
 sup.entity-badge-comments { font-size: 0.8em; margin-left: 0.2em; opacity: 0.85; }
 .link-row { display: flex; gap: 0.5em; align-items: center; padding: 0.25em 0; }
 .link-row .link-target { flex: 1; }
@@ -5378,6 +5391,8 @@ function renderDetailRead(main, e) {
   attachMarkdownTaskHandlers(main, e);
   attachAttachmentReadHandlers(main, e);
   if (isDatabase) attachDatabaseReadHandlers(main, e);
+  // Provázat citáty z komentářů s textem těla
+  setupCommentQuoteLinking(e);
   attachCommentHandlers(main, e);
   attachRelatedCommentsHandlers(main, e);
   // Mazání vazeb v read módu
@@ -6823,7 +6838,7 @@ function renderCommentsSection(entity) {
   }
   // seřazené chronologicky (od nejstaršího)
   const sorted = [...list].sort((a,b) => a.created_at.localeCompare(b.created_at));
-  h += '<div class="comments-list">';
+  h += '<div class="comments-list" id="comments-list">';
   sorted.forEach(c => h += renderCommentItem(entity.id, c));
   h += '</div>';
   return h;
@@ -7037,13 +7052,182 @@ function renderNeighborhoodTree(rootEntity) {
   return h;
 }
 
+// === Provázání citátů z komentářů s textem těla ===
+// Pokud komentář obsahuje text v uvozovkách ("..." nebo „...") a stejný text je
+// v těle entity, vytvoří se obousměrný odkaz: zvýrazněný text v těle ↔ komentář.
+
+// Extrahuje citáty z obsahu komentáře. Vrací: [{ commentId, quote, anchorId }, …]
+function extractCommentQuotes(comments) {
+  const out = [];
+  let i = 0;
+  (comments || []).forEach(c => {
+    if (!c || !c.content) return;
+    // Regex matchuje ASCII "..." nebo české „..." nebo „...“ (curly quotes)
+    const re = /(?:"([^"\n]{3,200})"|„([^"„""\n]{3,200})["""])/g;
+    let m;
+    while ((m = re.exec(c.content)) !== null) {
+      const quote = (m[1] || m[2] || '').trim();
+      if (!quote) continue;
+      i++;
+      out.push({ commentId: c.id, quote, anchorId: 'cqa-' + i });
+    }
+  });
+  return out;
+}
+
+// V daném prvku (typicky body) najde každý citát a obtočí ho <mark>
+// s ikonkou-odkazem na příslušný komentář.
+function annotateBodyWithCommentQuotes(rootEl, quotes) {
+  quotes.forEach(q => {
+    annotateOneQuoteInBody(rootEl, q);
+  });
+}
+
+function annotateOneQuoteInBody(rootEl, q) {
+  // TreeWalker přes text nodes, ignoruj uvnitř <a>, <code>, <pre>, <mark>
+  const walker = document.createTreeWalker(rootEl, NodeFilter.SHOW_TEXT, null);
+  let foundNode = null, foundIdx = -1;
+  const needleLow = q.quote.toLowerCase();
+  while (true) {
+    const node = walker.nextNode();
+    if (!node) break;
+    // Ignoruj uvnitř těchto tagů
+    let p = node.parentElement, skip = false;
+    while (p && p !== rootEl) {
+      const tag = (p.tagName || '').toLowerCase();
+      if (tag === 'a' || tag === 'code' || tag === 'pre' || tag === 'mark' || tag === 'script' || tag === 'style') {
+        skip = true; break;
+      }
+      p = p.parentElement;
+    }
+    if (skip) continue;
+    const idx = node.nodeValue.toLowerCase().indexOf(needleLow);
+    if (idx >= 0) { foundNode = node; foundIdx = idx; break; }
+  }
+  if (!foundNode) return;
+  // Rozdělit text node na: před | mark + link | po
+  const orig = foundNode.nodeValue;
+  const beforeText = orig.slice(0, foundIdx);
+  // Vezmi reálný text z body (zachová původní velikost písmen)
+  const matched = orig.slice(foundIdx, foundIdx + q.quote.length);
+  const afterText = orig.slice(foundIdx + q.quote.length);
+  const parent = foundNode.parentNode;
+  // Nahradit původní node beforeText
+  const beforeNode = document.createTextNode(beforeText);
+  parent.insertBefore(beforeNode, foundNode);
+  // Mark s ID
+  const mark = document.createElement('mark');
+  mark.id = q.anchorId;
+  mark.className = 'comment-quote-anchor';
+  mark.textContent = matched;
+  parent.insertBefore(mark, foundNode);
+  // Ikonka link na komentář
+  const link = document.createElement('a');
+  link.href = '#comment-' + q.commentId;
+  link.className = 'comment-anchor-link';
+  link.setAttribute('aria-label', 'Skočit na komentář k tomuto úryvku');
+  link.title = 'Skočit na komentář';
+  link.textContent = '💬';
+  parent.insertBefore(link, foundNode);
+  // After text
+  const afterNode = document.createTextNode(afterText);
+  parent.insertBefore(afterNode, foundNode);
+  parent.removeChild(foundNode);
+}
+
+// V kontejneru komentářů: pro každý citát v daném komentáři přidat <a> okolo (odkaz na anchor v body)
+function annotateCommentsWithBacklinks(commentsContainer, quotes) {
+  // Group podle commentId
+  const byId = {};
+  quotes.forEach(q => { (byId[q.commentId] = byId[q.commentId] || []).push(q); });
+  Object.keys(byId).forEach(cid => {
+    const article = commentsContainer.querySelector('[data-comment-id="' + cid + '"]');
+    if (!article) return;
+    const content = article.querySelector('.comment-content');
+    if (!content) return;
+    byId[cid].forEach(q => {
+      annotateOneQuoteInComment(content, q);
+    });
+  });
+}
+
+function annotateOneQuoteInComment(rootEl, q) {
+  const walker = document.createTreeWalker(rootEl, NodeFilter.SHOW_TEXT, null);
+  let foundNode = null, foundIdx = -1;
+  while (true) {
+    const node = walker.nextNode();
+    if (!node) break;
+    let p = node.parentElement, skip = false;
+    while (p && p !== rootEl) {
+      const tag = (p.tagName || '').toLowerCase();
+      if (tag === 'a' || tag === 'code' || tag === 'pre' || tag === 'mark') { skip = true; break; }
+      p = p.parentElement;
+    }
+    if (skip) continue;
+    const idx = node.nodeValue.indexOf(q.quote);
+    if (idx >= 0) { foundNode = node; foundIdx = idx; break; }
+  }
+  if (!foundNode) return;
+  const orig = foundNode.nodeValue;
+  const beforeText = orig.slice(0, foundIdx);
+  const matched = orig.slice(foundIdx, foundIdx + q.quote.length);
+  const afterText = orig.slice(foundIdx + q.quote.length);
+  const parent = foundNode.parentNode;
+  parent.insertBefore(document.createTextNode(beforeText), foundNode);
+  // Mark + link na anchor v body
+  const mark = document.createElement('mark');
+  mark.className = 'comment-quote-anchor';
+  mark.textContent = matched;
+  parent.insertBefore(mark, foundNode);
+  const link = document.createElement('a');
+  link.href = '#' + q.anchorId;
+  link.className = 'comment-anchor-link comment-anchor-link-back';
+  link.setAttribute('aria-label', 'Skočit na úryvek v textu');
+  link.title = 'Skočit na úryvek v textu';
+  link.textContent = '📍';
+  parent.insertBefore(link, foundNode);
+  parent.insertBefore(document.createTextNode(afterText), foundNode);
+  parent.removeChild(foundNode);
+}
+
+// Spojuje vše: zavolat po vykreslení detailu, řeší body i komentáře.
+function setupCommentQuoteLinking(entity) {
+  if (!entity || !Array.isArray(entity.comments) || entity.comments.length === 0) return;
+  const quotes = extractCommentQuotes(entity.comments);
+  if (quotes.length === 0) return;
+  const bodyEl = document.getElementById('body-rendered');
+  if (bodyEl) annotateBodyWithCommentQuotes(bodyEl, quotes);
+  const commentsContainer = document.getElementById('comments-list') || document.body;
+  annotateCommentsWithBacklinks(commentsContainer, quotes);
+  // Klikací odkazy: smooth scroll + krátký flash
+  document.querySelectorAll('a.comment-anchor-link').forEach(a => {
+    a.onclick = (ev) => {
+      ev.preventDefault();
+      const targetId = a.getAttribute('href').slice(1);
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Flash animace
+      target.classList.remove('comment-anchor-flash');
+      // restart animace
+      void target.offsetWidth;
+      target.classList.add('comment-anchor-flash');
+      // Pokud cíl je <article> (komentář), zaměř focus
+      if (target.tagName === 'ARTICLE') {
+        target.setAttribute('tabindex', '-1');
+        setTimeout(() => target.focus({ preventScroll: true }), 300);
+      }
+    };
+  });
+}
+
 function renderCommentItem(entityId, c) {
   const edited = c.updated_at && c.updated_at !== c.created_at;
   const timeStr = fmtDateTime(c.created_at);
   const editedStr = edited ? ' <span class="meta">(upraveno ' + escapeHtml(fmtRelative(c.updated_at)) + ')</span>' : '';
   // Renderuj obsah jako markdown (wiki linky, #N reference, atd.)
   const renderedContent = renderMarkdown(c.content || '', { ctx: { depth: 1, includeStack: new Set() } });
-  return '<article class="comment markdown' + (edited ? ' comment-edited' : '') + '" aria-label="Komentář od ' + escapeHtml(c.author || 'anonym') + '">' +
+  return '<article class="comment markdown' + (edited ? ' comment-edited' : '') + '" aria-label="Komentář od ' + escapeHtml(c.author || 'anonym') + '" id="comment-' + escapeHtml(c.id) + '" data-comment-id="' + escapeHtml(c.id) + '">' +
     '<div class="comment-meta">' +
       '<span><span class="comment-author">' + escapeHtml(c.author || '(bez autora)') + '</span> · <time datetime="' + escapeHtml(c.created_at) + '">' + escapeHtml(timeStr) + '</time>' + editedStr + '</span>' +
     '</div>' +
