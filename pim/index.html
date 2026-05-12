@@ -231,6 +231,9 @@ body.theme-dark #presentation-wrapper { background: #181818; color: #e8e8e8; }
 .pres-header button:hover { background: rgba(255,255,255,0.3); }
 .pres-header button[disabled] { opacity: 0.4; cursor: not-allowed; }
 .pres-counter { font-weight: 600; padding: 0 0.5em; }
+.pres-timer { display: inline-block; padding: 0.25em 0.6em; margin-left: 0.5em; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; font-family: ui-monospace, monospace; font-weight: 600; min-width: 5em; text-align: center; }
+.pres-timer.pres-timer-running { background: rgba(76,175,80,0.4); border-color: rgba(76,175,80,0.7); }
+.pres-timer.pres-timer-paused { background: rgba(255,165,0,0.4); border-color: rgba(255,165,0,0.7); }
 .pres-title-bar { padding: 0.5em 1em; background: #f0f0f0; border-bottom: 1px solid #ddd; }
 body.theme-dark .pres-title-bar { background: #222; border-bottom-color: #444; }
 .pres-title-text { font-size: 1.1em; font-weight: 500; }
@@ -21065,6 +21068,11 @@ const presentation = {
   idx: 0,
   overview: false,
   keyHandler: null,
+  // Časovač
+  timerStartTs: null,      // timestamp současného běhu (null = neběží)
+  timerAccumulated: 0,     // ms z předchozích běhů
+  timerEverStarted: false, // jednou už spuštěn? (pak zobrazujeme)
+  timerInterval: null,
 
   // Sestavit slidy ze stromu sekcí
   buildSlides: function(sections) {
@@ -21106,6 +21114,11 @@ const presentation = {
     this.idx = 0;
     this.overview = false;
     this.title = entity.title || 'Prezentace';
+    // Reset časovače
+    this.timerStartTs = null;
+    this.timerAccumulated = 0;
+    this.timerEverStarted = false;
+    if (this.timerInterval) { clearInterval(this.timerInterval); this.timerInterval = null; }
     this.render();
     this.attachKeys();
     // Fullscreen pokud možné
@@ -21122,6 +21135,7 @@ const presentation = {
       document.exitFullscreen().catch(() => {});
     }
     this.detachKeys();
+    if (this.timerInterval) { clearInterval(this.timerInterval); this.timerInterval = null; }
   },
 
   next: function() {
@@ -21148,6 +21162,67 @@ const presentation = {
     this.render();
   },
 
+  // === ČASOVAČ ===
+  toggleTimer: function() {
+    if (this.timerStartTs === null) {
+      // Spustit
+      this.timerStartTs = Date.now();
+      this.timerEverStarted = true;
+      if (!this.timerInterval) {
+        this.timerInterval = setInterval(() => this.updateTimerDisplay(), 1000);
+      }
+      this.render(); // znova vykresli, aby se objevil časovač pokud poprvé
+      this.announceTimerChange('Časovač spuštěn');
+    } else {
+      // Pozastavit
+      this.timerAccumulated += Date.now() - this.timerStartTs;
+      this.timerStartTs = null;
+      // necháváme interval běžet pro případ opětovného spuštění; updateTimerDisplay zastaví zobrazení změn
+      this.updateTimerDisplay();
+      this.announceTimerChange('Časovač pozastaven na ' + this.formatTimerElapsed());
+    }
+  },
+
+  resetTimer: function() {
+    this.timerStartTs = null;
+    this.timerAccumulated = 0;
+    if (this.timerInterval) { clearInterval(this.timerInterval); this.timerInterval = null; }
+    // Necháme zobrazení (časovač = 00:00)
+    this.updateTimerDisplay();
+    this.announceTimerChange('Časovač vynulován');
+  },
+
+  getTimerElapsed: function() {
+    let ms = this.timerAccumulated;
+    if (this.timerStartTs !== null) ms += Date.now() - this.timerStartTs;
+    return ms;
+  },
+
+  formatTimerElapsed: function() {
+    const ms = this.getTimerElapsed();
+    const totalSec = Math.floor(ms / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    const pad = (n) => n < 10 ? '0' + n : String(n);
+    if (h > 0) return h + ':' + pad(m) + ':' + pad(s);
+    return pad(m) + ':' + pad(s);
+  },
+
+  updateTimerDisplay: function() {
+    const el = document.getElementById('pres-timer-display');
+    if (!el) return;
+    el.textContent = this.formatTimerElapsed();
+    // Vizuální stav: běžící vs pauznutý
+    el.classList.toggle('pres-timer-running', this.timerStartTs !== null);
+    el.classList.toggle('pres-timer-paused', this.timerStartTs === null);
+  },
+
+  announceTimerChange: function(msg) {
+    const sr = document.getElementById('pres-timer-announce');
+    if (sr) sr.textContent = msg;
+  },
+
   attachKeys: function() {
     const self = this;
     this.keyHandler = (ev) => {
@@ -21165,6 +21240,11 @@ const presentation = {
         self.idx = self.slides.length - 1; self.render(); ev.preventDefault();
       } else if (ev.key === 'o' || ev.key === 'O') {
         self.toggleOverview(); ev.preventDefault();
+      } else if (ev.key === 't' || ev.key === 'T') {
+        self.toggleTimer(); ev.preventDefault();
+      } else if (ev.key === 'r' || ev.key === 'R') {
+        // R = reset časovače (jen pokud byl někdy spuštěn)
+        if (self.timerEverStarted) { self.resetTimer(); ev.preventDefault(); }
       }
     };
     document.addEventListener('keydown', this.keyHandler);
@@ -21197,6 +21277,15 @@ const presentation = {
     h += '<span class="pres-counter" aria-live="polite">' + cur + ' / ' + total + '</span>';
     h += '<button type="button" id="pres-next"' + (this.idx === total - 1 || this.overview ? ' disabled' : '') + ' aria-label="Další snímek">Další →</button>';
     h += '<button type="button" id="pres-overview" style="margin-left:0.5em;" aria-pressed="' + (this.overview ? 'true' : 'false') + '">' + (this.overview ? '🎬 Snímky' : '📋 Přehled') + '</button>';
+    // Časovač zobrazujeme jen pokud byl alespoň jednou spuštěn
+    if (this.timerEverStarted) {
+      const running = this.timerStartTs !== null;
+      h += '<span class="pres-timer ' + (running ? 'pres-timer-running' : 'pres-timer-paused') + '" id="pres-timer-display" aria-label="Časovač prezentace">' + this.formatTimerElapsed() + '</span>';
+      h += '<button type="button" id="pres-timer-toggle" aria-label="' + (running ? 'Pozastavit časovač' : 'Spustit časovač') + '">' + (running ? '⏸' : '▶') + '</button>';
+      h += '<button type="button" id="pres-timer-reset" aria-label="Vynulovat časovač">⟲</button>';
+    } else {
+      h += '<button type="button" id="pres-timer-toggle" aria-label="Spustit časovač (T)" title="Spustit časovač (T)">⏱ Časovač</button>';
+    }
     h += '</div>';
     h += '<button type="button" id="pres-close" aria-label="Zavřít prezentaci">✕ Zavřít</button>';
     h += '</header>';
@@ -21222,8 +21311,10 @@ const presentation = {
     if (this.overview) h += 'Přehled snímků, ' + total + ' snímků celkem.';
     else h += 'Snímek ' + cur + ' z ' + total + ': ' + (slide.heading || '');
     h += '</div>';
+    // Oddělené oznámení změn časovače (start/pause/reset)
+    h += '<div id="pres-timer-announce" class="sr-only" role="status" aria-live="polite"></div>';
     // Klávesy
-    h += '<div class="pres-keys-hint meta">Klávesy: ← → mezery navigace, O přehled, Home/End začátek/konec, Esc zavřít</div>';
+    h += '<div class="pres-keys-hint meta">Klávesy: ← → mezery navigace, O přehled, Home/End začátek/konec, T časovač spustit/pozastavit, R reset časovače, Esc zavřít</div>';
 
     wrap.innerHTML = h;
     this.attachPresHandlers();
@@ -21259,6 +21350,10 @@ const presentation = {
     if (btnOv) btnOv.onclick = () => self.toggleOverview();
     const btnClose = wrap.querySelector('#pres-close');
     if (btnClose) btnClose.onclick = () => self.end();
+    const btnTimerToggle = wrap.querySelector('#pres-timer-toggle');
+    if (btnTimerToggle) btnTimerToggle.onclick = () => self.toggleTimer();
+    const btnTimerReset = wrap.querySelector('#pres-timer-reset');
+    if (btnTimerReset) btnTimerReset.onclick = () => self.resetTimer();
     wrap.querySelectorAll('[data-ov-idx]').forEach(b => {
       b.onclick = () => self.goto(Number(b.dataset.ovIdx));
     });
