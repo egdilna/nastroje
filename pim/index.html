@@ -566,7 +566,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
     <p class="meta" id="link-type-preview" aria-live="polite"></p>
     <label for="link-search">Cílová entita (vyhledat)</label>
     <input type="search" id="link-search" placeholder="Začněte psát…">
-    <div id="link-results" role="listbox" aria-label="Nalezené entity" style="max-height:200px;overflow-y:auto;margin-top:0.5em;border:1px solid #ccc;border-radius:4px;"></div>
+    <div id="link-results" aria-label="Nalezené entity" style="max-height:200px;overflow-y:auto;margin-top:0.5em;border:1px solid #ccc;border-radius:4px;"></div>
     <label for="link-note">Poznámka (volitelně)</label><input type="text" id="link-note">
     <div class="btn-group" style="margin-top:1em;">
       <button type="button" class="primary" id="link-save" disabled>Přidat vazbu</button>
@@ -760,7 +760,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <select id="rp-aspect"></select>
     </div>
     <div id="rp-list-wrap" style="margin-top:0.5em;border:1px solid #ccc;border-radius:4px;max-height:280px;overflow-y:auto;">
-      <ul id="rp-list" role="listbox" aria-label="Nalezené entity" style="list-style:none;padding:0;margin:0;"></ul>
+      <ul id="rp-list" role="listbox" aria-label="Nalezené entity" tabindex="0" style="list-style:none;padding:0;margin:0;"></ul>
     </div>
     <p class="meta" id="rp-status" aria-live="polite"></p>
     <div class="btn-group">
@@ -8279,7 +8279,7 @@ function openRelationPicker(opts) {
       const indicator = opts.multiple
         ? '<input type="checkbox" tabindex="-1"' + (checked ? ' checked' : '') + ' style="pointer-events:none;"> '
         : (checked ? '● ' : '○ ');
-      return '<li role="option" data-id="' + escapeHtml(e.id) + '" data-idx="' + i + '"' +
+      return '<li role="option" id="rp-opt-' + i + '" tabindex="-1" data-id="' + escapeHtml(e.id) + '" data-idx="' + i + '"' +
         (checked ? ' aria-selected="true" class="checked"' : '') + '>' +
         indicator + escapeHtml(getDisplayTitle(e)) +
         (aspectsTxt ? ' <small class="meta">(' + escapeHtml(aspectsTxt) + ')</small>' : '') +
@@ -8290,7 +8290,14 @@ function openRelationPicker(opts) {
     }
     status.textContent = items.length + ' entit nalezeno' + (selectedIds.length > 0 ? ', ' + selectedIds.length + ' vybráno' : '');
     activeIndex = 0;
-    list.setAttribute('aria-activedescendant', '');
+    // Aktivní popisek nastavit na první položku, pokud je
+    if (items.length > 0) {
+      list.setAttribute('aria-activedescendant', 'rp-opt-0');
+      const firstOpt = list.querySelector('#rp-opt-0');
+      if (firstOpt) firstOpt.setAttribute('aria-selected', 'true');
+    } else {
+      list.removeAttribute('aria-activedescendant');
+    }
   }
 
   refreshList();
@@ -8323,37 +8330,51 @@ function openRelationPicker(opts) {
     const li = ev.target.closest('li[data-idx]');
     if (!li) return;
     const idx = parseInt(li.dataset.idx, 10);
+    activeIndex = idx;
     toggleItemAt(idx);
   };
 
   // Klávesnice ve search inputu i v listu
+  function setActive(idx) {
+    activeIndex = Math.max(0, Math.min(idx, renderedItems.length - 1));
+    const items = list.querySelectorAll('li[data-idx]');
+    items.forEach(i => i.removeAttribute('aria-selected'));
+    const cur = items[activeIndex];
+    if (cur) {
+      cur.setAttribute('aria-selected', 'true');
+      if (cur.scrollIntoView) cur.scrollIntoView({ block: 'nearest' });
+      list.setAttribute('aria-activedescendant', cur.id);
+    }
+  }
   function handleKey(ev) {
+    if (renderedItems.length === 0) return;
     if (ev.key === 'ArrowDown') {
       ev.preventDefault();
-      activeIndex = Math.min(activeIndex + 1, renderedItems.length - 1);
-      const items = list.querySelectorAll('li[data-idx]');
-      items.forEach(i => i.removeAttribute('aria-selected'));
-      const cur = items[activeIndex];
-      if (cur) {
-        cur.setAttribute('aria-selected', 'true');
-        cur.scrollIntoView({ block: 'nearest' });
-      }
+      setActive(activeIndex + 1);
     } else if (ev.key === 'ArrowUp') {
       ev.preventDefault();
-      activeIndex = Math.max(activeIndex - 1, 0);
-      const items = list.querySelectorAll('li[data-idx]');
-      items.forEach(i => i.removeAttribute('aria-selected'));
-      const cur = items[activeIndex];
-      if (cur) {
-        cur.setAttribute('aria-selected', 'true');
-        cur.scrollIntoView({ block: 'nearest' });
-      }
-    } else if (ev.key === 'Enter' && document.activeElement === searchInput) {
+      setActive(activeIndex - 1);
+    } else if (ev.key === 'Home') {
+      ev.preventDefault();
+      setActive(0);
+    } else if (ev.key === 'End') {
+      ev.preventDefault();
+      setActive(renderedItems.length - 1);
+    } else if (ev.key === 'Enter') {
+      ev.preventDefault();
+      toggleItemAt(activeIndex);
+    } else if (ev.key === ' ' && document.activeElement === list) {
+      // Mezera v listboxu = toggle (jen když je list focused, ne v searchi)
       ev.preventDefault();
       toggleItemAt(activeIndex);
     }
   }
   searchInput.onkeydown = handleKey;
+  list.onkeydown = handleKey;
+  // Při kliku na položku ji nastav jako aktivní
+  list.addEventListener('focus', () => {
+    if (renderedItems.length > 0 && activeIndex < renderedItems.length) setActive(activeIndex);
+  });
 
   cancelBtn.onclick = (ev) => { ev.preventDefault(); d.close(); };
   document.getElementById('relation-picker-form').onsubmit = (ev) => {
@@ -8432,7 +8453,8 @@ function openLinkDialog(entity) {
       .filter(matches)
       .slice(0, 30);
     if (r.length === 0) { out.innerHTML = '<p class="meta" style="padding:0.5em;">Žádné výsledky.</p>'; return; }
-    out.innerHTML = r.map(e => '<button type="button" data-target="' + escapeHtml(e.id) + '" style="display:block;width:100%;text-align:left;padding:0.5em;border:none;border-bottom:1px solid #eee;background:transparent;color:inherit;">' +
+    out.innerHTML = '<p class="meta sr-only" aria-live="polite">' + r.length + ' výsledků. Šipkou dolů ze vstupu se dostanete na první výsledek, mezi tlačítky pak Tab.</p>' +
+      r.map(e => '<button type="button" data-target="' + escapeHtml(e.id) + '" style="display:block;width:100%;text-align:left;padding:0.5em;border:none;border-bottom:1px solid #eee;background:transparent;color:inherit;">' +
       escapeHtml(getDisplayTitle(e)) + ' <small class="meta">– ' + (e.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + '</small></button>').join('');
     out.querySelectorAll('button[data-target]').forEach(b => {
       b.onclick = () => {
@@ -8443,8 +8465,17 @@ function openLinkDialog(entity) {
         out.innerHTML = '<p class="meta" style="padding:0.5em;">Vybráno.</p>';
         document.getElementById('link-save').disabled = false;
         updatePreview();
+        document.getElementById('link-save').focus();
       };
     });
+  };
+  // Šipka dolů ze search inputu → focus první výsledek
+  document.getElementById('link-search').onkeydown = (ev) => {
+    if (ev.key === 'ArrowDown') {
+      const out = document.getElementById('link-results');
+      const firstBtn = out.querySelector('button[data-target]');
+      if (firstBtn) { ev.preventDefault(); firstBtn.focus(); }
+    }
   };
 
   document.getElementById('link-save').onclick = () => {
@@ -12732,7 +12763,7 @@ body.viewer-mode .btn-group:has(#d-add-comment) { display: none !important; }
     <p class="meta" id="link-type-preview" aria-live="polite"></p>
     <label for="link-search">Cílová entita (vyhledat)</label>
     <input type="search" id="link-search" placeholder="Začněte psát…">
-    <div id="link-results" role="listbox" aria-label="Nalezené entity" style="max-height:200px;overflow-y:auto;margin-top:0.5em;border:1px solid #ccc;border-radius:4px;"></div>
+    <div id="link-results" aria-label="Nalezené entity" style="max-height:200px;overflow-y:auto;margin-top:0.5em;border:1px solid #ccc;border-radius:4px;"></div>
     <label for="link-note">Poznámka (volitelně)</label><input type="text" id="link-note">
     <div class="btn-group" style="margin-top:1em;">
       <button type="button" class="primary" id="link-save" disabled>Přidat vazbu</button>
@@ -12926,7 +12957,7 @@ body.viewer-mode .btn-group:has(#d-add-comment) { display: none !important; }
       <select id="rp-aspect"></select>
     </div>
     <div id="rp-list-wrap" style="margin-top:0.5em;border:1px solid #ccc;border-radius:4px;max-height:280px;overflow-y:auto;">
-      <ul id="rp-list" role="listbox" aria-label="Nalezené entity" style="list-style:none;padding:0;margin:0;"></ul>
+      <ul id="rp-list" role="listbox" aria-label="Nalezené entity" tabindex="0" style="list-style:none;padding:0;margin:0;"></ul>
     </div>
     <p class="meta" id="rp-status" aria-live="polite"></p>
     <div class="btn-group">
@@ -18367,7 +18398,7 @@ function openRelationPicker(opts) {
       const indicator = opts.multiple
         ? '<input type="checkbox" tabindex="-1"' + (checked ? ' checked' : '') + ' style="pointer-events:none;"> '
         : (checked ? '● ' : '○ ');
-      return '<li role="option" data-id="' + escapeHtml(e.id) + '" data-idx="' + i + '"' +
+      return '<li role="option" id="rp-opt-' + i + '" tabindex="-1" data-id="' + escapeHtml(e.id) + '" data-idx="' + i + '"' +
         (checked ? ' aria-selected="true" class="checked"' : '') + '>' +
         indicator + escapeHtml(getDisplayTitle(e)) +
         (aspectsTxt ? ' <small class="meta">(' + escapeHtml(aspectsTxt) + ')</small>' : '') +
@@ -18378,7 +18409,13 @@ function openRelationPicker(opts) {
     }
     status.textContent = items.length + ' entit nalezeno' + (selectedIds.length > 0 ? ', ' + selectedIds.length + ' vybráno' : '');
     activeIndex = 0;
-    list.setAttribute('aria-activedescendant', '');
+    if (items.length > 0) {
+      list.setAttribute('aria-activedescendant', 'rp-opt-0');
+      const firstOpt = list.querySelector('#rp-opt-0');
+      if (firstOpt) firstOpt.setAttribute('aria-selected', 'true');
+    } else {
+      list.removeAttribute('aria-activedescendant');
+    }
   }
 
   refreshList();
@@ -18411,37 +18448,49 @@ function openRelationPicker(opts) {
     const li = ev.target.closest('li[data-idx]');
     if (!li) return;
     const idx = parseInt(li.dataset.idx, 10);
+    activeIndex = idx;
     toggleItemAt(idx);
   };
 
   // Klávesnice ve search inputu i v listu
+  function setActive(idx) {
+    activeIndex = Math.max(0, Math.min(idx, renderedItems.length - 1));
+    const items = list.querySelectorAll('li[data-idx]');
+    items.forEach(i => i.removeAttribute('aria-selected'));
+    const cur = items[activeIndex];
+    if (cur) {
+      cur.setAttribute('aria-selected', 'true');
+      if (cur.scrollIntoView) cur.scrollIntoView({ block: 'nearest' });
+      list.setAttribute('aria-activedescendant', cur.id);
+    }
+  }
   function handleKey(ev) {
+    if (renderedItems.length === 0) return;
     if (ev.key === 'ArrowDown') {
       ev.preventDefault();
-      activeIndex = Math.min(activeIndex + 1, renderedItems.length - 1);
-      const items = list.querySelectorAll('li[data-idx]');
-      items.forEach(i => i.removeAttribute('aria-selected'));
-      const cur = items[activeIndex];
-      if (cur) {
-        cur.setAttribute('aria-selected', 'true');
-        cur.scrollIntoView({ block: 'nearest' });
-      }
+      setActive(activeIndex + 1);
     } else if (ev.key === 'ArrowUp') {
       ev.preventDefault();
-      activeIndex = Math.max(activeIndex - 1, 0);
-      const items = list.querySelectorAll('li[data-idx]');
-      items.forEach(i => i.removeAttribute('aria-selected'));
-      const cur = items[activeIndex];
-      if (cur) {
-        cur.setAttribute('aria-selected', 'true');
-        cur.scrollIntoView({ block: 'nearest' });
-      }
-    } else if (ev.key === 'Enter' && document.activeElement === searchInput) {
+      setActive(activeIndex - 1);
+    } else if (ev.key === 'Home') {
+      ev.preventDefault();
+      setActive(0);
+    } else if (ev.key === 'End') {
+      ev.preventDefault();
+      setActive(renderedItems.length - 1);
+    } else if (ev.key === 'Enter') {
+      ev.preventDefault();
+      toggleItemAt(activeIndex);
+    } else if (ev.key === ' ' && document.activeElement === list) {
       ev.preventDefault();
       toggleItemAt(activeIndex);
     }
   }
   searchInput.onkeydown = handleKey;
+  list.onkeydown = handleKey;
+  list.addEventListener('focus', () => {
+    if (renderedItems.length > 0 && activeIndex < renderedItems.length) setActive(activeIndex);
+  });
 
   cancelBtn.onclick = (ev) => { ev.preventDefault(); d.close(); };
   document.getElementById('relation-picker-form').onsubmit = (ev) => {
@@ -19754,9 +19803,9 @@ const presentation = {
     h += '</div><button type="button" id="pres-close" aria-label="Zavřít prezentaci">✕ Zavřít</button></header>';
     h += '<div class="pres-title-bar"><div class="pres-title-text">🎬 ' + escapeHtml(this.title) + '</div></div>';
     if (this.overview) {
-      h += '<div class="pres-overview" role="list">';
+      h += '<div class="pres-overview">';
       this.slides.forEach((s, i) => {
-        h += '<button type="button" class="pres-ov-item' + (i === this.idx ? ' pres-ov-active' : '') + '" data-ov-idx="' + i + '" role="listitem" aria-label="Snímek ' + (i + 1) + ': ' + escapeHtml(s.heading || '(bez nadpisu)') + '">';
+        h += '<button type="button" class="pres-ov-item' + (i === this.idx ? ' pres-ov-active' : '') + '" data-ov-idx="' + i + '" aria-label="Snímek ' + (i + 1) + ': ' + escapeHtml(s.heading || '(bez nadpisu)') + '">';
         h += '<div class="pres-ov-num">' + (i + 1) + '</div>';
         h += '<div class="pres-ov-type-tag">' + (s.type === 'title' ? 'Titul' : s.type === 'section' ? 'Sekce' : 'Obsah') + '</div>';
         h += '<div class="pres-ov-heading pres-' + s.type + '">' + escapeHtml(s.heading || '(bez nadpisu)') + '</div></button>';
@@ -21590,9 +21639,9 @@ const presentation = {
     h += '<div class="pres-title-bar"><div class="pres-title-text">🎬 ' + escapeHtml(this.title) + '</div></div>';
 
     if (this.overview) {
-      h += '<div class="pres-overview" role="list">';
+      h += '<div class="pres-overview">';
       this.slides.forEach((s, i) => {
-        h += '<button type="button" class="pres-ov-item' + (i === this.idx ? ' pres-ov-active' : '') + '" data-ov-idx="' + i + '" role="listitem" aria-label="Snímek ' + (i + 1) + ': ' + escapeHtml(s.heading || '(bez nadpisu)') + '">';
+        h += '<button type="button" class="pres-ov-item' + (i === this.idx ? ' pres-ov-active' : '') + '" data-ov-idx="' + i + '" aria-label="Snímek ' + (i + 1) + ': ' + escapeHtml(s.heading || '(bez nadpisu)') + '">';
         h += '<div class="pres-ov-num">' + (i + 1) + '</div>';
         h += '<div class="pres-ov-type-tag">' + (s.type === 'title' ? 'Titul' : s.type === 'section' ? 'Sekce' : 'Obsah') + '</div>';
         h += '<div class="pres-ov-heading pres-' + s.type + '">' + escapeHtml(s.heading || '(bez nadpisu)') + '</div>';
