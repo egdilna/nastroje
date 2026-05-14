@@ -1395,11 +1395,24 @@ async function saveProject() {
   try {
     // Ulož jako JSON + binární data zabalené v ZIP
     const zip = new JSZip();
+
+    // Deduplikuj soubory – stejný ArrayBuffer ukládáme jen jednou
+    // Klíč: identity ArrayBufferu (referenční rovnost)
+    const savedBuffers = new Map(); // ArrayBuffer -> zipový název souboru
     const meta = buildMeta();
-    zip.file('project.json', JSON.stringify(meta, null, 2));
+
     for (const r of project.regions) {
-      zip.file('video/' + r.id + '_' + r.fileName, r.fileData);
+      if (!savedBuffers.has(r.fileData)) {
+        const zipName = 'video/' + r.id + '_' + r.fileName;
+        zip.file(zipName, r.fileData);
+        savedBuffers.set(r.fileData, zipName);
+      }
+      // Do metadat zapíšeme odkaz na skutečný zipový soubor
+      const regionMeta = meta.regions.find(m => m.id === r.id);
+      if (regionMeta) regionMeta.zipFile = savedBuffers.get(r.fileData);
     }
+
+    zip.file('project.json', JSON.stringify(meta, null, 2));
     const blob = await zip.generateAsync({ type:'blob', compression:'DEFLATE', compressionOptions:{ level:1 } });
     downloadBlob(blob, (project.name||'projekt') + '.ved');
     clearUndoOnSave();
@@ -1411,11 +1424,12 @@ async function saveProject() {
 
 function buildMeta() {
   return {
-    appVersion: 1, name: project.name,
+    appVersion: 2, name: project.name,
     regions: project.regions.map(r => ({
       id: r.id, name: r.name, fileName: r.fileName,
       duration: r.duration, startTrim: r.startTrim||0, endTrim: r.endTrim||0,
-      keyframes: r.keyframes||[], notes: r.notes||''
+      keyframes: r.keyframes||[], notes: r.notes||'',
+      zipFile: null  // vyplní saveProject
     }))
   };
 }
@@ -1439,10 +1453,21 @@ async function openProject(file) {
     project.name = meta.name || 'Projekt';
     project.regions = [];
 
+    // Cache načtených bufferů – sdílené soubory načteme jen jednou
+    const loadedBuffers = new Map(); // zipFile path -> ArrayBuffer
+
     for (const rm of meta.regions) {
-      const vFile = zip.file('video/' + rm.id + '_' + rm.fileName);
-      if (!vFile) continue;
-      const ab = await vFile.async('arraybuffer');
+      // Podporujeme nový formát (zipFile) i starý (id_fileName)
+      const zipPath = rm.zipFile || ('video/' + rm.id + '_' + rm.fileName);
+      let ab;
+      if (loadedBuffers.has(zipPath)) {
+        ab = loadedBuffers.get(zipPath);
+      } else {
+        const vFile = zip.file(zipPath);
+        if (!vFile) continue;
+        ab = await vFile.async('arraybuffer');
+        loadedBuffers.set(zipPath, ab);
+      }
       project.regions.push({
         id: rm.id, name: rm.name, fileName: rm.fileName,
         fileData: ab, duration: rm.duration,
@@ -1480,32 +1505,43 @@ async function ensureFFmpeg() {
   ffmpegLoading = true;
   setStatus('Načítám ffmpeg.wasm…');
   try {
-    // Dynamický import ffmpeg.wasm z CDN
-    const { FFmpeg } = await import('https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');
-    const { fetchFile, toBlobURL } = await import('https://unpkg.com/@ffmpeg/util@0.12.2/dist/esm/index.js');
+    // Použijeme ffmpeg.wasm 0.11.x – nevyžaduje SharedArrayBuffer ani speciální CORS hlavičky
+    // Načteme přes script tag dynamicky pokud ještě není
+    if (typeof window.FFmpeg === 'undefined' || typeof window.FFmpeg.createFFmpeg === 'undefined') {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.0/dist/ffmpeg.min.js';
+        s.onload = resolve;
+        s.onerror = () => {
+          // Fallback na unpkg
+          const s2 = document.createElement('script');
+          s2.src = 'https://unpkg.com/@ffmpeg/ffmpeg@0.11.0/dist/ffmpeg.min.js';
+          s2.onload = resolve;
+          s2.onerror = reject;
+          document.head.appendChild(s2);
+        };
+        document.head.appendChild(s);
+      });
+    }
 
-    ffmpegLib = { FFmpeg, fetchFile, toBlobURL };
-
-    const ffmpeg = new FFmpeg();
-
-    // Všechny soubory včetně workeru načítáme přes toBlobURL aby se obešel CORS
-    const ffBase = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm';
-    const coreBase = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
-    await ffmpeg.load({
-      workerURL: await toBlobURL(`${ffBase}/worker.js`, 'text/javascript'),
-      coreURL: await toBlobURL(`${coreBase}/ffmpeg-core.js`, 'text/javascript'),
-      wasmURL: await toBlobURL(`${coreBase}/ffmpeg-core.wasm`, 'application/wasm'),
+    const { createFFmpeg, fetchFile } = window.FFmpeg;
+    const ffmpeg = createFFmpeg({
+      log: false,
+      corePath: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js',
     });
+    await ffmpeg.load();
 
-    ffmpegLib.instance = ffmpeg;
+    ffmpegLib = { ffmpeg, fetchFile };
     ffmpegLoaded = true;
     ffmpegLoading = false;
     setStatus('ffmpeg připraven', 'success');
+    announce('ffmpeg připraven, export je k dispozici');
     return true;
   } catch(e) {
     ffmpegLoading = false;
-    setStatus('ffmpeg nelze načíst – export nebude fungovat', 'error');
-    throw new Error('ffmpeg.wasm se nepodařilo načíst: ' + e.message + '. Zkontrolujte připojení k internetu.');
+    setStatus('ffmpeg nelze načíst – zkontrolujte připojení k internetu', 'error');
+    announce('ffmpeg nelze načíst – export nebude fungovat');
+    throw new Error('ffmpeg se nepodařilo načíst: ' + e.message);
   }
 }
 
@@ -1534,80 +1570,76 @@ async function exportProject() {
   try {
     setProgress(0, 'Načítám ffmpeg.wasm…');
     await ensureFFmpeg();
-    const { fetchFile } = ffmpegLib;
-    const ffmpeg = ffmpegLib.instance;
+    const { ffmpeg, fetchFile } = ffmpegLib;
 
     const total = project.regions.length;
-    const inputFiles = [];
+    const outParts = [];
 
-    // Zapsat každý region jako vstupní soubor
+    // Každý region zapsat a oříznout
     for (let i = 0; i < total; i++) {
       const r = project.regions[i];
-      setProgress(Math.round(5 + (i / total) * 60),
+      setProgress(Math.round(5 + (i / total) * 70),
         t('export.mixingRegions', { current: i+1, total }));
+      announce('Zpracovávám segment ' + (i+1) + ' z ' + total);
 
       if (!r.fileData || r.fileData.byteLength === 0) {
-        throw new Error('Region "' + r.name + '" nemá video data. Uložte projekt a načtěte ho znovu.');
+        throw new Error('Region "' + r.name + '" nemá video data. Uložte projekt znovu.');
       }
 
       const inName = 'in_' + i + '.mp4';
-      await ffmpeg.writeFile(inName, new Uint8Array(r.fileData));
-      inputFiles.push({ name: inName, region: r, index: i });
-    }
-
-    setProgress(70, 'Sestříhávám segmenty…');
-
-    const outParts = [];
-
-    // Každý region ořízneme ffmpeg -ss -to -c copy
-    for (let i = 0; i < inputFiles.length; i++) {
-      const { name: inName, region: r } = inputFiles[i];
       const outName = 'seg_' + i + '.mp4';
       const startSec = (r.startTrim || 0).toFixed(6);
       const endSec = (r.duration - (r.endTrim || 0)).toFixed(6);
 
-      setProgress(70 + Math.round((i / inputFiles.length) * 20),
-        `Střih ${i+1}/${inputFiles.length}…`);
+      // 0.11.x API: ffmpeg.FS('writeFile', ...) a ffmpeg.run(...)
+      ffmpeg.FS('writeFile', inName, await fetchFile(new Blob([r.fileData], {type:'video/mp4'})));
 
-      await ffmpeg.exec([
+      await ffmpeg.run(
         '-ss', startSec,
         '-to', endSec,
         '-i', inName,
         '-c', 'copy',
         '-avoid_negative_ts', 'make_zero',
         outName
-      ]);
+      );
+
+      // Zkontroluj jestli výstup existuje
+      try { ffmpeg.FS('stat', outName); } catch(e) {
+        throw new Error('Segment ' + (i+1) + ' se nepodařilo vytvořit. Zkontroluj formát videa.');
+      }
+
       outParts.push(outName);
+      // Uvolni vstup hned
+      try { ffmpeg.FS('unlink', inName); } catch(e) {}
     }
 
-    setProgress(90, 'Spojuji segmenty…');
+    setProgress(80, 'Spojuji segmenty…');
+    announce('Spojuji ' + outParts.length + ' segmentů…');
 
     let finalFile;
     if (outParts.length === 1) {
       finalFile = outParts[0];
     } else {
-      // Sestav concat list
       const concatList = outParts.map(f => 'file ' + f).join('\n');
-      await ffmpeg.writeFile('concat.txt', concatList);
-      await ffmpeg.exec([
+      ffmpeg.FS('writeFile', 'concat.txt', concatList);
+      await ffmpeg.run(
         '-f', 'concat',
         '-safe', '0',
         '-i', 'concat.txt',
         '-c', 'copy',
         'output.mp4'
-      ]);
+      );
       finalFile = 'output.mp4';
     }
 
-    setProgress(97, t('export.saving'));
-    const data = await ffmpeg.readFile(finalFile);
+    setProgress(95, t('export.saving'));
+    const data = ffmpeg.FS('readFile', finalFile);
     const blob = new Blob([data.buffer], { type: 'video/mp4' });
 
     // Uklid
-    for (const { name } of inputFiles) { try { await ffmpeg.deleteFile(name); } catch(e) {} }
-    for (const n of outParts) { try { await ffmpeg.deleteFile(n); } catch(e) {} }
-    try { await ffmpeg.deleteFile('concat.txt'); } catch(e) {}
-    try { await ffmpeg.deleteFile('output.mp4'); } catch(e) {}
+    for (const n of outParts) { try { ffmpeg.FS('unlink', n); } catch(e) {} }
+    try { ffmpeg.FS('unlink', 'concat.txt'); } catch(e) {}
+    try { ffmpeg.FS('unlink', 'output.mp4'); } catch(e) {}
 
     setProgress(100, t('export.done'));
     await new Promise(r => setTimeout(r, 300));
