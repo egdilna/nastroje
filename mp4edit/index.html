@@ -1471,11 +1471,11 @@ let ffmpegLoading = false;
 async function ensureFFmpeg() {
   if (ffmpegLoaded) return true;
   if (ffmpegLoading) {
-    // Čekej až se načte
     while (ffmpegLoading) await new Promise(r => setTimeout(r, 200));
     return ffmpegLoaded;
   }
   ffmpegLoading = true;
+  setStatus('Načítám ffmpeg.wasm…');
   try {
     // Dynamický import ffmpeg.wasm z CDN
     const { FFmpeg } = await import('https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');
@@ -1484,23 +1484,24 @@ async function ensureFFmpeg() {
     ffmpegLib = { FFmpeg, fetchFile, toBlobURL };
 
     const ffmpeg = new FFmpeg();
-    ffmpeg.on('log', ({ message }) => {
-      // debug log - nezobrazujeme
-    });
 
-    // Načti core z CDN
-    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+    // Všechny soubory včetně workeru načítáme přes toBlobURL aby se obešel CORS
+    const ffBase = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm';
+    const coreBase = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
     await ffmpeg.load({
-      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+      workerURL: await toBlobURL(`${ffBase}/worker.js`, 'text/javascript'),
+      coreURL: await toBlobURL(`${coreBase}/ffmpeg-core.js`, 'text/javascript'),
+      wasmURL: await toBlobURL(`${coreBase}/ffmpeg-core.wasm`, 'application/wasm'),
     });
 
     ffmpegLib.instance = ffmpeg;
     ffmpegLoaded = true;
     ffmpegLoading = false;
+    setStatus('ffmpeg připraven', 'success');
     return true;
   } catch(e) {
     ffmpegLoading = false;
+    setStatus('ffmpeg nelze načíst – export nebude fungovat', 'error');
     throw new Error('ffmpeg.wasm se nepodařilo načíst: ' + e.message + '. Zkontrolujte připojení k internetu.');
   }
 }
@@ -1802,8 +1803,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.altKey || e.ctrlKey || e.metaKey) return;
 
     switch (e.key) {
-      case 'o': e.preventDefault(); seekBy(-60); break;
-      case 'i': e.preventDefault(); seekBy(60); break;
+      case 'i': e.preventDefault(); seekBy(-60); break;
+      case 'o': e.preventDefault(); seekBy(60); break;
       case 'x': e.preventDefault(); seekBy(-5); break;
       case 'v': e.preventDefault(); seekBy(5); break;
       case 'p': e.preventDefault(); if (isPlaying) pausePlayback(); else resumePlayback(); break;
@@ -1849,6 +1850,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateProjectInfo();
   updateUndoButtons();
   setStatus(t('status.ready'));
+
+  // Začni načítat ffmpeg.wasm hned na pozadí
+  ensureFFmpeg().catch(() => {
+    // Selhání se ukáže až při prvním exportu – neblokujeme start
+  });
 });
 </script>
 </body>
