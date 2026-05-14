@@ -1723,32 +1723,40 @@ async function ensureFFmpeg() {
     // ffmpeg-core-st.js a ffmpeg.min.js jsou embedovány přímo v HTML – žádné CDN
     // Stáhneme jen WASM binárku (~24 MB) přes fetch z unpkg (CORS: *)
     setStatus('Stahuji ffmpeg.wasm (~24 MB), prosím čekejte…');
-    announce('Stahuji ffmpeg engine');
+    announce('Stahuji ffmpeg engine, prosím čekejte');
 
     const wasmResp = await fetch('https://unpkg.com/@ffmpeg/core-st@0.11.1/dist/ffmpeg-core.wasm');
-    if (!wasmResp.ok) throw new Error('WASM download failed: HTTP ' + wasmResp.status);
+    if (!wasmResp.ok) throw new Error('WASM stažení selhalo: HTTP ' + wasmResp.status);
     const wasmBinary = await wasmResp.arrayBuffer();
 
     setStatus('Inicializuji ffmpeg…');
 
-    // createFFmpegCore je již v global scope (embedded core-st.js)
-    // Monkey-patch: přidáme wasmBinary do options
-    const origCreateFFmpegCore = globalThis.createFFmpegCore;
-    if (!origCreateFFmpegCore) throw new Error('createFFmpegCore not defined - core-st.js not loaded');
+    // createFFmpegCore je v global scope z embedded core-st.js
+    const origCreate = globalThis.createFFmpegCore;
+    if (!origCreate) throw new Error('createFFmpegCore není definováno – core-st.js se nenačetl');
 
-    globalThis.createFFmpegCore = (opts) => origCreateFFmpegCore({ ...opts, wasmBinary });
+    // Monkey-patch: přidáme wasmBinary do options aby se nestahoval znovu
+    globalThis.createFFmpegCore = (opts) => origCreate({ ...opts, wasmBinary });
 
-    // ffmpeg 0.10.1 je v global scope jako window.FFmpeg (embedded ffmpeg.min.js)
-    const FFmpegModule = globalThis.FFmpeg || window.FFmpeg;
-    if (!FFmpegModule) throw new Error('FFmpeg module not defined - ffmpeg.min.js not loaded');
+    // window.FFmpeg = { createFFmpeg, fetchFile } (ffmpeg 0.11.6 UMD)
+    const FFmpegNS = globalThis.FFmpeg;
+    if (!FFmpegNS || !FFmpegNS.createFFmpeg) throw new Error('FFmpeg není definováno – ffmpeg.min.js se nenačetl');
 
-    const { createFFmpeg, fetchFile } = FFmpegModule;
-    const ffmpeg = createFFmpeg({ log: false, corePath: '' });
+    const { createFFmpeg, fetchFile } = FFmpegNS;
+
+    // mainName: 'main' – core-st exportuje _main (ne _proxy_main jako multi-threaded core)
+    // corePath: 'dummy' – createFFmpegCore je v global scope, nepotřebujeme ho stahovat z URL,
+    //   ale corePath musí být neprázdný string aby prošel validací
+    const ffmpeg = createFFmpeg({
+      log: false,
+      mainName: 'main',
+      corePath: 'dummy',
+    });
 
     await ffmpeg.load();
 
     // Obnov originální createFFmpegCore
-    globalThis.createFFmpegCore = origCreateFFmpegCore;
+    globalThis.createFFmpegCore = origCreate;
 
     ffmpegLib = { ffmpeg, fetchFile };
     ffmpegLoaded = true;
@@ -1758,7 +1766,7 @@ async function ensureFFmpeg() {
     return true;
   } catch(e) {
     ffmpegLoading = false;
-    // Obnov createFFmpegCore pokud byl patchnuty
+    globalThis.createFFmpegCore = globalThis._origCreateFFmpegCore || globalThis.createFFmpegCore;
     const msg = 'ffmpeg nelze načíst: ' + (e.message || String(e));
     const dbg = document.getElementById('ffmpeg-debug');
     if (dbg) dbg.textContent = msg;
