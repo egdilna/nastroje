@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VideoEdit 1.1.2</title>
+<title>VideoEdit v1.1.3</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:ital,wght@0,300;0,400;1,300&display=swap');
 
@@ -1725,7 +1725,7 @@ async function ensureFFmpeg() {
     setStatus('Stahuji ffmpeg.wasm (~24 MB), prosím čekejte…');
     announce('Stahuji ffmpeg engine, prosím čekejte');
 
-    const wasmResp = await fetch('https://unpkg.com/@ffmpeg/core-st@0.11.1/dist/ffmpeg-core.wasm?v=1.1.2');
+    const wasmResp = await fetch('https://unpkg.com/@ffmpeg/core-st@0.11.1/dist/ffmpeg-core.wasm?v=1.1.3');
     if (!wasmResp.ok) throw new Error('WASM stažení selhalo: HTTP ' + wasmResp.status);
     const wasmBinary = await wasmResp.arrayBuffer();
 
@@ -1735,8 +1735,22 @@ async function ensureFFmpeg() {
     const origCreate = globalThis.createFFmpegCore;
     if (!origCreate) throw new Error('createFFmpegCore není definováno – core-st.js se nenačetl');
 
-    // Monkey-patch: přidáme wasmBinary do options aby se nestahoval znovu
-    globalThis.createFFmpegCore = (opts) => origCreate({ ...opts, wasmBinary });
+    // Monkey-patch createFFmpegCore:
+    // 1. Přidáme wasmBinary aby se WASM nestahoval znovu
+    // 2. Po inicializaci přidáme _proxy_main = _main na modulu
+    //    (ffmpeg 0.11.x hledá cwrap('proxy_main'), ale core-st exportuje jen _main)
+    globalThis.createFFmpegCore = async (opts) => {
+      const module = await origCreate({ ...opts, wasmBinary });
+      // Přidej alias _proxy_main -> _main
+      if (module._main && !module._proxy_main) {
+        module._proxy_main = module._main;
+      }
+      // Také přidej do asm objektu pokud existuje
+      if (module.asm && module.asm._main && !module.asm._proxy_main) {
+        module.asm._proxy_main = module.asm._main;
+      }
+      return module;
+    };
 
     // window.FFmpeg = { createFFmpeg, fetchFile } (ffmpeg 0.11.6 UMD)
     const FFmpegNS = globalThis.FFmpeg;
@@ -1749,7 +1763,7 @@ async function ensureFFmpeg() {
     //   ale corePath musí být neprázdný string aby prošel validací
     const ffmpeg = createFFmpeg({
       log: false,
-      mainName: 'main',
+      mainName: 'proxy_main',  // _proxy_main je nyni aliasovano na _main patchem
       corePath: 'data:text/javascript;base64,Cg==',
     });
 
@@ -2134,7 +2148,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderRegions();
   updateProjectInfo();
   updateUndoButtons();
-  setStatus('VideoEdit v1.1.2 – připraveno');
+  setStatus('VideoEdit v1.1.3 – připraveno');
 
   // Začni načítat ffmpeg.wasm hned na pozadí
   ensureFFmpeg().catch(e => {
