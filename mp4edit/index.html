@@ -1505,31 +1505,37 @@ async function ensureFFmpeg() {
   }
   ffmpegLoading = true;
   setStatus('Načítám ffmpeg.wasm…');
+
+  // Načti script tag ze CDN (zkus jsdelivr, fallback unpkg)
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src; s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+
   try {
-    // Použijeme ffmpeg.wasm 0.11.x – nevyžaduje SharedArrayBuffer ani speciální CORS hlavičky
-    // Načteme přes script tag dynamicky pokud ještě není
-    if (typeof window.FFmpeg === 'undefined' || typeof window.FFmpeg.createFFmpeg === 'undefined') {
-      await new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.0/dist/ffmpeg.min.js';
-        s.onload = resolve;
-        s.onerror = () => {
-          // Fallback na unpkg
-          const s2 = document.createElement('script');
-          s2.src = 'https://unpkg.com/@ffmpeg/ffmpeg@0.11.0/dist/ffmpeg.min.js';
-          s2.onload = resolve;
-          s2.onerror = reject;
-          document.head.appendChild(s2);
-        };
-        document.head.appendChild(s);
-      });
+    // ffmpeg.wasm 0.10.1 – jediná verze která nepotřebuje SharedArrayBuffer
+    // ani Cross-Origin-Isolated hlavičky, funguje na libovolném hostingu
+    if (typeof window.FFmpeg === 'undefined' || !window.FFmpeg.createFFmpeg) {
+      try {
+        await loadScript('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.10.1/dist/ffmpeg.min.js');
+      } catch(e) {
+        await loadScript('https://unpkg.com/@ffmpeg/ffmpeg@0.10.1/dist/ffmpeg.min.js');
+      }
     }
 
     const { createFFmpeg, fetchFile } = window.FFmpeg;
+
+    // corePath musí být absolutní URL ke správné verzi core
+    let corePath = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.10.0/dist/ffmpeg-core.js';
+
     const ffmpeg = createFFmpeg({
       log: false,
-      corePath: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js',
+      corePath,
     });
+
     await ffmpeg.load();
 
     ffmpegLib = { ffmpeg, fetchFile };
@@ -1541,7 +1547,6 @@ async function ensureFFmpeg() {
   } catch(e) {
     ffmpegLoading = false;
     const msg = 'ffmpeg nelze načíst: ' + (e.message || String(e));
-    // Zobraz celou chybu viditelně v aplikaci (ne jen v konzoli)
     const dbg = document.getElementById('ffmpeg-debug');
     if (dbg) dbg.textContent = msg;
     setStatus(msg, 'error');
