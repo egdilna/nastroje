@@ -305,6 +305,10 @@ body.theme-dark .task-quick-toggle { background: #2a2a2a; border-color: #444; }
 .inline-clear { padding: 0.1em 0.5em; font-size: 0.85em; vertical-align: middle; margin-left: 0.3em; }
 .checkbox-row { display: flex; gap: 1em; flex-wrap: wrap; align-items: center; }
 .checkbox-row label { font-weight: normal; cursor: pointer; }
+.md-field-actions { margin: 0.3em 0; min-height: 1px; }
+.md-field-actions button.md-del-done-tasks { padding: 0.2em 0.6em; font-size: 0.9em; }
+.anno-para-kind { display: inline-block; padding: 0.05em 0.4em; background: #e8f0fa; border-radius: 3px; font-size: 0.85em; color: #0066cc; margin: 0 0.2em; font-weight: 500; }
+body.theme-dark .anno-para-kind { background: #2a3950; color: #6aa8e8; }
 .project-quick-task { margin: 0.75em 0; padding: 0.5em 0.7em; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; }
 body.theme-dark .project-quick-task { background: #2a2a2a; border-color: #444; }
 .project-quick-task-row { display: flex; gap: 0.4em; margin-top: 0.3em; flex-wrap: wrap; }
@@ -1345,6 +1349,19 @@ function uuid() {
   return 'id-' + Date.now() + '-' + Math.random().toString(36).slice(2,10);
 }
 function nowIso() { return new Date().toISOString(); }
+
+// Spočítá zaškrtnuté MD úkoly: - [x] / * [X]
+function countMarkdownDoneTasks(md) {
+  if (!md) return 0;
+  const m = md.match(/^\s*[-*]\s+\[[xX]\]/gm);
+  return m ? m.length : 0;
+}
+
+// Vrátí markdown bez řádků se zaškrtnutými úkoly
+function stripMarkdownDoneTasks(md) {
+  if (!md) return md;
+  return md.split('\n').filter(line => !/^\s*[-*]\s+\[[xX]\]/.test(line)).join('\n');
+}
 function todayIso() { return new Date().toISOString().slice(0,10); }
 function escapeHtml(s) {
   if (s === null || s === undefined) return '';
@@ -6082,11 +6099,11 @@ function detectAndOfferNamedEntities(entity, onDone) {
   // Vlastní atributy (customAttrs) NEskenujeme — jsou to prosté hodnoty bez markdown podpory.
   // Komentáře
   (entity.comments || []).forEach((c, idx) => {
-    if (!c || !c.text || !c.text.trim()) return;
+    if (!c || !c.content || !c.content.trim()) return;
     fields.push({
       label: 'komentář #' + (idx + 1),
-      getText: () => entity.comments[idx].text,
-      setText: (txt) => { entity.comments[idx].text = txt; }
+      getText: () => entity.comments[idx].content,
+      setText: (txt) => { entity.comments[idx].content = txt; }
     });
   });
 
@@ -6452,6 +6469,11 @@ function renderDetailEdit(main, e) {
     '<section><h3>Obsah (Markdown)</h3>' +
       '<label for="d-body" class="sr-only">Tělo</label>' +
       '<textarea id="d-body" class="body-edit" rows="20">' + escapeHtml(e.body) + '</textarea>' +
+      '<div class="md-field-actions" id="d-body-actions">' +
+        (countMarkdownDoneTasks(e.body) > 0
+          ? '<button type="button" class="md-del-done-tasks" data-md-del-done-target="d-body" title="Smazat všechny zaškrtnuté úkoly v tomto poli">🗑 Smazat hotové úkoly (' + countMarkdownDoneTasks(e.body) + ')</button>'
+          : '') +
+      '</div>' +
       '<div class="checkbox-row" style="margin-top:0.5em;">' +
         '<label><input type="checkbox" id="d-flag-adved"' + (e.useAdvancedEditor ? ' checked' : '') + '> Používat pokročilý editor</label> ' +
         '<label><input type="checkbox" id="d-flag-presentation"' + (e.usePresentation ? ' checked' : '') + '> Prezentace</label>' +
@@ -6701,8 +6723,39 @@ function renderDetailEdit(main, e) {
     }
     saveDebounced();
   };
-  document.getElementById('d-body').oninput = (ev) => { e.body = ev.target.value; e.updated_at = nowIso(); saveDebounced(); };
+  document.getElementById('d-body').oninput = (ev) => { e.body = ev.target.value; e.updated_at = nowIso(); saveDebounced(); refreshMdFieldActions('d-body'); };
   setupAutocomplete(document.getElementById('d-body'));
+  // Smazání hotových úkolů z markdown polí (body i textarea atributy)
+  function refreshMdFieldActions(targetId) {
+    const ta = document.getElementById(targetId);
+    if (!ta) return;
+    const actions = document.getElementById(targetId + '-actions');
+    if (!actions) return;
+    const cnt = countMarkdownDoneTasks(ta.value);
+    if (cnt > 0) {
+      actions.innerHTML = '<button type="button" class="md-del-done-tasks" data-md-del-done-target="' + targetId + '" title="Smazat všechny zaškrtnuté úkoly v tomto poli">🗑 Smazat hotové úkoly (' + cnt + ')</button>';
+      attachMdDelDoneHandlers();
+    } else {
+      actions.innerHTML = '';
+    }
+  }
+  function attachMdDelDoneHandlers() {
+    document.querySelectorAll('button[data-md-del-done-target]').forEach(btn => {
+      btn.onclick = () => {
+        const targetId = btn.dataset.mdDelDoneTarget;
+        const ta = document.getElementById(targetId);
+        if (!ta) return;
+        const cnt = countMarkdownDoneTasks(ta.value);
+        if (cnt === 0) return;
+        if (!confirm('Smazat ' + cnt + ' zaškrtnut' + (cnt === 1 ? 'ý úkol' : cnt < 5 ? 'é úkoly' : 'ých úkolů') + ' v tomto poli?')) return;
+        ta.value = stripMarkdownDoneTasks(ta.value);
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        toast('Hotové úkoly smazány (' + cnt + ').');
+        refreshMdFieldActions(targetId);
+      };
+    });
+  }
+  attachMdDelDoneHandlers();
   // Příznaky pro Pokročilý editor a Prezentaci
   const flagAdv = document.getElementById('d-flag-adved');
   if (flagAdv) flagAdv.onchange = () => { e.useAdvancedEditor = flagAdv.checked || undefined; e.updated_at = nowIso(); save(); };
@@ -6839,9 +6892,37 @@ function renderEditAttributes(e) {
       e.updated_at = nowIso(); saveDebounced();
       const counts = getCounts();
       document.getElementById('count-tasks').textContent = counts.tasks > 0 ? counts.tasks : '';
+      // Aktualizovat tlačítko "Smazat hotové" pokud je to textarea
+      if (inp.tagName === 'TEXTAREA') {
+        const actions = document.getElementById(inp.id + '-actions');
+        if (actions) {
+          const cnt = countMarkdownDoneTasks(inp.value);
+          actions.innerHTML = cnt > 0
+            ? '<button type="button" class="md-del-done-tasks" data-md-del-done-target="' + inp.id + '" title="Smazat zaškrtnuté úkoly">🗑 Smazat hotové úkoly (' + cnt + ')</button>'
+            : '';
+          attachAttrMdDelDoneHandlers(c);
+        }
+      }
     };
     inp.oninput = handler; inp.onchange = handler;
   });
+  // Handlery na tlačítka "Smazat hotové" v atributech
+  function attachAttrMdDelDoneHandlers(root) {
+    root.querySelectorAll('button[data-md-del-done-target]').forEach(btn => {
+      btn.onclick = () => {
+        const targetId = btn.dataset.mdDelDoneTarget;
+        const ta = document.getElementById(targetId);
+        if (!ta) return;
+        const cnt = countMarkdownDoneTasks(ta.value);
+        if (cnt === 0) return;
+        if (!confirm('Smazat ' + cnt + ' zaškrtnut' + (cnt === 1 ? 'ý úkol' : cnt < 5 ? 'é úkoly' : 'ých úkolů') + ' v tomto poli?')) return;
+        ta.value = stripMarkdownDoneTasks(ta.value);
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        toast('Hotové úkoly smazány (' + cnt + ').');
+      };
+    });
+  }
+  attachAttrMdDelDoneHandlers(c);
   c.querySelectorAll('button[data-remove-attr]').forEach(b => {
     b.onclick = () => {
       const k = b.dataset.removeAttr;
@@ -6915,7 +6996,13 @@ function attributeFieldHtml(e, f) {
   const val = e.attributes && e.attributes[f.key] !== undefined ? e.attributes[f.key] : '';
   const v = escapeHtml(val);
   let inp = '';
-  if (f.type === 'textarea') inp = '<textarea id="' + id + '" data-attr-key="' + escapeHtml(f.key) + '" rows="3">' + v + '</textarea>';
+  if (f.type === 'textarea') {
+    inp = '<textarea id="' + id + '" data-attr-key="' + escapeHtml(f.key) + '" rows="3">' + v + '</textarea>';
+    const doneCnt = countMarkdownDoneTasks(val);
+    inp += '<div class="md-field-actions" id="' + id + '-actions">' +
+      (doneCnt > 0 ? '<button type="button" class="md-del-done-tasks" data-md-del-done-target="' + id + '" title="Smazat zaškrtnuté úkoly">🗑 Smazat hotové úkoly (' + doneCnt + ')</button>' : '') +
+      '</div>';
+  }
   else if (f.type === 'select') {
     inp = '<select id="' + id + '" data-attr-key="' + escapeHtml(f.key) + '"><option value="">— vyberte —</option>' +
       (f.options || []).map(o => '<option value="' + escapeHtml(o) + '"' + (val === o ? ' selected' : '') + '>' +
@@ -7748,6 +7835,47 @@ function newAnnotation(content, paragraphText, paragraphIndex) {
 }
 
 // Render seznamu anotací pod tělem entity (vždy zobrazený pokud nějaké jsou)
+// Popíše odstavec lidsky: vrátí prefix (Nadpis 1, Odrážka, Úkol…) a očištěný text
+function describeParagraph(text) {
+  if (!text) return { kind: 'Odstavec', content: '' };
+  const t = text.replace(/\s+$/, '');
+  let m;
+  // Nadpisy
+  if ((m = t.match(/^(#{1,6})\s+(.*)$/))) {
+    return { kind: 'Nadpis ' + m[1].length, content: m[2] };
+  }
+  // Úkoly (před odrážkou)
+  if ((m = t.match(/^\s*[-*]\s+\[([ xX])\]\s+(.*)$/))) {
+    return { kind: m[1] === ' ' ? 'Nesplněný úkol' : 'Splněný úkol', content: m[2] };
+  }
+  // Odrážka
+  if ((m = t.match(/^\s*[-*]\s+(.*)$/))) {
+    return { kind: 'Odrážka', content: m[1] };
+  }
+  // Číslovaná odrážka
+  if ((m = t.match(/^\s*(\d+)\.\s+(.*)$/))) {
+    return { kind: 'Číslovaná odrážka ' + m[1], content: m[2] };
+  }
+  // Řádek tabulky
+  if (/^\|.*\|.*$/.test(t)) {
+    // Záhlaví/oddělovač
+    if (/^\|[\s:|-]+\|$/.test(t)) return { kind: 'Oddělovač tabulky', content: '' };
+    return { kind: 'Řádek tabulky', content: t.replace(/^\|/, '').replace(/\|$/, '').replace(/\|/g, ' · ').trim() };
+  }
+  // Citace
+  if ((m = t.match(/^>\s*(.*)$/))) {
+    return { kind: 'Citace', content: m[1] };
+  }
+  // Vodorovná čára
+  if (/^---+$/.test(t.trim())) return { kind: 'Vodorovná čára', content: '' };
+  // Code block?
+  if (/^```/.test(t)) return { kind: 'Blok kódu', content: t.replace(/^```\w*\n?/, '').replace(/```$/, '') };
+  // Private block
+  if (/^~~~private/.test(t)) return { kind: 'Soukromý blok', content: '' };
+  // Default — obyčejný odstavec
+  return { kind: 'Odstavec', content: t };
+}
+
 function renderAnnotationsList(entity) {
   if (!entity.annotations || entity.annotations.length === 0) return '';
   const matched = matchAnnotationsToParagraphs(entity);
@@ -7757,25 +7885,28 @@ function renderAnnotationsList(entity) {
   let h = '<details class="annotations-list-wrapper"><summary>📝 ' + n + ' ' + word + ' k odstavcům</summary><ol class="annotations-list">';
   matched.forEach((m, i) => {
     const ann = m.annotation;
-    let snippet = '';
     let matchInfo = '';
+    let para = '';
     if (m.matchType === 'exact') {
-      snippet = (paragraphs[m.paragraphIndex] || '').slice(0, 80);
+      para = paragraphs[m.paragraphIndex] || '';
     } else if (m.matchType === 'fuzzy') {
-      snippet = (paragraphs[m.paragraphIndex] || '').slice(0, 80);
+      para = paragraphs[m.paragraphIndex] || '';
       matchInfo = ' <span class="anno-match-info meta">(přemapováno přibližně, podobnost ' + Math.round(m.similarity * 100) + ' %)</span>';
     } else if (m.matchType === 'position') {
-      snippet = (paragraphs[m.paragraphIndex] || '').slice(0, 80);
+      para = paragraphs[m.paragraphIndex] || '';
       matchInfo = ' <span class="anno-match-info meta">(odstavec přepsán, anotace zůstává na pozici #' + (m.paragraphIndex + 1) + ')</span>';
     } else {
       matchInfo = ' <span class="anno-match-info meta">(původní odstavec smazán)</span>';
     }
+    // Lidský popis odstavce
+    const desc = describeParagraph(para);
+    const snippet = (desc.content || '').slice(0, 80);
     h += '<li class="anno-item' + (m.matchType === 'orphan' ? ' anno-orphan' : '') + '" data-anno-id="' + escapeHtml(ann.id) + '">';
     if (m.matchType === 'orphan') {
       h += '<div><strong>Sirotek</strong>' + matchInfo + '</div>';
     } else {
-      h += '<div><strong>K odstavci #' + (m.paragraphIndex + 1) + '</strong>: ';
-      h += '<a href="#" class="anno-jump" data-anno-pi="' + m.paragraphIndex + '" data-anno-id="' + escapeHtml(ann.id) + '">' + escapeHtml(snippet) + (paragraphs[m.paragraphIndex] && paragraphs[m.paragraphIndex].length > 80 ? '…' : '') + '</a>' + matchInfo + '</div>';
+      h += '<div><strong>K odstavci #' + (m.paragraphIndex + 1) + '</strong> <span class="anno-para-kind">[' + escapeHtml(desc.kind) + ']</span>: ';
+      h += '<a href="#" class="anno-jump" data-anno-pi="' + m.paragraphIndex + '" data-anno-id="' + escapeHtml(ann.id) + '">' + (snippet ? escapeHtml(snippet) + (desc.content.length > 80 ? '…' : '') : '<em class="meta">(prázdné)</em>') + '</a>' + matchInfo + '</div>';
     }
     h += '<div class="anno-content markdown">' + renderMarkdown(ann.content || '', { ctx: { depth: 1, includeStack: new Set() } }) + '</div>';
     if (m.matchType !== 'exact' && ann.originalText && (m.matchType === 'orphan' || (paragraphs[m.paragraphIndex] && ann.originalText !== paragraphs[m.paragraphIndex]))) {
@@ -8275,7 +8406,11 @@ function doCommentSave(entity, existing, dialogEl) {
   entity.updated_at = nowIso();
   saveDebounced();
   dialogEl.close();
-  render();
+  // Spustit detekci pojmenovaných entit (skenuje i komentáře)
+  detectAndOfferNamedEntities(entity, () => {
+    save();
+    render();
+  });
 }
 
 
@@ -21559,6 +21694,11 @@ const advEd = {
     this.entityId = entityId;
     this.originalBody = e.body || '';
     this.sections = this.parse(this.originalBody);
+    // Uložit „originální" stav každé sekce pro detekci změn
+    this.walkAll(s => {
+      s._origHeading = s.heading;
+      s._origBody = s.body;
+    });
     this.hoistedSectionId = null;
     this.editingSectionId = null;
     this.searchQuery = '';
@@ -21582,8 +21722,13 @@ const advEd = {
     this.originalBody = md;
     this.dirty = false;
     this.saveState = 'saved';
-    // Po uložení už sekce nejsou „nové"
-    this.walkAll(s => { delete s._new; });
+    // Po uložení už sekce nejsou „nové" ani „změněné" — aktualizovat baseline
+    this.walkAll(s => {
+      delete s._new;
+      s._origHeading = s.heading;
+      s._origBody = s.body;
+    });
+    this.render();
     toast('Uloženo.');
     return true;
   },
@@ -21628,7 +21773,7 @@ const advEd = {
 
   // Markdown render obsahu sekce (s naším parserem ale bez footnote sekce duplikované)
   renderSectionBody: function(body) {
-    return renderMarkdown(body || '', { ctx: { depth: 1, includeStack: new Set() }, skipFootnotesRender: true });
+    return renderMarkdown(body || '', { ctx: { depth: 1, includeStack: new Set(), taskSource: 'adved' }, skipFootnotesRender: true });
   },
 
   // === AKCE ===
@@ -21866,6 +22011,17 @@ const advEd = {
     this.render();
   },
 
+  deleteCompletedTasksInSection: function(sectionId) {
+    const s = this.find(this.sections, sectionId);
+    if (!s) return;
+    const doneLines = (s.body || '').split('\n').filter(line => /^\s*[-*]\s+\[[xX]\]/.test(line));
+    if (doneLines.length === 0) return;
+    if (!confirm('Smazat ' + doneLines.length + ' hotov' + (doneLines.length === 1 ? 'ý úkol' : doneLines.length < 5 ? 'é úkoly' : 'ých úkolů') + ' v této sekci?')) return;
+    s.body = s.body.split('\n').filter(line => !/^\s*[-*]\s+\[[xX]\]/.test(line)).join('\n');
+    this.markDirty();
+    this.render();
+  },
+
   // === DOCX EXPORT VIDITELNÉ ČÁSTI ===
   exportDocx: function() {
     // Sestavit MD jen z viditelných sekcí
@@ -22020,7 +22176,13 @@ const advEd = {
     } else {
       // View režim
       let headingText = this.esc(section.heading) || '<em class="meta">(bez nadpisu)</em>';
-      if (isNew) headingText = '<ins title="Nová, dosud nedokončená sekce">' + headingText + '</ins>';
+      const isChanged = !isNew && section._origHeading !== undefined &&
+        (section._origHeading !== section.heading || section._origBody !== section.body);
+      if (isNew) {
+        headingText = '<ins title="Nová, dosud nedokončená sekce">' + headingText + '</ins>';
+      } else if (isChanged) {
+        headingText = '<ins title="Sekce změněná od posledního uložení">' + headingText + '</ins>';
+      }
       h += '<h' + hLevel + ' class="adved-heading">' + headingText + '</h' + hLevel + '>';
       h += '<div class="adved-section-meta meta">Úroveň ' + hLevel + (hasChildren ? ' · ' + section.children.length + ' podsekcí' : '') + '</div>';
       if (section.body && section.body.trim() && !section.contentCollapsed) {
@@ -22037,6 +22199,11 @@ const advEd = {
       }
       h += '<button type="button" data-add-child="' + sid + '" title="Přidat podsekci">➕ Pod</button>';
       h += '<button type="button" data-add-sibling="' + sid + '" title="Přidat vedle (na stejné úrovni)">➕ Vedle</button>';
+      // Kolik hotových úkolů má sekce v body?
+      const doneCount = ((section.body || '').match(/^\s*[-*]\s+\[[xX]\]/gm) || []).length;
+      if (doneCount > 0) {
+        h += '<button type="button" data-del-done-tasks-sec="' + sid + '" title="Smazat hotové úkoly v této sekci">🗑 Smazat hotové (' + doneCount + ')</button>';
+      }
       const p = this.findParent(this.sections, sid);
       if (p) {
         const idx = p.list.findIndex(x => x.id === sid);
@@ -22168,6 +22335,9 @@ const advEd = {
     });
     out.querySelectorAll('[data-delete]').forEach(b => {
       b.onclick = () => self.deleteSection(Number(b.dataset.delete));
+    });
+    out.querySelectorAll('[data-del-done-tasks-sec]').forEach(b => {
+      b.onclick = () => self.deleteCompletedTasksInSection(Number(b.dataset.delDoneTasksSec));
     });
     // Tasks v rendered body
     out.querySelectorAll('input[type="checkbox"][data-md-task]').forEach(cb => {
