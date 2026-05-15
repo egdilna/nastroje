@@ -309,6 +309,15 @@ body.theme-dark .task-quick-toggle { background: #2a2a2a; border-color: #444; }
 .md-field-actions button.md-del-done-tasks { padding: 0.2em 0.6em; font-size: 0.9em; }
 .anno-para-kind { display: inline-block; padding: 0.05em 0.4em; background: #e8f0fa; border-radius: 3px; font-size: 0.85em; color: #0066cc; margin: 0 0.2em; font-weight: 500; }
 body.theme-dark .anno-para-kind { background: #2a3950; color: #6aa8e8; }
+.section-edit-btn { margin-left: 0.5em; padding: 0.1em 0.5em; font-size: 0.7em; vertical-align: middle; background: #fff3c4; border: 1px solid #c8a200; color: inherit; border-radius: 4px; cursor: pointer; font-weight: normal; }
+.section-edit-btn:hover { background: #ffeb8c; }
+body.theme-dark .section-edit-btn { background: #4a3a1a; border-color: #8a6a2a; }
+body.theme-dark .section-edit-btn:hover { background: #6a4a2a; }
+.section-edit-banner { padding: 0.5em 0.8em; margin: 0.5em 0; background: #fff8d8; border: 1px solid #d8c060; border-radius: 4px; }
+body.theme-dark .section-edit-banner { background: #3a3010; border-color: #6a5a30; }
+.section-edit-wrapper { padding: 0.7em; margin: 1em 0; background: #f8f8f8; border: 2px solid #0066cc; border-radius: 6px; }
+body.theme-dark .section-edit-wrapper { background: #1f1f1f; border-color: #6aa8e8; }
+.section-edit-header { margin-bottom: 0.5em; }
 .project-quick-task { margin: 0.75em 0; padding: 0.5em 0.7em; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; }
 body.theme-dark .project-quick-task { background: #2a2a2a; border-color: #444; }
 .project-quick-task-row { display: flex; gap: 0.4em; margin-top: 0.3em; flex-wrap: wrap; }
@@ -563,6 +572,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <tr><td><kbd>r</kbd></td><td>V detailu: přidat vazbu na existující entitu</td></tr>
       <tr><td><kbd>Shift+R</kbd></td><td><strong>Výjimka z navigace:</strong> v detailu vytvořit novou související entitu (s vazbou)</td></tr>
       <tr><td><kbd>c</kbd></td><td>V detailu: přidat komentář</td></tr>
+      <tr><td><kbd>d</kbd></td><td>V detailu (read, pokud má nadpisy): přepnout režim editace sekcí (Alt+Shift+D)</td></tr>
       <tr><td><kbd>Esc</kbd></td><td>Zavřít dialog / opustit edit / zpět</td></tr>
       <tr><td><kbd>?</kbd></td><td>Tato nápověda</td></tr>
     </tbody>
@@ -2333,6 +2343,39 @@ function getEntityDate(e) {
 
 // Krátké podrobnosti entity podle aspektů – použito v tabulkách "Vše" a "Pohled".
 // Vrací HTML (escapované).
+
+// Vrací seznam sekcí jako plochý seznam s offsety v textu.
+// Sekce = nadpis Hx + obsah pod ním až k dalšímu nadpisu jakékoliv úrovně.
+function extractSectionsFlat(md) {
+  if (!md) return [];
+  const lines = md.split('\n');
+  let inCode = false;
+  let offset = 0;
+  const headings = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^```/.test(line.trim())) inCode = !inCode;
+    if (!inCode) {
+      const hm = line.match(/^(#{1,6})\s+(.*)$/);
+      if (hm) {
+        headings.push({ line: i, level: hm[1].length, heading: hm[2], start: offset });
+      }
+    }
+    offset += line.length + 1;
+  }
+  const out = [];
+  for (let i = 0; i < headings.length; i++) {
+    const h = headings[i];
+    const next = headings[i + 1];
+    const end = next ? next.start : md.length;
+    const fullText = md.slice(h.start, end);
+    const firstNL = fullText.indexOf('\n');
+    const body = firstNL >= 0 ? fullText.slice(firstNL + 1).replace(/\n+$/, '') : '';
+    out.push({ idx: i, level: h.level, heading: h.heading, body: body, start: h.start, end: end });
+  }
+  return out;
+}
+
 function shortUrlLabel(url) {
   if (!url) return '';
   try {
@@ -3145,6 +3188,7 @@ function setView(view, params = {}) {
     viewHistory.push({ view: state.view, detailId: state.detailId, savedViewId: state.savedViewId, detailMode: state.detailMode });
     if (viewHistory.length > 30) viewHistory.shift();
     state.justNavigated = true;
+    state.sectionEditMode = false; // reset režimu editace sekcí při změně view/entity
   }
   state.view = view;
   if (params.detailId !== undefined) state.detailId = params.detailId;
@@ -5644,8 +5688,8 @@ function renderDetail(main, id) {
     document.getElementById('back-btn').onclick = goBack;
     return;
   }
-  if (state.detailMode === 'edit') renderDetailEdit(main, e);
-  else if (state.detailMode === 'advEd') renderDetailAdvEd(main, e);
+  if (state.detailMode === 'edit') { state.sectionEditMode = false; renderDetailEdit(main, e); }
+  else if (state.detailMode === 'advEd') { state.sectionEditMode = false; renderDetailAdvEd(main, e); }
   else renderDetailRead(main, e);
 }
 
@@ -5711,6 +5755,9 @@ function renderDetailRead(main, e) {
         '<button id="btn-create-related" title="Vytvořit novou entitu s vazbou na tuto">+ Související</button>' +
         '<button id="btn-add-comment-top" accesskey="c">+ Komentář</button>' +
         '<button id="btn-toggle-anno" aria-pressed="' + (state.annotationMode ? 'true' : 'false') + '" title="Zapnout/vypnout anotační režim">' + (state.annotationMode ? '📝 Ukončit anotace' : '📝 Anotace') + '</button>' +
+        (e.body && /^#{1,6}\s+/m.test(e.body)
+          ? '<button id="btn-toggle-sec-edit" accesskey="d" aria-pressed="' + (state.sectionEditMode ? 'true' : 'false') + '" title="Zapnout/vypnout editaci sekcí podle nadpisů (Alt+Shift+D)">' + (state.sectionEditMode ? '✏️ Ukončit editaci sekcí' : '✏️ Editovat sekce') + '</button>'
+          : '') +
         '<button id="btn-duplicate">Duplikovat</button>' +
         '<button id="btn-entity-export" title="Export entity (MD, DOCX, PDF) s volbou částí">🖨 Export / tisk…</button>' +
         (e.inbox ? '<button id="leave-inbox">Vyjmout z Inboxu</button>' : '') +
@@ -5776,6 +5823,12 @@ function renderDetailRead(main, e) {
   if (btnAdv) btnAdv.onclick = () => { state.detailMode = 'advEd'; render(); };
   const presBtn = document.getElementById('btn-presentation');
   if (presBtn) presBtn.onclick = () => startPresentation(e);
+  const btnSecEdit = document.getElementById('btn-toggle-sec-edit');
+  if (btnSecEdit) btnSecEdit.onclick = () => {
+    state.sectionEditMode = !state.sectionEditMode;
+    render();
+  };
+
   const btnPrev = document.getElementById('btn-preview');
   if (btnPrev) btnPrev.onclick = () => openPreviewWindow(e);
   document.getElementById('btn-focus').onclick = () => { state.focus = !state.focus; render(); };
@@ -5885,6 +5938,7 @@ function renderDetailRead(main, e) {
   // Provázat citáty z komentářů s textem těla
   setupCommentQuoteLinking(e);
   setupAnnotations(e);
+  if (state.sectionEditMode) setupSectionEditMode(e);
   attachCommentHandlers(main, e);
   attachRelatedCommentsHandlers(main, e);
   // Mazání vazeb v read módu
@@ -8432,6 +8486,7 @@ function renderProjectDashboard(project) {
   // Skupiny v požadovaném pořadí
   const goals = children.filter(e => has(e, 'Goal'));
   const tasks = children.filter(e => has(e, 'Task'));
+  const events = children.filter(e => has(e, 'Event'));
   const questionsDecisions = children.filter(e => has(e, 'Question', 'Decision'));
   const docsResources = children.filter(e => has(e, 'Document', 'Reference', 'Bookmark'));
   const notesEtc = children.filter(e => has(e, 'Note', 'Audio', 'Idea'));
@@ -8452,7 +8507,7 @@ function renderProjectDashboard(project) {
   const peopleOrgs = [...peopleOrgsSet].map(findEntity).filter(Boolean);
 
   // Ostatní = vše co neslepuje žádnou skupinu (Person/Organization se zobrazí v Lidé a organizace, ne v Ostatní)
-  const grouped = new Set([...goals, ...tasks, ...questionsDecisions, ...docsResources, ...notesEtc].map(e => e.id));
+  const grouped = new Set([...goals, ...tasks, ...events, ...questionsDecisions, ...docsResources, ...notesEtc].map(e => e.id));
   const others = children.filter(e => !grouped.has(e.id) && !has(e, 'Person', 'Organization'));
 
   // Statistiky úkolů
@@ -8524,6 +8579,29 @@ function renderProjectDashboard(project) {
 
   // Otázky a rozhodnutí
   h += listSection('Otázky a rozhodnutí', questionsDecisions, true);
+
+  // Události (schůzky, schválené termíny atd.)
+  if (events.length > 0) {
+    // Seřadit podle start asc
+    const sortedEvents = [...events].sort((a, b) => {
+      const sa = (a.attributes && a.attributes.start) || '';
+      const sb = (b.attributes && b.attributes.start) || '';
+      return sa.localeCompare(sb);
+    });
+    h += '<h4>Události (' + sortedEvents.length + ')</h4><ul style="list-style:none;padding-left:0;">';
+    sortedEvents.forEach(ev => {
+      const attrs = ev.attributes || {};
+      let when = '';
+      if (attrs.start) {
+        when = ' <span class="meta">' + escapeHtml(fmtDateTime(attrs.start));
+        if (attrs.end) when += ' – ' + escapeHtml(fmtDateTime(attrs.end));
+        when += '</span>';
+      }
+      const where = attrs.location ? ' <span class="meta">📍 ' + escapeHtml(attrs.location) + '</span>' : '';
+      h += '<li><a href="#" data-entity="' + escapeHtml(ev.id) + '">' + getDisplayTitleWithBadges(ev) + '</a>' + openInPanelBtnHtml(ev.id) + when + where + '</li>';
+    });
+    h += '</ul>';
+  }
 
   // Dokumenty a zdroje
   h += listSection('Dokumenty a zdroje', docsResources, true);
@@ -8874,6 +8952,113 @@ function notifyPreviewWindows(entity) {
   const w = state._previewWindows[entity.id];
   if (w && !w.closed) refreshPreviewWindow(w, entity);
   else if (w && w.closed) delete state._previewWindows[entity.id];
+}
+
+// =============================================================================
+// EDITACE SEKCÍ (toggleable režim v read mode)
+// =============================================================================
+function setupSectionEditMode(entity) {
+  const wrap = document.getElementById('body-rendered');
+  if (!wrap) return;
+  const sections = extractSectionsFlat(entity.body || '');
+  if (sections.length === 0) return;
+
+  // Najít všechny nadpisy v rendered HTML — jejich pořadí odpovídá pořadí v `sections`
+  const headings = wrap.querySelectorAll('h1, h2, h3, h4, h5, h6');
+  headings.forEach((h, i) => {
+    if (i >= sections.length) return;
+    const sec = sections[i];
+    // Banner s tlačítkem
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'section-edit-btn';
+    btn.dataset.secEditIdx = String(i);
+    btn.setAttribute('aria-label', 'Upravit sekci: ' + (sec.heading || '(bez nadpisu)'));
+    btn.title = 'Upravit zdroj této sekce';
+    btn.textContent = '✏️ Upravit „' + (sec.heading || '(bez nadpisu)') + '"';
+    h.appendChild(document.createTextNode(' '));
+    h.appendChild(btn);
+    btn.onclick = (ev) => {
+      ev.preventDefault();
+      openSectionEditor(entity, i);
+    };
+  });
+
+  // Informační banner nahoru
+  const banner = document.createElement('div');
+  banner.className = 'section-edit-banner meta';
+  banner.textContent = '✏️ Režim editace sekcí: u každého nadpisu klikněte „Upravit". Pro ukončení znovu klikněte na tlačítko v záhlaví nebo stiskněte D.';
+  wrap.parentNode.insertBefore(banner, wrap);
+}
+
+function openSectionEditor(entity, sectionIdx) {
+  const sections = extractSectionsFlat(entity.body || '');
+  const sec = sections[sectionIdx];
+  if (!sec) return;
+  // Najít nadpis v rendered HTML
+  const wrap = document.getElementById('body-rendered');
+  if (!wrap) return;
+  const headings = wrap.querySelectorAll('h1, h2, h3, h4, h5, h6');
+  const headEl = headings[sectionIdx];
+  if (!headEl) return;
+  // Schovat heading a vše až k dalšímu headingu (nebo do konce wrap)
+  const toHide = [headEl];
+  let next = headEl.nextElementSibling;
+  while (next && !/^H[1-6]$/.test(next.tagName)) {
+    toHide.push(next);
+    next = next.nextElementSibling;
+  }
+  toHide.forEach(el => { el.style.display = 'none'; });
+
+  // Vytvořit edit blok
+  const fullSourceText = '#'.repeat(sec.level) + ' ' + sec.heading + (sec.body ? '\n' + sec.body : '');
+  const editDiv = document.createElement('div');
+  editDiv.className = 'section-edit-wrapper';
+  editDiv.innerHTML =
+    '<div class="section-edit-header"><strong>✏️ Upravujete sekci #' + (sectionIdx + 1) + '</strong> ' +
+      '<span class="meta">(' + sec.level + '. úroveň, ' + (sec.end - sec.start) + ' znaků)</span></div>' +
+    '<label for="sec-edit-ta" class="sr-only">Zdroj sekce v Markdownu</label>' +
+    '<textarea id="sec-edit-ta" rows="14" class="body-edit"></textarea>' +
+    '<div class="btn-group" style="margin-top:0.5em;">' +
+      '<button type="button" class="primary" id="sec-edit-save">💾 Uložit sekci</button>' +
+      '<button type="button" id="sec-edit-cancel">✕ Zrušit</button>' +
+    '</div>';
+  headEl.parentNode.insertBefore(editDiv, headEl);
+
+  const ta = document.getElementById('sec-edit-ta');
+  ta.value = fullSourceText;
+  // Automatický find-as-you-type (wiki link), entity reference
+  if (typeof setupAutocomplete === 'function') setupAutocomplete(ta);
+  ta.focus();
+  // Cursor na konec headingu
+  ta.setSelectionRange(fullSourceText.length, fullSourceText.length);
+
+  document.getElementById('sec-edit-save').onclick = () => {
+    let newText = ta.value;
+    // Sanity: musí začínat #...# nadpisem
+    if (!/^#{1,6}\s+/.test(newText.trim())) {
+      if (!confirm('Sekce nezačíná Markdown nadpisem (# …). Opravdu uložit? Mohlo by se rozbít rozdělení sekcí.')) return;
+    }
+    // Zajistit, že začíná na nové řádce a končí newline před další sekcí
+    // Použít offsety
+    const before = entity.body.slice(0, sec.start);
+    const after = entity.body.slice(sec.end);
+    // Zajistit \n na konci, pokud nepoužívá
+    if (after && !newText.endsWith('\n')) newText += '\n';
+    entity.body = before + newText + after;
+    entity.updated_at = nowIso();
+    save();
+    // Spustit detekci entit, aby se i tady objevila nabídka přidat wiki linky
+    detectAndOfferNamedEntities(entity, () => {
+      save();
+      render();
+    });
+    toast('Sekce uložena.');
+    playSound('save-entity');
+  };
+  document.getElementById('sec-edit-cancel').onclick = () => {
+    render();
+  };
 }
 // ==== DIALOGY ====
 function openQuickCapture() {
@@ -9808,6 +9993,16 @@ function setupKeyboard() {
     else if ((ev.key === 'c') && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey && state.view === 'detail') {
       const e = findEntity(state.detailId);
       if (e) { openCommentDialog(e); ev.preventDefault(); }
+    }
+    // d přepíná režim editace sekcí v read mode
+    else if ((ev.key === 'd') && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey
+             && state.view === 'detail' && state.detailMode !== 'edit') {
+      const e = findEntity(state.detailId);
+      if (e && e.body && /^#{1,6}\s+/m.test(e.body)) {
+        state.sectionEditMode = !state.sectionEditMode;
+        render();
+        ev.preventDefault();
+      }
     }
     // s uloží na GitHub (jen mimo editační pole; v polích slouží Alt+Shift+S přes accesskey)
     else if ((ev.key === 's') && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey) {
