@@ -318,6 +318,16 @@ body.theme-dark .section-edit-banner { background: #3a3010; border-color: #6a5a3
 .section-edit-wrapper { padding: 0.7em; margin: 1em 0; background: #f8f8f8; border: 2px solid #0066cc; border-radius: 6px; }
 body.theme-dark .section-edit-wrapper { background: #1f1f1f; border-color: #6aa8e8; }
 .section-edit-header { margin-bottom: 0.5em; }
+.diagram-toolbar { margin-bottom: 0.5em; flex-wrap: wrap; }
+.diagram-figure { margin: 0.5em 0; text-align: center; }
+.diagram-figure img { max-width: 100%; height: auto; background: #fff; padding: 0.5em; border: 1px solid #ddd; border-radius: 4px; }
+body.theme-dark .diagram-figure img { background: #f8f8f8; border-color: #555; }
+.diagram-caption { margin-top: 0.3em; font-size: 0.9em; }
+.diagram-error { padding: 0.6em 1em; margin: 0.5em 0; background: #fde6e6; border: 1px solid #c33; border-radius: 4px; color: #c33; }
+body.theme-dark .diagram-error { background: #4a1a1a; color: #f88; border-color: #c33; }
+.diagram-source-details, .diagram-url-details { margin: 0.5em 0; }
+.diagram-source { font-family: Consolas, "Courier New", monospace; font-size: 0.9em; padding: 0.7em; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; overflow: auto; }
+body.theme-dark .diagram-source { background: #1f1f1f; border-color: #444; }
 .project-quick-task { margin: 0.75em 0; padding: 0.5em 0.7em; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; }
 body.theme-dark .project-quick-task { background: #2a2a2a; border-color: #444; }
 .project-quick-task-row { display: flex; gap: 0.4em; margin-top: 0.3em; flex-wrap: wrap; }
@@ -1031,6 +1041,11 @@ const ASPECTS = {
       optionLabels: { '': '(neurčeno)', 'ad-hoc': 'Podle potřeby', daily: 'Denně', weekly: 'Týdně', monthly: 'Měsíčně', quarterly: 'Čtvrtletně', yearly: 'Ročně' } },
     { key: 'workflow_tools', label: 'Potřebné nástroje / role', type: 'relation', multiple: true },
     { key: 'workflow_last_run', label: 'Naposledy spuštěno', type: 'datetime-local' }
+  ]},
+  Diagram: { label: 'Diagram', fields: [
+    { key: 'diagram_name', label: 'Název pro popisek (volitelný; použije se název entity, pokud prázdné)', type: 'text' },
+    { key: 'source', label: 'Zdrojový kód (PlantUML)', type: 'textarea' }
+    // 'encoded' je interní cache, neukazuje se v UI
   ]}
 };
 
@@ -1701,6 +1716,10 @@ function renderInline(text, ctx) {
     }
     return m;
   });
+  // Markdown obrázek (musí být PŘED odkazem, aby se nezpracoval jako !linka)
+  text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (m, alt, url) => {
+    return '<img src="' + escapeHtml(url) + '" alt="' + escapeHtml(alt) + '" loading="lazy" style="max-width:100%;height:auto;">';
+  });
   text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, txt, url) => {
     return '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' + escapeHtml(txt) + '</a>';
   });
@@ -1795,6 +1814,17 @@ function resolveInclude(ref, alias, ctx) {
   let inner;
   if ((target.aspects || []).includes('Database')) {
     inner = renderDatabaseInclude(target);
+  } else if ((target.aspects || []).includes('Diagram')) {
+    // Diagram → vykreslit jako Markdown obrázek a nechat parser ho zpracovat
+    const enc = target.attributes && target.attributes.encoded;
+    if (!enc) {
+      inner = '<em class="meta">[Diagram „' + escapeHtml(getDisplayTitle(target)) + '" – zdroj ještě nezakódován, otevřete a uložte entitu]</em>';
+    } else {
+      const name = (target.attributes.diagram_name || getDisplayTitle(target) || 'Diagram').replace(/[\]\[]/g, '');
+      const url = pumlPngUrl(enc);
+      // Vrátit MD obrázek a nechat parser ho zpracovat
+      inner = renderMarkdown('![' + name + '](' + url + ')', { ctx: { depth: ctx.depth + 1, includeStack: new Set(ctx.includeStack), hideTransclusionMeta: ctx.hideTransclusionMeta } });
+    }
   } else {
     const newCtx = { depth: ctx.depth + 1, includeStack: new Set(ctx.includeStack), hideTransclusionMeta: ctx.hideTransclusionMeta };
     newCtx.includeStack.add(target.id);
@@ -2374,6 +2404,94 @@ function extractSectionsFlat(md) {
     out.push({ idx: i, level: h.level, heading: h.heading, body: body, start: h.start, end: end });
   }
   return out;
+}
+
+// === PlantUML encoder pro aspekt Diagram ===
+function pumlEncode6bit(b) {
+  if (b < 10) return String.fromCharCode(48 + b);
+  b -= 10;
+  if (b < 26) return String.fromCharCode(65 + b);
+  b -= 26;
+  if (b < 26) return String.fromCharCode(97 + b);
+  b -= 26;
+  if (b === 0) return '-';
+  if (b === 1) return '_';
+  return '?';
+}
+function pumlAppend3(b1, b2, b3) {
+  return pumlEncode6bit(b1 >> 2) +
+         pumlEncode6bit(((b1 & 3) << 4) | (b2 >> 4)) +
+         pumlEncode6bit(((b2 & 0xF) << 2) | (b3 >> 6)) +
+         pumlEncode6bit(b3 & 0x3F);
+}
+function pumlBase64(data) {
+  let r = '';
+  for (let i = 0; i < data.length; i += 3) {
+    const b1 = data[i];
+    const b2 = i + 1 < data.length ? data[i + 1] : 0;
+    const b3 = i + 2 < data.length ? data[i + 2] : 0;
+    r += pumlAppend3(b1, b2, b3);
+  }
+  return r;
+}
+function pumlEncodeAsync(text) {
+  return new Promise((resolve, reject) => {
+    if (typeof CompressionStream === 'undefined') {
+      const bytes = new TextEncoder().encode(text || '');
+      let hex = '';
+      for (let i = 0; i < bytes.length; i++) hex += ('0' + bytes[i].toString(16)).slice(-2);
+      resolve('~h' + hex);
+      return;
+    }
+    try {
+      const data = new TextEncoder().encode(text || '');
+      const cs = new CompressionStream('deflate-raw');
+      const writer = cs.writable.getWriter();
+      writer.write(data);
+      writer.close();
+      const reader = cs.readable.getReader();
+      const chunks = [];
+      function pump() {
+        reader.read().then(res => {
+          if (res.done) {
+            let total = 0;
+            chunks.forEach(c => { total += c.length; });
+            const combined = new Uint8Array(total);
+            let off = 0;
+            chunks.forEach(c => { combined.set(c, off); off += c.length; });
+            resolve(pumlBase64(combined));
+          } else {
+            chunks.push(res.value);
+            pump();
+          }
+        }).catch(reject);
+      }
+      pump();
+    } catch (e) {
+      const bytes = new TextEncoder().encode(text || '');
+      let hex = '';
+      for (let i = 0; i < bytes.length; i++) hex += ('0' + bytes[i].toString(16)).slice(-2);
+      resolve('~h' + hex);
+    }
+  });
+}
+function pumlPngUrl(encoded) { return 'https://www.plantuml.com/plantuml/png/' + encoded; }
+function pumlSvgUrl(encoded) { return 'https://www.plantuml.com/plantuml/svg/' + encoded; }
+
+// Po každém save() entit s aspektem Diagram – přepočítat encoded ze source pokud chybí/zastaralé.
+function updateDiagramEncodedIfNeeded(entity) {
+  if (!entity || !(entity.aspects || []).includes('Diagram')) return Promise.resolve();
+  if (!entity.attributes) entity.attributes = {};
+  const src = entity.attributes.source || '@startuml\n@enduml';
+  // Hash pro detekci změny: ukládáme i hash source (jednoduchý)
+  return pumlEncodeAsync(src).then(enc => {
+    if (entity.attributes.encoded !== enc) {
+      entity.attributes.encoded = enc;
+      entity.updated_at = nowIso();
+      try { save(); } catch (e) {}
+      if (typeof notifyPreviewWindows === 'function') notifyPreviewWindows(entity);
+    }
+  });
 }
 
 function shortUrlLabel(url) {
@@ -5702,6 +5820,50 @@ function renderDetailRead(main, e) {
   const tags = (e.tags || []).map(t => '<a href="#" class="tag" data-tag="' + escapeHtml(t) + '">' + escapeHtml(t) + '</a>').join(' ');
   const attrsHtml = renderAttributesReadOnly(e);
   const bodyHtml = e.body ? '<div class="markdown" id="body-rendered">' + renderMarkdown(e.body) + '</div>' : '';
+  // Diagram (PlantUML) sekce – pokud má aspekt Diagram
+  const isDiagram = (e.aspects || []).includes('Diagram');
+  let diagramHtml = '';
+  if (isDiagram) {
+    const enc = (e.attributes && e.attributes.encoded) || '';
+    const src = (e.attributes && e.attributes.source) || '';
+    const name = (e.attributes && e.attributes.diagram_name) || getDisplayTitle(e) || 'Diagram';
+    if (!enc && !src) {
+      diagramHtml = '<section aria-labelledby="diag-h"><h3 id="diag-h">Diagram</h3>' +
+        '<p class="meta">Zatím není zadán zdrojový kód. Přejděte do úprav a vyplňte atribut <strong>Zdrojový kód (PlantUML)</strong>.</p></section>';
+    } else if (!enc) {
+      diagramHtml = '<section aria-labelledby="diag-h"><h3 id="diag-h">Diagram</h3>' +
+        '<p class="meta">Zdroj je zadán, ale ještě se nestihl zakódovat. Uložte entitu znovu a obrázek se objeví.</p></section>';
+    } else {
+      const pngUrl = pumlPngUrl(enc);
+      const svgUrl = pumlSvgUrl(enc);
+      diagramHtml = '<section aria-labelledby="diag-h"><h3 id="diag-h">Diagram</h3>' +
+        '<div class="diagram-toolbar btn-group">' +
+          '<button id="diag-copy-source" title="Zkopírovat PlantUML zdroj">📋 Kopírovat zdroj</button>' +
+          '<button id="diag-copy-png-url" title="Zkopírovat PNG URL">🔗 PNG URL</button>' +
+          '<button id="diag-copy-svg-url" title="Zkopírovat SVG URL">🔗 SVG URL</button>' +
+          '<button id="diag-copy-md" title="Zkopírovat jako Markdown obrázek">📄 Markdown</button>' +
+          '<button id="diag-copy-wiki" title="Zkopírovat jako DokuWiki obrázek">🌐 Wiki</button>' +
+          '<button id="diag-dl-png" title="Stáhnout PNG soubor">⬇ PNG</button>' +
+          '<button id="diag-dl-svg" title="Stáhnout SVG soubor">⬇ SVG</button>' +
+        '</div>' +
+        '<figure class="diagram-figure">' +
+          '<img id="diag-img" src="' + escapeHtml(pngUrl) + '" alt="' + escapeHtml(name) + '" loading="lazy">' +
+          '<figcaption class="diagram-caption meta"><span id="diag-size"></span> · ' + escapeHtml(name) + '</figcaption>' +
+        '</figure>' +
+        '<div id="diag-error" class="diagram-error" hidden>' +
+          '<strong>⚠ Chyba renderování diagramu</strong> – PlantUML server vrátil chybu. Zkontrolujte zdroj (správné <code>@startuml</code> / <code>@enduml</code>, syntaxe).' +
+        '</div>' +
+        '<details class="diagram-source-details">' +
+          '<summary>Zdrojový kód</summary>' +
+          '<pre class="diagram-source"><code>' + escapeHtml(src) + '</code></pre>' +
+        '</details>' +
+        '<details class="diagram-url-details">' +
+          '<summary>URL obrázku</summary>' +
+          '<p><a href="' + escapeHtml(pngUrl) + '" target="_blank" rel="noopener">' + escapeHtml(pngUrl) + '</a></p>' +
+        '</details>' +
+      '</section>';
+    }
+  }
   const bodyTaskCounts = e.body ? countMarkdownTasks(e.body) : null;
   const bodyTaskCounter = bodyTaskCounts ? '<p class="task-counter meta">' + escapeHtml(describeTaskCounts(bodyTaskCounts)) + '</p>' : '';
   // Reading stats (zahrnuje include rekurzivně)
@@ -5765,6 +5927,7 @@ function renderDetailRead(main, e) {
       '</div>' +
     '</div>' +
     (attrsHtml ? '<dl class="read-attrs">' + attrsHtml + '</dl>' : '') +
+    diagramHtml +
     (bodyHtml ? '<section aria-labelledby="body-h"><h3 id="body-h">Obsah</h3>' +
       '<div class="btn-group" style="margin-bottom:0.5em;">' +
         '<button id="btn-copy-body-source" title="Zkopírovat zdroj (Markdown)">📋 Zkopírovat zdroj</button>' +
@@ -5850,6 +6013,8 @@ function renderDetailRead(main, e) {
 
   attachEntityRowHandlers(main);
   attachMarkdownLinkHandlers(main);
+  // Diagram handlers
+  if (isDiagram) attachDiagramHandlers(e);
   // Otevřít v novém panelu (z project dashboard a dalších míst)
   main.querySelectorAll('button[data-open-new-panel]').forEach(b => {
     b.onclick = (ev) => {
@@ -6070,7 +6235,7 @@ function renderAttributesReadOnly(e) {
   if (Array.isArray(e.customFields)) {
     e.customFields.forEach(f => { if (!fieldMap.has(f.key)) fieldMap.set(f.key, { ...f, custom: true }); });
   }
-  const customKeys = Object.keys(e.attributes || {}).filter(k => !fieldMap.has(k));
+  const customKeys = Object.keys(e.attributes || {}).filter(k => !fieldMap.has(k) && k !== 'encoded' && k !== '_lastEncodedSource');
   let h = '';
   fieldMap.forEach((f, k) => {
     if (f.type === 'hidden') return;
@@ -6141,6 +6306,9 @@ function detectAndOfferNamedEntities(entity, onDone) {
       // Skenujeme jen textarea, protože jednořádkový text / url / email / tel nepodporují markdown
       // a wiki link [[entita]] by tam neměl jak fungovat.
       if (f.type !== 'textarea') return;
+      // Vyloučit PlantUML zdrojový kód u aspektu Diagram – je to technický kód, ne text
+      if (f.key === 'source' && (entity.aspects || []).includes('Diagram')) return;
+      if (f.key === 'encoded') return;
       const val = entity.attributes && entity.attributes[f.key];
       if (typeof val !== 'string' || !val.trim()) return;
       fields.push({
@@ -6886,6 +7054,12 @@ function renderDetailEdit(main, e) {
           toast('Termín rozpoznán z názvu: ' + parsed.matched + ' → ' + parsed.deadline, 4000);
         }
       }
+      // Předvyplnit šablonu PlantUML zdroje pokud Diagram je nově přidán a source je prázdný
+      const diagramNewlyAdded = e.aspects.includes('Diagram') && !oldAspects.includes('Diagram');
+      if (diagramNewlyAdded && (!e.attributes || !e.attributes.source)) {
+        if (!e.attributes) e.attributes = {};
+        e.attributes.source = '@startuml\n\' Sem napište PlantUML kód.\n\' Příklad:\nAlice -> Bob: Ahoj\nBob --> Alice: Čau\n@enduml';
+      }
       saveDebounced();
       renderEditAttributes(e);
       const counts = getCounts();
@@ -6925,7 +7099,7 @@ function renderEditAttributes(e) {
   if (Array.isArray(e.customFields)) {
     e.customFields.forEach(f => { if (!fm.has(f.key)) fm.set(f.key, { ...f, custom: true }); });
   }
-  const customKeys = Object.keys(e.attributes || {}).filter(k => !fm.has(k));
+  const customKeys = Object.keys(e.attributes || {}).filter(k => !fm.has(k) && k !== 'encoded' && k !== '_lastEncodedSource');
   if (fm.size === 0 && customKeys.length === 0) {
     c.innerHTML = '<p class="meta">Žádné atributy. Zaškrtněte aspekt nebo přidejte vlastní.</p>';
     return;
@@ -7051,7 +7225,9 @@ function attributeFieldHtml(e, f) {
   const v = escapeHtml(val);
   let inp = '';
   if (f.type === 'textarea') {
-    inp = '<textarea id="' + id + '" data-attr-key="' + escapeHtml(f.key) + '" rows="3">' + v + '</textarea>';
+    // PlantUML zdroj: monospace, vyšší
+    const extraAttr = (f.key === 'source') ? ' style="font-family:Consolas,Monaco,Menlo,\'Courier New\',monospace;font-size:0.9em;" rows="14"' : ' rows="3"';
+    inp = '<textarea id="' + id + '" data-attr-key="' + escapeHtml(f.key) + '"' + extraAttr + '>' + v + '</textarea>';
     const doneCnt = countMarkdownDoneTasks(val);
     inp += '<div class="md-field-actions" id="' + id + '-actions">' +
       (doneCnt > 0 ? '<button type="button" class="md-del-done-tasks" data-md-del-done-target="' + id + '" title="Smazat zaškrtnuté úkoly">🗑 Smazat hotové úkoly (' + doneCnt + ')</button>' : '') +
@@ -9059,6 +9235,67 @@ function openSectionEditor(entity, sectionIdx) {
   document.getElementById('sec-edit-cancel').onclick = () => {
     render();
   };
+}
+
+// =============================================================================
+// DIAGRAM (PlantUML) — handlery toolbaru a render
+// =============================================================================
+function attachDiagramHandlers(entity) {
+  const enc = (entity.attributes && entity.attributes.encoded) || '';
+  const src = (entity.attributes && entity.attributes.source) || '';
+  const name = (entity.attributes && entity.attributes.diagram_name) || getDisplayTitle(entity) || 'Diagram';
+  if (!enc) return;
+  const pngUrl = pumlPngUrl(enc);
+  const svgUrl = pumlSvgUrl(enc);
+
+  function copyText(t, label) {
+    if (!navigator.clipboard) { alertMsg('Schránka není dostupná v tomto prohlížeči.'); return; }
+    navigator.clipboard.writeText(t).then(() => toast('✓ ' + label + ' zkopírováno.'))
+      .catch(err => alertMsg('Kopírování selhalo: ' + err.message));
+  }
+
+  const btnCopySrc = document.getElementById('diag-copy-source');
+  if (btnCopySrc) btnCopySrc.onclick = () => copyText(src, 'Zdroj');
+  const btnCopyPng = document.getElementById('diag-copy-png-url');
+  if (btnCopyPng) btnCopyPng.onclick = () => copyText(pngUrl, 'PNG URL');
+  const btnCopySvg = document.getElementById('diag-copy-svg-url');
+  if (btnCopySvg) btnCopySvg.onclick = () => copyText(svgUrl, 'SVG URL');
+  const btnCopyMd = document.getElementById('diag-copy-md');
+  if (btnCopyMd) btnCopyMd.onclick = () => copyText('![' + name + '](' + pngUrl + ')', 'Markdown');
+  const btnCopyWiki = document.getElementById('diag-copy-wiki');
+  if (btnCopyWiki) btnCopyWiki.onclick = () => copyText('{{' + pngUrl + '/diagram.png?nolink|' + name + '}}', 'Wiki syntaxe');
+
+  function dlBlob(url, ext) {
+    fetch(url).then(r => {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.blob();
+    }).then(blob => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = sanitizeFilename(name) + '.' + ext;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+      toast('Staženo: ' + a.download);
+    }).catch(err => alertMsg('Stažení selhalo: ' + err.message + '. Server PlantUML mohl vrátit chybu.'));
+  }
+  const btnDlPng = document.getElementById('diag-dl-png');
+  if (btnDlPng) btnDlPng.onclick = () => dlBlob(pngUrl, 'png');
+  const btnDlSvg = document.getElementById('diag-dl-svg');
+  if (btnDlSvg) btnDlSvg.onclick = () => dlBlob(svgUrl, 'svg');
+
+  const img = document.getElementById('diag-img');
+  const sizeEl = document.getElementById('diag-size');
+  const errEl = document.getElementById('diag-error');
+  if (img) {
+    img.onload = () => {
+      if (sizeEl) sizeEl.textContent = 'Rozměry: ' + img.naturalWidth + ' × ' + img.naturalHeight + ' px';
+      if (errEl) errEl.hidden = true;
+    };
+    img.onerror = () => {
+      if (errEl) errEl.hidden = false;
+    };
+  }
 }
 // ==== DIALOGY ====
 function openQuickCapture() {
@@ -14345,6 +14582,43 @@ function save() {
         if (ent) notifyPreviewWindows(ent);
       });
     }
+    // Přepočítat encoded u Diagram entit, pokud zaostávají (async, neblokuje)
+    if (!save._diagramUpdating) {
+      save._diagramUpdating = true;
+      Promise.resolve().then(() => {
+        const dirty = db.entities.filter(e => (e.aspects || []).includes('Diagram') && e.attributes &&
+          (!e.attributes.encoded || e.attributes._lastEncodedSource !== e.attributes.source));
+        const updates = dirty.map(e => pumlEncodeAsync(e.attributes.source || '@startuml\n@enduml').then(enc => {
+          e.attributes.encoded = enc;
+          e.attributes._lastEncodedSource = e.attributes.source || '';
+        }));
+        if (updates.length > 0) {
+          Promise.all(updates).then(() => {
+            save._diagramUpdating = false;
+            // Tichý save s aktualizovaným encoded
+            try {
+              db.updated_at = new Date().toISOString();
+              suppressStorageEvent = true;
+              localStorage.setItem(getProjectKey(), JSON.stringify({ db, settings: state.settings }));
+              setTimeout(() => { suppressStorageEvent = false; }, 100);
+              if (state._previewWindows && typeof notifyPreviewWindows === 'function') {
+                Object.keys(state._previewWindows).forEach(eid => {
+                  const ent = findEntity(eid);
+                  if (ent) notifyPreviewWindows(ent);
+                });
+              }
+              // Pokud jsme v detailu Diagram entity, překreslit
+              if (state.view === 'detail' && state.detailMode === 'read') {
+                const cur = findEntity(state.detailId);
+                if (cur && dirty.some(e => e.id === cur.id)) render();
+              }
+            } catch (e) { debug('Diagram save failed: ' + e.message); }
+          });
+        } else {
+          save._diagramUpdating = false;
+        }
+      });
+    }
   } catch (e) {
     alertMsg('Chyba ukládání: ' + e.message);
   }
@@ -14830,6 +15104,10 @@ function renderInline(text, ctx) {
   text = text.replace(/\\[\\[([^\\]|]+)(?:\\|([^\\]]+))?\\]\\]/g, (m, ref, alias) => {
     return resolveWikiLink(ref.trim(), alias ? alias.trim() : null);
   });
+  // Markdown obrázek (musí být PŘED odkazem)
+  text = text.replace(/!\\[([^\\]]*)\\]\\(([^)]+)\\)/g, (m, alt, url) => {
+    return '<img src="' + escapeHtml(url) + '" alt="' + escapeHtml(alt) + '" loading="lazy" style="max-width:100%;height:auto;">';
+  });
   text = text.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, (m, txt, url) => {
     return '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' + escapeHtml(txt) + '</a>';
   });
@@ -14921,6 +15199,15 @@ function resolveInclude(ref, alias, ctx) {
   let inner;
   if ((target.aspects || []).includes('Database')) {
     inner = renderDatabaseInclude(target);
+  } else if ((target.aspects || []).includes('Diagram')) {
+    const enc = target.attributes && target.attributes.encoded;
+    if (!enc) {
+      inner = '<em class="meta">[Diagram „' + escapeHtml(getDisplayTitle(target)) + '" – nekódováno]</em>';
+    } else {
+      const name = (target.attributes.diagram_name || getDisplayTitle(target) || 'Diagram').replace(/[\]\[]/g, '');
+      const url = 'https://www.plantuml.com/plantuml/png/' + enc;
+      inner = renderMarkdown('![' + name + '](' + url + ')', { ctx: { depth: ctx.depth + 1, includeStack: new Set(ctx.includeStack), hideTransclusionMeta: ctx.hideTransclusionMeta } });
+    }
   } else {
     const newCtx = { depth: ctx.depth + 1, includeStack: new Set(ctx.includeStack), hideTransclusionMeta: ctx.hideTransclusionMeta };
     newCtx.includeStack.add(target.id);
