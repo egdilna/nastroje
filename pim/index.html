@@ -5632,8 +5632,9 @@ function renderDetail(main, id) {
 
 // ----- READ MODE -----
 function renderDetailRead(main, e) {
-  // Při návratu do read modu resetovat tracker, aby další přechod do edit znovu nastavil focus
+  // Při návratu do read modu resetovat trackery, aby další přechod do edit znovu nastavil
   state._lastEditFocusedId = null;
+  state._editTagOrderEntityId = null;
   const aspects = (e.aspects || []).map(a => '<span class="aspect-badge">' + escapeHtml(aspectLabel(a)) + '</span>').join(' ');
   const tags = (e.tags || []).map(t => '<a href="#" class="tag" data-tag="' + escapeHtml(t) + '">' + escapeHtml(t) + '</a>').join(' ');
   const attrsHtml = renderAttributesReadOnly(e);
@@ -6064,7 +6065,9 @@ function detectAndOfferNamedEntities(entity, onDone) {
     const asp = aspMap[aspKey];
     if (!asp || !asp.fields) return;
     asp.fields.forEach(f => {
-      if (f.type !== 'text' && f.type !== 'textarea' && f.type !== 'url' && f.type !== 'email' && f.type !== 'tel') return;
+      // Skenujeme jen textarea, protože jednořádkový text / url / email / tel nepodporují markdown
+      // a wiki link [[entita]] by tam neměl jak fungovat.
+      if (f.type !== 'textarea') return;
       const val = entity.attributes && entity.attributes[f.key];
       if (typeof val !== 'string' || !val.trim()) return;
       fields.push({
@@ -6074,18 +6077,7 @@ function detectAndOfferNamedEntities(entity, onDone) {
       });
     });
   });
-  // Vlastní atributy (custom)
-  if (entity.customAttrs && typeof entity.customAttrs === 'object') {
-    Object.keys(entity.customAttrs).forEach(k => {
-      const val = entity.customAttrs[k];
-      if (typeof val !== 'string' || !val.trim()) return;
-      fields.push({
-        label: 'vlastní atribut „' + k + '"',
-        getText: () => entity.customAttrs[k] || '',
-        setText: (txt) => { entity.customAttrs[k] = txt; }
-      });
-    });
-  }
+  // Vlastní atributy (customAttrs) NEskenujeme — jsou to prosté hodnoty bez markdown podpory.
   // Komentáře
   (entity.comments || []).forEach((c, idx) => {
     if (!c || !c.text || !c.text.trim()) return;
@@ -6395,6 +6387,24 @@ function attachAttachmentReadHandlers(root, entity) {
 // ----- EDIT MODE -----
 function renderDetailEdit(main, e) {
   const allTags = getAllTags();
+  // Pořadí tagů: zaškrtnuté nahoře, pak nezaškrtnuté — ale jen při PRVNÍM vstupu do edit
+  // pro tuto entitu. Pak se pořadí během editace nemění.
+  if (state._editTagOrderEntityId !== e.id) {
+    const entityTags = new Set(e.tags || []);
+    state._editTagOrder = [
+      ...allTags.filter(t => entityTags.has(t)),
+      ...allTags.filter(t => !entityTags.has(t))
+    ];
+    state._editTagOrderEntityId = e.id;
+  } else {
+    // Pokud byl mezi posledním renderem přidán nový tag (přes „Přidat tag" tlačítko),
+    // doplníme ho na konec, ale stávající pořadí necháme.
+    const known = new Set(state._editTagOrder);
+    allTags.forEach(t => { if (!known.has(t)) state._editTagOrder.push(t); });
+    // Odebrat tagy, které už neexistují
+    state._editTagOrder = state._editTagOrder.filter(t => allTags.includes(t));
+  }
+  const orderedTags = state._editTagOrder;
   main.innerHTML =
     '<div class="btn-group">' +
       '<button id="back-btn">← Zpět</button>' +
@@ -6449,9 +6459,9 @@ function renderDetailEdit(main, e) {
 
     '<section><h3>Tagy</h3>' +
       '<div id="d-tags-checkboxes" class="checkbox-list">' +
-        (allTags.length === 0
+        (orderedTags.length === 0
           ? '<p class="meta">Zatím žádné tagy. Přidejte první níže.</p>'
-          : allTags.map(t => {
+          : orderedTags.map(t => {
               const checked = (e.tags || []).includes(t);
               return '<label><input type="checkbox" data-tag-cb value="' + escapeHtml(t) + '"' +
                 (checked ? ' checked' : '') + '> ' + escapeHtml(t) + '</label>';
