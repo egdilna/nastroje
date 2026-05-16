@@ -1983,6 +1983,65 @@ function findEntityByTitle(title) {
     getDisplayTitle(e).toLowerCase() === t
   );
 }
+
+// Po přejmenování entity přepíše wiki linky a include odkazující na entitu po starém názvu.
+// Vrací počet entit, ve kterých byly nahrazeny odkazy.
+function updateReferencesAfterRename(oldTitle, newTitle, renamedEntityId) {
+  if (!oldTitle || !newTitle || oldTitle === newTitle) return 0;
+  let affectedCount = 0;
+  // Regex match pro: [[OldTitle]], [[OldTitle|alias]], {{include:OldTitle}}, {{include:OldTitle|alias}}
+  const escOld = oldTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // wiki-link: [[OldTitle]] nebo [[OldTitle|alias]]
+  const reWiki = new RegExp('\\[\\[' + escOld + '(\\s*\\|[^\\]]*)?\\]\\]', 'g');
+  // include: {{include:OldTitle}} nebo {{include:OldTitle|alias}}
+  const reInc = new RegExp('\\{\\{include:' + escOld + '(\\s*\\|[^}]*)?\\}\\}', 'g');
+
+  function replaceInText(text) {
+    if (!text || typeof text !== 'string') return { text, changed: false };
+    if (!reWiki.test(text) && !reInc.test(text)) {
+      reWiki.lastIndex = 0; reInc.lastIndex = 0;
+      return { text, changed: false };
+    }
+    reWiki.lastIndex = 0; reInc.lastIndex = 0;
+    let out = text.replace(reWiki, (m, aliasPart) => '[[' + newTitle + (aliasPart || '') + ']]');
+    out = out.replace(reInc, (m, aliasPart) => '{{include:' + newTitle + (aliasPart || '') + '}}');
+    return { text: out, changed: out !== text };
+  }
+
+  db.entities.forEach(e => {
+    let entChanged = false;
+    if (e.body) {
+      const r = replaceInText(e.body);
+      if (r.changed) { e.body = r.text; entChanged = true; }
+    }
+    // Textarea atributy aspektů – ne PlantUML source
+    if (e.attributes) {
+      Object.keys(e.attributes).forEach(k => {
+        if (k === 'source' && (e.aspects || []).includes('Diagram')) return; // PlantUML technický
+        if (k === 'encoded' || k === '_lastEncodedSource') return;
+        const v = e.attributes[k];
+        if (typeof v === 'string') {
+          const r = replaceInText(v);
+          if (r.changed) { e.attributes[k] = r.text; entChanged = true; }
+        }
+      });
+    }
+    // Komentáře
+    if (Array.isArray(e.comments)) {
+      e.comments.forEach(c => {
+        if (c && c.content) {
+          const r = replaceInText(c.content);
+          if (r.changed) { c.content = r.text; c.updated_at = nowIso(); entChanged = true; }
+        }
+      });
+    }
+    if (entChanged) {
+      e.updated_at = nowIso();
+      affectedCount++;
+    }
+  });
+  return affectedCount;
+}
 // Spočítá markdown task položky `- [ ]` / `- [x]` v textu.
 // Vrací { total, done, undone } nebo null pokud žádné neexistují.
 function countMarkdownTasks(text) {
@@ -3400,6 +3459,24 @@ function setView(view, params = {}) {
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
 function goBack() {
+  // Pokud uživatel opouští edit mode a změnil název, aktualizovat odkazy
+  if (state.view === 'detail' && state.detailMode === 'edit' &&
+      state._editTitleOriginalEntityId && state._editTitleOriginal != null) {
+    const e = findEntity(state._editTitleOriginalEntityId);
+    if (e) {
+      const oldTitle = state._editTitleOriginal;
+      const newTitle = e.title || '';
+      if (oldTitle && newTitle && oldTitle !== newTitle) {
+        const affected = updateReferencesAfterRename(oldTitle, newTitle, e.id);
+        if (affected > 0) {
+          try { save(); } catch (err) {}
+          if (typeof toast === 'function') toast('Přejmenováno: aktualizovány odkazy v ' + affected + ' entit' + (affected === 1 ? 'ě' : affected < 5 ? 'ách' : 'ách') + '.', 4500);
+        }
+      }
+    }
+    state._editTitleOriginalEntityId = null;
+    state._editTitleOriginal = null;
+  }
   if (viewHistory.length === 0) { setView('inbox'); return; }
   const p = viewHistory.pop();
   state.view = p.view; state.detailId = p.detailId;
@@ -6713,6 +6790,11 @@ function attachAttachmentReadHandlers(root, entity) {
 // ----- EDIT MODE -----
 function renderDetailEdit(main, e) {
   const allTags = getAllTags();
+  // Zapamatovat původní název při prvním vstupu do edit modu této entity – pro detekci přejmenování
+  if (state._editTitleOriginalEntityId !== e.id) {
+    state._editTitleOriginalEntityId = e.id;
+    state._editTitleOriginal = e.title || '';
+  }
   // Pořadí tagů: zaškrtnuté nahoře, pak nezaškrtnuté — ale jen při PRVNÍM vstupu do edit
   // pro tuto entitu. Pak se pořadí během editace nemění.
   if (state._editTagOrderEntityId !== e.id) {
@@ -6967,6 +7049,19 @@ function renderDetailEdit(main, e) {
         e.updated_at = nowIso();
         toast('Termín rozpoznán: ' + parsed.matched + ' → ' + parsed.deadline, 4000);
       }
+    }
+    // Přejmenování: pokud se title změnil od vstupu do edit modu, aktualizovat všechny odkazy
+    if (state._editTitleOriginalEntityId === e.id) {
+      const oldTitle = state._editTitleOriginal;
+      const newTitle = e.title || '';
+      if (oldTitle && newTitle && oldTitle !== newTitle) {
+        const affected = updateReferencesAfterRename(oldTitle, newTitle, e.id);
+        if (affected > 0) {
+          toast('Přejmenováno: aktualizovány odkazy v ' + affected + ' entit' + (affected === 1 ? 'ě' : affected < 5 ? 'ách' : 'ách') + '.', 4500);
+        }
+      }
+      state._editTitleOriginalEntityId = null;
+      state._editTitleOriginal = null;
     }
     // Detekce entit v textu (názvy existujících entit nepoužité jako wiki link)
     detectAndOfferNamedEntities(e, () => {
@@ -9324,16 +9419,32 @@ function openSectionEditor(entity, sectionIdx) {
     if (!/^#{1,6}\s+/.test(newText.trim())) {
       if (!confirm('Sekce nezačíná Markdown nadpisem (# …). Opravdu uložit? Mohlo by se rozbít rozdělení sekcí.')) return;
     }
-    // Zajistit, že začíná na nové řádce a končí newline před další sekcí
-    // Použít offsety
     const before = entity.body.slice(0, sec.start);
     const after = entity.body.slice(sec.end);
-    // Zajistit \n na konci, pokud nepoužívá
-    if (after && !newText.endsWith('\n')) newText += '\n';
-    entity.body = before + newText + after;
+    // Před nadpisem: prázdný řádek (kromě úplného začátku těla)
+    // Smazat všechny trailing newlines z `before` a doplnit přesně 2 (= jedna prázdná řádka),
+    // pokud `before` není prázdné. Pokud je prázdné (sekce je první), neřešíme.
+    let beforeClean = before;
+    if (beforeClean.length > 0) {
+      beforeClean = beforeClean.replace(/\n+$/, '') + '\n\n';
+    }
+    // Před začátkem newText smazat leading newlines (uživatel je tam mohl omylem dát)
+    newText = newText.replace(/^\n+/, '');
+    // Za sekcí: prázdný řádek (kromě úplného konce těla)
+    // Smazat trailing newlines z newText, doplnit 2 (jedna prázdná řádka), pokud `after` není prázdné.
+    newText = newText.replace(/\n+$/, '');
+    let afterClean = after;
+    if (afterClean.length > 0) {
+      // Smazat leading newlines z `after` (po předchozím obsahu sekce, který mohl končit \n)
+      afterClean = afterClean.replace(/^\n+/, '');
+      newText += '\n\n';
+    } else {
+      // Sekce je poslední — pro estetiku přidat jeden \n na konec
+      newText += '\n';
+    }
+    entity.body = beforeClean + newText + afterClean;
     entity.updated_at = nowIso();
     save();
-    // Spustit detekci entit, aby se i tady objevila nabídka přidat wiki linky
     detectAndOfferNamedEntities(entity, () => {
       save();
       render();
