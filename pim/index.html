@@ -307,6 +307,10 @@ body.theme-dark .task-quick-toggle { background: #2a2a2a; border-color: #444; }
 .checkbox-row label { font-weight: normal; cursor: pointer; }
 .md-field-actions { margin: 0.3em 0; min-height: 1px; }
 .md-field-actions button.md-del-done-tasks { padding: 0.2em 0.6em; font-size: 0.9em; }
+.md-selection-actions { margin-top: 0.3em; padding: 0.3em 0.5em; background: #fff8d8; border: 1px solid #d8c060; border-radius: 4px; display: flex; gap: 0.3em; align-items: center; flex-wrap: wrap; }
+body.theme-dark .md-selection-actions { background: #3a3010; border-color: #6a5a30; }
+.md-selection-actions[hidden] { display: none; }
+.md-selection-actions .meta { margin-right: 0.4em; }
 .anno-para-kind { display: inline-block; padding: 0.05em 0.4em; background: #e8f0fa; border-radius: 3px; font-size: 0.85em; color: #0066cc; margin: 0 0.2em; font-weight: 500; }
 body.theme-dark .anno-para-kind { background: #2a3950; color: #6aa8e8; }
 .section-edit-btn { margin-left: 0.5em; padding: 0.1em 0.5em; font-size: 0.7em; vertical-align: middle; background: #fff3c4; border: 1px solid #c8a200; color: inherit; border-radius: 4px; cursor: pointer; font-weight: normal; }
@@ -723,6 +727,23 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <button type="button" id="link-cancel">Zrušit</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="dialog-extract" aria-labelledby="dialog-extract-title">
+  <h2 id="dialog-extract-title">Označený text do nové entity</h2>
+  <p class="meta">Vybraný text se vloží jako obsah nové entity. V původním textu se ponechá odkaz na ni.</p>
+  <p class="meta" id="dialog-extract-preview"></p>
+  <label for="extract-name">Název nové entity</label>
+  <input type="text" id="extract-name" required>
+  <fieldset style="margin:0.5em 0;">
+    <legend>Druh odkazu v původním textu</legend>
+    <label><input type="radio" name="extract-kind" value="wiki" checked> Wiki odkaz – <code>[[Název]]</code> (proklik na novou entitu)</label><br>
+    <label><input type="radio" name="extract-kind" value="include"> Include – <code>{{include:Název}}</code> (na místě vykreslí obsah nové entity)</label>
+  </fieldset>
+  <div class="btn-group">
+    <button type="button" class="primary" id="extract-create">Vytvořit</button>
+    <button type="button" id="extract-cancel">Zrušit</button>
+  </div>
 </dialog>
 
 <dialog id="dialog-confirm" aria-labelledby="dialog-confirm-title">
@@ -1463,6 +1484,16 @@ function buildMdFieldActions(targetId, fieldKey, fieldLabel, value, excludeMd) {
     h += '<button type="button" class="md-korektor" data-md-spc-target="' + escapeHtml(targetId) + '" data-md-spc-label="' + escapeHtml(fieldLabel) + '" data-md-spc-field="' + escapeHtml(fieldKey) + '" title="Kontrola pravopisu (Korektor)">🔍 Korektor</button>';
   }
   return h;
+}
+
+// Lišta akcí na výběru textu v textarea: Extrahovat výběr do nové entity.
+// Zobrazí se jen pokud má textarea aktuální výběr (selection).
+function buildMdSelectionActions(targetId, fieldKey, fieldLabel, excludeMd) {
+  if (excludeMd) return '';
+  return '<div class="md-selection-actions" id="' + targetId + '-sel-actions" hidden role="toolbar" aria-label="Akce nad označeným textem">' +
+    '<span class="meta">Z označeného textu:</span>' +
+    '<button type="button" data-md-sel-act="extract" data-md-sel-target="' + escapeHtml(targetId) + '" title="Výběr přesunout do nové entity (jako její obsah) a vložit místo něj Wiki odkaz nebo Include">📤 Do nové entity…</button>' +
+    '</div>';
 }
 
 // Vrátí markdown bez řádků se zaškrtnutými úkoly
@@ -6861,6 +6892,7 @@ function renderDetailEdit(main, e) {
       '<div class="md-field-actions" id="d-body-actions">' +
         buildMdFieldActions('d-body', 'body', 'Tělo entity', e.body, false) +
       '</div>' +
+      buildMdSelectionActions('d-body', 'body', 'Tělo entity', false) +
       '<div class="checkbox-row" style="margin-top:0.5em;">' +
         '<label><input type="checkbox" id="d-flag-adved"' + (e.useAdvancedEditor ? ' checked' : '') + '> Používat pokročilý editor</label> ' +
         '<label><input type="checkbox" id="d-flag-presentation"' + (e.usePresentation ? ' checked' : '') + '> Prezentace</label>' +
@@ -7167,6 +7199,7 @@ function renderDetailEdit(main, e) {
     });
   }
   attachMdFieldActionsHandlers();
+  attachMdSelectionTracking();
   // Příznaky pro Pokročilý editor a Prezentaci
   const flagAdv = document.getElementById('d-flag-adved');
   if (flagAdv) flagAdv.onchange = () => { e.useAdvancedEditor = flagAdv.checked || undefined; e.updated_at = nowIso(); save(); };
@@ -7350,6 +7383,8 @@ function renderEditAttributes(e) {
     });
   }
   attachAttrMdActionsHandlers(c);
+  // Selection tracking pro textarea atributy
+  attachMdSelectionTracking();
   // Backwards alias (zachováno pro starší volání)
   function attachAttrMdDelDoneHandlers(root) {
     attachAttrMdActionsHandlers(root);
@@ -7436,6 +7471,7 @@ function attributeFieldHtml(e, f) {
     inp += '<div class="md-field-actions" id="' + id + '-actions">' +
       buildMdFieldActions(id, f.key, f.label, val, isSourceField) +
       '</div>';
+    inp += buildMdSelectionActions(id, f.key, f.label, isSourceField);
   }
   else if (f.type === 'select') {
     inp = '<select id="' + id + '" data-attr-key="' + escapeHtml(f.key) + '"><option value="">— vyberte —</option>' +
@@ -10151,6 +10187,135 @@ function scrollToNextOpenSpellError(sp) {
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return;
   }
+}
+
+// =============================================================================
+// MD SELECTION ACTIONS — Wiki entita / Extrahovat výběr
+// =============================================================================
+function attachMdSelectionTracking() {
+  // Najít všechny markdown textareas, které mají sel-actions div
+  document.querySelectorAll('div.md-selection-actions').forEach(div => {
+    const targetId = div.id.replace(/-sel-actions$/, '');
+    const ta = document.getElementById(targetId);
+    if (!ta) return;
+    if (div._mdSelTracked) return;
+    div._mdSelTracked = true;
+
+    function update() {
+      const hasSel = ta.selectionStart !== ta.selectionEnd;
+      div.hidden = !hasSel;
+    }
+    ['select', 'mouseup', 'keyup', 'click', 'focus'].forEach(ev => {
+      ta.addEventListener(ev, update);
+    });
+    // selectionchange na document funguje pro textarea v moderních prohlížečích
+    document.addEventListener('selectionchange', () => {
+      if (document.activeElement === ta) update();
+    });
+    ta.addEventListener('blur', () => {
+      // Schovat až po krátké pauze – ať klik na tlačítko stihne projít
+      setTimeout(() => {
+        if (document.activeElement !== ta && !div.contains(document.activeElement)) {
+          div.hidden = true;
+        }
+      }, 200);
+    });
+  });
+
+  // Tlačítka v selection-actions
+  document.querySelectorAll('button[data-md-sel-act]').forEach(btn => {
+    if (btn._mdSelBound) return;
+    btn._mdSelBound = true;
+    btn.onclick = () => {
+      const targetId = btn.dataset.mdSelTarget;
+      const act = btn.dataset.mdSelAct;
+      const ta = document.getElementById(targetId);
+      if (!ta) return;
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      if (start === end) { toast('Nejprve označte text.'); return; }
+      const selected = ta.value.slice(start, end);
+      if (!selected.trim()) { toast('Označený text je prázdný.'); return; }
+      const e = findEntity(state.detailId);
+      if (!e) return;
+      if (act === 'extract') doMdExtract(ta, e, start, end, selected);
+    };
+  });
+}
+
+function doMdExtract(ta, parentEntity, start, end, selected) {
+  // Dialog na název + typ
+  const d = document.getElementById('dialog-extract');
+  const nameInp = document.getElementById('extract-name');
+  const preview = document.getElementById('dialog-extract-preview');
+  // Předvyplnit návrh názvu z prvního řádku výběru
+  const firstLine = selected.trim().split('\n')[0].trim();
+  // Pokud je první řádek nadpis, odstranit ##
+  const headingMatch = firstLine.match(/^#{1,6}\s+(.+)$/);
+  const suggestedName = (headingMatch ? headingMatch[1] : firstLine).slice(0, 80);
+  nameInp.value = suggestedName;
+  preview.textContent = 'Náhled výběru (' + selected.length + ' znaků): ' + selected.slice(0, 120).replace(/\s+/g, ' ').trim() + (selected.length > 120 ? '…' : '');
+  // Reset typu na wiki
+  document.querySelector('input[name="extract-kind"][value="wiki"]').checked = true;
+  if (d.showModal) d.showModal(); else d.setAttribute('open','open');
+  // Focus na vstup po otevření
+  setTimeout(() => nameInp.focus(), 50);
+
+  const createBtn = document.getElementById('extract-create');
+  const cancelBtn = document.getElementById('extract-cancel');
+  function cleanup() {
+    createBtn.onclick = null;
+    cancelBtn.onclick = null;
+    nameInp.onkeydown = null;
+  }
+  function onCreate() {
+    const name = nameInp.value.trim();
+    if (!name) { alertMsg('Zadejte název.'); return; }
+    if (findEntityByTitle(name)) {
+      if (!confirm('Entita s názvem „' + name + '" už existuje. Pokračovat? (Nová entita s tímto názvem se nepoužije, místo toho se na ni vytvoří odkaz – ale obsah výběru se zahodí.)')) return;
+      // Jen vložit odkaz a uzavřít
+      const kind = document.querySelector('input[name="extract-kind"]:checked').value;
+      const replacement = (kind === 'include') ? '{{include:' + name + '}}' : '[[' + name + ']]';
+      ta.value = ta.value.slice(0, start) + replacement + ta.value.slice(end);
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      cleanup();
+      d.close();
+      toast('Odkaz na „' + name + '" vložen (výběr nahrazen).');
+      return;
+    }
+    const kind = document.querySelector('input[name="extract-kind"]:checked').value;
+    const newEntity = {
+      id: uuid(),
+      title: name,
+      aspects: [],
+      attributes: {},
+      tags: [],
+      body: selected.trim(),
+      links: [],
+      attachments: [],
+      comments: [],
+      created_at: nowIso(),
+      updated_at: nowIso()
+    };
+    db.entities.push(newEntity);
+    const replacement = (kind === 'include') ? '{{include:' + name + '}}' : '[[' + name + ']]';
+    ta.value = ta.value.slice(0, start) + replacement + ta.value.slice(end);
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    save();
+    cleanup();
+    d.close();
+    toast('Výběr extrahován do entity „' + name + '" (' + (kind === 'include' ? 'jako include' : 'jako wiki odkaz') + ').', 4000);
+  }
+  function onCancel() {
+    cleanup();
+    d.close();
+  }
+  createBtn.onclick = onCreate;
+  cancelBtn.onclick = onCancel;
+  nameInp.onkeydown = (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); onCreate(); }
+    else if (ev.key === 'Escape') { ev.preventDefault(); onCancel(); }
+  };
 }
 // ==== DIALOGY ====
 function openQuickCapture() {
