@@ -9451,42 +9451,71 @@ function renderCmReview(main) {
   const entity = findEntity(cm.entityId);
   if (!entity) { state.cmReview = null; render(); return; }
 
-  // Parser
+  // Parser revizí + renderování přes standardní markdown engine
   function parseChanges(src) {
     const chs = [];
     let id = 0;
-    let html = escapeHtml(src);
-    // Substituce: {~~old~>new~~}
-    html = html.replace(/\{~~([\s\S]*?)~&gt;([\s\S]*?)~~\}/g, (m, o, n) => {
+    // Krok 1: najít všechny CM značky v původním zdroji (NEescapovaném)
+    //  a nahradit je za jedinečné placeholdery, které renderer neporušší.
+    // Pořadí: substituce > addition > deletion > highlight > comment
+    let working = src;
+    const placeholders = {}; // placeholder → { cid, tp }
+    const PLH = (cid) => '\u0000CMRV' + cid + '\u0000';
+
+    working = working.replace(/\{~~([\s\S]*?)~>([\s\S]*?)~~\}/g, (m, o, n) => {
       const cid = id++;
-      const origRaw = src.match(new RegExp('\\{~~' + escapeRegex(o.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"')) + '~>' + escapeRegex(n.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"')) + '~~\\}'));
-      chs.push({ id: cid, tp: 'substitution', orig: origRaw ? origRaw[0] : m.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"'), ot: o, nt: n, tx: '', done: false });
-      return '<del class="csd">' + o + '</del><ins class="csi">' + n + '</ins>' + cmActionButtons(cid, 'substitution');
+      chs.push({ id: cid, tp: 'substitution', orig: m, ot: o, nt: n, tx: '', done: false });
+      placeholders[cid] = { tp: 'substitution', ot: o, nt: n };
+      return PLH(cid);
     });
-    // Přidání: {++text++}
-    html = html.replace(/\{\+\+([\s\S]*?)\+\+\}/g, (m, t) => {
+    working = working.replace(/\{\+\+([\s\S]*?)\+\+\}/g, (m, t) => {
       const cid = id++;
-      chs.push({ id: cid, tp: 'addition', orig: '{++' + t.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"') + '++}', tx: t.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"'), done: false });
-      return '<ins class="csa">' + t + '</ins>' + cmActionButtons(cid, 'addition');
+      chs.push({ id: cid, tp: 'addition', orig: m, tx: t, done: false });
+      placeholders[cid] = { tp: 'addition', tx: t };
+      return PLH(cid);
     });
-    // Smazání: {--text--}
-    html = html.replace(/\{--([\s\S]*?)--\}/g, (m, t) => {
+    working = working.replace(/\{--([\s\S]*?)--\}/g, (m, t) => {
       const cid = id++;
-      chs.push({ id: cid, tp: 'deletion', orig: '{--' + t.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"') + '--}', tx: t.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"'), done: false });
-      return '<del class="csd">' + t + '</del>' + cmActionButtons(cid, 'deletion');
+      chs.push({ id: cid, tp: 'deletion', orig: m, tx: t, done: false });
+      placeholders[cid] = { tp: 'deletion', tx: t };
+      return PLH(cid);
     });
-    // Zvýraznění: {==text==}
-    html = html.replace(/\{==([\s\S]*?)==\}/g, (m, t) => {
+    working = working.replace(/\{==([\s\S]*?)==\}/g, (m, t) => {
       const cid = id++;
-      chs.push({ id: cid, tp: 'highlight', orig: '{==' + t.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"') + '==}', tx: t.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"'), done: false });
-      return '<span class="csh">' + t + '</span>' + cmActionButtons(cid, 'highlight');
+      chs.push({ id: cid, tp: 'highlight', orig: m, tx: t, done: false });
+      placeholders[cid] = { tp: 'highlight', tx: t };
+      return PLH(cid);
     });
-    // Komentář: {>>text<<}
-    html = html.replace(/\{&gt;&gt;([\s\S]*?)&lt;&lt;\}/g, (m, t) => {
+    working = working.replace(/\{>>([\s\S]*?)<<\}/g, (m, t) => {
       const cid = id++;
-      chs.push({ id: cid, tp: 'comment', orig: '{>>' + t.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"') + '<<}', tx: t.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"'), done: false });
-      return '<span class="csc" title="Komentář">💬 ' + t + '</span>' + cmActionButtons(cid, 'comment');
+      chs.push({ id: cid, tp: 'comment', orig: m, tx: t, done: false });
+      placeholders[cid] = { tp: 'comment', tx: t };
+      return PLH(cid);
     });
+
+    // Krok 2: renderovat markdown s placeholdery
+    let html = renderMarkdown(working, { ctx: { depth: 1, includeStack: new Set(), hideTransclusionMeta: true } });
+
+    // Krok 3: nahradit placeholdery za HTML s odpovídajícími styly + tlačítky
+    Object.keys(placeholders).forEach(cidStr => {
+      const cid = Number(cidStr);
+      const p = placeholders[cid];
+      const re = new RegExp('\u0000CMRV' + cid + '\u0000', 'g');
+      let repl;
+      if (p.tp === 'addition') {
+        repl = '<ins class="csa">' + escapeHtml(p.tx) + '</ins>' + cmActionButtons(cid, 'addition');
+      } else if (p.tp === 'deletion') {
+        repl = '<del class="csd">' + escapeHtml(p.tx) + '</del>' + cmActionButtons(cid, 'deletion');
+      } else if (p.tp === 'substitution') {
+        repl = '<del class="csd">' + escapeHtml(p.ot) + '</del><ins class="csi">' + escapeHtml(p.nt) + '</ins>' + cmActionButtons(cid, 'substitution');
+      } else if (p.tp === 'highlight') {
+        repl = '<span class="csh">' + escapeHtml(p.tx) + '</span>' + cmActionButtons(cid, 'highlight');
+      } else if (p.tp === 'comment') {
+        repl = '<span class="csc" title="Komentář">💬 ' + escapeHtml(p.tx) + '</span>' + cmActionButtons(cid, 'comment');
+      }
+      html = html.replace(re, repl);
+    });
+
     return { html, chs };
   }
   function cmActionButtons(cid, tp) {
@@ -9497,7 +9526,6 @@ function renderCmReview(main) {
       h += '<button type="button" data-cm-act="edcom" data-cm-id="' + cid + '" title="Upravit komentář">✏ Upravit</button>';
       h += '<button type="button" data-cm-act="delcom" data-cm-id="' + cid + '" title="Smazat komentář">🗑 Smazat</button>';
     } else {
-      // addition, deletion, substitution: accept / reject
       h += '<button type="button" data-cm-act="accept" data-cm-id="' + cid + '" title="Přijmout">✓</button>';
       h += '<button type="button" data-cm-act="reject" data-cm-id="' + cid + '" title="Odmítnout">✗</button>';
     }
@@ -9521,7 +9549,7 @@ function renderCmReview(main) {
     '<h2>📝 Revize: ' + escapeHtml(cm.fieldLabel) + '</h2>' +
     '<p class="meta">Entita: <strong>' + escapeHtml(getDisplayTitle(entity)) + '</strong></p>' +
     '<div class="cr-wrap">' +
-      '<div class="cr-doc" id="cmr-doc">' + parsed.html + '</div>' +
+      '<div class="cr-doc markdown" id="cmr-doc">' + parsed.html + '</div>' +
       '<div class="cr-rev"><h3>Přehled revizí</h3><div id="cmr-list"></div></div>' +
     '</div>';
 
