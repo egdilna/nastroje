@@ -2888,7 +2888,8 @@ function updateDiagramEncodedIfNeeded(entity) {
 // =============================================================================
 function planUuid() { return 't-' + Math.random().toString(36).slice(2, 9); }
 function planEmptyTask() {
-  const today = new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const today = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   return {
     id: planUuid(), title: 'Nový úkol', level: 0,
     start: today, duration: 1, end: today,
@@ -2907,7 +2908,12 @@ function planAddDays(s, days) {
   if (!s) return s;
   const d = planParseDate(s);
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  // POZOR: toISOString() převádí na UTC, což v některých zónách (např. Praha +1/+2) posune o den zpět.
+  // Místo toho sestavíme datum ručně z lokálních složek.
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return yyyy + '-' + mm + '-' + dd;
 }
 function planDateDiff(a, b) {
   if (!a || !b) return 1;
@@ -24950,7 +24956,10 @@ function renderPlanEdit(main) {
     const t = planEmptyTask();
     tasks.push(t);
     planRecalc(tasks);
-    save(); render();
+    save();
+    render();
+    // Otevři edit dialog pro nově přidaný úkol (po renderu)
+    setTimeout(() => openPlanTaskDialog(entity, tasks.length - 1), 50);
   };
   document.getElementById('plane-expand-all').onclick = () => {
     tasks.forEach(t => { t.collapsed = false; });
@@ -25073,6 +25082,7 @@ function planAddTaskAfter(entity, i) {
   t.level = lv;
   tasks.splice(insertAt, 0, t);
   planRecalc(tasks); save(); render();
+  setTimeout(() => openPlanTaskDialog(entity, insertAt), 50);
 }
 function planDeleteTask(entity, i) {
   const tasks = planGetTasks(entity);
@@ -25116,14 +25126,16 @@ function openPlanTaskDialog(entity, taskIdx) {
       '</li>';
     }).join('');
   }
+  const hasPred = !!t.predecessorId;
   d.innerHTML =
     '<h2 id="dlg-pt-title">Upravit úkol</h2>' +
     '<label for="pt-title">Název</label><input type="text" id="pt-title" value="' + escapeHtml(t.title) + '">' +
     '<label for="pt-status">Stav</label><select id="pt-status">' + optsStatus + '</select>' +
-    '<label for="pt-start">Začátek</label><input type="date" id="pt-start" value="' + escapeHtml(t.start || '') + '"' + (isParent ? ' disabled' : '') + '>' +
+    '<label for="pt-start">Začátek</label><input type="date" id="pt-start" value="' + escapeHtml(t.start || '') + '"' + (isParent || hasPred ? ' disabled' : '') + '>' +
     '<label for="pt-duration">Trvání (dny)</label><input type="number" id="pt-duration" min="1" value="' + (t.duration || 1) + '"' + (isParent ? ' disabled' : '') + '>' +
     '<label for="pt-end">Konec</label><input type="date" id="pt-end" value="' + escapeHtml(t.end || '') + '"' + (isParent ? ' disabled' : '') + '>' +
     (isParent ? '<p class="meta">Datum a trvání rodičovského úkolu se počítají automaticky z podúkolů.</p>' : '') +
+    (!isParent && hasPred ? '<p class="meta">Začátek se počítá automaticky z předchůdce (konec předchůdce + 1 den).</p>' : '') +
     '<label for="pt-pred">Předchůdce</label><select id="pt-pred"' + (isParent ? ' disabled' : '') + '>' + optsPred + '</select>' +
     '<label for="pt-desc">Popis (Markdown, podporuje [[wiki]] a {{include:}})</label>' +
     '<textarea id="pt-desc" rows="6">' + escapeHtml(t.description || '') + '</textarea>' +
@@ -25192,14 +25204,28 @@ function openPlanTaskDialog(entity, taskIdx) {
     const inpStart = document.getElementById('pt-start');
     const inpDur = document.getElementById('pt-duration');
     const inpEnd = document.getElementById('pt-end');
-    inpStart.oninput = () => {
+    const selPred = document.getElementById('pt-pred');
+    function recalcEndFromStart() {
       if (inpStart.value && inpDur.value > 0) inpEnd.value = planAddDays(inpStart.value, Number(inpDur.value) - 1);
-    };
-    inpDur.oninput = () => {
-      if (inpStart.value && inpDur.value > 0) inpEnd.value = planAddDays(inpStart.value, Number(inpDur.value) - 1);
-    };
+    }
+    inpStart.oninput = () => { recalcEndFromStart(); };
+    inpDur.oninput = () => { recalcEndFromStart(); };
     inpEnd.oninput = () => {
       if (inpStart.value && inpEnd.value) inpDur.value = Math.max(1, planDateDiff(inpStart.value, inpEnd.value));
+    };
+    // Změna předchůdce → toggle disabled na start + přepočet datumu z předchůdce
+    selPred.onchange = () => {
+      const newPredId = selPred.value;
+      if (newPredId) {
+        const pred = tasks.find(x => x.id === newPredId);
+        if (pred && pred.end) {
+          inpStart.value = planAddDays(pred.end, 1);
+          recalcEndFromStart();
+        }
+        inpStart.disabled = true;
+      } else {
+        inpStart.disabled = false;
+      }
     };
   }
 
