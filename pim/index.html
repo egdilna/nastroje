@@ -398,6 +398,21 @@ body.theme-dark .plan-desc-row td, body.theme-dark .plan-links-row td { backgrou
 .markdown ol ul ul ul { list-style-type: square; }
 /* Task listy (úkoly s checkboxy) — bez vnitřní značky */
 .markdown ul li.task-item { list-style-type: none; margin-left: -1em; }
+/* Příznaky */
+.flags-group { margin: 0.5em 0 1em; }
+.flags-group h4 { margin: 0.3em 0; font-size: 1.1em; }
+.flags-list { list-style: none; padding-left: 0.5em; margin: 0.3em 0; }
+.flag-item { margin: 0.25em 0; padding: 0.25em 0.4em; background: #fafafa; border-left: 2px solid #ccc; border-radius: 3px; display: flex; gap: 0.4em; align-items: baseline; flex-wrap: wrap; }
+body.theme-dark .flag-item { background: #1f1f1f; border-left-color: #555; }
+.flag-kind { font-weight: 600; font-size: 0.9em; color: #555; }
+body.theme-dark .flag-kind { color: #bbb; }
+.flag-context { flex: 1; min-width: 12em; }
+.flag-remove-btn { padding: 0 0.4em; font-size: 0.9em; line-height: 1.4; }
+.flags-section { margin: 0.8em 0; padding: 0.5em 0.7em; background: #fafafa; border-radius: 4px; }
+body.theme-dark .flags-section { background: #1f1f1f; }
+.flags-section h3 { margin: 0.2em 0 0.5em; }
+.entity-list { list-style: none; padding-left: 0; margin: 0.3em 0; }
+.entity-list li { margin: 0.2em 0; }
 /* MD Lint UI */
 .lint-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1em; }
 @media (max-width: 900px) { .lint-grid { grid-template-columns: 1fr; } }
@@ -654,6 +669,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <li><button data-view="tasks">Úkoly <span class="count" id="count-tasks" aria-hidden="true"></span></button></li>
       <li><button data-view="calendar">Kalendář</button></li>
       <li><button data-view="tags">Tagy</button></li>
+      <li><button data-view="flags" id="nav-flags" hidden>🏳️‍🌈 Příznaky</button></li>
       <li><button data-view="tools">Nástroje</button></li>
       <li><button data-view="settings">Nastavení</button></li>
     </ul>
@@ -3461,6 +3477,209 @@ function getAllTags() {
   return [...set].sort((a,b) => a.localeCompare(b,'cs'));
 }
 
+// === PŘÍZNAKOVÁ EMOJI ===
+// db.flagEmojis: pole stringů, každý prvek = jedno emoji-klastr
+
+function parseFlagEmojis(raw) {
+  if (!raw) return [];
+  const text = String(raw);
+  const out = [];
+  const seen = new Set();
+  if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+    const segmenter = new Intl.Segmenter('cs', { granularity: 'grapheme' });
+    for (const { segment } of segmenter.segment(text)) {
+      const g = segment;
+      if (/^[\s,;]+$/.test(g)) continue;
+      if (!isEmojiCluster(g)) continue;
+      if (!seen.has(g)) { seen.add(g); out.push(g); }
+    }
+  } else {
+    text.split(/[\s,;]+/).filter(Boolean).forEach(tok => {
+      if (isEmojiCluster(tok) && !seen.has(tok)) { seen.add(tok); out.push(tok); }
+    });
+  }
+  return out;
+}
+
+function isEmojiCluster(s) {
+  if (!s) return false;
+  for (const cp of s) {
+    const c = cp.codePointAt(0);
+    if (c >= 0x1F000 && c <= 0x1FFFF) return true;
+    if (c >= 0x2600 && c <= 0x27BF) return true;
+    if (c >= 0x2300 && c <= 0x23FF) return true;
+    if (c >= 0x2B00 && c <= 0x2BFF) return true;
+    if (c === 0x203C || c === 0x2049) return true;
+    if (c === 0x21A9 || c === 0x21AA) return true;
+  }
+  return false;
+}
+
+function getFlagEmojis() {
+  return Array.isArray(db.flagEmojis) ? db.flagEmojis.slice() : [];
+}
+
+function scanTextForFlags(text, flagEmojis) {
+  const result = { byEmoji: {}, total: 0 };
+  if (!text || !Array.isArray(flagEmojis) || flagEmojis.length === 0) return result;
+  flagEmojis.forEach(em => result.byEmoji[em] = []);
+  const lines = text.split('\n');
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li];
+    if (!line) continue;
+    const kind = classifyLineForFlag(line);
+    const descKind = describeLineKind(kind);
+    const plain = stripMarkdownToPlain(line).trim();
+    const contextPlain = plain.length > 100 ? plain.slice(0, 100) + '…' : plain;
+    flagEmojis.forEach(em => {
+      let from = 0;
+      while (true) {
+        const idx = line.indexOf(em, from);
+        if (idx < 0) break;
+        result.byEmoji[em].push({
+          line: li, col: idx, kind, descKind,
+          contextPlain: contextPlain || '(prázdný řádek)',
+          sourceLine: line
+        });
+        result.total++;
+        from = idx + em.length;
+      }
+    });
+  }
+  return result;
+}
+
+function classifyLineForFlag(line) {
+  const hm = line.match(/^(#{1,6})\s/);
+  if (hm) return 'heading-' + hm[1].length;
+  if (/^\s*[-*+]\s+\[[xX]\]/.test(line)) return 'task-done';
+  if (/^\s*[-*+]\s+\[ \]/.test(line)) return 'task-todo';
+  if (/^\s*[-*+]\s/.test(line)) return 'bullet';
+  if (/^\s*\d+\.\s/.test(line)) return 'ordered';
+  if (/^\s*>/.test(line)) return 'quote';
+  if (/^\s*$/.test(line)) return 'blank';
+  return 'paragraph';
+}
+
+function describeLineKind(kind) {
+  if (kind.startsWith('heading-')) return 'Nadpis ' + kind.slice(8);
+  if (kind === 'task-done') return 'Splněný úkol';
+  if (kind === 'task-todo') return 'Nesplněný úkol';
+  if (kind === 'bullet') return 'Odrážka';
+  if (kind === 'ordered') return 'Číslovaný bod';
+  if (kind === 'quote') return 'Citace';
+  if (kind === 'paragraph') return 'Odstavec';
+  return 'Řádek';
+}
+
+function stripMarkdownToPlain(line) {
+  return line
+    .replace(/^#{1,6}\s+/, '')
+    .replace(/^\s*[-*+]\s+\[[ xX]\]\s*/, '')
+    .replace(/^\s*[-*+]\s+/, '')
+    .replace(/^\s*\d+\.\s+/, '')
+    .replace(/^\s*>\s?/, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/~~([^~]+)~~/g, '$1')
+    .replace(/==([^=]+)==/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (m, a, b) => b || a)
+    .replace(/\{\{include:([^|}]+)(?:\|[^}]+)?\}\}/g, '$1')
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, '[obr]')
+    .trim();
+}
+
+function removeEmojiFromString(s, emoji, atIdx) {
+  if (atIdx == null) atIdx = s.indexOf(emoji);
+  if (atIdx < 0) return s;
+  const emLen = emoji.length;
+  const before = s.slice(0, atIdx);
+  const after = s.slice(atIdx + emLen);
+  let trimAfter = 0;
+  if (/^[\s\u00A0]/.test(after)) trimAfter = 1;
+  let trimBefore = 0;
+  const isAtEnd = after.length === trimAfter;
+  if (isAtEnd && /[\s\u00A0]$/.test(before)) trimBefore = 1;
+  return before.slice(0, before.length - trimBefore) + after.slice(trimAfter);
+}
+
+function removeEmojiFromTextAt(text, line, col, emoji) {
+  const lines = text.split('\n');
+  if (line < 0 || line >= lines.length) return text;
+  const ln = lines[line];
+  if (ln.slice(col, col + emoji.length) !== emoji) {
+    const found = ln.indexOf(emoji);
+    if (found < 0) return text;
+    lines[line] = removeEmojiFromString(ln, emoji, found);
+  } else {
+    lines[line] = removeEmojiFromString(ln, emoji, col);
+  }
+  return lines.join('\n');
+}
+
+function scanEntityForFlags(entity, flagEmojis) {
+  const result = { byEmoji: {}, total: 0 };
+  if (!flagEmojis || flagEmojis.length === 0) return result;
+  flagEmojis.forEach(em => result.byEmoji[em] = []);
+  if (entity.body) {
+    const r = scanTextForFlags(entity.body, flagEmojis);
+    Object.keys(r.byEmoji).forEach(em => {
+      r.byEmoji[em].forEach(it => {
+        it.source = 'body';
+        result.byEmoji[em].push(it);
+        result.total++;
+      });
+    });
+  }
+  if (entity.attributes) {
+    const aspectFields = (entity.aspects || []).flatMap(a => (ASPECTS[a] && ASPECTS[a].fields) || []);
+    const customFields = entity.customFields || [];
+    const allFields = [...aspectFields, ...GLOBAL_FIELDS, ...customFields];
+    Object.keys(entity.attributes).forEach(key => {
+      if (key === 'tasks' || key === 'encoded' || key === '_lastEncodedSource') return;
+      if (key === 'source' && (entity.aspects || []).includes('Diagram')) return;
+      const field = allFields.find(f => f.key === key);
+      if (!field || field.type !== 'textarea') return;
+      const value = entity.attributes[key];
+      if (typeof value !== 'string') return;
+      const r = scanTextForFlags(value, flagEmojis);
+      Object.keys(r.byEmoji).forEach(em => {
+        r.byEmoji[em].forEach(it => {
+          it.source = 'attr';
+          it.attrKey = key;
+          it.attrLabel = field.label || key;
+          result.byEmoji[em].push(it);
+          result.total++;
+        });
+      });
+    });
+  }
+  return result;
+}
+
+function findAllEntitiesWithFlags() {
+  const flags = getFlagEmojis();
+  const result = { byEmoji: {}, totalEntities: 0 };
+  flags.forEach(em => result.byEmoji[em] = []);
+  const seen = new Set();
+  db.entities.forEach(e => {
+    if (e.archived) return;
+    const scan = scanEntityForFlags(e, flags);
+    let anyFlag = false;
+    flags.forEach(em => {
+      if (scan.byEmoji[em].length > 0) {
+        result.byEmoji[em].push({ entity: e, count: scan.byEmoji[em].length });
+        anyFlag = true;
+      }
+    });
+    if (anyFlag) seen.add(e.id);
+  });
+  result.totalEntities = seen.size;
+  return result;
+}
+
 // Normalizace tagu: trim + lowercase. Vrací '' pokud prázdný po trim.
 function normalizeTag(t) {
   if (!t) return '';
@@ -3900,6 +4119,9 @@ function render() {
   document.getElementById('count-inbox').textContent = counts.inbox > 0 ? counts.inbox : '';
   document.getElementById('count-all').textContent = counts.all;
   document.getElementById('count-tasks').textContent = counts.tasks > 0 ? counts.tasks : '';
+  // Karta Příznaky: viditelná jen pokud projekt má definovaná příznaková emoji
+  const navFlags = document.getElementById('nav-flags');
+  if (navFlags) navFlags.hidden = getFlagEmojis().length === 0;
   document.getElementById('state-summary').textContent =
     db.entities.length + ' entit, ' + getAllTags().length + ' tagů, ' + db.savedViews.length + ' pohledů.';
   document.querySelectorAll('#main-nav button').forEach(b => {
@@ -3916,6 +4138,7 @@ function render() {
     case 'calendar': renderCalendar(main); break;
     case 'search': renderSearch(main); break;
     case 'tags': renderTags(main); break;
+    case 'flags': renderFlagsView(main); break;
     case 'tools': renderTools(main); break;
     case 'links': renderLinksView(main); break;
     case 'views': renderViewsList(main); break;
@@ -5864,6 +6087,48 @@ function renderTags(main) {
   });
 }
 
+// ==== VIEW: PŘÍZNAKY ====
+function renderFlagsView(main) {
+  const flags = getFlagEmojis();
+  if (flags.length === 0) {
+    main.innerHTML = '<h2>🏳️‍🌈 Příznaky</h2>' +
+      '<p>Žádná příznaková emoji nejsou definována. Přejděte do <a href="#" id="go-flags-settings">Nastavení</a> a zadejte emoji, která chcete sledovat.</p>';
+    const a = document.getElementById('go-flags-settings');
+    if (a) a.onclick = (ev) => { ev.preventDefault(); setView('settings'); };
+    return;
+  }
+  const all = findAllEntitiesWithFlags();
+  let html = '<h2>🏳️‍🌈 Příznaky</h2>' +
+    '<p class="meta">Sledovaná emoji: ' + flags.join(' ') + '. Celkem ' + all.totalEntities + ' entit obsahuje alespoň jeden příznak.</p>';
+  const presentFlags = flags.filter(em => all.byEmoji[em].length > 0);
+  if (presentFlags.length === 0) {
+    html += '<div class="empty">Žádné entity zatím neobsahují žádný z příznakových emoji.</div>';
+  } else {
+    presentFlags.forEach(em => {
+      const entries = all.byEmoji[em].slice().sort((a, b) => b.count - a.count);
+      html += '<section class="flags-section"><h3>' + em + ' (' + entries.length + ' entit, ' + entries.reduce((s, x) => s + x.count, 0) + ' výskytů)</h3><ul class="entity-list">';
+      entries.forEach(ent => {
+        html += '<li>' +
+          '<a href="#" class="entity-link" data-entity="' + escapeHtml(ent.entity.id) + '">' + getDisplayTitleWithBadges(ent.entity) + '</a>' +
+          ' <span class="meta">(' + ent.count + '×)</span>' +
+          '</li>';
+      });
+      html += '</ul></section>';
+    });
+    const emptyFlags = flags.filter(em => all.byEmoji[em].length === 0);
+    if (emptyFlags.length > 0) {
+      html += '<p class="meta" style="margin-top:1em;">Bez výskytu: ' + emptyFlags.join(' ') + '</p>';
+    }
+  }
+  main.innerHTML = html;
+  main.querySelectorAll('a[data-entity]').forEach(a => {
+    a.onclick = (ev) => {
+      ev.preventDefault();
+      setView('detail', { detailId: a.dataset.entity, detailMode: 'read' });
+    };
+  });
+}
+
 // ==== VIEW: VLASTNÍ POHLEDY ====
 function renderViewsList(main) {
   main.innerHTML = '<h2>Vlastní pohledy</h2>' +
@@ -6109,6 +6374,17 @@ function renderSettings(main) {
     '<div class="btn-group" style="margin-top:0.5em;"><button id="add-custom-aspect" class="primary">+ Nový vlastní aspekt</button></div>' +
     '</section>' +
 
+    '<section aria-labelledby="flags-h"><h3 id="flags-h">🏳️‍🌈 Příznaková emoji</h3>' +
+    '<p>Zadejte emoji oddělené mezerou nebo čárkou. Když se některé z nich objeví v markdown obsahu nebo textarea atributech entity, automaticky se zobrazí v sekci <strong>Příznaky</strong> v detailu entity a v hlavní navigaci pod kartou <strong>🏳️‍🌈 Příznaky</strong>.</p>' +
+    '<label for="flags-text" class="sr-only">Příznaková emoji</label>' +
+    '<input type="text" id="flags-text" style="width:100%;font-size:1.3em;" placeholder="Např.: ⭐ 🎯 🔥 💡 ⚠️">' +
+    '<div class="btn-group" style="margin-top:0.5em;">' +
+      '<button id="flags-save" class="primary">Uložit příznaky</button>' +
+      '<button id="flags-reset">Vrátit</button>' +
+    '</div>' +
+    '<p class="meta" id="flags-meta"></p>' +
+    '</section>' +
+
     '<section aria-labelledby="tags-h"><h3 id="tags-h">Tagy</h3>' +
     '<p>Všechny tagy oddělené čárkou. Editujte – po uložení se přidají nové, smazané se odstraní ze všech entit.</p>' +
     '<label for="tags-text" class="sr-only">Tagy</label>' +
@@ -6200,6 +6476,30 @@ function renderSettings(main) {
       playSound('save');
       loadTagsField();
     });
+  };
+
+  // === Příznaková emoji ===
+  const flagsText = document.getElementById('flags-text');
+  const flagsMeta = document.getElementById('flags-meta');
+  const flagsSaveBtn = document.getElementById('flags-save');
+  const flagsResetBtn = document.getElementById('flags-reset');
+  function loadFlagsField() {
+    const all = getFlagEmojis();
+    flagsText.value = all.join(' ');
+    flagsMeta.textContent = all.length + ' příznak' + (all.length === 1 ? '' : all.length < 5 ? 'y' : 'ů') + ' definován' + (all.length === 1 ? '' : 'o') + '.';
+  }
+  loadFlagsField();
+  flagsResetBtn.onclick = () => { loadFlagsField(); toast('Vráceno.'); };
+  flagsSaveBtn.onclick = () => {
+    const raw = flagsText.value;
+    const list = parseFlagEmojis(raw);
+    db.flagEmojis = list;
+    save();
+    flagsMeta.textContent = list.length + ' příznak' + (list.length === 1 ? '' : list.length < 5 ? 'y' : 'ů') + ' uložen' + (list.length === 1 ? '' : 'o') + '.';
+    toast('Příznaková emoji uložena: ' + list.join(' '));
+    playSound('save');
+    loadFlagsField();
+    render();
   };
 
   document.getElementById('pref-name').oninput = (ev) => { state.settings.userName = ev.target.value; save(); };
@@ -6565,6 +6865,33 @@ function renderDetailRead(main, e) {
       h += '</ul></section>';
       return h;
     })() +
+    (function() {
+      // Příznaky – sekce v read mode pro tuto entitu
+      const flags = getFlagEmojis();
+      if (flags.length === 0) return '';
+      const scan = scanEntityForFlags(e, flags);
+      if (scan.total === 0) return '';
+      let h = '<section aria-labelledby="flags-h-detail" id="entity-flags-section"><h3 id="flags-h-detail">🏳️‍🌈 Příznaky (' + scan.total + ')</h3>';
+      const presentFlags = flags.filter(em => scan.byEmoji[em].length > 0);
+      presentFlags.forEach(em => {
+        const items = scan.byEmoji[em];
+        h += '<div class="flags-group"><h4>' + em + ' (' + items.length + '×)</h4><ul class="flags-list">';
+        items.forEach((it, idx) => {
+          const srcLabel = it.source === 'attr' ? ' v atributu „' + escapeHtml(it.attrLabel) + '"' : '';
+          h += '<li class="flag-item">' +
+            '<span class="flag-kind">' + escapeHtml(it.descKind) + srcLabel + '</span>' +
+            ' — <span class="flag-context">' + escapeHtml(it.contextPlain) + '</span>' +
+            ' <button type="button" class="danger flag-remove-btn" data-flag-em="' + escapeHtml(em) + '" data-flag-src="' + escapeHtml(it.source) + '"' +
+              (it.attrKey ? ' data-flag-attr="' + escapeHtml(it.attrKey) + '"' : '') +
+              ' data-flag-line="' + it.line + '" data-flag-col="' + it.col + '"' +
+              ' title="Odstranit toto emoji z textu a uložit" aria-label="Odstranit ' + em + ' z této pozice">✕</button>' +
+          '</li>';
+        });
+        h += '</ul></div>';
+      });
+      h += '</section>';
+      return h;
+    })() +
     '<details class="neighborhood-details"><summary>🌐 Graf okolí (do 2 kroků)</summary>' +
       '<div id="neighborhood-content" class="meta">Načítám…</div>' +
     '</details>' +
@@ -6636,6 +6963,26 @@ function renderDetailRead(main, e) {
   // Diagram handlers
   if (isDiagram) attachDiagramHandlers(e);
   if (isPlan) attachPlanReadHandlers(e);
+  // Příznaky – tlačítka pro odstranění
+  document.querySelectorAll('button.flag-remove-btn').forEach(btn => {
+    btn.onclick = () => {
+      const em = btn.dataset.flagEm;
+      const src = btn.dataset.flagSrc;
+      const line = Number(btn.dataset.flagLine);
+      const col = Number(btn.dataset.flagCol);
+      const attrKey = btn.dataset.flagAttr;
+      if (src === 'body') {
+        e.body = removeEmojiFromTextAt(e.body || '', line, col, em);
+      } else if (src === 'attr' && attrKey && e.attributes) {
+        const cur = e.attributes[attrKey] || '';
+        e.attributes[attrKey] = removeEmojiFromTextAt(cur, line, col, em);
+      }
+      e.updated_at = nowIso();
+      save();
+      toast('Příznak ' + em + ' odstraněn.');
+      render();
+    };
+  });
   // Otevřít v novém panelu (z project dashboard a dalších míst)
   main.querySelectorAll('button[data-open-new-panel]').forEach(b => {
     b.onclick = (ev) => {
