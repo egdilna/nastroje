@@ -6907,7 +6907,9 @@ function renderDetailRead(main, e) {
   // Reading stats (zahrnuje include rekurzivně)
   const readingStats = e.body ? computeReadingStats(e) : null;
   const readingStatsHtml = readingStats && readingStats.words >= 50
-    ? '<p class="reading-stats meta">⏱ ' + readingStats.minutes + ' min čtení · ~' + readingStats.words + ' slov · ' + escapeHtml(readingStats.complexity) +
+    ? '<p class="reading-stats meta">⏱ ' + readingStats.minutes + ' min čtení · ~' + readingStats.words + ' slov' +
+        (readingStats.pages > 0 ? ' · ~' + fmtPages(readingStats.pages) : '') +
+        ' · ' + escapeHtml(readingStats.complexity) +
         (readingStats.includedWords > 0 ? ' <span class="meta">(z toho ' + readingStats.includedWords + ' z vložených)</span>' : '') +
       '</p>'
     : '';
@@ -9519,7 +9521,7 @@ function openAnnotationDialog(entity, paragraphIndex, existing) {
 // Spočítá slova v body entity + rekurzivně ve všech {{include:...}} entitách.
 function computeReadingStats(entity, visited) {
   visited = visited || new Set();
-  if (visited.has(entity.id)) return { words: 0, includedWords: 0 };
+  if (visited.has(entity.id)) return { words: 0, includedWords: 0, chars: 0 };
   visited.add(entity.id);
   // Slova vlastního textu (bez includů – ty zpracujeme zvlášť)
   const ownText = (entity.body || '').replace(/\{\{include:[^}]+\}\}/g, ' ');
@@ -9528,6 +9530,7 @@ function computeReadingStats(entity, visited) {
   let includedWords = 0;
   let includedSentences = 0;
   let includedLongWords = 0;
+  let includedChars = 0;
   const includeRe = /\{\{include:([^}|]+)(?:\|[^}]*)?\}\}/g;
   let m;
   while ((m = includeRe.exec(entity.body || '')) !== null) {
@@ -9538,11 +9541,13 @@ function computeReadingStats(entity, visited) {
       includedWords += sub.words;
       includedSentences += sub._sentences || 0;
       includedLongWords += sub._longWords || 0;
+      includedChars += sub.chars || 0;
     }
   }
   const totalWords = ownStats.words + includedWords;
   const totalSentences = ownStats.sentences + includedSentences;
   const totalLongWords = ownStats.longWords + includedLongWords;
+  const totalChars = (ownStats.chars || 0) + includedChars;
   // Čas: typicky 200 slov/min při čtení
   const minutes = Math.max(1, Math.round(totalWords / 200));
   // Složitost: poměr dlouhých slov a délka vět
@@ -9551,8 +9556,12 @@ function computeReadingStats(entity, visited) {
   let complexity = 'snadná';
   if (avgSentenceLength > 20 || longWordRatio > 0.18) complexity = 'střední složitost';
   if (avgSentenceLength > 28 || longWordRatio > 0.28) complexity = 'náročná';
+  // Odhad stran
+  const pages = estimatePages(totalWords, totalChars);
   return {
     words: totalWords,
+    chars: totalChars,
+    pages,
     minutes,
     complexity,
     includedWords,
@@ -9562,7 +9571,7 @@ function computeReadingStats(entity, visited) {
 }
 
 function computeTextStats(text) {
-  if (!text) return { words: 0, sentences: 0, longWords: 0 };
+  if (!text) return { words: 0, sentences: 0, longWords: 0, chars: 0 };
   // Odstranit markdown syntaxi pro stat účely
   const cleaned = text
     .replace(/```[\s\S]*?```/g, ' ')   // code blocks
@@ -9576,7 +9585,37 @@ function computeTextStats(text) {
   const sentences = (cleaned.match(/[.!?]+/g) || []).length;
   // Dlouhé slovo = více než 6 znaků (heuristika pro češtinu)
   const longWords = words.filter(w => w.length > 6).length;
-  return { words: wordCount, sentences, longWords };
+  // Počet znaků (včetně mezer) — collapsed white-space (více mezer počítáme jako 1)
+  const charsText = cleaned.replace(/\s+/g, ' ').trim();
+  const chars = charsText.length;
+  return { words: wordCount, sentences, longWords, chars };
+}
+
+// Odhad počtu stran. Vzorec kombinuje slova a znaky pro robustnost:
+//   pages = max(words / WORDS_PER_PAGE, chars / CHARS_PER_PAGE)
+// Konstanty:
+//   - WORDS_PER_PAGE = 350 ... moderní A4, Calibri 11pt, 1.15 řádkování, normální okraje
+//   - CHARS_PER_PAGE = 2400 ... 1.33× klasická normostrana (1800 zn.), reflektuje moderní typografii
+// Zaokrouhlujeme na 0.5 strany.
+function estimatePages(words, chars) {
+  const WORDS_PER_PAGE = 350;
+  const CHARS_PER_PAGE = 2400;
+  const byWords = words / WORDS_PER_PAGE;
+  const byChars = chars / CHARS_PER_PAGE;
+  const raw = Math.max(byWords, byChars);
+  // Zaokrouhlit na nejbližší 0.5 (s minimem 0.5 pro neprázdný text)
+  if (raw <= 0) return 0;
+  const rounded = Math.round(raw * 2) / 2;
+  return Math.max(0.5, rounded);
+}
+
+function fmtPages(n) {
+  if (n === 0) return '';
+  // 1 strana / 1,5 strany / 2 strany / 2,5 strany ...
+  const s = String(n).replace('.', ',');
+  if (n === 1) return '1 strana';
+  if (n < 5) return s + ' strany';
+  return s + ' stran';
 }
 // Pokud komentář obsahuje text v uvozovkách ("..." nebo „...") a stejný text je
 // v těle entity, vytvoří se obousměrný odkaz: zvýrazněný text v těle ↔ komentář.
