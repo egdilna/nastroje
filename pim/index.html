@@ -373,6 +373,36 @@ body.theme-dark .plan-desc-row td, body.theme-dark .plan-links-row td { backgrou
 .plan-links-content ul { margin: 0.3em 0; padding-left: 1.5em; }
 .plan-summary { margin: 0.3em 0; font-weight: 500; }
 .plan-toolbar { margin: 0.3em 0; flex-wrap: wrap; }
+/* MD Lint UI */
+.lint-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1em; }
+@media (max-width: 900px) { .lint-grid { grid-template-columns: 1fr; } }
+.lint-left, .lint-right { border: 1px solid #ccc; border-radius: 4px; padding: 0.5em; max-height: 70vh; overflow-y: auto; }
+body.theme-dark .lint-left, body.theme-dark .lint-right { border-color: #444; }
+.lint-doc { font-family: Consolas, Monaco, monospace; font-size: 0.9em; line-height: 1.4; }
+.lint-line { padding: 0.05em 0.3em; display: flex; gap: 0.4em; align-items: baseline; }
+.lint-line.lint-err { background: #fde6e6; }
+.lint-line.lint-warn { background: #fff3c4; }
+.lint-line.lint-info { background: #e0eaf5; }
+body.theme-dark .lint-line.lint-err { background: #4a1a1a; }
+body.theme-dark .lint-line.lint-warn { background: #4a3a1a; }
+body.theme-dark .lint-line.lint-info { background: #2a3a55; }
+.lint-line.lint-flash { animation: lint-flash 1s ease-out; }
+@keyframes lint-flash { 0% { background-color: #ffe066; } 100% { background-color: transparent; } }
+.lint-lineno { color: #888; min-width: 2.5em; text-align: right; font-size: 0.85em; }
+.lint-text { flex: 1; white-space: pre-wrap; word-break: break-word; }
+.lint-tag-line { margin-left: 0.4em; }
+.lint-chip { display: inline-block; padding: 0 0.4em; border-radius: 3px; font-size: 0.8em; font-weight: bold; }
+.lint-sev-error, .lint-chip.lint-sev-error { background: #c33; color: #fff; }
+.lint-sev-warn, .lint-chip.lint-sev-warn { background: #d88; color: #fff; }
+.lint-sev-info, .lint-chip.lint-sev-info { background: #69a; color: #fff; }
+.lint-finding { margin: 0.5em 0; padding: 0.4em; border-left: 3px solid #888; background: #fafafa; }
+body.theme-dark .lint-finding { background: #1f1f1f; }
+.lint-finding.lint-sev-error { border-left-color: #c33; }
+.lint-finding.lint-sev-warn { border-left-color: #d88; }
+.lint-finding.lint-sev-info { border-left-color: #69a; }
+.lint-finding-head { margin-bottom: 0.2em; }
+.lint-msg { margin: 0.2em 0; }
+.lint-filter button { padding: 0.2em 0.6em; }
 
 /* CriticMarkup Review */
 .cr-wrap { display: flex; gap: 1em; flex-wrap: wrap; }
@@ -1536,7 +1566,8 @@ function buildMdFieldActions(targetId, fieldKey, fieldLabel, value, excludeMd) {
   }
   if (!excludeMd) {
     h += '<button type="button" class="md-revize" data-md-rev-target="' + escapeHtml(targetId) + '" data-md-rev-label="' + escapeHtml(fieldLabel) + '" data-md-rev-field="' + escapeHtml(fieldKey) + '" title="Spravovat revize CriticMarkup v tomto poli">📝 Revize</button> ';
-    h += '<button type="button" class="md-korektor" data-md-spc-target="' + escapeHtml(targetId) + '" data-md-spc-label="' + escapeHtml(fieldLabel) + '" data-md-spc-field="' + escapeHtml(fieldKey) + '" title="Kontrola pravopisu (Korektor)">🔍 Korektor</button>';
+    h += '<button type="button" class="md-korektor" data-md-spc-target="' + escapeHtml(targetId) + '" data-md-spc-label="' + escapeHtml(fieldLabel) + '" data-md-spc-field="' + escapeHtml(fieldKey) + '" title="Kontrola pravopisu (Korektor)">🔍 Korektor</button> ';
+    h += '<button type="button" class="md-lint" data-md-lint-target="' + escapeHtml(targetId) + '" data-md-lint-label="' + escapeHtml(fieldLabel) + '" data-md-lint-field="' + escapeHtml(fieldKey) + '" title="Kontrola syntaxe markdownu (Lint)">🧹 Lint</button>';
   }
   return h;
 }
@@ -1752,6 +1783,111 @@ function playSound(kind) {
   }
 }
 // ==== MARKDOWN ====
+// Víceúrovňový seznam: parser respektuje indentaci.
+// Indenty se mapují relativně: každá nová úroveň indentace = +1 level (bez ohledu na to, kolik mezer).
+// Vnořený seznam se vkládá DOVNITŘ rodičovského <li>.
+function renderListBlock(lines, ctx) {
+  const items = [];
+  for (const ln of lines) {
+    const normalized = ln.replace(/\t/g, '    ');
+    const m = normalized.match(/^(\s*)([-*+]|\d+\.)\s+(.*)$/);
+    if (!m) continue;
+    const indentChars = m[1].length;
+    const marker = m[2];
+    const type = /^\d+\./.test(marker) ? 'ol' : 'ul';
+    let body = m[3];
+    let taskState;
+    const tm = body.match(/^\[([ xX])\]\s*(.*)$/);
+    if (tm && type === 'ul') {
+      taskState = tm[1] === ' ' ? ' ' : 'x';
+      body = tm[2];
+    }
+    items.push({ indentChars, marker, type, body, taskState, level: 0 });
+  }
+  if (items.length === 0) return '';
+  // Relativní indenty: seřadit unikátní hodnoty, mapovat na 0,1,2,...
+  const uniqueIndents = [...new Set(items.map(i => i.indentChars))].sort((a, b) => a - b);
+  const indentToLevel = {};
+  uniqueIndents.forEach((ind, i) => { indentToLevel[ind] = i; });
+  items.forEach(i => { i.level = indentToLevel[i.indentChars]; });
+
+  // Renderovat rekurzivně: pro každou skupinu sourozenců najít jejich potomky (vyšší level
+  // až do dalšího sourozence stejné nebo nižší level).
+  function renderItem(it) {
+    if (it.taskState !== undefined) {
+      const checked = it.taskState !== ' ';
+      const interactive = ctx && !ctx.disableTaskInteractivity && (ctx.depth === 0 || ctx.taskSource);
+      if (!ctx._taskCounter) ctx._taskCounter = 0;
+      const idx = ctx._taskCounter++;
+      const cls = 'task-item' + (checked ? ' task-done' : '');
+      const sourceAttr = ctx.taskSource ? ' data-md-task-source="' + escapeHtml(ctx.taskSource) + '"' : '';
+      const cb = interactive
+        ? '<input type="checkbox"' + (checked ? ' checked' : '') + ' data-md-task="' + idx + '"' + sourceAttr + '>'
+        : '<input type="checkbox"' + (checked ? ' checked' : '') + ' disabled aria-disabled="true">';
+      const convertBtn = interactive && !/^\s*\[\[[^\]]+\]\]\s*$/.test(it.body)
+        ? ' <button type="button" class="task-convert-btn" data-md-task-convert="' + idx + '"' + sourceAttr + ' title="Vytvořit úkol jako samostatnou entitu a vložit zde wiki odkaz">→ Entita</button>'
+        : '';
+      return { open: '<li class="' + cls + '">' + cb + '<span class="task-text">' + renderInline(it.body, ctx) + '</span>' + convertBtn, close: '</li>' };
+    }
+    return { open: '<li>' + renderInline(it.body, ctx), close: '</li>' };
+  }
+
+  // Stavový renderer:
+  // - tagOpen[lvl] = otevřený list-tag na úrovni lvl ('ul' / 'ol')
+  // - liOpen[lvl] = true pokud na úrovni lvl je aktuálně otevřený <li> (= jeho potomci budou uvnitř)
+  let html = '';
+  const tagOpen = []; // tagOpen[lvl]
+  const liOpen = []; // liOpen[lvl] = true pokud je <li> na této úrovni otevřený
+
+  function closeLi(lvl) {
+    if (liOpen[lvl]) {
+      html += '</li>';
+      liOpen[lvl] = false;
+    }
+  }
+  function closeListsBelow(lvl) {
+    // Zavři vše hlubší než lvl
+    while (tagOpen.length > lvl + 1) {
+      const last = tagOpen.length - 1;
+      closeLi(last);
+      html += '</' + tagOpen[last] + '>';
+      tagOpen.pop();
+      liOpen.pop();
+    }
+  }
+
+  for (const it of items) {
+    const lvl = it.level;
+    // Zavřít všechny hlubší úrovně než lvl
+    closeListsBelow(lvl);
+    // Zavřít aktuální <li> na lvl, pokud nějaký byl (nový sourozenec)
+    closeLi(lvl);
+    // Otevřít list-tag, pokud na lvl ještě neexistuje, nebo se typ liší
+    if (tagOpen.length <= lvl) {
+      // Možná musíme otevřít skoky (vzácné, ale ošetříme)
+      while (tagOpen.length <= lvl) {
+        html += '<' + it.type + '>';
+        tagOpen.push(it.type);
+        liOpen.push(false);
+      }
+    } else if (tagOpen[lvl] !== it.type) {
+      // Zavřít a otevřít znovu s novým typem
+      html += '</' + tagOpen[lvl] + '>';
+      html += '<' + it.type + '>';
+      tagOpen[lvl] = it.type;
+      liOpen[lvl] = false;
+    }
+    // Otevřít <li>
+    const rendered = renderItem(it);
+    html += rendered.open;
+    liOpen[lvl] = true;
+    // Pokud má potomka, ten otevře vnořený list uvnitř tohoto <li>; jeho zavření udělá closeListsBelow.
+  }
+  // Závěr: zavřít vše
+  closeListsBelow(-1);
+  return html;
+}
+
 function renderMarkdown(text, options = {}) {
   if (!text) return '';
   const ctx = options.ctx || { depth: 0, includeStack: new Set() };
@@ -1822,36 +1958,13 @@ function renderBlock(block, ctx) {
     const inner = lines.map(l => l.replace(/^>\s?/, '')).join('\n');
     return '<blockquote>' + renderMarkdown(inner, { ctx }) + '</blockquote>';
   }
-  if (lines.every(l => /^\s*[-*]\s+/.test(l))) {
-    // Detekce task list syntaxe `- [ ] ...` a `- [x] ...`
-    const items = lines.map(l => {
-      const taskMatch = l.match(/^(\s*[-*]\s+)\[([ xX])\]\s*(.*)$/);
-      if (taskMatch) {
-        const checked = taskMatch[2] !== ' ';
-        // Interaktivní v body (depth 0), nebo když ctx specifikuje taskSource (atribut textarea)
-        const interactive = ctx && !ctx.disableTaskInteractivity &&
-          (ctx.depth === 0 || ctx.taskSource);
-        if (!ctx._taskCounter) ctx._taskCounter = 0;
-        const idx = ctx._taskCounter++;
-        const cls = 'task-item' + (checked ? ' task-done' : '');
-        const sourceAttr = ctx.taskSource ? ' data-md-task-source="' + escapeHtml(ctx.taskSource) + '"' : '';
-        const cb = interactive
-          ? '<input type="checkbox"' + (checked ? ' checked' : '') + ' data-md-task="' + idx + '"' + sourceAttr + '>'
-          : '<input type="checkbox"' + (checked ? ' checked' : '') + ' disabled aria-disabled="true">';
-        // Tlačítko „Vytvořit entitu z úkolu" — jen v interaktivním režimu a jen pokud text není wiki link
-        const taskTextRaw = taskMatch[3];
-        const convertBtn = interactive && !/^\s*\[\[[^\]]+\]\]\s*$/.test(taskTextRaw)
-          ? ' <button type="button" class="task-convert-btn" data-md-task-convert="' + idx + '"' + sourceAttr + ' title="Vytvořit úkol jako samostatnou entitu a vložit zde wiki odkaz">→ Entita</button>'
-          : '';
-        return '<li class="' + cls + '">' + cb + '<span class="task-text">' + renderInline(taskMatch[3], ctx) + '</span>' + convertBtn + '</li>';
-      }
-      return '<li>' + renderInline(l.replace(/^\s*[-*]\s+/, ''), ctx) + '</li>';
-    }).join('');
-    return '<ul>' + items + '</ul>';
+  // Víceúrovňové seznamy: detekuj zda všechny řádky bloku jsou list-items (bullet, ordered, nebo task)
+  // Indent se počítá v "úrovních" — 2 mezery = 1 úroveň (tab = 4 mezery → 2 úrovně)
+  function isListLine(l) {
+    return /^\s*([-*+]|\d+\.)\s/.test(l);
   }
-  if (lines.every(l => /^\s*\d+\.\s+/.test(l))) {
-    const items = lines.map(l => '<li>' + renderInline(l.replace(/^\s*\d+\.\s+/, ''), ctx) + '</li>').join('');
-    return '<ol>' + items + '</ol>';
+  if (lines.length > 0 && lines.every(isListLine)) {
+    return renderListBlock(lines, ctx);
   }
   if (lines.length >= 2 && /^\|.*\|$/.test(lines[0]) && /^\|[\s\-:|]+\|$/.test(lines[1])) {
     const rows = lines.map(l => l.replace(/^\||\|$/g, '').split('|').map(c => c.trim()));
@@ -6181,6 +6294,7 @@ function renderDetail(main, id) {
   if (state.cmReview) { state.sectionEditMode = false; renderCmReview(main); return; }
   if (state.spellCheck) { state.sectionEditMode = false; renderSpellCheck(main); return; }
   if (state.planEdit) { state.sectionEditMode = false; renderPlanEdit(main); return; }
+  if (state.mdLint) { state.sectionEditMode = false; renderMdLint(main); return; }
   if (state.detailMode === 'edit') { state.sectionEditMode = false; renderDetailEdit(main, e); }
   else if (state.detailMode === 'advEd') { state.sectionEditMode = false; renderDetailAdvEd(main, e); }
   else renderDetailRead(main, e);
@@ -7428,6 +7542,11 @@ function renderDetailEdit(main, e) {
         openSpellCheck(e, btn.dataset.mdSpcTarget, btn.dataset.mdSpcField || '', btn.dataset.mdSpcLabel || 'Markdown pole');
       };
     });
+    document.querySelectorAll('button[data-md-lint-target]').forEach(btn => {
+      btn.onclick = () => {
+        openMdLint(e, btn.dataset.mdLintTarget, btn.dataset.mdLintField || '', btn.dataset.mdLintLabel || 'Markdown pole');
+      };
+    });
   }
   attachMdFieldActionsHandlers();
   attachMdSelectionTracking();
@@ -7616,6 +7735,11 @@ function renderEditAttributes(e) {
     root.querySelectorAll('button[data-md-spc-target]').forEach(btn => {
       btn.onclick = () => {
         openSpellCheck(e, btn.dataset.mdSpcTarget, btn.dataset.mdSpcField || '', btn.dataset.mdSpcLabel || 'Markdown pole');
+      };
+    });
+    root.querySelectorAll('button[data-md-lint-target]').forEach(btn => {
+      btn.onclick = () => {
+        openMdLint(e, btn.dataset.mdLintTarget, btn.dataset.mdLintField || '', btn.dataset.mdLintLabel || 'Markdown pole');
       };
     });
   }
@@ -16315,31 +16439,68 @@ function renderBlock(block, ctx) {
     const inner = lines.map(l => l.replace(/^>\\s?/, '')).join('\\n');
     return '<blockquote>' + renderMarkdown(inner, { ctx }) + '</blockquote>';
   }
-  if (lines.every(l => /^\\s*[-*]\\s+/.test(l))) {
-    // Detekce task list syntaxe \`- [ ] ...\` a \`- [x] ...\`
-    const items = lines.map(l => {
-      const taskMatch = l.match(/^(\\s*[-*]\\s+)\\[([ xX])\\]\\s*(.*)$/);
-      if (taskMatch) {
-        const checked = taskMatch[2] !== ' ';
-        // Interaktivní v body (depth 0), nebo když ctx specifikuje taskSource (atribut textarea)
-        const interactive = ctx && !ctx.disableTaskInteractivity &&
-          (ctx.depth === 0 || ctx.taskSource);
-        if (!ctx._taskCounter) ctx._taskCounter = 0;
-        const idx = ctx._taskCounter++;
-        const cls = 'task-item' + (checked ? ' task-done' : '');
-        const sourceAttr = ctx.taskSource ? ' data-md-task-source="' + escapeHtml(ctx.taskSource) + '"' : '';
-        const cb = interactive
-          ? '<input type="checkbox"' + (checked ? ' checked' : '') + ' data-md-task="' + idx + '"' + sourceAttr + '>'
-          : '<input type="checkbox"' + (checked ? ' checked' : '') + ' disabled aria-disabled="true">';
-        return '<li class="' + cls + '">' + cb + '<span class="task-text">' + renderInline(taskMatch[3], ctx) + '</span></li>';
+  function isListLine(l) { return /^\\s*([-*+]|\\d+\\.)\\s/.test(l); }
+  if (lines.length > 0 && lines.every(isListLine)) {
+    const items = [];
+    for (const ln of lines) {
+      const normalized = ln.replace(/\\t/g, '    ');
+      const m = normalized.match(/^(\\s*)([-*+]|\\d+\\.)\\s+(.*)$/);
+      if (!m) continue;
+      const indentChars = m[1].length;
+      const marker = m[2];
+      const type = /^\\d+\\./.test(marker) ? 'ol' : 'ul';
+      let body = m[3];
+      let taskState;
+      const tm = body.match(/^\\[([ xX])\\]\\s*(.*)$/);
+      if (tm && type === 'ul') { taskState = tm[1] === ' ' ? ' ' : 'x'; body = tm[2]; }
+      items.push({ indentChars, marker, type, body, taskState, level: 0 });
+    }
+    if (items.length === 0) return '';
+    const uniqueIndents = [...new Set(items.map(i => i.indentChars))].sort((a, b) => a - b);
+    const indentToLevel = {};
+    uniqueIndents.forEach((ind, i) => { indentToLevel[ind] = i; });
+    items.forEach(i => { i.level = indentToLevel[i.indentChars]; });
+    let h = '';
+    const tagOpen = [];
+    const liOpen = [];
+    function closeLi(lvl) { if (liOpen[lvl]) { h += '</li>'; liOpen[lvl] = false; } }
+    function closeListsBelow(lvl) {
+      while (tagOpen.length > lvl + 1) {
+        const last = tagOpen.length - 1;
+        closeLi(last);
+        h += '</' + tagOpen[last] + '>';
+        tagOpen.pop();
+        liOpen.pop();
       }
-      return '<li>' + renderInline(l.replace(/^\\s*[-*]\\s+/, ''), ctx) + '</li>';
-    }).join('');
-    return '<ul>' + items + '</ul>';
-  }
-  if (lines.every(l => /^\\s*\\d+\\.\\s+/.test(l))) {
-    const items = lines.map(l => '<li>' + renderInline(l.replace(/^\\s*\\d+\\.\\s+/, ''), ctx) + '</li>').join('');
-    return '<ol>' + items + '</ol>';
+    }
+    for (const it of items) {
+      const lvl = it.level;
+      closeListsBelow(lvl);
+      closeLi(lvl);
+      if (tagOpen.length <= lvl) {
+        while (tagOpen.length <= lvl) {
+          h += '<' + it.type + '>';
+          tagOpen.push(it.type);
+          liOpen.push(false);
+        }
+      } else if (tagOpen[lvl] !== it.type) {
+        h += '</' + tagOpen[lvl] + '>';
+        h += '<' + it.type + '>';
+        tagOpen[lvl] = it.type;
+        liOpen[lvl] = false;
+      }
+      if (it.taskState !== undefined) {
+        const checked = it.taskState !== ' ';
+        const cb = '<input type="checkbox"' + (checked ? ' checked' : '') + ' disabled aria-disabled="true">';
+        const cls = 'task-item' + (checked ? ' task-done' : '');
+        h += '<li class="' + cls + '">' + cb + '<span class="task-text">' + renderInline(it.body, ctx) + '</span>';
+      } else {
+        h += '<li>' + renderInline(it.body, ctx);
+      }
+      liOpen[lvl] = true;
+    }
+    closeListsBelow(-1);
+    return h;
   }
   if (lines.length >= 2 && /^\\|.*\\|$/.test(lines[0]) && /^\\|[\\s\\-:|]+\\|$/.test(lines[1])) {
     const rows = lines.map(l => l.replace(/^\\||\\|$/g, '').split('|').map(c => c.trim()));
@@ -24942,6 +25103,742 @@ function openPlanTaskDialog(entity, taskIdx) {
   document.getElementById('pt-cancel').onclick = () => d.close();
 
   setTimeout(() => document.getElementById('pt-title').focus(), 50);
+}
+
+
+// =============================================================================
+// MD LINT — kontrola syntaxe markdownu s auto-opravami
+// =============================================================================
+const mdLint = (function () {
+  // Pravidla — každé má id, popis, severity, fixable, check(ctx) → [{line, col, message, fix?(text)→text}]
+  // ctx: { lines, lineKinds, isCode (Set lineIdx), isPrivate (Set lineIdx), rawText }
+  // lineKinds[i] = 'heading' | 'list' | 'olist' | 'blank' | 'text' | 'code-fence' | 'private-fence' | 'hr'
+
+  function isBlank(s) { return /^\s*$/.test(s); }
+  function getHeadingLevel(s) {
+    const m = s.match(/^(#{1,6})\s/);
+    return m ? m[1].length : 0;
+  }
+
+  // Pre-process: odstranit CriticMarkup značky aby lint nezachytil "{++Nadpis++}" jako něco rozbitého
+  function stripCritic(text) {
+    return text
+      .replace(/\{\+\+[\s\S]*?\+\+\}/g, '')
+      .replace(/\{--[\s\S]*?--\}/g, '')
+      .replace(/\{~~[\s\S]*?~>[\s\S]*?~~\}/g, '')
+      .replace(/\{==[\s\S]*?==\}/g, '')
+      .replace(/\{>>[\s\S]*?<<\}/g, '');
+  }
+
+  // Identifikace řádků uvnitř fenced code bloku nebo soukromého bloku
+  function classifyLines(lines) {
+    const isCode = new Set();
+    const isPrivate = new Set();
+    let inCode = false;
+    let inPriv = false;
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      if (!inCode && !inPriv && /^```/.test(l)) { inCode = true; continue; }
+      if (inCode && /^```\s*$/.test(l)) { inCode = false; continue; }
+      if (!inCode && /^~~~private\s*$/.test(l)) { inPriv = true; continue; }
+      if (inPriv && /^~~~\s*$/.test(l)) { inPriv = false; continue; }
+      if (inCode) isCode.add(i);
+      if (inPriv) isPrivate.add(i);
+    }
+    return { isCode, isPrivate };
+  }
+
+  const RULES = [
+    // L01 — trailing whitespace
+    { id: 'L01', desc: 'Mezery na konci řádku', severity: 'warn', fixable: true,
+      check(ctx) {
+        const out = [];
+        for (let i = 0; i < ctx.lines.length; i++) {
+          if (ctx.isCode.has(i)) continue;
+          if (/[ \t]+$/.test(ctx.lines[i]) && !isBlank(ctx.lines[i])) {
+            out.push({ line: i, message: 'Řádek končí mezerou nebo tabem.', fix: () => { ctx.lines[i] = ctx.lines[i].replace(/[ \t]+$/, ''); } });
+          }
+        }
+        return out;
+      }},
+    // L02 — hard tabs
+    { id: 'L02', desc: 'Hard tab v textu', severity: 'warn', fixable: true,
+      check(ctx) {
+        const out = [];
+        for (let i = 0; i < ctx.lines.length; i++) {
+          if (ctx.isCode.has(i)) continue;
+          if (/\t/.test(ctx.lines[i])) {
+            out.push({ line: i, message: 'Tabulátor v textu (doporučujeme 4 mezery).', fix: () => { ctx.lines[i] = ctx.lines[i].replace(/\t/g, '    '); } });
+          }
+        }
+        return out;
+      }},
+    // L03 — více než 2 prázdné řádky za sebou
+    { id: 'L03', desc: 'Více prázdných řádků za sebou', severity: 'warn', fixable: true,
+      check(ctx) {
+        const out = [];
+        let blankRun = 0, runStart = -1;
+        for (let i = 0; i <= ctx.lines.length; i++) {
+          const blank = i < ctx.lines.length && isBlank(ctx.lines[i]) && !ctx.isCode.has(i) && !ctx.isPrivate.has(i);
+          if (blank) {
+            if (blankRun === 0) runStart = i;
+            blankRun++;
+          } else {
+            if (blankRun > 1) {
+              const start = runStart, count = blankRun;
+              out.push({ line: start, message: 'Najednou ' + count + ' prázdných řádků – sloučit na jeden.', fix: () => {
+                // smaž count-1 řádků
+                ctx.lines.splice(start, count - 1);
+              }});
+            }
+            blankRun = 0;
+          }
+        }
+        return out;
+      }},
+    // L04 — Nadpisy nejsou obklopené prázdnými řádky
+    { id: 'L04', desc: 'Nadpis musí být obklopen prázdnými řádky', severity: 'warn', fixable: true,
+      check(ctx) {
+        const out = [];
+        for (let i = 0; i < ctx.lines.length; i++) {
+          if (ctx.isCode.has(i)) continue;
+          if (!getHeadingLevel(ctx.lines[i])) continue;
+          const before = i > 0 ? ctx.lines[i - 1] : '';
+          const after = i < ctx.lines.length - 1 ? ctx.lines[i + 1] : '';
+          const beforeBad = i > 0 && !isBlank(before);
+          const afterBad = i < ctx.lines.length - 1 && !isBlank(after);
+          if (beforeBad || afterBad) {
+            out.push({ line: i, message: 'Nadpis "' + ctx.lines[i].slice(0, 40) + '" nemá prázdné řádky' + (beforeBad ? ' před' : '') + (beforeBad && afterBad ? ' a' : '') + (afterBad ? ' za' : '') + '.', fix: () => {
+              if (afterBad) ctx.lines.splice(i + 1, 0, '');
+              if (beforeBad) ctx.lines.splice(i, 0, '');
+            }});
+          }
+        }
+        return out;
+      }},
+    // L05 — Seznamy nejsou obklopené prázdnými řádky
+    { id: 'L05', desc: 'Seznam musí být obklopen prázdnými řádky', severity: 'warn', fixable: true,
+      check(ctx) {
+        const out = [];
+        const listLine = (s) => /^\s*([-*+]|\d+\.)\s/.test(s);
+        for (let i = 0; i < ctx.lines.length; i++) {
+          if (ctx.isCode.has(i)) continue;
+          if (!listLine(ctx.lines[i])) continue;
+          // První řádek bloku seznamu?
+          const prev = i > 0 ? ctx.lines[i - 1] : '';
+          if (i > 0 && !isBlank(prev) && !listLine(prev) && !/^\s+\S/.test(prev)) {
+            out.push({ line: i, message: 'Seznam začíná bez prázdného řádku před.', fix: () => {
+              ctx.lines.splice(i, 0, '');
+            }});
+          }
+          // Poslední řádek seznamu? Skok ke konci bloku
+          // Najdi konec seznamu
+          let end = i;
+          while (end + 1 < ctx.lines.length && (listLine(ctx.lines[end + 1]) || /^\s+\S/.test(ctx.lines[end + 1]))) end++;
+          const next = end + 1 < ctx.lines.length ? ctx.lines[end + 1] : '';
+          if (end + 1 < ctx.lines.length && !isBlank(next)) {
+            out.push({ line: end + 1, message: 'Seznam končí bez prázdného řádku za.', fix: () => {
+              ctx.lines.splice(end + 1, 0, '');
+            }});
+          }
+          i = end; // skip rest of list
+        }
+        return out;
+      }},
+    // L06 — chybí mezera za #
+    { id: 'L06', desc: 'Za # musí být mezera', severity: 'error', fixable: true,
+      check(ctx) {
+        const out = [];
+        for (let i = 0; i < ctx.lines.length; i++) {
+          if (ctx.isCode.has(i)) continue;
+          const m = ctx.lines[i].match(/^(#{1,6})([^\s#])/);
+          if (m) {
+            out.push({ line: i, message: 'Za "' + m[1] + '" chybí mezera.', fix: () => {
+              ctx.lines[i] = ctx.lines[i].replace(/^(#{1,6})([^\s#])/, '$1 $2');
+            }});
+          }
+        }
+        return out;
+      }},
+    // L07 — více mezer za #
+    { id: 'L07', desc: 'Více mezer za # nadpisu', severity: 'warn', fixable: true,
+      check(ctx) {
+        const out = [];
+        for (let i = 0; i < ctx.lines.length; i++) {
+          if (ctx.isCode.has(i)) continue;
+          if (/^#{1,6}  +\S/.test(ctx.lines[i])) {
+            out.push({ line: i, message: 'Více mezer za #.', fix: () => {
+              ctx.lines[i] = ctx.lines[i].replace(/^(#{1,6}) +/, '$1 ');
+            }});
+          }
+        }
+        return out;
+      }},
+    // L09 — přeskočená úroveň nadpisu
+    { id: 'L09', desc: 'Přeskočená úroveň nadpisu', severity: 'warn', fixable: false,
+      check(ctx) {
+        const out = [];
+        let prevLv = 0;
+        for (let i = 0; i < ctx.lines.length; i++) {
+          if (ctx.isCode.has(i)) continue;
+          const lv = getHeadingLevel(ctx.lines[i]);
+          if (lv === 0) continue;
+          if (prevLv > 0 && lv > prevLv + 1) {
+            out.push({ line: i, message: 'Přeskočena úroveň: z H' + prevLv + ' na H' + lv + ' (chybí H' + (prevLv + 1) + (lv - prevLv > 2 ? '…H' + (lv - 1) : '') + ').' });
+          }
+          prevLv = lv;
+        }
+        return out;
+      }},
+    // L11 — nekonzistentní odrážka
+    { id: 'L11', desc: 'Nekonzistentní značka odrážky', severity: 'warn', fixable: true,
+      check(ctx) {
+        const out = [];
+        const markers = [];
+        // Sesbírej všechny ne-úkolové bullet markery
+        for (let i = 0; i < ctx.lines.length; i++) {
+          if (ctx.isCode.has(i)) continue;
+          const m = ctx.lines[i].match(/^(\s*)([-*+])\s+(?!\[[ xX]\])/);
+          if (m) markers.push({ line: i, indent: m[1].length, marker: m[2] });
+        }
+        // Pro každou úroveň indentu zjisti, který marker je tam nejčastější
+        const byIndent = {};
+        markers.forEach(m => {
+          if (!byIndent[m.indent]) byIndent[m.indent] = { '-': 0, '*': 0, '+': 0 };
+          byIndent[m.indent][m.marker]++;
+        });
+        const preferred = {};
+        Object.keys(byIndent).forEach(ind => {
+          const counts = byIndent[ind];
+          let best = '-', cnt = -1;
+          ['-', '*', '+'].forEach(m => { if (counts[m] > cnt) { best = m; cnt = counts[m]; } });
+          preferred[ind] = best;
+        });
+        // Najdi všechny řádky kde se marker neshoduje
+        markers.forEach(m => {
+          if (m.marker !== preferred[m.indent]) {
+            const want = preferred[m.indent];
+            out.push({ line: m.line, message: 'Odrážka "' + m.marker + '", ale v této úrovni převažuje "' + want + '".', fix: () => {
+              ctx.lines[m.line] = ctx.lines[m.line].replace(/^(\s*)([-*+])(\s+)/, '$1' + want + '$3');
+            }});
+          }
+        });
+        return out;
+      }},
+    // L12 — mezery uvnitř **
+    { id: 'L12', desc: 'Mezery uvnitř zvýraznění', severity: 'warn', fixable: true,
+      check(ctx) {
+        const out = [];
+        for (let i = 0; i < ctx.lines.length; i++) {
+          if (ctx.isCode.has(i)) continue;
+          // ** text ** nebo * text *
+          if (/\*\*\s+\S|\S\s+\*\*/.test(ctx.lines[i]) || /(?<!\*)\*\s+\S[^*]*\*(?!\*)/.test(ctx.lines[i].replace(/\*\*[\s\S]*?\*\*/g, ''))) {
+            out.push({ line: i, message: 'Zvýraznění obsahuje mezery hned za/před značkami.', fix: () => {
+              ctx.lines[i] = ctx.lines[i]
+                .replace(/\*\*\s+([^*]+?)\s+\*\*/g, '**$1**')
+                .replace(/\*\*\s+([^*]+?)\*\*/g, '**$1**')
+                .replace(/\*\*([^*]+?)\s+\*\*/g, '**$1**');
+            }});
+          }
+        }
+        return out;
+      }},
+    // L13 — mezery uvnitř `kód`
+    { id: 'L13', desc: 'Mezery uvnitř inline kódu', severity: 'warn', fixable: true,
+      check(ctx) {
+        const out = [];
+        for (let i = 0; i < ctx.lines.length; i++) {
+          if (ctx.isCode.has(i)) continue;
+          if (/`\s+\S[^`]*`|`[^`]*\S\s+`/.test(ctx.lines[i])) {
+            out.push({ line: i, message: 'Inline kód má mezery hned za/před zpětnými apostrofy.', fix: () => {
+              ctx.lines[i] = ctx.lines[i].replace(/`\s+([^`]+?)\s+`/g, '`$1`')
+                .replace(/`\s+([^`]+?)`/g, '`$1`')
+                .replace(/`([^`]+?)\s+`/g, '`$1`');
+            }});
+          }
+        }
+        return out;
+      }},
+    // L14 — nekonzistentní vodorovná čára
+    { id: 'L14', desc: 'Nekonzistentní vodorovná čára', severity: 'warn', fixable: true,
+      check(ctx) {
+        const out = [];
+        const hrLines = [];
+        for (let i = 0; i < ctx.lines.length; i++) {
+          if (ctx.isCode.has(i)) continue;
+          if (/^(\*{3,}|_{3,}|-{3,})\s*$/.test(ctx.lines[i]) && !getHeadingLevel(ctx.lines[i - 1] || '')) {
+            // Není-li to setext underline (=== po textu)
+            const prev = ctx.lines[i - 1] || '';
+            if (isBlank(prev)) hrLines.push({ line: i, marker: ctx.lines[i].trim()[0] });
+          }
+        }
+        // Zjisti většinový styl
+        const counts = { '-': 0, '*': 0, '_': 0 };
+        hrLines.forEach(h => counts[h.marker]++);
+        let best = '-', max = 0;
+        Object.keys(counts).forEach(k => { if (counts[k] > max) { max = counts[k]; best = k; } });
+        hrLines.forEach(h => {
+          if (h.marker !== best) {
+            out.push({ line: h.line, message: 'Vodorovná čára "' + h.marker.repeat(3) + '", ale převažuje "' + best.repeat(3) + '".', fix: () => {
+              ctx.lines[h.line] = best.repeat(3);
+            }});
+          }
+        });
+        return out;
+      }},
+    // L15 — reverzní odkaz (text)[url]
+    { id: 'L15', desc: 'Reverzní syntax odkazu', severity: 'error', fixable: true,
+      check(ctx) {
+        const out = [];
+        const re = /\(([^)]+)\)\[((?:https?|mailto):[^\]]+)\]/g;
+        for (let i = 0; i < ctx.lines.length; i++) {
+          if (ctx.isCode.has(i)) continue;
+          if (re.test(ctx.lines[i])) {
+            re.lastIndex = 0;
+            out.push({ line: i, message: 'Odkaz je naopak: (text)[url] místo [text](url).', fix: () => {
+              ctx.lines[i] = ctx.lines[i].replace(/\(([^)]+)\)\[((?:https?|mailto):[^\]]+)\]/g, '[$1]($2)');
+            }});
+          }
+          re.lastIndex = 0;
+        }
+        return out;
+      }},
+    // L16 — číslovaný seznam ne začíná od 1
+    { id: 'L16', desc: 'Číslovaný seznam nezačíná od 1', severity: 'warn', fixable: false,
+      check(ctx) {
+        const out = [];
+        let inList = false, expectFirst = true;
+        for (let i = 0; i < ctx.lines.length; i++) {
+          if (ctx.isCode.has(i)) { inList = false; continue; }
+          const m = ctx.lines[i].match(/^(\s*)(\d+)\.\s/);
+          if (m) {
+            if (!inList || expectFirst) {
+              if (m[2] !== '1' && m[2] !== '0') {
+                out.push({ line: i, message: 'Číslovaný seznam začíná od ' + m[2] + '. místo od 1.' });
+              }
+              inList = true;
+              expectFirst = false;
+            }
+          } else if (isBlank(ctx.lines[i])) {
+            // ne resetujeme hned
+          } else if (!/^\s+\S/.test(ctx.lines[i])) {
+            inList = false;
+            expectFirst = true;
+          }
+        }
+        return out;
+      }},
+    // L18 — nezavřený zvýrazňovač (jednoduchá heuristika: na celý text)
+    { id: 'L18', desc: 'Nezavřený zvýrazňovač', severity: 'warn', fixable: false,
+      check(ctx) {
+        const out = [];
+        // Pro každý řádek mimo code: spočítej **, *, ~~ — musí být sudé
+        for (let i = 0; i < ctx.lines.length; i++) {
+          if (ctx.isCode.has(i)) continue;
+          if (isBlank(ctx.lines[i])) continue;
+          // Odstranit nejprve `code` aby uvnitř značky nevadily
+          const cleaned = ctx.lines[i].replace(/`[^`]*`/g, '');
+          const bold = (cleaned.match(/\*\*/g) || []).length;
+          const strike = (cleaned.match(/~~/g) || []).length;
+          if (bold % 2 !== 0) {
+            out.push({ line: i, message: 'Lichý počet **, asi nezavřené tučné zvýraznění.' });
+          }
+          if (strike % 2 !== 0) {
+            out.push({ line: i, message: 'Lichý počet ~~, asi nezavřené přeškrtnutí.' });
+          }
+        }
+        return out;
+      }},
+    // L19 — nezavřený code fence
+    { id: 'L19', desc: 'Nezavřený code fence', severity: 'error', fixable: false,
+      check(ctx) {
+        let open = false, openLine = -1;
+        for (let i = 0; i < ctx.lines.length; i++) {
+          if (ctx.isPrivate.has(i)) continue;
+          if (/^```/.test(ctx.lines[i])) {
+            if (!open) { open = true; openLine = i; }
+            else { open = false; }
+          }
+        }
+        if (open) return [{ line: openLine, message: 'Code fence (```) na řádku ' + (openLine + 1) + ' nebyl uzavřen.' }];
+        return [];
+      }},
+    // L30 — prázdný wiki odkaz
+    { id: 'L30', desc: 'Prázdný wiki odkaz', severity: 'error', fixable: true,
+      check(ctx) {
+        const out = [];
+        for (let i = 0; i < ctx.lines.length; i++) {
+          if (ctx.isCode.has(i)) continue;
+          if (/\[\[\s*\]\]/.test(ctx.lines[i])) {
+            out.push({ line: i, message: 'Prázdný wiki odkaz [[]].', fix: () => {
+              ctx.lines[i] = ctx.lines[i].replace(/\[\[\s*\]\]/g, '');
+            }});
+          }
+        }
+        return out;
+      }},
+    // L31 — include na neexistující entitu
+    { id: 'L31', desc: 'Include na neexistující entitu', severity: 'warn', fixable: false,
+      check(ctx) {
+        const out = [];
+        const re = /\{\{include:([^|}]+?)(\|[^}]*)?\}\}/g;
+        for (let i = 0; i < ctx.lines.length; i++) {
+          if (ctx.isCode.has(i)) continue;
+          let m;
+          while ((m = re.exec(ctx.lines[i])) !== null) {
+            const name = m[1].trim();
+            if (!findEntityByTitle(name)) {
+              out.push({ line: i, message: 'Include na neexistující entitu „' + name + '".' });
+            }
+          }
+        }
+        return out;
+      }},
+    // L32 — wiki odkaz na neexistující entitu
+    { id: 'L32', desc: 'Wiki odkaz na neexistující entitu', severity: 'info', fixable: false,
+      check(ctx) {
+        const out = [];
+        const re = /\[\[([^\]|]+?)(\|[^\]]*)?\]\]/g;
+        for (let i = 0; i < ctx.lines.length; i++) {
+          if (ctx.isCode.has(i)) continue;
+          let m;
+          while ((m = re.exec(ctx.lines[i])) !== null) {
+            const target = m[1].trim();
+            if (/^id:/i.test(target)) continue; // id: odkazy ne kontrolujeme tady
+            if (/^#\d+$/.test(target)) continue; // číselné odkazy
+            if (!target) continue;
+            if (!findEntityByTitle(target)) {
+              out.push({ line: i, message: 'Wiki odkaz na entitu „' + target + '", která zatím neexistuje (klik vytvoří).' });
+            }
+          }
+        }
+        return out;
+      }},
+    // L33 — include cyklus na sebe
+    { id: 'L33', desc: 'Include odkazuje na sebe', severity: 'error', fixable: false,
+      check(ctx) {
+        if (!ctx.entity) return [];
+        const out = [];
+        const re = /\{\{include:([^|}]+?)(\|[^}]*)?\}\}/g;
+        for (let i = 0; i < ctx.lines.length; i++) {
+          if (ctx.isCode.has(i)) continue;
+          let m;
+          while ((m = re.exec(ctx.lines[i])) !== null) {
+            const name = m[1].trim();
+            const target = findEntityByTitle(name);
+            if (target && target.id === ctx.entity.id) {
+              out.push({ line: i, message: 'Include odkazuje na vlastní entitu „' + name + '" – způsobil by cyklus.' });
+            }
+          }
+        }
+        return out;
+      }},
+    // L34 — chybí mezera v MD úkolu
+    { id: 'L34', desc: 'Chybí mezera v MD úkolu', severity: 'error', fixable: true,
+      check(ctx) {
+        const out = [];
+        for (let i = 0; i < ctx.lines.length; i++) {
+          if (ctx.isCode.has(i)) continue;
+          // -[ ] nebo -[x] bez mezery za pomlčkou nebo bez mezery za závorkou
+          if (/^(\s*)-\[[ xX]\]/.test(ctx.lines[i]) || /^(\s*[-*+])\s+\[[ xX]\][^\s]/.test(ctx.lines[i])) {
+            out.push({ line: i, message: 'MD úkol: chybí mezera (správně: "- [ ] text").', fix: () => {
+              ctx.lines[i] = ctx.lines[i]
+                .replace(/^(\s*)-\[([ xX])\]/, '$1- [$2]')
+                .replace(/^(\s*[-*+])\s+\[([ xX])\]([^\s])/, '$1 [$2] $3');
+            }});
+          }
+        }
+        return out;
+      }},
+    // L35 — nezavřený CriticMarkup
+    { id: 'L35', desc: 'Nezavřený CriticMarkup', severity: 'warn', fixable: false,
+      check(ctx) {
+        const out = [];
+        const patterns = [
+          { open: '\\{\\+\\+', close: '\\+\\+\\}', name: '{++…++}' },
+          { open: '\\{--', close: '--\\}', name: '{--…--}' },
+          { open: '\\{==', close: '==\\}', name: '{==…==}' },
+          { open: '\\{>>', close: '<<\\}', name: '{>>…<<}' }
+        ];
+        for (let p of patterns) {
+          const reAll = new RegExp(p.open + '|' + p.close, 'g');
+          let depth = 0, firstLine = -1;
+          for (let i = 0; i < ctx.lines.length; i++) {
+            if (ctx.isCode.has(i)) continue;
+            const opens = (ctx.lines[i].match(new RegExp(p.open, 'g')) || []).length;
+            const closes = (ctx.lines[i].match(new RegExp(p.close, 'g')) || []).length;
+            if (opens > closes && firstLine < 0) firstLine = i;
+            depth += opens - closes;
+          }
+          if (depth !== 0 && firstLine >= 0) {
+            out.push({ line: firstLine, message: 'CriticMarkup ' + p.name + ' není zavřen.' });
+          }
+        }
+        return out;
+      }},
+    // L36 — nezavřený soukromý blok
+    { id: 'L36', desc: 'Nezavřený soukromý blok', severity: 'warn', fixable: false,
+      check(ctx) {
+        let open = false, openLine = -1;
+        for (let i = 0; i < ctx.lines.length; i++) {
+          if (/^~~~private\s*$/.test(ctx.lines[i])) { open = true; openLine = i; }
+          else if (open && /^~~~\s*$/.test(ctx.lines[i])) { open = false; }
+        }
+        if (open) return [{ line: openLine, message: 'Soukromý blok (~~~private) na ř. ' + (openLine + 1) + ' nebyl uzavřen.' }];
+        return [];
+      }}
+  ];
+
+  function getEnabledRules() {
+    const cfg = (state.settings && state.settings.lintRules) || {};
+    return RULES.filter(r => cfg[r.id] !== false);
+  }
+
+  function runLint(text, entity) {
+    const stripped = stripCritic(text);
+    const lines = stripped.split('\n');
+    const cls = classifyLines(lines);
+    const ctx = { lines: lines.slice(), isCode: cls.isCode, isPrivate: cls.isPrivate, rawText: text, entity: entity };
+    const all = [];
+    const rules = getEnabledRules();
+    for (const r of rules) {
+      const found = r.check(ctx);
+      for (const f of found) {
+        all.push({ ruleId: r.id, ruleDesc: r.desc, severity: r.severity, fixable: r.fixable && typeof f.fix === 'function', ...f });
+      }
+    }
+    all.sort((a, b) => a.line - b.line || a.ruleId.localeCompare(b.ruleId));
+    return all;
+  }
+
+  // Aplikuje vybrané opravy. Auto-fix funguje iterativně dokud se text mění.
+  function applyFixes(text, fixIds) {
+    let current = text;
+    const fixSet = new Set(fixIds);
+    for (let iter = 0; iter < 5; iter++) {
+      const stripped = stripCritic(current);
+      const lines = stripped.split('\n');
+      const cls = classifyLines(lines);
+      const ctx = { lines: lines.slice(), isCode: cls.isCode, isPrivate: cls.isPrivate, rawText: current, entity: null };
+      let any = false;
+      const rules = getEnabledRules();
+      for (const r of rules) {
+        if (!fixSet.has(r.id)) continue;
+        const found = r.check(ctx);
+        for (const f of found) {
+          if (typeof f.fix === 'function') {
+            f.fix();
+            any = true;
+          }
+        }
+      }
+      // Re-stitch lines back. POZOR: stripCritic byl pouze pro analýzu, ale fix se aplikoval na lines (= stripped). Pokud chceme zachovat CriticMarkup, musíme aplikovat fix-y na původní text odděleně.
+      // Pragmatický přístup: aplikujeme opravy na původní text, kde CriticMarkup zůstává netknutý.
+      // Strategie: stripCritic vyrobí mapu indexů; ale to je složité. Místo toho: aplikujeme fix v originálním textu jen tehdy, když nejsou v CriticMarkup značkách.
+      // Pro tuto verzi: zaměříme se na non-CriticMarkup obsah – pokud uživatel má CriticMarkup, doporučíme nejprve revize přijmout.
+      const fixedText = ctx.lines.join('\n');
+      if (fixedText === stripped) {
+        // nic se nezměnilo
+        break;
+      }
+      // Pokud původní text neobsahoval CriticMarkup, použij fixedText přímo
+      if (current.indexOf('{++') < 0 && current.indexOf('{--') < 0 && current.indexOf('{==') < 0 && current.indexOf('{>>') < 0 && current.indexOf('{~~') < 0) {
+        current = fixedText;
+      } else {
+        // Pokud má CriticMarkup, opravíme jen řádky bez CriticMarkup značek
+        const origLines = current.split('\n');
+        const newLines = origLines.slice();
+        for (let li = 0; li < Math.min(origLines.length, ctx.lines.length); li++) {
+          if (!/\{(\+\+|--|==|>>|~~)/.test(origLines[li]) && !/(\+\+|--|==|<<|~~)\}/.test(origLines[li])) {
+            newLines[li] = ctx.lines[li];
+          }
+        }
+        current = newLines.join('\n');
+      }
+      if (!any) break;
+    }
+    return current;
+  }
+
+  return { RULES, runLint, applyFixes, getEnabledRules };
+})();
+
+// =============================================================================
+// LINT UI — vlastní režim (analogicky cmRev/spChk)
+// =============================================================================
+function openMdLint(entity, targetId, fieldKey, fieldLabel) {
+  const ta = document.getElementById(targetId);
+  if (!ta) return;
+  state.mdLint = {
+    entityId: entity.id,
+    targetId: targetId,
+    fieldKey: fieldKey,
+    fieldLabel: fieldLabel,
+    workingText: ta.value,
+    severityFilter: 'all'
+  };
+  render();
+}
+
+function renderMdLint(main) {
+  const ml = state.mdLint;
+  const entity = findEntity(ml.entityId);
+  if (!entity) { state.mdLint = null; render(); return; }
+  const findings = mdLint.runLint(ml.workingText, entity);
+  const filtered = ml.severityFilter === 'all' ? findings : findings.filter(f => f.severity === ml.severityFilter);
+  const errCnt = findings.filter(f => f.severity === 'error').length;
+  const warnCnt = findings.filter(f => f.severity === 'warn').length;
+  const infoCnt = findings.filter(f => f.severity === 'info').length;
+  const fixableCnt = findings.filter(f => f.fixable).length;
+  const lines = ml.workingText.split('\n');
+
+  // Levý panel: text s anotacemi
+  const findingsByLine = {};
+  filtered.forEach(f => {
+    if (!findingsByLine[f.line]) findingsByLine[f.line] = [];
+    findingsByLine[f.line].push(f);
+  });
+  let docHtml = '<div class="lint-doc">';
+  lines.forEach((ln, idx) => {
+    const fs = findingsByLine[idx] || [];
+    const isError = fs.some(f => f.severity === 'error');
+    const isWarn = fs.some(f => f.severity === 'warn');
+    const cls = isError ? 'lint-line lint-err' : isWarn ? 'lint-line lint-warn' : fs.length ? 'lint-line lint-info' : 'lint-line';
+    docHtml += '<div class="' + cls + '" data-lint-line="' + idx + '">' +
+      '<span class="lint-lineno">' + (idx + 1) + '</span>' +
+      '<span class="lint-text">' + (escapeHtml(ln) || '&nbsp;') + '</span>' +
+      (fs.length ? '<span class="lint-tag-line"> ' + fs.map(f => '<span class="lint-chip lint-sev-' + f.severity + '" title="' + escapeHtml(f.message) + '">' + f.ruleId + '</span>').join(' ') + '</span>' : '') +
+      '</div>';
+  });
+  docHtml += '</div>';
+
+  // Pravý panel: seznam nálezů
+  let listHtml = '';
+  if (filtered.length === 0) {
+    listHtml = '<p class="meta">' + (findings.length === 0 ? '✓ Žádné chyby ani varování.' : 'Žádné položky pro tento filtr.') + '</p>';
+  } else {
+    filtered.forEach((f, i) => {
+      listHtml += '<div class="lint-finding lint-sev-' + f.severity + '">' +
+        '<div class="lint-finding-head">' +
+          '<strong>' + f.ruleId + '</strong> · ' + escapeHtml(f.ruleDesc) +
+          ' <span class="lint-loc meta">[ř. ' + (f.line + 1) + ']</span>' +
+        '</div>' +
+        '<p class="lint-msg">' + escapeHtml(f.message) + '</p>' +
+        '<div class="btn-group">' +
+          (f.fixable ? '<button data-lint-fix-i="' + i + '">✓ Opravit</button>' : '') +
+          '<button data-lint-jump-line="' + f.line + '">↪ Skočit</button>' +
+        '</div>' +
+      '</div>';
+    });
+  }
+
+  main.innerHTML =
+    '<div class="btn-group" style="margin-bottom:0.5em;">' +
+      '<button id="lint-save" class="primary">💾 Uložit a zavřít</button>' +
+      '<button id="lint-cancel">← Zrušit</button>' +
+      (fixableCnt > 0 ? '<button id="lint-fix-all">🪄 Opravit vše opravitelné (' + fixableCnt + ')</button>' : '') +
+      '<button id="lint-config" title="Zapnout/vypnout jednotlivá pravidla">⚙ Pravidla</button>' +
+      '<span class="cr-stats">' + errCnt + ' chyb' + (errCnt === 1 ? 'a' : errCnt < 5 ? 'y' : '') + ', ' + warnCnt + ' varování, ' + infoCnt + ' info</span>' +
+    '</div>' +
+    '<h2>🧹 Lint: ' + escapeHtml(ml.fieldLabel || 'pole') + ' v entitě „' + escapeHtml(entity.title) + '"</h2>' +
+    '<div class="lint-filter btn-group" style="margin:0.5em 0;">' +
+      'Filtr: ' +
+      '<button data-lint-filter="all"' + (ml.severityFilter === 'all' ? ' class="primary"' : '') + '>Vše (' + findings.length + ')</button>' +
+      '<button data-lint-filter="error"' + (ml.severityFilter === 'error' ? ' class="primary"' : '') + '>Chyby (' + errCnt + ')</button>' +
+      '<button data-lint-filter="warn"' + (ml.severityFilter === 'warn' ? ' class="primary"' : '') + '>Varování (' + warnCnt + ')</button>' +
+      '<button data-lint-filter="info"' + (ml.severityFilter === 'info' ? ' class="primary"' : '') + '>Info (' + infoCnt + ')</button>' +
+    '</div>' +
+    '<div class="lint-grid">' +
+      '<div class="lint-left">' + docHtml + '</div>' +
+      '<div class="lint-right">' + listHtml + '</div>' +
+    '</div>';
+
+  // Handlers
+  document.getElementById('lint-save').onclick = () => {
+    const ta = document.getElementById(ml.targetId);
+    if (ta) {
+      ta.value = ml.workingText;
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    // Pokud byl lint na atributu, aplikovat na entity
+    if (ml.fieldKey === 'body') {
+      entity.body = ml.workingText;
+    } else if (ml.fieldKey && entity.attributes) {
+      entity.attributes[ml.fieldKey] = ml.workingText;
+    }
+    entity.updated_at = nowIso();
+    save();
+    toast('Lint úpravy uloženy.');
+    state.mdLint = null;
+    render();
+  };
+  document.getElementById('lint-cancel').onclick = () => {
+    state.mdLint = null;
+    render();
+  };
+  document.getElementById('lint-config').onclick = () => openLintConfigDialog();
+  const fixAllBtn = document.getElementById('lint-fix-all');
+  if (fixAllBtn) fixAllBtn.onclick = () => {
+    const fixIds = [...new Set(findings.filter(f => f.fixable).map(f => f.ruleId))];
+    ml.workingText = mdLint.applyFixes(ml.workingText, fixIds);
+    render();
+  };
+  document.querySelectorAll('button[data-lint-filter]').forEach(b => {
+    b.onclick = () => { ml.severityFilter = b.dataset.lintFilter; render(); };
+  });
+  document.querySelectorAll('button[data-lint-fix-i]').forEach(b => {
+    b.onclick = () => {
+      const i = Number(b.dataset.lintFixI);
+      const f = filtered[i];
+      if (!f || !f.fixable) return;
+      ml.workingText = mdLint.applyFixes(ml.workingText, [f.ruleId]);
+      render();
+    };
+  });
+  document.querySelectorAll('button[data-lint-jump-line]').forEach(b => {
+    b.onclick = () => {
+      const ln = Number(b.dataset.lintJumpLine);
+      const el = document.querySelector('div[data-lint-line="' + ln + '"]');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('lint-flash');
+        setTimeout(() => el.classList.remove('lint-flash'), 1500);
+      }
+    };
+  });
+}
+
+function openLintConfigDialog() {
+  let d = document.getElementById('dialog-lint-config');
+  if (!d) {
+    d = document.createElement('dialog');
+    d.id = 'dialog-lint-config';
+    document.body.appendChild(d);
+  }
+  const cfg = (state.settings && state.settings.lintRules) || {};
+  let html = '<h2>Konfigurace Lint pravidel</h2><p class="meta">Vypnutá pravidla se nebudou kontrolovat.</p><div style="max-height:60vh;overflow-y:auto;">';
+  mdLint.RULES.forEach(r => {
+    const checked = cfg[r.id] !== false;
+    const sevLabel = r.severity === 'error' ? 'chyba' : r.severity === 'warn' ? 'varování' : 'info';
+    html += '<label style="display:block;margin:0.3em 0;"><input type="checkbox" data-lint-cfg="' + r.id + '"' + (checked ? ' checked' : '') + '> <strong>' + r.id + '</strong> · ' + escapeHtml(r.desc) + ' <span class="meta">(' + sevLabel + (r.fixable ? ', auto-fix' : '') + ')</span></label>';
+  });
+  html += '</div><div class="btn-group" style="margin-top:0.5em;">' +
+    '<button class="primary" id="lint-cfg-save">Uložit</button>' +
+    '<button id="lint-cfg-cancel">Zrušit</button>' +
+  '</div>';
+  d.innerHTML = html;
+  if (d.showModal) d.showModal(); else d.setAttribute('open', 'open');
+  document.getElementById('lint-cfg-save').onclick = () => {
+    if (!state.settings.lintRules) state.settings.lintRules = {};
+    d.querySelectorAll('input[data-lint-cfg]').forEach(inp => {
+      state.settings.lintRules[inp.dataset.lintCfg] = inp.checked;
+    });
+    save();
+    d.close();
+    if (state.mdLint) render();
+    toast('Pravidla uložena.');
+  };
+  document.getElementById('lint-cfg-cancel').onclick = () => d.close();
 }
 
 </script>
