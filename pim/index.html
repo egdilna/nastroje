@@ -413,6 +413,12 @@ body.theme-dark .flags-section { background: #1f1f1f; }
 .flags-section h3 { margin: 0.2em 0 0.5em; }
 .entity-list { list-style: none; padding-left: 0; margin: 0.3em 0; }
 .entity-list li { margin: 0.2em 0; }
+/* Dashboard projektu - vylepšené sekce */
+.dash-goal-item { margin: 0.5em 0; padding: 0.3em 0.5em; background: #fafafa; border-left: 3px solid #6a9; border-radius: 3px; }
+body.theme-dark .dash-goal-item { background: #1f1f1f; border-left-color: #69a; }
+.dash-goal-progress { margin-top: 0.3em; }
+.progress-bar-sm { height: 0.6em; font-size: 0.7em; }
+.dash-snippet { margin-top: 0.15em; padding-left: 0.5em; font-style: italic; opacity: 0.8; }
 /* MD Lint UI */
 .lint-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1em; }
 @media (max-width: 900px) { .lint-grid { grid-template-columns: 1fr; } }
@@ -9744,10 +9750,54 @@ function renderProjectDashboard(project) {
     return h;
   }
 
+  // Helpery pro popis dat a obsahu
+  function relDay(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const dd = new Date(d); dd.setHours(0, 0, 0, 0);
+    const diff = Math.round((dd - today) / 86400000);
+    if (diff === 0) return 'dnes';
+    if (diff === 1) return 'zítra';
+    if (diff === -1) return 'včera';
+    if (diff > 1 && diff < 14) return 'za ' + diff + ' dnů';
+    if (diff < -1 && diff > -14) return 'před ' + (-diff) + ' dny';
+    return fmtDate(iso);
+  }
+  function bodySnippet(body, max) {
+    if (!body) return '';
+    const plain = stripMarkdownToPlain(body.split('\n').find(l => l.trim()) || '');
+    if (!plain) return '';
+    return plain.length > max ? plain.slice(0, max) + '…' : plain;
+  }
+
   let h = '<section class="project-dashboard"><h3>Dashboard projektu</h3>';
 
-  // Cíle nahoře
-  h += listSection('Cíle', goals, false);
+  // === Cíle (s cílovým datem a ručně zadaným postupem) ===
+  if (goals.length > 0) {
+    h += '<h4>Cíle (' + goals.length + ')</h4><ul style="list-style:none;padding-left:0;">';
+    goals.forEach(g => {
+      const attrs = g.attributes || {};
+      const targetDate = attrs.target_date;
+      // progress je ručně zadané číslo 0-100
+      const progressRaw = attrs.progress;
+      const progress = (progressRaw !== undefined && progressRaw !== null && progressRaw !== '')
+        ? Math.max(0, Math.min(100, Number(progressRaw))) : null;
+      h += '<li class="dash-goal-item">' +
+        '<a href="#" data-entity="' + escapeHtml(g.id) + '">' + getDisplayTitleWithBadges(g) + '</a>' +
+        openInPanelBtnHtml(g.id);
+      if (targetDate) h += ' <span class="meta">🎯 ' + escapeHtml(relDay(targetDate)) + '</span>';
+      if (progress !== null && !isNaN(progress)) {
+        h += '<div class="dash-goal-progress">' +
+          '<div class="progress-bar progress-bar-sm"><div class="progress-bar-fill" style="width:' + progress + '%"></div>' +
+          '<div class="progress-bar-label">' + progress + '%</div></div>' +
+        '</div>';
+      }
+      h += '</li>';
+    });
+    h += '</ul>';
+  }
 
   // Pokrok úkolů + Kanban
   h += '<div style="margin:0.75em 0;">' +
@@ -9784,12 +9834,31 @@ function renderProjectDashboard(project) {
     h += '</div>';
   }
 
-  // Otázky a rozhodnutí
-  h += listSection('Otázky a rozhodnutí', questionsDecisions, true);
+  // === Otázky a rozhodnutí — s odpovědí a stavem ===
+  if (questionsDecisions.length > 0) {
+    h += '<h4>Otázky a rozhodnutí (' + questionsDecisions.length + ')</h4><ul style="list-style:none;padding-left:0;">';
+    questionsDecisions.forEach(it => {
+      const isQ = has(it, 'Question');
+      const aspectTxt = ' <span class="meta">(' + (it.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + ')</span>';
+      let extras = '';
+      if (isQ) {
+        // Otázka má odpověd?
+        const answered = (it.links || []).some(l => l.type === 'answeredBy');
+        extras = ' <span class="meta">' + (answered ? '✅ zodpovězená' : '❓ nezodpovězená') + '</span>';
+      } else {
+        // Rozhodnutí: datum + stav
+        const decDate = (it.attributes || {}).decided_at || (it.attributes || {}).deadline;
+        if (decDate) extras += ' <span class="meta">' + escapeHtml(relDay(decDate)) + '</span>';
+        const decStatus = (it.attributes || {}).status;
+        if (decStatus) extras += ' <span class="meta">stav: ' + escapeHtml(decStatus) + '</span>';
+      }
+      h += '<li><a href="#" data-entity="' + escapeHtml(it.id) + '">' + getDisplayTitleWithBadges(it) + '</a>' + openInPanelBtnHtml(it.id) + aspectTxt + extras + '</li>';
+    });
+    h += '</ul>';
+  }
 
-  // Události (schůzky, schválené termíny atd.)
+  // === Události — chronologicky + "za N dnů / dnes / před N dny" ===
   if (events.length > 0) {
-    // Seřadit podle start asc
     const sortedEvents = [...events].sort((a, b) => {
       const sa = (a.attributes && a.attributes.start) || '';
       const sb = (b.attributes && b.attributes.start) || '';
@@ -9800,8 +9869,8 @@ function renderProjectDashboard(project) {
       const attrs = ev.attributes || {};
       let when = '';
       if (attrs.start) {
-        when = ' <span class="meta">' + escapeHtml(fmtDateTime(attrs.start));
-        if (attrs.end) when += ' – ' + escapeHtml(fmtDateTime(attrs.end));
+        when = ' <span class="meta">⏱ ' + escapeHtml(relDay(attrs.start));
+        if (attrs.end && attrs.end !== attrs.start) when += ' – ' + escapeHtml(fmtDate(attrs.end));
         when += '</span>';
       }
       const where = attrs.location ? ' <span class="meta">📍 ' + escapeHtml(attrs.location) + '</span>' : '';
@@ -9810,18 +9879,46 @@ function renderProjectDashboard(project) {
     h += '</ul>';
   }
 
-  // Dokumenty a zdroje
-  h += listSection('Dokumenty a zdroje', docsResources, true);
+  // === Dokumenty a zdroje — URL, autor, datum ===
+  if (docsResources.length > 0) {
+    h += '<h4>Dokumenty a zdroje (' + docsResources.length + ')</h4><ul style="list-style:none;padding-left:0;">';
+    docsResources.forEach(it => {
+      const aspectTxt = ' <span class="meta">(' + (it.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + ')</span>';
+      const attrs = it.attributes || {};
+      let meta = '';
+      if (attrs.url) meta += ' <a href="' + escapeHtml(attrs.url) + '" class="meta" target="_blank" rel="noopener">🔗 ' + escapeHtml(shortUrlLabel(attrs.url)) + '</a>';
+      if (attrs.author) meta += ' <span class="meta">👤 ' + escapeHtml(attrs.author) + '</span>';
+      if (attrs.date) meta += ' <span class="meta">📅 ' + escapeHtml(fmtDate(attrs.date)) + '</span>';
+      h += '<li><a href="#" data-entity="' + escapeHtml(it.id) + '">' + getDisplayTitleWithBadges(it) + '</a>' + openInPanelBtnHtml(it.id) + aspectTxt + meta + '</li>';
+    });
+    h += '</ul>';
+  }
 
-  // Poznámky
-  h += listSection('Poznámky', notesEtc, true);
+  // === Poznámky/Nápady/Audio — náhled obsahu ===
+  if (notesEtc.length > 0) {
+    h += '<h4>Poznámky (' + notesEtc.length + ')</h4><ul style="list-style:none;padding-left:0;">';
+    notesEtc.forEach(it => {
+      const aspectTxt = ' <span class="meta">(' + (it.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + ')</span>';
+      const snippet = bodySnippet(it.body, 80);
+      const updTxt = ' <span class="meta">' + escapeHtml(fmtRelative(it.updated_at)) + '</span>';
+      h += '<li><a href="#" data-entity="' + escapeHtml(it.id) + '">' + getDisplayTitleWithBadges(it) + '</a>' + openInPanelBtnHtml(it.id) + aspectTxt + updTxt;
+      if (snippet) h += '<div class="meta dash-snippet">' + escapeHtml(snippet) + '</div>';
+      h += '</li>';
+    });
+    h += '</ul>';
+  }
 
-  // Lidé a organizace
+  // === Lidé a organizace — kontakt (e-mail, telefon, role) ===
   if (peopleOrgs.length > 0) {
     h += '<h4>Lidé a organizace (' + peopleOrgs.length + ')</h4><ul style="list-style:none;padding-left:0;">';
     peopleOrgs.forEach(p => {
       const aspectsTxt = ' <span class="meta">(' + (p.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + ')</span>';
-      h += '<li><a href="#" data-entity="' + escapeHtml(p.id) + '">' + getDisplayTitleWithBadges(p) + '</a>' + openInPanelBtnHtml(p.id) + aspectsTxt + '</li>';
+      const attrs = p.attributes || {};
+      let contact = '';
+      if (attrs.email) contact += ' <a href="mailto:' + escapeHtml(attrs.email) + '" class="meta">📧 ' + escapeHtml(attrs.email) + '</a>';
+      if (attrs.phone) contact += ' <a href="tel:' + escapeHtml(attrs.phone) + '" class="meta">📞 ' + escapeHtml(attrs.phone) + '</a>';
+      if (attrs.role) contact += ' <span class="meta">🎭 ' + escapeHtml(attrs.role) + '</span>';
+      h += '<li><a href="#" data-entity="' + escapeHtml(p.id) + '">' + getDisplayTitleWithBadges(p) + '</a>' + openInPanelBtnHtml(p.id) + aspectsTxt + contact + '</li>';
     });
     h += '</ul>';
   }
