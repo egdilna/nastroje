@@ -450,6 +450,26 @@ body.theme-dark .composed-help code { background: #2a2a2a; }
 body.theme-dark .inline-md-select { background: #2a2811; color: #fc6; border-color: #ba0; }
 .inline-md-select:hover { background: #fff080; }
 body.theme-dark .inline-md-select:hover { background: #3a3621; }
+.inline-md-fix { background: transparent; border: 1px solid #ccc; border-radius: 3px; padding: 0 0.3em; margin-left: 0.15em; cursor: pointer; font-size: 0.85em; line-height: 1.4; }
+.inline-md-fix:hover { background: #e8f0fa; }
+body.theme-dark .inline-md-fix { border-color: #555; }
+body.theme-dark .inline-md-fix:hover { background: #2a3950; }
+/* Editor tabulky (section-edit režim) */
+.table-edit-btn { display: inline-block; margin: 0.3em 0 0.8em; }
+.table-editor-dialog { width: 95vw; max-width: 1100px; }
+.table-editor-toolbar { display: flex; gap: 0.4em; margin-bottom: 0.6em; }
+.table-editor-toolbar button { padding: 0.3em 0.7em; }
+.table-editor-grid { width: 100%; border-collapse: collapse; font-size: 0.92em; }
+.table-editor-grid th, .table-editor-grid td { padding: 0.25em; border: 1px solid #ddd; vertical-align: top; }
+body.theme-dark .table-editor-grid th, body.theme-dark .table-editor-grid td { border-color: #444; }
+.table-editor-grid input[type="text"] { width: 100%; box-sizing: border-box; padding: 0.2em 0.3em; }
+.table-editor-grid .te-row-num { background: #f8f8f8; text-align: right; font-weight: 500; color: #888; min-width: 2em; }
+body.theme-dark .table-editor-grid .te-row-num { background: #1a1a1a; color: #aaa; }
+.te-col-controls { display: flex; gap: 0.15em; margin-top: 0.2em; flex-wrap: wrap; }
+.te-col-controls button, .te-col-controls select { padding: 0.1em 0.4em; font-size: 0.85em; }
+.te-row-controls { display: flex; gap: 0.15em; }
+.te-row-controls button { padding: 0.1em 0.4em; font-size: 0.85em; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
 /* Placeholder inserter dialog */
 .ph-inserter-dialog { max-width: 700px; width: 90vw; }
 .ph-inserter-groups { max-height: 60vh; overflow-y: auto; }
@@ -1043,6 +1063,15 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <button type="button" id="ca-cancel">Zrušit</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="dialog-table-editor" aria-labelledby="dialog-te-title" class="table-editor-dialog">
+  <h2 id="dialog-te-title">📊 Editor tabulky</h2>
+  <div id="table-editor-content"></div>
+  <div class="btn-group" style="margin-top:1em;">
+    <button type="button" class="primary" id="te-save">Uložit</button>
+    <button type="button" id="te-cancel">Zrušit</button>
+  </div>
 </dialog>
 
 <dialog id="dialog-comment" aria-labelledby="dialog-comment-title">
@@ -2170,7 +2199,9 @@ function renderInline(text, ctx) {
       '<option value="' + i + '"' + (i === selectedIdx ? ' selected' : '') + '>' + escapeHtml(o.text || '(prázdné)') + '</option>'
     ).join('');
     return '<select class="inline-md-select" data-md-inline-select="' + idx + '"' + sourceAttr +
-      ' aria-label="Inline výběr">' + opts + '</select>';
+      ' aria-label="Inline výběr">' + opts + '</select>' +
+      '<button type="button" class="inline-md-fix" data-md-fix-select="' + idx + '"' + sourceAttr +
+      ' title="Zafixovat výběr – nahradit (!a/|b!) jen vybranou hodnotou jako prostý text" aria-label="Zafixovat výběr">🔒</button>';
   });
   text = text.replace(/\{\{include:([^}|]+)(?:\|([^}]*))?\}\}/g, (m, ref, alias) => {
     return resolveInclude(ref.trim(), alias ? alias.trim() : null, ctx);
@@ -4850,6 +4881,39 @@ function attachMarkdownTaskHandlers(root, entity) {
       entity.updated_at = nowIso();
       saveDebounced();
       // Žádný re-render – select je už visually changed
+    };
+  });
+  // Inline-select fix: 🔒 nahradí (!a/|b!) prostým textem vybrané volby
+  root.querySelectorAll('button.inline-md-fix[data-md-fix-select]').forEach(btn => {
+    btn.onclick = () => {
+      const idx = Number(btn.dataset.mdFixSelect);
+      if (isNaN(idx)) return;
+      const source = btn.dataset.mdSource || 'body';
+      let text;
+      if (source === 'body') text = entity.body || '';
+      else if (source.startsWith('attr:')) {
+        const k = source.slice(5);
+        text = (entity.attributes && entity.attributes[k]) || '';
+      } else return;
+      // Najít N-tý výskyt (!...!), nahradit jen vybranou hodnotou
+      const re = /\(!([^!()]+?)!\)/g;
+      let count = 0;
+      const newText = text.replace(re, (match, body) => {
+        if (count++ !== idx) return match;
+        const parts = body.split('/');
+        const sel = parts.find(p => p.startsWith('|'));
+        return sel ? sel.slice(1) : parts[0];
+      });
+      if (newText === text) return;
+      if (source === 'body') entity.body = newText;
+      else if (source.startsWith('attr:')) {
+        const k = source.slice(5);
+        entity.attributes[k] = newText;
+      }
+      entity.updated_at = nowIso();
+      save();
+      toast('✓ Výběr zafixován.');
+      render();
     };
   });
   // Tlačítka „→ Entita" — vytvoří nový Task z markdown úkolu a nahradí ho wiki linkem
@@ -8348,6 +8412,13 @@ function renderDetailEdit(main, e) {
       state._editTitleOriginalEntityId = null;
       state._editTitleOriginal = null;
     }
+    // Quick anotace: (>text) → klasická anotace + odstranit z body
+    {
+      const cnt = processQuickAnnotations(e);
+      if (cnt > 0) {
+        toast('Z textu přidáno ' + cnt + ' anotac' + (cnt === 1 ? 'e' : cnt < 5 ? 'e' : 'í') + '.');
+      }
+    }
     // Detekce entit v textu (názvy existujících entit nepoužité jako wiki link)
     detectAndOfferNamedEntities(e, () => {
       save();
@@ -9515,15 +9586,59 @@ function renderNeighborhoodTree(rootEntity) {
 // Vrátí seznam top-level "bloků" v body (odstavce, headings, lists…) jako pole stringů
 function extractBodyParagraphs(body) {
   if (!body) return [];
-  // Rozdělit podle prázdných řádků, zachovat ne-prázdné bloky
-  // Ošetřit code bloky jako jeden block (nesmí se rozdělit)
+  // Rozdělit podle prázdných řádků, zachovat ne-prázdné bloky.
+  // Speciální chování: bullet/ordered list a tabulky se dál rozdělí na ŘÁDKY,
+  // aby šlo anotovat jednotlivé položky/řádky tabulky.
   const out = [];
   const lines = body.split('\n');
   let buffer = [];
   let inCode = false;
+  function isListLine(s) {
+    return /^\s*([-*+]|\d+[.)])\s+/.test(s);
+  }
+  function isTableLine(s) {
+    return /^\s*\|.*\|\s*$/.test(s);
+  }
+  function isTableSep(s) {
+    return /^\s*\|[\s:|\-]+\|\s*$/.test(s);
+  }
   function flush() {
-    const text = buffer.join('\n').trim();
-    if (text) out.push(text);
+    if (buffer.length === 0) return;
+    // Pokud je buffer celý seznam (každá řádka = list item), uložit po řádcích
+    const allList = buffer.every(l => isListLine(l) || /^\s+/.test(l));
+    const looksLikeList = buffer.length > 0 && isListLine(buffer[0]) && buffer.filter(isListLine).length >= 1;
+    if (looksLikeList && allList) {
+      // Skupinovat: line item + případně jeho continuation (odsazené řádky bez nového markeru)
+      let cur = [];
+      for (const l of buffer) {
+        if (isListLine(l)) {
+          if (cur.length > 0) {
+            const text = cur.join('\n').trim();
+            if (text) out.push(text);
+          }
+          cur = [l];
+        } else {
+          cur.push(l);
+        }
+      }
+      if (cur.length > 0) {
+        const text = cur.join('\n').trim();
+        if (text) out.push(text);
+      }
+    } else {
+      // Tabulka: pokud má header + sep + řádky, uložit každý řádek (kromě sep) samostatně
+      const allTable = buffer.every(l => isTableLine(l));
+      if (allTable && buffer.length >= 2 && isTableSep(buffer[1])) {
+        for (const l of buffer) {
+          if (isTableSep(l)) continue; // separator přeskočit
+          const t = l.trim();
+          if (t) out.push(t);
+        }
+      } else {
+        const text = buffer.join('\n').trim();
+        if (text) out.push(text);
+      }
+    }
     buffer = [];
   }
   for (const line of lines) {
@@ -9614,6 +9729,70 @@ function newAnnotation(content, paragraphText, paragraphIndex) {
     createdAt: nowIso(),
     updatedAt: nowIso()
   };
+}
+
+// Quick-anotace: najde v body texty ve tvaru (>poznámka), pro každý vytvoří klasickou anotaci
+// k odstavci/řádku, kde se nacházela, a z body je odstraní.
+// Vrací počet vytvořených anotací.
+function processQuickAnnotations(entity) {
+  if (!entity || !entity.body) return 0;
+  const re = /\(>([^()]+?)\)/g;
+  if (!re.test(entity.body)) return 0;
+  let count = 0;
+  // Projít body po řádcích, najít každou quick anotaci a zaznamenat (řádek, text anotace)
+  const lines = entity.body.split('\n');
+  const annotationsToAdd = []; // [{lineIdx, content}]
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    let cleaned = line;
+    re.lastIndex = 0;
+    let m;
+    const toRemove = [];
+    while ((m = re.exec(line)) !== null) {
+      annotationsToAdd.push({ lineIdx: i, content: m[1].trim() });
+      toRemove.push({ start: m.index, len: m[0].length });
+    }
+    if (toRemove.length > 0) {
+      // Odstranit od konce
+      toRemove.reverse().forEach(r => {
+        cleaned = cleaned.slice(0, r.start) + cleaned.slice(r.start + r.len);
+      });
+      // Vyčistit dvojité mezery zanechané po odstranění
+      cleaned = cleaned.replace(/  +/g, ' ').replace(/ $/, '');
+      lines[i] = cleaned;
+    }
+  }
+  if (annotationsToAdd.length === 0) return 0;
+  // Po úpravě body vypočítat paragraphs a najít, na kterém paragraph index řádek leží
+  const newBody = lines.join('\n');
+  const paragraphs = extractBodyParagraphs(newBody);
+  // Mapování řádek → paragraph index: pro každý paragraph najdeme řádky které mu odpovídají
+  // V extractBodyParagraphs se z jedné MD části mohou stát víc paragrafů (list, table) — řádky nejsou 1:1 mapa.
+  // Použijeme jednoduchou heuristiku: pro každou quick anotaci najdeme paragraph, který obsahuje tu řádku
+  // (substring search v originálním textu).
+  if (!Array.isArray(entity.annotations)) entity.annotations = [];
+  annotationsToAdd.forEach(qa => {
+    const lineText = lines[qa.lineIdx].trim();
+    if (!lineText) {
+      // Anotovat poslední předchozí neprázdný řádek
+      let li = qa.lineIdx - 1;
+      while (li >= 0 && !lines[li].trim()) li--;
+      if (li < 0) return;
+      const text = lines[li].trim();
+      // Najít paragraph index obsahující tento text
+      let pIdx = paragraphs.findIndex(p => p.includes(text) || text.includes(p));
+      if (pIdx < 0) pIdx = null;
+      entity.annotations.push(newAnnotation(qa.content, text, pIdx));
+    } else {
+      let pIdx = paragraphs.findIndex(p => p === lineText || p.startsWith(lineText) || p.includes(lineText));
+      if (pIdx < 0) pIdx = null;
+      entity.annotations.push(newAnnotation(qa.content, lineText, pIdx));
+    }
+    count++;
+  });
+  entity.body = newBody;
+  entity.updated_at = nowIso();
+  return count;
 }
 
 // Render seznamu anotací pod tělem entity (vždy zobrazený pokud nějaké jsou)
@@ -9713,10 +9892,37 @@ function setupAnnotations(entity) {
     attachAnnotationsListHandlers(entity);
     return;
   }
-  // Sebrat top-level "bloky" v rendered body (přímí potomci)
-  const blocks = Array.from(bodyEl.children).filter(el =>
+  // Sebrat top-level "bloky" v rendered body (přímí potomci) a rozšířit list/table na řádky
+  const topBlocks = Array.from(bodyEl.children).filter(el =>
     !['script', 'style'].includes(el.tagName.toLowerCase())
   );
+  // Sestavit anchors – pro každý paragraphIndex najít odpovídající DOM element.
+  // Logika musí být zrcadlem extractBodyParagraphs: ul/ol → každé <li> samostatně, table → každé <tr> (kromě sep)
+  const anchors = []; // [{ el, kind: 'block'|'li'|'tr' }]
+  topBlocks.forEach(block => {
+    const tn = block.tagName.toLowerCase();
+    if (tn === 'ul' || tn === 'ol') {
+      // Pouze přímí potomci typu li (vnořené ul/ol patří k jeho parent li)
+      const lis = Array.from(block.children).filter(c => c.tagName.toLowerCase() === 'li');
+      lis.forEach(li => anchors.push({ el: li, kind: 'li' }));
+    } else if (tn === 'table') {
+      // Najít všechny tr v tbody nebo přímo v table
+      const tbody = block.querySelector('tbody');
+      const trs = tbody
+        ? Array.from(tbody.children).filter(c => c.tagName.toLowerCase() === 'tr')
+        : Array.from(block.querySelectorAll('tr'));
+      // Pokud má thead, vezmeme i thead row jako první anchor (matchne header řádek tabulky)
+      const thead = block.querySelector('thead');
+      if (thead) {
+        const headTrs = Array.from(thead.children).filter(c => c.tagName.toLowerCase() === 'tr');
+        headTrs.forEach(tr => anchors.push({ el: tr, kind: 'tr' }));
+      }
+      trs.forEach(tr => anchors.push({ el: tr, kind: 'tr' }));
+    } else {
+      anchors.push({ el: block, kind: 'block' });
+    }
+  });
+
   // Match anotací
   const matched = matchAnnotationsToParagraphs(entity);
   const byPara = {};
@@ -9725,26 +9931,24 @@ function setupAnnotations(entity) {
       (byPara[m.paragraphIndex] = byPara[m.paragraphIndex] || []).push(m);
     }
   });
-  // Pro každý blok přidat počet anotací + ikonu (jestli má) a v anotačním režimu tlačítko "+ Anotace"
-  blocks.forEach((block, idx) => {
+  // Pro každý anchor přidat počet anotací + ikonu (jestli má) a v anotačním režimu tlačítko "+ Anotace"
+  anchors.forEach((anchor, idx) => {
+    const block = anchor.el;
     block.setAttribute('data-paragraph-index', String(idx));
     block.setAttribute('id', 'p-block-' + idx);
     const annsHere = byPara[idx] || [];
-    // Vždy zobrazit badge počet anotací (i mimo annotation mode)
     if (annsHere.length > 0) {
       const badge = document.createElement('a');
       badge.href = '#';
       badge.className = 'paragraph-anno-badge';
-      badge.setAttribute('aria-label', 'Tento odstavec má ' + annsHere.length + ' anotac' + (annsHere.length === 1 ? 'i' : 'í'));
-      badge.title = 'Skočit na anotace tohoto odstavce';
+      badge.setAttribute('aria-label', 'Tento řádek má ' + annsHere.length + ' anotac' + (annsHere.length === 1 ? 'i' : 'í'));
+      badge.title = 'Skočit na anotace tohoto řádku';
       badge.textContent = '📝' + annsHere.length;
       badge.onclick = (ev) => {
         ev.preventDefault();
-        // Scrollnout na první anotaci v seznamu pro tento odstavec
         const annId = annsHere[0].annotation.id;
         const item = document.querySelector('[data-anno-id="' + annId + '"]');
         if (item) {
-          // Otevřít details kontejner
           const wrapper = item.closest('details.annotations-list-wrapper');
           if (wrapper) wrapper.open = true;
           item.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -9756,13 +9960,12 @@ function setupAnnotations(entity) {
       block.appendChild(document.createTextNode(' '));
       block.appendChild(badge);
     }
-    // V anotačním režimu přidat tlačítko "+ Anotace"
     if (state.annotationMode) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'paragraph-anno-add-btn';
       btn.textContent = '+ Anotace';
-      btn.setAttribute('aria-label', 'Přidat anotaci k tomuto odstavci');
+      btn.setAttribute('aria-label', 'Přidat anotaci k tomuto řádku');
       btn.onclick = () => openAnnotationDialog(entity, idx, null);
       block.appendChild(document.createTextNode(' '));
       block.appendChild(btn);
@@ -10845,6 +11048,25 @@ function setupSectionEditMode(entity) {
   banner.className = 'section-edit-banner meta';
   banner.textContent = '✏️ Režim editace sekcí: u každého nadpisu klikněte „Upravit". Pro ukončení znovu klikněte na tlačítko v záhlaví nebo stiskněte D.';
   wrap.parentNode.insertBefore(banner, wrap);
+
+  // Pod každou tabulku přidat tlačítko „Upravit tabulku"
+  const tables = wrap.querySelectorAll('table');
+  tables.forEach((tbl, tIdx) => {
+    // Přeskoč tabulky uvnitř transklucí (mají vlastní kontext)
+    // Vyhledáme zdrojový MD pro tuto tabulku
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'section-edit-btn table-edit-btn';
+    btn.setAttribute('aria-label', 'Upravit tuto tabulku v přístupném editoru');
+    btn.title = 'Otevřít editor tabulky';
+    btn.textContent = '📊 Upravit tabulku';
+    btn.dataset.tableIdx = String(tIdx);
+    tbl.parentNode.insertBefore(btn, tbl.nextSibling);
+    btn.onclick = (ev) => {
+      ev.preventDefault();
+      openTableEditor(entity, tIdx);
+    };
+  });
 }
 
 function openSectionEditor(entity, sectionIdx) {
@@ -10931,6 +11153,283 @@ function openSectionEditor(entity, sectionIdx) {
   document.getElementById('sec-edit-cancel').onclick = () => {
     render();
   };
+}
+
+// =============================================================================
+// TABLE EDITOR (přístupný editor MD tabulek pro section-edit režim)
+// =============================================================================
+
+// Najde N-tou tabulku v body (po indexu DOM elementů <table>).
+// Vrací { startLine, endLine, headers, alignments, rows } nebo null.
+function findMarkdownTable(body, tableIdx) {
+  if (!body) return null;
+  const lines = body.split('\n');
+  let inCode = false;
+  let count = -1;
+  let tableStart = -1;
+  let tableEnd = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const ln = lines[i];
+    if (/^```/.test(ln.trim())) { inCode = !inCode; continue; }
+    if (inCode) continue;
+    const isTableLine = /^\s*\|.*\|\s*$/.test(ln);
+    if (isTableLine && tableStart < 0) {
+      // Potřebujeme alespoň 2 řádky a druhý musí být separator
+      const sep = lines[i + 1];
+      if (sep && /^\s*\|[\s:|\-]+\|\s*$/.test(sep)) {
+        count++;
+        if (count === tableIdx) {
+          tableStart = i;
+          // Najdi konec tabulky
+          let j = i + 2;
+          while (j < lines.length && /^\s*\|.*\|\s*$/.test(lines[j])) j++;
+          tableEnd = j - 1;
+          break;
+        } else {
+          // Přeskoč tuto tabulku
+          let j = i + 2;
+          while (j < lines.length && /^\s*\|.*\|\s*$/.test(lines[j])) j++;
+          i = j - 1;
+        }
+      }
+    }
+  }
+  if (tableStart < 0) return null;
+  // Parsovat
+  function parseRow(s) {
+    let t = s.trim();
+    if (t.startsWith('|')) t = t.slice(1);
+    if (t.endsWith('|')) t = t.slice(0, -1);
+    // Rozdělit, ošetřit escape \|
+    const cells = [];
+    let cur = '';
+    for (let k = 0; k < t.length; k++) {
+      if (t[k] === '\\' && t[k + 1] === '|') { cur += '|'; k++; continue; }
+      if (t[k] === '|') { cells.push(cur.trim()); cur = ''; continue; }
+      cur += t[k];
+    }
+    cells.push(cur.trim());
+    return cells;
+  }
+  const headers = parseRow(lines[tableStart]);
+  const sepCells = parseRow(lines[tableStart + 1]);
+  const alignments = sepCells.map(c => {
+    const left = c.startsWith(':');
+    const right = c.endsWith(':');
+    if (left && right) return 'center';
+    if (right) return 'right';
+    if (left) return 'left';
+    return null;
+  });
+  const rows = [];
+  for (let i = tableStart + 2; i <= tableEnd; i++) {
+    rows.push(parseRow(lines[i]));
+  }
+  return { startLine: tableStart, endLine: tableEnd, headers, alignments, rows };
+}
+
+function buildMarkdownTable(headers, alignments, rows) {
+  function escCell(c) { return String(c || '').replace(/\|/g, '\\|').replace(/\n/g, ' ').trim(); }
+  const cols = headers.length;
+  const lines = [];
+  lines.push('| ' + headers.map(escCell).join(' | ') + ' |');
+  lines.push('| ' + alignments.map(a => {
+    if (a === 'center') return ':---:';
+    if (a === 'right') return '---:';
+    if (a === 'left') return ':---';
+    return '---';
+  }).join(' | ') + ' |');
+  rows.forEach(r => {
+    const padded = [];
+    for (let i = 0; i < cols; i++) padded.push(escCell(r[i] || ''));
+    lines.push('| ' + padded.join(' | ') + ' |');
+  });
+  return lines.join('\n');
+}
+
+let _tableEditorState = null;
+
+function openTableEditor(entity, tableIdx) {
+  const parsed = findMarkdownTable(entity.body || '', tableIdx);
+  if (!parsed) { alertMsg('Tabulku se nepodařilo najít ve zdroji.'); return; }
+  _tableEditorState = {
+    entity,
+    tableIdx,
+    startLine: parsed.startLine,
+    endLine: parsed.endLine,
+    headers: [...parsed.headers],
+    alignments: [...parsed.alignments],
+    rows: parsed.rows.map(r => [...r])
+  };
+  const d = document.getElementById('dialog-table-editor');
+  d.showModal();
+  renderTableEditor();
+  // Připojit Save / Cancel handlery (znovu pokaždé pro správný state)
+  document.getElementById('te-save').onclick = saveTableEditor;
+  document.getElementById('te-cancel').onclick = () => {
+    d.close();
+    _tableEditorState = null;
+  };
+}
+
+function renderTableEditor() {
+  const st = _tableEditorState;
+  if (!st) return;
+  const container = document.getElementById('table-editor-content');
+  const cols = st.headers.length;
+  let h = '<p class="meta">Upravujete tabulku. Použijte tlačítka pro přidání/odebrání řádků a sloupců. Změny se uloží do těla entity po kliknutí na „Uložit".</p>';
+  h += '<div class="table-editor-toolbar">' +
+    '<button type="button" id="te-add-row" title="Přidat nový řádek na konec">+ Řádek</button>' +
+    '<button type="button" id="te-add-col" title="Přidat nový sloupec na konec">+ Sloupec</button>' +
+  '</div>';
+  h += '<table class="table-editor-grid">';
+  // Hlavička
+  h += '<thead><tr><th aria-label="Číslo řádku"></th>';
+  st.headers.forEach((hd, ci) => {
+    const align = st.alignments[ci] || 'auto';
+    h += '<th>' +
+      '<label class="sr-only" for="te-h-' + ci + '">Záhlaví sloupce ' + (ci + 1) + '</label>' +
+      '<input type="text" id="te-h-' + ci + '" data-te-header="' + ci + '" value="' + escapeHtml(hd) + '">' +
+      '<div class="te-col-controls">' +
+        '<label class="sr-only" for="te-a-' + ci + '">Zarovnání sloupce ' + (ci + 1) + '</label>' +
+        '<select id="te-a-' + ci + '" data-te-align="' + ci + '" title="Zarovnání sloupce">' +
+          '<option value="auto"' + (align === 'auto' || !align ? ' selected' : '') + '>auto</option>' +
+          '<option value="left"' + (align === 'left' ? ' selected' : '') + '>vlevo</option>' +
+          '<option value="center"' + (align === 'center' ? ' selected' : '') + '>střed</option>' +
+          '<option value="right"' + (align === 'right' ? ' selected' : '') + '>vpravo</option>' +
+        '</select>' +
+        '<button type="button" data-te-col-left="' + ci + '" title="Posunout sloupec doleva" aria-label="Posunout sloupec ' + (ci + 1) + ' doleva"' + (ci === 0 ? ' disabled' : '') + '>◀</button>' +
+        '<button type="button" data-te-col-right="' + ci + '" title="Posunout sloupec doprava" aria-label="Posunout sloupec ' + (ci + 1) + ' doprava"' + (ci === cols - 1 ? ' disabled' : '') + '>▶</button>' +
+        '<button type="button" class="danger" data-te-col-del="' + ci + '" title="Smazat sloupec" aria-label="Smazat sloupec ' + (ci + 1) + '"' + (cols <= 1 ? ' disabled' : '') + '>×</button>' +
+      '</div>' +
+    '</th>';
+  });
+  h += '<th aria-label="Operace s řádkem"></th></tr></thead>';
+  h += '<tbody>';
+  st.rows.forEach((row, ri) => {
+    h += '<tr><td class="te-row-num">' + (ri + 1) + '</td>';
+    for (let ci = 0; ci < cols; ci++) {
+      h += '<td>' +
+        '<label class="sr-only" for="te-c-' + ri + '-' + ci + '">Buňka řádek ' + (ri + 1) + ' sloupec ' + (ci + 1) + '</label>' +
+        '<input type="text" id="te-c-' + ri + '-' + ci + '" data-te-cell="' + ri + ',' + ci + '" value="' + escapeHtml(row[ci] || '') + '">' +
+      '</td>';
+    }
+    h += '<td class="te-row-controls">' +
+      '<button type="button" data-te-row-up="' + ri + '" title="Posunout řádek nahoru" aria-label="Posunout řádek ' + (ri + 1) + ' nahoru"' + (ri === 0 ? ' disabled' : '') + '>▲</button>' +
+      '<button type="button" data-te-row-down="' + ri + '" title="Posunout řádek dolů" aria-label="Posunout řádek ' + (ri + 1) + ' dolů"' + (ri === st.rows.length - 1 ? ' disabled' : '') + '>▼</button>' +
+      '<button type="button" class="danger" data-te-row-del="' + ri + '" title="Smazat řádek" aria-label="Smazat řádek ' + (ri + 1) + '">×</button>' +
+    '</td></tr>';
+  });
+  if (st.rows.length === 0) {
+    h += '<tr><td colspan="' + (cols + 2) + '" class="meta">Tabulka nemá žádné datové řádky. Přidejte klikem na „+ Řádek".</td></tr>';
+  }
+  h += '</tbody></table>';
+  container.innerHTML = h;
+
+  // Handlery
+  container.querySelectorAll('[data-te-header]').forEach(inp => {
+    inp.oninput = () => { st.headers[Number(inp.dataset.teHeader)] = inp.value; };
+  });
+  container.querySelectorAll('[data-te-align]').forEach(sel => {
+    sel.onchange = () => {
+      const v = sel.value;
+      st.alignments[Number(sel.dataset.teAlign)] = (v === 'auto') ? null : v;
+    };
+  });
+  container.querySelectorAll('[data-te-cell]').forEach(inp => {
+    inp.oninput = () => {
+      const [ri, ci] = inp.dataset.teCell.split(',').map(Number);
+      st.rows[ri][ci] = inp.value;
+    };
+  });
+  container.querySelectorAll('[data-te-row-del]').forEach(btn => {
+    btn.onclick = () => {
+      const ri = Number(btn.dataset.teRowDel);
+      st.rows.splice(ri, 1);
+      renderTableEditor();
+    };
+  });
+  container.querySelectorAll('[data-te-row-up]').forEach(btn => {
+    btn.onclick = () => {
+      const ri = Number(btn.dataset.teRowUp);
+      if (ri <= 0) return;
+      [st.rows[ri - 1], st.rows[ri]] = [st.rows[ri], st.rows[ri - 1]];
+      renderTableEditor();
+    };
+  });
+  container.querySelectorAll('[data-te-row-down]').forEach(btn => {
+    btn.onclick = () => {
+      const ri = Number(btn.dataset.teRowDown);
+      if (ri >= st.rows.length - 1) return;
+      [st.rows[ri + 1], st.rows[ri]] = [st.rows[ri], st.rows[ri + 1]];
+      renderTableEditor();
+    };
+  });
+  container.querySelectorAll('[data-te-col-del]').forEach(btn => {
+    btn.onclick = () => {
+      const ci = Number(btn.dataset.teColDel);
+      if (st.headers.length <= 1) return;
+      st.headers.splice(ci, 1);
+      st.alignments.splice(ci, 1);
+      st.rows.forEach(r => r.splice(ci, 1));
+      renderTableEditor();
+    };
+  });
+  container.querySelectorAll('[data-te-col-left]').forEach(btn => {
+    btn.onclick = () => {
+      const ci = Number(btn.dataset.teColLeft);
+      if (ci <= 0) return;
+      [st.headers[ci - 1], st.headers[ci]] = [st.headers[ci], st.headers[ci - 1]];
+      [st.alignments[ci - 1], st.alignments[ci]] = [st.alignments[ci], st.alignments[ci - 1]];
+      st.rows.forEach(r => { [r[ci - 1], r[ci]] = [r[ci], r[ci - 1]]; });
+      renderTableEditor();
+    };
+  });
+  container.querySelectorAll('[data-te-col-right]').forEach(btn => {
+    btn.onclick = () => {
+      const ci = Number(btn.dataset.teColRight);
+      if (ci >= st.headers.length - 1) return;
+      [st.headers[ci + 1], st.headers[ci]] = [st.headers[ci], st.headers[ci + 1]];
+      [st.alignments[ci + 1], st.alignments[ci]] = [st.alignments[ci], st.alignments[ci + 1]];
+      st.rows.forEach(r => { [r[ci + 1], r[ci]] = [r[ci], r[ci + 1]]; });
+      renderTableEditor();
+    };
+  });
+  const addRow = document.getElementById('te-add-row');
+  if (addRow) addRow.onclick = () => {
+    const newRow = new Array(st.headers.length).fill('');
+    st.rows.push(newRow);
+    renderTableEditor();
+    // Fokus na první buňku nového řádku
+    setTimeout(() => {
+      const inp = document.getElementById('te-c-' + (st.rows.length - 1) + '-0');
+      if (inp) inp.focus();
+    }, 50);
+  };
+  const addCol = document.getElementById('te-add-col');
+  if (addCol) addCol.onclick = () => {
+    st.headers.push('Sloupec ' + (st.headers.length + 1));
+    st.alignments.push(null);
+    st.rows.forEach(r => r.push(''));
+    renderTableEditor();
+  };
+}
+
+function saveTableEditor() {
+  const st = _tableEditorState;
+  if (!st) return;
+  const newMd = buildMarkdownTable(st.headers, st.alignments, st.rows);
+  const lines = (st.entity.body || '').split('\n');
+  const before = lines.slice(0, st.startLine);
+  const after = lines.slice(st.endLine + 1);
+  st.entity.body = [...before, ...newMd.split('\n'), ...after].join('\n');
+  st.entity.updated_at = nowIso();
+  save();
+  document.getElementById('dialog-table-editor').close();
+  _tableEditorState = null;
+  toast('Tabulka uložena.');
+  playSound('save-entity');
+  render();
 }
 
 // =============================================================================
@@ -12608,6 +13107,15 @@ function setupKeyboard() {
 
     // Esc v edit módu detailu = zpět na read
     if (ev.key === 'Escape' && state.view === 'detail' && state.detailMode === 'edit') {
+      // Quick anotace: (>text) → klasická anotace + odstranit z body
+      const _qaE = findEntity(state.detailId);
+      if (_qaE) {
+        const cnt = processQuickAnnotations(_qaE);
+        if (cnt > 0) {
+          save();
+          toast('Z textu přidáno ' + cnt + ' anotac' + (cnt === 1 ? 'e' : cnt < 5 ? 'e' : 'í') + '.');
+        }
+      }
       state.detailMode = 'read'; render(); ev.preventDefault(); return;
     }
 
