@@ -454,6 +454,34 @@ body.theme-dark .inline-md-select:hover { background: #3a3621; }
 .inline-md-fix:hover { background: #e8f0fa; }
 body.theme-dark .inline-md-fix { border-color: #555; }
 body.theme-dark .inline-md-fix:hover { background: #2a3950; }
+/* Pokročilé filtry atributů */
+.advanced-filters-fieldset { margin-top: 0.7em; padding: 0.5em 0.7em; border: 1px solid #ddd; border-radius: 4px; }
+body.theme-dark .advanced-filters-fieldset { border-color: #444; }
+.advanced-filters-fieldset legend { padding: 0 0.4em; font-weight: 500; }
+.attr-filter-row { display: flex; gap: 0.4em; align-items: center; padding: 0.3em 0.4em; margin: 0.2em 0; background: #f8f8f8; border-radius: 3px; flex-wrap: wrap; }
+body.theme-dark .attr-filter-row { background: #1a1a1a; }
+.attr-filter-label { font-weight: 500; }
+.attr-filter-op { color: #888; padding: 0 0.3em; }
+.attr-filter-val { background: #fff; padding: 0.1em 0.4em; border-radius: 3px; border: 1px solid #ddd; }
+body.theme-dark .attr-filter-val { background: #222; border-color: #444; }
+.attr-filter-dialog { max-width: 500px; }
+.attr-filter-dialog label { display: block; margin-top: 0.5em; }
+.attr-filter-dialog select, .attr-filter-dialog input { width: 100%; box-sizing: border-box; }
+/* Zdrojový kód jako atribut */
+.attr-code-textarea { width: 100%; font-family: Consolas, Monaco, "Courier New", monospace; font-size: 0.9em; tab-size: 2; }
+.attr-code-details { margin: 0.4em 0; }
+.attr-code-details summary { cursor: pointer; padding: 0.2em 0; }
+.attr-code-wrap { position: relative; margin-top: 0.3em; }
+.attr-code-copy { position: absolute; top: 0.4em; right: 0.4em; padding: 0.2em 0.5em; font-size: 0.85em; background: #fff; border: 1px solid #ccc; border-radius: 3px; cursor: pointer; }
+.attr-code-copy:hover { background: #e8f0fa; }
+body.theme-dark .attr-code-copy { background: #2a2a2a; border-color: #555; }
+body.theme-dark .attr-code-copy:hover { background: #2a3950; }
+.attr-code-pre { font-family: Consolas, Monaco, "Courier New", monospace; font-size: 0.9em; background: #f5f5f5; padding: 0.6em 0.8em; padding-right: 6em; border-radius: 4px; overflow-x: auto; white-space: pre; margin: 0; tab-size: 2; max-height: 30em; overflow-y: auto; }
+body.theme-dark .attr-code-pre { background: #1a1a1a; }
+/* Zabezpečené entity (aspekt Secured) */
+.secured-notice { margin: 1em 0; padding: 0.8em 1em; background: #fff8e6; border: 1px solid #d4a000; border-radius: 5px; }
+body.theme-dark .secured-notice { background: #2a2511; border-color: #c08000; }
+.secured-notice p { margin: 0 0 0.5em; }
 /* Editor tabulky (section-edit režim) */
 .table-edit-btn { display: inline-block; margin: 0.3em 0 0.8em; }
 .table-editor-dialog { width: 95vw; max-width: 1100px; }
@@ -748,7 +776,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
 <body>
 <a href="#main" class="skip-link">Přeskočit na hlavní obsah</a>
 <header role="banner">
-  <h1 id="app-title">PIM – osobní znalostní báze</h1>
+  <h2 id="app-title">PIM – osobní znalostní báze</h2>
   <p id="app-description" class="meta" hidden></p>
   <nav aria-label="Hlavní navigace">
     <ul id="main-nav">
@@ -1391,6 +1419,10 @@ const ASPECTS = {
     { key: 'slide_order', label: 'Pořadí ve prezentaci', type: 'number' },
     { key: 'slide_speaker_notes', label: 'Poznámky řečníka', type: 'textarea' },
     { key: 'slide_duration', label: 'Plánovaná délka (sekund)', type: 'number' }
+  ]},
+  Secured: { label: 'Zabezpečené', fields: [
+    // Interní pole: secured_payload (zašifrovaný JSON), secured_salt, secured_iv, secured_iterations
+    // Tyto se v UI nezobrazují, jsou skryté přes filtr v render functions.
   ]}
 };
 
@@ -1486,6 +1518,77 @@ let state = {
   activePanel: 0
 };
 let saveTimer = null;
+
+// === ŠIFROVÁNÍ (aspekt Secured) ===
+const SECURED_ITERATIONS = 100000;
+const _unlockedSecured = {};
+
+function b64encode(buf) {
+  const bytes = new Uint8Array(buf);
+  let s = '';
+  for (let i = 0; i < bytes.byteLength; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s);
+}
+function b64decode(str) {
+  const s = atob(str);
+  const bytes = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
+  return bytes.buffer;
+}
+
+async function deriveKey(password, salt) {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw', enc.encode(password), { name: 'PBKDF2' }, false, ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: salt, iterations: SECURED_ITERATIONS, hash: 'SHA-256' },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+async function encryptPayload(plaintext, password) {
+  const enc = new TextEncoder();
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKey(password, salt);
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key, enc.encode(plaintext));
+  return {
+    secured_payload: b64encode(ct),
+    secured_salt: b64encode(salt.buffer),
+    secured_iv: b64encode(iv.buffer),
+    secured_iterations: SECURED_ITERATIONS
+  };
+}
+
+async function decryptPayload(securedAttrs, password) {
+  const dec = new TextDecoder();
+  const salt = new Uint8Array(b64decode(securedAttrs.secured_salt));
+  const iv = new Uint8Array(b64decode(securedAttrs.secured_iv));
+  const ct = b64decode(securedAttrs.secured_payload);
+  const key = await deriveKey(password, salt);
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv }, key, ct);
+  return dec.decode(pt);
+}
+
+function isSecuredEntity(e) {
+  return e && (e.aspects || []).some(a => a === 'Secured' || a.toLowerCase() === 'secured');
+}
+function isSecuredUnlocked(entityId) {
+  return _unlockedSecured.hasOwnProperty(entityId);
+}
+function getUnlockedSecured(entityId) {
+  return _unlockedSecured[entityId];
+}
+function lockSecuredEntity(entityId) {
+  delete _unlockedSecured[entityId];
+}
+function lockAllSecured() {
+  for (const k in _unlockedSecured) delete _unlockedSecured[k];
+}
 let viewHistory = [];
 let fileDb = null;
 let suppressStorageEvent = false; // true během vlastního save
@@ -2315,6 +2418,20 @@ function resolveInclude(ref, alias, ctx) {
   else target = findEntity(ref) || findEntityByTitle(ref);
   if (!target) return '<div class="transclusion-broken">⚠ Entita „' + escapeHtml(ref) + '“ nenalezena.</div>';
   if (ctx.includeStack.has(target.id)) return '<div class="transclusion-broken">⚠ Cyklická transkluze (' + escapeHtml(getDisplayTitle(target)) + ').</div>';
+  // Secured entity: pokud zamčená, vrátíme info hlášku
+  if (isSecuredEntity(target) && !isSecuredUnlocked(target.id)) {
+    return '<div class="transclusion-broken">🔒 Obsah „' + escapeHtml(getDisplayTitle(target)) + '" je zamčený a nelze ho vložit.</div>';
+  }
+  // Secured a odemčené: vložíme plain body z unlocked stavu
+  if (isSecuredEntity(target) && isSecuredUnlocked(target.id)) {
+    const unl = getUnlockedSecured(target.id);
+    const plain = (unl && typeof unl.body === 'string') ? unl.body : '';
+    const newCtxS = { depth: ctx.depth + 1, includeStack: new Set(ctx.includeStack), hideTransclusionMeta: ctx.hideTransclusionMeta, entity: target };
+    newCtxS.includeStack.add(target.id);
+    const innerS = renderMarkdown(plain, { ctx: newCtxS });
+    if (ctx.hideTransclusionMeta) return innerS;
+    return '<div class="transclusion"><div class="transclusion-header">🔓 Z entity <a href="#" data-entity="' + escapeHtml(target.id) + '">' + escapeHtml(getDisplayTitle(target)) + '</a></div>' + innerS + '</div>';
+  }
   // Pokud cíl má aspekt Database, vykresli tabulku databáze
   let inner;
   if ((target.aspects || []).includes('Database')) {
@@ -3568,6 +3685,10 @@ function getEntityBadgePrefix(e) {
   if (has('Presentation') || has('Prezentace')) prefix += '📽️ ';
   // Slide → 🎞️
   if (has('Slide')) prefix += '🎞️ ';
+  // Zabezpečené → 🔒 (zamčené) nebo 🔓 (odemčené v této session)
+  if (has('Secured')) {
+    prefix += (isSecuredUnlocked(e.id) ? '🔓 ' : '🔒 ');
+  }
   // Komunikace → emoji podle kanálu
   if (has('Communication')) {
     const ch = e.attributes && e.attributes.comm_channel;
@@ -3636,6 +3757,247 @@ function getStatusLabel(s) {
       if (f.key === 'status' && f.optionLabels && f.optionLabels[s]) return f.optionLabels[s];
   return s;
 }
+
+// === POKROČILÉ FILTRY ATRIBUTŮ ===
+// Operátory podle typu pole
+const ATTR_FILTER_OPS = {
+  equals:        { label: '=',           needsValue: true,  types: ['text','textarea','number','select','date','datetime-local','tel','email','url','checkbox'] },
+  notEquals:     { label: '≠',           needsValue: true,  types: ['text','textarea','number','select','date','datetime-local','tel','email','url','checkbox'] },
+  contains:      { label: 'obsahuje',    needsValue: true,  types: ['text','textarea','tel','email','url'] },
+  notContains:   { label: 'neobsahuje',  needsValue: true,  types: ['text','textarea','tel','email','url'] },
+  startsWith:    { label: 'začíná na',   needsValue: true,  types: ['text','textarea','tel','email','url'] },
+  endsWith:      { label: 'končí na',    needsValue: true,  types: ['text','textarea','tel','email','url'] },
+  greaterThan:   { label: '>',           needsValue: true,  types: ['number','date','datetime-local'] },
+  lessThan:      { label: '<',           needsValue: true,  types: ['number','date','datetime-local'] },
+  greaterEqual:  { label: '≥',           needsValue: true,  types: ['number','date','datetime-local'] },
+  lessEqual:     { label: '≤',           needsValue: true,  types: ['number','date','datetime-local'] },
+  between:       { label: 'mezi',        needsValue: true,  needsValue2: true, types: ['number','date','datetime-local'] },
+  isEmpty:       { label: 'je prázdné',  needsValue: false, types: ['text','textarea','number','select','date','datetime-local','tel','email','url','relation'] },
+  isNotEmpty:    { label: 'není prázdné', needsValue: false, types: ['text','textarea','number','select','date','datetime-local','tel','email','url','relation'] },
+  isTrue:        { label: 'je zaškrtnuto', needsValue: false, types: ['checkbox'] },
+  isFalse:       { label: 'není zaškrtnuto', needsValue: false, types: ['checkbox'] }
+};
+
+function resolveFilterField(aspectKey, fieldKey) {
+  if (aspectKey === '__global__') {
+    const f = GLOBAL_FIELDS.find(g => g.key === fieldKey);
+    if (f) return { aspect: '__global__', key: fieldKey, field: f, aspectLabel: 'Globální' };
+    return null;
+  }
+  const a = getAspect(aspectKey);
+  if (!a) return null;
+  const f = (a.fields || []).find(g => g.key === fieldKey);
+  if (!f) return null;
+  return { aspect: aspectKey, key: fieldKey, field: f, aspectLabel: a.label || aspectKey };
+}
+
+function formatFilterValue(fieldInfo, v) {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'object' && v !== null && 'from' in v) {
+    return (v.from || '?') + ' – ' + (v.to || '?');
+  }
+  const t = fieldInfo && fieldInfo.field && fieldInfo.field.type;
+  if (t === 'date') return fmtDate(v);
+  if (t === 'datetime-local') return fmtDateTime(v);
+  if (t === 'select' && fieldInfo.field.optionLabels && fieldInfo.field.optionLabels[v]) return fieldInfo.field.optionLabels[v];
+  if (t === 'checkbox') return v ? 'ano' : 'ne';
+  return String(v);
+}
+
+function evaluateAttrFilter(entity, filter) {
+  const fieldInfo = resolveFilterField(filter.aspect, filter.key);
+  if (!fieldInfo) return true;
+  if (filter.aspect !== '__global__') {
+    if (!(entity.aspects || []).some(a => a === filter.aspect || a.toLowerCase() === filter.aspect.toLowerCase())) return false;
+  }
+  const v = entity.attributes && entity.attributes[filter.key];
+  const op = filter.op;
+  const target = filter.value;
+  const t = fieldInfo.field.type;
+  if (op === 'isEmpty') {
+    if (t === 'relation') {
+      const ids = v ? normalizeRelationValue(v) : [];
+      return ids.length === 0;
+    }
+    return v === undefined || v === null || v === '';
+  }
+  if (op === 'isNotEmpty') {
+    if (t === 'relation') {
+      const ids = v ? normalizeRelationValue(v) : [];
+      return ids.length > 0;
+    }
+    return !(v === undefined || v === null || v === '');
+  }
+  if (op === 'isTrue') return v === true || v === 'true';
+  if (op === 'isFalse') return v === false || v === 'false' || v === undefined || v === null || v === '';
+  if (op !== 'notEquals' && op !== 'notContains') {
+    if (v === undefined || v === null || v === '') return false;
+  }
+  const sV = (v === undefined || v === null) ? '' : String(v);
+  const sT = (target === undefined || target === null) ? '' : String(target);
+  switch (op) {
+    case 'equals':       return sV === sT;
+    case 'notEquals':    return sV !== sT;
+    case 'contains':     return sV.toLowerCase().includes(sT.toLowerCase());
+    case 'notContains':  return !sV.toLowerCase().includes(sT.toLowerCase());
+    case 'startsWith':   return sV.toLowerCase().startsWith(sT.toLowerCase());
+    case 'endsWith':     return sV.toLowerCase().endsWith(sT.toLowerCase());
+    case 'greaterThan':  return cmpFilter(t, sV, sT) > 0;
+    case 'lessThan':     return cmpFilter(t, sV, sT) < 0;
+    case 'greaterEqual': return cmpFilter(t, sV, sT) >= 0;
+    case 'lessEqual':    return cmpFilter(t, sV, sT) <= 0;
+    case 'between':
+      if (target && typeof target === 'object' && 'from' in target && 'to' in target) {
+        return cmpFilter(t, sV, String(target.from)) >= 0 && cmpFilter(t, sV, String(target.to)) <= 0;
+      }
+      return false;
+  }
+  return true;
+}
+
+function cmpFilter(type, a, b) {
+  if (type === 'number') {
+    const an = Number(a), bn = Number(b);
+    if (isNaN(an) || isNaN(bn)) return 0;
+    return an - bn;
+  }
+  if (type === 'date' || type === 'datetime-local') {
+    const ad = new Date(a).getTime(), bd = new Date(b).getTime();
+    if (isNaN(ad) || isNaN(bd)) return 0;
+    return ad - bd;
+  }
+  return a.localeCompare(b, 'cs');
+}
+
+function openAttrFilterDialog(editIdx, onUpdate, onApply) {
+  const existing = (editIdx !== null && editIdx !== undefined)
+    ? state.filter.attrFilters[editIdx] : null;
+  const optGroups = [];
+  optGroups.push({
+    label: 'Globální',
+    items: GLOBAL_FIELDS.filter(f => f.type !== 'hidden').map(f => ({
+      aspect: '__global__', key: f.key, label: f.label, type: f.type, optionLabels: f.optionLabels
+    }))
+  });
+  const activeAspects = getActiveAspects();
+  Object.keys(activeAspects).forEach(ak => {
+    const a = activeAspects[ak];
+    const items = (a.fields || []).filter(f => f.type !== 'hidden').map(f => ({
+      aspect: ak, key: f.key, label: f.label, type: f.type, optionLabels: f.optionLabels
+    }));
+    if (items.length > 0) optGroups.push({ label: a.label || ak, items });
+  });
+  const d = document.createElement('dialog');
+  d.id = 'attr-filter-dialog';
+  d.className = 'attr-filter-dialog';
+  d.innerHTML =
+    '<h2>' + (existing ? 'Upravit filtr' : 'Přidat filtr atributu') + '</h2>' +
+    '<form method="dialog">' +
+      '<label for="af-field">Atribut</label>' +
+      '<select id="af-field" required>' +
+        optGroups.map(g => '<optgroup label="' + escapeHtml(g.label) + '">' +
+          g.items.map(it => '<option value="' + escapeHtml(it.aspect + '::' + it.key) + '"' +
+            (existing && existing.aspect === it.aspect && existing.key === it.key ? ' selected' : '') +
+            ' data-type="' + escapeHtml(it.type) + '">' + escapeHtml(it.label) + '</option>').join('') +
+        '</optgroup>').join('') +
+      '</select>' +
+      '<label for="af-op">Operátor</label>' +
+      '<select id="af-op" required></select>' +
+      '<div id="af-value-wrap"></div>' +
+      '<div class="btn-group" style="margin-top:1em;">' +
+        '<button type="button" class="primary" id="af-save">Uložit</button>' +
+        '<button type="button" id="af-cancel">Zrušit</button>' +
+      '</div>' +
+    '</form>';
+  document.body.appendChild(d);
+  const fieldSel = d.querySelector('#af-field');
+  const opSel = d.querySelector('#af-op');
+  const valueWrap = d.querySelector('#af-value-wrap');
+  function renderOps() {
+    const [aspect, key] = (fieldSel.value || '').split('::');
+    const fi = resolveFilterField(aspect, key);
+    const type = fi ? fi.field.type : 'text';
+    const ops = Object.entries(ATTR_FILTER_OPS).filter(([k, def]) => def.types.includes(type));
+    opSel.innerHTML = ops.map(([k, def]) =>
+      '<option value="' + k + '"' + (existing && existing.op === k ? ' selected' : '') + '>' + escapeHtml(def.label) + '</option>'
+    ).join('');
+    renderValue();
+  }
+  function renderValue() {
+    const [aspect, key] = (fieldSel.value || '').split('::');
+    const fi = resolveFilterField(aspect, key);
+    const type = fi ? fi.field.type : 'text';
+    const op = opSel.value;
+    const def = ATTR_FILTER_OPS[op];
+    if (!def || !def.needsValue) { valueWrap.innerHTML = ''; return; }
+    const cur = existing && existing.value !== undefined ? existing.value : '';
+    if (op === 'between') {
+      const inputType = type === 'date' ? 'date' : (type === 'datetime-local' ? 'datetime-local' : 'number');
+      const from = (cur && typeof cur === 'object' && cur.from) ? cur.from : '';
+      const to = (cur && typeof cur === 'object' && cur.to) ? cur.to : '';
+      valueWrap.innerHTML =
+        '<label for="af-from">Od</label>' +
+        '<input type="' + inputType + '" id="af-from" value="' + escapeHtml(String(from)) + '">' +
+        '<label for="af-to">Do</label>' +
+        '<input type="' + inputType + '" id="af-to" value="' + escapeHtml(String(to)) + '">';
+      return;
+    }
+    if (type === 'select' && fi.field.options) {
+      valueWrap.innerHTML =
+        '<label for="af-val">Hodnota</label>' +
+        '<select id="af-val">' +
+          fi.field.options.map(o => '<option value="' + escapeHtml(o) + '"' + (String(cur) === o ? ' selected' : '') + '>' +
+            escapeHtml((fi.field.optionLabels && fi.field.optionLabels[o]) || o) + '</option>').join('') +
+        '</select>';
+    } else if (type === 'checkbox') {
+      valueWrap.innerHTML =
+        '<label for="af-val">Hodnota</label>' +
+        '<select id="af-val">' +
+          '<option value="true"' + (String(cur) === 'true' ? ' selected' : '') + '>zaškrtnuto</option>' +
+          '<option value="false"' + (String(cur) === 'false' ? ' selected' : '') + '>nezaškrtnuto</option>' +
+        '</select>';
+    } else if (type === 'date' || type === 'datetime-local' || type === 'number') {
+      valueWrap.innerHTML =
+        '<label for="af-val">Hodnota</label>' +
+        '<input type="' + type + '" id="af-val" value="' + escapeHtml(String(cur)) + '">';
+    } else {
+      valueWrap.innerHTML =
+        '<label for="af-val">Hodnota</label>' +
+        '<input type="text" id="af-val" value="' + escapeHtml(String(cur)) + '">';
+    }
+  }
+  fieldSel.onchange = renderOps;
+  opSel.onchange = renderValue;
+  renderOps();
+  d.querySelector('#af-save').onclick = () => {
+    const [aspect, key] = fieldSel.value.split('::');
+    const op = opSel.value;
+    const def = ATTR_FILTER_OPS[op];
+    let value = null;
+    if (def && def.needsValue) {
+      if (op === 'between') {
+        const from = d.querySelector('#af-from').value;
+        const to = d.querySelector('#af-to').value;
+        value = { from, to };
+      } else {
+        const valEl = d.querySelector('#af-val');
+        value = valEl ? valEl.value : '';
+      }
+    }
+    const f = { aspect, key, op, value };
+    if (editIdx !== null && editIdx !== undefined) {
+      state.filter.attrFilters[editIdx] = f;
+    } else {
+      state.filter.attrFilters.push(f);
+    }
+    d.close(); d.remove();
+    if (onUpdate) onUpdate();
+    if (onApply) onApply();
+  };
+  d.querySelector('#af-cancel').onclick = () => { d.close(); d.remove(); };
+  d.showModal();
+}
+
 function getAllTags() {
   const set = new Set();
   db.entities.forEach(e => (e.tags || []).forEach(t => set.add(t)));
@@ -4041,17 +4403,30 @@ function searchEntities(query, filters = {}) {
       // Rozdělit na slova podle mezer; každé slovo musí být v entitě obsaženo
       const words = raw.split(/\s+/).filter(w => w.length > 0);
       r = r.filter(e => {
-        const haystack = [
+        // Pro zabezpečené entity: hledáme jen v názvu, tagech, aspektech, NE v body/atributech
+        const isSec = isSecuredEntity(e);
+        // Filtr secured klíčů (interní šifrované hodnoty) – nesmí se hledat v base64 stringech
+        const securedKeys = isSec ? new Set(['secured_payload','secured_salt','secured_iv','secured_iterations']) : null;
+        const haystackParts = [
           e.title || '',
-          e.body || '',
           ...(e.tags || []),
           ...(e.aspects || []).map(a => aspectLabel(a) || a),
-          ...Object.values(e.attributes || {}).map(v => String(v)),
-          // Komentáře
-          ...(e.comments || []).map(c => c.content || ''),
-          // numericId
           e.numericId ? '#' + e.numericId : ''
-        ].join(' ').toLowerCase();
+        ];
+        if (!isSec) {
+          haystackParts.push(e.body || '');
+          haystackParts.push(...Object.values(e.attributes || {}).map(v => String(v)));
+          haystackParts.push(...(e.comments || []).map(c => c.content || ''));
+        } else {
+          // U Secured: jen "veřejné" atributy (NE textarea/code/secured_*)
+          const securedFieldKeys = collectSecuredFieldKeys(e);
+          Object.entries(e.attributes || {}).forEach(([k, v]) => {
+            if (securedKeys.has(k)) return;
+            if (securedFieldKeys.includes(k)) return;
+            haystackParts.push(String(v));
+          });
+        }
+        const haystack = haystackParts.join(' ').toLowerCase();
         return words.every(w => haystack.includes(w));
       });
     }
@@ -4706,6 +5081,25 @@ function attachEntityRowHandlers(root) {
       ev.preventDefault();
       openEntityActionsMenu(tr.dataset.rowEntity, null);
     };
+  });
+  // Klávesová navigace v tabulce entit (šipky nahoru/dolů)
+  // Šipka přesune fokus na první klikatelný odkaz v řádku
+  root.querySelectorAll('tr[data-row-entity]').forEach(tr => {
+    const link = tr.querySelector('a[data-entity]');
+    if (!link) return;
+    link.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return;
+      const allLinks = Array.from(root.querySelectorAll('tr[data-row-entity] a[data-entity]'));
+      const cur = allLinks.indexOf(link);
+      if (cur < 0) return;
+      if (ev.key === 'ArrowDown' && cur < allLinks.length - 1) {
+        allLinks[cur + 1].focus();
+        ev.preventDefault();
+      } else if (ev.key === 'ArrowUp' && cur > 0) {
+        allLinks[cur - 1].focus();
+        ev.preventDefault();
+      }
+    });
   });
 }
 
@@ -5516,6 +5910,14 @@ function renderAll(main) {
             '<option value="' + escapeHtml(k) + '">' + escapeHtml(v) + '</option>').join('')) +
         '</select></div>' +
       '</div>' +
+      '<fieldset class="advanced-filters-fieldset">' +
+        '<legend>Pokročilé filtry atributů</legend>' +
+        '<div id="attr-filters-list" role="group" aria-label="Seznam filtrů atributů"></div>' +
+        '<div class="btn-group" style="margin-top:0.4em;">' +
+          '<button type="button" id="attr-filter-add">+ Přidat filtr atributu</button>' +
+        '</div>' +
+        '<p class="meta">Filtry se kombinují logikou AND (entity musí splňovat všechny).</p>' +
+      '</fieldset>' +
     '</details>' +
     '<div id="all-results"></div>';
   const it = document.getElementById('filter-text'),
@@ -5639,6 +6041,11 @@ function renderAll(main) {
     // Důvěra
     if (scf.value) r = r.filter(e => e.confidence === scf.value);
 
+    // Pokročilé filtry atributů
+    if (Array.isArray(state.filter.attrFilters) && state.filter.attrFilters.length > 0) {
+      r = r.filter(e => state.filter.attrFilters.every(f => evaluateAttrFilter(e, f)));
+    }
+
     return r;
   }
 
@@ -5657,6 +6064,7 @@ function renderAll(main) {
     if (sct.value) n++;
     if (srl.value) n++;
     if (scf.value) n++;
+    if (Array.isArray(state.filter.attrFilters)) n += state.filter.attrFilters.length;
     return n;
   }
 
@@ -5687,13 +6095,51 @@ function renderAll(main) {
     el.onchange = update;
   });
   document.getElementById('filter-reset').onclick = () => {
-    state.filter = { aspect:'', tag:'', text:'', status:'' };
+    state.filter = { aspect:'', tag:'', text:'', status:'', attrFilters: [] };
     it.value = ''; sa.value = ''; st.value = ''; sar.value = 'active';
     sib.value = ''; su.value = ''; sc.value = '';
     sts.value = ''; spr.value = ''; sdl.value = '';
     sct.value = ''; srl.value = ''; scf.value = '';
+    renderAttrFiltersList();
     update();
   };
+  // === POKROČILÉ FILTRY ATRIBUTŮ ===
+  if (!Array.isArray(state.filter.attrFilters)) state.filter.attrFilters = [];
+  function renderAttrFiltersList() {
+    const list = document.getElementById('attr-filters-list');
+    if (!list) return;
+    if (state.filter.attrFilters.length === 0) {
+      list.innerHTML = '<p class="meta">Žádné filtry atributů.</p>';
+      return;
+    }
+    list.innerHTML = state.filter.attrFilters.map((f, i) => {
+      const fieldInfo = resolveFilterField(f.aspect, f.key);
+      const label = fieldInfo ? (fieldInfo.aspectLabel + ' / ' + fieldInfo.field.label) : (f.aspect + '/' + f.key);
+      const opLabel = ATTR_FILTER_OPS[f.op] ? ATTR_FILTER_OPS[f.op].label : f.op;
+      return '<div class="attr-filter-row">' +
+        '<span class="attr-filter-label">' + escapeHtml(label) + '</span>' +
+        ' <span class="attr-filter-op">' + escapeHtml(opLabel) + '</span>' +
+        (f.op !== 'isEmpty' && f.op !== 'isNotEmpty'
+          ? ' <span class="attr-filter-val">' + escapeHtml(formatFilterValue(fieldInfo, f.value)) + '</span>'
+          : '') +
+        ' <button type="button" data-attr-filter-edit="' + i + '" title="Upravit filtr">✏️</button>' +
+        ' <button type="button" class="danger" data-attr-filter-del="' + i + '" title="Smazat filtr">×</button>' +
+      '</div>';
+    }).join('');
+    list.querySelectorAll('[data-attr-filter-del]').forEach(btn => {
+      btn.onclick = () => {
+        state.filter.attrFilters.splice(Number(btn.dataset.attrFilterDel), 1);
+        renderAttrFiltersList();
+        update();
+      };
+    });
+    list.querySelectorAll('[data-attr-filter-edit]').forEach(btn => {
+      btn.onclick = () => openAttrFilterDialog(Number(btn.dataset.attrFilterEdit), renderAttrFiltersList, update);
+    });
+  }
+  const addBtn = document.getElementById('attr-filter-add');
+  if (addBtn) addBtn.onclick = () => openAttrFilterDialog(null, renderAttrFiltersList, update);
+  renderAttrFiltersList();
   const bulkBtn = document.getElementById('bulk-toggle');
   if (bulkBtn) bulkBtn.onclick = () => bulkToggle(!_bulk.active);
   document.getElementById('filter-save').onclick = () => {
@@ -5736,7 +6182,7 @@ function renderTasks(main) {
     '<section aria-labelledby="group-' + k + '" class="day-group"><h3 id="group-' + k + '">' +
     escapeHtml(g.label) + ' (' + g.items.length + ')</h3>' + g.items.map(taskRowHtml).join('') + '</section>'
   ).join('');
-  main.innerHTML = '<h2>Úkoly</h2><p>Celkem ' + tasks.length + ' úkolů.</p>' +
+  main.innerHTML = '<h1>Úkoly</h1><p>Celkem ' + tasks.length + ' úkolů.</p>' +
     (html || '<div class="empty">Žádné úkoly. Vytvořte stiskem „Nová entita“ a aspektem „Úkol“.</div>');
   attachEntityRowHandlers(main);
   main.querySelectorAll('input[type="checkbox"][data-task-id]').forEach(c => {
@@ -5802,13 +6248,13 @@ function renderCalendar(main) {
             '<span class="meta">' + escapeHtml(fmtDateTime(it.iso)) + '</span></div>'
           ).join('') + '</section>';
       }).join('');
-  main.innerHTML = '<h2>Kalendář</h2><p>Vše s datumem (termíny, začátky, cíle, narozeniny).</p>' + html;
+  main.innerHTML = '<h1>Kalendář</h1><p>Vše s datumem (termíny, začátky, cíle, narozeniny).</p>' + html;
   attachEntityRowHandlers(main);
 }
 
 // ==== VIEW: HLEDÁNÍ ====
 function renderSearch(main) {
-  main.innerHTML = '<h2>Hledání</h2>' +
+  main.innerHTML = '<h1>Hledání</h1>' +
     '<label for="search-input">Hledaný text (full-text)</label>' +
     '<input type="search" id="search-input" value="' + escapeHtml(state.filter.text || '') + '" placeholder="Začněte psát…">' +
     '<div id="search-results" style="margin-top:1em;"></div>';
@@ -5932,7 +6378,7 @@ function renderLinksView(main) {
   const typeOpts = Object.entries(RELATION_TYPES).map(([k, v]) =>
     '<option value="' + escapeHtml(k) + '"' + (f.type === k ? ' selected' : '') + '>' + escapeHtml(v.label) + '</option>').join('');
 
-  main.innerHTML = '<h2>Vazby</h2>' +
+  main.innerHTML = '<h1>Vazby</h1>' +
     '<p>Všechny vazby v databázi: strukturované odchozí vazby, relace v atributech, wiki odkazy a include v textu.</p>' +
     '<details open style="margin-bottom:0.7em;"><summary>Filtry</summary>' +
     '<div class="filter-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(14em,1fr));gap:0.5em;margin-top:0.5em;">' +
@@ -6030,7 +6476,7 @@ function renderLinksView(main) {
 // ==== VIEW: TAGY ====
 // ==== KARTA NÁSTROJE ====
 function renderTools(main) {
-  main.innerHTML = '<h2>Nástroje</h2>' +
+  main.innerHTML = '<h1>Nástroje</h1>' +
     '<p>Pokročilé operace nad databází.</p>' +
     '<div class="tools-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(18em,1fr));gap:0.7em;">' +
       '<button type="button" class="tool-card" data-tool="links">' +
@@ -6078,7 +6524,7 @@ function renderRelatedView(main) {
     .map(e => '<option value="' + escapeHtml(e.id) + '"' + (r.sourceId === e.id ? ' selected' : '') + '>' + escapeHtml(getDisplayTitle(e)) + '</option>')
     .join('');
 
-  main.innerHTML = '<h2>Možné souvislosti</h2>' +
+  main.innerHTML = '<h1>Možné souvislosti</h1>' +
     '<p>Najde entity, které mají s vybranou entitou společná slova nebo tagy, ale zatím nejsou propojeny vazbou.</p>' +
     '<div class="toolbar">' +
       '<div><label for="rl-source">Zdrojová entita</label><select id="rl-source"><option value="">— vyberte —</option>' + opts + '</select></div>' +
@@ -6218,7 +6664,7 @@ function renderCommentsView(main) {
   // Seřadit od nejnovějšího
   filtered.sort((a, b) => (b.comment.created_at || '').localeCompare(a.comment.created_at || ''));
 
-  main.innerHTML = '<h2>Komentáře</h2>' +
+  main.innerHTML = '<h1>Komentáře</h1>' +
     '<p>Nejnovější komentáře napříč všemi entitami (' + filtered.length + ' z ' + all.length + ').</p>' +
     '<div class="toolbar" role="search">' +
       '<label for="cv-filter">Hledat v komentářích, autorovi nebo entitě</label>' +
@@ -6255,7 +6701,7 @@ function renderReplaceView(main) {
   if (!state._replace) state._replace = { find: '', replace: '', caseSensitive: false, results: null, applied: false };
   const r = state._replace;
 
-  main.innerHTML = '<h2>Najít / Nahradit napříč entitami</h2>' +
+  main.innerHTML = '<h1>Najít / Nahradit napříč entitami</h1>' +
     '<p>Hromadně najde výskyty textu v názvech, tělech a komentářích entit. Pak je můžete nahradit naráz nebo selektivně.</p>' +
     '<div class="toolbar">' +
       '<div><label for="rp-find">Najít</label><input type="search" id="rp-find" value="' + escapeHtml(r.find) + '"></div>' +
@@ -6419,7 +6865,7 @@ function renderTags(main) {
   const counts = {};
   db.entities.forEach(e => { if (!e.archived) (e.tags || []).forEach(t => counts[t] = (counts[t] || 0) + 1); });
   const tags = Object.entries(counts).sort((a,b) => b[1] - a[1]);
-  main.innerHTML = '<h2>Tagy</h2><p>Celkem ' + tags.length + ' unikátních tagů.</p>' +
+  main.innerHTML = '<h1>Tagy</h1><p>Celkem ' + tags.length + ' unikátních tagů.</p>' +
     (tags.length === 0
       ? '<div class="empty">Zatím žádné tagy.</div>'
       : '<table><caption class="sr-only">Seznam tagů</caption><thead><tr><th scope="col">Tag</th><th scope="col">Počet</th><th scope="col">Akce</th></tr></thead><tbody>' +
@@ -6462,7 +6908,7 @@ function renderTags(main) {
 function renderFlagsView(main) {
   const flags = getFlagEmojis();
   if (flags.length === 0) {
-    main.innerHTML = '<h2>🏳️‍🌈 Příznaky</h2>' +
+    main.innerHTML = '<h1>🏳️‍🌈 Příznaky</h1>' +
       '<p>Žádná příznaková emoji nejsou definována. Přejděte do <a href="#" id="go-flags-settings">Nastavení</a> a zadejte emoji, která chcete sledovat.</p>';
     const a = document.getElementById('go-flags-settings');
     if (a) a.onclick = (ev) => { ev.preventDefault(); setView('settings'); };
@@ -6502,7 +6948,7 @@ function renderFlagsView(main) {
 
 // ==== VIEW: VLASTNÍ POHLEDY ====
 function renderViewsList(main) {
-  main.innerHTML = '<h2>Vlastní pohledy</h2>' +
+  main.innerHTML = '<h1>Vlastní pohledy</h1>' +
     '<p>Uložené dotazy, ke kterým se rychle vracíte. Připnuté pohledy se zobrazí v záhlaví.</p>' +
     (db.savedViews.length === 0
       ? '<div class="empty">Žádné uložené pohledy. Vytvořte filtr v záložce „Vše“ a uložte tlačítkem „Uložit jako pohled“.</div>'
@@ -6559,7 +7005,7 @@ function renderViewsList(main) {
 function renderSavedView(main, id) {
   const v = findSavedView(id);
   if (!v) {
-    main.innerHTML = '<h2>Pohled nenalezen</h2><button id="back-btn">Zpět</button>';
+    main.innerHTML = '<h1>Pohled nenalezen</h1><button id="back-btn">Zpět</button>';
     document.getElementById('back-btn').onclick = goBack;
     return;
   }
@@ -6568,7 +7014,7 @@ function renderSavedView(main, id) {
   if (!state._viewSort[id]) state._viewSort[id] = { key: 'updated', dir: 'desc' };
   const sort = state._viewSort[id];
   r = sortEntitiesBy(r, sort);
-  main.innerHTML = '<h2>' + (v.icon ? escapeHtml(v.icon) + ' ' : '') + escapeHtml(v.name) + '</h2>' +
+  main.innerHTML = '<h1>' + (v.icon ? escapeHtml(v.icon) + ' ' : '') + escapeHtml(v.name) + '</h1>' +
     '<p class="meta">Filtr: ' + escapeHtml(describeFilter(v.filters || {})) + '. Nalezeno ' + r.length + ' entit.</p>' +
     '<div class="btn-group"><button id="back-btn">← Zpět</button> <button id="edit-view">Upravit pohled</button></div>' +
     (r.length === 0 ? '<div class="empty">Žádné výsledky.</div>' : '<div id="view-results">' + renderEntityTableHtml(r, sort) + '</div>');
@@ -6583,7 +7029,7 @@ function renderSavedView(main, id) {
 // ==== VIEW: ŠABLONY ====
 function renderTemplatesList(main) {
   const all = getAllTemplates();
-  main.innerHTML = '<h2>Šablony</h2>' +
+  main.innerHTML = '<h1>Šablony</h1>' +
     '<p>Předdefinované struktury pro typické záznamy. Použitím vytvoříte z šablony novou entitu.</p>' +
     '<div class="btn-group">' +
       '<button id="new-from-template" class="primary">+ Nová ze šablony</button>' +
@@ -6650,7 +7096,7 @@ function renderSettings(main) {
   const aspectCounts = {};
   db.entities.forEach(e => (e.aspects || []).forEach(a => aspectCounts[a] = (aspectCounts[a] || 0) + 1));
 
-  main.innerHTML = '<h2>Nastavení a správa</h2>' +
+  main.innerHTML = '<h1>Nastavení a správa</h1>' +
     '<section aria-labelledby="stats-h"><h3 id="stats-h">Statistiky</h3>' +
     '<div class="stat-grid">' +
       '<div class="stat"><div class="stat-num">' + totalEntities + '</div><div>entit</div></div>' +
@@ -6967,7 +7413,7 @@ function applyTheme() {
 // VIEW: IMPORT / EXPORT DAT (přesunuto z nastavení)
 // =============================================================================
 function renderDataIoView(main) {
-  main.innerHTML = '<h2>Import / Export dat</h2>' +
+  main.innerHTML = '<h1>Import / Export dat</h1>' +
     '<p>Pravidelná záloha celé databáze a export podmnožiny do JSON / XLSX.</p>' +
 
     '<section aria-labelledby="dio-backup-h" style="margin-bottom:1.5em;">' +
@@ -7041,7 +7487,7 @@ function renderDataIoView(main) {
 function renderDetail(main, id) {
   const e = findEntity(id);
   if (!e) {
-    main.innerHTML = '<h2>Entita nenalezena</h2><button id="back-btn">Zpět</button>';
+    main.innerHTML = '<h1>Entita nenalezena</h1><button id="back-btn">Zpět</button>';
     document.getElementById('back-btn').onclick = goBack;
     return;
   }
@@ -7062,7 +7508,29 @@ function renderDetailRead(main, e) {
   const aspects = (e.aspects || []).map(a => '<span class="aspect-badge">' + escapeHtml(aspectLabel(a)) + '</span>').join(' ');
   const tags = (e.tags || []).map(t => '<a href="#" class="tag" data-tag="' + escapeHtml(t) + '">' + escapeHtml(t) + '</a>').join(' ');
   const attrsHtml = renderAttributesReadOnly(e);
-  const bodyHtml = e.body ? '<div class="markdown" id="body-rendered">' + renderMarkdown(e.body, { ctx: { depth: 0, includeStack: new Set(), entity: e } }) + '</div>' : '';
+  // Pro Secured aspect: pokud je entity zamčená, použijeme jen placeholder pro body.
+  // Pokud je odemčená v této session, použijeme plain body z _unlockedSecured.
+  let renderBody = e.body || '';
+  let isSecuredLocked = false;
+  if (isSecuredEntity(e)) {
+    if (isSecuredUnlocked(e.id)) {
+      const unl = getUnlockedSecured(e.id);
+      if (unl && typeof unl.body === 'string') renderBody = unl.body;
+    } else {
+      renderBody = '';
+      isSecuredLocked = true;
+    }
+  }
+  const securedNoticeHtml = isSecuredEntity(e)
+    ? '<section class="secured-notice" aria-label="Stav zabezpečení">' +
+      (isSecuredLocked
+        ? '<p>🔒 <strong>Obsah této entity je zašifrovaný.</strong> Zadejte heslo pro odemčení.</p>' +
+          '<div class="btn-group"><button type="button" id="secured-unlock-btn" class="primary">🔓 Odemknout</button></div>'
+        : '<p>🔓 <strong>Obsah je dočasně odemčen.</strong> Zamkne se automaticky při znovunačtení nebo když na to klepnete.</p>' +
+          '<div class="btn-group"><button type="button" id="secured-lock-btn">🔒 Zamknout</button></div>')
+    + '</section>'
+    : '';
+  const bodyHtml = renderBody ? '<div class="markdown" id="body-rendered">' + renderMarkdown(renderBody, { ctx: { depth: 0, includeStack: new Set(), entity: e } }) + '</div>' : '';
   // Diagram (PlantUML) sekce – pokud má aspekt Diagram
   const isDiagram = (e.aspects || []).includes('Diagram');
   let diagramHtml = '';
@@ -7248,7 +7716,7 @@ function renderDetailRead(main, e) {
   main.innerHTML =
     '<div class="btn-group"><button id="back-btn">← Zpět</button></div>' +
     '<div class="detail-header">' +
-      '<div><h2>' + escapeHtml(getDisplayTitle(e)) + '</h2>' +
+      '<div><h1>' + escapeHtml(getDisplayTitle(e)) + '</h1>' +
         '<div>' + aspects + ' ' + tags + '</div>' +
         taskCheckboxHtml +
         (e.inbox ? '<div class="meta">📥 V Inboxu</div>' : '') +
@@ -7277,6 +7745,7 @@ function renderDetailRead(main, e) {
     diagramHtml +
     planHtml +
     trackerHtml +
+    securedNoticeHtml +
     (bodyHtml ? '<section aria-labelledby="body-h"><h3 id="body-h">Obsah</h3>' +
       '<div class="btn-group" style="margin-bottom:0.5em;">' +
         '<button id="btn-copy-body-source" title="Zkopírovat zdroj (Markdown)">📋 Zkopírovat zdroj</button>' +
@@ -7589,6 +8058,41 @@ function renderDetailRead(main, e) {
   if (state.sectionEditMode) setupSectionEditMode(e);
   attachCommentHandlers(main, e);
   attachRelatedCommentsHandlers(main, e);
+  // Kopírování zdrojového kódu (atribut typu 'code')
+  main.querySelectorAll('button.attr-code-copy').forEach(btn => {
+    btn.onclick = async () => {
+      const pre = document.getElementById(btn.dataset.codeId);
+      if (!pre) return;
+      const text = pre.textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        toast('✓ Zdrojový kód zkopírován (' + text.length + ' znaků).');
+        playSound('save');
+      } catch (e) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;left:-10000px;';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        toast('✓ Zdrojový kód zkopírován.');
+      }
+    };
+  });
+  // Secured aspect: tlačítko pro odemčení/zamčení
+  const unlockBtn = document.getElementById('secured-unlock-btn');
+  if (unlockBtn) {
+    unlockBtn.onclick = () => openSecuredUnlockDialog(e);
+  }
+  const lockBtn = document.getElementById('secured-lock-btn');
+  if (lockBtn) {
+    lockBtn.onclick = () => {
+      lockSecuredEntity(e.id);
+      toast('🔒 Entita zamčena.');
+      render();
+    };
+  }
   // Mazání vazeb v read módu
   main.querySelectorAll('button[data-remove-link-read]').forEach(b => {
     b.onclick = () => {
@@ -7721,7 +8225,7 @@ function renderAttributesReadOnly(e) {
   if (Array.isArray(e.customFields)) {
     e.customFields.forEach(f => { if (!fieldMap.has(f.key)) fieldMap.set(f.key, { ...f, custom: true }); });
   }
-  const customKeys = Object.keys(e.attributes || {}).filter(k => !fieldMap.has(k) && k !== 'encoded' && k !== '_lastEncodedSource' && k !== 'tasks' && k !== 'tracker_history');
+  const customKeys = Object.keys(e.attributes || {}).filter(k => !fieldMap.has(k) && k !== 'encoded' && k !== '_lastEncodedSource' && k !== 'tasks' && k !== 'tracker_history' && !k.startsWith('secured_'));
   let h = '';
   fieldMap.forEach((f, k) => {
     if (f.type === 'hidden') return;
@@ -7759,6 +8263,18 @@ function formatAttrValue(f, v, entityCtx) {
     return '<div class="markdown composed-value">' +
       renderMarkdown(String(v), { ctx: { depth: 1, includeStack: new Set(), disableTaskInteractivity: true, entity: entityCtx } }) +
       '</div>';
+  }
+  // Zdrojový kód: sbalitelný blok s tlačítkem pro kopírování
+  if (f.type === 'code') {
+    const codeId = 'code-' + (f.key || 'x') + '-' + Math.random().toString(36).slice(2, 8);
+    const lines = String(v).split('\n').length;
+    return '<details class="attr-code-details">' +
+      '<summary class="meta">Zobrazit zdrojový kód (' + lines + ' řád' + (lines === 1 ? 'ek' : lines < 5 ? 'ky' : 'ků') + ')</summary>' +
+      '<div class="attr-code-wrap">' +
+        '<button type="button" class="attr-code-copy" data-code-id="' + codeId + '" title="Zkopírovat obsah do schránky">📋 Kopírovat</button>' +
+        '<pre id="' + codeId + '" class="attr-code-pre">' + escapeHtml(String(v)) + '</pre>' +
+      '</div>' +
+    '</details>';
   }
   if (f.type === 'date') return escapeHtml(fmtDate(v));
   if (f.type === 'datetime-local') return escapeHtml(fmtDateTime(v));
@@ -8129,6 +8645,33 @@ function attachAttachmentReadHandlers(root, entity) {
 
 // ----- EDIT MODE -----
 function renderDetailEdit(main, e) {
+  // Pokud je entita Secured a NENÍ odemčena, edit nelze – musí se nejprve odemknout
+  if (isSecuredEntity(e) && !isSecuredUnlocked(e.id)) {
+    main.innerHTML = '<div class="btn-group"><button id="back-btn">← Zpět</button></div>' +
+      '<h1>🔒 ' + escapeHtml(getDisplayTitle(e)) + '</h1>' +
+      '<section class="secured-notice">' +
+        '<p>🔒 Tato entita je zabezpečená a zamčená. Pro úpravu obsahu ji nejprve odemkněte.</p>' +
+        '<div class="btn-group">' +
+          '<button type="button" id="secured-unlock-btn" class="primary">🔓 Odemknout</button>' +
+        '</div>' +
+      '</section>';
+    document.getElementById('back-btn').onclick = () => { state.detailMode = 'read'; render(); };
+    document.getElementById('secured-unlock-btn').onclick = () => openSecuredUnlockDialog(e);
+    return;
+  }
+  // Pokud je odemčená: dočasně přesuneme plain payload do entity pro editaci
+  if (isSecuredEntity(e) && isSecuredUnlocked(e.id)) {
+    const unl = getUnlockedSecured(e.id);
+    if (unl) {
+      if (typeof unl.body === 'string' && !e.body) e.body = unl.body;
+      if (!e.attributes) e.attributes = {};
+      Object.keys(unl.attrs || {}).forEach(k => {
+        if (e.attributes[k] === undefined || e.attributes[k] === '') {
+          e.attributes[k] = unl.attrs[k];
+        }
+      });
+    }
+  }
   const allTags = getAllTags();
   // Zapamatovat původní název při prvním vstupu do edit modu této entity – pro detekci přejmenování
   if (state._editTitleOriginalEntityId !== e.id) {
@@ -8419,6 +8962,46 @@ function renderDetailEdit(main, e) {
         toast('Z textu přidáno ' + cnt + ' anotac' + (cnt === 1 ? 'e' : cnt < 5 ? 'e' : 'í') + '.');
       }
     }
+    // Secured aspect: pokud je entity Secured, znovu zašifrovat obsah
+    if (isSecuredEntity(e)) {
+      const wasUnlocked = isSecuredUnlocked(e.id);
+      const hasExisting = !!(e.attributes && e.attributes.secured_payload);
+      // Před šifrováním si zazálohujeme co budeme šifrovat (pro update unlocked stavu)
+      const securedFields = collectSecuredFieldKeys(e);
+      const payloadSnapshot = { body: e.body || '', attrs: {} };
+      securedFields.forEach(k => { if (e.attributes[k] !== undefined) payloadSnapshot.attrs[k] = e.attributes[k]; });
+      openSecuredSetPasswordDialog(e, async (pwd) => {
+        if (pwd === null && hasExisting) {
+          // Skip – zachovat stávající šifru. Smazat plain text v body a textarea attrs.
+          // Pozor: tady by ale uživatel mohl ztratit změny! Varování.
+          if (!confirm('Opravdu zachovat stávající šifrovaný obsah a zahodit aktuální úpravy obsahu?')) {
+            return;
+          }
+          e.body = '';
+          securedFields.forEach(k => { delete e.attributes[k]; });
+        } else if (pwd) {
+          try {
+            await applySecuredEncryption(e, pwd);
+            // Po šifrování zachováme v paměti odemčený stav
+            _unlockedSecured[e.id] = payloadSnapshot;
+            toast('🔒 Obsah zašifrován.');
+          } catch (err) {
+            alertMsg('Chyba šifrování: ' + (err.message || err));
+            return;
+          }
+        } else {
+          alertMsg('Heslo nezadáno – obsah nelze zašifrovat.');
+          return;
+        }
+        detectAndOfferNamedEntities(e, () => {
+          save();
+          state.detailMode = 'read';
+          render();
+          playSound('save-entity');
+        });
+      });
+      return; // dialog převzal kontrolu
+    }
     // Detekce entit v textu (názvy existujících entit nepoužité jako wiki link)
     detectAndOfferNamedEntities(e, () => {
       save();
@@ -8684,7 +9267,7 @@ function renderEditAttributes(e) {
   if (Array.isArray(e.customFields)) {
     e.customFields.forEach(f => { if (!fm.has(f.key)) fm.set(f.key, { ...f, custom: true }); });
   }
-  const customKeys = Object.keys(e.attributes || {}).filter(k => !fm.has(k) && k !== 'encoded' && k !== '_lastEncodedSource' && k !== 'tasks' && k !== 'tracker_history');
+  const customKeys = Object.keys(e.attributes || {}).filter(k => !fm.has(k) && k !== 'encoded' && k !== '_lastEncodedSource' && k !== 'tasks' && k !== 'tracker_history' && !k.startsWith('secured_'));
   if (fm.size === 0 && customKeys.length === 0) {
     c.innerHTML = '<p class="meta">Žádné atributy. Zaškrtněte aspekt nebo přidejte vlastní.</p>';
     return;
@@ -8846,6 +9429,11 @@ function attributeFieldHtml(e, f) {
   const val = e.attributes && e.attributes[f.key] !== undefined ? e.attributes[f.key] : '';
   const v = escapeHtml(val);
   let inp = '';
+  // Zdrojový kód: prostá textarea bez markdown nástrojů
+  if (f.type === 'code') {
+    inp = '<textarea id="' + id + '" data-attr-key="' + f.key + '" rows="8" class="attr-code-textarea" spellcheck="false">' + v + '</textarea>';
+    return '<div class="attr-row"><div style="flex:1"><label for="' + id + '">' + escapeHtml(f.label) + ' <small>(zdrojový kód)</small></label>' + inp + '</div></div>';
+  }
   if (f.type === 'textarea') {
     // PlantUML zdroj: monospace, vyšší, nedostává Revize/Korektor (technický kód)
     const isSourceField = (f.key === 'source' && (e.aspects || []).includes('Diagram'));
@@ -9795,6 +10383,151 @@ function processQuickAnnotations(entity) {
   return count;
 }
 
+// === SECURED ASPECT — dialogy ===
+function openSecuredUnlockDialog(entity) {
+  const d = document.createElement('dialog');
+  d.id = 'secured-unlock-dialog';
+  d.innerHTML =
+    '<h2>🔒 Odemknout obsah</h2>' +
+    '<p class="meta">Entita „' + escapeHtml(getDisplayTitle(entity)) + '" je zabezpečená. Zadejte heslo:</p>' +
+    '<form method="dialog">' +
+      '<label for="sec-pwd">Heslo</label>' +
+      '<input type="password" id="sec-pwd" autocomplete="current-password" autofocus>' +
+      '<div id="sec-unlock-err" class="meta" style="color:#c33;min-height:1.2em;"></div>' +
+      '<div class="btn-group" style="margin-top:1em;">' +
+        '<button type="button" class="primary" id="sec-unlock-ok">Odemknout</button>' +
+        '<button type="button" id="sec-unlock-cancel">Zrušit</button>' +
+      '</div>' +
+    '</form>';
+  document.body.appendChild(d);
+  const pwdEl = d.querySelector('#sec-pwd');
+  const errEl = d.querySelector('#sec-unlock-err');
+  async function tryUnlock() {
+    const pwd = pwdEl.value;
+    if (!pwd) { errEl.textContent = 'Zadejte heslo.'; return; }
+    try {
+      const attrs = entity.attributes || {};
+      if (!attrs.secured_payload) {
+        errEl.textContent = 'Tato entita zatím nemá zašifrovaný obsah.';
+        return;
+      }
+      const plaintext = await decryptPayload(attrs, pwd);
+      const parsed = JSON.parse(plaintext);
+      _unlockedSecured[entity.id] = parsed;
+      d.close(); d.remove();
+      toast('🔓 Entita odemčena.');
+      playSound('success');
+      render();
+    } catch (err) {
+      errEl.textContent = 'Nesprávné heslo nebo poškozený obsah.';
+      playSound('error');
+    }
+  }
+  d.querySelector('#sec-unlock-ok').onclick = tryUnlock;
+  d.querySelector('#sec-unlock-cancel').onclick = () => { d.close(); d.remove(); };
+  pwdEl.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); tryUnlock(); } };
+  d.showModal();
+  setTimeout(() => pwdEl.focus(), 50);
+}
+
+// Dialog při ukládání zabezpečené entity – zeptá se na heslo a zašifruje obsah.
+// Existing: pokud entity už má secured_payload, je třeba znovu zadat heslo (kontrolou se ověřuje shoda).
+function openSecuredSetPasswordDialog(entity, onSuccess) {
+  const hasExisting = !!(entity.attributes && entity.attributes.secured_payload);
+  const d = document.createElement('dialog');
+  d.id = 'secured-pwd-dialog';
+  d.innerHTML =
+    '<h2>🔒 ' + (hasExisting ? 'Heslo pro zašifrování' : 'Nastavit heslo') + '</h2>' +
+    '<p class="meta">' + (hasExisting
+      ? 'Tato entita už má heslo. Zadejte stejné, kterým chcete znovu zašifrovat (nebo nech prázdné, pokud chceš zachovat starý šifrovaný obsah a měnit jen veřejné atributy).'
+      : 'Nastavte heslo pro tuto entitu. <strong>Heslo se nikde neuloží – pokud ho zapomenete, obsah už nepůjde dešifrovat.</strong>') + '</p>' +
+    '<form method="dialog">' +
+      '<label for="secset-pwd">Heslo</label>' +
+      '<input type="password" id="secset-pwd" autocomplete="new-password">' +
+      (hasExisting ? '' :
+        '<label for="secset-pwd2">Potvrzení hesla</label>' +
+        '<input type="password" id="secset-pwd2" autocomplete="new-password">') +
+      '<div id="secset-err" class="meta" style="color:#c33;min-height:1.2em;"></div>' +
+      '<div class="btn-group" style="margin-top:1em;">' +
+        '<button type="button" class="primary" id="secset-ok">' + (hasExisting ? 'Zašifrovat znovu' : 'Zašifrovat') + '</button>' +
+        (hasExisting ? '<button type="button" id="secset-skip">Přeskočit (zachovat stávající šifru)</button>' : '') +
+        '<button type="button" id="secset-cancel">Zrušit</button>' +
+      '</div>' +
+    '</form>';
+  document.body.appendChild(d);
+  const pwdEl = d.querySelector('#secset-pwd');
+  const pwd2El = d.querySelector('#secset-pwd2');
+  const errEl = d.querySelector('#secset-err');
+  d.querySelector('#secset-ok').onclick = () => {
+    const pwd = pwdEl.value;
+    if (!pwd) { errEl.textContent = 'Zadejte heslo.'; return; }
+    if (!hasExisting && pwd !== (pwd2El ? pwd2El.value : '')) {
+      errEl.textContent = 'Hesla se neshodují.';
+      return;
+    }
+    d.close(); d.remove();
+    onSuccess(pwd);
+  };
+  const skipBtn = d.querySelector('#secset-skip');
+  if (skipBtn) skipBtn.onclick = () => { d.close(); d.remove(); onSuccess(null); };
+  d.querySelector('#secset-cancel').onclick = () => { d.close(); d.remove(); };
+  d.showModal();
+  setTimeout(() => pwdEl.focus(), 50);
+}
+
+// Vytáhne plain payload (body + textarea atributy) z entity, zašifruje pod heslem
+// a uloží do attributes.secured_payload, ... – vymaže plain body a textarea atributy.
+async function applySecuredEncryption(entity, password) {
+  if (!entity.attributes) entity.attributes = {};
+  // Co šifrovat: body + všechny textarea/code atributy
+  const securedFields = collectSecuredFieldKeys(entity);
+  const payload = {
+    body: entity.body || '',
+    attrs: {}
+  };
+  securedFields.forEach(k => {
+    if (entity.attributes[k] !== undefined && entity.attributes[k] !== null && entity.attributes[k] !== '') {
+      payload.attrs[k] = entity.attributes[k];
+    }
+  });
+  const json = JSON.stringify(payload);
+  const enc = await encryptPayload(json, password);
+  // Uložit šifrovaný obsah
+  entity.attributes.secured_payload = enc.secured_payload;
+  entity.attributes.secured_salt = enc.secured_salt;
+  entity.attributes.secured_iv = enc.secured_iv;
+  entity.attributes.secured_iterations = enc.secured_iterations;
+  // Vymazat plain text
+  entity.body = '';
+  securedFields.forEach(k => { delete entity.attributes[k]; });
+}
+
+// Vrací klíče atributů, které se mají šifrovat (textarea a code typu).
+// Název a ostatní (text, number, date, url...) zůstávají v čistém textu.
+function collectSecuredFieldKeys(entity) {
+  const keys = new Set();
+  // Globální textarea pole
+  GLOBAL_FIELDS.forEach(f => {
+    if (f.type === 'textarea' || f.type === 'code') keys.add(f.key);
+  });
+  // Aspekty
+  (entity.aspects || []).forEach(ak => {
+    const a = getAspect(ak);
+    if (!a) return;
+    (a.fields || []).forEach(f => {
+      if (f.type === 'textarea' || f.type === 'code') keys.add(f.key);
+    });
+  });
+  // Vlastní pole na entitě
+  if (Array.isArray(entity.customFields)) {
+    entity.customFields.forEach(f => {
+      if (f.type === 'textarea' || f.type === 'code') keys.add(f.key);
+    });
+  }
+  return Array.from(keys);
+}
+
+
 // Render seznamu anotací pod tělem entity (vždy zobrazený pokud nějaké jsou)
 // Popíše odstavec lidsky: vrátí prefix (Nadpis 1, Odrážka, Úkol…) a očištěný text
 function describeParagraph(text) {
@@ -10691,7 +11424,7 @@ function renderProjectDashboard(project) {
 function renderOutline(main, rootId) {
   const root = findEntity(rootId);
   if (!root) {
-    main.innerHTML = '<h2>Entita nenalezena</h2><button id="back-btn">Zpět</button>';
+    main.innerHTML = '<h1>Entita nenalezena</h1><button id="back-btn">Zpět</button>';
     document.getElementById('back-btn').onclick = goBack;
     return;
   }
@@ -13308,6 +14041,38 @@ function setupNav() {
       if (firstA) { ev.preventDefault(); firstA.focus(); }
     }
   });
+  // Klávesová navigace mezi výsledky hledání (šipky nahoru/dolů)
+  hResults.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp' && ev.key !== 'Escape') return;
+    const links = Array.from(hResults.querySelectorAll('a[data-entity]'));
+    if (links.length === 0) return;
+    if (ev.key === 'Escape') {
+      hResults.hidden = true;
+      hResults.innerHTML = '';
+      hSearch.value = '';
+      hSearch.focus();
+      ev.preventDefault();
+      return;
+    }
+    const cur = links.indexOf(document.activeElement);
+    if (ev.key === 'ArrowDown') {
+      if (cur < 0) links[0].focus();
+      else if (cur < links.length - 1) links[cur + 1].focus();
+      else {
+        // Konec – přeskoč na input
+        hSearch.focus();
+      }
+      ev.preventDefault();
+    } else if (ev.key === 'ArrowUp') {
+      if (cur <= 0) {
+        // Zpět na input
+        hSearch.focus();
+      } else {
+        links[cur - 1].focus();
+      }
+      ev.preventDefault();
+    }
+  });
 
   // Quick dialog tlačítka
   document.getElementById('quick-save').onclick = () => doQuickSave(false);
@@ -13684,8 +14449,8 @@ function caRenderFields() {
       '<div><label>Klíč<input type="text" data-cf-key="' + i + '" value="' + escapeHtml(f.key || '') + '" placeholder="muj_klic"></label></div>' +
       '<div><label>Štítek<input type="text" data-cf-label="' + i + '" value="' + escapeHtml(f.label || '') + '" placeholder="Název pole"></label></div>' +
       '<div><label>Typ<select data-cf-type="' + i + '">' +
-        ['text','textarea','number','date','datetime-local','tel','email','url','checkbox','select','relation','composed','composed_md'].map(t => {
-          const tLabel = t === 'composed' ? 'Složený (text)' : t === 'composed_md' ? 'Složený (Markdown)' : t;
+        ['text','textarea','number','date','datetime-local','tel','email','url','checkbox','select','relation','composed','composed_md','code'].map(t => {
+          const tLabel = t === 'composed' ? 'Složený (text)' : t === 'composed_md' ? 'Složený (Markdown)' : t === 'code' ? 'Zdrojový kód' : t;
           return '<option value="' + t + '"' + (f.type === t ? ' selected' : '') + '>' + tLabel + '</option>';
         }).join('') +
       '</select></label></div>' +
@@ -17144,7 +17909,7 @@ body.viewer-mode .btn-group:has(#d-add-comment) { display: none !important; }
 <body class="viewer-mode">
 <a href="#main" class="skip-link">Přeskočit na hlavní obsah</a>
 <header role="banner">
-  <h1 id="app-title">PIM – osobní znalostní báze</h1>
+  <h2 id="app-title">PIM – osobní znalostní báze</h2>
   <p id="app-description" class="meta" hidden></p>
   <nav aria-label="Hlavní navigace">
     <ul id="main-nav">
@@ -20379,7 +21144,7 @@ function renderTasks(main) {
     '<section aria-labelledby="group-' + k + '" class="day-group"><h3 id="group-' + k + '">' +
     escapeHtml(g.label) + ' (' + g.items.length + ')</h3>' + g.items.map(taskRowHtml).join('') + '</section>'
   ).join('');
-  main.innerHTML = '<h2>Úkoly</h2><p>Celkem ' + tasks.length + ' úkolů.</p>' +
+  main.innerHTML = '<h1>Úkoly</h1><p>Celkem ' + tasks.length + ' úkolů.</p>' +
     (html || '<div class="empty">Žádné úkoly. Vytvořte stiskem „Nová entita“ a aspektem „Úkol“.</div>');
   attachEntityRowHandlers(main);
   main.querySelectorAll('input[type="checkbox"][data-task-id]').forEach(c => {
@@ -20445,13 +21210,13 @@ function renderCalendar(main) {
             '<span class="meta">' + escapeHtml(fmtDateTime(it.iso)) + '</span></div>'
           ).join('') + '</section>';
       }).join('');
-  main.innerHTML = '<h2>Kalendář</h2><p>Vše s datumem (termíny, začátky, cíle, narozeniny).</p>' + html;
+  main.innerHTML = '<h1>Kalendář</h1><p>Vše s datumem (termíny, začátky, cíle, narozeniny).</p>' + html;
   attachEntityRowHandlers(main);
 }
 
 // ==== VIEW: HLEDÁNÍ ====
 function renderSearch(main) {
-  main.innerHTML = '<h2>Hledání</h2>' +
+  main.innerHTML = '<h1>Hledání</h1>' +
     '<label for="search-input">Hledaný text (full-text)</label>' +
     '<input type="search" id="search-input" value="' + escapeHtml(state.filter.text || '') + '" placeholder="Začněte psát…">' +
     '<div id="search-results" style="margin-top:1em;"></div>';
@@ -20574,7 +21339,7 @@ function renderLinksView(main) {
   const typeOpts = Object.entries(RELATION_TYPES).map(([k, v]) =>
     '<option value="' + escapeHtml(k) + '"' + (f.type === k ? ' selected' : '') + '>' + escapeHtml(v.label) + '</option>').join('');
 
-  main.innerHTML = '<h2>Vazby</h2>' +
+  main.innerHTML = '<h1>Vazby</h1>' +
     '<p>Všechny vazby v databázi: strukturované odchozí vazby, relace v atributech, wiki odkazy a include v textu.</p>' +
     '<details open style="margin-bottom:0.7em;"><summary>Filtry</summary>' +
     '<div class="filter-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(14em,1fr));gap:0.5em;margin-top:0.5em;">' +
@@ -20637,7 +21402,7 @@ function renderTags(main) {
   const counts = {};
   db.entities.forEach(e => { if (!e.archived) (e.tags || []).forEach(t => counts[t] = (counts[t] || 0) + 1); });
   const tags = Object.entries(counts).sort((a,b) => b[1] - a[1]);
-  main.innerHTML = '<h2>Tagy</h2><p>Celkem ' + tags.length + ' unikátních tagů.</p>' +
+  main.innerHTML = '<h1>Tagy</h1><p>Celkem ' + tags.length + ' unikátních tagů.</p>' +
     (tags.length === 0
       ? '<div class="empty">Zatím žádné tagy.</div>'
       : '<table><caption class="sr-only">Seznam tagů</caption><thead><tr><th scope="col">Tag</th><th scope="col">Počet</th><th scope="col">Akce</th></tr></thead><tbody>' +
@@ -20678,7 +21443,7 @@ function renderTags(main) {
 
 // ==== VIEW: VLASTNÍ POHLEDY ====
 function renderViewsList(main) {
-  main.innerHTML = '<h2>Vlastní pohledy</h2>' +
+  main.innerHTML = '<h1>Vlastní pohledy</h1>' +
     '<p>Uložené dotazy, ke kterým se rychle vracíte. Připnuté pohledy se zobrazí v záhlaví.</p>' +
     (db.savedViews.length === 0
       ? '<div class="empty">Žádné uložené pohledy. Vytvořte filtr v záložce „Vše“ a uložte tlačítkem „Uložit jako pohled“.</div>'
@@ -20735,7 +21500,7 @@ function renderViewsList(main) {
 function renderSavedView(main, id) {
   const v = findSavedView(id);
   if (!v) {
-    main.innerHTML = '<h2>Pohled nenalezen</h2><button id="back-btn">Zpět</button>';
+    main.innerHTML = '<h1>Pohled nenalezen</h1><button id="back-btn">Zpět</button>';
     document.getElementById('back-btn').onclick = goBack;
     return;
   }
@@ -20744,7 +21509,7 @@ function renderSavedView(main, id) {
   if (!state._viewSort[id]) state._viewSort[id] = { key: 'updated', dir: 'desc' };
   const sort = state._viewSort[id];
   r = sortEntitiesBy(r, sort);
-  main.innerHTML = '<h2>' + (v.icon ? escapeHtml(v.icon) + ' ' : '') + escapeHtml(v.name) + '</h2>' +
+  main.innerHTML = '<h1>' + (v.icon ? escapeHtml(v.icon) + ' ' : '') + escapeHtml(v.name) + '</h1>' +
     '<p class="meta">Filtr: ' + escapeHtml(describeFilter(v.filters || {})) + '. Nalezeno ' + r.length + ' entit.</p>' +
     '<div class="btn-group"><button id="back-btn">← Zpět</button> <button id="edit-view">Upravit pohled</button></div>' +
     (r.length === 0 ? '<div class="empty">Žádné výsledky.</div>' : '<div id="view-results">' + renderEntityTableHtml(r, sort) + '</div>');
@@ -20759,7 +21524,7 @@ function renderSavedView(main, id) {
 // ==== VIEW: ŠABLONY ====
 function renderTemplatesList(main) {
   const all = getAllTemplates();
-  main.innerHTML = '<h2>Šablony</h2>' +
+  main.innerHTML = '<h1>Šablony</h1>' +
     '<p>Předdefinované struktury pro typické záznamy. Použitím vytvoříte z šablony novou entitu.</p>' +
     '<div class="btn-group">' +
       '<button id="new-from-template" class="primary">+ Nová ze šablony</button>' +
@@ -20826,7 +21591,7 @@ function renderSettings(main) {
   const aspectCounts = {};
   db.entities.forEach(e => (e.aspects || []).forEach(a => aspectCounts[a] = (aspectCounts[a] || 0) + 1));
 
-  main.innerHTML = '<h2>Nastavení a správa</h2>' +
+  main.innerHTML = '<h1>Nastavení a správa</h1>' +
     '<section aria-labelledby="stats-h"><h3 id="stats-h">Statistiky</h3>' +
     '<div class="stat-grid">' +
       '<div class="stat"><div class="stat-num">' + totalEntities + '</div><div>entit</div></div>' +
@@ -21149,7 +21914,7 @@ function applyTheme() {
 function renderDetail(main, id) {
   const e = findEntity(id);
   if (!e) {
-    main.innerHTML = '<h2>Entita nenalezena</h2><button id="back-btn">Zpět</button>';
+    main.innerHTML = '<h1>Entita nenalezena</h1><button id="back-btn">Zpět</button>';
     document.getElementById('back-btn').onclick = goBack;
     return;
   }
@@ -21177,7 +21942,7 @@ function renderDetailRead(main, e) {
   main.innerHTML =
     '<div class="btn-group"><button id="back-btn">← Zpět</button></div>' +
     '<div class="detail-header">' +
-      '<div><h2>' + escapeHtml(getDisplayTitle(e)) + '</h2>' +
+      '<div><h1>' + escapeHtml(getDisplayTitle(e)) + '</h1>' +
         '<div>' + aspects + ' ' + tags + '</div>' +
         (e.inbox ? '<div class="meta">📥 V Inboxu</div>' : '') +
         (e.archived ? '<div class="meta">🗄 Archivováno</div>' : '') +
@@ -22804,7 +23569,7 @@ function renderProjectDashboard(project) {
 function renderOutline(main, rootId) {
   const root = findEntity(rootId);
   if (!root) {
-    main.innerHTML = '<h2>Entita nenalezena</h2><button id="back-btn">Zpět</button>';
+    main.innerHTML = '<h1>Entita nenalezena</h1><button id="back-btn">Zpět</button>';
     document.getElementById('back-btn').onclick = goBack;
     return;
   }
