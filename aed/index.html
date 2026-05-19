@@ -910,7 +910,7 @@ function applyTranslations() {
 // ============================================================
 let project = {
   name: 'Nový projekt',
-  regions: []  // [{id, name, audioData (ArrayBuffer), fileName, duration}]
+  regions: []  // [{id, name, file (File), fileName, duration, notes}]
 };
 
 let audioContext = null;
@@ -953,6 +953,36 @@ function formatBytes(bytes) {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' kB';
   return (bytes / 1048576).toFixed(2) + ' MB';
+}
+
+// Object URL cache – File objekty zůstávají na disku, URL je jen odkaz
+const fileObjectUrls = {}; // regionId -> objectURL
+
+function getFileUrl(region) {
+  if (fileObjectUrls[region.id]) return fileObjectUrls[region.id];
+  if (!region.file) return null;
+  const url = URL.createObjectURL(region.file);
+  fileObjectUrls[region.id] = url;
+  return url;
+}
+
+function revokeFileUrl(regionId) {
+  if (fileObjectUrls[regionId]) {
+    URL.revokeObjectURL(fileObjectUrls[regionId]);
+    delete fileObjectUrls[regionId];
+  }
+}
+
+// Zjisti délku audio souboru bez načtení do paměti
+function getAudioDuration(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const audio = new Audio();
+    audio.preload = 'metadata';
+    audio.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(audio.duration); };
+    audio.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Nelze načíst metadata souboru')); };
+    audio.src = url;
+  });
 }
 
 function uid() {
@@ -1007,10 +1037,13 @@ function safeDecode(arrayBuffer, mimeHint) {
 
 async function decodeRegion(region) {
   if (bufferCache[region.id]) return bufferCache[region.id];
+  // Načti soubor z disku jen pokud je potřeba (přehrávání, export, střih)
   const ext = (region.fileName || '').split('.').pop().toLowerCase();
   const mimeMap = { mp3: 'audio/mpeg', ogg: 'audio/ogg', wav: 'audio/wav', m4a: 'audio/mp4', mp4: 'audio/mp4' };
   const mime = mimeMap[ext] || 'audio/mp4';
-  const buf = await safeDecode(region.audioData, mime);
+  if (!region.file && !region.audioData) throw new Error('Region "' + region.name + '" nemá zdrojový soubor.');
+  const source = region.file ? await region.file.arrayBuffer() : region.audioData;
+  const buf = await safeDecode(source, mime);
   bufferCache[region.id] = buf;
   region.duration = buf.duration;
   return buf;
@@ -1022,11 +1055,10 @@ async function decodeRegion(region) {
 async function loadAudioFile(file, insertAfterIndex) {
   setStatus(t('status.loading'));
   try {
-    const arrayBuffer = await file.arrayBuffer();
-    const ext = file.name.split('.').pop().toLowerCase();
-    const mimeMap = { mp3: 'audio/mpeg', ogg: 'audio/ogg', wav: 'audio/wav', m4a: 'audio/mp4', mp4: 'audio/mp4' };
-    const mime = mimeMap[ext] || file.type || 'audio/mp4';
-    const audioBuf = await safeDecode(arrayBuffer, mime);
+    // Délku zjistíme z metadat – soubor NEZAČÍTÁME do paměti
+    const duration = await getAudioDuration(file);
+    if (!isFinite(duration) || duration <= 0) throw new Error('Nelze zjistit délku souboru');
+
     const baseName = file.name.replace(/\.[^.]+$/, '');
     const name = safeName(baseName);
 
@@ -1034,11 +1066,11 @@ async function loadAudioFile(file, insertAfterIndex) {
       id: uid(),
       name,
       fileName: file.name,
-      audioData: arrayBuffer,
-      duration: audioBuf.duration,
+      file,          // File objekt – zůstává na disku
+      duration,
       notes: ''
     };
-    bufferCache[region.id] = audioBuf;
+    // bufferCache se naplní lazy až při prvním přehrání
 
     if (insertAfterIndex == null) {
       project.regions.push(region);
@@ -1204,6 +1236,7 @@ function handleRegionAction(action, id) {
       () => {
         stopPlayback();
         delete bufferCache[region.id];
+        revokeFileUrl(region.id);
         const name = region.name;
         project.regions.splice(idx, 1);
         computeOffsets();
@@ -1568,7 +1601,7 @@ function updateProjectInfo() {
   computeOffsets();
   document.getElementById('info-duration').textContent = formatTime(totalDuration);
   document.getElementById('info-regions').textContent = project.regions.length;
-  const totalBytes = project.regions.reduce((s, r) => s + (r.audioData ? r.audioData.byteLength : 0), 0);
+  const totalBytes = project.regions.reduce((s, r) => s + (r.file ? r.file.size : (r.audioData ? r.audioData.byteLength : 0)), 0);
   document.getElementById('info-size').textContent = formatBytes(totalBytes);
   document.getElementById('info-zip').textContent = lastZipSize ? formatBytes(lastZipSize) : '—';
 }
@@ -1609,11 +1642,24 @@ async function saveProject() {
         notes: r.notes || ''
       }))
     };
-    zip.file('project.json', JSON.stringify(meta, null, 2));
+    // Pro každý region načti data do ZIP
+    // Velké soubory (>200 MB) jsou přeskočeny s varováním
+    const MAX_ZIP_SIZE = 200 * 1024 * 1024; // 200 MB
+    let skipped = [];
     for (const r of project.regions) {
-      zip.file('audio/' + r.id + '_' + r.fileName, r.audioData);
+      const size = r.file ? r.file.size : (r.audioData ? r.audioData.byteLength : 0);
+      if (size > MAX_ZIP_SIZE) {
+        skipped.push(r.name);
+        continue;
+      }
+      const data = r.file ? await r.file.arrayBuffer() : r.audioData;
+      if (data) zip.file('audio/' + r.id + '_' + r.fileName, data);
     }
-    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 9 } });
+    if (skipped.length > 0) {
+      setStatus('Varování: regiony přeskočeny (>200 MB): ' + skipped.join(', '), 'error');
+    }
+    zip.file('project.json', JSON.stringify(meta, null, 2));
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 1 } });
     lastZipSize = blob.size;
     updateProjectInfo();
     downloadBlob(blob, (project.name || 'projekt') + '.aed');
