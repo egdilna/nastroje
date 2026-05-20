@@ -1951,7 +1951,10 @@ function stripMarkdownDoneTasks(md) {
   if (!md) return md;
   return md.split('\n').filter(line => !/^\s*[-*]\s+\[[xX]\]/.test(line)).join('\n');
 }
-function todayIso() { return new Date().toISOString().slice(0,10); }
+function todayIso() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
 function escapeHtml(s) {
   if (s === null || s === undefined) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -1984,7 +1987,17 @@ function fmtBytes(b) {
 }
 function dayKey(iso) {
   const d = new Date(iso); if (isNaN(d.getTime())) return null;
-  return d.toISOString().slice(0,10);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+// Lokální verze dayKey – používá lokální časovou zónu, takže "dnes" se vyhodnocuje
+// správně bez ohledu na to, kdy v lokálním dni se kód spustí.
+function localDayKey(iso) {
+  const d = (iso instanceof Date) ? iso : new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
 }
 function statusMsg(msg) { document.getElementById('status-region').textContent = msg; }
 // Debounced varianta – pro průběžné aktualizace, aby screen reader nehrál ping-pong
@@ -5430,16 +5443,19 @@ function attachMarkdownTaskHandlers(root, entity) {
     };
   });
 }
-// ==== VIEW: INBOX ====
 // ==== VIEW: NÁSTĚNKA (dashboard) ====
 function renderDashboard(main) {
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const todayMs = today.getTime();
-  const todayKey = today.toISOString().slice(0, 10);
+  const todayKey = localDayKey(today);
   function dayKeyOff(days) {
     const d = new Date(today); d.setDate(d.getDate() + days);
-    return d.toISOString().slice(0, 10);
+    return localDayKey(d);
   }
+  const todayHeader = now.toLocaleDateString('cs-CZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+  // Po termínu úkoly
   const overdueTasks = db.entities.filter(e => {
     if (e.archived) return false;
     if (!(e.aspects || []).includes('Task')) return false;
@@ -5447,70 +5463,93 @@ function renderDashboard(main) {
     if (st === 'done' || st === 'cancelled') return false;
     const dl = e.attributes && e.attributes.deadline;
     if (!dl) return false;
-    return dayKey(dl) < todayKey;
+    return localDayKey(dl) < todayKey;
   }).sort((a, b) => (a.attributes.deadline || '').localeCompare(b.attributes.deadline || ''));
+
+  // Dnešní položky
   const todayItems = [];
   db.entities.forEach(e => {
     if (e.archived) return;
     const a = e.attributes || {};
-    if ((e.aspects || []).includes('Task') && a.status !== 'done' && a.status !== 'cancelled' && a.deadline && dayKey(a.deadline) === todayKey) {
-      todayItems.push({ entity: e, kind: 'Úkol', icon: '⏰', iso: a.deadline });
+    if ((e.aspects || []).includes('Task') && a.status !== 'done' && a.status !== 'cancelled' && a.deadline && localDayKey(a.deadline) === todayKey) {
+      todayItems.push({ entity: e, kind: 'Úkol', icon: '⏰', iso: a.deadline, isTask: true });
     }
-    if (a.start && dayKey(a.start) === todayKey) {
+    if (a.start && localDayKey(a.start) === todayKey) {
       todayItems.push({ entity: e, kind: 'Začátek', icon: '▶', iso: a.start });
     }
-    if (a.target_date && dayKey(a.target_date) === todayKey) {
+    if (a.target_date && localDayKey(a.target_date) === todayKey) {
       todayItems.push({ entity: e, kind: 'Cíl', icon: '🎯', iso: a.target_date });
     }
     if (a.birthday) {
       const bd = new Date(a.birthday);
       if (!isNaN(bd.getTime())) {
-        const thisYear = new Date(today.getFullYear(), bd.getMonth(), bd.getDate()).toISOString().slice(0,10);
-        if (thisYear === todayKey) {
-          todayItems.push({ entity: e, kind: 'Narozeniny', icon: '🎂', iso: thisYear });
+        const thisYearKey = localDayKey(new Date(today.getFullYear(), bd.getMonth(), bd.getDate()));
+        if (thisYearKey === todayKey) {
+          todayItems.push({ entity: e, kind: 'Narozeniny', icon: '🎂', iso: thisYearKey });
         }
       }
     }
-    if (a.reminder_at && dayKey(a.reminder_at) === todayKey) {
+    if (a.reminder_at && localDayKey(a.reminder_at) === todayKey) {
       todayItems.push({ entity: e, kind: 'Připomenutí', icon: '🔔', iso: a.reminder_at });
     }
   });
   todayItems.sort((a, b) => (a.iso || '').localeCompare(b.iso || ''));
+
+  // Tento týden (1..7 dnů dopředu)
   const weekItems = [];
   for (let d = 1; d <= 7; d++) {
     const targetKey = dayKeyOff(d);
     db.entities.forEach(e => {
       if (e.archived) return;
       const a = e.attributes || {};
-      if ((e.aspects || []).includes('Task') && a.status !== 'done' && a.status !== 'cancelled' && a.deadline && dayKey(a.deadline) === targetKey) {
-        weekItems.push({ entity: e, kind: 'Úkol', icon: '⏰', iso: a.deadline, day: d });
+      if ((e.aspects || []).includes('Task') && a.status !== 'done' && a.status !== 'cancelled' && a.deadline && localDayKey(a.deadline) === targetKey) {
+        weekItems.push({ entity: e, kind: 'Úkol', icon: '⏰', iso: a.deadline, day: d, isTask: true });
       }
-      if (a.start && dayKey(a.start) === targetKey) {
+      if (a.start && localDayKey(a.start) === targetKey) {
         weekItems.push({ entity: e, kind: 'Začátek', icon: '▶', iso: a.start, day: d });
       }
-      if (a.target_date && dayKey(a.target_date) === targetKey) {
+      if (a.target_date && localDayKey(a.target_date) === targetKey) {
         weekItems.push({ entity: e, kind: 'Cíl', icon: '🎯', iso: a.target_date, day: d });
       }
     });
   }
+
+  // Trackery
   const trackers = db.entities.filter(e =>
     !e.archived && (e.aspects || []).includes('Tracker')
   ).sort((a, b) => (a.title || '').localeCompare(b.title || '', 'cs'));
+
+  // Statistiky
   const inboxCount = db.entities.filter(e => e.inbox && !e.archived).length;
   const allTasks = db.entities.filter(e => !e.archived && (e.aspects || []).includes('Task'));
   const taskDone = allTasks.filter(t => (t.attributes || {}).status === 'done').length;
   const taskTodo = allTasks.filter(t => ['todo','doing','blocked'].includes((t.attributes || {}).status)).length;
   const taskPct = allTasks.length > 0 ? Math.round((taskDone / allTasks.length) * 100) : 0;
+
+  // Nezodpovězené otázky
   const unansweredQuestions = db.entities.filter(e =>
     !e.archived && (e.aspects || []).includes('Question') && !(e.links || []).some(l => l.type === 'answeredBy')
   ).slice(0, 5);
+
+  // Nedávno změněné – top 10
   const recentlyUpdated = [...db.entities].filter(e => !e.archived)
     .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
-    .slice(0, 5);
+    .slice(0, 10);
+
+  // Aktivní projekty (pro select u rychlého úkolu)
+  const activeProjects = db.entities.filter(e =>
+    !e.archived && (e.aspects || []).includes('Project')
+  ).sort((a, b) => (a.title || '').localeCompare(b.title || '', 'cs'));
+
+  // Helper: jeden řádek s úkolem nebo událostí; pokud isTask, ukáže i checkbox pro rychlé hotovo.
   function itemRow(it) {
     const t = it.iso ? new Date(it.iso) : null;
     const timeStr = t && it.iso && it.iso.length > 10 ? t.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '';
+    const checkbox = it.isTask
+      ? '<input type="checkbox" class="dash-task-check" data-entity-id="' + escapeHtml(it.entity.id) + '" aria-label="Označit úkol „' + escapeHtml(getDisplayTitle(it.entity)) + '" jako hotový">'
+      : '';
     return '<div class="dash-item">' +
+      checkbox +
       '<span class="cal-icon">' + (it.icon || '') + '</span>' +
       '<span class="cal-kind">' + escapeHtml(it.kind) + ':</span> ' +
       '<a href="#" data-entity="' + escapeHtml(it.entity.id) + '">' + getDisplayTitleWithBadges(it.entity) + '</a>' +
@@ -5530,31 +5569,40 @@ function renderDashboard(main) {
   main.innerHTML =
     '<h1>🏠 Nástěnka</h1>' +
     '<p class="meta">Pracovní přehled. Co je dnes nutné, co se schyluje a rychlé akce.</p>' +
+
+    // === Rychlé akce ===
     '<section class="dash-quick-actions">' +
       '<h2>⚡ Rychlé akce</h2>' +
       '<div class="dash-quick-grid">' +
         '<div class="dash-quick-card">' +
           '<h3>📥 Rychlé zachycení do Inboxu</h3>' +
+          '<p class="meta">První řádek = název, ostatní = tělo poznámky.</p>' +
           '<form id="dash-quick-form">' +
-            '<label for="dash-quick-title" class="sr-only">Název</label>' +
-            '<input type="text" id="dash-quick-title" placeholder="Co potřebujete zachytit?" required>' +
-            '<label for="dash-quick-body" class="sr-only">Poznámka</label>' +
-            '<textarea id="dash-quick-body" placeholder="Volitelná poznámka..." rows="2"></textarea>' +
+            '<label for="dash-quick-text" class="sr-only">Text zachycení</label>' +
+            '<textarea id="dash-quick-text" placeholder="Název na prvním řádku\nDalší řádky jdou do těla poznámky..." rows="4" required></textarea>' +
             '<button type="submit" class="primary">📥 Zachytit</button>' +
           '</form>' +
         '</div>' +
         '<div class="dash-quick-card">' +
           '<h3>✓ Rychlý úkol</h3>' +
+          '<p class="meta">Jen název. Termín a další zadáš přirozeným textem v detailu.</p>' +
           '<form id="dash-task-form">' +
             '<label for="dash-task-title" class="sr-only">Název úkolu</label>' +
             '<input type="text" id="dash-task-title" placeholder="Název úkolu" required>' +
-            '<label for="dash-task-deadline">Termín (volitelně)</label>' +
-            '<input type="date" id="dash-task-deadline">' +
+            (activeProjects.length > 0
+              ? '<label for="dash-task-project">Součást projektu (volitelně)</label>' +
+                '<select id="dash-task-project">' +
+                  '<option value="">— bez vazby —</option>' +
+                  activeProjects.map(p => '<option value="' + escapeHtml(p.id) + '">' + escapeHtml(getDisplayTitle(p)) + '</option>').join('') +
+                '</select>'
+              : '') +
             '<button type="submit" class="primary">+ Vytvořit úkol</button>' +
           '</form>' +
         '</div>' +
       '</div>' +
     '</section>' +
+
+    // === Statistiky ===
     '<section class="dash-stats">' +
       '<div class="dash-stat-card">' +
         '<div class="dash-stat-num">' + inboxCount + '</div>' +
@@ -5576,6 +5624,8 @@ function renderDashboard(main) {
         '<div class="dash-stat-lbl">🚨 Úkolů po termínu</div>' +
       '</div>' +
     '</section>' +
+
+    // === Po termínu ===
     (overdueTasks.length > 0
       ? '<section class="dash-section dash-overdue">' +
           '<h2>🚨 Po termínu (' + overdueTasks.length + ')</h2>' +
@@ -5583,19 +5633,24 @@ function renderDashboard(main) {
             const dl = e.attributes.deadline;
             const daysLate = Math.round((todayMs - new Date(dl).getTime()) / 86400000);
             return '<div class="dash-item">' +
+              '<input type="checkbox" class="dash-task-check" data-entity-id="' + escapeHtml(e.id) + '" aria-label="Označit úkol „' + escapeHtml(getDisplayTitle(e)) + '" jako hotový">' +
               '<a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a>' +
               ' <span class="meta" style="color:#c33;">— ' + daysLate + ' ' + (daysLate === 1 ? 'den' : daysLate < 5 ? 'dny' : 'dnů') + ' po termínu</span>' +
             '</div>';
           }).join('') +
-          (overdueTasks.length > 10 ? '<p class="meta">... a dalších ' + (overdueTasks.length - 10) + '</p>' : '') +
+          (overdueTasks.length > 10 ? '<p class="meta">… a dalších ' + (overdueTasks.length - 10) + '</p>' : '') +
         '</section>'
       : '') +
+
+    // === Dnes ===
     '<section class="dash-section dash-today">' +
-      '<h2>📌 Dnes</h2>' +
+      '<h2>📌 Dnes — ' + escapeHtml(todayHeader) + '</h2>' +
       (todayItems.length === 0
         ? '<p class="meta">Dnes nic neplánovaného.</p>'
         : todayItems.map(itemRow).join('')) +
     '</section>' +
+
+    // === Tento týden ===
     (weekDays.length > 0
       ? '<section class="dash-section dash-week">' +
           '<h2>📅 Tento týden</h2>' +
@@ -5607,6 +5662,8 @@ function renderDashboard(main) {
           ).join('') +
         '</section>'
       : '') +
+
+    // === Trackery ===
     (trackers.length > 0
       ? '<section class="dash-section dash-trackers">' +
           '<h2>📊 Trackery</h2>' +
@@ -5628,6 +5685,8 @@ function renderDashboard(main) {
           '</div>' +
         '</section>'
       : '') +
+
+    // === Otázky bez odpovědi ===
     (unansweredQuestions.length > 0
       ? '<section class="dash-section">' +
           '<h2>❓ Nezodpovězené otázky (' + unansweredQuestions.length + ')</h2>' +
@@ -5636,8 +5695,10 @@ function renderDashboard(main) {
           ).join('') +
         '</section>'
       : '') +
+
+    // === Nedávno upravené (10) ===
     '<section class="dash-section">' +
-      '<h2>🕐 Nedávno upravené</h2>' +
+      '<h2>🕐 Naposledy změněné (' + recentlyUpdated.length + ')</h2>' +
       recentlyUpdated.map(e =>
         '<div class="dash-item">' +
           '<a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a>' +
@@ -5646,23 +5707,29 @@ function renderDashboard(main) {
       ).join('') +
     '</section>';
 
+  // Handlery
   attachEntityRowHandlers(main);
 
+  // Rychlé zachycení do Inboxu – první řádek = název, zbytek = body
   const inboxForm = document.getElementById('dash-quick-form');
   if (inboxForm) {
     inboxForm.onsubmit = (ev) => {
       ev.preventDefault();
-      const t = document.getElementById('dash-quick-title').value.trim();
-      const b = document.getElementById('dash-quick-body').value.trim();
-      if (!t) return;
+      const ta = document.getElementById('dash-quick-text');
+      const raw = ta.value;
+      if (!raw.trim()) return;
+      const lines = raw.split('\n');
+      const title = (lines.shift() || '').trim();
+      const body = lines.join('\n').replace(/^\n+/, '').trimEnd();
+      if (!title) { toast('Zadejte alespoň název na prvním řádku.'); return; }
       const e = {
         id: 'e-' + uuid(),
         numericId: nextNumericId(),
-        title: t,
+        title: title,
         aspects: [],
         attributes: {},
         tags: [],
-        body: b,
+        body: body,
         links: [],
         attachments: [],
         comments: [],
@@ -5677,36 +5744,57 @@ function renderDashboard(main) {
     };
   }
 
+  // Rychlý úkol – jen název + volitelně projekt
   const taskForm = document.getElementById('dash-task-form');
   if (taskForm) {
     taskForm.onsubmit = (ev) => {
       ev.preventDefault();
       const t = document.getElementById('dash-task-title').value.trim();
-      const dl = document.getElementById('dash-task-deadline').value;
       if (!t) return;
-      const attrs = { status: 'todo' };
-      if (dl) attrs.deadline = dl;
+      const projSel = document.getElementById('dash-task-project');
+      const projId = projSel ? projSel.value : '';
       const e = {
         id: 'e-' + uuid(),
         numericId: nextNumericId(),
         title: t,
         aspects: ['Task'],
-        attributes: attrs,
+        attributes: { status: 'todo' },
         tags: [],
         body: '',
-        links: [],
+        links: projId ? [{ to: projId, type: 'partOf' }] : [],
         attachments: [],
         comments: [],
         created_at: nowIso(),
         updated_at: nowIso()
       };
       addEntity(e);
-      toast('✓ Úkol vytvořen.');
+      const projMsg = projId ? ' (součást „' + getDisplayTitle(findEntity(projId)) + '")' : '';
+      toast('✓ Úkol vytvořen' + projMsg + '.');
       playSound('save-entity');
       render();
     };
   }
 
+  // Zaškrtávátka u úkolů – rychlé hotovo
+  main.querySelectorAll('input.dash-task-check').forEach(cb => {
+    cb.onclick = (ev) => {
+      ev.stopPropagation(); // ať to nepustí click na řádek
+    };
+    cb.onchange = () => {
+      const id = cb.dataset.entityId;
+      const e = findEntity(id);
+      if (!e) return;
+      if (!e.attributes) e.attributes = {};
+      e.attributes.status = cb.checked ? 'done' : 'todo';
+      e.updated_at = nowIso();
+      save();
+      toast(cb.checked ? '✓ Úkol „' + getDisplayTitle(e) + '" označen jako hotový.' : 'Úkol vrácen do nedokončených.');
+      playSound('save');
+      render();
+    };
+  });
+
+  // Skoky na view
   main.querySelectorAll('[data-jump-view]').forEach(a => {
     a.onclick = (ev) => { ev.preventDefault(); setView(a.dataset.jumpView); };
   });
@@ -6579,7 +6667,7 @@ function renderCalendar(main) {
       const o = new Date(it.iso);
       if (!isNaN(o.getTime())) {
         const ty = new Date(); ty.setFullYear(ty.getFullYear(), o.getMonth(), o.getDate());
-        it.iso = ty.toISOString().slice(0,10);
+        it.iso = localDayKey(ty);
       }
     }
   });
@@ -6588,10 +6676,10 @@ function renderCalendar(main) {
   items.forEach(it => { const k = dayKey(it.iso); if (k) (byDay[k] = byDay[k] || []).push(it); });
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const todayKey = dayKey(today.toISOString());
+  const todayKey = localDayKey(today);
   function dayKeyOffset(days) {
     const d = new Date(today); d.setDate(d.getDate() + days);
-    return dayKey(d.toISOString());
+    return localDayKey(d);
   }
   function fmtDayLabel(k) {
     const d = new Date(k);
@@ -19265,7 +19353,7 @@ function fmtBytes(b) {
 }
 function dayKey(iso) {
   const d = new Date(iso); if (isNaN(d.getTime())) return null;
-  return d.toISOString().slice(0,10);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
 function statusMsg(msg) { document.getElementById('status-region').textContent = msg; }
 // Debounced varianta – pro průběžné aktualizace, aby screen reader nehrál ping-pong
@@ -21649,7 +21737,7 @@ function renderCalendar(main) {
       const o = new Date(it.iso);
       if (!isNaN(o.getTime())) {
         const ty = new Date(); ty.setFullYear(ty.getFullYear(), o.getMonth(), o.getDate());
-        it.iso = ty.toISOString().slice(0,10);
+        it.iso = localDayKey(ty);
       }
     }
   });
