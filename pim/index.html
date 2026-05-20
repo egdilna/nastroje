@@ -8459,7 +8459,7 @@ function renderDetailRead(main, e) {
     planHtml +
     trackerHtml +
     securedNoticeHtml +
-    renderEventTasksSection(e, false) +
+    renderEventTasksSection(e) +
     (bodyHtml ? '<section aria-labelledby="body-h"><h3 id="body-h">Obsah</h3>' +
       '<div class="btn-group" style="margin-bottom:0.5em;">' +
         '<button id="btn-copy-body-source" title="Zkopírovat zdroj (Markdown)">📋 Zkopírovat zdroj</button>' +
@@ -9502,7 +9502,7 @@ function renderDetailEdit(main, e) {
       ? '<div id="d-tracker-edit">' + renderTrackerSection(e, 'edit') + '</div>'
       : '') +
 
-    renderEventTasksSection(e, true) +
+    renderEventTasksSection(e) +
 
     '<section><h3>Obsah (Markdown)</h3>' +
       '<label for="d-body" class="sr-only">Tělo</label>' +
@@ -11370,7 +11370,7 @@ function getEventTasksWithRelation(eventEntity) {
   });
   return Array.from(result.entries()).map(([id, rel]) => ({
     entity: findEntity(id), relation: rel
-  })).filter(x => x.entity);
+  })).filter(x => x.entity && (x.entity.aspects || []).includes('Task') && !x.entity.archived);
 }
 
 // Zpětně kompatibilní obal – jen entity
@@ -11414,16 +11414,17 @@ function getLastCommentText(entity) {
   return t.length > 80 ? t.slice(0, 78) + '…' : t;
 }
 
-// Generuje HTML sekci úkolů u schůzky (read mode i edit mode)
-// editable: zda se zobrazí formuláře pro přidání úkolů
-function renderEventTasksSection(entity, editable) {
+// Generuje HTML sekci úkolů u schůzky.
+// Sekce je vždy editovatelná (přidání i odpojení) v read i edit modu – je to praktický nástroj
+// pro sekretářky a projektové vedoucí.
+function renderEventTasksSection(entity) {
   if (!entity || !(entity.aspects || []).includes('Event')) return '';
   const tasksWithRel = getEventTasksWithRelation(entity);
   const tasks = tasksWithRel.map(x => x.entity);
   const relMap = {};
   tasksWithRel.forEach(x => { relMap[x.entity.id] = x.relation; });
   const projects = getEventProjects(entity);
-  const projectTasks = editable ? getProjectTasksNotInEvent(entity, projects) : [];
+  const projectTasks = getProjectTasksNotInEvent(entity, projects);
 
   let html = '<section class="event-tasks-section" aria-labelledby="ev-tasks-h">' +
     '<h3 id="ev-tasks-h">📋 Úkoly schůzky (' + tasks.length + ')</h3>';
@@ -11437,7 +11438,7 @@ function renderEventTasksSection(entity, editable) {
       '<th scope="col">Termín</th>' +
       '<th scope="col">Stav</th>' +
       '<th scope="col">Poslední komentář</th>' +
-      (editable ? '<th scope="col">Akce</th>' : '') +
+      '<th scope="col">Akce</th>' +
     '</tr></thead><tbody>';
     tasks.forEach(t => {
       const a = t.attributes || {};
@@ -11452,45 +11453,46 @@ function renderEventTasksSection(entity, editable) {
       html += '<tr>' +
         '<td title="' + escapeHtml(relLabel) + '"><span aria-label="' + escapeHtml(relLabel) + '">' + relIcon + '</span></td>' +
         '<td><input type="checkbox" class="ev-task-check" data-entity-id="' + escapeHtml(t.id) + '"' + (st === 'done' ? ' checked' : '') + ' aria-label="Označit jako hotový">' +
-          ' <a href="#" data-entity="' + escapeHtml(t.id) + '">' + getDisplayTitleWithBadges(t) + '</a></td>' +
+          ' <a href="#" data-entity="' + escapeHtml(t.id) + '">' + getDisplayTitleWithBadges(t) + '</a>' +
+          openInPanelBtnHtml(t.id) +
+        '</td>' +
         '<td' + dlLate + '>' + escapeHtml(dl) + '</td>' +
         '<td><span class="status-' + escapeHtml(st) + '">' + escapeHtml(stLabel) + '</span></td>' +
         '<td class="meta">' + escapeHtml(lastC) + '</td>' +
-        (editable ? '<td><button type="button" class="danger ev-task-unlink" data-entity-id="' + escapeHtml(t.id) + '" title="Odpojit úkol od schůzky" aria-label="Odpojit úkol">🔗✕</button></td>' : '') +
+        '<td><button type="button" class="danger ev-task-unlink" data-entity-id="' + escapeHtml(t.id) + '" title="Odpojit úkol od schůzky" aria-label="Odpojit úkol">🔗✕</button></td>' +
       '</tr>';
     });
     html += '</tbody></table>';
     html += '<p class="meta" style="margin-top:0.4em;">🔗 součást schůzky · 📎 zmíněn na schůzce · 🔸 historická vazba</p>';
   }
 
-  if (editable) {
-    html += '<div class="event-tasks-add">' +
-      '<details><summary>+ Přidat úkol</summary>' +
-      '<div class="event-tasks-add-grid">' +
-        '<div class="event-tasks-add-card">' +
-          '<h4>✓ Nový úkol</h4>' +
-          (projects.length > 0
-            ? '<p class="meta">Schůzka je součástí ' + projects.length + ' projekt' + (projects.length === 1 ? 'u' : projects.length < 5 ? 'ů' : 'ů') + '. Nový úkol bude <strong>součástí ' + (projects.length === 1 ? 'tohoto projektu' : 'všech těchto projektů') + '</strong> a <strong>zmíněn na schůzce</strong>.</p>'
-            : '<p class="meta">Schůzka není v žádném projektu. Nový úkol bude pouze <strong>zmíněn na schůzce</strong>.</p>') +
-          '<label for="ev-new-task-title">Název úkolu</label>' +
-          '<input type="text" id="ev-new-task-title" placeholder="Co se má udělat (s případným „zítra v 15:00")">' +
-          '<button type="button" class="primary" id="ev-add-new-task">+ Vytvořit úkol</button>' +
-        '</div>' +
-        (projectTasks.length > 0
-          ? '<div class="event-tasks-add-card">' +
-              '<h4>📎 Existující úkol z projektu</h4>' +
-              '<label for="ev-existing-task">Úkol</label>' +
-              '<select id="ev-existing-task">' +
-                '<option value="">— vyberte —</option>' +
-                projectTasks.map(t => '<option value="' + escapeHtml(t.id) + '">' + escapeHtml(getDisplayTitle(t)) + '</option>').join('') +
-              '</select>' +
-              '<button type="button" class="primary" id="ev-add-existing-task">📎 Propojit se schůzkou</button>' +
-            '</div>'
-          : (projects.length > 0 ? '<div class="event-tasks-add-card"><h4>📎 Existující úkol z projektu</h4><p class="meta">Všechny úkoly z projektu jsou už propojeny, nebo projekt nemá žádné úkoly.</p></div>' : '')) +
+  html += '<div class="event-tasks-add">' +
+    '<details><summary>+ Přidat úkol</summary>' +
+    '<div class="event-tasks-add-grid">' +
+      '<div class="event-tasks-add-card">' +
+        '<h4>✓ Nový úkol</h4>' +
+        (projects.length > 0
+          ? '<p class="meta">Schůzka je součástí ' + projects.length + ' projekt' + (projects.length === 1 ? 'u' : projects.length < 5 ? 'ů' : 'ů') + '. Nový úkol bude <strong>součástí ' + (projects.length === 1 ? 'tohoto projektu' : 'všech těchto projektů') + '</strong> a <strong>zmíněn na schůzce</strong>.</p>'
+          : '<p class="meta">Schůzka není v žádném projektu. Nový úkol bude pouze <strong>zmíněn na schůzce</strong>.</p>') +
+        '<label for="ev-new-task-title">Název úkolu</label>' +
+        '<input type="text" id="ev-new-task-title" placeholder="Co se má udělat (s případným „zítra v 15:00")">' +
+        '<button type="button" class="primary" id="ev-add-new-task">+ Vytvořit úkol</button>' +
       '</div>' +
-      '</details>' +
-    '</div>';
-  }
+      (projectTasks.length > 0
+        ? '<div class="event-tasks-add-card">' +
+            '<h4>📎 Existující úkol z projektu</h4>' +
+            '<p class="meta">Schůzka tento úkol zmíní (přidá vazbu „mentions"). Úkol zůstává součástí svého projektu.</p>' +
+            '<label for="ev-existing-task">Úkol</label>' +
+            '<select id="ev-existing-task">' +
+              '<option value="">— vyberte —</option>' +
+              projectTasks.map(t => '<option value="' + escapeHtml(t.id) + '">' + escapeHtml(getDisplayTitle(t)) + '</option>').join('') +
+            '</select>' +
+            '<button type="button" class="primary" id="ev-add-existing-task">📎 Zmínit na schůzce</button>' +
+          '</div>'
+        : (projects.length > 0 ? '<div class="event-tasks-add-card"><h4>📎 Existující úkol z projektu</h4><p class="meta">Všechny úkoly z projektu jsou už zmíněny, nebo projekt nemá žádné další úkoly.</p></div>' : '')) +
+    '</div>' +
+    '</details>' +
+  '</div>';
 
   html += '</section>';
   return html;
@@ -11499,6 +11501,14 @@ function renderEventTasksSection(entity, editable) {
 // Handlery pro Event Tasks sekci (volá se z renderDetail i renderDetailEdit)
 function attachEventTasksHandlers(main, entity) {
   if (!entity || !(entity.aspects || []).includes('Event')) return;
+  // Otevřít v novém panelu (funguje i v edit modu, kde globální handler neexistuje)
+  main.querySelectorAll('.event-tasks-section button.open-in-panel-btn').forEach(b => {
+    b.onclick = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      openEntityInNewPanel(b.dataset.openNewPanel);
+    };
+  });
   // Zaškrtávátko – přepnutí status
   main.querySelectorAll('input.ev-task-check').forEach(cb => {
     cb.onclick = (ev) => ev.stopPropagation();
