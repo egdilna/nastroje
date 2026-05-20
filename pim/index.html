@@ -11610,10 +11610,21 @@ function renderEventTasksSection(entity) {
 
 // Handlery pro Event Tasks sekci (volá se z renderDetail i renderDetailEdit)
 // === EVENT ATTENDEES — sekce účastníků schůzky ===
-// Vrací entity s aspektem Person/Organization, které mají attendedBy vazbu z této schůzky.
+// Vazba "attendedBy" znamená "X účastní se Y", takže patří OSOBĚ jako outgoing
+// (Person.links → [{to: Event, type: 'attendedBy'}]). Na schůzce je tedy "incoming" vazba.
 function getEventAttendees(eventEntity) {
   if (!eventEntity) return [];
+  const eventId = eventEntity.id;
   const ids = new Set();
+  // Incoming vazby z osob/organizací na tuto schůzku
+  db.entities.forEach(p => {
+    if (p.archived) return;
+    if (!((p.aspects || []).includes('Person') || (p.aspects || []).includes('Organization'))) return;
+    (p.links || []).forEach(l => {
+      if (l.to === eventId && l.type === 'attendedBy') ids.add(p.id);
+    });
+  });
+  // Zpětná kompatibilita: starší outgoing vazby ze schůzky (pokud existují)
   (eventEntity.links || []).forEach(l => {
     if (l.type === 'attendedBy') {
       const t = findEntity(l.to);
@@ -11698,13 +11709,19 @@ function attachEventAttendeesHandlers(main, entity) {
       openEntityInNewPanel(b.dataset.openNewPanel);
     };
   });
-  // Odebrat účastníka
+  // Odebrat účastníka (smaže outgoing vazbu z osoby → schůzka)
   main.querySelectorAll('button.ev-att-remove').forEach(b => {
     b.onclick = () => {
       const pid = b.dataset.entityId;
       const p = findEntity(pid);
       if (!p) return;
       confirmDialog('Opravdu odebrat „' + getDisplayTitle(p) + '" z účastníků této schůzky?', () => {
+        // Smazat outgoing vazbu z osoby (nová logika)
+        if (Array.isArray(p.links)) {
+          p.links = p.links.filter(l => !(l.to === entity.id && l.type === 'attendedBy'));
+          p.updated_at = nowIso();
+        }
+        // Smazat i případné starší outgoing vazby ze schůzky (zpětná kompatibilita)
         if (Array.isArray(entity.links)) {
           entity.links = entity.links.filter(l => !(l.to === pid && l.type === 'attendedBy'));
         }
@@ -11715,7 +11732,7 @@ function attachEventAttendeesHandlers(main, entity) {
       });
     };
   });
-  // Přidat vybrané jako účastníky
+  // Přidat vybrané jako účastníky (outgoing vazba z každé osoby/organizace → schůzka)
   const addBtn = document.getElementById('ev-att-add');
   if (addBtn) {
     addBtn.onclick = () => {
@@ -11723,15 +11740,18 @@ function attachEventAttendeesHandlers(main, entity) {
       if (!sel) return;
       const selectedIds = Array.from(sel.selectedOptions).map(o => o.value).filter(Boolean);
       if (selectedIds.length === 0) { alertMsg('Vyberte alespoň jednu osobu nebo organizaci.'); return; }
-      if (!Array.isArray(entity.links)) entity.links = [];
       let added = 0;
       const names = [];
       selectedIds.forEach(pid => {
-        if (entity.links.some(l => l.to === pid && l.type === 'attendedBy')) return;
-        entity.links.push({ to: pid, type: 'attendedBy' });
-        added++;
         const p = findEntity(pid);
-        if (p) names.push('„' + getDisplayTitle(p) + '"');
+        if (!p) return;
+        if (!Array.isArray(p.links)) p.links = [];
+        // Idempotentní – pokud už vazba existuje, nepřidávat znovu
+        if (p.links.some(l => l.to === entity.id && l.type === 'attendedBy')) return;
+        p.links.push({ to: entity.id, type: 'attendedBy' });
+        p.updated_at = nowIso();
+        added++;
+        names.push('„' + getDisplayTitle(p) + '"');
       });
       if (added === 0) { toast('Všichni vybraní jsou už účastníky.'); return; }
       entity.updated_at = nowIso();
@@ -14936,11 +14956,12 @@ function suggestRelation(currentEntity, newAspect) {
   if (has('Person') && newAspect === 'Place')
     return { type: 'livesIn', direction: 'current-to-new' };
   // Event + Person → attendedBy (new Person attends current Event)
+  // Vazba "attendedBy" znamená "X účastní se Y", takže patří OSOBĚ jako outgoing.
   if (has('Event') && newAspect === 'Person')
-    return { type: 'attendedBy', direction: 'current-to-new' };
-  // Person + Event → attendedBy
-  if (has('Person') && newAspect === 'Event')
     return { type: 'attendedBy', direction: 'new-to-current' };
+  // Person + Event → attendedBy (current Person attends new Event)
+  if (has('Person') && newAspect === 'Event')
+    return { type: 'attendedBy', direction: 'current-to-new' };
   // Reference + cokoli (Note, Idea) → cites (current cites new reference)
   if (newAspect === 'Reference')
     return { type: 'cites', direction: 'current-to-new' };
@@ -25496,11 +25517,12 @@ function suggestRelation(currentEntity, newAspect) {
   if (has('Person') && newAspect === 'Place')
     return { type: 'livesIn', direction: 'current-to-new' };
   // Event + Person → attendedBy (new Person attends current Event)
+  // Vazba "attendedBy" znamená "X účastní se Y", takže patří OSOBĚ jako outgoing.
   if (has('Event') && newAspect === 'Person')
-    return { type: 'attendedBy', direction: 'current-to-new' };
-  // Person + Event → attendedBy
-  if (has('Person') && newAspect === 'Event')
     return { type: 'attendedBy', direction: 'new-to-current' };
+  // Person + Event → attendedBy (current Person attends new Event)
+  if (has('Person') && newAspect === 'Event')
+    return { type: 'attendedBy', direction: 'current-to-new' };
   // Reference + cokoli (Note, Idea) → cites (current cites new reference)
   if (newAspect === 'Reference')
     return { type: 'cites', direction: 'current-to-new' };
