@@ -550,6 +550,26 @@ body.theme-dark .dash-tracker-value { color: #5e9; }
 body.theme-dark .dash-tracker-bar { background: #333; }
 .dash-tracker-fill { height: 100%; background: #0a7; transition: width 0.3s; }
 body.theme-dark .dash-tracker-fill { background: #5e9; }
+/* Event attendees a tasks sekce */
+.event-attendees-section, .event-tasks-section { margin: 1em 0; padding: 0.6em 0.8em; background: #f3f8f5; border-left: 4px solid #0a7; border-radius: 0 4px 4px 0; }
+body.theme-dark .event-attendees-section, body.theme-dark .event-tasks-section { background: #1a2520; border-left-color: #5e9; }
+.event-attendees-section h3, .event-tasks-section h3 { margin-top: 0; }
+.ev-attendee-list { list-style: none; padding: 0; margin: 0.4em 0; }
+.ev-attendee-list li { padding: 0.3em 0.4em; margin: 0.15em 0; border-radius: 3px; display: flex; align-items: center; flex-wrap: wrap; gap: 0.3em; }
+.ev-attendee-list li:hover { background: rgba(0,0,0,0.04); }
+body.theme-dark .ev-attendee-list li:hover { background: rgba(255,255,255,0.05); }
+.ev-att-icon { display: inline-block; width: 1.4em; }
+.ev-att-remove { padding: 0.1em 0.5em; font-size: 0.85em; margin-left: auto; }
+.ev-attendees-add { margin-top: 0.5em; }
+.event-tasks-table { width: 100%; border-collapse: collapse; margin: 0.4em 0; }
+.event-tasks-table th, .event-tasks-table td { padding: 0.3em 0.5em; text-align: left; border-bottom: 1px solid #ddd; }
+body.theme-dark .event-tasks-table th, body.theme-dark .event-tasks-table td { border-bottom-color: #444; }
+.event-tasks-table td.dl-late { color: #c33; font-weight: 500; }
+.event-tasks-add-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1em; margin: 0.5em 0; }
+.event-tasks-add-card { padding: 0.7em 0.9em; background: #fff; border-radius: 4px; border: 1px solid #ccc; }
+body.theme-dark .event-tasks-add-card { background: #1a1a1a; border-color: #444; }
+.event-tasks-add-card h4 { margin-top: 0; font-size: 1em; }
+.event-tasks-add-card input, .event-tasks-add-card select { width: 100%; box-sizing: border-box; margin: 0.2em 0; }
 /* URL field s tlačítky pro kopírování */
 .url-field { display: inline-flex; align-items: center; gap: 0.4em; flex-wrap: wrap; }
 .url-copy-btn, .url-copy-md-btn { padding: 0.15em 0.5em; font-size: 0.85em; background: #fff; border: 1px solid #ccc; border-radius: 3px; cursor: pointer; line-height: 1.4; }
@@ -8459,6 +8479,7 @@ function renderDetailRead(main, e) {
     planHtml +
     trackerHtml +
     securedNoticeHtml +
+    renderEventAttendeesSection(e) +
     renderEventTasksSection(e) +
     (bodyHtml ? '<section aria-labelledby="body-h"><h3 id="body-h">Obsah</h3>' +
       '<div class="btn-group" style="margin-bottom:0.5em;">' +
@@ -8769,6 +8790,7 @@ function renderDetailRead(main, e) {
   // Provázat citáty z komentářů s textem těla
   setupCommentQuoteLinking(e);
   setupAnnotations(e);
+  attachEventAttendeesHandlers(main, e);
   attachEventTasksHandlers(main, e);
   if (state.sectionEditMode) setupSectionEditMode(e);
   attachCommentHandlers(main, e);
@@ -9502,6 +9524,7 @@ function renderDetailEdit(main, e) {
       ? '<div id="d-tracker-edit">' + renderTrackerSection(e, 'edit') + '</div>'
       : '') +
 
+    renderEventAttendeesSection(e) +
     renderEventTasksSection(e) +
 
     '<section><h3>Obsah (Markdown)</h3>' +
@@ -9776,6 +9799,7 @@ function renderDetailEdit(main, e) {
   document.getElementById('btn-focus-edit').onclick = () => { state.focus = !state.focus; render(); };
 
   // Event tasks sekce (editovatelná v edit modu)
+  attachEventAttendeesHandlers(main, e);
   attachEventTasksHandlers(main, e);
 
   // Při vstupu do edit modu automaticky focus do názvu (jen pokud focus není v žádném dalším poli)
@@ -11499,6 +11523,140 @@ function renderEventTasksSection(entity) {
 }
 
 // Handlery pro Event Tasks sekci (volá se z renderDetail i renderDetailEdit)
+// === EVENT ATTENDEES — sekce účastníků schůzky ===
+// Vrací entity s aspektem Person/Organization, které mají attendedBy vazbu z této schůzky.
+function getEventAttendees(eventEntity) {
+  if (!eventEntity) return [];
+  const ids = new Set();
+  (eventEntity.links || []).forEach(l => {
+    if (l.type === 'attendedBy') {
+      const t = findEntity(l.to);
+      if (t && !t.archived && ((t.aspects || []).includes('Person') || (t.aspects || []).includes('Organization'))) {
+        ids.add(t.id);
+      }
+    }
+  });
+  return Array.from(ids).map(id => findEntity(id)).filter(Boolean)
+    .sort((a, b) => (a.title || '').localeCompare(b.title || '', 'cs'));
+}
+
+// Vrací osoby/organizace, které nejsou aktuálně účastníky
+function getNonAttendees(eventEntity) {
+  if (!eventEntity) return [];
+  const attendeeIds = new Set(getEventAttendees(eventEntity).map(e => e.id));
+  return db.entities.filter(e => {
+    if (e.archived) return false;
+    if (!((e.aspects || []).includes('Person') || (e.aspects || []).includes('Organization'))) return false;
+    return !attendeeIds.has(e.id);
+  }).sort((a, b) => (a.title || '').localeCompare(b.title || '', 'cs'));
+}
+
+// HTML sekce účastníků (vždy editovatelná v read i edit modu)
+function renderEventAttendeesSection(entity) {
+  if (!entity || !(entity.aspects || []).includes('Event')) return '';
+  const attendees = getEventAttendees(entity);
+  const candidates = getNonAttendees(entity);
+
+  let html = '<section class="event-attendees-section" aria-labelledby="ev-att-h">' +
+    '<h3 id="ev-att-h">👥 Účastníci schůzky (' + attendees.length + ')</h3>';
+
+  if (attendees.length === 0) {
+    html += '<p class="meta">Zatím žádní účastníci.</p>';
+  } else {
+    html += '<ul class="ev-attendee-list">' +
+      attendees.map(p => {
+        const isOrg = (p.aspects || []).includes('Organization');
+        const icon = isOrg ? '🏢' : '👤';
+        return '<li>' +
+          '<span class="ev-att-icon" aria-hidden="true">' + icon + '</span>' +
+          ' <a href="#" data-entity="' + escapeHtml(p.id) + '">' + getDisplayTitleWithBadges(p) + '</a>' +
+          openInPanelBtnHtml(p.id) +
+          ' <button type="button" class="danger ev-att-remove" data-entity-id="' + escapeHtml(p.id) + '" title="Odebrat účastníka (smaže vazbu „účastní se")" aria-label="Odebrat účastníka">✕</button>' +
+        '</li>';
+      }).join('') +
+    '</ul>';
+  }
+
+  if (candidates.length > 0) {
+    html += '<div class="ev-attendees-add">' +
+      '<details><summary>+ Přidat účastníky</summary>' +
+        '<p class="meta">Vyberte jednu nebo více osob/organizací. Stiskněte Ctrl/Cmd pro vícenásobný výběr.</p>' +
+        '<label for="ev-att-select" class="sr-only">Vyberte účastníky</label>' +
+        '<select id="ev-att-select" multiple size="' + Math.min(10, Math.max(4, candidates.length)) + '" style="width:100%;max-width:30em;">' +
+          candidates.map(p => {
+            const isOrg = (p.aspects || []).includes('Organization');
+            const prefix = isOrg ? '🏢 ' : '👤 ';
+            return '<option value="' + escapeHtml(p.id) + '">' + escapeHtml(prefix + getDisplayTitle(p)) + '</option>';
+          }).join('') +
+        '</select>' +
+        '<div class="btn-group" style="margin-top:0.5em;">' +
+          '<button type="button" class="primary" id="ev-att-add">+ Přidat vybrané jako účastníky</button>' +
+        '</div>' +
+      '</details>' +
+    '</div>';
+  } else if (attendees.length === 0) {
+    html += '<p class="meta">V databázi zatím nejsou žádné osoby ani organizace. Vytvořte je nejprve a poté je sem přiřaďte jako účastníky.</p>';
+  }
+
+  html += '</section>';
+  return html;
+}
+
+function attachEventAttendeesHandlers(main, entity) {
+  if (!entity || !(entity.aspects || []).includes('Event')) return;
+  // Otevřít účastníka v novém panelu
+  main.querySelectorAll('.event-attendees-section button.open-in-panel-btn').forEach(b => {
+    b.onclick = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      openEntityInNewPanel(b.dataset.openNewPanel);
+    };
+  });
+  // Odebrat účastníka
+  main.querySelectorAll('button.ev-att-remove').forEach(b => {
+    b.onclick = () => {
+      const pid = b.dataset.entityId;
+      const p = findEntity(pid);
+      if (!p) return;
+      confirmDialog('Opravdu odebrat „' + getDisplayTitle(p) + '" z účastníků této schůzky?', () => {
+        if (Array.isArray(entity.links)) {
+          entity.links = entity.links.filter(l => !(l.to === pid && l.type === 'attendedBy'));
+        }
+        entity.updated_at = nowIso();
+        save();
+        toast('Účastník odebrán.');
+        render();
+      });
+    };
+  });
+  // Přidat vybrané jako účastníky
+  const addBtn = document.getElementById('ev-att-add');
+  if (addBtn) {
+    addBtn.onclick = () => {
+      const sel = document.getElementById('ev-att-select');
+      if (!sel) return;
+      const selectedIds = Array.from(sel.selectedOptions).map(o => o.value).filter(Boolean);
+      if (selectedIds.length === 0) { alertMsg('Vyberte alespoň jednu osobu nebo organizaci.'); return; }
+      if (!Array.isArray(entity.links)) entity.links = [];
+      let added = 0;
+      const names = [];
+      selectedIds.forEach(pid => {
+        if (entity.links.some(l => l.to === pid && l.type === 'attendedBy')) return;
+        entity.links.push({ to: pid, type: 'attendedBy' });
+        added++;
+        const p = findEntity(pid);
+        if (p) names.push('„' + getDisplayTitle(p) + '"');
+      });
+      if (added === 0) { toast('Všichni vybraní jsou už účastníky.'); return; }
+      entity.updated_at = nowIso();
+      save();
+      toast('👥 Přidáno ' + added + ' účastník' + (added === 1 ? '' : (added < 5 ? 'ci' : 'ků')) + ': ' + names.join(', ') + '.');
+      playSound('save');
+      render();
+    };
+  }
+}
+
 function attachEventTasksHandlers(main, entity) {
   if (!entity || !(entity.aspects || []).includes('Event')) return;
   // Otevřít v novém panelu (funguje i v edit modu, kde globální handler neexistuje)
