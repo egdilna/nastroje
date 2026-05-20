@@ -576,6 +576,13 @@ body.theme-dark .event-tasks-add-card { background: #1a1a1a; border-color: #444;
 .url-copy-btn:hover, .url-copy-md-btn:hover { background: #e8f0fa; border-color: #99c; }
 body.theme-dark .url-copy-btn, body.theme-dark .url-copy-md-btn { background: #2a2a2a; border-color: #555; color: #ddd; }
 body.theme-dark .url-copy-btn:hover, body.theme-dark .url-copy-md-btn:hover { background: #2a3950; border-color: #779; }
+/* Upozornění na duplicitní URL v jiných entitách */
+.url-dup-warning { display: block; margin-top: 0.3em; padding: 0.3em 0.6em; background: #fff8e6; border-left: 3px solid #d4a000; border-radius: 0 3px 3px 0; font-size: 0.92em; }
+body.theme-dark .url-dup-warning { background: #2a2511; border-left-color: #d4a000; }
+.url-dup-warning summary { cursor: pointer; color: #8a6500; font-weight: 500; }
+body.theme-dark .url-dup-warning summary { color: #e8c860; }
+.url-dup-warning ul { list-style: none; padding: 0.3em 0 0 0.5em; margin: 0; }
+.url-dup-warning li { padding: 0.15em 0; }
 /* Editor tabulky (section-edit režim) */
 .table-edit-btn { display: inline-block; margin: 0.3em 0 0.8em; }
 .table-editor-dialog { width: 95vw; max-width: 1100px; }
@@ -2776,6 +2783,73 @@ function newEntity(o = {}) {
   }, o);
 }
 function findEntity(id) { return db.entities.find(e => e.id === id); }
+
+// === HLEDÁNÍ DUPLICITNÍCH URL ===
+// Najde všechny entity, kde se zadané URL vyskytuje v atributu typu 'url',
+// kromě vyloučené (currentEntityId + currentAttrKey).
+// Vrací: [{ entity, attrKey, attrLabel }]
+function _normalizeUrl(u) {
+  if (!u) return '';
+  let s = String(u).trim();
+  // Odstranit fragment (#) — duplicitní URL se zpravidla počítají bez kotvy
+  s = s.replace(/#.*$/, '');
+  // Odstranit všechna závěrečná lomítka (i u "host-only" URL)
+  s = s.replace(/\/+$/, '');
+  // Lowercase pro scheme + host (cesta zůstává case-sensitive, query taky)
+  const m = s.match(/^(https?:\/\/)([^\/?#]+)(.*)$/i);
+  if (m) s = m[1].toLowerCase() + m[2].toLowerCase() + m[3];
+  return s;
+}
+function findUrlDuplicates(url, currentEntityId, currentAttrKey) {
+  const target = _normalizeUrl(url);
+  if (!target) return [];
+  // Posbírat všechna url pole napříč schématy
+  const aspectUrlFields = {}; // aspectKey → [{key,label}]
+  Object.keys(ASPECTS).forEach(ak => {
+    aspectUrlFields[ak] = (ASPECTS[ak].fields || [])
+      .filter(f => f.type === 'url').map(f => ({ key: f.key, label: f.label }));
+  });
+  ((db && db.customAspects) || []).forEach(ca => {
+    aspectUrlFields[ca.key] = (ca.fields || [])
+      .filter(f => f.type === 'url').map(f => ({ key: f.key, label: f.label }));
+  });
+  const globalUrlFields = (typeof GLOBAL_FIELDS !== 'undefined' ? GLOBAL_FIELDS : [])
+    .filter(f => f.type === 'url').map(f => ({ key: f.key, label: f.label }));
+
+  const found = [];
+  const seenKeys = new Set(); // entityId::attrKey, aby se neduplikovalo (pole ve dvou aspektech)
+  db.entities.forEach(e => {
+    if (e.archived) return;
+    const attrs = e.attributes || {};
+    // Global url pole
+    globalUrlFields.forEach(f => {
+      const v = attrs[f.key];
+      if (!v) return;
+      if (_normalizeUrl(v) !== target) return;
+      if (e.id === currentEntityId && f.key === currentAttrKey) return;
+      const k = e.id + '::' + f.key;
+      if (seenKeys.has(k)) return;
+      seenKeys.add(k);
+      found.push({ entity: e, attrKey: f.key, attrLabel: f.label });
+    });
+    // Aspect url pole
+    (e.aspects || []).forEach(ak => {
+      const fields = aspectUrlFields[ak] || [];
+      fields.forEach(f => {
+        const v = attrs[f.key];
+        if (!v) return;
+        if (_normalizeUrl(v) !== target) return;
+        if (e.id === currentEntityId && f.key === currentAttrKey) return;
+        const k = e.id + '::' + f.key;
+        if (seenKeys.has(k)) return;
+        seenKeys.add(k);
+        found.push({ entity: e, attrKey: f.key, attrLabel: f.label });
+      });
+    });
+  });
+  return found;
+}
+
 function findEntityByNumericId(n) {
   if (typeof n === 'string') n = Number(n);
   if (!Number.isFinite(n)) return null;
@@ -9055,11 +9129,23 @@ function formatAttrValue(f, v, entityCtx) {
   if (f.type === 'date') return escapeHtml(fmtDate(v));
   if (f.type === 'datetime-local') return escapeHtml(fmtDateTime(v));
   if (f.type === 'url') {
-    return '<span class="url-field">' +
+    let html = '<span class="url-field">' +
       '<a href="' + escapeHtml(v) + '" target="_blank" rel="noopener">' + escapeHtml(v) + '</a>' +
       ' <button type="button" class="url-copy-btn" data-url-copy="' + escapeHtml(v) + '" title="Zkopírovat URL do schránky" aria-label="Zkopírovat URL">📋 URL</button>' +
       ' <button type="button" class="url-copy-md-btn" data-url-copy="' + escapeHtml(v) + '" data-title-copy="' + escapeHtml(entityCtx ? getDisplayTitle(entityCtx) : v) + '" title="Zkopírovat jako Markdown odkaz [Název](URL)" aria-label="Zkopírovat Markdown odkaz">📋 Markdown</button>' +
     '</span>';
+    // Upozornění na duplicitní URL v jiných entitách
+    const dups = findUrlDuplicates(v, entityCtx ? entityCtx.id : null, f.key);
+    if (dups.length > 0) {
+      html += '<details class="url-dup-warning">' +
+        '<summary>⚠ Stejné URL je v ' + dups.length + ' jin' + (dups.length === 1 ? 'é entitě' : 'ých entitách') + ' — rozbalit</summary>' +
+        '<ul>' + dups.map(d =>
+          '<li><a href="#" data-entity="' + escapeHtml(d.entity.id) + '">' + escapeHtml(getDisplayTitle(d.entity)) + '</a>' +
+          ' <span class="meta">— atribut „' + escapeHtml(d.attrLabel) + '"</span></li>'
+        ).join('') + '</ul>' +
+      '</details>';
+    }
+    return html;
   }
   if (f.type === 'email') return '<a href="mailto:' + escapeHtml(v) + '">' + escapeHtml(v) + '</a>';
   if (f.type === 'tel') return '<a href="tel:' + escapeHtml(v) + '">' + escapeHtml(v) + '</a>';
