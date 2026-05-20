@@ -11590,16 +11590,12 @@ function renderEventTasksSection(entity) {
       '</div>' +
       (projectTasks.length > 0
         ? '<div class="event-tasks-add-card">' +
-            '<h4>📎 Existující úkol z projektu</h4>' +
-            '<p class="meta">Schůzka tento úkol zmíní (přidá vazbu „mentions"). Úkol zůstává součástí svého projektu.</p>' +
-            '<label for="ev-existing-task">Úkol</label>' +
-            '<select id="ev-existing-task">' +
-              '<option value="">— vyberte —</option>' +
-              projectTasks.map(t => '<option value="' + escapeHtml(t.id) + '">' + escapeHtml(getDisplayTitle(t)) + '</option>').join('') +
-            '</select>' +
-            '<button type="button" class="primary" id="ev-add-existing-task">📎 Zmínit na schůzce</button>' +
+            '<h4>📎 Existující úkoly z projektu</h4>' +
+            '<p class="meta">Schůzka tyto úkoly zmíní (přidá vazbu „mentions"). Úkoly zůstávají součástí svého projektu.</p>' +
+            '<p class="meta">' + projectTasks.length + ' nepropojen' + (projectTasks.length === 1 ? 'ý úkol' : (projectTasks.length < 5 ? 'é úkoly' : 'ých úkolů')) + ' z projektů schůzky.</p>' +
+            '<button type="button" class="primary" id="ev-pick-existing-tasks">📎 Vybrat úkoly k zmínění…</button>' +
           '</div>'
-        : (projects.length > 0 ? '<div class="event-tasks-add-card"><h4>📎 Existující úkol z projektu</h4><p class="meta">Všechny úkoly z projektu jsou už zmíněny, nebo projekt nemá žádné další úkoly.</p></div>' : '')) +
+        : (projects.length > 0 ? '<div class="event-tasks-add-card"><h4>📎 Existující úkoly z projektu</h4><p class="meta">Všechny úkoly z projektu jsou už zmíněny, nebo projekt nemá žádné další úkoly.</p></div>' : '')) +
     '</div>' +
     '</details>' +
   '</div>';
@@ -11637,22 +11633,10 @@ function getEventAttendees(eventEntity) {
     .sort((a, b) => (a.title || '').localeCompare(b.title || '', 'cs'));
 }
 
-// Vrací osoby/organizace, které nejsou aktuálně účastníky
-function getNonAttendees(eventEntity) {
-  if (!eventEntity) return [];
-  const attendeeIds = new Set(getEventAttendees(eventEntity).map(e => e.id));
-  return db.entities.filter(e => {
-    if (e.archived) return false;
-    if (!((e.aspects || []).includes('Person') || (e.aspects || []).includes('Organization'))) return false;
-    return !attendeeIds.has(e.id);
-  }).sort((a, b) => (a.title || '').localeCompare(b.title || '', 'cs'));
-}
-
 // HTML sekce účastníků (vždy editovatelná v read i edit modu)
 function renderEventAttendeesSection(entity) {
   if (!entity || !(entity.aspects || []).includes('Event')) return '';
   const attendees = getEventAttendees(entity);
-  const candidates = getNonAttendees(entity);
 
   let html = '<section class="event-attendees-section" aria-labelledby="ev-att-h">' +
     '<h3 id="ev-att-h">👥 Účastníci schůzky (' + attendees.length + ')</h3>';
@@ -11674,26 +11658,10 @@ function renderEventAttendeesSection(entity) {
     '</ul>';
   }
 
-  if (candidates.length > 0) {
-    html += '<div class="ev-attendees-add">' +
-      '<details><summary>+ Přidat účastníky</summary>' +
-        '<p class="meta">Vyberte jednu nebo více osob/organizací. Stiskněte Ctrl/Cmd pro vícenásobný výběr.</p>' +
-        '<label for="ev-att-select" class="sr-only">Vyberte účastníky</label>' +
-        '<select id="ev-att-select" multiple size="' + Math.min(10, Math.max(4, candidates.length)) + '" style="width:100%;max-width:30em;">' +
-          candidates.map(p => {
-            const isOrg = (p.aspects || []).includes('Organization');
-            const prefix = isOrg ? '🏢 ' : '👤 ';
-            return '<option value="' + escapeHtml(p.id) + '">' + escapeHtml(prefix + getDisplayTitle(p)) + '</option>';
-          }).join('') +
-        '</select>' +
-        '<div class="btn-group" style="margin-top:0.5em;">' +
-          '<button type="button" class="primary" id="ev-att-add">+ Přidat vybrané jako účastníky</button>' +
-        '</div>' +
-      '</details>' +
-    '</div>';
-  } else if (attendees.length === 0) {
-    html += '<p class="meta">V databázi zatím nejsou žádné osoby ani organizace. Vytvořte je nejprve a poté je sem přiřaďte jako účastníky.</p>';
-  }
+  // Tlačítko otevírá obecný relation picker s filtrem a checkboxy
+  html += '<div class="ev-attendees-add">' +
+    '<button type="button" class="primary" id="ev-att-pick-btn">+ Přidat účastníky…</button>' +
+  '</div>';
 
   html += '</section>';
   return html;
@@ -11716,12 +11684,10 @@ function attachEventAttendeesHandlers(main, entity) {
       const p = findEntity(pid);
       if (!p) return;
       confirmDialog('Opravdu odebrat „' + getDisplayTitle(p) + '" z účastníků této schůzky?', () => {
-        // Smazat outgoing vazbu z osoby (nová logika)
         if (Array.isArray(p.links)) {
           p.links = p.links.filter(l => !(l.to === entity.id && l.type === 'attendedBy'));
           p.updated_at = nowIso();
         }
-        // Smazat i případné starší outgoing vazby ze schůzky (zpětná kompatibilita)
         if (Array.isArray(entity.links)) {
           entity.links = entity.links.filter(l => !(l.to === pid && l.type === 'attendedBy'));
         }
@@ -11732,33 +11698,64 @@ function attachEventAttendeesHandlers(main, entity) {
       });
     };
   });
-  // Přidat vybrané jako účastníky (outgoing vazba z každé osoby/organizace → schůzka)
-  const addBtn = document.getElementById('ev-att-add');
-  if (addBtn) {
-    addBtn.onclick = () => {
-      const sel = document.getElementById('ev-att-select');
-      if (!sel) return;
-      const selectedIds = Array.from(sel.selectedOptions).map(o => o.value).filter(Boolean);
-      if (selectedIds.length === 0) { alertMsg('Vyberte alespoň jednu osobu nebo organizaci.'); return; }
-      let added = 0;
-      const names = [];
-      selectedIds.forEach(pid => {
-        const p = findEntity(pid);
-        if (!p) return;
-        if (!Array.isArray(p.links)) p.links = [];
-        // Idempotentní – pokud už vazba existuje, nepřidávat znovu
-        if (p.links.some(l => l.to === entity.id && l.type === 'attendedBy')) return;
-        p.links.push({ to: entity.id, type: 'attendedBy' });
-        p.updated_at = nowIso();
-        added++;
-        names.push('„' + getDisplayTitle(p) + '"');
+  // Otevřít picker pro přidání účastníků
+  const pickBtn = document.getElementById('ev-att-pick-btn');
+  if (pickBtn) {
+    pickBtn.onclick = () => {
+      const currentIds = getEventAttendees(entity).map(p => p.id);
+      openRelationPicker({
+        fieldLabel: 'Účastníci schůzky',
+        multiple: true,
+        aspectFilter: ['Person', 'Organization'],
+        excludeIds: [entity.id],
+        currentIds: currentIds,
+        onSelect: (selectedIds) => {
+          const beforeIds = new Set(currentIds);
+          const afterIds = new Set(selectedIds);
+          // Přidat nové
+          let added = 0, removed = 0;
+          const addedNames = [];
+          afterIds.forEach(pid => {
+            if (beforeIds.has(pid)) return;
+            const p = findEntity(pid);
+            if (!p) return;
+            if (!Array.isArray(p.links)) p.links = [];
+            if (!p.links.some(l => l.to === entity.id && l.type === 'attendedBy')) {
+              p.links.push({ to: entity.id, type: 'attendedBy' });
+              p.updated_at = nowIso();
+              added++;
+              addedNames.push('„' + getDisplayTitle(p) + '"');
+            }
+          });
+          // Odebrat ty, které tam byly a teď nejsou
+          beforeIds.forEach(pid => {
+            if (afterIds.has(pid)) return;
+            const p = findEntity(pid);
+            if (!p) return;
+            if (Array.isArray(p.links)) {
+              const before = p.links.length;
+              p.links = p.links.filter(l => !(l.to === entity.id && l.type === 'attendedBy'));
+              if (p.links.length < before) {
+                p.updated_at = nowIso();
+                removed++;
+              }
+            }
+            // Zpětná kompatibilita: smazat i z schůzky
+            if (Array.isArray(entity.links)) {
+              entity.links = entity.links.filter(l => !(l.to === pid && l.type === 'attendedBy'));
+            }
+          });
+          if (added === 0 && removed === 0) { toast('Žádné změny.'); return; }
+          entity.updated_at = nowIso();
+          save();
+          const parts = [];
+          if (added > 0) parts.push('přidáno ' + added + ' (' + addedNames.join(', ') + ')');
+          if (removed > 0) parts.push('odebráno ' + removed);
+          toast('👥 Účastníci: ' + parts.join(', ') + '.');
+          playSound('save');
+          render();
+        }
       });
-      if (added === 0) { toast('Všichni vybraní jsou už účastníky.'); return; }
-      entity.updated_at = nowIso();
-      save();
-      toast('👥 Přidáno ' + added + ' účastník' + (added === 1 ? '' : (added < 5 ? 'ci' : 'ků')) + ': ' + names.join(', ') + '.');
-      playSound('save');
-      render();
     };
   }
 }
@@ -11833,24 +11830,45 @@ function attachEventTasksHandlers(main, entity) {
       }
     };
   }
-  // Existující úkol – schůzka ho přidá do svých "mentions" (zmíněn na schůzce)
-  const addExBtn = document.getElementById('ev-add-existing-task');
-  if (addExBtn) {
-    addExBtn.onclick = () => {
-      const sel = document.getElementById('ev-existing-task');
-      const tid = sel ? sel.value : '';
-      if (!tid) { alertMsg('Vyberte úkol.'); return; }
-      const t = findEntity(tid);
-      if (!t) return;
-      if (!Array.isArray(entity.links)) entity.links = [];
-      // Schůzka → úkol vazba "mentions" (idempotentně)
-      if (!entity.links.some(l => l.to === tid && l.type === 'mentions')) {
-        entity.links.push({ to: tid, type: 'mentions' });
-      }
-      entity.updated_at = nowIso();
-      save();
-      toast('📎 Úkol „' + getDisplayTitle(t) + '" zmíněn na schůzce.');
-      render();
+  // Existující úkoly z projektu – picker s checkboxy a filtrem
+  const pickExBtn = document.getElementById('ev-pick-existing-tasks');
+  if (pickExBtn) {
+    pickExBtn.onclick = () => {
+      const projects = getEventProjects(entity);
+      const projectIds = new Set(projects.map(p => p.id));
+      // Kandidáti: nepropojené úkoly z projektů schůzky
+      const candidateIds = getProjectTasksNotInEvent(entity, projects).map(t => t.id);
+      const candidateSet = new Set(candidateIds);
+      // Z hlediska pickeru: vyloučit všechny entity, které NEJSOU mezi kandidáty
+      // (kromě entity samotné). Picker dělá filter přes excludeIds.
+      const allEntityIds = db.entities.map(e => e.id);
+      const excludeIds = allEntityIds.filter(id => id === entity.id || !candidateSet.has(id));
+      openRelationPicker({
+        fieldLabel: 'Úkoly k zmínění na schůzce',
+        multiple: true,
+        aspectFilter: ['Task'],
+        excludeIds: excludeIds,
+        currentIds: [],
+        onSelect: (selectedIds) => {
+          if (selectedIds.length === 0) { toast('Žádný úkol nevybrán.'); return; }
+          if (!Array.isArray(entity.links)) entity.links = [];
+          let added = 0;
+          const names = [];
+          selectedIds.forEach(tid => {
+            if (entity.links.some(l => l.to === tid && l.type === 'mentions')) return;
+            entity.links.push({ to: tid, type: 'mentions' });
+            added++;
+            const t = findEntity(tid);
+            if (t) names.push('„' + getDisplayTitle(t) + '"');
+          });
+          if (added === 0) { toast('Všechny vybrané úkoly jsou už zmíněny.'); return; }
+          entity.updated_at = nowIso();
+          save();
+          toast('📎 Zmíněno na schůzce: ' + names.join(', ') + '.');
+          playSound('save');
+          render();
+        }
+      });
     };
   }
 }
