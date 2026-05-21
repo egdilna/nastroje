@@ -9485,10 +9485,17 @@ function formatAttrValue(f, v, entityCtx) {
 }
 // Detect named entities: najde názvy existujících entit v body, textových atributech a komentářích,
 // které nejsou už wiki link. Po jednom nabídne uživateli volbu: konvertovat / přeskočit / ignorovat napořád.
-function detectAndOfferNamedEntities(entity, onDone) {
+function detectAndOfferNamedEntities(entity, onDone, opts) {
+  opts = opts || {};
+  // opts.scope: 'all' (default) | 'commentOnly' { commentId } | 'bodyOnly' …
   // Sebrat všechny "skenované" pole: body, textové/textarea atributy, komentáře
   const fields = []; // { label, getter, setter }
-  if (entity.body && entity.body.trim()) {
+  const scope = opts.scope || 'all';
+  const onlyCommentId = opts.commentId || null;
+  const scanBody = scope === 'all';
+  const scanAttrs = scope === 'all';
+  const scanComments = scope === 'all' || scope === 'commentOnly';
+  if (scanBody && entity.body && entity.body.trim()) {
     fields.push({
       label: 'tělo',
       getText: () => entity.body,
@@ -9496,7 +9503,7 @@ function detectAndOfferNamedEntities(entity, onDone) {
     });
   }
   // Atributy podle aspektů
-  (entity.aspects || []).forEach(aspKey => {
+  if (scanAttrs) (entity.aspects || []).forEach(aspKey => {
     const aspMap = getActiveAspects();
     const asp = aspMap[aspKey];
     if (!asp || !asp.fields) return;
@@ -9518,8 +9525,9 @@ function detectAndOfferNamedEntities(entity, onDone) {
   });
   // Vlastní atributy (customAttrs) NEskenujeme — jsou to prosté hodnoty bez markdown podpory.
   // Komentáře
-  (entity.comments || []).forEach((c, idx) => {
+  if (scanComments) (entity.comments || []).forEach((c, idx) => {
     if (!c || !c.content || !c.content.trim()) return;
+    if (onlyCommentId && c.id !== onlyCommentId) return; // omezit jen na jeden komentář
     fields.push({
       label: 'komentář #' + (idx + 1),
       getText: () => entity.comments[idx].content,
@@ -12787,29 +12795,33 @@ function doCommentSave(entity, existing, dialogEl) {
   const content = document.getElementById('comment-content').value.trim();
   if (!content) { alertMsg('Komentář nemůže být prázdný.'); return; }
   if (!entity.comments) entity.comments = [];
+  let savedCommentId = null;
   if (existing) {
     existing.author = author;
     existing.content = content;
     existing.updated_at = nowIso();
+    savedCommentId = existing.id;
     toast('Komentář upraven.');
   } else {
-    entity.comments.push({
+    const newC = {
       id: 'c-' + uuid(),
       author,
       content,
       created_at: nowIso(),
       updated_at: nowIso()
-    });
+    };
+    entity.comments.push(newC);
+    savedCommentId = newC.id;
     toast('Komentář přidán.');
   }
   entity.updated_at = nowIso();
   saveDebounced();
   dialogEl.close();
-  // Spustit detekci pojmenovaných entit (skenuje i komentáře)
+  // Detekce pojmenovaných entit jen v právě uloženém komentáři (nikoliv v těle / atributech entity)
   detectAndOfferNamedEntities(entity, () => {
     save();
     render();
-  });
+  }, { scope: 'commentOnly', commentId: savedCommentId });
 }
 
 
@@ -29713,13 +29725,22 @@ function trackerStats(entity) {
   const current = trackerGetValue(entity);
   const initial = trackerGetInitial(entity);
   const target = trackerGetTarget(entity);
+  // Pro min/max ignorujeme 0 — vzniká často jako default/inicializační hodnota
+  // při vytvoření trackeru, a kazila by skutečný rozsah naměřených hodnot.
+  // Pokud po vyfiltrování nezbude žádná hodnota, fallbackneme na current (nebo 0).
+  const allValues = hist.map(h => h.newValue);
+  const nonZeroValues = allValues.filter(v => v !== 0);
   const stats = {
     current, initial, target,
     totalChange: current - initial,
     changeCount: hist.length - 1, // mínus počáteční záznam
     deltaSum: hist.slice(1).reduce((s, h) => s + (h.delta || 0), 0),
-    maxValue: hist.length > 0 ? Math.max(...hist.map(h => h.newValue)) : current,
-    minValue: hist.length > 0 ? Math.min(...hist.map(h => h.newValue)) : current,
+    maxValue: nonZeroValues.length > 0
+      ? Math.max(...nonZeroValues)
+      : (current !== 0 ? current : 0),
+    minValue: nonZeroValues.length > 0
+      ? Math.min(...nonZeroValues)
+      : (current !== 0 ? current : 0),
     lastChangeTs: hist.length > 0 ? hist[hist.length - 1].ts : null,
     pctOfTarget: target !== null && target !== 0 ? Math.round((current / target) * 100) : null,
     last7days: 0,
