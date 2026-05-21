@@ -616,6 +616,12 @@ body.theme-dark .table-editor-grid th, body.theme-dark .table-editor-grid td { b
 .table-editor-grid input[type="text"] { width: 100%; box-sizing: border-box; padding: 0.2em 0.3em; }
 .table-editor-grid .te-row-num { background: #f8f8f8; text-align: right; font-weight: 500; color: #888; min-width: 2em; }
 body.theme-dark .table-editor-grid .te-row-num { background: #1a1a1a; color: #aaa; }
+.te-cell-view { display: flex; gap: 0.3em; align-items: flex-start; }
+.te-cell-content { flex: 1; min-width: 0; word-wrap: break-word; line-height: 1.4; }
+.te-cell-content p { margin: 0; }
+.te-cell-edit-btn { flex-shrink: 0; padding: 0.05em 0.4em; font-size: 0.85em; background: transparent; border: 1px solid transparent; opacity: 0.5; cursor: pointer; }
+.te-cell-edit-btn:hover { background: #e8f0f8; border-color: #88b; opacity: 1; }
+body.theme-dark .te-cell-edit-btn:hover { background: #2a3950; border-color: #779; }
 .te-col-controls { display: flex; gap: 0.15em; margin-top: 0.2em; flex-wrap: wrap; }
 .te-col-controls button, .te-col-controls select { padding: 0.1em 0.4em; font-size: 0.85em; }
 .te-row-controls { display: flex; gap: 0.15em; }
@@ -13666,7 +13672,9 @@ function renderTableEditor() {
   if (!st) return;
   const container = document.getElementById('table-editor-content');
   const cols = st.headers.length;
-  let h = '<p class="meta">Upravujete tabulku. Použijte tlačítka pro přidání/odebrání řádků a sloupců. Změny se uloží do těla entity po kliknutí na „Uložit".</p>';
+  // Které buňky / hlavičky jsou v edit modu? Map "ri,ci" → true, nebo "h:ci" pro hlavičky
+  if (!st._editing) st._editing = {};
+  let h = '<p class="meta">Klikněte na buňku nebo tlačítko ✏ pro úpravu. Uložení buňky: <kbd>Enter</kbd>. Zrušení: <kbd>Esc</kbd>. Změny celé tabulky uloží tlačítko „Uložit" dole.</p>';
   h += '<div class="table-editor-toolbar">' +
     '<button type="button" id="te-add-row" title="Přidat nový řádek na konec">+ Řádek</button>' +
     '<button type="button" id="te-add-col" title="Přidat nový sloupec na konec">+ Sloupec</button>' +
@@ -13675,33 +13683,52 @@ function renderTableEditor() {
   // Hlavička
   h += '<thead><tr><th aria-label="Číslo řádku"></th>';
   st.headers.forEach((hd, ci) => {
-    const align = st.alignments[ci] || 'auto';
-    h += '<th>' +
-      '<label class="sr-only" for="te-h-' + ci + '">Záhlaví sloupce ' + (ci + 1) + '</label>' +
-      '<input type="text" id="te-h-' + ci + '" data-te-header="' + ci + '" value="' + escapeHtml(hd) + '">' +
-      '<div class="te-col-controls">' +
-        '<label class="sr-only" for="te-a-' + ci + '">Zarovnání sloupce ' + (ci + 1) + '</label>' +
-        '<select id="te-a-' + ci + '" data-te-align="' + ci + '" title="Zarovnání sloupce">' +
-          '<option value="auto"' + (align === 'auto' || !align ? ' selected' : '') + '>auto</option>' +
-          '<option value="left"' + (align === 'left' ? ' selected' : '') + '>vlevo</option>' +
-          '<option value="center"' + (align === 'center' ? ' selected' : '') + '>střed</option>' +
-          '<option value="right"' + (align === 'right' ? ' selected' : '') + '>vpravo</option>' +
-        '</select>' +
-        '<button type="button" data-te-col-left="' + ci + '" title="Posunout sloupec doleva" aria-label="Posunout sloupec ' + (ci + 1) + ' doleva"' + (ci === 0 ? ' disabled' : '') + '>◀</button>' +
-        '<button type="button" data-te-col-right="' + ci + '" title="Posunout sloupec doprava" aria-label="Posunout sloupec ' + (ci + 1) + ' doprava"' + (ci === cols - 1 ? ' disabled' : '') + '>▶</button>' +
-        '<button type="button" class="danger" data-te-col-del="' + ci + '" title="Smazat sloupec" aria-label="Smazat sloupec ' + (ci + 1) + '"' + (cols <= 1 ? ' disabled' : '') + '>×</button>' +
-      '</div>' +
-    '</th>';
+    const editKey = 'h:' + ci;
+    const isEdit = !!st._editing[editKey];
+    if (isEdit) {
+      h += '<th>' +
+        '<label class="sr-only" for="te-h-' + ci + '">Záhlaví sloupce ' + (ci + 1) + '</label>' +
+        '<input type="text" id="te-h-' + ci + '" data-te-header="' + ci + '" value="' + escapeHtml(hd) + '">' +
+        '<div class="te-col-controls">' +
+          '<button type="button" data-te-col-left="' + ci + '" title="Posunout sloupec doleva" aria-label="Posunout sloupec ' + (ci + 1) + ' doleva"' + (ci === 0 ? ' disabled' : '') + '>◀</button>' +
+          '<button type="button" data-te-col-right="' + ci + '" title="Posunout sloupec doprava" aria-label="Posunout sloupec ' + (ci + 1) + ' doprava"' + (ci === cols - 1 ? ' disabled' : '') + '>▶</button>' +
+          '<button type="button" class="danger" data-te-col-del="' + ci + '" title="Smazat sloupec" aria-label="Smazat sloupec ' + (ci + 1) + '"' + (cols <= 1 ? ' disabled' : '') + '>×</button>' +
+        '</div>' +
+      '</th>';
+    } else {
+      h += '<th>' +
+        '<div class="te-cell-view"><span class="te-cell-content">' + (hd ? renderMarkdown(hd, { entity: st.entity }).replace(/^<p>|<\/p>$/g, '') : '<span class="meta">(prázdné)</span>') + '</span>' +
+          ' <button type="button" class="te-cell-edit-btn" data-te-edit="h:' + ci + '" title="Upravit záhlaví sloupce ' + (ci + 1) + '" aria-label="Upravit záhlaví sloupce ' + (ci + 1) + '">✏</button>' +
+        '</div>' +
+        '<div class="te-col-controls">' +
+          '<button type="button" data-te-col-left="' + ci + '" title="Posunout sloupec doleva" aria-label="Posunout sloupec ' + (ci + 1) + ' doleva"' + (ci === 0 ? ' disabled' : '') + '>◀</button>' +
+          '<button type="button" data-te-col-right="' + ci + '" title="Posunout sloupec doprava" aria-label="Posunout sloupec ' + (ci + 1) + ' doprava"' + (ci === cols - 1 ? ' disabled' : '') + '>▶</button>' +
+          '<button type="button" class="danger" data-te-col-del="' + ci + '" title="Smazat sloupec" aria-label="Smazat sloupec ' + (ci + 1) + '"' + (cols <= 1 ? ' disabled' : '') + '>×</button>' +
+        '</div>' +
+      '</th>';
+    }
   });
   h += '<th aria-label="Operace s řádkem"></th></tr></thead>';
   h += '<tbody>';
   st.rows.forEach((row, ri) => {
     h += '<tr><td class="te-row-num">' + (ri + 1) + '</td>';
     for (let ci = 0; ci < cols; ci++) {
-      h += '<td>' +
-        '<label class="sr-only" for="te-c-' + ri + '-' + ci + '">Buňka řádek ' + (ri + 1) + ' sloupec ' + (ci + 1) + '</label>' +
-        '<input type="text" id="te-c-' + ri + '-' + ci + '" data-te-cell="' + ri + ',' + ci + '" value="' + escapeHtml(row[ci] || '') + '">' +
-      '</td>';
+      const editKey = ri + ',' + ci;
+      const isEdit = !!st._editing[editKey];
+      const val = row[ci] || '';
+      if (isEdit) {
+        h += '<td>' +
+          '<label class="sr-only" for="te-c-' + ri + '-' + ci + '">Buňka řádek ' + (ri + 1) + ' sloupec ' + (ci + 1) + '</label>' +
+          '<input type="text" id="te-c-' + ri + '-' + ci + '" data-te-cell="' + ri + ',' + ci + '" value="' + escapeHtml(val) + '">' +
+        '</td>';
+      } else {
+        const rendered = val ? renderMarkdown(val, { entity: st.entity }).replace(/^<p>|<\/p>$/g, '') : '<span class="meta">(prázdné)</span>';
+        h += '<td>' +
+          '<div class="te-cell-view"><span class="te-cell-content">' + rendered + '</span>' +
+            ' <button type="button" class="te-cell-edit-btn" data-te-edit="' + ri + ',' + ci + '" title="Upravit buňku řádek ' + (ri + 1) + ', sloupec ' + (ci + 1) + '" aria-label="Upravit buňku řádek ' + (ri + 1) + ', sloupec ' + (ci + 1) + '">✏</button>' +
+          '</div>' +
+        '</td>';
+      }
     }
     h += '<td class="te-row-controls">' +
       '<button type="button" data-te-row-up="' + ri + '" title="Posunout řádek nahoru" aria-label="Posunout řádek ' + (ri + 1) + ' nahoru"' + (ri === 0 ? ' disabled' : '') + '>▲</button>' +
@@ -13715,20 +13742,66 @@ function renderTableEditor() {
   h += '</tbody></table>';
   container.innerHTML = h;
 
-  // Handlery
-  container.querySelectorAll('[data-te-header]').forEach(inp => {
-    inp.oninput = () => { st.headers[Number(inp.dataset.teHeader)] = inp.value; };
-  });
-  container.querySelectorAll('[data-te-align]').forEach(sel => {
-    sel.onchange = () => {
-      const v = sel.value;
-      st.alignments[Number(sel.dataset.teAlign)] = (v === 'auto') ? null : v;
+  // Helper – commit edit pro daný klíč
+  function commitEdit(key, save) {
+    const input = container.querySelector('input[data-te-cell="' + key + '"], input[data-te-header="' + key.split(':')[1] + '"]');
+    if (save && input) {
+      if (key.startsWith('h:')) {
+        st.headers[Number(key.slice(2))] = input.value;
+      } else {
+        const [ri, ci] = key.split(',').map(Number);
+        st.rows[ri][ci] = input.value;
+      }
+    }
+    delete st._editing[key];
+    renderTableEditor();
+  }
+
+  // Tlačítka ✏ pro přepnutí do edit modu
+  container.querySelectorAll('[data-te-edit]').forEach(btn => {
+    btn.onclick = () => {
+      const key = btn.dataset.teEdit;
+      st._editing[key] = true;
+      renderTableEditor();
+      // Focus na input + cursor na konec
+      setTimeout(() => {
+        const inp = key.startsWith('h:')
+          ? container.querySelector('input[data-te-header="' + key.slice(2) + '"]')
+          : container.querySelector('input[data-te-cell="' + key + '"]');
+        if (inp) {
+          inp.focus();
+          inp.setSelectionRange(inp.value.length, inp.value.length);
+        }
+      }, 0);
     };
   });
-  container.querySelectorAll('[data-te-cell]').forEach(inp => {
-    inp.oninput = () => {
-      const [ri, ci] = inp.dataset.teCell.split(',').map(Number);
-      st.rows[ri][ci] = inp.value;
+
+  // Inputy v edit modu – Enter uloží, Esc zruší
+  container.querySelectorAll('input[data-te-cell], input[data-te-header]').forEach(inp => {
+    inp.onkeydown = (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        const key = inp.dataset.teCell || ('h:' + inp.dataset.teHeader);
+        commitEdit(key, true);
+      } else if (ev.key === 'Escape') {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const key = inp.dataset.teCell || ('h:' + inp.dataset.teHeader);
+        commitEdit(key, false);
+      }
+    };
+    inp.onblur = () => {
+      // Blur uloží (jako u řady jiných formulářů)
+      const key = inp.dataset.teCell || ('h:' + inp.dataset.teHeader);
+      if (st._editing[key]) commitEdit(key, true);
+    };
+  });
+
+  // Klik na buňku-view také přepne do edit modu (kromě tlačítka ✏ samotného a obsahu s odkazy)
+  container.querySelectorAll('.te-cell-view').forEach(div => {
+    div.ondblclick = (ev) => {
+      const btn = div.querySelector('.te-cell-edit-btn');
+      if (btn) btn.click();
     };
   });
   container.querySelectorAll('[data-te-row-del]').forEach(btn => {
@@ -17448,6 +17521,78 @@ function runsToParagraphXml(runs, opts) {
   return '<w:p>' + pPrXml + runsXml + '</w:p>';
 }
 
+function renderMarkdownTableToDocx(lines, paras, hyperlinkRels) {
+  // lines = ['| h1 | h2 |', '| --- | --- |', '| c1 | c2 |', ...]
+  function parseRow(s) {
+    let t = s.trim();
+    if (t.startsWith('|')) t = t.slice(1);
+    if (t.endsWith('|')) t = t.slice(0, -1);
+    const cells = [];
+    let cur = '';
+    for (let k = 0; k < t.length; k++) {
+      if (t[k] === '\\' && t[k + 1] === '|') { cur += '|'; k++; continue; }
+      if (t[k] === '|') { cells.push(cur.trim()); cur = ''; continue; }
+      cur += t[k];
+    }
+    cells.push(cur.trim());
+    return cells;
+  }
+  const headers = parseRow(lines[0]);
+  const dataRows = lines.slice(2).map(parseRow);
+  const colCount = headers.length;
+  if (colCount === 0) return;
+
+  // Sestavit DOCX tabulku
+  let xml = '<w:tbl>';
+  // Vlastnosti tabulky – šířka 100% v dxa, border všude
+  xml += '<w:tblPr>' +
+    '<w:tblW w:w="5000" w:type="pct"/>' +
+    '<w:tblBorders>' +
+      '<w:top w:val="single" w:sz="4" w:space="0" w:color="888888"/>' +
+      '<w:left w:val="single" w:sz="4" w:space="0" w:color="888888"/>' +
+      '<w:bottom w:val="single" w:sz="4" w:space="0" w:color="888888"/>' +
+      '<w:right w:val="single" w:sz="4" w:space="0" w:color="888888"/>' +
+      '<w:insideH w:val="single" w:sz="4" w:space="0" w:color="888888"/>' +
+      '<w:insideV w:val="single" w:sz="4" w:space="0" w:color="888888"/>' +
+    '</w:tblBorders>' +
+    '<w:tblLayout w:type="autofit"/>' +
+  '</w:tblPr>';
+  // Definice gridu (rovnoměrné rozdělení)
+  xml += '<w:tblGrid>' + headers.map(() => '<w:gridCol w:w="1"/>').join('') + '</w:tblGrid>';
+
+  function cellXml(text, isHeader) {
+    const runs = parseInlineForDocx(text);
+    const shading = isHeader ? '<w:shd w:val="clear" w:color="auto" w:fill="EEEEEE"/>' : '';
+    // Vytvořit paragraph (přepoužít runsToParagraphXml, ale potřebujeme jen para uvnitř <w:tc>)
+    // runsToParagraphXml vrací <w:p>...</w:p> včetně pPr, použijeme přímo.
+    const para = runsToParagraphXml(
+      isHeader ? runs.map(r => Object.assign({}, r, { bold: true })) : runs,
+      { _hyperlinkRels: hyperlinkRels }
+    );
+    return '<w:tc>' +
+      '<w:tcPr>' + shading + '</w:tcPr>' +
+      para +
+    '</w:tc>';
+  }
+
+  // Hlavička
+  xml += '<w:tr><w:trPr><w:tblHeader/></w:trPr>';
+  headers.forEach(h => { xml += cellXml(h, true); });
+  xml += '</w:tr>';
+  // Datové řádky
+  dataRows.forEach(row => {
+    xml += '<w:tr>';
+    for (let i = 0; i < colCount; i++) {
+      xml += cellXml(row[i] || '', false);
+    }
+    xml += '</w:tr>';
+  });
+  xml += '</w:tbl>';
+  // Po tabulce přidat prázdný odstavec, jinak Word slévá další odstavec s tabulkou
+  paras.push(xml);
+  paras.push('<w:p/>');
+}
+
 function renderMarkdownBlocksToDocx(text, paras, hyperlinkRels) {
   const codeBlocks = [];
   text = text.replace(/```([\s\S]*?)```/g, (m, c) => {
@@ -17465,6 +17610,19 @@ function renderMarkdownBlocksToDocx(text, paras, hyperlinkRels) {
         paras.push(runsToParagraphXml([{ text: line, code: true }], { _hyperlinkRels: hyperlinkRels }));
       });
       return;
+    }
+    // === Markdown TABULKA ===
+    // Detekce: alespoň 2 řádky, druhý je separator (| --- | :---: |)
+    const blockLines = block.split('\n');
+    if (blockLines.length >= 2 &&
+        /^\s*\|.*\|\s*$/.test(blockLines[0]) &&
+        /^\s*\|[\s:|\-]+\|\s*$/.test(blockLines[1])) {
+      // Všechny další řádky musí být také tabulkové
+      const allRows = blockLines.every(l => /^\s*\|.*\|\s*$/.test(l));
+      if (allRows) {
+        renderMarkdownTableToDocx(blockLines, paras, hyperlinkRels);
+        return;
+      }
     }
     const h = block.match(/^(#{1,4})\s+(.*)$/);
     if (h) {
