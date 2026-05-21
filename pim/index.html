@@ -26987,7 +26987,27 @@ async function viewerInit() {
     setupKeyboard();
     applyTheme();
     updateChrome();
-    state.view = 'inbox';
+    // Skrýt karty, které nejsou v enabledTabs
+    if (Array.isArray(PROJECT.enabledTabs)) {
+      const enabled = new Set(PROJECT.enabledTabs);
+      document.querySelectorAll('#main-nav li button[data-view]').forEach(btn => {
+        const v = btn.dataset.view;
+        if (!enabled.has(v) && v !== 'settings' && v !== 'templates') {
+          // Skrýt rodičovský <li>
+          const li = btn.closest('li');
+          if (li) li.style.display = 'none';
+        }
+      });
+    }
+    // Použít první povolenou kartu jako startovní pohled
+    let firstTab = 'inbox';
+    if (Array.isArray(PROJECT.enabledTabs) && PROJECT.enabledTabs.length > 0) {
+      firstTab = PROJECT.enabledTabs[0];
+    }
+    state.view = firstTab;
+    // Příznak pro generátor entity HTML aby skryl komentáře/tagy
+    window._viewerIncludeComments = PROJECT.includeComments !== false;
+    window._viewerIncludeTags = PROJECT.includeTags !== false;
     render();
     // Hide settings/templates nav items
     const setBtn = document.querySelector('.nav-item[data-view="settings"]');
@@ -27249,7 +27269,8 @@ if (document.readyState === 'loading') {
 </html>
 `;
 
-function sanitizeDbForStaticViewer(filterTags) {
+function sanitizeDbForStaticViewer(filterTags, opts) {
+  opts = opts || {};
   // Hluboká kopie db
   const clean = JSON.parse(JSON.stringify(db));
 
@@ -27282,6 +27303,22 @@ function sanitizeDbForStaticViewer(filterTags) {
     clean._filterInfo = { tags: filterTags, beforeCount, afterCount: clean.entities.length };
   }
 
+  // Vyloučit komentáře, pokud uživatel nechce
+  if (opts.includeComments === false) {
+    (clean.entities || []).forEach(e => {
+      e.comments = [];
+    });
+  }
+
+  // Vyloučit tagy, pokud uživatel nechce
+  if (opts.includeTags === false) {
+    (clean.entities || []).forEach(e => {
+      e.tags = [];
+    });
+    clean.tags = [];
+    // Uložené pohledy a šablony filtrované podle tagu nezmazat, ale v UI se prostě nezobrazí Tagy karta
+  }
+
   // Vyčistit přílohy z GH stop a embed dat
   (clean.entities || []).forEach(e => {
     if (e.attachments) {
@@ -27308,7 +27345,10 @@ function sanitizeDbForStaticViewer(filterTags) {
 
 function buildStaticViewerHtml(opts) {
   opts = opts || {};
-  const cleanDb = sanitizeDbForStaticViewer(opts.filterTags);
+  const cleanDb = sanitizeDbForStaticViewer(opts.filterTags, {
+    includeComments: opts.includeComments !== false,
+    includeTags: opts.includeTags !== false
+  });
   // Aplikovat přepis názvu/popisu, pokud zadán
   if (opts.overrideTitle !== undefined) cleanDb.title = opts.overrideTitle;
   if (opts.overrideDescription !== undefined) cleanDb.description = opts.overrideDescription;
@@ -27339,7 +27379,10 @@ function buildStaticViewerHtml(opts) {
     relationTypes: cleanRelations,
     confidenceLevels: cleanConfidence,
     attachmentsBase: 'attachments',
-    generatedAt: nowIso()
+    generatedAt: nowIso(),
+    enabledTabs: Array.isArray(opts.enabledTabs) ? opts.enabledTabs : null,
+    includeComments: opts.includeComments !== false,
+    includeTags: opts.includeTags !== false
   };
 
   // Bezpečný JSON pro vložení do JSON script tagu
@@ -27864,6 +27907,25 @@ function openStaticViewerDialog() {
       '<p class="meta">Tyto hodnoty se použijí jen pro tento prohlížeč, vaše PIM databáze zůstane beze změny.</p>' +
     '</fieldset>' +
     '<fieldset>' +
+      '<legend>Které karty mají být v navigaci</legend>' +
+      '<p class="meta">Vyberte, které stránky se zobrazí v hlavní navigaci prohlížeče. Detail entity je vždy dostupný přes odkazy.</p>' +
+      '<label style="display:block;"><input type="checkbox" name="sv-tab" value="inbox" checked> Inbox</label>' +
+      '<label style="display:block;"><input type="checkbox" name="sv-tab" value="all" checked> Vše (tabulka entit)</label>' +
+      '<label style="display:block;"><input type="checkbox" name="sv-tab" value="tasks" checked> Úkoly</label>' +
+      '<label style="display:block;"><input type="checkbox" name="sv-tab" value="calendar" checked> Kalendář</label>' +
+      '<label style="display:block;"><input type="checkbox" name="sv-tab" value="search" checked> Hledání</label>' +
+      '<label style="display:block;"><input type="checkbox" name="sv-tab" value="tags" checked> Tagy</label>' +
+      '<label style="display:block;"><input type="checkbox" name="sv-tab" value="links" checked> Vazby</label>' +
+      '<label style="display:block;"><input type="checkbox" name="sv-tab" value="views" checked> Pohledy</label>' +
+      '<label style="display:block;"><input type="checkbox" name="sv-tab" value="templates" checked> Šablony</label>' +
+    '</fieldset>' +
+    '<fieldset>' +
+      '<legend>Co zahrnout do dat</legend>' +
+      '<label style="display:block;"><input type="checkbox" id="sv-include-comments" checked> Komentáře u entit</label>' +
+      '<label style="display:block;"><input type="checkbox" id="sv-include-tags" checked> Tagy u entit</label>' +
+      '<p class="meta">Když vypnete „Tagy u entit", v prohlížeči se tagy nikde nezobrazí, ani v hlavičce entity, ani na záložce Tagy.</p>' +
+    '</fieldset>' +
+    '<fieldset>' +
       '<legend>Co zahrnout</legend>' +
       '<label style="display:block;"><input type="radio" name="sv-scope" value="all" checked> Všechny entity (' + db.entities.length + ')</label>' +
       '<label style="display:block;"><input type="radio" name="sv-scope" value="tags"' + (allTags.length === 0 ? ' disabled' : '') + '> Jen entity, které mají VŠECHNY vybrané tagy' + (allTags.length === 0 ? ' <span class="meta">(databáze nemá tagy)</span>' : '') + '</label>' +
@@ -27929,6 +27991,13 @@ function openStaticViewerDialog() {
       if (tags.length === 0) { alertMsg('Vyber alespoň jeden tag.'); return; }
       opts.filterTags = tags;
     }
+    // Karty navigace
+    const enabledTabs = [...d.querySelectorAll('input[name="sv-tab"]:checked')].map(c => c.value);
+    if (enabledTabs.length === 0) { alertMsg('Vyber alespoň jednu kartu navigace.'); return; }
+    opts.enabledTabs = enabledTabs;
+    // Vyloučení komentářů / tagů
+    opts.includeComments = d.querySelector('#sv-include-comments').checked;
+    opts.includeTags = d.querySelector('#sv-include-tags').checked;
     d.close(); d.remove();
     downloadStaticViewer(opts);
   };
