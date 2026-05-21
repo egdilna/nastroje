@@ -570,6 +570,28 @@ body.theme-dark .event-tasks-table th, body.theme-dark .event-tasks-table td { b
 body.theme-dark .event-tasks-add-card { background: #1a1a1a; border-color: #444; }
 .event-tasks-add-card h4 { margin-top: 0; font-size: 1em; }
 .event-tasks-add-card input, .event-tasks-add-card select { width: 100%; box-sizing: border-box; margin: 0.2em 0; }
+/* Question answers section */
+.question-answers-section { margin: 1em 0; padding: 0.6em 0.8em; background: #fff8e6; border-left: 4px solid #d4a000; border-radius: 0 4px 4px 0; }
+body.theme-dark .question-answers-section { background: #2a2511; border-left-color: #d4a000; }
+.question-answers-section h3 { margin-top: 0; }
+.qa-list { list-style: none; padding: 0; margin: 0.4em 0; }
+.qa-list li { padding: 0.4em 0; border-bottom: 1px dashed #ddd; }
+body.theme-dark .qa-list li { border-bottom-color: #444; }
+.qa-list li:last-child { border-bottom: none; }
+.qa-title { font-weight: 500; font-size: 1.05em; }
+.qa-preview { margin-top: 0.3em; padding-left: 0.5em; font-size: 0.92em; line-height: 1.4; }
+/* Status chip {{status:...}} */
+.status-chip { display: inline-block; padding: 0.1em 0.6em; margin: 0.1em 0; background: #f3f8f5; border: 1px solid #6a9; border-radius: 12px; font-size: 0.95em; line-height: 1.5; }
+body.theme-dark .status-chip { background: #1a2520; border-color: #5e9; color: #ddd; }
+.status-chip-link { font-weight: 500; }
+.status-chip-meta { color: #555; font-size: 0.92em; }
+body.theme-dark .status-chip-meta { color: #aaa; }
+.status-chip-broken { background: #fff5f5; border-color: #c33; color: #c33; }
+body.theme-dark .status-chip-broken { background: #2a1414; }
+.status-chip-locked { background: #f5f5f5; border-color: #999; color: #555; }
+body.theme-dark .status-chip-locked { background: #2a2a2a; color: #aaa; }
+.status-chip-status { padding: 0 0.4em; border-radius: 3px; background: rgba(0,0,0,0.05); font-weight: 500; }
+body.theme-dark .status-chip-status { background: rgba(255,255,255,0.1); }
 /* URL field s tlačítky pro kopírování */
 .url-field { display: inline-flex; align-items: center; gap: 0.4em; flex-wrap: wrap; }
 .url-copy-btn, .url-copy-md-btn { padding: 0.15em 0.5em; font-size: 0.85em; background: #fff; border: 1px solid #ccc; border-radius: 3px; cursor: pointer; line-height: 1.4; }
@@ -1031,6 +1053,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <tr><td><code>[[Název entity]]</code></td><td>Wiki odkaz</td></tr>
       <tr><td><code>{{include:ID}}</code></td><td>Transkluze – vloží obsah jiné entity</td></tr>
       <tr><td><code>{{include:Název}}</code></td><td>Transkluze podle názvu</td></tr>
+      <tr><td><code>{{status:Název}}</code></td><td>Status chip – kompaktní souhrn entity (název + nejdůležitější info podle aspektů: stav úkolu, termín schůzky, URL záložky, % cíle, statistika projektu…) s odkazem na entitu. Funguje i v exportu/tisku.</td></tr>
       <tr><td><code>**tučně**</code> <code>*kurzíva*</code></td><td>Standardní markdown</td></tr>
       <tr><td><code># Nadpis</code></td><td>Nadpisy 1.–4. úrovně</td></tr>
       <tr><td><code>- položka</code> / <code>1. položka</code></td><td>Seznamy</td></tr>
@@ -2579,6 +2602,9 @@ function renderInline(text, ctx) {
       '<button type="button" class="inline-md-fix" data-md-fix-select="' + idx + '"' + sourceAttr +
       ' title="Zafixovat výběr – nahradit (!a/|b!) jen vybranou hodnotou jako prostý text" aria-label="Zafixovat výběr">🔒</button>';
   });
+  text = text.replace(/\{\{status:([^}|]+)\}\}/g, (m, ref) => {
+    return resolveStatusChip(ref.trim(), ctx);
+  });
   text = text.replace(/\{\{include:([^}|]+)(?:\|([^}]*))?\}\}/g, (m, ref, alias) => {
     return resolveInclude(ref.trim(), alias ? alias.trim() : null, ctx);
   });
@@ -2682,6 +2708,263 @@ function resolveWikiLink(ref, alias) {
     return '<a href="#" class="wiki-link" data-entity="' + escapeHtml(target.id) + '">' + escapeHtml(label) + '</a>' + aspectsTxt;
   }
   return '<a href="#" class="wiki-link broken" data-create-name="' + escapeHtml(ref) + '" title="Entita neexistuje – kliknutí ji vytvoří">' + escapeHtml(alias || ref) + '</a>';
+}
+
+// === STATUS CHIP {{status:Název}} ===
+// Vrací jakoby kompaktní chip s nejdůležitějšími info o entitě + odkazem.
+// Per-aspect logika: úkol ukáže stav+termín, schůzka začátek+konec, osoba zaměstnání,
+// záložka URL, otázka info o zodpovězení, projekt statistiku úkolů, cíl termín+progress.
+function resolveStatusChip(ref, ctx) {
+  let target = null;
+  if (ref.startsWith('id:')) target = findEntity(ref.slice(3));
+  else target = findEntity(ref) || findEntityByTitle(ref);
+  if (!target) return '<span class="status-chip status-chip-broken">⚠ Entita „' + escapeHtml(ref) + '" nenalezena</span>';
+  if (isSecuredEntity(target) && !isSecuredUnlocked(target.id)) {
+    return '<span class="status-chip status-chip-locked">🔒 <a href="#" data-entity="' + escapeHtml(target.id) + '">' + escapeHtml(getDisplayTitle(target)) + '</a> (zamčeno)</span>';
+  }
+  return buildStatusChipHtml(target);
+}
+
+// Generuje HTML status chipu pro entitu na základě jejích aspektů.
+function buildStatusChipHtml(entity) {
+  if (!entity) return '';
+  const aspects = entity.aspects || [];
+  const a = entity.attributes || {};
+  const title = getDisplayTitle(entity);
+  const link = '<a href="#" data-entity="' + escapeHtml(entity.id) + '" class="status-chip-link">' + escapeHtml(title) + '</a>';
+  const parts = [];
+  const badges = [];
+
+  if (aspects.includes('Task')) {
+    badges.push('✓');
+    const st = a.status || 'todo';
+    const stLabel = (ASPECTS.Task.fields.find(f => f.key === 'status').optionLabels[st]) || st;
+    parts.push('<span class="status-chip-status status-' + escapeHtml(st) + '">' + escapeHtml(stLabel) + '</span>');
+    if (a.deadline) {
+      const overdue = st !== 'done' && st !== 'cancelled' && localDayKey(a.deadline) < localDayKey(new Date());
+      const cls = overdue ? ' style="color:#c33;"' : '';
+      parts.push('<span' + cls + '>📅 ' + escapeHtml(fmtDate(a.deadline)) + (overdue ? ' (po termínu)' : '') + '</span>');
+    }
+  }
+
+  if (aspects.includes('Event')) {
+    badges.push('📅');
+    if (a.start) {
+      const startStr = a.start.includes('T') ? fmtDateTime(a.start) : fmtDate(a.start);
+      let segment = '▶ ' + escapeHtml(startStr);
+      if (a.end) {
+        const endStr = a.end.includes('T') ? fmtDateTime(a.end) : fmtDate(a.end);
+        segment += ' – ' + escapeHtml(endStr);
+      }
+      parts.push(segment);
+    } else if (a.end) {
+      parts.push('⏹ ' + escapeHtml(a.end.includes('T') ? fmtDateTime(a.end) : fmtDate(a.end)));
+    }
+  }
+
+  if (aspects.includes('Question')) {
+    badges.push('❓');
+    const answers = db.entities.filter(e => !e.archived &&
+      (e.links || []).some(l => l.to === entity.id && l.type === 'answers'));
+    if (answers.length === 0) {
+      parts.push('<span style="color:#c33;">nezodpovězeno</span>');
+    } else if (answers.length === 1) {
+      parts.push('💡 zodpovězeno: <a href="#" data-entity="' + escapeHtml(answers[0].id) + '">' + escapeHtml(getDisplayTitle(answers[0])) + '</a>');
+    } else {
+      parts.push('💡 ' + answers.length + ' odpovědí');
+    }
+  }
+
+  if (aspects.includes('Bookmark')) {
+    badges.push('🔖');
+    const url = a.url;
+    if (url) {
+      const display = url.length > 50 ? url.slice(0, 48) + '…' : url;
+      parts.push('<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' + escapeHtml(display) + '</a>');
+    }
+  }
+
+  if (aspects.includes('Project')) {
+    badges.push('📂');
+    const childTasks = db.entities.filter(e => !e.archived && (e.aspects || []).includes('Task') &&
+      (e.links || []).some(l => l.to === entity.id && l.type === 'partOf'));
+    if (childTasks.length > 0) {
+      const done = childTasks.filter(t => (t.attributes || {}).status === 'done').length;
+      const pct = Math.round((done / childTasks.length) * 100);
+      parts.push('✓ ' + done + '/' + childTasks.length + ' úkolů (' + pct + ' %)');
+    } else {
+      parts.push('<span class="meta">žádné úkoly</span>');
+    }
+  }
+
+  if (aspects.includes('Goal')) {
+    badges.push('🎯');
+    if (a.target_date) {
+      parts.push('📅 ' + escapeHtml(fmtDate(a.target_date)));
+    }
+    const prog = a.progress;
+    if (prog !== undefined && prog !== null && prog !== '') {
+      const n = Number(prog);
+      if (!isNaN(n)) parts.push('📊 ' + n + ' %');
+    }
+  }
+
+  if (aspects.includes('Person')) {
+    badges.push('👤');
+    const orgs = (entity.links || []).filter(l => l.type === 'worksAt').map(l => findEntity(l.to)).filter(Boolean);
+    if (orgs.length > 0) {
+      parts.push('🏢 ' + orgs.map(o => '<a href="#" data-entity="' + escapeHtml(o.id) + '">' + escapeHtml(getDisplayTitle(o)) + '</a>').join(', '));
+    }
+    if (a.email) parts.push('✉ <a href="mailto:' + escapeHtml(a.email) + '">' + escapeHtml(a.email) + '</a>');
+  }
+
+  if (aspects.includes('Organization') && !aspects.includes('Person')) {
+    badges.push('🏢');
+    if (a.website) {
+      const display = a.website.length > 40 ? a.website.slice(0, 38) + '…' : a.website;
+      parts.push('🌐 <a href="' + escapeHtml(a.website) + '" target="_blank" rel="noopener">' + escapeHtml(display) + '</a>');
+    }
+    const employees = db.entities.filter(e => !e.archived && (e.aspects || []).includes('Person') &&
+      (e.links || []).some(l => l.to === entity.id && l.type === 'worksAt'));
+    if (employees.length > 0) parts.push('👥 ' + employees.length + ' osob');
+  }
+
+  if (aspects.includes('Tracker')) {
+    badges.push('📊');
+    const val = (typeof trackerGetValue === 'function') ? trackerGetValue(entity) : a.tracker_value;
+    const unit = (typeof trackerGetUnit === 'function') ? trackerGetUnit(entity) : a.tracker_unit;
+    const target = (typeof trackerGetTarget === 'function') ? trackerGetTarget(entity) : a.tracker_target;
+    if (val !== null && val !== undefined && val !== '') {
+      let s = String(val);
+      if (unit) s += ' ' + unit;
+      if (target !== null && target !== undefined && target !== '' && Number(target) !== 0) {
+        const pct = Math.round((Number(val) / Number(target)) * 100);
+        s += ' (' + pct + ' % cíle)';
+      }
+      parts.push(s);
+    }
+  }
+
+  if (aspects.includes('Decision')) {
+    badges.push('📌');
+    if (a.decided_at) parts.push('📅 ' + escapeHtml(fmtDate(a.decided_at)));
+  }
+
+  if (parts.length === 0) {
+    const aspLabels = aspects.map(ak => aspectLabel(ak)).filter(Boolean);
+    if (aspLabels.length > 0) parts.push('<span class="meta">' + escapeHtml(aspLabels.join(', ')) + '</span>');
+    if (entity.tags && entity.tags.length > 0) parts.push('<span class="meta">' + escapeHtml(entity.tags.join(', ')) + '</span>');
+    if (parts.length === 0) parts.push('<span class="meta">bez detailů</span>');
+  }
+
+  const prefix = badges.length > 0 ? badges.join('') + ' ' : '';
+  return '<span class="status-chip">' + prefix + link + ' <span class="status-chip-meta">— ' + parts.join(' · ') + '</span></span>';
+}
+
+// Plain text varianta pro export (markdown, kde nelze použít HTML chipy)
+function buildStatusChipPlain(entity) {
+  if (!entity) return '';
+  const aspects = entity.aspects || [];
+  const a = entity.attributes || {};
+  const title = getDisplayTitle(entity);
+  const parts = [];
+  const badges = [];
+
+  if (aspects.includes('Task')) {
+    badges.push('✓');
+    const st = a.status || 'todo';
+    const stLabel = (ASPECTS.Task.fields.find(f => f.key === 'status').optionLabels[st]) || st;
+    parts.push(stLabel);
+    if (a.deadline) {
+      const overdue = st !== 'done' && st !== 'cancelled' && localDayKey(a.deadline) < localDayKey(new Date());
+      parts.push('📅 ' + fmtDate(a.deadline) + (overdue ? ' (po termínu)' : ''));
+    }
+  }
+
+  if (aspects.includes('Event')) {
+    badges.push('📅');
+    if (a.start) {
+      let s = '▶ ' + (a.start.includes('T') ? fmtDateTime(a.start) : fmtDate(a.start));
+      if (a.end) s += ' – ' + (a.end.includes('T') ? fmtDateTime(a.end) : fmtDate(a.end));
+      parts.push(s);
+    }
+  }
+
+  if (aspects.includes('Question')) {
+    badges.push('❓');
+    const answers = db.entities.filter(e => !e.archived &&
+      (e.links || []).some(l => l.to === entity.id && l.type === 'answers'));
+    if (answers.length === 0) parts.push('nezodpovězeno');
+    else if (answers.length === 1) parts.push('zodpovězeno: ' + getDisplayTitle(answers[0]));
+    else parts.push(answers.length + ' odpovědí');
+  }
+
+  if (aspects.includes('Bookmark') && a.url) {
+    badges.push('🔖');
+    parts.push(a.url);
+  }
+
+  if (aspects.includes('Project')) {
+    badges.push('📂');
+    const childTasks = db.entities.filter(e => !e.archived && (e.aspects || []).includes('Task') &&
+      (e.links || []).some(l => l.to === entity.id && l.type === 'partOf'));
+    if (childTasks.length > 0) {
+      const done = childTasks.filter(t => (t.attributes || {}).status === 'done').length;
+      const pct = Math.round((done / childTasks.length) * 100);
+      parts.push('✓ ' + done + '/' + childTasks.length + ' úkolů (' + pct + ' %)');
+    }
+  }
+
+  if (aspects.includes('Goal')) {
+    badges.push('🎯');
+    if (a.target_date) parts.push('📅 ' + fmtDate(a.target_date));
+    if (a.progress !== undefined && a.progress !== null && a.progress !== '') {
+      const n = Number(a.progress);
+      if (!isNaN(n)) parts.push('📊 ' + n + ' %');
+    }
+  }
+
+  if (aspects.includes('Person')) {
+    badges.push('👤');
+    const orgs = (entity.links || []).filter(l => l.type === 'worksAt').map(l => findEntity(l.to)).filter(Boolean);
+    if (orgs.length > 0) parts.push('🏢 ' + orgs.map(o => getDisplayTitle(o)).join(', '));
+    if (a.email) parts.push('✉ ' + a.email);
+  }
+
+  if (aspects.includes('Organization') && !aspects.includes('Person')) {
+    badges.push('🏢');
+    if (a.website) parts.push('🌐 ' + a.website);
+  }
+
+  if (aspects.includes('Tracker')) {
+    badges.push('📊');
+    const val = (typeof trackerGetValue === 'function') ? trackerGetValue(entity) : a.tracker_value;
+    const unit = (typeof trackerGetUnit === 'function') ? trackerGetUnit(entity) : a.tracker_unit;
+    const target = (typeof trackerGetTarget === 'function') ? trackerGetTarget(entity) : a.tracker_target;
+    if (val !== null && val !== undefined && val !== '') {
+      let s = String(val);
+      if (unit) s += ' ' + unit;
+      if (target !== null && target !== undefined && target !== '' && Number(target) !== 0) {
+        const pct = Math.round((Number(val) / Number(target)) * 100);
+        s += ' (' + pct + ' % cíle)';
+      }
+      parts.push(s);
+    }
+  }
+
+  if (aspects.includes('Decision') && a.decided_at) {
+    badges.push('📌');
+    parts.push('📅 ' + fmtDate(a.decided_at));
+  }
+
+  if (parts.length === 0) {
+    const aspLabels = aspects.map(ak => aspectLabel(ak)).filter(Boolean);
+    if (aspLabels.length > 0) parts.push(aspLabels.join(', '));
+  }
+
+  const prefix = badges.length > 0 ? badges.join('') + ' ' : '';
+  // Markdown: **prefix Název** — detaily
+  return '**' + prefix + title + '**' + (parts.length > 0 ? ' — ' + parts.join(' · ') : '');
 }
 
 function resolveInclude(ref, alias, ctx) {
@@ -3740,6 +4023,18 @@ function getEntityDetailsHtml(e) {
   if (aspects.includes('Idea')) {
     if (a.priority) parts.push('<strong>Priorita:</strong> ' + escapeHtml(a.priority));
     if (a.maturity) parts.push('<strong>Zralost:</strong> ' + escapeHtml(a.maturity));
+  }
+  if (aspects.includes('Tracker')) {
+    const val = trackerGetValue(e);
+    const unit = trackerGetUnit(e);
+    const target = trackerGetTarget(e);
+    let s = '<strong>Hodnota:</strong> ' + escapeHtml(trackerFmt(val));
+    if (unit) s += ' ' + escapeHtml(unit);
+    if (target !== null && target !== 0) {
+      const pct = Math.round((val / target) * 100);
+      s += ' <span class="meta">(' + pct + ' % cíle)</span>';
+    }
+    parts.push(s);
   }
   // Pro vlastní aspekty: vyber prvních pár vyplněných polí (ne textarea)
   (e.aspects || []).forEach(ak => {
@@ -4889,6 +5184,10 @@ function applySavedView(v) {
   }
   // Důvěra
   if (f.confidence) r = r.filter(e => e.confidence === f.confidence);
+  // Pokročilé filtry atributů
+  if (Array.isArray(f.attrFilters) && f.attrFilters.length > 0) {
+    r = r.filter(e => f.attrFilters.every(af => evaluateAttrFilter(e, af)));
+  }
 
   if (v.sort && v.sort.by) {
     const dir = v.sort.dir === 'desc' ? -1 : 1;
@@ -4942,6 +5241,9 @@ function describeFilter(f) {
     p.push(labels[f.relations] || f.relations);
   }
   if (f.confidence) p.push('důvěra: ' + f.confidence);
+  if (Array.isArray(f.attrFilters) && f.attrFilters.length > 0) {
+    p.push(f.attrFilters.length + ' pokročil' + (f.attrFilters.length === 1 ? 'ý filtr' : (f.attrFilters.length < 5 ? 'é filtry' : 'ých filtrů')) + ' atributů');
+  }
   return p.join(', ') || '(bez omezení)';
 }
 
@@ -5798,9 +6100,16 @@ function renderDashboard(main) {
   const taskTodo = allTasks.filter(t => ['todo','doing','blocked'].includes((t.attributes || {}).status)).length;
   const taskPct = allTasks.length > 0 ? Math.round((taskDone / allTasks.length) * 100) : 0;
 
-  // Nezodpovězené otázky
+  // Nezodpovězené otázky – ty, na které neexistuje vazba z žádné jiné entity (typ "answers")
+  const answeredQuestionIds = new Set();
+  db.entities.forEach(other => {
+    if (other.archived) return;
+    (other.links || []).forEach(l => {
+      if (l.type === 'answers' && l.to) answeredQuestionIds.add(l.to);
+    });
+  });
   const unansweredQuestions = db.entities.filter(e =>
-    !e.archived && (e.aspects || []).includes('Question') && !(e.links || []).some(l => l.type === 'answeredBy')
+    !e.archived && (e.aspects || []).includes('Question') && !answeredQuestionIds.has(e.id)
   ).slice(0, 5);
 
   // Nedávno změněné – top 10
@@ -6853,7 +7162,8 @@ function renderAll(main) {
       deadline: sdl.value || null,
       content: sct.value || null,
       relations: srl.value || null,
-      confidence: scf.value || null
+      confidence: scf.value || null,
+      attrFilters: Array.isArray(state.filter.attrFilters) ? JSON.parse(JSON.stringify(state.filter.attrFilters)) : []
     }, render: 'table' });
   };
   sar.value = 'active'; update();
@@ -8553,6 +8863,7 @@ function renderDetailRead(main, e) {
     planHtml +
     trackerHtml +
     securedNoticeHtml +
+    renderQuestionAnswersSection(e) +
     renderEventAttendeesSection(e) +
     renderEventTasksSection(e) +
     (bodyHtml ? '<section aria-labelledby="body-h"><h3 id="body-h">Obsah</h3>' +
@@ -8864,6 +9175,7 @@ function renderDetailRead(main, e) {
   // Provázat citáty z komentářů s textem těla
   setupCommentQuoteLinking(e);
   setupAnnotations(e);
+  attachQuestionAnswersHandlers(main, e);
   attachEventAttendeesHandlers(main, e);
   attachEventTasksHandlers(main, e);
   if (state.sectionEditMode) setupSectionEditMode(e);
@@ -9610,6 +9922,7 @@ function renderDetailEdit(main, e) {
       ? '<div id="d-tracker-edit">' + renderTrackerSection(e, 'edit') + '</div>'
       : '') +
 
+    renderQuestionAnswersSection(e) +
     renderEventAttendeesSection(e) +
     renderEventTasksSection(e) +
 
@@ -9802,6 +10115,17 @@ function renderDetailEdit(main, e) {
 
   document.getElementById('back-btn').onclick = goBack;
   document.getElementById('btn-done').onclick = () => {
+    // Tracker: pokud jsme byli v edit modu a uživatel měnil hodnotu, zapsat do historie
+    if ((e.aspects || []).includes('Tracker') && state._trackerEditOriginalEntityId === e.id) {
+      const origV = state._trackerEditOriginalValue;
+      const curV = trackerGetValue(e);
+      if (origV !== curV && isFinite(origV) && isFinite(curV)) {
+        const delta = curV - origV;
+        trackerRecordChange(e, origV, curV, delta > 0 ? '+' + delta : String(delta));
+      }
+      state._trackerEditOriginalEntityId = null;
+      state._trackerEditOriginalValue = null;
+    }
     // Pokud má aspekt Task a nemá deadline, zkus parse z názvu
     if ((e.aspects || []).includes('Task') && (!e.attributes || !e.attributes.deadline) && e.title) {
       const parsed = parseTaskDateFromTitle(e.title);
@@ -9885,21 +10209,36 @@ function renderDetailEdit(main, e) {
   document.getElementById('btn-focus-edit').onclick = () => { state.focus = !state.focus; render(); };
 
   // Event tasks sekce (editovatelná v edit modu)
+  attachQuestionAnswersHandlers(main, e);
   attachEventAttendeesHandlers(main, e);
   attachEventTasksHandlers(main, e);
 
-  // Při vstupu do edit modu automaticky focus do názvu (jen pokud focus není v žádném dalším poli)
+  // Při vstupu do edit modu automaticky focus do obsahu (tělo entity je užitečnější než název)
+  // Výjimka: pokud je entita úplně nová (prázdný název), fokus do názvu.
   // Sledujeme přes state._lastEditFocusedId - pokud se id změnilo nebo nebyl edit, znovu fokusovat
   const titleInput = document.getElementById('d-title');
-  if (titleInput && state._lastEditFocusedId !== e.id) {
+  const bodyInput = document.getElementById('d-body');
+  if (state._lastEditFocusedId !== e.id) {
     state._lastEditFocusedId = e.id;
     setTimeout(() => {
       // Pokud uživatel mezitím začal psát jinam, neukrást focus
       const activeTag = (document.activeElement && document.activeElement.tagName || '').toLowerCase();
       if (activeTag !== 'input' && activeTag !== 'textarea' && activeTag !== 'select') {
-        titleInput.focus();
-        // Pokud je název prázdný (nová entita), kurzor na konec; jinak označit pro snadné přepsání
-        if (titleInput.value) titleInput.select();
+        const titleEmpty = !titleInput || !titleInput.value.trim();
+        if (titleEmpty && titleInput) {
+          // Nová entita bez názvu – fokus do názvu
+          titleInput.focus();
+        } else if (bodyInput) {
+          // Existující entita – fokus na konec obsahu
+          bodyInput.focus();
+          // Kurzor na konec textu (ne na začátek, ne celý označený)
+          const len = bodyInput.value.length;
+          bodyInput.setSelectionRange(len, len);
+        } else if (titleInput) {
+          // Fallback – pokud není body
+          titleInput.focus();
+          if (titleInput.value) titleInput.select();
+        }
       }
     }, 50);
   }
@@ -11811,25 +12150,27 @@ function attachEventTasksHandlers(main, entity) {
   });
   // Nový úkol
   const addNewBtn = document.getElementById('ev-add-new-task');
-  if (addNewBtn) {
-    addNewBtn.onclick = () => {
-      const titleEl = document.getElementById('ev-new-task-title');
-      const raw = titleEl.value.trim();
-      if (!raw) { alertMsg('Zadejte název úkolu.'); return; }
-      const projects = getEventProjects(entity);
-      // Úkol je součástí projektů schůzky (partOf) a schůzka ho zmiňuje (mentions).
-      // Pokud chceš úkol POUZE jako součást schůzky bez projektu, můžeš to udělat ručně přes vazby.
-      const result = createQuickTaskFromText({
-        rawTitle: raw,
-        projectIds: projects.map(p => p.id),
-        eventMentionIds: [entity.id]
-      });
-      if (result) {
-        titleEl.value = '';
-        render();
-      }
-    };
+  const titleEl = document.getElementById('ev-new-task-title');
+  function doAddNewTask() {
+    if (!titleEl) return;
+    const raw = titleEl.value.trim();
+    if (!raw) { alertMsg('Zadejte název úkolu.'); return; }
+    const projects = getEventProjects(entity);
+    // Úkol je součástí projektů schůzky (partOf) a schůzka ho zmiňuje (mentions).
+    const result = createQuickTaskFromText({
+      rawTitle: raw,
+      projectIds: projects.map(p => p.id),
+      eventMentionIds: [entity.id]
+    });
+    if (result) {
+      titleEl.value = '';
+      render();
+    }
   }
+  if (addNewBtn) addNewBtn.onclick = doAddNewTask;
+  if (titleEl) titleEl.onkeydown = (ev) => {
+    if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); doAddNewTask(); }
+  };
   // Existující úkoly z projektu – picker s checkboxy a filtrem
   const pickExBtn = document.getElementById('ev-pick-existing-tasks');
   if (pickExBtn) {
@@ -14348,6 +14689,9 @@ function createQuickTaskFromText(opts) {
   const e = newEntity({
     title, aspects: ['Task'], attributes: attrs, links
   });
+  // Pokud byl název ve formátu markdown odkazu [Název](url), převést na záložku
+  // (rozšíří aspekty o Bookmark, atribut url a tělo se odkazem). Aspekt Task zůstává.
+  const wasLink = tryExtractMarkdownLinkFromTitle(e);
   addEntity(e);
 
   // Reverzní vazby: události dostanou "mentions" odkaz na vytvořený úkol
@@ -14988,6 +15332,82 @@ function suggestRelation(currentEntity, newAspect) {
     return { type: 'answers', direction: 'new-to-current' };
   // Default: relatedTo
   return { type: 'relatedTo', direction: 'new-to-current' };
+}
+
+// === VYTVOŘIT ODPOVĚĎ NA OTÁZKU ===
+// Otevře dialog pro zadání názvu nové entity, která bude odpovídat na zadanou otázku.
+// Vazba "answers" patří OUTGOING odpovědi: Odpověď.links → [{to: Otázka, type: 'answers'}]
+// Otázka pak inverzně vidí "zodpovězeno" + název odpovědi.
+// Po vytvoření přesměruje na detail nové odpovědi v edit modu.
+// === VYTVOŘIT ODPOVĚĎ NA OTÁZKU ===
+// Vrátí entity, které mají vazbu "answers" → tato otázka
+function getQuestionAnswers(questionEntity) {
+  if (!questionEntity) return [];
+  return db.entities.filter(e => {
+    if (e.archived) return false;
+    return (e.links || []).some(l => l.to === questionEntity.id && l.type === 'answers');
+  }).sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+}
+
+// HTML sekce "Odpovědi" pro Question entitu (read mode)
+function renderQuestionAnswersSection(entity) {
+  if (!entity || !(entity.aspects || []).includes('Question')) return '';
+  const answers = getQuestionAnswers(entity);
+  let html = '<section class="question-answers-section" aria-labelledby="qa-h">' +
+    '<h3 id="qa-h">💡 Odpovědi (' + answers.length + ')</h3>';
+  if (answers.length === 0) {
+    html += '<p class="meta">Zatím žádné odpovědi.</p>';
+  } else {
+    html += '<ul class="qa-list">' +
+      answers.map(a => {
+        // Zkrácený náhled obsahu
+        const body = (a.body || '').replace(/^#{1,6}\s+/gm, '').replace(/\s+/g, ' ').trim();
+        const preview = body.length > 200 ? body.slice(0, 198) + '…' : body;
+        return '<li>' +
+          '<a href="#" data-entity="' + escapeHtml(a.id) + '" class="qa-title">' + getDisplayTitleWithBadges(a) + '</a>' +
+          openInPanelBtnHtml(a.id) +
+          (preview ? '<div class="qa-preview meta">' + escapeHtml(preview) + '</div>' : '') +
+        '</li>';
+      }).join('') +
+    '</ul>';
+  }
+  html += '<button type="button" class="primary" id="btn-create-answer">💡 Vytvořit odpověď</button>';
+  html += '</section>';
+  return html;
+}
+
+function attachQuestionAnswersHandlers(main, entity) {
+  if (!entity || !(entity.aspects || []).includes('Question')) return;
+  main.querySelectorAll('.question-answers-section button.open-in-panel-btn').forEach(b => {
+    b.onclick = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      openEntityInNewPanel(b.dataset.openNewPanel);
+    };
+  });
+  const createBtn = document.getElementById('btn-create-answer');
+  if (createBtn) createBtn.onclick = () => openCreateAnswerDialog(entity);
+}
+
+// Otevře dialog pro zadání názvu nové entity, která bude odpovídat na zadanou otázku.
+function openCreateAnswerDialog(questionEntity) {
+  if (!questionEntity) return;
+  promptDialog('Vytvořit odpověď na otázku „' + getDisplayTitle(questionEntity) + '". Zadejte název nové entity (odpovědi):', '')
+    .then((title) => {
+      const t = (title || '').trim();
+      if (!t) return; // Cancel nebo prázdný název
+      const answer = newEntity({
+        title: t,
+        aspects: [],
+        attributes: {},
+        body: '',
+        links: [{ to: questionEntity.id, type: 'answers' }]
+      });
+      addEntity(answer);
+      toast('💡 Odpověď „' + t + '" vytvořena a propojena s otázkou.');
+      playSound('save-entity');
+      setView('detail', { detailId: answer.id, detailMode: 'edit' });
+    });
 }
 
 function openCreateRelatedDialog(entity) {
@@ -16510,6 +16930,15 @@ function expandMarkdownIncludes(text, opts) {
     }
     // Zjednodušit inline-selecty na (!vybraná!)
     work = simplifyInlineSelects(work);
+    // Nahradit {{status:...}} markdown chip popisem
+    work = work.replace(/\{\{status:([^|}]+?)\}\}/g, (m, ref) => {
+      const refTrim = ref.trim();
+      let target = null;
+      if (refTrim.startsWith('id:')) target = findEntity(refTrim.slice(3));
+      else target = findEntity(refTrim) || findEntityByTitle(refTrim);
+      if (!target) return '*[⚠ Entita „' + refTrim + '" nenalezena]*';
+      return buildStatusChipPlain(target);
+    });
     // Regex: {{include:Název}} nebo {{include:Název|alias}} nebo {{include:id:abc}}
     return work.replace(/\{\{include:([^|}]+?)(?:\|([^}]+?))?\}\}/g, (m, ref, alias) => {
       const refTrim = ref.trim();
@@ -16705,10 +17134,12 @@ function buildEntityExportModel(entity, selection) {
     (e.links || []).forEach(l => {
       const target = findEntity(l.to);
       const ti = RELATION_TYPES[l.type];
+      const targetAspects = target ? (target.aspects || []).map(a => aspectLabel(a)).filter(Boolean) : [];
       model.outgoingLinks.push({
         type: l.type,
         typeLabel: ti ? ti.label : l.type,
         targetTitle: target ? getDisplayTitle(target) : '(smazáno)',
+        targetAspects: targetAspects,
         note: l.note || null
       });
     });
@@ -16719,10 +17150,12 @@ function buildEntityExportModel(entity, selection) {
     inv.forEach(({ from, link }) => {
       const ti = RELATION_TYPES[link.type];
       const lbl = ti ? (ti.inverseLabel || ('zpětně: ' + ti.label)) : link.type;
+      const sourceAspects = (from.aspects || []).map(a => aspectLabel(a)).filter(Boolean);
       model.incomingLinks.push({
         type: link.type,
         typeLabel: lbl,
         sourceTitle: getDisplayTitle(from),
+        sourceAspects: sourceAspects,
         note: link.note || null
       });
     });
@@ -16789,7 +17222,7 @@ function renderEntityAsMarkdown(model) {
   lines.push('');
   const summaryParts = [];
   if (model.aspects.length) summaryParts.push('**Aspekty:** ' + model.aspects.map(a => a.label).join(', '));
-  if (model.tags.length) summaryParts.push('**Tagy:** ' + model.tags.map(t => '#' + t).join(' '));
+  if (model.tags.length) summaryParts.push('**Tagy:** ' + model.tags.join(', '));
   if (summaryParts.length) {
     lines.push('> ' + summaryParts.join(' · '));
     lines.push('');
@@ -16845,7 +17278,8 @@ function renderEntityAsMarkdown(model) {
       lines.push('### Odchozí');
       lines.push('');
       model.outgoingLinks.forEach(l => {
-        let line = '- **' + l.typeLabel + ':** ' + l.targetTitle;
+        const aspSuffix = (l.targetAspects && l.targetAspects.length > 0) ? ' (' + l.targetAspects.join(', ') + ')' : '';
+        let line = '- **' + l.typeLabel + ':** ' + l.targetTitle + aspSuffix;
         if (l.note) line += ' _(' + l.note + ')_';
         lines.push(line);
       });
@@ -16855,7 +17289,8 @@ function renderEntityAsMarkdown(model) {
       lines.push('### Příchozí');
       lines.push('');
       model.incomingLinks.forEach(l => {
-        let line = '- **' + l.typeLabel + ':** ' + l.sourceTitle;
+        const aspSuffix = (l.sourceAspects && l.sourceAspects.length > 0) ? ' (' + l.sourceAspects.join(', ') + ')' : '';
+        let line = '- **' + l.typeLabel + ':** ' + l.sourceTitle + aspSuffix;
         if (l.note) line += ' _(' + l.note + ')_';
         lines.push(line);
       });
@@ -17079,7 +17514,7 @@ function renderEntityAsDocx(model) {
   emitHeading(model.title, 1);
   const summary = [];
   if (model.aspects.length) summary.push('**Aspekty:** ' + model.aspects.map(a => a.label).join(', '));
-  if (model.tags.length) summary.push('**Tagy:** ' + model.tags.map(t => '#' + t).join(' '));
+  if (model.tags.length) summary.push('**Tagy:** ' + model.tags.join(', '));
   if (summary.length) emitInline(summary.join(' · '), { style: 'IntenseQuote' });
 
   if (model.attributesByAspect.length > 0 || model.customAttributes.length > 0) {
@@ -17119,7 +17554,8 @@ function renderEntityAsDocx(model) {
     if (model.outgoingLinks.length > 0) {
       emitHeading('Odchozí', 3);
       model.outgoingLinks.forEach(l => {
-        let line = '**' + l.typeLabel + ':** ' + l.targetTitle;
+        const aspSuffix = (l.targetAspects && l.targetAspects.length > 0) ? ' (' + l.targetAspects.join(', ') + ')' : '';
+        let line = '**' + l.typeLabel + ':** ' + l.targetTitle + aspSuffix;
         if (l.note) line += ' *(' + l.note + ')*';
         emitBullet(line);
       });
@@ -17127,7 +17563,8 @@ function renderEntityAsDocx(model) {
     if (model.incomingLinks.length > 0) {
       emitHeading('Příchozí', 3);
       model.incomingLinks.forEach(l => {
-        let line = '**' + l.typeLabel + ':** ' + l.sourceTitle;
+        const aspSuffix = (l.sourceAspects && l.sourceAspects.length > 0) ? ' (' + l.sourceAspects.join(', ') + ')' : '';
+        let line = '**' + l.typeLabel + ':** ' + l.sourceTitle + aspSuffix;
         if (l.note) line += ' *(' + l.note + ')*';
         emitBullet(line);
       });
@@ -17455,7 +17892,8 @@ function renderEntityAsHtmlForPrint(model) {
     if (model.outgoingLinks.length > 0) {
       h += '<h3>Odchozí</h3><ul>';
       model.outgoingLinks.forEach(l => {
-        h += '<li><strong>' + esc(l.typeLabel) + ':</strong> ' + esc(l.targetTitle);
+        const aspSuffix = (l.targetAspects && l.targetAspects.length > 0) ? ' <span class="meta">(' + esc(l.targetAspects.join(', ')) + ')</span>' : '';
+        h += '<li><strong>' + esc(l.typeLabel) + ':</strong> ' + esc(l.targetTitle) + aspSuffix;
         if (l.note) h += ' <em>(' + esc(l.note) + ')</em>';
         h += '</li>';
       });
@@ -17464,7 +17902,8 @@ function renderEntityAsHtmlForPrint(model) {
     if (model.incomingLinks.length > 0) {
       h += '<h3>Příchozí</h3><ul>';
       model.incomingLinks.forEach(l => {
-        h += '<li><strong>' + esc(l.typeLabel) + ':</strong> ' + esc(l.sourceTitle);
+        const aspSuffix = (l.sourceAspects && l.sourceAspects.length > 0) ? ' <span class="meta">(' + esc(l.sourceAspects.join(', ')) + ')</span>' : '';
+        h += '<li><strong>' + esc(l.typeLabel) + ':</strong> ' + esc(l.sourceTitle) + aspSuffix;
         if (l.note) h += ' <em>(' + esc(l.note) + ')</em>';
         h += '</li>';
       });
@@ -19477,6 +19916,7 @@ body.viewer-mode .btn-group:has(#d-add-comment) { display: none !important; }
       <tr><td><code>[[Název entity]]</code></td><td>Wiki odkaz</td></tr>
       <tr><td><code>{{include:ID}}</code></td><td>Transkluze – vloží obsah jiné entity</td></tr>
       <tr><td><code>{{include:Název}}</code></td><td>Transkluze podle názvu</td></tr>
+      <tr><td><code>{{status:Název}}</code></td><td>Status chip – kompaktní souhrn entity (název + nejdůležitější info podle aspektů: stav úkolu, termín schůzky, URL záložky, % cíle, statistika projektu…) s odkazem na entitu. Funguje i v exportu/tisku.</td></tr>
       <tr><td><code>**tučně**</code> <code>*kurzíva*</code></td><td>Standardní markdown</td></tr>
       <tr><td><code># Nadpis</code></td><td>Nadpisy 1.–4. úrovně</td></tr>
       <tr><td><code>- položka</code> / <code>1. položka</code></td><td>Seznamy</td></tr>
@@ -21248,6 +21688,18 @@ function getEntityDetailsHtml(e) {
     if (a.priority) parts.push('<strong>Priorita:</strong> ' + escapeHtml(a.priority));
     if (a.maturity) parts.push('<strong>Zralost:</strong> ' + escapeHtml(a.maturity));
   }
+  if (aspects.includes('Tracker')) {
+    const val = trackerGetValue(e);
+    const unit = trackerGetUnit(e);
+    const target = trackerGetTarget(e);
+    let s = '<strong>Hodnota:</strong> ' + escapeHtml(trackerFmt(val));
+    if (unit) s += ' ' + escapeHtml(unit);
+    if (target !== null && target !== 0) {
+      const pct = Math.round((val / target) * 100);
+      s += ' <span class="meta">(' + pct + ' % cíle)</span>';
+    }
+    parts.push(s);
+  }
   // Pro vlastní aspekty: vyber prvních pár vyplněných polí (ne textarea)
   (e.aspects || []).forEach(ak => {
     if (ASPECTS[ak]) return; // builtin, už zpracován
@@ -21465,6 +21917,10 @@ function applySavedView(v) {
   }
   // Důvěra
   if (f.confidence) r = r.filter(e => e.confidence === f.confidence);
+  // Pokročilé filtry atributů
+  if (Array.isArray(f.attrFilters) && f.attrFilters.length > 0) {
+    r = r.filter(e => f.attrFilters.every(af => evaluateAttrFilter(e, af)));
+  }
 
   if (v.sort && v.sort.by) {
     const dir = v.sort.dir === 'desc' ? -1 : 1;
@@ -21518,6 +21974,9 @@ function describeFilter(f) {
     p.push(labels[f.relations] || f.relations);
   }
   if (f.confidence) p.push('důvěra: ' + f.confidence);
+  if (Array.isArray(f.attrFilters) && f.attrFilters.length > 0) {
+    p.push(f.attrFilters.length + ' pokročil' + (f.attrFilters.length === 1 ? 'ý filtr' : (f.attrFilters.length < 5 ? 'é filtry' : 'ých filtrů')) + ' atributů');
+  }
   return p.join(', ') || '(bez omezení)';
 }
 
@@ -22591,7 +23050,8 @@ function renderAll(main) {
       deadline: sdl.value || null,
       content: sct.value || null,
       relations: srl.value || null,
-      confidence: scf.value || null
+      confidence: scf.value || null,
+      attrFilters: Array.isArray(state.filter.attrFilters) ? JSON.parse(JSON.stringify(state.filter.attrFilters)) : []
     }, render: 'table' });
   };
   sar.value = 'active'; update();
@@ -29343,7 +29803,7 @@ function renderTrackerSection(entity, mode) {
     h += '<button type="button" class="tracker-btn-set" id="tracker-set-btn" title="Nastavit konkrétní hodnotu…">✎ Nastavit…</button>';
     h += '<button type="button" class="tracker-btn-reset" id="tracker-reset-btn" title="Vrátit na počáteční hodnotu (' + trackerFmt(stats.initial) + ')">⟲ Reset</button>';
     h += '</div>';
-    h += '<p class="meta">Tlačítka mění hodnotu ihned a zapisují do historie. Můžete také změnit hodnotu přímo v poli „Aktuální hodnota" výše.</p>';
+    h += '<p class="meta">Tlačítka mění hodnotu lokálně. Změna se zapíše do historie a uloží až po stisku „Hotovo" v hlavičce.</p>';
   } else {
     h += '<p class="meta">Pro úpravu hodnoty přepněte do <strong>edit modu</strong> (klávesa <kbd>e</kbd>).</p>';
   }
@@ -29390,6 +29850,14 @@ function renderTrackerSection(entity, mode) {
 }
 
 function attachTrackerHandlers(entity) {
+  // V edit modu se hodnota mění lokálně bez okamžitého save/history zápisu;
+  // historie se uloží až při tlačítku „Hotovo" (btn-done) – viz processTrackerEditFlush.
+  const inEdit = state.detailMode === 'edit';
+  // Při vstupu do edit modu si zapamatujme původní hodnotu (jen jednou pro entity ID)
+  if (inEdit && state._trackerEditOriginalEntityId !== entity.id) {
+    state._trackerEditOriginalEntityId = entity.id;
+    state._trackerEditOriginalValue = trackerGetValue(entity);
+  }
   // +/- tlačítka
   document.querySelectorAll('button[data-tracker-delta]').forEach(btn => {
     btn.onclick = () => {
@@ -29399,11 +29867,27 @@ function attachTrackerHandlers(entity) {
       const newV = oldV + delta;
       if (!entity.attributes) entity.attributes = {};
       entity.attributes.tracker_value = newV;
-      trackerRecordChange(entity, oldV, newV, delta > 0 ? '+' + delta : String(delta));
-      entity.updated_at = nowIso();
-      save();
-      playSound('save');
-      render();
+      if (inEdit) {
+        // V edit modu: nezapisovat historii ani persist na disk; jen aktualizovat zobrazení.
+        // Změny se zapíší pouze pokud uživatel klikne „Hotovo" (btn-done).
+        // Aktualizujeme jen tracker sekci (ne celou stránku, aby se zachoval focus v ostatních polích)
+        const trackerSec = document.getElementById('d-tracker-edit');
+        if (trackerSec) {
+          trackerSec.innerHTML = renderTrackerSection(entity, 'edit');
+          attachTrackerHandlers(entity); // re-attach
+        }
+        // Aktualizovat i pole „Aktuální hodnota" pokud existuje
+        const valInput = document.querySelector('input[data-attr-key="tracker_value"]');
+        if (valInput) valInput.value = newV;
+        playSound('save');
+      } else {
+        // Read mode: okamžitě zapsat (původní chování)
+        trackerRecordChange(entity, oldV, newV, delta > 0 ? '+' + delta : String(delta));
+        entity.updated_at = nowIso();
+        save();
+        playSound('save');
+        render();
+      }
     };
   });
   // Set… tlačítko – dialog na nastavení konkrétní hodnoty
@@ -29418,6 +29902,19 @@ function attachTrackerHandlers(entity) {
       if (newV === oldV) { toast('Hodnota se nezměnila.'); return; }
       if (!entity.attributes) entity.attributes = {};
       entity.attributes.tracker_value = newV;
+      if (inEdit) {
+        // V edit modu: jen aktualizovat zobrazení; historie a save se uloží při "Hotovo"
+        const trackerSec = document.getElementById('d-tracker-edit');
+        if (trackerSec) {
+          trackerSec.innerHTML = renderTrackerSection(entity, 'edit');
+          attachTrackerHandlers(entity);
+        }
+        const valInput = document.querySelector('input[data-attr-key="tracker_value"]');
+        if (valInput) valInput.value = newV;
+        playSound('save');
+        return;
+      }
+      // Read mode: rovnou zapsat historii
       const noteRaw = await promptDialog('Poznámka ke změně (volitelná):', '');
       trackerRecordChange(entity, oldV, newV, noteRaw || 'Ruční nastavení');
       entity.updated_at = nowIso();
