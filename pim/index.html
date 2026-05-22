@@ -658,6 +658,9 @@ body.theme-dark .tt-section-active { border-left-color: #f88; }
 body.theme-dark .tt-toggl-sent { background: #234720; color: #b8e0a8; }
 .tt-toggl-send { padding: 0.15em 0.5em; font-size: 0.9em; }
 .tt-toggl-cell { white-space: nowrap; }
+.ttv-day-header { margin: 1em 0 0.3em 0; padding: 0.3em 0.6em; background: rgba(0,0,0,0.04); border-left: 3px solid #888; font-size: 1.05em; }
+body.theme-dark .ttv-day-header { background: rgba(255,255,255,0.05); border-left-color: #aaa; }
+.ttv-day-header strong { text-transform: capitalize; }
 /* URL field s tlačítky pro kopírování */
 .url-field { display: inline-flex; align-items: center; gap: 0.4em; flex-wrap: wrap; }
 .url-copy-btn, .url-copy-md-btn { padding: 0.15em 0.5em; font-size: 0.85em; background: #fff; border: 1px solid #ccc; border-radius: 3px; cursor: pointer; line-height: 1.4; }
@@ -8393,35 +8396,59 @@ function renderTimeTrackingView(main) {
 
   // Sbalitelný detail záznamů
   if (allEntriesInRange.length > 0) {
+    // Seskupit záznamy podle dne (YYYY-MM-DD), uvnitř dne seřadit nejnovější začátek první.
+    const byDay = {};
+    allEntriesInRange.forEach(item => {
+      const d = new Date(item.entry.start);
+      const dayKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      if (!byDay[dayKey]) byDay[dayKey] = [];
+      byDay[dayKey].push(item);
+    });
+    // Dny seřadit od nejnovějšího
+    const dayKeys = Object.keys(byDay).sort((a, b) => b.localeCompare(a));
+    // Uvnitř každého dne seřadit záznamy podle začátku desc
+    dayKeys.forEach(k => byDay[k].sort((a, b) => (b.entry.start || '').localeCompare(a.entry.start || '')));
+
     html += '<details class="tt-section" style="margin:1em 0;" open>' +
       '<summary><h2 style="display:inline-block;margin:0;">Detailní záznamy (' + allEntriesInRange.length + ')</h2></summary>' +
-      '<p class="meta">Pro editaci záznamu otevřete detail entity. Tlačítko 📤 Toggl odešle záznam do Toggl Track (jen pokud je integrace nastavena v Nastavení). Záznam, který už byl odeslán, je označen ✓ Toggl a znovu odeslat nelze.</p>' +
-      '<table class="tt-entries-table"><thead><tr>' +
-        '<th>Datum</th><th>Entita</th><th>Začátek</th><th>Konec</th><th>Trvání</th><th>Toggl</th>' +
-      '</tr></thead><tbody>';
+      '<p class="meta">Záznamy seskupené podle dne, nejnovější den nahoře. Pro editaci záznamu otevřete detail entity. Tlačítko 📤 Toggl odešle záznam do Toggl Track (jen pokud je integrace nastavena v Nastavení). Záznam, který už byl odeslán, je označen ✓ Toggl a znovu odeslat nelze.</p>';
+
     const togglConfigured = togglIsConfigured();
-    allEntriesInRange.forEach(item => {
-      const en = item.entry;
-      const sD = new Date(en.start);
-      const eD = new Date(en.end);
-      let togglCell = '';
-      if (en.toggl_sent) {
-        togglCell = '<span class="tt-toggl-sent" title="Odesláno do Toggl ' + escapeHtml(en.toggl_sent_at || '') + '">✓ Toggl</span>';
-      } else if (togglConfigured) {
-        togglCell = '<button type="button" class="tt-toggl-send" data-tt-entry="' + escapeHtml(en.id) + '" title="Odeslat tento záznam do Toggl Track">📤 Toggl</button>';
-      } else {
-        togglCell = '<span class="meta" title="Toggl integrace není nakonfigurována – otevřete Nastavení">—</span>';
-      }
-      html += '<tr>' +
-        '<td>' + escapeHtml(fmtDate(en.start)) + '</td>' +
-        '<td><a href="#" data-entity="' + escapeHtml(item.entity.id) + '">' + getDisplayTitleWithBadges(item.entity) + '</a></td>' +
-        '<td>' + escapeHtml(sD.toLocaleTimeString('cs', {hour:'2-digit',minute:'2-digit'})) + '</td>' +
-        '<td>' + escapeHtml(eD.toLocaleTimeString('cs', {hour:'2-digit',minute:'2-digit'})) + '</td>' +
-        '<td>' + escapeHtml(ttFmtDuration(ttEntryDuration(en))) + '</td>' +
-        '<td class="tt-toggl-cell">' + togglCell + '</td>' +
-      '</tr>';
+    dayKeys.forEach(dayKey => {
+      const items = byDay[dayKey];
+      // Hlavička dne
+      const firstStart = items[0].entry.start;
+      const dayLabel = new Date(firstStart).toLocaleDateString('cs-CZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      // Celkový čas za den
+      let daySecs = 0;
+      items.forEach(it => { daySecs += ttEntryDuration(it.entry); });
+      html += '<p class="ttv-day-header"><strong>' + escapeHtml(dayLabel) + '</strong> <span class="meta">— ' + items.length + ' záznam' + (items.length === 1 ? '' : (items.length < 5 ? 'y' : 'ů')) + ', ' + escapeHtml(ttFmtHours(daySecs)) + '</span></p>';
+      html += '<table class="tt-entries-table"><thead><tr>' +
+        '<th>Entita</th><th>Začátek</th><th>Konec</th><th>Trvání</th><th>Toggl</th>' +
+      '</tr></thead><tbody>';
+      items.forEach(item => {
+        const en = item.entry;
+        const sD = new Date(en.start);
+        const eD = new Date(en.end);
+        let togglCell = '';
+        if (en.toggl_sent) {
+          togglCell = '<span class="tt-toggl-sent" title="Odesláno do Toggl ' + escapeHtml(en.toggl_sent_at || '') + '">✓ Toggl</span>';
+        } else if (togglConfigured) {
+          togglCell = '<button type="button" class="tt-toggl-send" data-tt-entry="' + escapeHtml(en.id) + '" title="Odeslat tento záznam do Toggl Track">📤 Toggl</button>';
+        } else {
+          togglCell = '<span class="meta" title="Toggl integrace není nakonfigurována – otevřete Nastavení">—</span>';
+        }
+        html += '<tr>' +
+          '<td><a href="#" data-entity="' + escapeHtml(item.entity.id) + '">' + getDisplayTitleWithBadges(item.entity) + '</a></td>' +
+          '<td>' + escapeHtml(sD.toLocaleTimeString('cs', {hour:'2-digit',minute:'2-digit'})) + '</td>' +
+          '<td>' + escapeHtml(eD.toLocaleTimeString('cs', {hour:'2-digit',minute:'2-digit'})) + '</td>' +
+          '<td>' + escapeHtml(ttFmtDuration(ttEntryDuration(en))) + '</td>' +
+          '<td class="tt-toggl-cell">' + togglCell + '</td>' +
+        '</tr>';
+      });
+      html += '</tbody></table>';
     });
-    html += '</tbody></table></details>';
+    html += '</details>';
   }
 
   main.innerHTML = html;
