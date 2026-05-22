@@ -689,10 +689,75 @@ function generatePuml(diagram){
 
 function genActivity(model){
   const out = [];
+
+  // Auto-registrace plavacích drah: dráhy, na které odkazují akce, se automaticky
+  // přidají do seznamu drah modelu (pokud tam ještě nejsou). Tím je seznam drah vždy
+  // konzistentní s tím, co je v akcích — uživatel nemůže mít akci v dráze, která
+  // by "nebyla definovaná".
+  if(!model.swimlanes) model.swimlanes = [];
+  function collectSwimlanesFromActions(children){
+    (children || []).forEach(n => {
+      if(n.type === 'action' && n.swimlane){
+        if(!model.swimlanes.find(s => s.name === n.swimlane)){
+          model.swimlanes.push({id: uid('sw'), name: n.swimlane});
+        }
+      }
+      if(n.branches){
+        n.branches.forEach(b => collectSwimlanesFromActions(b.children));
+      }
+      if(n.children) collectSwimlanesFromActions(n.children);
+    });
+  }
+  collectSwimlanesFromActions(model.children);
+
+  // PlantUML požaduje, aby všechny použité plavací dráhy byly „deklarované" na začátku
+  // diagramu — jinak při použití dráhy v if/while/repeat větvích hlásí
+  // „This swimlane must be defined at the start of the diagram".
+  // Řešení: emit seznam všech drah jako `|name|` před `start`.
+  // Najdeme dráhu první akce v diagramu — tu emitneme jako poslední, aby PlantUML
+  // začal ve správné dráze pro úvodní akce.
+  function findFirstSwimlane(children){
+    for(const n of (children||[])){
+      if(n.type === 'action' && n.swimlane) return n.swimlane;
+      if(n.branches){
+        for(const b of n.branches){
+          const r = findFirstSwimlane(b.children);
+          if(r) return r;
+        }
+      }
+      if(n.children){
+        const r = findFirstSwimlane(n.children);
+        if(r) return r;
+      }
+    }
+    return null;
+  }
+  const allLanes = (model.swimlanes || []).map(s => s.name);
+  if(allLanes.length > 0){
+    const firstLane = findFirstSwimlane(model.children);
+    // Nejdřív vypiš ostatní dráhy (deklarace), nakonec tu, kde diagram skutečně začíná
+    const declarationOrder = [];
+    allLanes.forEach(name => {
+      if(name !== firstLane) declarationOrder.push(name);
+    });
+    if(firstLane) declarationOrder.push(firstLane);
+    else if(allLanes.length > 0) declarationOrder.push(allLanes[0]); // fallback
+    declarationOrder.forEach(name => out.push('|' + name + '|'));
+  }
+
+  // Globální stav: pamatuje si, ve které dráze je aktuálně PlantUML.
+  // KRITICKÉ: musí být napříč celou generací (nejen v aktuálním zanoření),
+  // protože PlantUML nemá scope pro swimlane uvnitř if/else — když uvnitř
+  // větve přepneme na |X|, po endif zůstaneme v X. Generátor to musí vědět.
+  // Nastavíme na poslední deklarovanou dráhu (kde PlantUML aktuálně je po deklaracích).
+  let lastSwimlane = allLanes.length > 0 ?
+    (findFirstSwimlane(model.children) || allLanes[allLanes.length - 1]) : null;
+
   function emit(children, indent){
     const pad = '  '.repeat(indent);
-    let lastSwimlane = null;
     children.forEach(n => {
+      // Přepnutí dráhy: pokud má akce zadanou dráhu a liší se od aktuální, emitneme |dráha|.
+      // Prázdná dráha ('' nebo undefined) znamená "nech v aktuální" — neemitujeme.
       if(n.swimlane && n.swimlane !== lastSwimlane){
         out.push(pad + '|' + n.swimlane + '|');
         lastSwimlane = n.swimlane;
@@ -1474,16 +1539,9 @@ function validateDiagram(diagram){
         });
       };
       walk(m.children || []);
-      const swNames = (m.swimlanes||[]).map(s=>s.name);
-      const checkSw = (children) => {
-        children.forEach(n => {
-          if(n.type === 'action' && n.swimlane && !swNames.includes(n.swimlane))
-            issues.push({sev:'error',msg:'Akce odkazuje na neexistující plavací dráhu: '+n.swimlane});
-          if(n.branches) n.branches.forEach(b => checkSw(b.children||[]));
-          if(n.children) checkSw(n.children);
-        });
-      };
-      checkSw(m.children || []);
+      // Poznámka: dříve tu byla validace „neexistující plavací dráhu" — tu jsme
+      // odstranili, protože generátor teď dráhy automaticky registruje z akcí.
+      // Konzistence je zaručena tím, že akce jsou zdrojem pravdy.
       const childList = m.children || [];
       const hasStart = childList.some(n => n.type === 'start');
       if(!hasStart && childList.length > 0) issues.push({sev:'warn',msg:'Diagram nemá uzel start.'});
@@ -1629,6 +1687,78 @@ function actionBtn(symbol, ariaLabel, onClick){
   b.textContent = symbol;
   b.addEventListener('click', onClick);
   return b;
+}
+
+// === KLÁVESNICOVÁ NAVIGACE VE STROMECH =========================
+// Šipka nahoru/dolů přepíná mezi řádky (.tree-item), doleva/doprava přepíná
+// uvnitř řádku mezi odkazem a akčními tlačítky. Home/End přejdou na první/poslední.
+// Implementováno přes event delegaci na kontejneru – přežije re-render obsahu.
+function setupTreeKeyNav(container){
+  if(!container || container._treeNavBound) return;
+  container._treeNavBound = true;
+  container.addEventListener('keydown', e => {
+    // Aktivní prvek musí být uvnitř .tree-item
+    const item = e.target.closest && e.target.closest('.tree-item');
+    if(!item) return;
+    const allItems = Array.from(container.querySelectorAll('.tree-item'));
+    const itemIdx = allItems.indexOf(item);
+    if(itemIdx < 0) return;
+    // Focusable prvky v rámci aktuálního řádku
+    const rowFocusable = Array.from(item.querySelectorAll('a, button'));
+    const inRowIdx = rowFocusable.indexOf(e.target);
+    switch(e.key){
+      case 'ArrowDown': {
+        e.preventDefault();
+        const next = allItems[itemIdx + 1];
+        if(next){
+          const link = next.querySelector('a, button');
+          if(link) link.focus();
+        }
+        break;
+      }
+      case 'ArrowUp': {
+        e.preventDefault();
+        const prev = allItems[itemIdx - 1];
+        if(prev){
+          const link = prev.querySelector('a, button');
+          if(link) link.focus();
+        }
+        break;
+      }
+      case 'ArrowRight': {
+        e.preventDefault();
+        if(inRowIdx >= 0 && inRowIdx < rowFocusable.length - 1){
+          rowFocusable[inRowIdx + 1].focus();
+        }
+        break;
+      }
+      case 'ArrowLeft': {
+        e.preventDefault();
+        if(inRowIdx > 0){
+          rowFocusable[inRowIdx - 1].focus();
+        }
+        break;
+      }
+      case 'Home': {
+        e.preventDefault();
+        const first = allItems[0];
+        if(first){
+          const link = first.querySelector('a, button');
+          if(link) link.focus();
+        }
+        break;
+      }
+      case 'End': {
+        e.preventDefault();
+        const last = allItems[allItems.length - 1];
+        if(last){
+          const link = last.querySelector('a, button');
+          if(link) link.focus();
+        }
+        break;
+      }
+    }
+  });
 }
 
 function renderDiagramTree(){
@@ -3796,7 +3926,8 @@ function openHelp(){
     'Editor diagramů PlantUML pro čtyři typy: aktivitní (flow/action), třídní (class), sekvenční (sequence/zprávy) a use case. Editujete strukturovaně přes formuláře, zdrojový kód PlantUML se generuje automaticky.');
   make('Klávesové zkratky',
     'Alt+N nový projekt, Alt+O načíst projekt, Alt+S uložit projekt, Alt+I importovat .puml, Alt+H nápověda.',
-    'Alt+D nový diagram, Alt+F nová složka, Alt+V uložit verzi, Alt+P náhled, Alt+J promítat, Alt+U stáhnout .puml.');
+    'Alt+D nový diagram, Alt+F nová složka, Alt+V uložit verzi, Alt+P náhled, Alt+J promítat, Alt+U stáhnout .puml.',
+    'V seznamu diagramů a v seznamu prvků diagramu fungují kromě Tab i šipky: šipka nahoru/dolů přepíná mezi položkami, šipka doleva/doprava mezi odkazem a akčními tlačítky (↑ ↓ ×), Home/End přejde na první/poslední položku.');
   make('Práce s diagramem',
     'Vlevo je strom složek a diagramů. Klepnutím na diagram se otevře editor v hlavní části.',
     'Tlačítky pod nadpisem „Struktura diagramu" se přidávají prvky. Pokud je vybrán prvek, nový prvek se vloží za něj; pokud je vybrána větev/skupina, vloží se dovnitř.',
@@ -3828,6 +3959,10 @@ function openHelp(){
 function init(){
   // Projekt – vytvořit prázdný
   state.project = newProject('Nový projekt');
+
+  // Klávesnicová navigace ve stromech (přežije re-render obsahu)
+  setupTreeKeyNav(document.getElementById('diagramTree'));
+  setupTreeKeyNav(document.getElementById('modelTree'));
 
   // Akce projektu
   document.getElementById('btnNewProject').addEventListener('click', async () => {
