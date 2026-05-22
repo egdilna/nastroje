@@ -17685,7 +17685,7 @@ function renderEntityAsMarkdown(model) {
 
   if (model.attributesByAspect.length > 0 || model.customAttributes.length > 0) {
     model.attributesByAspect.forEach(group => {
-      lines.push('### ' + group.aspect);
+      lines.push('**' + group.aspect + '**');
       lines.push('');
       group.fields.forEach(f => {
         if (f.type === 'textarea') {
@@ -17700,7 +17700,7 @@ function renderEntityAsMarkdown(model) {
       lines.push('');
     });
     if (model.customAttributes.length > 0) {
-      lines.push('### Další atributy');
+      lines.push('**Další atributy**');
       lines.push('');
       model.customAttributes.forEach(a => lines.push('- **' + a.key + ':** ' + a.value));
       lines.push('');
@@ -17826,13 +17826,13 @@ function parseInlineForDocx(text) {
       i += m[0].length; continue;
     }
     m = text.slice(i).match(/^\{\+\+([^}]+)\+\+\}/);
-    if (m) { pushPlain(m[1], { underline: true }); i += m[0].length; continue; }
+    if (m) { pushPlain(m[1], { revInsert: true }); i += m[0].length; continue; }
     m = text.slice(i).match(/^\{--([^}]+)--\}/);
-    if (m) { pushPlain(m[1], { strike: true }); i += m[0].length; continue; }
+    if (m) { pushPlain(m[1], { revDelete: true }); i += m[0].length; continue; }
     m = text.slice(i).match(/^\{==([^}]+)==\}/);
     if (m) { pushPlain(m[1], { highlight: true }); i += m[0].length; continue; }
     m = text.slice(i).match(/^\{>>([^<]+)<<\}/);
-    if (m) { pushPlain('💬 ' + m[1], { italic: true }); i += m[0].length; continue; }
+    if (m) { pushPlain(m[1], { revComment: true }); i += m[0].length; continue; }
     m = text.slice(i).match(/^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/);
     if (m) { pushPlain(m[2] || m[1], { italic: true }); i += m[0].length; continue; }
     m = text.slice(i).match(/^(https?:\/\/[^\s<>"',;)]+)/);
@@ -17845,7 +17845,8 @@ function parseInlineForDocx(text) {
     const last = merged[merged.length - 1];
     if (last && last.bold === r.bold && last.italic === r.italic && last.code === r.code &&
         last.underline === r.underline && last.strike === r.strike &&
-        last.highlight === r.highlight && last.link === r.link) {
+        last.highlight === r.highlight && last.link === r.link &&
+        last.revInsert === r.revInsert && last.revDelete === r.revDelete && last.revComment === r.revComment) {
       last.text += r.text;
     } else {
       merged.push(Object.assign({}, r));
@@ -17864,7 +17865,29 @@ function runsToParagraphXml(runs, opts) {
   const pPrXml = pPr.length ? '<w:pPr>' + pPr.join('') + '</w:pPr>' : '';
   let runsXml = '';
   const _hyperlinkRels = opts._hyperlinkRels || [];
+  // Globální counter pro revision IDs (sdílený přes všechny paragrafy v dokumentu)
+  if (typeof window !== 'undefined') {
+    if (window._docxRevIdCounter === undefined) window._docxRevIdCounter = 0;
+  }
+  function nextRevId() {
+    if (typeof window !== 'undefined') {
+      window._docxRevIdCounter = (window._docxRevIdCounter || 0) + 1;
+      return window._docxRevIdCounter;
+    }
+    return 1;
+  }
+  const revAuthor = 'PIM CriticMarkup';
+  const revDate = (typeof state !== 'undefined' && state.settings && state.settings.userName)
+    ? new Date().toISOString().replace(/\.\d+Z$/, 'Z') : new Date().toISOString().replace(/\.\d+Z$/, 'Z');
   runs.forEach(r => {
+    // CriticMarkup komentář – vložíme jako MS Word comment přes inline "💬 [text]" v poznámkové barvě
+    // (skutečný DOCX comment vyžaduje samostatné comments.xml + references – přidáme později)
+    if (r.revComment) {
+      const rPr = '<w:rPr><w:i/><w:color w:val="C28A2E"/><w:shd w:val="clear" w:color="auto" w:fill="FFFBE0"/></w:rPr>';
+      const t = '<w:t xml:space="preserve">[💬 ' + escapeXml(r.text) + ']</w:t>';
+      runsXml += '<w:r>' + rPr + t + '</w:r>';
+      return;
+    }
     const rPr = [];
     if (r.bold) rPr.push('<w:b/>');
     if (r.italic) rPr.push('<w:i/>');
@@ -17874,6 +17897,21 @@ function runsToParagraphXml(runs, opts) {
     if (r.highlight) rPr.push('<w:highlight w:val="yellow"/>');
     if (r.link) rPr.push('<w:rStyle w:val="Hyperlink"/>');
     const rPrXml = rPr.length ? '<w:rPr>' + rPr.join('') + '</w:rPr>' : '';
+    // Word revize: <w:ins> pro vložení, <w:del> pro smazání. Mazaný text používá <w:delText> místo <w:t>.
+    if (r.revInsert) {
+      const id = nextRevId();
+      const t = '<w:t xml:space="preserve">' + escapeXml(r.text) + '</w:t>';
+      const runXml = '<w:r>' + rPrXml + t + '</w:r>';
+      runsXml += '<w:ins w:id="' + id + '" w:author="' + escapeXml(revAuthor) + '" w:date="' + revDate + '">' + runXml + '</w:ins>';
+      return;
+    }
+    if (r.revDelete) {
+      const id = nextRevId();
+      const t = '<w:delText xml:space="preserve">' + escapeXml(r.text) + '</w:delText>';
+      const runXml = '<w:r>' + rPrXml + t + '</w:r>';
+      runsXml += '<w:del w:id="' + id + '" w:author="' + escapeXml(revAuthor) + '" w:date="' + revDate + '">' + runXml + '</w:del>';
+      return;
+    }
     const t = '<w:t xml:space="preserve">' + escapeXml(r.text) + '</w:t>';
     const runXml = '<w:r>' + rPrXml + t + '</w:r>';
     if (r.link) {
@@ -18036,6 +18074,8 @@ function renderMarkdownBlocksToDocx(text, paras, hyperlinkRels) {
 }
 
 function renderEntityAsDocx(model) {
+  // Reset revision ID counter pro tento export (každý export začíná od 1)
+  if (typeof window !== 'undefined') window._docxRevIdCounter = 0;
   const allParas = [];
   const hyperlinkRels = [];
 
@@ -18055,7 +18095,7 @@ function renderEntityAsDocx(model) {
 
   if (model.attributesByAspect.length > 0 || model.customAttributes.length > 0) {
     model.attributesByAspect.forEach(group => {
-      emitHeading(group.aspect, 3);
+      emitPara('**' + group.aspect + '**');
       group.fields.forEach(f => {
         if (f.type === 'textarea') {
           emitPara('**' + f.label + ':**');
@@ -18066,7 +18106,7 @@ function renderEntityAsDocx(model) {
       });
     });
     if (model.customAttributes.length > 0) {
-      emitHeading('Další atributy', 3);
+      emitPara('**Další atributy**');
       model.customAttributes.forEach(a => emitBullet('**' + a.key + ':** ' + a.value));
     }
   }
@@ -18391,7 +18431,7 @@ function renderEntityAsHtmlForPrint(model) {
 
   if (model.attributesByAspect.length > 0 || model.customAttributes.length > 0) {
     model.attributesByAspect.forEach(group => {
-      h += '<h3>' + esc(group.aspect) + '</h3><dl class="attrs">';
+      h += '<p><strong>' + esc(group.aspect) + '</strong></p><dl class="attrs">';
       group.fields.forEach(f => {
         if (f.type === 'textarea') {
           h += '<dt>' + esc(f.label) + ':</dt><dd>' + renderMarkdown(f.formatted || '', { ctx: { depth: 1, includeStack: new Set() } }) + '</dd>';
@@ -18402,7 +18442,7 @@ function renderEntityAsHtmlForPrint(model) {
       h += '</dl>';
     });
     if (model.customAttributes.length > 0) {
-      h += '<h3>Další atributy</h3><dl class="attrs">';
+      h += '<p><strong>Další atributy</strong></p><dl class="attrs">';
       model.customAttributes.forEach(a => h += '<dt>' + esc(a.key) + ':</dt><dd>' + esc(a.value) + '</dd>');
       h += '</dl>';
     }
