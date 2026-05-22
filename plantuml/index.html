@@ -180,6 +180,7 @@ hr{border:none;border-top:1px solid #ddd;margin:1em 0}
   <div class="field">
     <label id="dlgPromptLabel" for="dlgPromptInput">Hodnota:</label>
     <input type="text" id="dlgPromptInput">
+    <textarea id="dlgPromptTextarea" rows="8" style="display:none"></textarea>
     <div id="dlgPromptHelp" class="help"></div>
   </div>
   <div class="dialog-actions">
@@ -408,30 +409,53 @@ function extractArrowColor(s){
 }
 
 // === DIALOGY ==================================================
-function dlgPrompt(title, label, defaultVal, help){
+function dlgPrompt(title, label, defaultVal, help, multiline){
   return new Promise(resolve => {
     const dlg = document.getElementById('dlgPrompt');
     document.getElementById('dlgPromptTitle').textContent = title;
     document.getElementById('dlgPromptLabel').textContent = label;
     document.getElementById('dlgPromptHelp').textContent = help || '';
     const input = document.getElementById('dlgPromptInput');
-    input.value = defaultVal || '';
+    const textarea = document.getElementById('dlgPromptTextarea');
+    // Vyber správný vstupní prvek a label si naváže na něj
+    let active;
+    if(multiline){
+      input.style.display = 'none';
+      textarea.style.display = '';
+      textarea.value = defaultVal || '';
+      document.getElementById('dlgPromptLabel').setAttribute('for', 'dlgPromptTextarea');
+      active = textarea;
+    } else {
+      textarea.style.display = 'none';
+      input.style.display = '';
+      input.value = defaultVal || '';
+      document.getElementById('dlgPromptLabel').setAttribute('for', 'dlgPromptInput');
+      active = input;
+    }
     const ok = document.getElementById('dlgPromptOk');
     const cancel = document.getElementById('dlgPromptCancel');
-    const onOk = ()=>{ const v = input.value; cleanup(); resolve(v); };
+    const onOk = ()=>{ const v = active.value; cleanup(); resolve(v); };
     const onCancel = ()=>{ cleanup(); resolve(null); };
-    const onKey = (e)=>{ if(e.key === 'Enter'){ e.preventDefault(); onOk(); } };
+    // Enter potvrzuje jen v single-line variantě. V textarea Enter dělá nový řádek
+    // (jak uživatel očekává); k potvrzení slouží Ctrl+Enter nebo tlačítko OK.
+    const onKey = (e)=>{
+      if(multiline){
+        if(e.key === 'Enter' && (e.ctrlKey || e.metaKey)){ e.preventDefault(); onOk(); }
+      } else {
+        if(e.key === 'Enter'){ e.preventDefault(); onOk(); }
+      }
+    };
     function cleanup(){
       ok.removeEventListener('click', onOk);
       cancel.removeEventListener('click', onCancel);
-      input.removeEventListener('keydown', onKey);
+      active.removeEventListener('keydown', onKey);
       dlg.close();
     }
     ok.addEventListener('click', onOk);
     cancel.addEventListener('click', onCancel);
-    input.addEventListener('keydown', onKey);
+    active.addEventListener('keydown', onKey);
     dlg.showModal();
-    setTimeout(()=>{ input.focus(); input.select(); }, 50);
+    setTimeout(()=>{ active.focus(); if(!multiline) active.select(); }, 50);
   });
 }
 function dlgConfirm(title, text){
@@ -1575,7 +1599,7 @@ function treeItem(label, badgeText, badgeClass, isSelected, onSelect, extraButto
   const ariaParts = [];
   if(badgeText) ariaParts.push(badgeText);
   ariaParts.push(label || '(bez názvu)');
-  a.setAttribute('aria-label', 'Otevřít detail: ' + ariaParts.join(' ') + (isSelected ? ' (vybráno)' : ''));
+  a.setAttribute('aria-label', ariaParts.join(' ') + (isSelected ? ' (vybráno)' : ''));
   if(isSelected) a.setAttribute('aria-current', 'true');
   // visuální obsah
   if(badgeText){
@@ -1627,7 +1651,7 @@ function renderDiagramTree(){
       [actionBtn('×', 'Smazat složku ' + folder.name, ()=>deleteFolderAction(folder.id))]);
     // přejmenování při kliknutí na label – upravme aria-label
     const labelBtn = item.querySelector('a.label');
-    if(labelBtn) labelBtn.setAttribute('aria-label', 'Přejmenovat složku: ' + folder.name);
+    if(labelBtn) labelBtn.setAttribute('aria-label', 'složka ' + folder.name);
     li.appendChild(item);
     const subList = el('ul');
     (childrenOf[folder.id] || []).forEach(sub => renderFolder(sub, subList));
@@ -1644,7 +1668,7 @@ function renderDiagramTree(){
       []);
     const labelBtn = item.querySelector('a.label');
     if(labelBtn) labelBtn.setAttribute('aria-label',
-      'Otevřít diagram: ' + typeBadge + ' ' + d.name + (isSel ? ' (vybráno)' : ''));
+      typeBadge + ' ' + d.name + (isSel ? ' (vybráno)' : ''));
     li.appendChild(item);
     parentList.appendChild(li);
   }
@@ -2879,7 +2903,9 @@ async function deleteActivityBranch(d, ifPath, bidx){
 
 async function manageSwimlanes(d){
   const text = (d.model.swimlanes||[]).map(s=>s.name).join('\n');
-  const v = await dlgPrompt('Plavací dráhy', 'Jeden název na řádek:', text, 'Jména plavacích drah, které lze přiřadit akcím.');
+  const v = await dlgPrompt('Plavací dráhy', 'Jeden název na řádek:', text,
+    'Jména plavacích drah, které lze přiřadit akcím. Potvrďte tlačítkem OK nebo Ctrl+Enter.',
+    true);
   if(v === null) return;
   d.model.swimlanes = v.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(name => ({id:uid('sw'),name}));
   touchDiagram(d);
