@@ -643,6 +643,16 @@ body.theme-dark #btn-tt-popover.tt-active { background: #5e9; color: #001; }
 body.theme-dark .tt-popover-list li { border-bottom-color: #444; }
 .tt-popover-list li:last-child { border-bottom: none; }
 .tt-popover-list .tt-popover-stop { margin-left: auto; }
+/* Time tracking globální view – range tlačítka */
+.ttv-range-buttons { display: flex; flex-wrap: wrap; gap: 0.4em; }
+.ttv-range-btn { padding: 0.3em 0.8em; background: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; }
+.ttv-range-btn:hover { background: #e8eef5; }
+.ttv-range-btn.active { background: #0a7; color: #fff; border-color: #086; font-weight: 500; }
+body.theme-dark .ttv-range-btn { background: #1a1a1a; border-color: #444; }
+body.theme-dark .ttv-range-btn:hover { background: #243; }
+body.theme-dark .ttv-range-btn.active { background: #5e9; color: #001; border-color: #5e9; }
+.tt-section-active { border-left-color: #c33; }
+body.theme-dark .tt-section-active { border-left-color: #f88; }
 /* URL field s tlačítky pro kopírování */
 .url-field { display: inline-flex; align-items: center; gap: 0.4em; flex-wrap: wrap; }
 .url-copy-btn, .url-copy-md-btn { padding: 0.15em 0.5em; font-size: 0.85em; background: #fff; border: 1px solid #ccc; border-radius: 3px; cursor: pointer; line-height: 1.4; }
@@ -970,6 +980,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <li><button data-view="calendar">Kalendář</button></li>
       <li><button data-view="tags">Tagy</button></li>
       <li><button data-view="flags" id="nav-flags" hidden>🏳️‍🌈 Příznaky</button></li>
+      <li><button data-view="timetracking" id="nav-timetracking" hidden>⏱ Sledování času</button></li>
       <li><button data-view="tools">Nástroje</button></li>
       <li><button data-view="settings">Nastavení</button></li>
     </ul>
@@ -5367,6 +5378,9 @@ function render() {
   // Karta Příznaky: viditelná jen pokud projekt má definovaná příznaková emoji
   const navFlags = document.getElementById('nav-flags');
   if (navFlags) navFlags.hidden = getFlagEmojis().length === 0;
+  // Karta Sledování času: viditelná jen pokud má alespoň jedna entita aspekt TimeTracking
+  const navTt = document.getElementById('nav-timetracking');
+  if (navTt) navTt.hidden = !db.entities.some(e => !e.archived && ttHasAspect(e));
   document.getElementById('state-summary').textContent =
     db.entities.length + ' entit, ' + getAllTags().length + ' tagů, ' + db.savedViews.length + ' pohledů.';
   document.querySelectorAll('#main-nav button').forEach(b => {
@@ -5385,6 +5399,7 @@ function render() {
     case 'search': renderSearch(main); break;
     case 'tags': renderTags(main); break;
     case 'flags': renderFlagsView(main); break;
+    case 'timetracking': renderTimeTrackingView(main); break;
     case 'tools': renderTools(main); break;
     case 'links': renderLinksView(main); break;
     case 'views': renderViewsList(main); break;
@@ -7989,6 +8004,268 @@ function renderTags(main) {
 }
 
 // ==== VIEW: PŘÍZNAKY ====
+// === GLOBÁLNÍ POHLED „Sledování času" ===
+// Stav: db.ttViewState (perzistentní volba období)
+//   { range: 'today' | 'yesterday' | '3days' | 'week' | 'month' | 'lastMonth' | 'custom',
+//     customFrom: 'YYYY-MM-DD', customTo: 'YYYY-MM-DD' }
+function ttGetViewState() {
+  if (!db.ttViewState || typeof db.ttViewState !== 'object') {
+    db.ttViewState = { range: 'today', customFrom: '', customTo: '' };
+  }
+  return db.ttViewState;
+}
+// Vypočte rozsah [fromMs, toMs] pro vybraný preset.
+function ttComputeRange(st) {
+  const now = new Date();
+  function startOfDay(d) { const x = new Date(d); x.setHours(0,0,0,0); return x; }
+  function endOfDay(d) { const x = new Date(d); x.setHours(23,59,59,999); return x; }
+  function daysAgo(n) { const x = startOfDay(now); x.setDate(x.getDate() - n); return x; }
+  const today0 = startOfDay(now);
+  switch (st.range) {
+    case 'today':
+      return { from: today0.getTime(), to: endOfDay(today0).getTime(), label: 'Dnes' };
+    case 'yesterday': {
+      const y = daysAgo(1);
+      return { from: y.getTime(), to: endOfDay(y).getTime(), label: 'Včera' };
+    }
+    case '3days': {
+      // Posledních 3 dnů: dnes a dva předchozí kalendářní dny
+      const from = daysAgo(2);
+      return { from: from.getTime(), to: endOfDay(today0).getTime(), label: 'Poslední 3 dny' };
+    }
+    case 'week': {
+      // Od pondělí 00:00 do konce neděle
+      const d = new Date(today0);
+      const dow = d.getDay();
+      const delta = (dow === 0) ? -6 : (1 - dow);
+      d.setDate(d.getDate() + delta);
+      const end = new Date(d); end.setDate(end.getDate() + 6); end.setHours(23,59,59,999);
+      return { from: d.getTime(), to: end.getTime(), label: 'Tento týden' };
+    }
+    case 'month': {
+      const d = new Date(now.getFullYear(), now.getMonth(), 1);
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      return { from: d.getTime(), to: end.getTime(), label: 'Tento měsíc' };
+    }
+    case 'lastMonth': {
+      const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+      const monthName = d.toLocaleDateString('cs-CZ', { month: 'long', year: 'numeric' });
+      return { from: d.getTime(), to: end.getTime(), label: 'Minulý měsíc (' + monthName + ')' };
+    }
+    case 'custom': {
+      const f = st.customFrom ? new Date(st.customFrom) : today0;
+      const t = st.customTo ? new Date(st.customTo) : today0;
+      f.setHours(0,0,0,0); t.setHours(23,59,59,999);
+      return { from: f.getTime(), to: t.getTime(),
+        label: 'Vlastní (' + (st.customFrom || '?') + ' – ' + (st.customTo || '?') + ')' };
+    }
+    default:
+      return { from: today0.getTime(), to: endOfDay(today0).getTime(), label: 'Dnes' };
+  }
+}
+
+function renderTimeTrackingView(main) {
+  const st = ttGetViewState();
+  const range = ttComputeRange(st);
+  // Najdi všechny entity s aspektem TT
+  const ttEntities = db.entities.filter(e => !e.archived && ttHasAspect(e));
+  // Aktivně běžící
+  const running = ttGetAllRunning();
+  // Pro každou entitu: kolik sekund v rozsahu + záznamů
+  const perEntity = ttEntities.map(e => {
+    const entries = ttGetEntries(e);
+    const inRange = entries.filter(en => {
+      if (!en.end) return false;
+      const s = new Date(en.start).getTime();
+      return s >= range.from && s <= range.to;
+    });
+    let secs = 0;
+    inRange.forEach(en => { secs += ttEntryDuration(en); });
+    // Aktivně běžící? Pokud started v rozsahu, započíst částečně.
+    if (ttIsRunning(e)) {
+      const s = new Date(ttGetRunningSince(e)).getTime();
+      if (s >= range.from && s <= range.to) {
+        const now = Date.now();
+        const eff = Math.min(now, range.to);
+        if (eff > s) secs += Math.floor((eff - s) / 1000);
+      }
+    }
+    return { entity: e, seconds: secs, entryCount: inRange.length, running: ttIsRunning(e) };
+  }).filter(x => x.seconds > 0 || x.running).sort((a, b) => b.seconds - a.seconds);
+  const totalSecs = perEntity.reduce((sum, x) => sum + x.seconds, 0);
+
+  // Souhrny pro horní statistiky (vždy fixní časy)
+  const totalAll = ttEntities.reduce((sum, e) => sum + ttGetTotalSeconds(e, true), 0);
+  const wStart = ttWeekStart();
+  const mStart = ttMonthStart();
+  const lastMonthStart = (() => {
+    const d = new Date(); d.setHours(0,0,0,0); d.setDate(1); d.setMonth(d.getMonth() - 1);
+    return d.getTime();
+  })();
+  const lastMonthEnd = (() => {
+    const d = new Date(); d.setHours(0,0,0,0); d.setDate(1);
+    return d.getTime() - 1;
+  })();
+  const yearStart = ttYearStart();
+  const nowMs = Date.now() + 1;
+  let weekTotal = 0, monthTotal = 0, lastMonthTotal = 0, yearTotal = 0;
+  ttEntities.forEach(e => {
+    weekTotal += ttGetSecondsInRange(e, wStart, nowMs, true);
+    monthTotal += ttGetSecondsInRange(e, mStart, nowMs, true);
+    lastMonthTotal += ttGetSecondsInRange(e, lastMonthStart, lastMonthEnd, false);
+    yearTotal += ttGetSecondsInRange(e, yearStart, nowMs, true);
+  });
+
+  // Záznamy v rozsahu napříč všemi entitami (pro detailní tabulku)
+  const allEntriesInRange = [];
+  ttEntities.forEach(e => {
+    ttGetEntries(e).forEach(en => {
+      if (!en.end) return;
+      const s = new Date(en.start).getTime();
+      if (s >= range.from && s <= range.to) {
+        allEntriesInRange.push({ entity: e, entry: en });
+      }
+    });
+  });
+  allEntriesInRange.sort((a, b) => (b.entry.start || '').localeCompare(a.entry.start || ''));
+
+  let html = '<h1>⏱ Sledování času</h1>';
+
+  // Souhrn (vždy stejný, nezávisí na pickeru)
+  html += '<section class="tt-section" aria-labelledby="ttv-sum-h">' +
+    '<h2 id="ttv-sum-h">Souhrn celkem</h2>' +
+    '<div class="tt-summary">' +
+      '<div><strong>Celkem (vše):</strong> ' + ttFmtHours(totalAll) + '</div>' +
+      '<div><strong>Tento týden</strong> <span class="meta">(od pondělí)</span>: ' + ttFmtHours(weekTotal) + '</div>' +
+      '<div><strong>Tento měsíc</strong> <span class="meta">(od 1.)</span>: ' + ttFmtHours(monthTotal) + '</div>' +
+      '<div><strong>Minulý měsíc:</strong> ' + ttFmtHours(lastMonthTotal) + '</div>' +
+      '<div><strong>Letos:</strong> ' + ttFmtHours(yearTotal) + '</div>' +
+    '</div>' +
+  '</section>';
+
+  // Aktivní timery
+  if (running.length > 0) {
+    html += '<section class="tt-section tt-section-active" aria-labelledby="ttv-act-h">' +
+      '<h2 id="ttv-act-h">Aktivně běžící (' + running.length + ')</h2>' +
+      '<ul class="tt-popover-list">';
+    running.forEach(r => {
+      const since = ttGetRunningSince(r);
+      const secs = Math.floor((Date.now() - new Date(since).getTime()) / 1000);
+      html += '<li>' +
+        '<a href="#" data-entity="' + escapeHtml(r.id) + '">' + getDisplayTitleWithBadges(r) + '</a>' +
+        ' <span class="tt-live-duration" aria-live="off" data-tt-start="' + escapeHtml(since) + '">' + ttFmtDuration(secs) + '</span> ' +
+        '<button type="button" class="danger ttv-stop" data-tt-entity="' + escapeHtml(r.id) + '">⏹ Zastavit</button>' +
+      '</li>';
+    });
+    html += '</ul></section>';
+  }
+
+  // Picker období
+  html += '<section class="tt-section" aria-labelledby="ttv-range-h">' +
+    '<h2 id="ttv-range-h">Období</h2>' +
+    '<div class="ttv-range-buttons" role="group" aria-label="Rychlá volba období">' +
+      '<button type="button" class="ttv-range-btn' + (st.range === 'today' ? ' active' : '') + '" data-ttv-range="today">Dnes</button>' +
+      '<button type="button" class="ttv-range-btn' + (st.range === 'yesterday' ? ' active' : '') + '" data-ttv-range="yesterday">Včera</button>' +
+      '<button type="button" class="ttv-range-btn' + (st.range === '3days' ? ' active' : '') + '" data-ttv-range="3days">Poslední 3 dny</button>' +
+      '<button type="button" class="ttv-range-btn' + (st.range === 'week' ? ' active' : '') + '" data-ttv-range="week">Tento týden</button>' +
+      '<button type="button" class="ttv-range-btn' + (st.range === 'month' ? ' active' : '') + '" data-ttv-range="month">Tento měsíc</button>' +
+      '<button type="button" class="ttv-range-btn' + (st.range === 'lastMonth' ? ' active' : '') + '" data-ttv-range="lastMonth">Minulý měsíc</button>' +
+      '<button type="button" class="ttv-range-btn' + (st.range === 'custom' ? ' active' : '') + '" data-ttv-range="custom">Vlastní…</button>' +
+    '</div>';
+  if (st.range === 'custom') {
+    html += '<div class="ttv-custom-fields" style="margin-top:0.5em;">' +
+      '<label for="ttv-from">Od:</label> ' +
+      '<input type="date" id="ttv-from" value="' + escapeHtml(st.customFrom || '') + '"> ' +
+      '<label for="ttv-to">Do:</label> ' +
+      '<input type="date" id="ttv-to" value="' + escapeHtml(st.customTo || '') + '">' +
+    '</div>';
+  }
+  html += '<p class="meta" style="margin-top:0.5em;">Vybrané období: <strong>' + escapeHtml(range.label) + '</strong> — ' +
+    'od ' + escapeHtml(fmtDate(new Date(range.from).toISOString())) +
+    ' do ' + escapeHtml(fmtDate(new Date(range.to).toISOString())) + '.</p>' +
+  '</section>';
+
+  // Tabulka entit s časem za období
+  html += '<section class="tt-section" aria-labelledby="ttv-by-entity-h">' +
+    '<h2 id="ttv-by-entity-h">Podle entit (' + perEntity.length + ')</h2>';
+  if (perEntity.length === 0) {
+    html += '<p class="meta">Ve vybraném období nejsou žádné záznamy.</p>';
+  } else {
+    html += '<table class="tt-entries-table"><thead><tr>' +
+      '<th>Entita</th><th>Aspekty</th><th>Počet záznamů</th><th>Celkový čas</th>' +
+    '</tr></thead><tbody>';
+    perEntity.forEach(x => {
+      const aspectLabels = (x.entity.aspects || []).map(a => aspectLabel(a)).join(', ');
+      html += '<tr' + (x.running ? ' class="tt-row-running"' : '') + '>' +
+        '<td><a href="#" data-entity="' + escapeHtml(x.entity.id) + '">' + getDisplayTitleWithBadges(x.entity) + '</a>' +
+          (x.running ? ' <span class="tt-running-badge">aktivní</span>' : '') + '</td>' +
+        '<td>' + escapeHtml(aspectLabels) + '</td>' +
+        '<td>' + x.entryCount + '</td>' +
+        '<td><strong>' + escapeHtml(ttFmtHours(x.seconds)) + '</strong></td>' +
+      '</tr>';
+    });
+    html += '<tr style="font-weight:bold;background:rgba(0,0,0,0.04);"><td colspan="3">Celkem za období</td><td>' +
+      escapeHtml(ttFmtHours(totalSecs)) + '</td></tr>';
+    html += '</tbody></table>';
+  }
+  html += '</section>';
+
+  // Sbalitelný detail záznamů
+  if (allEntriesInRange.length > 0) {
+    html += '<details class="tt-section" style="margin:1em 0;">' +
+      '<summary><h2 style="display:inline-block;margin:0;">Detailní záznamy (' + allEntriesInRange.length + ')</h2></summary>' +
+      '<p class="meta">Pro editaci záznamu otevřete detail entity. V seznamu jsou zobrazeny všechny záznamy z vybraného období.</p>' +
+      '<table class="tt-entries-table"><thead><tr>' +
+        '<th>Datum</th><th>Entita</th><th>Začátek</th><th>Konec</th><th>Trvání</th>' +
+      '</tr></thead><tbody>';
+    allEntriesInRange.forEach(item => {
+      const en = item.entry;
+      const sD = new Date(en.start);
+      const eD = new Date(en.end);
+      html += '<tr>' +
+        '<td>' + escapeHtml(fmtDate(en.start)) + '</td>' +
+        '<td><a href="#" data-entity="' + escapeHtml(item.entity.id) + '">' + getDisplayTitleWithBadges(item.entity) + '</a></td>' +
+        '<td>' + escapeHtml(sD.toLocaleTimeString('cs', {hour:'2-digit',minute:'2-digit'})) + '</td>' +
+        '<td>' + escapeHtml(eD.toLocaleTimeString('cs', {hour:'2-digit',minute:'2-digit'})) + '</td>' +
+        '<td>' + escapeHtml(ttFmtDuration(ttEntryDuration(en))) + '</td>' +
+      '</tr>';
+    });
+    html += '</tbody></table></details>';
+  }
+
+  main.innerHTML = html;
+
+  // Handler: změna rangu (tlačítka)
+  main.querySelectorAll('button[data-ttv-range]').forEach(btn => {
+    btn.onclick = () => {
+      const range = btn.dataset.ttvRange;
+      st.range = range;
+      save();
+      render();
+    };
+  });
+  // Custom date inputs
+  const fromInp = document.getElementById('ttv-from');
+  const toInp = document.getElementById('ttv-to');
+  if (fromInp) fromInp.onchange = () => { st.customFrom = fromInp.value; save(); render(); };
+  if (toInp) toInp.onchange = () => { st.customTo = toInp.value; save(); render(); };
+  // Stop aktivního
+  main.querySelectorAll('button.ttv-stop').forEach(b => {
+    b.onclick = () => {
+      const id = b.dataset.ttEntity;
+      const ent = findEntity(id);
+      if (ent) {
+        const secs = ttStop(ent);
+        toast('⏸ Timer na „' + getDisplayTitle(ent) + '" zastaven (' + ttFmtDuration(secs) + ').');
+      }
+      render();
+    };
+  });
+  // Klikatelné entity
+  attachEntityRowHandlers(main);
+}
+
 function renderFlagsView(main) {
   const flags = getFlagEmojis();
   if (flags.length === 0) {
