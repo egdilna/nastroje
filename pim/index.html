@@ -653,6 +653,11 @@ body.theme-dark .ttv-range-btn:hover { background: #243; }
 body.theme-dark .ttv-range-btn.active { background: #5e9; color: #001; border-color: #5e9; }
 .tt-section-active { border-left-color: #c33; }
 body.theme-dark .tt-section-active { border-left-color: #f88; }
+/* Toggl integrace */
+.tt-toggl-sent { display: inline-block; padding: 0 0.4em; background: #d9eed2; color: #265c0a; border-radius: 3px; font-size: 0.85em; font-weight: 500; }
+body.theme-dark .tt-toggl-sent { background: #234720; color: #b8e0a8; }
+.tt-toggl-send { padding: 0.15em 0.5em; font-size: 0.9em; }
+.tt-toggl-cell { white-space: nowrap; }
 /* URL field s tlačítky pro kopírování */
 .url-field { display: inline-flex; align-items: center; gap: 0.4em; flex-wrap: wrap; }
 .url-copy-btn, .url-copy-md-btn { padding: 0.15em 0.5em; font-size: 0.85em; background: #fff; border: 1px solid #ccc; border-radius: 3px; cursor: pointer; line-height: 1.4; }
@@ -8004,6 +8009,181 @@ function renderTags(main) {
 }
 
 // ==== VIEW: PŘÍZNAKY ====
+// === TOGGL TRACK integrace ===
+// Nastavení uloženo pouze v localStorage (browser storage), neukládá se do JSON db.
+// Klíče: pim_toggl_proxy, pim_toggl_token, pim_toggl_workspace
+function getTogglConfig() {
+  try {
+    return {
+      proxy: localStorage.getItem('pim_toggl_proxy') || '',
+      token: localStorage.getItem('pim_toggl_token') || '',
+      workspaceId: localStorage.getItem('pim_toggl_workspace') || ''
+    };
+  } catch (e) {
+    return { proxy: '', token: '', workspaceId: '' };
+  }
+}
+function setTogglConfig(cfg) {
+  try {
+    if (cfg.proxy !== undefined) localStorage.setItem('pim_toggl_proxy', cfg.proxy || '');
+    if (cfg.token !== undefined) localStorage.setItem('pim_toggl_token', cfg.token || '');
+    if (cfg.workspaceId !== undefined) localStorage.setItem('pim_toggl_workspace', cfg.workspaceId || '');
+  } catch (_) {}
+}
+function clearTogglConfig() {
+  try {
+    localStorage.removeItem('pim_toggl_proxy');
+    localStorage.removeItem('pim_toggl_token');
+    localStorage.removeItem('pim_toggl_workspace');
+  } catch (_) {}
+}
+function togglIsConfigured() {
+  const cfg = getTogglConfig();
+  return !!(cfg.proxy && cfg.token && cfg.workspaceId);
+}
+// Odešle jeden time entry do Toggl přes Worker proxy.
+// Vrátí Promise<{ ok, status, data, error }>
+async function togglSendTimeEntry(description, startIso, endIso) {
+  const cfg = getTogglConfig();
+  if (!cfg.proxy || !cfg.token || !cfg.workspaceId) {
+    return { ok: false, error: 'Toggl není nakonfigurován. Otevřete Nastavení.' };
+  }
+  // Validace dat
+  const startMs = new Date(startIso).getTime();
+  const endMs = new Date(endIso).getTime();
+  if (!isFinite(startMs) || !isFinite(endMs) || endMs <= startMs) {
+    return { ok: false, error: 'Neplatný čas záznamu.' };
+  }
+  const duration = Math.floor((endMs - startMs) / 1000);
+  // Sestavit URL: <proxy>/workspaces/<id>/time_entries
+  const proxy = cfg.proxy.replace(/\/+$/, '');
+  const url = proxy + '/workspaces/' + encodeURIComponent(cfg.workspaceId) + '/time_entries';
+  const body = {
+    created_with: 'PIM',
+    description: String(description || '').slice(0, 1000),
+    workspace_id: Number(cfg.workspaceId) || cfg.workspaceId,
+    start: new Date(startMs).toISOString(),
+    stop: new Date(endMs).toISOString(),
+    duration: duration,
+    tags: [],
+    billable: false
+  };
+  const auth = 'Basic ' + btoa(cfg.token + ':api_token');
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': auth
+      },
+      body: JSON.stringify(body)
+    });
+    let data = null;
+    const txt = await resp.text();
+    try { data = JSON.parse(txt); } catch (_) { data = txt; }
+    if (resp.ok) {
+      return { ok: true, status: resp.status, data: data };
+    }
+    return { ok: false, status: resp.status, error: 'Toggl odpověděl: ' + resp.status + ' ' + (typeof data === 'string' ? data : (data && data.error_message) || JSON.stringify(data)).slice(0, 300) };
+  } catch (err) {
+    return { ok: false, error: 'Síťová chyba: ' + (err && err.message ? err.message : err) };
+  }
+}
+
+function findEntityByEntryId(entryId) {
+  for (const e of db.entities) {
+    if (!ttHasAspect(e)) continue;
+    const entries = ttGetEntries(e);
+    const found = entries.find(en => en.id === entryId);
+    if (found) return { entity: e, entry: found };
+  }
+  return null;
+}
+
+function togglSendEntry(entryId) {
+  const found = findEntityByEntryId(entryId);
+  if (!found) { toast('Záznam nenalezen.'); return; }
+  const { entity, entry } = found;
+  if (entry.toggl_sent) {
+    toast('Záznam už byl do Toggl odeslán.');
+    return;
+  }
+  if (!entry.end) {
+    toast('Záznam ještě běží – odeslat lze až po zastavení.');
+    return;
+  }
+  togglSendTimeEntry(getDisplayTitle(entity), entry.start, entry.end).then(res => {
+    if (res.ok) {
+      // Označit záznam jako odeslaný
+      entry.toggl_sent = true;
+      entry.toggl_id = (res.data && res.data.id) || null;
+      entry.toggl_sent_at = nowIso();
+      entity.updated_at = nowIso();
+      save();
+      toast('✓ Záznam odeslán do Toggl.');
+      playSound('save');
+      render();
+    } else {
+      alertMsg('Chyba: ' + (res.error || 'Odeslání selhalo.'));
+    }
+  });
+}
+
+// === Toggl: handler pro nastavení (volá se z renderSettings) ===
+function attachTogglSettingsHandlers() {
+  const proxyInp = document.getElementById('toggl-proxy');
+  const tokenInp = document.getElementById('toggl-token');
+  const wsInp = document.getElementById('toggl-workspace');
+  const saveBtn = document.getElementById('toggl-save');
+  const testBtn = document.getElementById('toggl-test');
+  const clearBtn = document.getElementById('toggl-clear');
+  const statusEl = document.getElementById('toggl-status');
+  if (!proxyInp || !saveBtn) return;
+  saveBtn.onclick = () => {
+    setTogglConfig({
+      proxy: proxyInp.value.trim(),
+      token: tokenInp.value.trim(),
+      workspaceId: wsInp.value.trim()
+    });
+    toast('Nastavení Toggl uloženo (pouze v tomto prohlížeči).');
+    if (statusEl) statusEl.textContent = 'Uloženo. Nastavení je platné jen pro tento prohlížeč a profil.';
+  };
+  testBtn.onclick = async () => {
+    if (!proxyInp.value.trim() || !tokenInp.value.trim() || !wsInp.value.trim()) {
+      alertMsg('Vyplňte všechna 3 pole a uložte je před testem.');
+      return;
+    }
+    // Použít aktuální hodnoty (uložit nejdřív)
+    setTogglConfig({
+      proxy: proxyInp.value.trim(),
+      token: tokenInp.value.trim(),
+      workspaceId: wsInp.value.trim()
+    });
+    if (statusEl) statusEl.textContent = 'Odesílám zkušební záznam (1 minuta v minulosti) ...';
+    const now = new Date();
+    const startIso = new Date(now.getTime() - 60 * 1000).toISOString();
+    const endIso = now.toISOString();
+    const res = await togglSendTimeEntry('PIM test – ' + new Date().toLocaleString('cs-CZ'), startIso, endIso);
+    if (res.ok) {
+      if (statusEl) statusEl.textContent = '✓ Test úspěšný. Toggl vrátil id záznamu: ' + ((res.data && res.data.id) || '?') + '. Zkontrolujte v Toggl Track.';
+      toast('✓ Toggl test úspěšný.');
+    } else {
+      if (statusEl) statusEl.textContent = '✗ Test selhal: ' + (res.error || 'neznámá chyba');
+      alertMsg('Test selhal: ' + (res.error || 'neznámá chyba'));
+    }
+  };
+  clearBtn.onclick = () => {
+    confirmDialog('Vymazat nastavení Toggl z tohoto prohlížeče? URL, token i workspace ID se ztratí.', () => {
+      clearTogglConfig();
+      proxyInp.value = '';
+      tokenInp.value = '';
+      wsInp.value = '';
+      if (statusEl) statusEl.textContent = 'Nastavení vymazáno.';
+      toast('Nastavení Toggl vymazáno.');
+    });
+  };
+}
+
 // === GLOBÁLNÍ POHLED „Sledování času" ===
 // Stav: db.ttViewState (perzistentní volba období)
 //   { range: 'today' | 'yesterday' | '3days' | 'week' | 'month' | 'lastMonth' | 'custom',
@@ -8213,22 +8393,32 @@ function renderTimeTrackingView(main) {
 
   // Sbalitelný detail záznamů
   if (allEntriesInRange.length > 0) {
-    html += '<details class="tt-section" style="margin:1em 0;">' +
+    html += '<details class="tt-section" style="margin:1em 0;" open>' +
       '<summary><h2 style="display:inline-block;margin:0;">Detailní záznamy (' + allEntriesInRange.length + ')</h2></summary>' +
-      '<p class="meta">Pro editaci záznamu otevřete detail entity. V seznamu jsou zobrazeny všechny záznamy z vybraného období.</p>' +
+      '<p class="meta">Pro editaci záznamu otevřete detail entity. Tlačítko 📤 Toggl odešle záznam do Toggl Track (jen pokud je integrace nastavena v Nastavení). Záznam, který už byl odeslán, je označen ✓ Toggl a znovu odeslat nelze.</p>' +
       '<table class="tt-entries-table"><thead><tr>' +
-        '<th>Datum</th><th>Entita</th><th>Začátek</th><th>Konec</th><th>Trvání</th>' +
+        '<th>Datum</th><th>Entita</th><th>Začátek</th><th>Konec</th><th>Trvání</th><th>Toggl</th>' +
       '</tr></thead><tbody>';
+    const togglConfigured = togglIsConfigured();
     allEntriesInRange.forEach(item => {
       const en = item.entry;
       const sD = new Date(en.start);
       const eD = new Date(en.end);
+      let togglCell = '';
+      if (en.toggl_sent) {
+        togglCell = '<span class="tt-toggl-sent" title="Odesláno do Toggl ' + escapeHtml(en.toggl_sent_at || '') + '">✓ Toggl</span>';
+      } else if (togglConfigured) {
+        togglCell = '<button type="button" class="tt-toggl-send" data-tt-entry="' + escapeHtml(en.id) + '" title="Odeslat tento záznam do Toggl Track">📤 Toggl</button>';
+      } else {
+        togglCell = '<span class="meta" title="Toggl integrace není nakonfigurována – otevřete Nastavení">—</span>';
+      }
       html += '<tr>' +
         '<td>' + escapeHtml(fmtDate(en.start)) + '</td>' +
         '<td><a href="#" data-entity="' + escapeHtml(item.entity.id) + '">' + getDisplayTitleWithBadges(item.entity) + '</a></td>' +
         '<td>' + escapeHtml(sD.toLocaleTimeString('cs', {hour:'2-digit',minute:'2-digit'})) + '</td>' +
         '<td>' + escapeHtml(eD.toLocaleTimeString('cs', {hour:'2-digit',minute:'2-digit'})) + '</td>' +
         '<td>' + escapeHtml(ttFmtDuration(ttEntryDuration(en))) + '</td>' +
+        '<td class="tt-toggl-cell">' + togglCell + '</td>' +
       '</tr>';
     });
     html += '</tbody></table></details>';
@@ -8264,6 +8454,14 @@ function renderTimeTrackingView(main) {
   });
   // Klikatelné entity
   attachEntityRowHandlers(main);
+  // Toggl tlačítka
+  main.querySelectorAll('button.tt-toggl-send').forEach(b => {
+    b.onclick = () => {
+      b.disabled = true;
+      b.textContent = '⏳ Odesílám…';
+      togglSendEntry(b.dataset.ttEntry);
+    };
+  });
 }
 
 function renderFlagsView(main) {
@@ -8534,6 +8732,25 @@ function renderSettings(main) {
     '<div id="gh-link-area" class="meta" style="margin-top:0.5em;"></div>' +
     '</section>' +
 
+    // === Toggl Track integrace ===
+    '<section aria-labelledby="toggl-h"><h3 id="toggl-h">Toggl Track integrace</h3>' +
+    '<p class="meta">Volitelně. Umožňuje ručně poslat záznam ze Sledování času do Toggl Track. Nastavení se ukládá pouze v tomto prohlížeči (browser storage), nikam se nesynchronizuje. Žádné automatické odesílání – záznamy se posílají tlačítkem v pohledu „⏱ Sledování času".</p>' +
+    '<div class="form-grid">' +
+      '<label for="toggl-proxy">URL Worker proxy</label>' +
+      '<input type="url" id="toggl-proxy" placeholder="https://toggl-mr.kancelar-mr.workers.dev" value="' + escapeHtml(getTogglConfig().proxy || '') + '">' +
+      '<label for="toggl-token">API token <span class="meta">(z <a href="https://track.toggl.com/profile" target="_blank" rel="noopener">track.toggl.com/profile</a>)</span></label>' +
+      '<input type="password" id="toggl-token" placeholder="váš Toggl API token" value="' + escapeHtml(getTogglConfig().token || '') + '" autocomplete="off">' +
+      '<label for="toggl-workspace">Workspace ID</label>' +
+      '<input type="text" id="toggl-workspace" placeholder="např. 1234567 (z URL Toggl: /workspaces/&lt;ID&gt;)" value="' + escapeHtml(getTogglConfig().workspaceId || '') + '">' +
+    '</div>' +
+    '<div class="btn-group" style="margin-top:0.5em;">' +
+      '<button id="toggl-save" class="primary">💾 Uložit</button>' +
+      '<button id="toggl-test">🧪 Otestovat odeslání zkušebního záznamu</button>' +
+      '<button id="toggl-clear" class="danger">🗑 Vymazat nastavení z tohoto prohlížeče</button>' +
+    '</div>' +
+    '<p id="toggl-status" class="meta" style="margin-top:0.5em;"></p>' +
+    '</section>' +
+
     '<section aria-labelledby="da-h"><h3 id="da-h">Vestavěné aspekty</h3>' +
     '<p>Odškrtnutím aspekt skryjete – nezmizí, ale nebude se nabízet při úpravě entity ani ve filtrech.</p>' +
     '<div class="checkbox-list" id="builtin-aspects-list">' +
@@ -8763,6 +8980,8 @@ function renderSettings(main) {
     saveDebounced();
     updateChrome();
   };
+  // Toggl integrace
+  if (typeof attachTogglSettingsHandlers === 'function') attachTogglSettingsHandlers();
 }
 function applyTheme() {
   document.body.classList.remove('theme-light','theme-dark');
@@ -15752,7 +15971,7 @@ function renderTimeTrackingSection(entity) {
     html += '<p class="meta">Žádné záznamy. Spusťte timer nebo přidejte záznam ručně.</p>';
   } else {
     html += '<table class="tt-entries-table"><thead><tr>' +
-      '<th>Datum</th><th>Začátek</th><th>Konec</th><th>Trvání</th><th aria-label="Akce"></th>' +
+      '<th>Datum</th><th>Začátek</th><th>Konec</th><th>Trvání</th><th>Toggl</th><th aria-label="Akce"></th>' +
     '</tr></thead><tbody>';
     if (isRunning) {
       const startIso = ttGetRunningSince(entity);
@@ -15762,18 +15981,29 @@ function renderTimeTrackingSection(entity) {
         '<td>' + escapeHtml(startD.toLocaleTimeString('cs', {hour:'2-digit',minute:'2-digit'})) + '</td>' +
         '<td class="meta">(běží)</td>' +
         '<td class="tt-live-duration" aria-live="off" data-tt-start="' + escapeHtml(startIso) + '">' + ttFmtDuration(Math.floor((Date.now() - startD.getTime()) / 1000)) + '</td>' +
+        '<td class="meta">—</td>' +
         '<td></td>' +
       '</tr>';
     }
+    const togglConfigured = (typeof togglIsConfigured === 'function') && togglIsConfigured();
     entries.forEach(e => {
       const d = ttEntryDuration(e);
       const sD = new Date(e.start);
       const eD = e.end ? new Date(e.end) : null;
+      let togglCell = '';
+      if (e.toggl_sent) {
+        togglCell = '<span class="tt-toggl-sent" title="Odesláno do Toggl">✓ Toggl</span>';
+      } else if (togglConfigured && e.end) {
+        togglCell = '<button type="button" class="tt-toggl-send" data-tt-entry="' + escapeHtml(e.id) + '" title="Odeslat do Toggl Track">📤 Toggl</button>';
+      } else {
+        togglCell = '<span class="meta">—</span>';
+      }
       html += '<tr>' +
         '<td>' + escapeHtml(fmtDate(e.start)) + '</td>' +
         '<td>' + escapeHtml(sD.toLocaleTimeString('cs', {hour:'2-digit',minute:'2-digit'})) + '</td>' +
         '<td>' + (eD ? escapeHtml(eD.toLocaleTimeString('cs', {hour:'2-digit',minute:'2-digit'})) : '') + '</td>' +
         '<td>' + escapeHtml(ttFmtDuration(d)) + '</td>' +
+        '<td class="tt-toggl-cell">' + togglCell + '</td>' +
         '<td class="tt-actions">' +
           '<button type="button" class="tt-entry-edit" data-tt-entry="' + escapeHtml(e.id) + '" title="Upravit záznam">✏</button> ' +
           '<button type="button" class="danger tt-entry-del" data-tt-entry="' + escapeHtml(e.id) + '" title="Smazat záznam">🗑</button>' +
@@ -15817,6 +16047,14 @@ function attachTimeTrackingHandlers(entity) {
   // Přidat ručně
   const addBtn = document.getElementById('tt-add-manual');
   if (addBtn) addBtn.onclick = () => openTtEntryDialog(entity, null);
+  // Toggl odeslání
+  document.querySelectorAll('button.tt-toggl-send').forEach(b => {
+    b.onclick = () => {
+      b.disabled = true;
+      b.textContent = '⏳ Odesílám…';
+      togglSendEntry(b.dataset.ttEntry);
+    };
+  });
 }
 
 // Dialog pro editaci/přidání záznamu
@@ -24758,6 +24996,8 @@ function renderSettings(main) {
     saveDebounced();
     updateChrome();
   };
+  // Toggl integrace
+  if (typeof attachTogglSettingsHandlers === 'function') attachTogglSettingsHandlers();
 }
 function applyTheme() {
   document.body.classList.remove('theme-light','theme-dark');
