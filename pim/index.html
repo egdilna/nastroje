@@ -2679,11 +2679,12 @@ function renderInline(text, ctx) {
   text = text.replace(/(^|\s|[(\[{])#(\d+)\b/g, (m, before, num) => {
     const target = findEntityByNumericId(num);
     if (target) {
-      const label = '#' + num + ' ' + getDisplayTitle(target);
+      const badge = getEntityBadgePrefix(target);
+      const label = badge + '#' + num + ' ' + escapeHtml(getDisplayTitle(target));
       const aspectsTxt = (target.aspects || []).length > 0
         ? ' <span class="wiki-aspects meta">(' + escapeHtml((target.aspects || []).map(a => aspectLabel(a)).join(', ')) + ')</span>'
         : '';
-      return before + '<a href="#" class="wiki-link" data-entity="' + escapeHtml(target.id) + '">' + escapeHtml(label) + '</a>' + aspectsTxt;
+      return before + '<a href="#" class="wiki-link" data-entity="' + escapeHtml(target.id) + '">' + label + '</a>' + aspectsTxt;
     }
     return m;
   });
@@ -2766,10 +2767,11 @@ function resolveWikiLink(ref, alias) {
   else target = findEntityByTitle(ref);
   if (target) {
     const label = alias || ref;
+    const badge = (typeof getEntityBadgePrefix === 'function') ? getEntityBadgePrefix(target) : '';
     const aspectsTxt = (target.aspects || []).length > 0
       ? ' <span class="wiki-aspects meta">(' + escapeHtml((target.aspects || []).map(a => aspectLabel(a)).join(', ')) + ')</span>'
       : '';
-    return '<a href="#" class="wiki-link" data-entity="' + escapeHtml(target.id) + '">' + escapeHtml(label) + '</a>' + aspectsTxt;
+    return '<a href="#" class="wiki-link" data-entity="' + escapeHtml(target.id) + '">' + badge + escapeHtml(label) + '</a>' + aspectsTxt;
   }
   return '<a href="#" class="wiki-link broken" data-create-name="' + escapeHtml(ref) + '" title="Entita neexistuje – kliknutí ji vytvoří">' + escapeHtml(alias || ref) + '</a>';
 }
@@ -6066,22 +6068,20 @@ function renderDashboard(main) {
     '<h1>🏠 Nástěnka</h1>' +
     '<p class="meta">Pracovní přehled. Co je dnes nutné, co se schyluje a rychlé akce.</p>' +
 
-    // === Rychlé akce ===
-    '<section class="dash-quick-actions">' +
-      '<h2>⚡ Rychlé akce</h2>' +
+    // === Rychlé akce (bez podnadpisů) ===
+    '<section class="dash-quick-actions" aria-labelledby="dash-quick-h">' +
+      '<h2 id="dash-quick-h">⚡ Rychlé vytvoření</h2>' +
       '<div class="dash-quick-grid">' +
         '<div class="dash-quick-card">' +
-          '<h3>📥 Rychlé zachycení do Inboxu</h3>' +
-          '<p class="meta">První řádek = název, ostatní = tělo poznámky.</p>' +
+          '<p class="meta">📥 Zachycení do Inboxu — první řádek = název, ostatní = tělo poznámky.</p>' +
           '<form id="dash-quick-form">' +
-            '<label for="dash-quick-text" class="sr-only">Text zachycení</label>' +
+            '<label for="dash-quick-text" class="sr-only">Text zachycení do Inboxu</label>' +
             '<textarea id="dash-quick-text" placeholder="Název na prvním řádku\nDalší řádky jdou do těla poznámky..." rows="4" required></textarea>' +
             '<button type="submit" class="primary">📥 Zachytit</button>' +
           '</form>' +
         '</div>' +
         '<div class="dash-quick-card">' +
-          '<h3>✓ Rychlý úkol</h3>' +
-          '<p class="meta">Termín lze zadat v názvu přirozenou řečí (např. „zavolat Petrovi zítra v 15:00", „úklid pátek 14:00", „odeslat fakturu 30.6.").</p>' +
+          '<p class="meta">✓ Rychlý úkol — termín lze zadat v názvu přirozenou řečí (např. „zavolat Petrovi zítra v 15:00", „úklid pátek 14:00", „odeslat fakturu 30.6.").</p>' +
           '<form id="dash-task-form">' +
             '<label for="dash-task-title" class="sr-only">Název úkolu</label>' +
             '<input type="text" id="dash-task-title" placeholder="Co se má udělat (a kdy)" required>' +
@@ -6121,6 +6121,38 @@ function renderDashboard(main) {
       '</div>' +
     '</section>' +
 
+    // === Dnes ===
+    '<section class="dash-section dash-today">' +
+      '<h2>📌 Dnes — ' + escapeHtml(todayHeader) + '</h2>' +
+      (todayItems.length === 0
+        ? '<p class="meta">Dnes nic neplánovaného.</p>'
+        : todayItems.map(itemRow).join('')) +
+    '</section>' +
+
+    // === Nedávno upravené ===
+    '<section class="dash-section">' +
+      '<h2>🕐 Naposledy změněné (' + recentlyUpdated.length + ')</h2>' +
+      recentlyUpdated.map(e =>
+        '<div class="dash-item">' +
+          '<a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a>' +
+          ' <span class="meta">' + escapeHtml(fmtRelative(e.updated_at)) + '</span>' +
+        '</div>'
+      ).join('') +
+    '</section>' +
+
+    // === Tento týden ===
+    (weekDays.length > 0
+      ? '<section class="dash-section dash-week">' +
+          '<h2>📅 Tento týden</h2>' +
+          weekDays.map(d =>
+            '<details class="dash-week-day" ' + (d <= 2 ? 'open' : '') + '>' +
+              '<summary>' + escapeHtml(weekDayLabel(d)) + ' <span class="meta">(' + weekGroups[d].length + ')</span></summary>' +
+              '<div class="day-items">' + weekGroups[d].map(itemRow).join('') + '</div>' +
+            '</details>'
+          ).join('') +
+        '</section>'
+      : '') +
+
     // === Po termínu ===
     (overdueTasks.length > 0
       ? '<section class="dash-section dash-overdue">' +
@@ -6138,26 +6170,8 @@ function renderDashboard(main) {
         '</section>'
       : '') +
 
-    // === Dnes ===
-    '<section class="dash-section dash-today">' +
-      '<h2>📌 Dnes — ' + escapeHtml(todayHeader) + '</h2>' +
-      (todayItems.length === 0
-        ? '<p class="meta">Dnes nic neplánovaného.</p>'
-        : todayItems.map(itemRow).join('')) +
-    '</section>' +
-
-    // === Tento týden ===
-    (weekDays.length > 0
-      ? '<section class="dash-section dash-week">' +
-          '<h2>📅 Tento týden</h2>' +
-          weekDays.map(d =>
-            '<details class="dash-week-day" ' + (d <= 2 ? 'open' : '') + '>' +
-              '<summary>' + escapeHtml(weekDayLabel(d)) + ' <span class="meta">(' + weekGroups[d].length + ')</span></summary>' +
-              '<div class="day-items">' + weekGroups[d].map(itemRow).join('') + '</div>' +
-            '</details>'
-          ).join('') +
-        '</section>'
-      : '') +
+    // === Podle tagu (uložený výběr) ===
+    renderDashboardTagSection() +
 
     // === Trackery ===
     (trackers.length > 0
@@ -6190,18 +6204,7 @@ function renderDashboard(main) {
             '<div class="dash-item"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></div>'
           ).join('') +
         '</section>'
-      : '') +
-
-    // === Nedávno upravené (10) ===
-    '<section class="dash-section">' +
-      '<h2>🕐 Naposledy změněné (' + recentlyUpdated.length + ')</h2>' +
-      recentlyUpdated.map(e =>
-        '<div class="dash-item">' +
-          '<a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a>' +
-          ' <span class="meta">' + escapeHtml(fmtRelative(e.updated_at)) + '</span>' +
-        '</div>'
-      ).join('') +
-    '</section>';
+      : '');
 
   // Handlery
   attachEntityRowHandlers(main);
@@ -6280,6 +6283,55 @@ function renderDashboard(main) {
   main.querySelectorAll('[data-jump-view]').forEach(a => {
     a.onclick = (ev) => { ev.preventDefault(); setView(a.dataset.jumpView); };
   });
+
+  // === Sekce „Podle tagu" – uložit/aplikovat výběr ===
+  const dashTagSel = document.getElementById('dash-tag-select');
+  if (dashTagSel) {
+    dashTagSel.onchange = () => {
+      db.dashboardTag = dashTagSel.value || null;
+      save();
+      render();
+    };
+  }
+}
+
+// Vykreslí sekci „Podle tagu" pro nástěnku
+function renderDashboardTagSection() {
+  const tags = (db.tags || []).slice().sort((a, b) => a.localeCompare(b, 'cs'));
+  const selectedTag = db.dashboardTag || '';
+  // Najdi entity, které mají vybraný tag
+  let entitiesWithTag = [];
+  if (selectedTag) {
+    entitiesWithTag = db.entities.filter(e => !e.archived && (e.tags || []).includes(selectedTag))
+      .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+  }
+  let h = '<section class="dash-section dash-by-tag" aria-labelledby="dash-tag-h">' +
+    '<h2 id="dash-tag-h">🏷️ Podle tagu</h2>' +
+    '<div class="dash-tag-controls">' +
+      '<label for="dash-tag-select">Tag:</label> ' +
+      '<select id="dash-tag-select">' +
+        '<option value="">— vyberte tag —</option>' +
+        tags.map(t => '<option value="' + escapeHtml(t) + '"' + (t === selectedTag ? ' selected' : '') + '>' + escapeHtml(t) + ' (' + db.entities.filter(e => !e.archived && (e.tags || []).includes(t)).length + ')</option>').join('') +
+      '</select>' +
+    '</div>';
+  if (!selectedTag) {
+    h += '<p class="meta">Vyberte tag pro zobrazení entit. Volba se uloží a zachová mezi sezeními.</p>';
+  } else if (entitiesWithTag.length === 0) {
+    h += '<p class="meta">Žádné entity s tagem „' + escapeHtml(selectedTag) + '".</p>';
+  } else {
+    h += '<p class="meta">Entity s tagem „' + escapeHtml(selectedTag) + '" (' + entitiesWithTag.length + '), seřazeno od nejnovější změny:</p>';
+    h += entitiesWithTag.slice(0, 30).map(e =>
+      '<div class="dash-item">' +
+        '<a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a>' +
+        ' <span class="meta">' + escapeHtml(fmtRelative(e.updated_at)) + '</span>' +
+      '</div>'
+    ).join('');
+    if (entitiesWithTag.length > 30) {
+      h += '<p class="meta">… a dalších ' + (entitiesWithTag.length - 30) + '</p>';
+    }
+  }
+  h += '</section>';
+  return h;
 }
 
 function renderInbox(main) {
@@ -8791,7 +8843,6 @@ function renderDetailRead(main, e) {
     planHtml +
     trackerHtml +
     securedNoticeHtml +
-    renderTimeTrackingSection(e) +
     renderQuestionAnswersSection(e) +
     renderEventAttendeesSection(e) +
     renderEventTasksSection(e) +
@@ -8868,6 +8919,7 @@ function renderDetailRead(main, e) {
       renderCommentsSection(e) +
     '</section>' +
     renderRelatedCommentsSection(e) +
+    renderTimeTrackingSection(e) +
     '<details><summary>Meta</summary><dl class="read-attrs">' +
       '<dt>Důvěra</dt><dd>' + escapeHtml(CONFIDENCE_LEVELS[e.confidence] || e.confidence) + '</dd>' +
       (e.valid_from ? '<dt>Platnost od</dt><dd>' + escapeHtml(fmtDate(e.valid_from)) + '</dd>' : '') +
@@ -9880,7 +9932,6 @@ function renderDetailEdit(main, e) {
       ? '<div id="d-tracker-edit">' + renderTrackerSection(e, 'edit') + '</div>'
       : '') +
 
-    renderTimeTrackingSection(e) +
     renderQuestionAnswersSection(e) +
     renderEventAttendeesSection(e) +
     renderEventTasksSection(e) +
@@ -15419,7 +15470,7 @@ function renderTimeTrackingSection(entity) {
   }
 
   // Záznamy
-  html += '<h4 style="margin-top:0.8em;">Záznamy (' + entries.length + ')</h4>';
+  html += '<p style="margin-top:0.8em;"><strong>Záznamy (' + entries.length + ')</strong></p>';
   if (entries.length === 0 && !isRunning) {
     html += '<p class="meta">Žádné záznamy. Spusťte timer nebo přidejte záznam ručně.</p>';
   } else {
@@ -21663,10 +21714,11 @@ function resolveWikiLink(ref, alias) {
   else target = findEntityByTitle(ref);
   if (target) {
     const label = alias || ref;
+    const badge = (typeof getEntityBadgePrefix === 'function') ? getEntityBadgePrefix(target) : '';
     const aspectsTxt = (target.aspects || []).length > 0
       ? ' <span class="wiki-aspects meta">(' + escapeHtml((target.aspects || []).map(a => aspectLabel(a)).join(', ')) + ')</span>'
       : '';
-    return '<a href="#" class="wiki-link" data-entity="' + escapeHtml(target.id) + '">' + escapeHtml(label) + '</a>' + aspectsTxt;
+    return '<a href="#" class="wiki-link" data-entity="' + escapeHtml(target.id) + '">' + badge + escapeHtml(label) + '</a>' + aspectsTxt;
   }
   return '<a href="#" class="wiki-link broken" data-create-name="' + escapeHtml(ref) + '" title="Entita neexistuje – kliknutí ji vytvoří">' + escapeHtml(alias || ref) + '</a>';
 }
@@ -24530,6 +24582,7 @@ function renderDetailRead(main, e) {
       renderCommentsSection(e) +
     '</section>' +
     renderRelatedCommentsSection(e) +
+    renderTimeTrackingSection(e) +
     '<details><summary>Meta</summary><dl class="read-attrs">' +
       '<dt>Důvěra</dt><dd>' + escapeHtml(CONFIDENCE_LEVELS[e.confidence] || e.confidence) + '</dd>' +
       (e.valid_from ? '<dt>Platnost od</dt><dd>' + escapeHtml(fmtDate(e.valid_from)) + '</dd>' : '') +
