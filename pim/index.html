@@ -8738,12 +8738,18 @@ function renderDetailRead(main, e) {
 
   const isTask = e.aspects && e.aspects.includes('Task');
   const taskDone = isTask && e.attributes && e.attributes.status === 'done';
+  const taskCurrentStatus = isTask ? ((e.attributes && e.attributes.status) || 'todo') : '';
+  const taskStatusOptions = ['todo','in_progress','waiting','done','cancelled'];
+  const taskStatusLabels = { todo:'K udělání', in_progress:'Probíhá', waiting:'Čeká', done:'Hotovo', cancelled:'Zrušeno' };
   const taskCheckboxHtml = isTask
-    ? '<div class="task-quick-toggle"><label><input type="checkbox" id="task-quick-done"' + (taskDone ? ' checked' : '') + '> ' +
-        (taskDone ? '<strong style="color:#4a8">Hotovo</strong>' : 'Označit jako hotové') + '</label>' +
-        (e.attributes && e.attributes.status && e.attributes.status !== 'done' && e.attributes.status !== 'todo'
-          ? ' <span class="meta">(aktuální stav: ' + escapeHtml(getStatusLabel(e.attributes.status)) + ')</span>'
-          : '') + '</div>'
+    ? '<div class="task-quick-toggle">' +
+        '<label for="task-quick-status">Stav úkolu:</label> ' +
+        '<select id="task-quick-status" aria-label="Stav úkolu">' +
+          taskStatusOptions.map(o =>
+            '<option value="' + o + '"' + (o === taskCurrentStatus ? ' selected' : '') + '>' + escapeHtml(taskStatusLabels[o]) + '</option>'
+          ).join('') +
+        '</select>' +
+      '</div>'
     : '';
   main.innerHTML =
     '<div class="btn-group"><button id="back-btn">← Zpět</button></div>' +
@@ -8786,7 +8792,6 @@ function renderDetailRead(main, e) {
     trackerHtml +
     securedNoticeHtml +
     renderTimeTrackingSection(e) +
-    renderProjectTimeTrackingSection(e) +
     renderQuestionAnswersSection(e) +
     renderEventAttendeesSection(e) +
     renderEventTasksSection(e) +
@@ -8824,6 +8829,7 @@ function renderDetailRead(main, e) {
       h += '</ul></section>';
       return h;
     })() +
+    renderProjectTimeTrackingSection(e) +
     (function() {
       // Příznaky – sekce v read mode pro tuto entitu
       const flags = getFlagEmojis();
@@ -8883,22 +8889,26 @@ function renderDetailRead(main, e) {
     }
     render();
   };
-  // Quick toggle stavu Task -> done
-  const taskQuick = document.getElementById('task-quick-done');
+  // Quick select stavu Task – přímo v hlavičce read modu
+  const taskQuick = document.getElementById('task-quick-status');
   if (taskQuick) {
     taskQuick.onchange = () => {
       if (!e.attributes) e.attributes = {};
-      if (taskQuick.checked) {
-        setTaskStatus(e, 'done');
+      const newStatus = taskQuick.value;
+      const oldStatus = e.attributes.status || 'todo';
+      if (newStatus === oldStatus) return;
+      setTaskStatus(e, newStatus);
+      // Done tracking: ulož datum dokončení/zruš
+      if (newStatus === 'done') {
         if (!e.attributes.done_at) e.attributes.done_at = nowIso();
       } else {
-        setTaskStatus(e, 'todo');
         delete e.attributes.done_at;
       }
       e.updated_at = nowIso();
       save();
-      playSound(taskQuick.checked ? 'task-done' : 'save');
-      toast(taskQuick.checked ? '✓ Označeno jako hotové.' : 'Vráceno jako k vyřešení.');
+      playSound(newStatus === 'done' ? 'task-done' : 'save');
+      const labels = { todo:'K udělání', in_progress:'Probíhá', waiting:'Čeká', done:'Hotovo', cancelled:'Zrušeno' };
+      toast('Stav úkolu: ' + (labels[newStatus] || newStatus));
       render();
     };
   }
@@ -9871,7 +9881,6 @@ function renderDetailEdit(main, e) {
       : '') +
 
     renderTimeTrackingSection(e) +
-    renderProjectTimeTrackingSection(e) +
     renderQuestionAnswersSection(e) +
     renderEventAttendeesSection(e) +
     renderEventTasksSection(e) +
@@ -9937,6 +9946,8 @@ function renderDetailEdit(main, e) {
     '</section>' +
 
     '<section><h3>Příchozí vazby</h3><div id="d-inverse-links"></div></section>' +
+
+    renderProjectTimeTrackingSection(e) +
 
     '<section><h3>Komentáře</h3>' +
       '<div id="d-comments"></div>' +
@@ -24951,6 +24962,8 @@ function renderDetailEdit(main, e) {
 
     '<section><h3>Příchozí vazby</h3><div id="d-inverse-links"></div></section>' +
 
+    renderProjectTimeTrackingSection(e) +
+
     '<section><h3>Komentáře</h3>' +
       '<div id="d-comments"></div>' +
       '<div class="btn-group" style="margin-top:0.5em;"><button id="d-add-comment" class="primary">+ Přidat komentář</button></div>' +
@@ -30289,6 +30302,8 @@ function openPlanTaskDialog(entity, taskIdx) {
 //  Datový model: entity.attributes.tt_entries = [{id, start, end}] (timestamps ISO)
 //  Když má entita aktivní timer: entity.attributes.tt_running = ISO timestamp začátku.
 //  Záznam má start + end. Aktivní timer ještě nemá end – je jen v tt_running.
+//  Vše se ukládá do JSON db jako běžné atributy → persistuje se napříč zařízeními
+//  (cloud sync). Lze spustit timer na jednom zařízení a zastavit na druhém.
 // =============================================================================
 
 function ttGetEntries(entity) {
