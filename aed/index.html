@@ -910,19 +910,26 @@ function applyTranslations() {
 // ============================================================
 let project = {
   name: 'Nový projekt',
-  regions: []  // [{id, name, file (File), fileName, duration, notes}]
+  regions: []
+  // region: { id, name, fileName, file (File object – na disku), duration, notes }
+  // Po načtení ze ZIP: { ..., audioData (ArrayBuffer) místo file }
 };
 
-let audioContext = null;
-let playbackNode = null;
-let playbackStartTime = 0;   // AudioContext.currentTime when play started
-let playbackOffset = 0;      // seconds into concatenated audio
+// Playback state
+let playbackOffset = 0;    // sekund v projektu
+let playbackEnd = null;    // null = do konce projektu
 let isPlaying = false;
 let totalDuration = 0;
-let positionInterval = null;
 let lastZipSize = null;
+let playChainId = 0;
+let currentAudioEl = null;
+let posTimer = null;
 
-// Audio buffers cache: id -> AudioBuffer
+// Object URL cache – File/Blob -> objectURL
+const fileObjectUrls = {};
+
+// Zastaralé – ponecháno kvůli kompatibilitě se splitRegion/mergeRegion
+let audioContext = null;
 const bufferCache = {};
 
 function getAudioContext() {
@@ -955,9 +962,6 @@ function formatBytes(bytes) {
   return (bytes / 1048576).toFixed(2) + ' MB';
 }
 
-// Object URL cache – File objekty zůstávají na disku, URL je jen odkaz
-const fileObjectUrls = {}; // regionId -> objectURL
-
 function getFileUrl(region) {
   if (fileObjectUrls[region.id]) return fileObjectUrls[region.id];
   if (!region.file) return null;
@@ -974,14 +978,29 @@ function revokeFileUrl(regionId) {
 }
 
 // Zjisti délku audio souboru bez načtení do paměti
+// Robustní verze pro iOS Safari s timeoutem
 function getAudioDuration(file) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const audio = new Audio();
     audio.preload = 'metadata';
-    audio.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(audio.duration); };
-    audio.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Nelze načíst metadata souboru')); };
+    let done = false;
+    const finish = (dur, err) => {
+      if (done) return; done = true;
+      URL.revokeObjectURL(url);
+      audio.src = '';
+      if (err) reject(err);
+      else resolve(dur);
+    };
+    // iOS Safari někdy nespustí loadedmetadata – fallback přes durationchange
+    audio.onloadedmetadata = () => finish(audio.duration, null);
+    audio.ondurationchange = () => { if (isFinite(audio.duration) && audio.duration > 0) finish(audio.duration, null); };
+    audio.onerror = () => finish(null, new Error('Nelze načíst metadata: ' + (audio.error ? audio.error.message : 'neznámá chyba')));
+    // Timeout 15s pro velké soubory na iOS
+    setTimeout(() => { if (!done && isFinite(audio.duration) && audio.duration > 0) finish(audio.duration, null);
+      else if (!done) finish(null, new Error('Timeout při načítání metadat')); }, 15000);
     audio.src = url;
+    audio.load();
   });
 }
 
@@ -1398,10 +1417,6 @@ function triggerInsertAfter(id) {
 // Soubory se nenačítají do paměti – streamují přímo z disku
 // ============================================================
 
-let playChainId = 0;
-let currentAudioEl = null;
-let posTimer = null;
-
 function getPlaybackPosition() {
   if (!isPlaying || !currentAudioEl) return playbackOffset;
   const rid = currentAudioEl.dataset.regionId;
@@ -1443,10 +1458,21 @@ function _stopAudio() {
 }
 
 // Vrátí Object URL pro region (z File nebo audioData)
+// Na iOS Safari funguje nejlépe přímý URL z File objektu
 function getRegionUrl(region) {
   if (fileObjectUrls[region.id]) return fileObjectUrls[region.id];
-  const source = region.file || (region.audioData ? new Blob([region.audioData]) : null);
-  if (!source) return null;
+  let source;
+  if (region.file) {
+    source = region.file; // File objekt – nejlepší pro iOS
+  } else if (region.audioData) {
+    // Zjisti MIME typ pro správný Blob
+    const ext = (region.fileName || '').split('.').pop().toLowerCase();
+    const mimeMap = { mp3: 'audio/mpeg', ogg: 'audio/ogg', wav: 'audio/wav', m4a: 'audio/mp4', mp4: 'audio/mp4' };
+    const mime = mimeMap[ext] || 'audio/mpeg';
+    source = new Blob([region.audioData], { type: mime });
+  } else {
+    return null;
+  }
   const url = URL.createObjectURL(source);
   fileObjectUrls[region.id] = url;
   return url;
@@ -1482,35 +1508,55 @@ async function playChain(idx, startPos, stopPos, chainId) {
   const url = getRegionUrl(region);
   if (!url) {
     setStatus(t('status.error', { msg: 'Region "' + region.name + '" nemá zdrojový soubor' }), 'error');
+    isPlaying = false; updatePauseButton(false);
     return;
   }
 
   const audio = new Audio();
-  audio.src = url;
+  audio.preload = 'auto';
   audio.dataset.regionId = region.id;
   currentAudioEl = audio;
 
-  // Kde začít přehrávání v rámci tohoto regionu
   const audioStart = Math.max(0, startPos - region.startTime);
-  // Kde skončit
-  const audioEnd = toSecs != null
-    ? Math.min(region.duration, stopPos - region.startTime)
-    : region.duration;
+  const audioEnd = Math.min(region.duration, stopPos - region.startTime);
 
+  // Načti metadata
   await new Promise(res => {
-    audio.onloadedmetadata = res;
-    audio.onerror = res;
-    setTimeout(res, 3000);
+    let done = false;
+    const ok = () => { if (!done) { done = true; res(); } };
+    audio.onloadedmetadata = ok;
+    audio.oncanplay = ok;
+    audio.onerror = ok;
+    setTimeout(ok, 5000); // iOS timeout
+    audio.src = url;
+    audio.load();
   });
-  if (chainId !== playChainId) return;
+  if (chainId !== playChainId) { audio.src = ''; return; }
 
-  audio.currentTime = audioStart;
-  await new Promise(res => { audio.onseeked = res; setTimeout(res, 1000); });
-  if (chainId !== playChainId) return;
+  // Seek – na iOS u velkých souborů může trvat déle
+  if (audioStart > 0.1) {
+    audio.currentTime = audioStart;
+    await new Promise(res => {
+      let done = false;
+      const ok = () => { if (!done) { done = true; res(); } };
+      audio.onseeked = ok;
+      audio.onerror = ok;
+      setTimeout(ok, 5000); // iOS seek timeout
+    });
+  }
+  if (chainId !== playChainId) { audio.src = ''; return; }
 
   isPlaying = true; updatePauseButton(true);
   setStatus(t('status.playing'));
   startPosTimer();
+
+  // Spusť přehrávání
+  try { await audio.play(); } catch(e) {
+    // iOS vyžaduje user gesture - pokud selže, zkusíme znovu
+    setStatus('Stiskněte tlačítko přehrávání znovu (iOS)', 'error');
+    isPlaying = false; updatePauseButton(false);
+    audio.src = ''; return;
+  }
 
   await new Promise(resolve => {
     const check = () => {
@@ -1523,7 +1569,6 @@ async function playChain(idx, startPos, stopPos, chainId) {
     audio.ontimeupdate = check;
     audio.onended = () => { audio.ontimeupdate = null; resolve(); };
     audio.onerror = () => { audio.ontimeupdate = null; resolve(); };
-    audio.play().catch(() => resolve());
   });
 
   audio.src = '';
@@ -1663,11 +1708,7 @@ async function openProject(file) {
       });
     }
 
-    // Decode all regions to get accurate durations
-    for (const r of project.regions) {
-      try { await decodeRegion(r); } catch(e) {}
-    }
-
+    // Délka je uložena v metadatech – nemusíme dekódovat
     document.getElementById('project-name').value = project.name;
     lastZipSize = file.size;
     computeOffsets();
