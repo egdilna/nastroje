@@ -1055,7 +1055,7 @@ async function decodeRegion(region) {
 async function loadAudioFile(file, insertAfterIndex) {
   setStatus(t('status.loading'));
   try {
-    // Délku zjistíme z metadat – soubor NEZAČÍTÁME do paměti
+    // Délku zjistíme z metadat přes Audio element – bez načtení do paměti
     const duration = await getAudioDuration(file);
     if (!isFinite(duration) || duration <= 0) throw new Error('Nelze zjistit délku souboru');
 
@@ -1066,11 +1066,10 @@ async function loadAudioFile(file, insertAfterIndex) {
       id: uid(),
       name,
       fileName: file.name,
-      file,          // File objekt – zůstává na disku
+      file,       // File objekt drží odkaz na soubor na disku
       duration,
       notes: ''
     };
-    // bufferCache se naplní lazy až při prvním přehrání
 
     if (insertAfterIndex == null) {
       project.regions.push(region);
@@ -1395,200 +1394,174 @@ function triggerInsertAfter(id) {
 }
 
 // ============================================================
-// PLAYBACK ENGINE
-// ============================================================
-// Jeden globalni stav pro vsechno – at uz hrajeme projekt, region,
-// nebo od regionu do konce. Transport (pauza, seek) vzdy funguje.
-//
-// playbackEnd: do ktere pozice (sekundy) hrajeme – null = do konce projektu
+// PLAYBACK ENGINE – používá <audio> element, funguje i pro velké soubory
+// Soubory se nenačítají do paměti – streamují přímo z disku
 // ============================================================
 
-let playbackEnd = null; // null = hraj do konce projektu
+let playChainId = 0;
+let currentAudioEl = null;
+let posTimer = null;
 
 function getPlaybackPosition() {
-  if (!isPlaying) return playbackOffset;
-  const ctx = getAudioContext();
-  const pos = playbackOffset + (ctx.currentTime - playbackStartTime);
-  // Pokud mame konec omezeny (play single region), neprekrocime ho
-  if (playbackEnd !== null) return Math.min(pos, playbackEnd);
-  return pos;
+  if (!isPlaying || !currentAudioEl) return playbackOffset;
+  const rid = currentAudioEl.dataset.regionId;
+  const region = project.regions.find(r => r.id === rid);
+  if (!region) return playbackOffset;
+  return region.startTime + currentAudioEl.currentTime;
 }
 
-function stopPositionTimer() {
-  if (positionInterval) { clearInterval(positionInterval); positionInterval = null; }
+function stopPosTimer() {
+  if (posTimer) { clearInterval(posTimer); posTimer = null; }
 }
 
-function startPositionTimer() {
-  stopPositionTimer();
-  positionInterval = setInterval(() => {
+function startPosTimer() {
+  stopPosTimer();
+  posTimer = setInterval(() => {
     const pos = getPlaybackPosition();
     document.getElementById('position-display').textContent = formatTime(pos, true);
-
-    // Dosahli jsme konce prehravani?
-    const endLimit = playbackEnd !== null ? playbackEnd : totalDuration;
-    if (isPlaying && pos >= endLimit - 0.05) {
-      // Zapamatuj konecnou pozici a zastav
-      playbackOffset = endLimit;
-      _stopAudioNode();
-      isPlaying = false;
-      playbackEnd = null;
-      stopPositionTimer();
+    const lim = playbackEnd !== null ? playbackEnd : totalDuration;
+    for (const r of project.regions) {
+      const card = document.getElementById('region-card-' + r.id);
+      if (card) card.classList.toggle('is-playing', pos >= r.startTime && pos < r.endTime);
+    }
+    if (isPlaying && pos >= lim - 0.05) {
+      playbackOffset = lim;
+      _stopAudio();
+      isPlaying = false; playbackEnd = null;
+      stopPosTimer();
       document.getElementById('position-display').textContent = formatTime(playbackOffset, true);
       document.querySelectorAll('.region-card.is-playing').forEach(c => c.classList.remove('is-playing'));
       updatePauseButton(false);
       setStatus(t('status.stopped'));
-      return;
-    }
-
-    // Zvyrazneni aktualniho regionu
-    for (const r of project.regions) {
-      const card = document.getElementById('region-card-' + r.id);
-      if (card) {
-        card.classList.toggle('is-playing', pos >= r.startTime && pos < r.endTime);
-      }
     }
   }, 80);
 }
 
-function _stopAudioNode() {
-  if (playbackNode) {
-    try { playbackNode.onended = null; playbackNode.stop(); } catch(e) {}
-    playbackNode = null;
-  }
+function _stopAudio() {
+  if (currentAudioEl) { try { currentAudioEl.pause(); } catch(e) {} }
+  currentAudioEl = null;
 }
 
-// Sestavi AudioBuffer ze vsech regionu v rozsahu [fromSecs, toSecs)
-// a spusti prehravani. Toto je jedina funkce ktera spousti zvuk.
-async function playFrom(fromSecs, toSecs) {
-  _stopAudioNode();
-  stopPositionTimer();
-  isPlaying = false;
+// Vrátí Object URL pro region (z File nebo audioData)
+function getRegionUrl(region) {
+  if (fileObjectUrls[region.id]) return fileObjectUrls[region.id];
+  const source = region.file || (region.audioData ? new Blob([region.audioData]) : null);
+  if (!source) return null;
+  const url = URL.createObjectURL(source);
+  fileObjectUrls[region.id] = url;
+  return url;
+}
 
+async function playFrom(fromSecs, toSecs) {
+  const myId = ++playChainId;
+  _stopAudio();
+  stopPosTimer();
+  isPlaying = false;
   if (project.regions.length === 0) return;
   computeOffsets();
-
   const playStart = Math.max(0, Math.min(fromSecs, totalDuration));
-  const playStop = (toSecs != null) ? Math.min(toSecs, totalDuration) : totalDuration;
-
+  const playStop = toSecs != null ? Math.min(toSecs, totalDuration) : totalDuration;
   if (playStart >= playStop) return;
-
   playbackOffset = playStart;
-  playbackEnd = (toSecs != null) ? playStop : null;
+  playbackEnd = toSecs != null ? playStop : null;
+  const startIdx = project.regions.findIndex(r => r.endTime > playStart);
+  if (startIdx < 0) return;
+  await playChain(startIdx, playStart, playStop, myId);
+}
 
-  const ctx = getAudioContext();
-  if (ctx.state === 'suspended') await ctx.resume();
+async function playChain(idx, startPos, stopPos, chainId) {
+  if (chainId !== playChainId) return;
+  if (idx >= project.regions.length) {
+    isPlaying = false; updatePauseButton(false); setStatus(t('status.stopped')); return;
+  }
+  const region = project.regions[idx];
+  if (region.startTime >= stopPos) {
+    isPlaying = false; updatePauseButton(false); setStatus(t('status.stopped')); return;
+  }
 
-  // Dekoduj vsechny regiony
-  try {
-    for (const r of project.regions) await decodeRegion(r);
-  } catch(e) {
-    setStatus(t('status.error', { msg: e.message }), 'error');
+  const url = getRegionUrl(region);
+  if (!url) {
+    setStatus(t('status.error', { msg: 'Region "' + region.name + '" nemá zdrojový soubor' }), 'error');
     return;
   }
 
-  // Najdi regiony ktere lezi v [playStart, playStop)
-  const relevant = project.regions.filter(r => r.endTime > playStart && r.startTime < playStop);
-  if (relevant.length === 0) return;
+  const audio = new Audio();
+  audio.src = url;
+  audio.dataset.regionId = region.id;
+  currentAudioEl = audio;
 
-  const sampleRate = bufferCache[relevant[0].id].sampleRate;
-  const channels = Math.max(...relevant.map(r => bufferCache[r.id].numberOfChannels));
-  const totalPlaySamples = Math.ceil((playStop - playStart) * sampleRate);
-  if (totalPlaySamples <= 0) return;
+  // Kde začít přehrávání v rámci tohoto regionu
+  const audioStart = Math.max(0, startPos - region.startTime);
+  // Kde skončit
+  const audioEnd = toSecs != null
+    ? Math.min(region.duration, stopPos - region.startTime)
+    : region.duration;
 
-  const outBuf = ctx.createBuffer(channels, totalPlaySamples, sampleRate);
+  await new Promise(res => {
+    audio.onloadedmetadata = res;
+    audio.onerror = res;
+    setTimeout(res, 3000);
+  });
+  if (chainId !== playChainId) return;
 
-  for (let ri = 0; ri < relevant.length; ri++) {
-    const reg = relevant[ri];
-    const srcBuf = bufferCache[reg.id];
-    const srcSR = srcBuf.sampleRate;
+  audio.currentTime = audioStart;
+  await new Promise(res => { audio.onseeked = res; setTimeout(res, 1000); });
+  if (chainId !== playChainId) return;
 
-    // Kde v src zacname (pokud region zacina pred playStart, orizneme ho)
-    const srcStartSec = Math.max(0, playStart - reg.startTime);
-    // Kde v src skoncime
-    const srcEndSec = Math.min(reg.duration, playStop - reg.startTime);
-    const srcStartSample = Math.floor(srcStartSec * srcSR);
-    const srcEndSample = Math.floor(srcEndSec * srcSR);
-    const lenSamples = srcEndSample - srcStartSample;
-    if (lenSamples <= 0) continue;
-
-    // Kde v output bufferu zacneme psat
-    const dstStartSec = Math.max(reg.startTime, playStart) - playStart;
-    const dstStartSample = Math.floor(dstStartSec * sampleRate);
-
-    for (let c = 0; c < channels; c++) {
-      const src = c < srcBuf.numberOfChannels ? srcBuf.getChannelData(c) : srcBuf.getChannelData(0);
-      const dst = outBuf.getChannelData(c);
-      const copyLen = Math.min(lenSamples, dst.length - dstStartSample);
-      for (let i = 0; i < copyLen; i++) {
-        dst[dstStartSample + i] = src[srcStartSample + i];
-      }
-    }
-  }
-
-  const source = ctx.createBufferSource();
-  source.buffer = outBuf;
-  source.connect(ctx.destination);
-  source.onended = () => {
-    // Prirozeny konec prehravani
-    if (isPlaying) {
-      playbackOffset = playbackEnd !== null ? playbackEnd : totalDuration;
-      playbackEnd = null;
-      isPlaying = false;
-      playbackNode = null;
-      stopPositionTimer();
-      document.getElementById('position-display').textContent = formatTime(playbackOffset, true);
-      document.querySelectorAll('.region-card.is-playing').forEach(c => c.classList.remove('is-playing'));
-      updatePauseButton(false);
-      setStatus(t('status.stopped'));
-    }
-  };
-  source.start();
-
-  playbackNode = source;
-  playbackStartTime = ctx.currentTime;
-  isPlaying = true;
+  isPlaying = true; updatePauseButton(true);
   setStatus(t('status.playing'));
-  updatePauseButton(true);
-  startPositionTimer();
+  startPosTimer();
+
+  await new Promise(resolve => {
+    const check = () => {
+      if (chainId !== playChainId) { resolve(); return; }
+      if (audio.currentTime >= audioEnd - 0.05 || audio.ended) {
+        audio.pause(); audio.ontimeupdate = null; audio.onended = null;
+        resolve();
+      }
+    };
+    audio.ontimeupdate = check;
+    audio.onended = () => { audio.ontimeupdate = null; resolve(); };
+    audio.onerror = () => { audio.ontimeupdate = null; resolve(); };
+    audio.play().catch(() => resolve());
+  });
+
+  audio.src = '';
+  if (currentAudioEl === audio) currentAudioEl = null;
+  if (chainId !== playChainId || !isPlaying) return;
+
+  playbackOffset = region.endTime;
+  await playChain(idx + 1, region.endTime, stopPos, chainId);
 }
 
 function pausePlayback() {
-  if (!isPlaying && !playbackNode) return;
-  playbackOffset = getPlaybackPosition(); // zachovat pozici
-  _stopAudioNode();
-  isPlaying = false;
-  // playbackEnd zachovame – pri resume budeme hrat do stejneho konce
-  stopPositionTimer();
+  if (!isPlaying) return;
+  playbackOffset = getPlaybackPosition();
+  ++playChainId;
+  _stopAudio();
+  isPlaying = false; stopPosTimer();
   document.querySelectorAll('.region-card.is-playing').forEach(c => c.classList.remove('is-playing'));
-  updatePauseButton(false);
-  setStatus(t('status.paused'));
-  announce(t('status.paused'));
+  updatePauseButton(false); setStatus(t('status.paused')); announce(t('status.paused'));
 }
 
 function resumePlayback() {
-  // Obnovi prehravani od ulozene pozice se stejnym endpointem
+  if (isPlaying) return;
   playFrom(playbackOffset, playbackEnd);
 }
 
 function stopPlayback() {
-  playbackOffset = 0;
-  playbackEnd = null;
-  _stopAudioNode();
-  isPlaying = false;
-  stopPositionTimer();
+  ++playChainId; _stopAudio(); isPlaying = false;
+  playbackOffset = 0; playbackEnd = null; stopPosTimer();
   document.getElementById('position-display').textContent = formatTime(0, true);
   document.querySelectorAll('.region-card.is-playing').forEach(c => c.classList.remove('is-playing'));
-  updatePauseButton(false);
-  setStatus(t('status.stopped'));
+  updatePauseButton(false); setStatus(t('status.stopped'));
 }
 
 function seekBy(seconds) {
   const wasPlaying = isPlaying;
-  const currentPos = getPlaybackPosition();
-  const newPos = Math.max(0, Math.min(currentPos + seconds, totalDuration));
-  if (wasPlaying) {
-    playFrom(newPos, playbackEnd); // zachovat konec (region / projekt)
-  } else {
+  const newPos = Math.max(0, Math.min(getPlaybackPosition() + seconds, totalDuration));
+  if (wasPlaying) { playFrom(newPos, playbackEnd); }
+  else {
     playbackOffset = newPos;
     document.getElementById('position-display').textContent = formatTime(newPos, true);
   }
@@ -1642,23 +1615,16 @@ async function saveProject() {
         notes: r.notes || ''
       }))
     };
-    // Pro každý region načti data do ZIP
-    // Velké soubory (>200 MB) jsou přeskočeny s varováním
-    const MAX_ZIP_SIZE = 200 * 1024 * 1024; // 200 MB
-    let skipped = [];
-    for (const r of project.regions) {
-      const size = r.file ? r.file.size : (r.audioData ? r.audioData.byteLength : 0);
-      if (size > MAX_ZIP_SIZE) {
-        skipped.push(r.name);
-        continue;
-      }
+    // Ulož audio data pro každý region – u velkých souborů to trvá déle
+    for (let i = 0; i < project.regions.length; i++) {
+      const r = project.regions[i];
+      setStatus(t('status.saving') + ' (' + (i+1) + '/' + project.regions.length + ')');
       const data = r.file ? await r.file.arrayBuffer() : r.audioData;
       if (data) zip.file('audio/' + r.id + '_' + r.fileName, data);
     }
-    if (skipped.length > 0) {
-      setStatus('Varování: regiony přeskočeny (>200 MB): ' + skipped.join(', '), 'error');
-    }
     zip.file('project.json', JSON.stringify(meta, null, 2));
+    setStatus(t('status.saving') + ' (komprese…)');
+    // level:1 = nejrychlejší komprese, audio data jsou už komprimovaná (MP3/OGG)
     const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 1 } });
     lastZipSize = blob.size;
     updateProjectInfo();
