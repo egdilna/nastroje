@@ -3540,6 +3540,28 @@ async function duplicateEntity(orig) {
 
 async function deleteEntity(id) {
   const e = findEntity(id); if (!e) return;
+  // Před fyzickým smazáním uložit minimální záznam do koše (db.trash)
+  // Koš obsahuje jen: title, aspects, attributes, body, deleted_at
+  // Bez vazeb, příloh, komentářů, anotací - cílem je možnost obnovit JEN obsah entity.
+  try {
+    if (!Array.isArray(db.trash)) db.trash = [];
+    const cleanAttrs = {};
+    if (e.attributes) {
+      Object.keys(e.attributes).forEach(k => {
+        if (k === 'encoded' || k === '_lastEncodedSource') return;
+        cleanAttrs[k] = e.attributes[k];
+      });
+    }
+    db.trash.push({
+      id: 't-' + uuid(),
+      origId: e.id,
+      title: e.title || '(bez názvu)',
+      aspects: (e.aspects || []).slice(),
+      attributes: cleanAttrs,
+      body: e.body || '',
+      deleted_at: nowIso()
+    });
+  } catch (err) {}
   if (e.attachments) for (const att of e.attachments) {
     if (att.storage === 'indexeddb' || att.storage === 'pending-github') await deleteFileBlob(att.id);
     if (att.storage === 'github' && att.ghPath) {
@@ -4241,6 +4263,8 @@ function getEntityBadgePrefix(e) {
   if (has('Idea')) prefix += '🧠 ';
   // Poznámka / Note → 📝
   if (has('Note')) prefix += '📝 ';
+  // Include (vlastní aspekt pro entity sloužící jako vkládací bloky) → 🧩
+  if (has('include')) prefix += '🧩 ';
   // Událost / Event → 📅
   if (has('Event')) prefix += '📅 ';
   // Prezentace → 📽️
@@ -5407,6 +5431,7 @@ function render() {
     case 'search': renderSearch(main); break;
     case 'tags': renderTags(main); break;
     case 'flags': renderFlagsView(main); break;
+    case 'trash': renderTrashView(main); break;
     case 'timetracking': renderTimeTrackingView(main); break;
     case 'tools': renderTools(main); break;
     case 'links': renderLinksView(main); break;
@@ -5551,9 +5576,8 @@ function renderPanelsBar() {
       ' aria-selected="' + (active ? 'true' : 'false') + '"' +
       ' aria-controls="main"' +
       ' tabindex="' + (active ? '0' : '-1') + '"' +
-      (i === 0 ? ' accesskey="p"' : '') +
       ' class="panel-tab" data-panel-idx="' + i + '"' +
-      ' title="Panel ' + (i + 1) + ': ' + escapeHtml(label) + (active ? ' (aktivní)' : '') + (i === 0 ? ' (Alt+Shift+P)' : '') + '">' +
+      ' title="Panel ' + (i + 1) + ': ' + escapeHtml(label) + (active ? ' (aktivní)' : '') + (i === 0 ? ' (Alt+Shift+P — fokus)' : '') + '">' +
       '<span class="panel-tab-label">' + escapeHtml(label) + '</span>' +
     '</button>';
   });
@@ -6742,15 +6766,34 @@ function bulkArchive() {
 function bulkDelete() {
   const ents = bulkSelectedEntities();
   if (ents.length === 0) return;
-  confirmDialog('Trvale smazat ' + ents.length + ' vybraných entit? Tato akce je nevratná!', () => {
+  confirmDialog('Trvale smazat ' + ents.length + ' vybraných entit? Tato akce je nevratná! Záznamy půjdou do koše a lze je obnovit.', () => {
     const ids = new Set(_bulk.selected);
+    // Uložit minimální záznamy do koše
+    if (!Array.isArray(db.trash)) db.trash = [];
+    ents.forEach(e => {
+      const cleanAttrs = {};
+      if (e.attributes) {
+        Object.keys(e.attributes).forEach(k => {
+          if (k === 'encoded' || k === '_lastEncodedSource') return;
+          cleanAttrs[k] = e.attributes[k];
+        });
+      }
+      db.trash.push({
+        id: 't-' + uuid(),
+        origId: e.id,
+        title: e.title || '(bez názvu)',
+        aspects: (e.aspects || []).slice(),
+        attributes: cleanAttrs,
+        body: e.body || '',
+        deleted_at: nowIso()
+      });
+    });
     db.entities = db.entities.filter(e => !ids.has(e.id));
-    // Také smazat odkazy na ně
     db.entities.forEach(e => {
       if (e.links) e.links = e.links.filter(l => !ids.has(l.to));
     });
     save();
-    toast(ids.size + ' entit smazáno.');
+    toast(ids.size + ' entit smazáno (v koši pro případnou obnovu).');
     _bulk.selected.clear();
     render();
   });
@@ -7613,6 +7656,10 @@ function renderTools(main) {
       '<button type="button" class="tool-card" data-tool="data-io">' +
         '<strong>📦 Import / Export dat</strong>' +
         '<span class="meta">Záloha celé databáze (ZIP/JSON), import, export podmnožiny do JSON/XLSX</span>' +
+      '</button>' +
+      '<button type="button" class="tool-card" data-tool="trash">' +
+        '<strong>🗑 Koš</strong>' +
+        '<span class="meta">Smazané entity (' + ((db.trash && db.trash.length) || 0) + ') – obnovit jako nové, nebo vyprázdnit</span>' +
       '</button>' +
     '</div>';
   main.querySelectorAll('button[data-tool]').forEach(b => {
@@ -8496,6 +8543,118 @@ function renderTimeTrackingView(main) {
       b.disabled = true;
       b.textContent = '⏳ Odesílám…';
       togglSendEntry(b.dataset.ttEntry);
+    };
+  });
+}
+
+// === KOŠ: pohled, obnova, vyprázdnění ===
+function renderTrashView(main) {
+  const trash = Array.isArray(db.trash) ? db.trash.slice() : [];
+  trash.sort((a, b) => (b.deleted_at || '').localeCompare(a.deleted_at || ''));
+  let h = '<h1>🗑 Koš</h1>';
+  h += '<p>Smazané entity. Obnovení vytvoří úplně novou entitu (nové ID, žádné původní vazby, přílohy ani komentáře) — zachovává se jen název, aspekty, atributy a tělo. Koš se ukládá společně s databází.</p>';
+  if (trash.length === 0) {
+    h += '<p class="meta">Koš je prázdný.</p>';
+    main.innerHTML = h;
+    return;
+  }
+  h += '<div class="btn-group" style="margin:0.5em 0;">' +
+    '<button id="trash-empty" class="danger">🗑 Vyprázdnit koš (' + trash.length + ' položek)</button>' +
+  '</div>';
+  h += '<ul class="trash-list" style="list-style:none;padding:0;">';
+  trash.forEach(t => {
+    const aspectsTxt = (t.aspects || []).map(a => aspectLabel(a)).join(', ') || '(žádný aspekt)';
+    const attrCount = Object.keys(t.attributes || {}).length;
+    const bodyLen = (t.body || '').length;
+    h += '<li style="border:1px solid var(--border, #ccc);border-radius:4px;padding:0.6em;margin-bottom:0.4em;">' +
+      '<div><strong>' + escapeHtml(t.title) + '</strong> <span class="meta">— smazáno ' + escapeHtml(fmtRelative(t.deleted_at)) + ' (' + escapeHtml(fmtDate(t.deleted_at)) + ')</span></div>' +
+      '<div class="meta">Aspekty: ' + escapeHtml(aspectsTxt) + ' · Atributů: ' + attrCount + ' · Tělo: ' + bodyLen + ' znaků</div>' +
+      '<div class="btn-group" style="margin-top:0.4em;">' +
+        '<button class="trash-restore primary" data-trash-id="' + escapeHtml(t.id) + '">♻ Obnovit jako novou entitu</button>' +
+        '<button class="trash-preview" data-trash-id="' + escapeHtml(t.id) + '">👁 Zobrazit obsah</button>' +
+        '<button class="trash-delete danger" data-trash-id="' + escapeHtml(t.id) + '">🗑 Smazat trvale</button>' +
+      '</div>' +
+    '</li>';
+  });
+  h += '</ul>';
+  main.innerHTML = h;
+
+  // Handlery
+  document.getElementById('trash-empty').onclick = () => {
+    confirmDialog('Opravdu vyprázdnit koš? Smaže se ' + trash.length + ' položek a tuto akci nelze vrátit.', () => {
+      db.trash = [];
+      save();
+      toast('Koš vyprázdněn (' + trash.length + ' položek).');
+      render();
+    });
+  };
+  main.querySelectorAll('.trash-restore').forEach(b => {
+    b.onclick = () => {
+      const tid = b.dataset.trashId;
+      const t = (db.trash || []).find(x => x.id === tid);
+      if (!t) return;
+      const newEnt = {
+        id: uuid(),
+        numericId: nextNumericId(),
+        title: t.title || '(obnoveno)',
+        aspects: (t.aspects || []).slice(),
+        attributes: Object.assign({}, t.attributes || {}),
+        tags: [],
+        body: t.body || '',
+        links: [],
+        attachments: [],
+        comments: [],
+        annotations: [],
+        confidence: 'definitive',
+        inbox: false,
+        archived: false,
+        valid_from: null, valid_to: null,
+        created_at: nowIso(),
+        updated_at: nowIso()
+      };
+      db.entities.push(newEnt);
+      db.trash = (db.trash || []).filter(x => x.id !== tid);
+      save();
+      toast('Obnoveno jako nová entita „' + getDisplayTitle(newEnt) + '".');
+      setView('detail', { detailId: newEnt.id, detailMode: 'read' });
+    };
+  });
+  main.querySelectorAll('.trash-preview').forEach(b => {
+    b.onclick = () => {
+      const tid = b.dataset.trashId;
+      const t = (db.trash || []).find(x => x.id === tid);
+      if (!t) return;
+      const lines = [];
+      lines.push('Název: ' + t.title);
+      lines.push('Aspekty: ' + ((t.aspects || []).join(', ') || '—'));
+      lines.push('Smazáno: ' + fmtDate(t.deleted_at));
+      lines.push('');
+      if (t.attributes && Object.keys(t.attributes).length > 0) {
+        lines.push('Atributy:');
+        Object.entries(t.attributes).forEach(([k, v]) => {
+          const val = typeof v === 'string' ? v : JSON.stringify(v);
+          lines.push('  ' + k + ': ' + (val.length > 100 ? val.slice(0, 100) + '…' : val));
+        });
+        lines.push('');
+      }
+      if (t.body) {
+        lines.push('Tělo:');
+        lines.push(t.body);
+      }
+      alertMsg(lines.join('\n'));
+    };
+  });
+  main.querySelectorAll('.trash-delete').forEach(b => {
+    b.onclick = () => {
+      const tid = b.dataset.trashId;
+      const t = (db.trash || []).find(x => x.id === tid);
+      if (!t) return;
+      confirmDialog('Smazat trvale „' + t.title + '"? Tuto akci nelze vrátit.', () => {
+        db.trash = (db.trash || []).filter(x => x.id !== tid);
+        save();
+        toast('Trvale smazáno.');
+        render();
+      });
     };
   });
 }
@@ -10095,8 +10254,18 @@ function detectAndOfferNamedEntities(entity, onDone, opts) {
       let m;
       while ((m = re.exec(txt)) !== null) {
         const before = txt.slice(Math.max(0, m.index - 30), m.index);
+        const after = txt.slice(m.index + m[0].length, Math.min(txt.length, m.index + m[0].length + 30));
+        // Uvnitř wiki linku [[...]]
         if (before.includes('[[') && !before.includes(']]')) continue;
+        // Uvnitř transkluze nebo status chip {{...}}
         if (before.includes('{{') && !before.includes('}}')) continue;
+        // Uvnitř placeholderu atributu ((...))
+        if (before.includes('((') && !before.includes('))')) continue;
+        // Bezprostředně obklopené složenými/dvojitými závorkami (placeholder, který si někdo napsal naopak)
+        if (before.endsWith('((') && after.startsWith('))')) continue;
+        if (before.endsWith('[[') && after.startsWith(']]')) continue;
+        if (before.endsWith('{{') && after.startsWith('}}')) continue;
+        // URL
         if (/https?:\/\/\S*$/.test(before)) continue;
         const overlap = matches.find(x => x.field === field && ((m.index >= x.start && m.index < x.end) || (m.index + m[0].length > x.start && m.index + m[0].length <= x.end)));
         if (overlap) continue;
@@ -10428,6 +10597,7 @@ function renderDetailEdit(main, e) {
       '<button id="back-btn">← Zpět</button>' +
       '<button id="btn-focus-edit" accesskey="f" aria-pressed="' + (state.focus ? 'true' : 'false') + '" title="Soustředěný režim (Alt+Shift+F)">' + (state.focus ? '🔍 Ukončit fokus' : '🔍 Fokus') + '</button>' +
       '<button id="btn-duplicate-edit" title="Duplikovat tuto entitu">Duplikovat</button>' +
+      '<button id="btn-save-version" title="Exportovat aktuální stav entity jako přílohu (verze)">💾 Uložit verzi</button>' +
       (e.inbox ? '<button id="leave-inbox">Vyjmout z Inboxu</button>' : '<button id="enter-inbox">Vrátit do Inboxu</button>') +
       (e.archived ? '<button id="unarchive">Obnovit</button>' : '<button id="archive">Archivovat</button>') +
       '<button class="danger" id="delete">Smazat</button>' +
@@ -10760,6 +10930,55 @@ function renderDetailEdit(main, e) {
   };
   document.getElementById('btn-duplicate-edit').onclick = () => duplicateEntity(e);
   document.getElementById('btn-focus-edit').onclick = () => { state.focus = !state.focus; render(); };
+  // Uložit verzi entity jako přílohu (JSON snapshot)
+  const btnVer = document.getElementById('btn-save-version');
+  if (btnVer) btnVer.onclick = async () => {
+    try {
+      // Snapshot aktuálního stavu entity (bez příloh - jen meta, abychom nezacyklili)
+      const snapshot = {
+        format: 'pim-entity-version',
+        version: 1,
+        savedAt: nowIso(),
+        entity: {
+          id: e.id,
+          numericId: e.numericId,
+          title: e.title,
+          aspects: (e.aspects || []).slice(),
+          attributes: Object.assign({}, e.attributes || {}),
+          tags: (e.tags || []).slice(),
+          body: e.body || '',
+          links: (e.links || []).slice(),
+          comments: (e.comments || []).map(c => Object.assign({}, c)),
+          annotations: (e.annotations || []).slice(),
+          confidence: e.confidence,
+          inbox: e.inbox,
+          archived: e.archived,
+          valid_from: e.valid_from,
+          valid_to: e.valid_to,
+          created_at: e.created_at,
+          updated_at: e.updated_at,
+          // Přílohy zde NEukládáme (kruh) – jen seznam jmen pro referenci
+          attachments_summary: (e.attachments || []).map(a => ({ name: a.name, type: a.type, size: a.size }))
+        }
+      };
+      const json = JSON.stringify(snapshot, null, 2);
+      // Soubor pojmenovaný "verze-YYYYMMDD-HHmm-<sanitized-title>.json"
+      const now = new Date();
+      const ts = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') +
+        '-' + String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0');
+      const safeTitle = sanitizeFilename(getDisplayTitle(e) || 'entita').slice(0, 50);
+      const fname = 'verze-' + ts + '-' + safeTitle + '.json';
+      const blob = new Blob([json], { type: 'application/json' });
+      const file = new File([blob], fname, { type: 'application/json' });
+      await attachFile(e, file);
+      save();
+      toast('✓ Verze uložena jako příloha: ' + fname);
+      playSound('save');
+      render();
+    } catch (err) {
+      alertMsg('Uložení verze selhalo: ' + (err && err.message ? err.message : err));
+    }
+  };
 
   // Event tasks sekce (editovatelná v edit modu)
   attachTimeTrackingHandlers(e);
@@ -16735,6 +16954,19 @@ function setupKeyboard() {
       if (ev.key === 'Escape') { openDlg.close(); ev.preventDefault(); }
       return;
     }
+
+    // Alt+Shift+P — jen focus na první panel, NE jeho aktivace.
+    // Prohlížeč by jinak triggernul accesskey="p" který by spustil onclick = switchToPanel.
+    if (ev.altKey && ev.shiftKey && (ev.key === 'p' || ev.key === 'P')) {
+      const firstTab = document.querySelector('button[role="tab"][data-panel-idx="0"]');
+      if (firstTab) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        firstTab.focus();
+      }
+      return;
+    }
+
     const tag = (document.activeElement.tagName || '').toLowerCase();
     const inField = tag === 'input' || tag === 'textarea' || tag === 'select';
 
@@ -17071,13 +17303,13 @@ async function init() {
         state.settings.github.path = m[3];
         if (!state.settings.github.branch) state.settings.github.branch = 'main';
         statusMsg('Načítám z GitHubu…');
-        await GH.downloadAndLoad(true);
+        await GH.downloadAndLoad(false);
         didLoadFromGh = true;
       }
     } catch (e) { alertMsg('Chybný parametr ?id v URL: ' + e.message); }
   } else if (state.settings.github && state.settings.github.autoLoadOnStart && GH.isConfigured()) {
     statusMsg('Auto-načítám z GitHubu…');
-    try { await GH.downloadAndLoad(true); didLoadFromGh = true; }
+    try { await GH.downloadAndLoad(false); didLoadFromGh = true; }
     catch (e) { alertMsg('Auto-load selhal: ' + e.message); }
   }
 
@@ -17887,7 +18119,7 @@ const GH = {
       save();
       this._setStatus('ok', 'Nahráno na GitHub.');
       const wasNew = !currentSha;
-      const parts = ['✓ Uloženo na GitHub: ' + db.entities.length + ' entit, ' + fmtBytes(sizeBytes)];
+      const parts = ['✓ Uloženo na GitHub: ' + db.entities.length + ' entit'];
       if (attUploaded > 0) parts.push('+ ' + attUploaded + ' příloh');
       if (attDeleted > 0) parts.push('- ' + attDeleted + ' smazáno');
       if (wasNew) parts.push('(nový soubor)');
@@ -22602,6 +22834,28 @@ async function duplicateEntity(orig) {
 
 async function deleteEntity(id) {
   const e = findEntity(id); if (!e) return;
+  // Před fyzickým smazáním uložit minimální záznam do koše (db.trash)
+  // Koš obsahuje jen: title, aspects, attributes, body, deleted_at
+  // Bez vazeb, příloh, komentářů, anotací - cílem je možnost obnovit JEN obsah entity.
+  try {
+    if (!Array.isArray(db.trash)) db.trash = [];
+    const cleanAttrs = {};
+    if (e.attributes) {
+      Object.keys(e.attributes).forEach(k => {
+        if (k === 'encoded' || k === '_lastEncodedSource') return;
+        cleanAttrs[k] = e.attributes[k];
+      });
+    }
+    db.trash.push({
+      id: 't-' + uuid(),
+      origId: e.id,
+      title: e.title || '(bez názvu)',
+      aspects: (e.aspects || []).slice(),
+      attributes: cleanAttrs,
+      body: e.body || '',
+      deleted_at: nowIso()
+    });
+  } catch (err) {}
   if (e.attachments) for (const att of e.attachments) {
     if (att.storage === 'indexeddb' || att.storage === 'pending-github') await deleteFileBlob(att.id);
     if (att.storage === 'github' && att.ghPath) {
@@ -23913,15 +24167,34 @@ function bulkArchive() {
 function bulkDelete() {
   const ents = bulkSelectedEntities();
   if (ents.length === 0) return;
-  confirmDialog('Trvale smazat ' + ents.length + ' vybraných entit? Tato akce je nevratná!', () => {
+  confirmDialog('Trvale smazat ' + ents.length + ' vybraných entit? Tato akce je nevratná! Záznamy půjdou do koše a lze je obnovit.', () => {
     const ids = new Set(_bulk.selected);
+    // Uložit minimální záznamy do koše
+    if (!Array.isArray(db.trash)) db.trash = [];
+    ents.forEach(e => {
+      const cleanAttrs = {};
+      if (e.attributes) {
+        Object.keys(e.attributes).forEach(k => {
+          if (k === 'encoded' || k === '_lastEncodedSource') return;
+          cleanAttrs[k] = e.attributes[k];
+        });
+      }
+      db.trash.push({
+        id: 't-' + uuid(),
+        origId: e.id,
+        title: e.title || '(bez názvu)',
+        aspects: (e.aspects || []).slice(),
+        attributes: cleanAttrs,
+        body: e.body || '',
+        deleted_at: nowIso()
+      });
+    });
     db.entities = db.entities.filter(e => !ids.has(e.id));
-    // Také smazat odkazy na ně
     db.entities.forEach(e => {
       if (e.links) e.links = e.links.filter(l => !ids.has(l.to));
     });
     save();
-    toast(ids.size + ' entit smazáno.');
+    toast(ids.size + ' entit smazáno (v koši pro případnou obnovu).');
     _bulk.selected.clear();
     render();
   });
@@ -25566,6 +25839,7 @@ function renderDetailEdit(main, e) {
     '<div class="btn-group">' +
       '<button id="back-btn">← Zpět</button>' +
       '<button id="btn-duplicate-edit" title="Duplikovat tuto entitu">Duplikovat</button>' +
+      '<button id="btn-save-version" title="Exportovat aktuální stav entity jako přílohu (verze)">💾 Uložit verzi</button>' +
       (e.inbox ? '<button id="leave-inbox">Vyjmout z Inboxu</button>' : '<button id="enter-inbox">Vrátit do Inboxu</button>') +
       (e.archived ? '<button id="unarchive">Obnovit</button>' : '<button id="archive">Archivovat</button>') +
       '<button class="danger" id="delete">Smazat</button>' +
@@ -27674,13 +27948,13 @@ async function init() {
         state.settings.github.path = m[3];
         if (!state.settings.github.branch) state.settings.github.branch = 'main';
         statusMsg('Načítám z GitHubu…');
-        await GH.downloadAndLoad(true);
+        await GH.downloadAndLoad(false);
         didLoadFromGh = true;
       }
     } catch (e) { alertMsg('Chybný parametr ?id v URL: ' + e.message); }
   } else if (state.settings.github && state.settings.github.autoLoadOnStart && GH.isConfigured()) {
     statusMsg('Auto-načítám z GitHubu…');
-    try { await GH.downloadAndLoad(true); didLoadFromGh = true; }
+    try { await GH.downloadAndLoad(false); didLoadFromGh = true; }
     catch (e) { alertMsg('Auto-load selhal: ' + e.message); }
   }
 
