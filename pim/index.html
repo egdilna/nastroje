@@ -9155,28 +9155,30 @@ function renderDetailRead(main, e) {
     const enc = (e.attributes && e.attributes.encoded) || '';
     const src = (e.attributes && e.attributes.source) || '';
     const name = (e.attributes && e.attributes.diagram_name) || getDisplayTitle(e) || 'Diagram';
-    if (!enc && !src) {
+    if (!src) {
       diagramHtml = '<section aria-labelledby="diag-h"><h3 id="diag-h">Diagram</h3>' +
         '<p class="meta">Zatím není zadán zdrojový kód. Přejděte do úprav a vyplňte atribut <strong>Zdrojový kód (PlantUML)</strong>.</p></section>';
-    } else if (!enc) {
-      diagramHtml = '<section aria-labelledby="diag-h"><h3 id="diag-h">Diagram</h3>' +
-        '<p class="meta">Zdroj je zadán, ale ještě se nestihl zakódovat. Uložte entitu znovu a obrázek se objeví.</p></section>';
     } else {
-      const pngUrl = pumlPngUrl(enc);
-      const svgUrl = pumlSvgUrl(enc);
+      // Pokud máme source ale chybí encoded, zenkódujeme ho asynchronně po renderu.
+      // Mezitím ukážeme placeholder s zprávou "Kóduji...".
+      const haveEnc = !!enc;
+      const pngUrl = haveEnc ? pumlPngUrl(enc) : '';
+      const svgUrl = haveEnc ? pumlSvgUrl(enc) : '';
       diagramHtml = '<section aria-labelledby="diag-h"><h3 id="diag-h">Diagram</h3>' +
         '<div class="diagram-toolbar btn-group">' +
           '<button id="diag-copy-source" title="Zkopírovat PlantUML zdroj">📋 Kopírovat zdroj</button>' +
-          '<button id="diag-copy-png-url" title="Zkopírovat PNG URL">🔗 PNG URL</button>' +
-          '<button id="diag-copy-svg-url" title="Zkopírovat SVG URL">🔗 SVG URL</button>' +
-          '<button id="diag-copy-md" title="Zkopírovat jako Markdown obrázek">📄 Markdown</button>' +
-          '<button id="diag-copy-wiki" title="Zkopírovat jako DokuWiki obrázek">🌐 Wiki</button>' +
-          '<button id="diag-dl-png" title="Stáhnout PNG soubor">⬇ PNG</button>' +
-          '<button id="diag-dl-svg" title="Stáhnout SVG soubor">⬇ SVG</button>' +
+          '<button id="diag-copy-png-url" title="Zkopírovat PNG URL"' + (haveEnc ? '' : ' disabled') + '>🔗 PNG URL</button>' +
+          '<button id="diag-copy-svg-url" title="Zkopírovat SVG URL"' + (haveEnc ? '' : ' disabled') + '>🔗 SVG URL</button>' +
+          '<button id="diag-copy-md" title="Zkopírovat jako Markdown obrázek"' + (haveEnc ? '' : ' disabled') + '>📄 Markdown</button>' +
+          '<button id="diag-copy-wiki" title="Zkopírovat jako DokuWiki obrázek"' + (haveEnc ? '' : ' disabled') + '>🌐 Wiki</button>' +
+          '<button id="diag-dl-png" title="Stáhnout PNG soubor"' + (haveEnc ? '' : ' disabled') + '>⬇ PNG</button>' +
+          '<button id="diag-dl-svg" title="Stáhnout SVG soubor"' + (haveEnc ? '' : ' disabled') + '>⬇ SVG</button>' +
         '</div>' +
         '<figure class="diagram-figure">' +
-          '<img id="diag-img" src="' + escapeHtml(pngUrl) + '" alt="' + escapeHtml(name) + '" loading="lazy">' +
-          '<figcaption class="diagram-caption meta"><span id="diag-size"></span> · ' + escapeHtml(name) + '</figcaption>' +
+          (haveEnc
+            ? '<img id="diag-img" src="' + escapeHtml(pngUrl) + '" alt="' + escapeHtml(name) + '" loading="lazy">'
+            : '<p id="diag-encoding-status" class="meta">⏳ Kóduji zdroj diagramu pro vykreslení...</p>') +
+          '<figcaption class="diagram-caption meta"><span id="diag-size"></span>' + (haveEnc ? ' · ' : '') + escapeHtml(name) + '</figcaption>' +
         '</figure>' +
         '<div id="diag-error" class="diagram-error" hidden>' +
           '<strong>⚠ Chyba renderování diagramu</strong> – PlantUML server vrátil chybu. Zkontrolujte zdroj (správné <code>@startuml</code> / <code>@enduml</code>, syntaxe).' +
@@ -9185,10 +9187,13 @@ function renderDetailRead(main, e) {
           '<summary>Zdrojový kód</summary>' +
           '<pre class="diagram-source"><code>' + escapeHtml(src) + '</code></pre>' +
         '</details>' +
-        '<details class="diagram-url-details">' +
-          '<summary>URL obrázku</summary>' +
-          '<p><a href="' + escapeHtml(pngUrl) + '" target="_blank" rel="noopener">' + escapeHtml(pngUrl) + '</a></p>' +
-        '</details>' +
+        (haveEnc
+          ? '<details class="diagram-url-details">' +
+              '<summary>URL obrázku</summary>' +
+              '<p>PNG: <a href="' + escapeHtml(pngUrl) + '" target="_blank" rel="noopener">' + escapeHtml(pngUrl) + '</a></p>' +
+              '<p>SVG: <a href="' + escapeHtml(svgUrl) + '" target="_blank" rel="noopener">' + escapeHtml(svgUrl) + '</a></p>' +
+            '</details>'
+          : '') +
       '</section>';
     }
   }
@@ -10744,6 +10749,10 @@ function renderDetailEdit(main, e) {
     // Detekce entit v textu (názvy existujících entit nepoužité jako wiki link)
     detectAndOfferNamedEntities(e, () => {
       save();
+      // Pokud má aspekt Diagram, asynchronně přepočítat encoded ze source
+      if ((e.aspects || []).includes('Diagram')) {
+        updateDiagramEncodedIfNeeded(e).catch(() => {});
+      }
       state.detailMode = 'read';
       render();
       playSound('save-entity');
@@ -14440,10 +14449,27 @@ function saveTableEditor() {
 // DIAGRAM (PlantUML) — handlery toolbaru a render
 // =============================================================================
 function attachDiagramHandlers(entity) {
-  const enc = (entity.attributes && entity.attributes.encoded) || '';
   const src = (entity.attributes && entity.attributes.source) || '';
+  if (!src) return;
+  // Lazy encoding: pokud nemáme encoded, nebo source se změnil od posledního encode, zenkódujeme teď.
+  const currentEncoded = entity.attributes && entity.attributes.encoded;
+  const lastEncodedSource = entity.attributes && entity.attributes._lastEncodedSource;
+  if (!currentEncoded || lastEncodedSource !== src) {
+    pumlEncodeAsync(src).then(enc => {
+      if (!entity.attributes) entity.attributes = {};
+      entity.attributes.encoded = enc;
+      entity.attributes._lastEncodedSource = src;
+      entity.updated_at = nowIso();
+      try { save(); } catch (e) {}
+      render();
+    }).catch(err => {
+      const statusEl = document.getElementById('diag-encoding-status');
+      if (statusEl) statusEl.textContent = '⚠ Zakódování selhalo: ' + (err && err.message ? err.message : err);
+    });
+    return;
+  }
+  const enc = entity.attributes.encoded;
   const name = (entity.attributes && entity.attributes.diagram_name) || getDisplayTitle(entity) || 'Diagram';
-  if (!enc) return;
   const pngUrl = pumlPngUrl(enc);
   const svgUrl = pumlSvgUrl(enc);
 
