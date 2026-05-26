@@ -322,6 +322,8 @@ body.theme-dark .section-edit-banner { background: #3a3010; border-color: #6a5a3
 .section-edit-wrapper { padding: 0.7em; margin: 1em 0; background: #f8f8f8; border: 2px solid #0066cc; border-radius: 6px; }
 body.theme-dark .section-edit-wrapper { background: #1f1f1f; border-color: #6aa8e8; }
 .section-edit-header { margin-bottom: 0.5em; }
+.table-edit-wrapper { padding: 0.7em; margin: 1em 0; background: #f8f8f8; border: 2px solid #0066cc; border-radius: 6px; }
+body.theme-dark .table-edit-wrapper { background: #1f1f1f; border-color: #6aa8e8; }
 .diagram-toolbar { margin-bottom: 0.5em; flex-wrap: wrap; }
 .diagram-figure { margin: 0.5em 0; text-align: center; }
 .diagram-figure img { max-width: 100%; height: auto; background: #fff; padding: 0.5em; border: 1px solid #ddd; border-radius: 4px; }
@@ -14319,7 +14321,6 @@ function setupSectionEditMode(entity) {
   const wrap = document.getElementById('body-rendered');
   if (!wrap) return;
   const sections = extractSectionsFlat(entity.body || '');
-  if (sections.length === 0) return;
 
   // Najít všechny nadpisy v rendered HTML — jejich pořadí odpovídá pořadí v `sections`
   const headings = wrap.querySelectorAll('h1, h2, h3, h4, h5, h6');
@@ -14345,7 +14346,14 @@ function setupSectionEditMode(entity) {
   // Informační banner nahoru
   const banner = document.createElement('div');
   banner.className = 'section-edit-banner meta';
-  banner.textContent = '✏️ Režim editace sekcí: u každého nadpisu klikněte „Upravit". Pro ukončení znovu klikněte na tlačítko v záhlaví nebo stiskněte D.';
+  const hasSections = sections.length > 0;
+  const hasTables = wrap.querySelectorAll('table').length > 0;
+  let bannerText = '✏️ Režim editace';
+  if (hasSections && hasTables) bannerText += ' sekcí a tabulek';
+  else if (hasSections) bannerText += ' sekcí';
+  else if (hasTables) bannerText += ' tabulek';
+  bannerText += ': klikněte na tlačítko u sekce nebo tabulky pro úpravu. Pro ukončení znovu klikněte na tlačítko v záhlaví nebo stiskněte D.';
+  banner.textContent = bannerText;
   wrap.parentNode.insertBefore(banner, wrap);
 
   // Pod každou tabulku přidat tlačítko „Upravit tabulku"
@@ -14558,17 +14566,80 @@ function openTableEditor(entity, tableIdx) {
     endLine: parsed.endLine,
     headers: [...parsed.headers],
     alignments: [...parsed.alignments],
-    rows: parsed.rows.map(r => [...r])
+    rows: parsed.rows.map(r => [...r]),
+    inline: true
   };
-  const d = document.getElementById('dialog-table-editor');
-  d.showModal();
+  // Najdi <table> v rendered HTML
+  const wrap = document.getElementById('body-rendered');
+  if (!wrap) {
+    // Fallback na dialog pokud nemáme rendered body (např. neobvyklý stav)
+    _tableEditorState.inline = false;
+    const d = document.getElementById('dialog-table-editor');
+    d.showModal();
+    renderTableEditor();
+    document.getElementById('te-save').onclick = saveTableEditor;
+    document.getElementById('te-cancel').onclick = () => { d.close(); _tableEditorState = null; };
+    return;
+  }
+  const tables = wrap.querySelectorAll('table');
+  const tableEl = tables[tableIdx];
+  if (!tableEl) {
+    alertMsg('Tabulka v zobrazené stránce nenalezena.');
+    return;
+  }
+  // Schovat tabulku a případné editační tlačítko za ní
+  tableEl.style.display = 'none';
+  const followBtn = tableEl.nextElementSibling;
+  if (followBtn && followBtn.classList && followBtn.classList.contains('table-edit-btn')) {
+    followBtn.style.display = 'none';
+  }
+  // Vytvořit inline edit blok hned za tabulkou
+  const editDiv = document.createElement('div');
+  editDiv.className = 'table-edit-wrapper';
+  editDiv.id = 'table-edit-inline-' + tableIdx;
+  editDiv.innerHTML =
+    '<div class="section-edit-header"><strong>📊 Upravujete tabulku #' + (tableIdx + 1) + '</strong> ' +
+      '<span class="meta">(' + parsed.rows.length + ' řádků × ' + parsed.headers.length + ' sloupců)</span></div>' +
+    '<div id="table-editor-content"></div>' +
+    '<div class="btn-group" style="margin-top:0.8em;">' +
+      '<button type="button" class="primary" id="te-save">💾 Uložit tabulku</button>' +
+      '<button type="button" id="te-cancel">✕ Zrušit</button>' +
+    '</div>';
+  tableEl.parentNode.insertBefore(editDiv, tableEl.nextSibling);
+  _tableEditorState._inlineDiv = editDiv;
+  _tableEditorState._origTable = tableEl;
+  _tableEditorState._origBtn = (followBtn && followBtn.classList && followBtn.classList.contains('table-edit-btn')) ? followBtn : null;
+
   renderTableEditor();
-  // Připojit Save / Cancel handlery (znovu pokaždé pro správný state)
+  // Save / Cancel handlery
   document.getElementById('te-save').onclick = saveTableEditor;
   document.getElementById('te-cancel').onclick = () => {
-    d.close();
-    _tableEditorState = null;
+    cancelInlineTableEdit();
   };
+  // Focus na první buňku (pro klávesnici)
+  setTimeout(() => {
+    const firstCell = editDiv.querySelector('button[data-te-edit-cell], button[data-te-edit-h]');
+    if (firstCell) firstCell.focus();
+    // Scroll editDiv do viewportu (v testovacím prostředí může chybět)
+    if (typeof editDiv.scrollIntoView === 'function') {
+      editDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, 50);
+}
+
+function cancelInlineTableEdit() {
+  const st = _tableEditorState;
+  if (!st) return;
+  if (st._inlineDiv) {
+    st._inlineDiv.remove();
+  }
+  if (st._origTable) {
+    st._origTable.style.display = '';
+  }
+  if (st._origBtn) {
+    st._origBtn.style.display = '';
+  }
+  _tableEditorState = null;
 }
 
 function renderTableEditor() {
@@ -14791,7 +14862,11 @@ function saveTableEditor() {
   st.entity.body = [...before, ...newMd.split('\n'), ...after].join('\n');
   st.entity.updated_at = nowIso();
   save();
-  document.getElementById('dialog-table-editor').close();
+  const wasInline = !!st.inline;
+  if (!wasInline) {
+    const d = document.getElementById('dialog-table-editor');
+    if (d && d.open) d.close();
+  }
   _tableEditorState = null;
   toast('Tabulka uložena.');
   playSound('save-entity');
