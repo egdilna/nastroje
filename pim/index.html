@@ -3748,6 +3748,22 @@ function extractIncludeTargetsFromText(text) {
   return out;
 }
 
+// Najde {{status:Název}} placeholdery v textu.
+function extractStatusTargetsFromText(text) {
+  if (!text) return [];
+  const out = [];
+  const seen = new Set();
+  const re = /\{\{status:([^}]+)\}\}/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const target = m[1].trim();
+    if (!target || seen.has(target)) continue;
+    seen.add(target);
+    out.push(target);
+  }
+  return out;
+}
+
 // Najde entitu podle ID nebo podle názvu (case-insensitive). Vrací první nalezenou.
 function findEntityByIdOrTitle(target) {
   if (!target) return null;
@@ -3801,6 +3817,7 @@ function collectEntityOutgoingReferences(entity) {
 function getInverseTextReferences(entity) {
   const wikiFromMap = new Map();   // id → entity
   const includeFromMap = new Map();
+  const statusFromMap = new Map();
   const targetId = entity.id;
   const targetTitleLc = (entity.title || '').toLowerCase();
   db.entities.forEach(e => {
@@ -3816,11 +3833,19 @@ function getInverseTextReferences(entity) {
           if (!includeFromMap.has(e.id)) includeFromMap.set(e.id, e);
         }
       });
+      if (typeof extractStatusTargetsFromText === 'function') {
+        extractStatusTargetsFromText(src.text).forEach(t => {
+          if (t === targetId || t.toLowerCase() === targetTitleLc) {
+            if (!statusFromMap.has(e.id)) statusFromMap.set(e.id, e);
+          }
+        });
+      }
     });
   });
   return {
     wikiFrom: [...wikiFromMap.values()],
-    includeFrom: [...includeFromMap.values()]
+    includeFrom: [...includeFromMap.values()],
+    statusFrom: [...statusFromMap.values()]
   };
 }
 function getEntityDate(e) {
@@ -6946,6 +6971,7 @@ function renderAll(main) {
       '<div class="filter-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(14em,1fr));gap:0.5em;margin-top:0.5em;">' +
         '<div><label for="filter-aspect">Aspekt</label><select id="filter-aspect"><option value="">— všechny —</option>' + aspectOpts + '</select></div>' +
         '<div><label for="filter-tag">Tag</label><select id="filter-tag"><option value="">— všechny —</option>' + tagOpts + '</select></div>' +
+        '<div><label for="filter-tag-not">Nemá tag</label><select id="filter-tag-not"><option value="">— bez omezení —</option>' + tagOpts + '</select></div>' +
         '<div><label for="filter-archived">Archiv</label><select id="filter-archived">' +
           '<option value="active">Jen aktivní</option>' +
           '<option value="all">+ archiv</option>' +
@@ -7031,6 +7057,7 @@ function renderAll(main) {
   const it = document.getElementById('filter-text'),
     sa = document.getElementById('filter-aspect'),
     st = document.getElementById('filter-tag'),
+    stn = document.getElementById('filter-tag-not'),
     sar = document.getElementById('filter-archived'),
     sib = document.getElementById('filter-inbox'),
     su = document.getElementById('filter-updated'),
@@ -7053,6 +7080,11 @@ function renderAll(main) {
     else if (sib.value === 'out') r = r.filter(e => !e.inbox);
     // Aspekt + tag + text
     r = searchEntities(it.value, { aspect: sa.value, tag: st.value }).filter(e => r.includes(e));
+    // Nemá tag (vylučující filtr)
+    if (stn && stn.value) {
+      const notTag = stn.value;
+      r = r.filter(e => !(e.tags || []).includes(notTag));
+    }
     // Datum změny
     if (su.value) {
       const days = Number(su.value);
@@ -7162,6 +7194,7 @@ function renderAll(main) {
     let n = 0;
     if (sa.value) n++;
     if (st.value) n++;
+    if (stn && stn.value) n++;
     if (sar.value !== 'active') n++;
     if (sib.value) n++;
     if (su.value) n++;
@@ -7197,14 +7230,14 @@ function renderAll(main) {
     });
   }
 
-  [it, sa, st, sar, sib, su, sc, sts, spr, sdl, sct, srl, scf].forEach(el => {
+  [it, sa, st, stn, sar, sib, su, sc, sts, spr, sdl, sct, srl, scf].forEach(el => {
     if (!el) return;
     if (el.tagName === 'INPUT') el.oninput = update;
     el.onchange = update;
   });
   document.getElementById('filter-reset').onclick = () => {
     state.filter = { aspect:'', tag:'', text:'', status:'', attrFilters: [] };
-    it.value = ''; sa.value = ''; st.value = ''; sar.value = 'active';
+    it.value = ''; sa.value = ''; st.value = ''; if (stn) stn.value = ''; sar.value = 'active';
     sib.value = ''; su.value = ''; sc.value = '';
     sts.value = ''; spr.value = ''; sdl.value = '';
     sct.value = ''; srl.value = ''; scf.value = '';
@@ -10526,7 +10559,7 @@ function renderInverseLinksReadOnly(e) {
   const inv = getInverseLinks(e.id);
   const invRel = getInverseRelations(e.id);
   const invText = getInverseTextReferences(e);
-  if (inv.length === 0 && invRel.length === 0 && invText.wikiFrom.length === 0 && invText.includeFrom.length === 0) return '';
+  if (inv.length === 0 && invRel.length === 0 && invText.wikiFrom.length === 0 && invText.includeFrom.length === 0 && (!invText.statusFrom || invText.statusFrom.length === 0)) return '';
   let h = '<ul style="list-style:none;padding-left:0;">';
   inv.forEach(({from,link}) => {
     const ti = RELATION_TYPES[link.type];
@@ -10559,6 +10592,13 @@ function renderInverseLinksReadOnly(e) {
   invText.includeFrom.forEach(from => {
     const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
     h += '<li><strong>includuje:</strong> ' +
+      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' +
+      (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
+      '</li>';
+  });
+  (invText.statusFrom || []).forEach(from => {
+    const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
+    h += '<li><strong>zobrazeno přes status:</strong> ' +
       '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' +
       (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
       '</li>';
@@ -23285,6 +23325,21 @@ function extractIncludeTargetsFromText(text) {
   return out;
 }
 
+function extractStatusTargetsFromText(text) {
+  if (!text) return [];
+  const out = [];
+  const seen = new Set();
+  const re = /\\{\\{status:([^}]+)\\}\\}/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const target = m[1].trim();
+    if (!target || seen.has(target)) continue;
+    seen.add(target);
+    out.push(target);
+  }
+  return out;
+}
+
 // Najde entitu podle ID nebo podle názvu (case-insensitive). Vrací první nalezenou.
 function findEntityByIdOrTitle(target) {
   if (!target) return null;
@@ -23338,6 +23393,7 @@ function collectEntityOutgoingReferences(entity) {
 function getInverseTextReferences(entity) {
   const wikiFromMap = new Map();   // id → entity
   const includeFromMap = new Map();
+  const statusFromMap = new Map();
   const targetId = entity.id;
   const targetTitleLc = (entity.title || '').toLowerCase();
   db.entities.forEach(e => {
@@ -23353,11 +23409,19 @@ function getInverseTextReferences(entity) {
           if (!includeFromMap.has(e.id)) includeFromMap.set(e.id, e);
         }
       });
+      if (typeof extractStatusTargetsFromText === 'function') {
+        extractStatusTargetsFromText(src.text).forEach(t => {
+          if (t === targetId || t.toLowerCase() === targetTitleLc) {
+            if (!statusFromMap.has(e.id)) statusFromMap.set(e.id, e);
+          }
+        });
+      }
     });
   });
   return {
     wikiFrom: [...wikiFromMap.values()],
-    includeFrom: [...includeFromMap.values()]
+    includeFrom: [...includeFromMap.values()],
+    statusFrom: [...statusFromMap.values()]
   };
 }
 function getEntityDate(e) {
@@ -24567,6 +24631,7 @@ function renderAll(main) {
       '<div class="filter-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(14em,1fr));gap:0.5em;margin-top:0.5em;">' +
         '<div><label for="filter-aspect">Aspekt</label><select id="filter-aspect"><option value="">— všechny —</option>' + aspectOpts + '</select></div>' +
         '<div><label for="filter-tag">Tag</label><select id="filter-tag"><option value="">— všechny —</option>' + tagOpts + '</select></div>' +
+        '<div><label for="filter-tag-not">Nemá tag</label><select id="filter-tag-not"><option value="">— bez omezení —</option>' + tagOpts + '</select></div>' +
         '<div><label for="filter-archived">Archiv</label><select id="filter-archived">' +
           '<option value="active">Jen aktivní</option>' +
           '<option value="all">+ archiv</option>' +
@@ -24644,6 +24709,7 @@ function renderAll(main) {
   const it = document.getElementById('filter-text'),
     sa = document.getElementById('filter-aspect'),
     st = document.getElementById('filter-tag'),
+    stn = document.getElementById('filter-tag-not'),
     sar = document.getElementById('filter-archived'),
     sib = document.getElementById('filter-inbox'),
     su = document.getElementById('filter-updated'),
@@ -24666,6 +24732,11 @@ function renderAll(main) {
     else if (sib.value === 'out') r = r.filter(e => !e.inbox);
     // Aspekt + tag + text
     r = searchEntities(it.value, { aspect: sa.value, tag: st.value }).filter(e => r.includes(e));
+    // Nemá tag (vylučující filtr)
+    if (stn && stn.value) {
+      const notTag = stn.value;
+      r = r.filter(e => !(e.tags || []).includes(notTag));
+    }
     // Datum změny
     if (su.value) {
       const days = Number(su.value);
@@ -24770,6 +24841,7 @@ function renderAll(main) {
     let n = 0;
     if (sa.value) n++;
     if (st.value) n++;
+    if (stn && stn.value) n++;
     if (sar.value !== 'active') n++;
     if (sib.value) n++;
     if (su.value) n++;
@@ -24804,14 +24876,14 @@ function renderAll(main) {
     });
   }
 
-  [it, sa, st, sar, sib, su, sc, sts, spr, sdl, sct, srl, scf].forEach(el => {
+  [it, sa, st, stn, sar, sib, su, sc, sts, spr, sdl, sct, srl, scf].forEach(el => {
     if (!el) return;
     if (el.tagName === 'INPUT') el.oninput = update;
     el.onchange = update;
   });
   document.getElementById('filter-reset').onclick = () => {
     state.filter = { aspect:'', tag:'', text:'', status:'' };
-    it.value = ''; sa.value = ''; st.value = ''; sar.value = 'active';
+    it.value = ''; sa.value = ''; st.value = ''; if (stn) stn.value = ''; sar.value = 'active';
     sib.value = ''; su.value = ''; sc.value = '';
     sts.value = ''; spr.value = ''; sdl.value = '';
     sct.value = ''; srl.value = ''; scf.value = '';
@@ -25983,7 +26055,7 @@ function renderInverseLinksReadOnly(e) {
   const inv = getInverseLinks(e.id);
   const invRel = getInverseRelations(e.id);
   const invText = getInverseTextReferences(e);
-  if (inv.length === 0 && invRel.length === 0 && invText.wikiFrom.length === 0 && invText.includeFrom.length === 0) return '';
+  if (inv.length === 0 && invRel.length === 0 && invText.wikiFrom.length === 0 && invText.includeFrom.length === 0 && (!invText.statusFrom || invText.statusFrom.length === 0)) return '';
   let h = '<ul style="list-style:none;padding-left:0;">';
   inv.forEach(({from,link}) => {
     const ti = RELATION_TYPES[link.type];
@@ -26016,6 +26088,13 @@ function renderInverseLinksReadOnly(e) {
   invText.includeFrom.forEach(from => {
     const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
     h += '<li><strong>includuje:</strong> ' +
+      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' +
+      (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
+      '</li>';
+  });
+  (invText.statusFrom || []).forEach(from => {
+    const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
+    h += '<li><strong>zobrazeno přes status:</strong> ' +
       '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' +
       (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
       '</li>';
