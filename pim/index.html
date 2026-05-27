@@ -5783,6 +5783,24 @@ function attachEntityRowHandlers(root) {
   root.querySelectorAll('a[data-tag]').forEach(a => {
     a.onclick = (ev) => { ev.preventDefault(); state.filter.tag = a.dataset.tag; setView('all'); };
   });
+  // Otevřít v novém panelu (univerzální)
+  root.querySelectorAll('button[data-open-new-panel]').forEach(b => {
+    b.onclick = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      openEntityInNewPanel(b.dataset.openNewPanel);
+    };
+  });
+  // Otevřít v samostatném okně (univerzální)
+  if (typeof openEntityInStandaloneWindow === 'function') {
+    root.querySelectorAll('button[data-open-standalone]').forEach(b => {
+      b.onclick = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openEntityInStandaloneWindow(b.dataset.openStandalone);
+      };
+    });
+  }
   // Tlačítko Akce (⋮)
   root.querySelectorAll('button[data-row-actions]').forEach(b => {
     b.onclick = (ev) => {
@@ -5833,6 +5851,7 @@ function openEntityActionsMenu(entityId, triggerEl) {
     '<div class="entity-actions-list" role="group" aria-label="Dostupné akce">' +
       '<button type="button" data-action="open">📂 Otevřít</button>' +
       '<button type="button" data-action="open-new-panel">📑 Otevřít v novém panelu</button>' +
+      '<button type="button" data-action="open-standalone">🪟 Otevřít v samostatném okně</button>' +
       '<button type="button" data-action="edit">✏️ Upravit</button>' +
       '<button type="button" data-action="add-link">🔗 Přidat vazbu</button>' +
       '<button type="button" data-action="create-related">➕ Vytvořit související</button>' +
@@ -5854,6 +5873,8 @@ function openEntityActionsMenu(entityId, triggerEl) {
     } else if (action === 'open-new-panel') {
       addPanel();
       setView('detail', { detailId: e.id, detailMode: 'read' });
+    } else if (action === 'open-standalone') {
+      openEntityInStandaloneWindow(e.id);
     } else if (action === 'edit') {
       setView('detail', { detailId: e.id, detailMode: 'edit' });
     } else if (action === 'add-link') {
@@ -6434,6 +6455,21 @@ function renderDashboard(main) {
       render();
     };
   }
+  // === Tlačítko „odebrat tag z této entity" ===
+  document.querySelectorAll('button[data-remove-tag-from]').forEach(btn => {
+    btn.onclick = (ev) => {
+      ev.stopPropagation();
+      const eid = btn.dataset.removeTagFrom;
+      const ent = findEntity(eid);
+      const currentTag = db.dashboardTag;
+      if (!ent || !currentTag) return;
+      ent.tags = (ent.tags || []).filter(t => t !== currentTag);
+      ent.updated_at = nowIso();
+      save();
+      toast('Tag „' + currentTag + '" odebrán z „' + getDisplayTitle(ent) + '".');
+      render();
+    };
+  });
 }
 
 // Vykreslí sekci „Podle tagu" pro nástěnku
@@ -6464,6 +6500,8 @@ function renderDashboardTagSection() {
     h += entitiesWithTag.slice(0, 30).map(e =>
       '<div class="dash-item">' +
         '<a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a>' +
+        openInPanelBtnHtml(e.id) +
+        ' <button type="button" class="dash-remove-tag-btn" data-remove-tag-from="' + escapeHtml(e.id) + '" title="Odebrat z této entity tag „' + escapeHtml(selectedTag) + '"" aria-label="Odebrat z entity „' + escapeHtml(getDisplayTitle(e)) + '" tag „' + escapeHtml(selectedTag) + '"">🏷️✕</button>' +
         ' <span class="meta">' + escapeHtml(fmtRelative(e.updated_at)) + '</span>' +
       '</div>'
     ).join('');
@@ -9686,6 +9724,7 @@ function renderDetailRead(main, e) {
           ? '<button id="btn-toggle-sec-edit" aria-pressed="' + (state.sectionEditMode ? 'true' : 'false') + '" title="Zapnout/vypnout editaci sekcí a tabulek (D)">' + (state.sectionEditMode ? '✏️ Ukončit editaci sekcí' : '✏️ Editovat sekce') + '</button>'
           : '') +
         '<button id="btn-duplicate">Duplikovat</button>' +
+        '<button id="btn-open-standalone" title="Otevřít tuto entitu v samostatném okně (lze používat současně s hlavní aplikací)">🪟 Samostatné okno</button>' +
         '<button id="btn-entity-export" title="Export entity (MD, DOCX, PDF) s volbou částí">🖨 Export / tisk…</button>' +
         (e.inbox ? '<button id="leave-inbox">Vyjmout z Inboxu</button>' : '') +
         (isProject ? '<button id="open-outline">Outline</button>' : '') +
@@ -9836,6 +9875,8 @@ function renderDetailRead(main, e) {
   document.getElementById('btn-create-related').onclick = () => openCreateRelatedDialog(e);
   document.getElementById('btn-add-comment-top').onclick = () => openCommentDialog(e);
   document.getElementById('btn-duplicate').onclick = () => duplicateEntity(e);
+  const btnStandaloneTop = document.getElementById('btn-open-standalone');
+  if (btnStandaloneTop) btnStandaloneTop.onclick = () => openEntityInStandaloneWindow(e.id);
   document.getElementById('btn-entity-export').onclick = () => openEntityExportDialog(e);
   // Tlačítka „Zkopírovat zdroj/formátované" pro tělo (jen pokud má tělo)
   const copySrcBtn = document.getElementById('btn-copy-body-source');
@@ -10644,7 +10685,6 @@ function renderOutgoingReferences(e) {
 }
 function renderAttachmentsRead(e) {
   if (!e.attachments || e.attachments.length === 0) return '';
-  const g = state.settings.github || {};
   let h = '<div class="attachment-list">';
   e.attachments.forEach(att => {
     const isImg = att.type && att.type.startsWith('image/');
@@ -10654,22 +10694,21 @@ function renderAttachmentsRead(e) {
                        att.storage === 'embedded' ? '📦' :
                        att.storage === 'indexeddb' ? '💾' : '🔗';
     let statusContent = statusIcon + ' ' + escapeHtml(attachmentStatusLabel(att));
-    if (att.storage === 'github' && att.ghPath && g.owner && g.repo) {
-      const ghUrl = 'https://github.com/' + encodeURIComponent(g.owner) + '/' + encodeURIComponent(g.repo) + '/blob/' + encodeURIComponent(g.branch || 'main') + '/' + att.ghPath.split('/').map(encodeURIComponent).join('/');
-      statusContent = statusIcon + ' <a href="' + escapeHtml(ghUrl) + '" target="_blank" rel="noopener">' + escapeHtml(att.ghPath) + '</a>';
-    } else if (att.storage === 'pending-github') {
-      const expectedPath = attachmentGhPath(att);
-      statusContent += ' <span class="meta">(naplánováno do ' + escapeHtml(expectedPath) + ')</span>';
-    }
     if (att.uploadError) {
       statusContent += ' <span style="color:#c33;">⚠ ' + escapeHtml(att.uploadError) + '</span>';
     }
-    const addedTxt = att.added_at ? ' · přidáno ' + escapeHtml(fmtDateTime(att.added_at)) : '';
+    const addedTxt = att.added_at ? fmtDateTime(att.added_at) : '';
+    const sizeTxt = fmtBytes(att.size);
+    // Klikatelný název: stažení přílohy. Obsah: název · datum · velikost.
+    const linkLabel = escapeHtml(att.name) +
+      (addedTxt ? ' <span class="meta">· ' + escapeHtml(addedTxt) + '</span>' : '') +
+      ' <span class="meta">· ' + escapeHtml(sizeTxt) + '</span>';
+    const linkAria = att.name + (addedTxt ? ', přidáno ' + addedTxt : '') + ', ' + sizeTxt + ', stáhnout';
     h += '<div class="attachment-item" data-att-id="' + escapeHtml(att.id) + '">' +
       '<div class="attachment-icon">' + guessFileIcon(att.type, att.name) + '</div>' +
       '<div class="attachment-info">' +
-        '<div class="name">' + escapeHtml(att.name) + '</div>' +
-        '<div class="meta">' + escapeHtml(fmtBytes(att.size)) + ' · ' + escapeHtml(att.type || '?') + addedTxt + ' · ' + statusContent + '</div>' +
+        '<div class="name"><a href="#" data-att-download-link="' + escapeHtml(att.id) + '" aria-label="' + escapeHtml(linkAria) + '">' + linkLabel + '</a></div>' +
+        '<div class="meta">' + escapeHtml(att.type || '?') + ' · ' + statusContent + '</div>' +
         (isImg ? '<img class="attachment-preview" data-att-preview="' + escapeHtml(att.id) + '" alt="' + escapeHtml(att.name) + '">' : '') +
         (isAudio ? '<audio class="attachment-audio" controls preload="metadata" data-att-audio="' + escapeHtml(att.id) + '" aria-label="Přehrávač: ' + escapeHtml(att.name) + '"></audio>' : '') +
       '</div>' +
@@ -10699,6 +10738,19 @@ function attachAttachmentReadHandlers(root, entity) {
       if (!u) { alertMsg('Nelze získat soubor.'); return; }
       const a = document.createElement('a');
       a.href = u; a.download = att.name; a.click();
+      if (att.storage !== 'reference') setTimeout(() => URL.revokeObjectURL(u), 1000);
+    };
+  });
+  // Klikatelný název přílohy (odkaz) – stejné chování jako tlačítko Stáhnout
+  root.querySelectorAll('a[data-att-download-link]').forEach(a => {
+    a.onclick = async (ev) => {
+      ev.preventDefault();
+      const att = entity.attachments.find(at => at.id === a.dataset.attDownloadLink);
+      if (!att) return;
+      const u = await getAttachmentBlobUrl(att);
+      if (!u) { alertMsg('Nelze získat soubor.'); return; }
+      const tmp = document.createElement('a');
+      tmp.href = u; tmp.download = att.name; tmp.click();
       if (att.storage !== 'reference') setTimeout(() => URL.revokeObjectURL(u), 1000);
     };
   });
@@ -13796,6 +13848,29 @@ function doCommentSave(entity, existing, dialogEl) {
 // Pomocná funkce: tlačítko „otevřít v novém panelu" vedle entity
 function openInPanelBtnHtml(entityId) {
   return ' <button type="button" class="open-in-panel-btn" data-open-new-panel="' + escapeHtml(entityId) + '" title="Otevřít v novém panelu" aria-label="Otevřít v novém panelu">↗</button>';
+}
+// Helper: vytvořit URL pro samostatné okno na danou entitu
+function makeStandaloneWindowUrl(entityId) {
+  const url = new URL(location.href);
+  // Zachovat ?id= (project) pokud existuje
+  const projectId = url.searchParams.get('id');
+  const newUrl = new URL(location.pathname, location.origin);
+  if (projectId) newUrl.searchParams.set('id', projectId);
+  newUrl.searchParams.set('detail', entityId);
+  newUrl.searchParams.set('standalone', '1');
+  return newUrl.toString();
+}
+function openEntityInStandaloneWindow(entityId) {
+  const url = makeStandaloneWindowUrl(entityId);
+  const win = window.open(url, '_blank', 'width=1000,height=800,menubar=no,toolbar=no,location=no');
+  if (!win) {
+    alertMsg('Otevření okna selhalo. Možná je zablokované vyskakovací okno – zkontrolujte nastavení prohlížeče.');
+    return;
+  }
+  win.focus();
+}
+function openInStandaloneBtnHtml(entityId) {
+  return ' <button type="button" class="open-in-standalone-btn" data-open-standalone="' + escapeHtml(entityId) + '" title="Otevřít v samostatném okně" aria-label="Otevřít v samostatném okně">🪟</button>';
 }
 
 function renderProjectDashboard(project) {
@@ -17587,6 +17662,16 @@ async function init() {
     }
   } else {
     setView('inbox');
+  }
+
+  // === STANDALONE OKNO: ?detail=<id>&standalone=1 ===
+  // Otevře jednu entitu v samostatném okně, skryje navigaci.
+  const swParams = new URL(location.href).searchParams;
+  const detailParam = swParams.get('detail');
+  const standaloneParam = swParams.get('standalone');
+  if (detailParam && standaloneParam === '1') {
+    document.body.classList.add('standalone-mode');
+    setView('detail', { detailId: detailParam, detailMode: 'read' });
   }
 
   if (window.matchMedia) {
@@ -21526,6 +21611,16 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
 .comment-actions { display: flex; gap: 0.4em; margin-top: 0.4em; }
 .comment-actions button { padding: 0.2em 0.6em; font-size: 0.85em; }
 
+/* === STANDALONE OKNO === */
+body.standalone-mode header[role="banner"] nav { display: none; }
+body.standalone-mode header[role="banner"] .header-actions { display: none; }
+body.standalone-mode aside.app-sidebar { display: none !important; }
+body.standalone-mode #panel-tabs-bar { display: none !important; }
+body.standalone-mode .breadcrumb { display: none; }
+body.standalone-mode #app-description { display: none; }
+body.standalone-mode #app-title { font-size: 1em; opacity: 0.6; }
+body.standalone-mode footer { display: none; }
+
 /* === STATIC VIEWER OVERRIDES === */
 body.viewer-mode #btn-quick,
 body.viewer-mode #btn-new-entity,
@@ -24078,6 +24173,24 @@ function attachEntityRowHandlers(root) {
   root.querySelectorAll('a[data-tag]').forEach(a => {
     a.onclick = (ev) => { ev.preventDefault(); state.filter.tag = a.dataset.tag; setView('all'); };
   });
+  // Otevřít v novém panelu (univerzální)
+  root.querySelectorAll('button[data-open-new-panel]').forEach(b => {
+    b.onclick = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      openEntityInNewPanel(b.dataset.openNewPanel);
+    };
+  });
+  // Otevřít v samostatném okně (univerzální)
+  if (typeof openEntityInStandaloneWindow === 'function') {
+    root.querySelectorAll('button[data-open-standalone]').forEach(b => {
+      b.onclick = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openEntityInStandaloneWindow(b.dataset.openStandalone);
+      };
+    });
+  }
 }
 function attachMarkdownLinkHandlers(root) {
   root.querySelectorAll('a.wiki-link[data-entity]').forEach(a => {
@@ -26140,7 +26253,6 @@ function renderOutgoingReferences(e) {
 }
 function renderAttachmentsRead(e) {
   if (!e.attachments || e.attachments.length === 0) return '';
-  const g = state.settings.github || {};
   let h = '<div class="attachment-list">';
   e.attachments.forEach(att => {
     const isImg = att.type && att.type.startsWith('image/');
@@ -26150,22 +26262,21 @@ function renderAttachmentsRead(e) {
                        att.storage === 'embedded' ? '📦' :
                        att.storage === 'indexeddb' ? '💾' : '🔗';
     let statusContent = statusIcon + ' ' + escapeHtml(attachmentStatusLabel(att));
-    if (att.storage === 'github' && att.ghPath && g.owner && g.repo) {
-      const ghUrl = 'https://github.com/' + encodeURIComponent(g.owner) + '/' + encodeURIComponent(g.repo) + '/blob/' + encodeURIComponent(g.branch || 'main') + '/' + att.ghPath.split('/').map(encodeURIComponent).join('/');
-      statusContent = statusIcon + ' <a href="' + escapeHtml(ghUrl) + '" target="_blank" rel="noopener">' + escapeHtml(att.ghPath) + '</a>';
-    } else if (att.storage === 'pending-github') {
-      const expectedPath = attachmentGhPath(att);
-      statusContent += ' <span class="meta">(naplánováno do ' + escapeHtml(expectedPath) + ')</span>';
-    }
     if (att.uploadError) {
       statusContent += ' <span style="color:#c33;">⚠ ' + escapeHtml(att.uploadError) + '</span>';
     }
-    const addedTxt = att.added_at ? ' · přidáno ' + escapeHtml(fmtDateTime(att.added_at)) : '';
+    const addedTxt = att.added_at ? fmtDateTime(att.added_at) : '';
+    const sizeTxt = fmtBytes(att.size);
+    // Klikatelný název: stažení přílohy. Obsah: název · datum · velikost.
+    const linkLabel = escapeHtml(att.name) +
+      (addedTxt ? ' <span class="meta">· ' + escapeHtml(addedTxt) + '</span>' : '') +
+      ' <span class="meta">· ' + escapeHtml(sizeTxt) + '</span>';
+    const linkAria = att.name + (addedTxt ? ', přidáno ' + addedTxt : '') + ', ' + sizeTxt + ', stáhnout';
     h += '<div class="attachment-item" data-att-id="' + escapeHtml(att.id) + '">' +
       '<div class="attachment-icon">' + guessFileIcon(att.type, att.name) + '</div>' +
       '<div class="attachment-info">' +
-        '<div class="name">' + escapeHtml(att.name) + '</div>' +
-        '<div class="meta">' + escapeHtml(fmtBytes(att.size)) + ' · ' + escapeHtml(att.type || '?') + addedTxt + ' · ' + statusContent + '</div>' +
+        '<div class="name"><a href="#" data-att-download-link="' + escapeHtml(att.id) + '" aria-label="' + escapeHtml(linkAria) + '">' + linkLabel + '</a></div>' +
+        '<div class="meta">' + escapeHtml(att.type || '?') + ' · ' + statusContent + '</div>' +
         (isImg ? '<img class="attachment-preview" data-att-preview="' + escapeHtml(att.id) + '" alt="' + escapeHtml(att.name) + '">' : '') +
         (isAudio ? '<audio class="attachment-audio" controls preload="metadata" data-att-audio="' + escapeHtml(att.id) + '" aria-label="Přehrávač: ' + escapeHtml(att.name) + '"></audio>' : '') +
       '</div>' +
@@ -26195,6 +26306,19 @@ function attachAttachmentReadHandlers(root, entity) {
       if (!u) { alertMsg('Nelze získat soubor.'); return; }
       const a = document.createElement('a');
       a.href = u; a.download = att.name; a.click();
+      if (att.storage !== 'reference') setTimeout(() => URL.revokeObjectURL(u), 1000);
+    };
+  });
+  // Klikatelný název přílohy (odkaz) – stejné chování jako tlačítko Stáhnout
+  root.querySelectorAll('a[data-att-download-link]').forEach(a => {
+    a.onclick = async (ev) => {
+      ev.preventDefault();
+      const att = entity.attachments.find(at => at.id === a.dataset.attDownloadLink);
+      if (!att) return;
+      const u = await getAttachmentBlobUrl(att);
+      if (!u) { alertMsg('Nelze získat soubor.'); return; }
+      const tmp = document.createElement('a');
+      tmp.href = u; tmp.download = att.name; tmp.click();
       if (att.storage !== 'reference') setTimeout(() => URL.revokeObjectURL(u), 1000);
     };
   });
