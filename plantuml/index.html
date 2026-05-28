@@ -643,6 +643,21 @@ const CARDINALITIES = [
   {value:'1..n', label:'1..n — jeden až n'},
   {value:'__custom__', label:'Vlastní hodnota…'}
 ];
+
+// Typy kontejnerů (balíčků) v diagramu tříd. value = PlantUML klíčové slovo.
+const PACKAGE_TYPES = [
+  {value:'package',   label:'Balíček (package)',     word:'balíček',   wordGen:'balíčku',   wordDecl:'Balíček'},
+  {value:'namespace', label:'Jmenný prostor (namespace)', word:'jmenný prostor', wordGen:'jmenného prostoru', wordDecl:'Jmenný prostor'},
+  {value:'node',      label:'Uzel (node)',           word:'uzel',      wordGen:'uzlu',      wordDecl:'Uzel'},
+  {value:'rectangle', label:'Obdélník (rectangle)',  word:'obdélník',  wordGen:'obdélníku', wordDecl:'Obdélník'},
+  {value:'folder',    label:'Složka (folder)',       word:'složka',    wordGen:'složky',    wordDecl:'Složka'},
+  {value:'frame',     label:'Rámec (frame)',         word:'rámec',     wordGen:'rámce',     wordDecl:'Rámec'},
+  {value:'cloud',     label:'Oblak (cloud)',         word:'oblak',     wordGen:'oblaku',    wordDecl:'Oblak'},
+  {value:'database',  label:'Databáze (database)',   word:'databáze',  wordGen:'databáze',  wordDecl:'Databáze'}
+];
+function packageTypeInfo(t){
+  return PACKAGE_TYPES.find(p => p.value === t) || PACKAGE_TYPES[0];
+}
 function getDiagram(id){ if(!state.project) return null; return state.project.diagrams.find(d => d.id === id) || null; }
 function getCurrentDiagram(){ return state.selectedDiagramId ? getDiagram(state.selectedDiagramId) : null; }
 
@@ -747,8 +762,15 @@ function describeActivity(model){
   }
 
   // Sestavujeme věty do pole; spojíme je do odstavců.
+  // Speciální marker PARA = zlom odstavce (před/po větvení, smyčce, souběhu),
+  // aby byl text čtivější a strukturovaný do odstavců.
+  const PARA = '\u0000PARA\u0000';
   const sentences = [];
   let currentSwimlane = null;
+  function paraBreak(){
+    // nevkládej dva markery po sobě a ne na začátek
+    if(sentences.length && sentences[sentences.length-1] !== PARA) sentences.push(PARA);
+  }
 
   function noteSuffix(noteText){
     if(!noteText) return '';
@@ -790,6 +812,7 @@ function describeActivity(model){
         case 'if': {
           const cond = n.condition || '(podmínka)';
           const branches = n.branches || [];
+          paraBreak();
           sentences.push('Zde se proces větví podle otázky „' + cond + '".');
           branches.forEach((b, idx) => {
             const label = b.label || '';
@@ -815,40 +838,49 @@ function describeActivity(model){
             }
           });
           sentences.push('Tím větvení končí.');
+          paraBreak();
           break;
         }
         case 'while': {
           const cond = n.condition || '(podmínka)';
+          paraBreak();
           sentences.push('Následující kroky se opakují, dokud platí „' + cond + '":');
           walk(n.children);
           sentences.push('Tím se smyčka uzavírá.');
+          paraBreak();
           break;
         }
         case 'repeat': {
           const cond = n.condition || '(podmínka)';
+          paraBreak();
           sentences.push('Následující kroky se provádějí opakovaně; opakování řídí podmínka „' + cond + '":');
           walk(n.children);
           sentences.push('Tím se opakování uzavírá.');
+          paraBreak();
           break;
         }
         case 'fork': {
           const branches = n.branches || [];
+          paraBreak();
           sentences.push('Souběžně probíhá ' + czNumBranches(branches.length) + ':');
           branches.forEach((b, idx) => {
             sentences.push('Větev ' + (idx+1) + ':');
             walk(b.children);
           });
           sentences.push('Tím se souběžné větve spojují.');
+          paraBreak();
           break;
         }
         case 'split': {
           const branches = n.branches || [];
+          paraBreak();
           sentences.push('Tok se rozděluje do ' + czNumBranches(branches.length) + ':');
           branches.forEach((b, idx) => {
             sentences.push('Větev ' + (idx+1) + ':');
             walk(b.children);
           });
           sentences.push('Tím se rozdělené větve spojují.');
+          paraBreak();
           break;
         }
         case 'detach': sentences.push('Tok se zde odpojuje.'); break;
@@ -879,10 +911,21 @@ function describeActivity(model){
 
   walk(children);
 
-  // Spojení do odstavců: úvod je první odstavec, pak věty plynou.
+  // Spojení do odstavců. Marker PARA rozdělí věty do samostatných odstavců;
+  // ostatní věty se v rámci odstavce spojí mezerou.
   const introPara = intro.join(' ');
-  const bodyPara = sentences.join(' ');
-  return introPara + '\n\n' + bodyPara;
+  const bodyParas = [];
+  let current = [];
+  sentences.forEach(s => {
+    if(s === PARA){
+      if(current.length){ bodyParas.push(current.join(' ')); current = []; }
+    } else {
+      current.push(s);
+    }
+  });
+  if(current.length) bodyParas.push(current.join(' '));
+
+  return [introPara].concat(bodyParas).join('\n\n');
 }
 
 function capitalize(s){
@@ -1121,13 +1164,342 @@ function countSequenceElements(model){
   return {participants: (model.participants||[]).length, messages, groups, notes};
 }
 
+// === DIAGRAM TŘÍD — POPIS =====================================
+// Slovní označení stereotypu třídy. Dvojice: [1. pád pro „Existuje X", 2. pád pro „z třídy X"].
+const CLASS_STEREOTYPE_WORD = {
+  class:      {nom:'třída',            akuz:'třídu',            gen:'třídy',            instr:'třídou',          decl:'Třída'},
+  interface:  {nom:'rozhraní',         akuz:'rozhraní',         gen:'rozhraní',         instr:'rozhraním',       decl:'Rozhraní'},
+  abstract:   {nom:'abstraktní třída', akuz:'abstraktní třídu', gen:'abstraktní třídy', instr:'abstraktní třídou',decl:'Abstraktní třída'},
+  enum:       {nom:'výčet',            akuz:'výčet',            gen:'výčtu',            instr:'výčtem',          decl:'Výčet'},
+  struct:     {nom:'struktura',        akuz:'strukturu',        gen:'struktury',        instr:'strukturou',      decl:'Struktura'},
+  annotation: {nom:'anotace',          akuz:'anotaci',          gen:'anotace',          instr:'anotací',         decl:'Anotace'},
+  entity:     {nom:'entita',           akuz:'entitu',           gen:'entity',           instr:'entitou',         decl:'Entita'}
+};
+function classWord(stereotype){
+  return CLASS_STEREOTYPE_WORD[stereotype] || CLASS_STEREOTYPE_WORD.class;
+}
+
+// Přeloží kardinalitu na slovní obrat nezávislý na rodu cílového prvku.
+// Tvar „… výskyt(ů) …" umožní postavit větu „obsahuje N výskytů [prvku ve 2. pádě]".
+function cardinalityPhrase(card){
+  switch((card||'').trim()){
+    case '1':    return 'právě jeden výskyt';
+    case '0..1': return 'nejvýše jeden výskyt';
+    case '*':
+    case '0..*': return 'nula či více výskytů';
+    case '1..*': return 'jeden či více výskytů';
+    case '2':    return 'právě dva výskyty';
+    case '2..*': return 'dva či více výskytů';
+    case '':     return '';
+    default:     return 'výskyty v počtu „' + card + '"';
+  }
+}
+
+// Vrátí textový popis diagramu tříd (prostý souvislý text, odstavce \n\n).
+function describeClass(model){
+  const classes = (model && model.classes) || [];
+  const relationships = (model && model.relationships) || [];
+  const byId = {};
+  classes.forEach(c => { byId[c.id] = c; });
+
+  // ÚVOD — souhrn počtu prvků podle stereotypů + zmínka o balíčcích.
+  const packages = (model && model.packages) || [];
+  const intro = [];
+  if(classes.length === 0){
+    intro.push('Diagram zatím neobsahuje žádné prvky.');
+  } else {
+    // Spočítáme stereotypy a vypíšeme „N tříd, M rozhraní…"
+    const counts = {};
+    classes.forEach(c => { const s = c.stereotype || 'class'; counts[s] = (counts[s]||0)+1; });
+    const order = ['class','abstract','interface','enum','struct','annotation','entity'];
+    const pluralWord = {
+      class:      n => czCount(n,'třídu','třídy','tříd'),
+      abstract:   n => czCount(n,'abstraktní třídu','abstraktní třídy','abstraktních tříd'),
+      interface:  n => czCount(n,'rozhraní','rozhraní','rozhraní'),
+      enum:       n => czCount(n,'výčet','výčty','výčtů'),
+      struct:     n => czCount(n,'strukturu','struktury','struktur'),
+      annotation: n => czCount(n,'anotaci','anotace','anotací'),
+      entity:     n => czCount(n,'entitu','entity','entit')
+    };
+    const parts = [];
+    order.forEach(s => { if(counts[s]) parts.push(counts[s] + ' ' + pluralWord[s](counts[s])); });
+    let introText = 'Diagram obsahuje ' + joinCz(parts);
+    if(packages.length){
+      introText += ', uspořádané do ' + packages.length + ' ' + czCount(packages.length,'balíčku','balíčků','balíčků');
+    }
+    introText += '.';
+    intro.push(introText);
+  }
+
+  // Popis jedné třídy → vrací pole vět (1–2).
+  const quoteList = arr => arr.map(x => '„' + x + '"').join(', ');
+  function describeOneClass(c){
+    const sents = [];
+    const w = classWord(c.stereotype);
+    const nameQ = '„' + (c.name || '(bez názvu)') + '"';
+    const attrs = (c.attributes || []).map(a => a.name).filter(Boolean);
+    const methods = (c.methods || []).map(m => m.name).filter(Boolean);
+    const values = (c.stereotype === 'enum') ? (c.values || []).filter(Boolean) : [];
+    const hasBody = attrs.length || methods.length || values.length;
+    if(!hasBody){
+      sents.push('Existuje ' + w.nom + ' ' + nameQ + '.');
+      return sents;
+    }
+    const segs = [];
+    if(values.length) segs.push('hodnoty: ' + quoteList(values));
+    if(attrs.length) segs.push('atributy: ' + quoteList(attrs));
+    if(segs.length){
+      sents.push(w.decl + ' ' + nameQ + ' má ' + segs.join('. Dále má ') + '.');
+    }
+    if(methods.length){
+      if(segs.length) sents.push('Dále má metody: ' + quoteList(methods) + '.');
+      else sents.push(w.decl + ' ' + nameQ + ' má metody: ' + quoteList(methods) + '.');
+    }
+    return sents;
+  }
+
+  // PRVKY — seskupené podle balíčků, každý balíček jako samostatný odstavec.
+  const elementParas = [];   // pole odstavců (každý je string)
+  const classesByPkg = {};
+  classes.forEach(c => { const k = c.packageId || '__root__'; (classesByPkg[k] = classesByPkg[k] || []).push(c); });
+  const childPkgs = {};
+  packages.forEach(p => { const k = p.parentId || '__root__'; (childPkgs[k] = childPkgs[k] || []).push(p); });
+
+  // Rekurzivně popíše jeden balíček jako samostatný odstavec.
+  // Podbalíčky se popisují vlastními odstavci (po tomto).
+  function describePackage(pkg){
+    const info = packageTypeInfo(pkg.packageType);
+    const nameQ = '„' + (pkg.name || '(bez názvu)') + '"';
+    const subPkgs = childPkgs[pkg.id] || [];
+    const cls = classesByPkg[pkg.id] || [];
+    const sentences = [];
+
+    // úvodní věta o podbalíčcích
+    if(subPkgs.length){
+      const subNames = subPkgs.map(s => '„' + (s.name||'') + '"');
+      if(subPkgs.length === 1){
+        sentences.push(info.wordDecl + ' ' + nameQ + ' obsahuje podbalíček ' + subNames[0] + '.');
+      } else {
+        sentences.push(info.wordDecl + ' ' + nameQ + ' obsahuje ' + subPkgs.length + ' ' +
+          czCount(subPkgs.length,'podbalíček','podbalíčky','podbalíčků') + ': ' + joinCz(subNames) + '.');
+      }
+    }
+    // prvky balíčku
+    if(cls.length){
+      sentences.push(info.wordDecl + ' ' + nameQ + ' obsahuje tyto prvky:');
+      cls.forEach(c => { describeOneClass(c).forEach(s => sentences.push(s)); });
+    } else if(!subPkgs.length){
+      sentences.push(info.wordDecl + ' ' + nameQ + ' je prázdný.');
+    }
+    elementParas.push(sentences.join(' '));
+
+    // každý podbalíček dostane vlastní odstavec
+    subPkgs.forEach(describePackage);
+  }
+
+  // Nejdřív kořenové balíčky (každý vlastní odstavec)
+  (childPkgs['__root__'] || []).forEach(describePackage);
+
+  // Třídy mimo jakýkoli balíček → vlastní odstavec
+  const rootClasses = classesByPkg['__root__'] || [];
+  if(rootClasses.length){
+    const sentences = [];
+    if(packages.length) sentences.push('Mimo balíčky:');
+    rootClasses.forEach(c => { describeOneClass(c).forEach(s => sentences.push(s)); });
+    elementParas.push(sentences.join(' '));
+  }
+
+  // VAZBY
+  const relSentences = [];
+  relationships.forEach(r => {
+    const from = byId[r.sourceClassId];
+    const to = byId[r.targetClassId];
+    if(!from || !to) return;
+    const fromW = classWord(from.stereotype);
+    const toW = classWord(to.stereotype);
+    const fromQ = '„' + (from.name || '?') + '"';
+    const toQ = '„' + (to.name || '?') + '"';
+    const labelSuffix = r.label ? ' (vztah „' + r.label + '")' : '';
+    // cílová kardinalita má přednost (typicky se čte z pohledu zdroje)
+    const card = cardinalityPhrase(r.targetCardinality);
+
+    let sentence;
+    switch(r.type){
+      case 'inheritance':
+        sentence = fromW.decl + ' ' + fromQ + ' dědí z ' + toW.gen + ' ' + toQ + '.';
+        break;
+      case 'realization':
+        sentence = fromW.decl + ' ' + fromQ + ' realizuje ' + toW.akuz + ' ' + toQ + '.';
+        break;
+      case 'composition':
+        sentence = fromW.decl + ' ' + fromQ + ' se skládá z ' + toW.gen + ' ' + toQ +
+          (card ? ' (obsahuje ' + card + ')' : '') + labelSuffix + '.';
+        break;
+      case 'aggregation':
+        sentence = fromW.decl + ' ' + fromQ + ' agreguje ' + toW.akuz + ' ' + toQ +
+          (card ? ' (obsahuje ' + card + ')' : '') + labelSuffix + '.';
+        break;
+      case 'dependency':
+        sentence = fromW.decl + ' ' + fromQ + ' závisí na ' + toW.gen + ' ' + toQ + labelSuffix + '.';
+        break;
+      case 'association':
+      default:
+        if(card){
+          sentence = fromW.decl + ' ' + fromQ + ' může obsahovat ' + card + ' ' + toW.gen + ' ' + toQ + labelSuffix + '.';
+        } else {
+          sentence = fromW.decl + ' ' + fromQ + ' je ve vztahu s ' + toW.instr + ' ' + toQ + labelSuffix + '.';
+        }
+        break;
+    }
+    relSentences.push(sentence);
+  });
+
+  // Sestavení odstavců: úvod, pak každý balíček (a „mimo balíčky") vlastní odstavec, pak vztahy.
+  const paras = [];
+  paras.push(intro.join(' '));
+  elementParas.forEach(p => { if(p) paras.push(p); });
+  if(relSentences.length) paras.push('Co se týče vztahů: ' + relSentences.join(' '));
+  return paras.join('\n\n');
+}
+
+// Spočítá prvky diagramu tříd.
+function countClassElements(model){
+  return {
+    classes: (model.classes||[]).length,
+    relationships: (model.relationships||[]).length,
+    packages: (model.packages||[]).length
+  };
+}
+
+// === DIAGRAM PŘÍPADŮ UŽITÍ — POPIS ============================
+// Záměrně se vyhýbáme slovům „případ užití" / „usecase". Mluvíme o „činnostech"
+// (to, co se dělá) a o tom, kdo je využívá. Aktéry vypíšeme, pak popíšeme vztahy.
+function describeUseCase(model){
+  const actors = (model && model.actors) || [];
+  const useCases = (model && model.useCases) || [];
+  const systems = (model && model.systems) || [];
+  const relationships = (model && model.relationships) || [];
+
+  const actorById = {}; actors.forEach(a => actorById[a.id] = a);
+  const ucById = {}; useCases.forEach(u => ucById[u.id] = u);
+  const sysById = {}; systems.forEach(s => sysById[s.id] = s);
+
+  function actorWord(a){ return (a && a.type === 'system') ? 'systémový aktér' : 'aktér'; }
+  function nameOfSide(type, id){
+    if(type === 'actor'){ const a = actorById[id]; return a ? a.name : '?'; }
+    const u = ucById[id]; return u ? u.name : '?';
+  }
+
+  const paras = [];
+
+  // ÚVOD — počet aktérů a činností
+  const introParts = [];
+  if(actors.length) introParts.push(actors.length + ' ' + czCount(actors.length,'aktéra','aktéry','aktérů'));
+  if(useCases.length) introParts.push(useCases.length + ' ' + czCount(useCases.length,'činnost','činnosti','činností'));
+  if(systems.length) introParts.push(systems.length + ' ' + czCount(systems.length,'systém','systémy','systémů'));
+  if(introParts.length){
+    paras.push('Diagram zachycuje ' + joinCz(introParts) + '.');
+  } else {
+    paras.push('Diagram zatím neobsahuje žádné prvky.');
+    return paras.join('\n\n');
+  }
+
+  // AKTÉŘI — výčet
+  if(actors.length){
+    const actorSentences = [];
+    actors.forEach(a => {
+      const w = actorWord(a);
+      actorSentences.push('Vystupuje zde ' + w + ' „' + (a.name || '(bez názvu)') + '".');
+    });
+    paras.push(actorSentences.join(' '));
+  }
+
+  // SYSTÉMY a jejich činnosti (pokud jsou činnosti v systému)
+  if(systems.length){
+    systems.forEach(s => {
+      const inSys = useCases.filter(u => u.systemId === s.id);
+      if(inSys.length){
+        const names = inSys.map(u => '„' + (u.name||'') + '"');
+        paras.push('Systém „' + (s.name||'') + '" zahrnuje tyto činnosti: ' + joinCz(names) + '.');
+      } else {
+        paras.push('Systém „' + (s.name||'') + '" zatím nemá žádné činnosti.');
+      }
+    });
+  }
+
+  // VZTAHY
+  const relSentences = [];
+  relationships.forEach(r => {
+    const fromName = nameOfSide(r.sourceType, r.sourceId);
+    const toName = nameOfSide(r.targetType, r.targetId);
+    if(fromName === '?' || toName === '?') return;
+    const fromQ = '„' + fromName + '"';
+    const toQ = '„' + toName + '"';
+    const labelSuffix = r.label ? ' (' + r.label + ')' : '';
+    let sentence;
+    switch(r.type){
+      case 'include':
+        // cílová činnost je vždy zahrnuta ve zdrojové
+        sentence = 'Činnost ' + fromQ + ' vždy zahrnuje ' + toQ + labelSuffix + '.';
+        break;
+      case 'extend':
+        sentence = 'Činnost ' + fromQ + ' může za určitých okolností rozšířit ' + toQ + labelSuffix + '.';
+        break;
+      case 'generalization':
+        sentence = fromQ + ' je zvláštním případem ' + toQ + labelSuffix + '.';
+        break;
+      case 'association':
+      default:
+        // typicky aktér — činnost
+        if(r.sourceType === 'actor' && r.targetType !== 'actor'){
+          sentence = 'Aktér ' + fromQ + ' využívá činnost ' + toQ + labelSuffix + '.';
+        } else if(r.sourceType !== 'actor' && r.targetType === 'actor'){
+          sentence = 'Činnost ' + fromQ + ' se týká aktéra ' + toQ + labelSuffix + '.';
+        } else {
+          sentence = fromQ + ' je ve vztahu s ' + toQ + labelSuffix + '.';
+        }
+        break;
+    }
+    relSentences.push(sentence);
+  });
+  if(relSentences.length){
+    paras.push('Co se týče vztahů: ' + relSentences.join(' '));
+  }
+
+  // Činnosti mimo systém a bez vztahů — zmínit, ať nezůstanou opomenuté
+  const mentionedUc = new Set();
+  relationships.forEach(r => {
+    if(r.sourceType !== 'actor') mentionedUc.add(r.sourceId);
+    if(r.targetType !== 'actor') mentionedUc.add(r.targetId);
+  });
+  systems.forEach(s => useCases.filter(u=>u.systemId===s.id).forEach(u=>mentionedUc.add(u.id)));
+  const orphanUc = useCases.filter(u => !mentionedUc.has(u.id) && !u.systemId);
+  if(orphanUc.length){
+    const names = orphanUc.map(u => '„' + (u.name||'') + '"');
+    paras.push('Samostatně stojí ' + czCount(orphanUc.length,'činnost','činnosti','činnosti') + ': ' + joinCz(names) + '.');
+  }
+
+  return paras.join('\n\n');
+}
+
+function countUseCaseElements(model){
+  return {
+    actors: (model.actors||[]).length,
+    useCases: (model.useCases||[]).length,
+    systems: (model.systems||[]).length,
+    relationships: (model.relationships||[]).length
+  };
+}
+
 // Obecná funkce: vrátí textový popis diagramu podle typu (jako prostý text).
 function describeDiagram(diagram){
   if(!diagram) return '';
   switch(diagram.type){
     case 'activity': return describeActivity(diagram.model);
     case 'sequence': return blocksToPlainText(describeSequenceBlocks(diagram.model));
-    default: return '(Textový popis je zatím dostupný pro aktivitní a sekvenční diagramy.)';
+    case 'class': return describeClass(diagram.model);
+    case 'usecase': return describeUseCase(diagram.model);
+    default: return '(Textový popis zatím není pro tento typ diagramu dostupný.)';
   }
 }
 
@@ -1138,7 +1510,9 @@ function describeDiagramMarkdown(diagram){
   switch(diagram.type){
     case 'activity': return describeActivity(diagram.model);
     case 'sequence': return blocksToMarkdown(describeSequenceBlocks(diagram.model));
-    default: return '(Textový popis je zatím dostupný pro aktivitní a sekvenční diagramy.)';
+    case 'class': return describeClass(diagram.model);
+    case 'usecase': return describeUseCase(diagram.model);
+    default: return '(Textový popis zatím není pro tento typ diagramu dostupný.)';
   }
 }
 
@@ -1439,7 +1813,8 @@ function genClass(model){
   function emitPkg(p, indent){
     const pad = '  '.repeat(indent);
     const aliasDecl = p.alias ? ' as ' + p.alias : '';
-    out.push(pad + 'package "' + (p.name || 'package').replace(/"/g,'\\"') + '"' + aliasDecl + ' {');
+    const kw = (p.packageType && PACKAGE_TYPES.find(t=>t.value===p.packageType)) ? p.packageType : 'package';
+    out.push(pad + kw + ' "' + (p.name || 'package').replace(/"/g,'\\"') + '"' + aliasDecl + ' {');
     (classesByPkg[p.id] || []).forEach(c => emitClass(c, indent+1));
     (childrenOf[p.id] || []).forEach(child => emitPkg(child, indent+1));
     out.push(pad + '}');
@@ -1857,9 +2232,9 @@ function parseClass(text){
     const ln = lines[i].trim();
     if(!ln){ i++; continue; }
     let m;
-    if((m = ln.match(/^package\s+("[^"]+"|[A-Za-z_][A-Za-z_0-9]*)\s*(?:as\s+([A-Za-z_][A-Za-z_0-9]*))?\s*\{?\s*$/))){
-      const name = m[1].replace(/^"(.*)"$/,'$1');
-      const p = {id:uid('pk'),name,alias:m[2]||'',parentId: pkgStack.length ? pkgStack[pkgStack.length-1] : null};
+    if((m = ln.match(/^(package|namespace|node|rectangle|folder|frame|cloud|database)\s+("[^"]+"|[A-Za-z_][A-Za-z_0-9]*)\s*(?:as\s+([A-Za-z_][A-Za-z_0-9]*))?\s*\{?\s*$/))){
+      const name = m[2].replace(/^"(.*)"$/,'$1');
+      const p = {id:uid('pk'),name,alias:m[3]||'',packageType:m[1],parentId: pkgStack.length ? pkgStack[pkgStack.length-1] : null};
       model.packages.push(p);
       pkgStack.push(p.id);
       i++; continue;
@@ -3257,6 +3632,11 @@ function renderRelationshipForm(d, r, root){
 function renderPackageForm(d, p, root){
   root.appendChild(el('h4',null,'Balíček'));
   root.appendChild(field('Název:', inputText(p.name||'', v=>{p.name=v;softTouch(d);})));
+  root.appendChild(field('Typ kontejneru:',
+    selectField(p.packageType||'package',
+      PACKAGE_TYPES.map(t=>({value:t.value,label:t.label})),
+      v=>{p.packageType=v;softTouch(d);}),
+    'Vizuální typ seskupení (balíček, jmenný prostor, uzel, oblak, databáze…).'));
   root.appendChild(field('Identifikátor (alias):',
     inputText(p.alias||'', v=>{p.alias=sanitizeAliasInput(v);softTouch(d);}),
     'Krátký alias bez mezer a diakritiky. V PlantUML se generuje jako "as ' + (p.alias||'<alias>') + '".'));
@@ -3640,7 +4020,7 @@ async function addPackage(d){
   const existing = (d.model.classes||[]).map(c=>c.alias).filter(Boolean)
     .concat((d.model.packages||[]).map(p=>p.alias).filter(Boolean));
   const alias = generateAlias(v, existing);
-  d.model.packages.push({id:uid('pk'),name:v,alias,parentId:null});
+  d.model.packages.push({id:uid('pk'),name:v,alias,packageType:'package',parentId:null});
   state.selectedPath = ['packages', d.model.packages.length-1];
   touchDiagram(d);
   renderApp();
@@ -4781,7 +5161,7 @@ function openHelp(){
   make('Co aplikace umí',
     'Editor diagramů PlantUML pro čtyři typy: aktivitní (flow/action), třídní (class), sekvenční (sequence/zprávy) a use case. Editujete strukturovaně přes formuláře, zdrojový kód PlantUML se generuje automaticky.');
   make('Textový popis a dokument',
-    'Tlačítko „Vygenerovat popis" (Alt+T) sestaví čtivý textový popis diagramu. U aktivitního diagramu je to souvislý text — kdo co dělá, jak se proces větví, jaké jsou poznámky a typy akcí. U sekvenčního diagramu je to výčet zpráv ve tvaru „Od → Pro: text (poznámka)" doplněný o odstavce a odrážky pro alternativy, smyčky a souběžné větve. Popis se zobrazí v poli pod zdrojovým kódem a lze ho zkopírovat.',
+    'Tlačítko „Vygenerovat popis" (Alt+T) sestaví čtivý textový popis diagramu. U aktivitního diagramu je to souvislý text členěný do odstavců — kdo co dělá, jak se proces větví, jaké jsou poznámky a typy akcí. U sekvenčního diagramu je to výčet zpráv ve tvaru „Od → Pro: text (poznámka)" doplněný o odstavce a odrážky pro alternativy, smyčky a souběžné větve. U diagramu tříd popíše jednotlivé prvky (jejich atributy a metody), seskupení do balíčků a vztahy mezi nimi. U diagramu případů užití vypíše aktéry, jejich činnosti a vztahy. Popis se zobrazí v poli pod zdrojovým kódem a lze ho zkopírovat.',
     'Z diagramu lze také vytvořit dokument: tlačítka „Kopírovat MD", „Uložit MD" a „Uložit DOCX". Dokument obsahuje název diagramu, souhrn počtu prvků, verzi, datum, obrázek diagramu (PNG z PlantUML serveru) a textový popis.',
     'DOCX se generuje v prohlížeči i s vloženým obrázkem. Knihovna pro tvorbu DOCX se při prvním použití stáhne z internetu (CDN), proto je pro DOCX export potřeba připojení. Obrázek do dokumentu vykresluje server plantuml.com, takže i ten vyžaduje internet.');
   make('Klávesové zkratky',
