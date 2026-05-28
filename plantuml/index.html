@@ -546,7 +546,11 @@ const TYPES = [
   {value:'activity', label:'Aktivitní diagram (flow / action)'},
   {value:'class', label:'Class diagram (třídy)'},
   {value:'sequence', label:'Sequence diagram (zprávy)'},
-  {value:'usecase', label:'Use Case diagram (případy užití)'}
+  {value:'usecase', label:'Use Case diagram (případy užití)'},
+  {value:'state', label:'Stavový diagram (state)'},
+  {value:'component', label:'Komponentový diagram (component)'},
+  {value:'deployment', label:'Diagram nasazení (deployment)'},
+  {value:'network', label:'Síťový diagram (network / nwdiag)'}
 ];
 
 // Paleta 40 barev v češtině. Hodnoty jsou CSS / PlantUML názvy barev,
@@ -692,6 +696,10 @@ function emptyModelFor(type){
     case 'class': return {classes:[], relationships:[], packages:[]};
     case 'sequence': return {participants:[], children:[]};
     case 'usecase': return {actors:[], useCases:[], systems:[], relationships:[]};
+    case 'state': return {states:[], transitions:[]};
+    case 'component': return {components:[], interfaces:[], groups:[], relationships:[]};
+    case 'deployment': return {nodes:[], relationships:[]};
+    case 'network': return {networks:[], groups:[], peerLinks:[]};
   }
   return {};
 }
@@ -1491,6 +1499,344 @@ function countUseCaseElements(model){
   };
 }
 
+// === STAVOVÝ DIAGRAM — POPIS ==================================
+const STATE_STEREO_WORD = {
+  start:'počáteční stav', end:'koncový stav', choice:'rozhodovací uzel',
+  fork:'rozvětvení', join:'spojení', history:'stav historie', 'history*':'stav hluboké historie',
+  sdlreceive:'přijímací stav'
+};
+function describeState(model){
+  const states = (model && model.states) || [];
+  const transitions = (model && model.transitions) || [];
+  const byId = {}; states.forEach(s => byId[s.id] = s);
+  const nameOf = id => {
+    if(id === '__start__') return 'počátečního stavu';
+    if(id === '__end__') return 'koncového stavu';
+    const s = byId[id]; return s ? '„' + (s.name||'(bez názvu)') + '"' : '(?)';
+  };
+  const nameOfNom = id => {
+    if(id === '__start__') return 'počáteční stav';
+    if(id === '__end__') return 'koncový stav';
+    const s = byId[id]; return s ? '„' + (s.name||'(bez názvu)') + '"' : '(?)';
+  };
+
+  const paras = [];
+
+  // ÚVOD + počáteční stav
+  if(states.length === 0 && transitions.length === 0){
+    return 'Diagram zatím neobsahuje žádné stavy.';
+  }
+  const intro = ['Diagram popisuje ' + states.length + ' ' + czCount(states.length,'stav','stavy','stavů') + '.'];
+  const startTrans = transitions.find(t => t.from === '__start__');
+  if(startTrans){
+    intro.push('Počátečním stavem je ' + nameOfNom(startTrans.to) + '.');
+  }
+  paras.push(intro.join(' '));
+
+  // Kompozitní stavy (vnořené) — každý jako odstavec
+  const childrenOf = {}; states.forEach(s => childrenOf[s.id]=[]);
+  states.forEach(s => { if(s.parentId && childrenOf[s.parentId]) childrenOf[s.parentId].push(s); });
+  states.filter(s => (childrenOf[s.id]||[]).length).forEach(comp => {
+    const subs = childrenOf[comp.id].map(x => '„' + (x.name||'') + '"');
+    paras.push('Stav „' + (comp.name||'') + '" je složený a obsahuje vnořené stavy: ' + joinCz(subs) + '.');
+  });
+
+  // PŘECHODY (vynecháme startTrans, ten je v úvodu)
+  const transSentences = [];
+  transitions.forEach(t => {
+    if(t === startTrans) return;
+    const ev = t.event ? ' při události „' + t.event + '"' : '';
+    if(t.from === '__start__'){
+      transSentences.push('Ze ' + 'počátečního stavu vede přechod do stavu ' + nameOf(t.to) + ev + '.');
+    } else if(t.to === '__end__'){
+      transSentences.push('Ze stavu ' + nameOf(t.from) + ' vede přechod do koncového stavu' + ev + '.');
+    } else {
+      transSentences.push('Ze stavu ' + nameOf(t.from) + ' vede přechod do stavu ' + nameOf(t.to) + ev + '.');
+    }
+  });
+  if(transSentences.length) paras.push(transSentences.join(' '));
+
+  // Popisy stavů
+  const descSentences = [];
+  states.forEach(s => {
+    if(s.description){
+      const oneLine = s.description.split(/\r?\n/).map(x=>x.trim()).filter(Boolean).join(' ');
+      if(oneLine) descSentences.push('Stav „' + (s.name||'') + '" je popsán: „' + oneLine + '".');
+    }
+    if(s.stereotype && STATE_STEREO_WORD[s.stereotype]){
+      descSentences.push('Stav „' + (s.name||'') + '" je typu ' + STATE_STEREO_WORD[s.stereotype] + '.');
+    }
+  });
+  if(descSentences.length) paras.push(descSentences.join(' '));
+
+  return paras.join('\n\n');
+}
+function countStateElements(model){
+  return { states:(model.states||[]).length, transitions:(model.transitions||[]).length };
+}
+
+// === KOMPONENTOVÝ DIAGRAM — POPIS =============================
+const COMPONENT_GROUP_WORD = {
+  package:'balíček', node:'uzel', folder:'složka', frame:'rámec', cloud:'oblak', database:'databáze'
+};
+function describeComponent(model){
+  const components = (model && model.components) || [];
+  const interfaces = (model && model.interfaces) || [];
+  const groups = (model && model.groups) || [];
+  const relationships = (model && model.relationships) || [];
+  const compById = {}; components.forEach(c => compById[c.id]=c);
+  const ifaceById = {}; interfaces.forEach(i => ifaceById[i.id]=i);
+  const nameOf = id => {
+    if(compById[id]) return {kind:'komponenta', word:'komponentu', q:'„'+(compById[id].name||'')+'"'};
+    if(ifaceById[id]) return {kind:'rozhraní', word:'rozhraní', q:'„'+(ifaceById[id].name||'')+'"'};
+    return null;
+  };
+
+  const paras = [];
+  // ÚVOD
+  const introParts = [];
+  if(components.length) introParts.push(components.length + ' ' + czCount(components.length,'komponentu','komponenty','komponent'));
+  if(interfaces.length) introParts.push(interfaces.length + ' ' + czCount(interfaces.length,'rozhraní','rozhraní','rozhraní'));
+  if(!introParts.length) return 'Diagram zatím neobsahuje žádné prvky.';
+  let introText = 'Diagram komponent obsahuje ' + joinCz(introParts);
+  if(groups.length) introText += ', uspořádané do ' + groups.length + ' ' + czCount(groups.length,'skupiny','skupin','skupin');
+  introText += '.';
+  paras.push(introText);
+
+  // PRVKY podle skupin (každá skupina vlastní odstavec)
+  const compByGroup = {}; components.forEach(c => { const k=c.groupId||'__root__'; (compByGroup[k]=compByGroup[k]||[]).push(c); });
+  const ifaceByGroup = {}; interfaces.forEach(i => { const k=i.groupId||'__root__'; (ifaceByGroup[k]=ifaceByGroup[k]||[]).push(i); });
+  function listElems(comps, ifaces){
+    const parts = [];
+    comps.forEach(c => parts.push('komponentu „' + (c.name||'') + '"'));
+    ifaces.forEach(i => parts.push('rozhraní „' + (i.name||'') + '"'));
+    return parts;
+  }
+  groups.forEach(g => {
+    const gw = COMPONENT_GROUP_WORD[g.groupType] || 'skupina';
+    const gwCap = gw.charAt(0).toUpperCase() + gw.slice(1);
+    const parts = listElems(compByGroup[g.id]||[], ifaceByGroup[g.id]||[]);
+    if(parts.length){
+      paras.push(gwCap + ' „' + (g.name||'') + '" obsahuje ' + joinCz(parts) + '.');
+    } else {
+      paras.push(gwCap + ' „' + (g.name||'') + '" je prázdný.');
+    }
+  });
+  // prvky mimo skupiny
+  const rootComps = compByGroup['__root__']||[];
+  const rootIfaces = ifaceByGroup['__root__']||[];
+  if(rootComps.length || rootIfaces.length){
+    const sentences = [];
+    if(groups.length) sentences.push('Mimo skupiny:');
+    rootComps.forEach(c => sentences.push('Existuje komponenta „' + (c.name||'') + '".'));
+    rootIfaces.forEach(i => sentences.push('Existuje rozhraní „' + (i.name||'') + '".'));
+    paras.push(sentences.join(' '));
+  }
+
+  // VAZBY
+  const relSentences = [];
+  relationships.forEach(r => {
+    const from = nameOf(r.sourceId);
+    const to = nameOf(r.targetId);
+    if(!from || !to) return;
+    const fromCap = from.kind.charAt(0).toUpperCase() + from.kind.slice(1);
+    const labelSuffix = r.label ? ' (' + r.label + ')' : '';
+    let sentence;
+    switch(r.type){
+      case 'provide':
+        sentence = fromCap + ' ' + from.q + ' poskytuje ' + to.word + ' ' + to.q + labelSuffix + '.';
+        break;
+      case 'use':
+        sentence = fromCap + ' ' + from.q + ' používá ' + to.word + ' ' + to.q + labelSuffix + '.';
+        break;
+      case 'dependency':
+        sentence = fromCap + ' ' + from.q + ' závisí na ' + (to.kind==='komponenta'?'komponentě':'rozhraní') + ' ' + to.q + labelSuffix + '.';
+        break;
+      default:
+        sentence = fromCap + ' ' + from.q + ' je propojen' + (from.kind==='komponenta'?'a':'o') + ' s ' + (to.kind==='komponenta'?'komponentou':'rozhraním') + ' ' + to.q + labelSuffix + '.';
+        break;
+    }
+    relSentences.push(sentence);
+  });
+  if(relSentences.length) paras.push('Co se týče propojení: ' + relSentences.join(' '));
+
+  return paras.join('\n\n');
+}
+function countComponentElements(model){
+  return { components:(model.components||[]).length, interfaces:(model.interfaces||[]).length,
+    groups:(model.groups||[]).length, relationships:(model.relationships||[]).length };
+}
+
+// === DIAGRAM NASAZENÍ — POPIS =================================
+const DEPLOY_TYPE_WORD = {
+  node:{nom:'uzel', akuz:'uzel', gen:'uzlu', decl:'Uzel'},
+  artifact:{nom:'artefakt', akuz:'artefakt', gen:'artefaktu', decl:'Artefakt'},
+  database:{nom:'databáze', akuz:'databázi', gen:'databáze', decl:'Databáze'},
+  cloud:{nom:'oblak', akuz:'oblak', gen:'oblaku', decl:'Oblak'},
+  component:{nom:'komponenta', akuz:'komponentu', gen:'komponenty', decl:'Komponenta'},
+  rectangle:{nom:'obdélník', akuz:'obdélník', gen:'obdélníku', decl:'Obdélník'},
+  folder:{nom:'složka', akuz:'složku', gen:'složky', decl:'Složka'},
+  frame:{nom:'rámec', akuz:'rámec', gen:'rámce', decl:'Rámec'},
+  storage:{nom:'úložiště', akuz:'úložiště', gen:'úložiště', decl:'Úložiště'},
+  queue:{nom:'fronta', akuz:'frontu', gen:'fronty', decl:'Fronta'},
+  card:{nom:'karta', akuz:'kartu', gen:'karty', decl:'Karta'},
+  stack:{nom:'zásobník', akuz:'zásobník', gen:'zásobníku', decl:'Zásobník'}
+};
+function deployWord(t){ return DEPLOY_TYPE_WORD[t] || DEPLOY_TYPE_WORD.node; }
+function describeDeployment(model){
+  const nodes = (model && model.nodes) || [];
+  const relationships = (model && model.relationships) || [];
+  const byId = {}; nodes.forEach(n => byId[n.id]=n);
+
+  const paras = [];
+  if(nodes.length === 0) return 'Diagram nasazení zatím neobsahuje žádné prvky.';
+
+  // ÚVOD — počty podle typů
+  const counts = {}; nodes.forEach(n => { const t=n.nodeType||'node'; counts[t]=(counts[t]||0)+1; });
+  const order = ['node','artifact','database','cloud','component','rectangle','folder','frame','storage','queue','card','stack'];
+  const plural = {
+    node:n=>czCount(n,'uzel','uzly','uzlů'), artifact:n=>czCount(n,'artefakt','artefakty','artefaktů'),
+    database:n=>czCount(n,'databázi','databáze','databází'), cloud:n=>czCount(n,'oblak','oblaky','oblaků'),
+    component:n=>czCount(n,'komponentu','komponenty','komponent'), rectangle:n=>czCount(n,'obdélník','obdélníky','obdélníků'),
+    folder:n=>czCount(n,'složku','složky','složek'), frame:n=>czCount(n,'rámec','rámce','rámců'),
+    storage:n=>czCount(n,'úložiště','úložiště','úložišť'), queue:n=>czCount(n,'frontu','fronty','front'),
+    card:n=>czCount(n,'kartu','karty','karet'), stack:n=>czCount(n,'zásobník','zásobníky','zásobníků')
+  };
+  const parts = [];
+  order.forEach(t => { if(counts[t]) parts.push(counts[t] + ' ' + plural[t](counts[t])); });
+  paras.push('Diagram nasazení obsahuje ' + joinCz(parts) + '.');
+
+  // PRVKY — kontejnery se svým obsahem, každý kontejner vlastní odstavec
+  const childrenOf = {}; nodes.forEach(n => childrenOf[n.id]=[]);
+  nodes.forEach(n => { if(n.parentId && childrenOf[n.parentId]) childrenOf[n.parentId].push(n); });
+  function describeOneNode(n){ return deployWord(n.nodeType).nom + ' „' + (n.name||'') + '"'; }
+  // kontejnery (uzly s dětmi)
+  nodes.filter(n => (childrenOf[n.id]||[]).length).forEach(cont => {
+    const w = deployWord(cont.nodeType);
+    const kids = childrenOf[cont.id].map(describeOneNode);
+    paras.push(w.decl + ' „' + (cont.name||'') + '" obsahuje tyto prvky: ' + joinCz(kids) + '.');
+  });
+  // prvky bez rodiče a bez dětí
+  const standalone = nodes.filter(n => !n.parentId && !(childrenOf[n.id]||[]).length);
+  if(standalone.length){
+    const sentences = [];
+    const hasContainers = nodes.some(n => (childrenOf[n.id]||[]).length);
+    if(hasContainers) sentences.push('Samostatně stojí:');
+    standalone.forEach(n => {
+      const w = deployWord(n.nodeType);
+      sentences.push('Existuje ' + w.nom + ' „' + (n.name||'') + '".');
+    });
+    paras.push(sentences.join(' '));
+  }
+
+  // PROPOJENÍ — bezpečný tvar bez náročného skloňování
+  const relSimple = [];
+  relationships.forEach(r => {
+    const from = byId[r.sourceId];
+    const to = byId[r.targetId];
+    if(!from || !to) return;
+    const fw = deployWord(from.nodeType);
+    const tw = deployWord(to.nodeType);
+    const labelSuffix = r.label ? ' (' + r.label + ')' : '';
+    relSimple.push(fw.decl + ' „' + (from.name||'') + '" je propojen s prvkem ' + tw.nom + ' „' + (to.name||'') + '"' + labelSuffix + '.');
+  });
+  if(relSimple.length) paras.push('Co se týče propojení: ' + relSimple.join(' '));
+
+  return paras.join('\n\n');
+}
+function countDeploymentElements(model){
+  return { nodes:(model.nodes||[]).length, relationships:(model.relationships||[]).length };
+}
+
+// === SÍŤOVÝ DIAGRAM — POPIS ===================================
+function describeNetwork(model){
+  const networks = (model && model.networks) || [];
+  const groups = (model && model.groups) || [];
+  const peerLinks = (model && model.peerLinks) || [];
+
+  const paras = [];
+  // spočítáme unikátní uzly napříč sítěmi
+  const allNodeNames = new Set();
+  networks.forEach(net => (net.nodes||[]).forEach(nd => allNodeNames.add(nd.name)));
+  peerLinks.forEach(l => { if(l.from) allNodeNames.add(l.from); if(l.to) allNodeNames.add(l.to); });
+
+  if(networks.length === 0 && peerLinks.length === 0) return 'Diagram zatím neobsahuje žádné sítě.';
+
+  // ÚVOD
+  const introParts = [];
+  if(networks.length) introParts.push(networks.length + ' ' + czCount(networks.length,'síť','sítě','sítí'));
+  if(allNodeNames.size) introParts.push(allNodeNames.size + ' ' + czCount(allNodeNames.size,'uzel','uzly','uzlů'));
+  paras.push('Diagram zachycuje ' + joinCz(introParts) + '.');
+
+  // KAŽDÁ SÍŤ vlastní odstavec
+  networks.forEach(net => {
+    const sentences = [];
+    let head = 'Síť „' + (net.name||'') + '"';
+    if(net.address) head += ' má adresní rozsah „' + net.address + '"';
+    const nodes = net.nodes || [];
+    if(nodes.length){
+      head += (net.address ? ' a obsahuje' : ' obsahuje') + ' tyto uzly:';
+      sentences.push(head);
+      const nodeParts = nodes.map(nd => {
+        let p = '„' + nd.name + '"';
+        const extras = [];
+        if(nd.address) extras.push('adresa „' + nd.address + '"');
+        if(nd.shape){
+          const shapeW = (NWDIAG_SHAPES.find(s=>s.value===nd.shape)||{}).label || nd.shape;
+          extras.push('tvar ' + shapeW);
+        }
+        if(extras.length) p += ' (' + extras.join(', ') + ')';
+        return p;
+      });
+      sentences.push(joinCz(nodeParts) + '.');
+    } else {
+      head += ' zatím nemá žádné uzly.';
+      sentences.push(head);
+    }
+    paras.push(sentences.join(' '));
+  });
+
+  // SDÍLENÉ UZLY (na více sítích)
+  const netsOfNode = {};
+  networks.forEach(net => (net.nodes||[]).forEach(nd => {
+    (netsOfNode[nd.name] = netsOfNode[nd.name] || []).push(net.name || '');
+  }));
+  const sharedSentences = [];
+  Object.keys(netsOfNode).forEach(nm => {
+    if(netsOfNode[nm].length > 1){
+      const netQ = netsOfNode[nm].map(x => '„' + x + '"');
+      sharedSentences.push('Uzel „' + nm + '" je připojen k více sítím: ' + joinCz(netQ) + '.');
+    }
+  });
+  if(sharedSentences.length) paras.push(sharedSentences.join(' '));
+
+  // PEER LINKY
+  if(peerLinks.length){
+    const peerSentences = peerLinks.map(l => 'Uzel „' + l.from + '" je přímo propojen s uzlem „' + l.to + '".');
+    paras.push(peerSentences.join(' '));
+  }
+
+  // SKUPINY
+  if(groups.length){
+    const grpSentences = groups.map(g => {
+      const names = (g.nodeNames||[]).map(x => '„' + x + '"');
+      let s = 'Skupina';
+      if(g.name) s += ' „' + g.name + '"';
+      if(g.description) s += ' (' + g.description + ')';
+      s += ' zahrnuje uzly: ' + joinCz(names) + '.';
+      return s;
+    });
+    paras.push(grpSentences.join(' '));
+  }
+
+  return paras.join('\n\n');
+}
+function countNetworkElements(model){
+  const allNodeNames = new Set();
+  (model.networks||[]).forEach(net => (net.nodes||[]).forEach(nd => allNodeNames.add(nd.name)));
+  return { networks:(model.networks||[]).length, nodes:allNodeNames.size, groups:(model.groups||[]).length };
+}
+
 // Obecná funkce: vrátí textový popis diagramu podle typu (jako prostý text).
 function describeDiagram(diagram){
   if(!diagram) return '';
@@ -1499,6 +1845,10 @@ function describeDiagram(diagram){
     case 'sequence': return blocksToPlainText(describeSequenceBlocks(diagram.model));
     case 'class': return describeClass(diagram.model);
     case 'usecase': return describeUseCase(diagram.model);
+    case 'state': return describeState(diagram.model);
+    case 'component': return describeComponent(diagram.model);
+    case 'deployment': return describeDeployment(diagram.model);
+    case 'network': return describeNetwork(diagram.model);
     default: return '(Textový popis zatím není pro tento typ diagramu dostupný.)';
   }
 }
@@ -1512,6 +1862,10 @@ function describeDiagramMarkdown(diagram){
     case 'sequence': return blocksToMarkdown(describeSequenceBlocks(diagram.model));
     case 'class': return describeClass(diagram.model);
     case 'usecase': return describeUseCase(diagram.model);
+    case 'state': return describeState(diagram.model);
+    case 'component': return describeComponent(diagram.model);
+    case 'deployment': return describeDeployment(diagram.model);
+    case 'network': return describeNetwork(diagram.model);
     default: return '(Textový popis zatím není pro tento typ diagramu dostupný.)';
   }
 }
@@ -1560,6 +1914,10 @@ function generatePuml(diagram){
     case 'class': out.push(genClass(diagram.model)); break;
     case 'sequence': out.push(genSequence(diagram.model)); break;
     case 'usecase': out.push(genUseCase(diagram.model)); break;
+    case 'state': out.push(genState(diagram.model)); break;
+    case 'component': out.push(genComponent(diagram.model)); break;
+    case 'deployment': out.push(genDeployment(diagram.model)); break;
+    case 'network': out.push(genNetwork(diagram.model)); break;
   }
   out.push('@enduml');
   return out.join('\n');
@@ -1993,6 +2351,232 @@ function genUseCase(model){
       out.push('end note');
     }
   });
+  return out.join('\n');
+}
+
+// === GENERÁTOR: STATE =========================================
+function genState(model){
+  const out = [];
+  const states = model.states || [];
+  const transitions = model.transitions || [];
+  const aliasOf = {};
+  states.forEach(s => {
+    aliasOf[s.id] = (s.alias || ('s_'+s.id)).replace(/[^A-Za-z0-9_]/g,'') || 's';
+  });
+
+  // Deklarace stavů (s aliasem, stereotypem, popisem). Kompozitní = se subStates.
+  const childrenOf = {};
+  states.forEach(s => childrenOf[s.id] = []);
+  states.forEach(s => { if(s.parentId && childrenOf[s.parentId]) childrenOf[s.parentId].push(s); });
+  const rootStates = states.filter(s => !s.parentId);
+
+  function emitState(s, indent){
+    const pad = '  '.repeat(indent);
+    const al = aliasOf[s.id];
+    const name = s.name || 'Stav';
+    const stereo = s.stereotype ? ' <<' + s.stereotype + '>>' : '';
+    const kids = childrenOf[s.id] || [];
+    if(kids.length){
+      out.push(pad + 'state "' + name.replace(/"/g,'\\"') + '" as ' + al + stereo + ' {');
+      kids.forEach(k => emitState(k, indent+1));
+      out.push(pad + '}');
+    } else {
+      out.push(pad + 'state "' + name.replace(/"/g,'\\"') + '" as ' + al + stereo);
+    }
+    if(s.description){
+      s.description.split(/\r?\n/).forEach(l => out.push(pad + al + ' : ' + l));
+    }
+  }
+  rootStates.forEach(s => emitState(s, 0));
+  if(states.length) out.push('');
+
+  // Přechody. start/konec přes [*].
+  function endpoint(ref){
+    if(ref === '__start__' || ref === '__end__') return '[*]';
+    return aliasOf[ref] || ref;
+  }
+  transitions.forEach(t => {
+    const from = endpoint(t.from);
+    const to = endpoint(t.to);
+    let arrow = '-->';
+    if(t.direction && t.direction !== 'down'){
+      arrow = '-' + t.direction + '->';
+    }
+    if(t.color) arrow = applyArrowColor(arrow, t.color);
+    let line = from + ' ' + arrow + ' ' + to;
+    if(t.event) line += ' : ' + t.event;
+    out.push(line);
+  });
+  return out.join('\n');
+}
+
+// === GENERÁTOR: COMPONENT =====================================
+function genComponent(model){
+  const out = [];
+  const components = model.components || [];
+  const interfaces = model.interfaces || [];
+  const groups = model.groups || [];
+  const relationships = model.relationships || [];
+  const aliasOf = {};
+  components.forEach(c => { aliasOf[c.id] = (c.alias || ('c_'+c.id)).replace(/[^A-Za-z0-9_]/g,'') || 'c'; });
+  interfaces.forEach(i => { aliasOf[i.id] = (i.alias || ('i_'+i.id)).replace(/[^A-Za-z0-9_]/g,'') || 'i'; });
+
+  function emitComponent(c, indent){
+    const pad = '  '.repeat(indent);
+    const color = c.color ? ' ' + (c.color[0]==='#'?c.color:('#'+c.color)) : '';
+    out.push(pad + 'component "' + (c.name||'Komponenta').replace(/"/g,'\\"') + '" as ' + aliasOf[c.id] + color);
+  }
+  function emitInterface(i, indent){
+    const pad = '  '.repeat(indent);
+    out.push(pad + 'interface "' + (i.name||'Rozhraní').replace(/"/g,'\\"') + '" as ' + aliasOf[i.id]);
+  }
+
+  // Komponenty/rozhraní podle skupiny
+  const compByGroup = {}; components.forEach(c => { const k=c.groupId||'__root__'; (compByGroup[k]=compByGroup[k]||[]).push(c); });
+  const ifaceByGroup = {}; interfaces.forEach(i => { const k=i.groupId||'__root__'; (ifaceByGroup[k]=ifaceByGroup[k]||[]).push(i); });
+
+  const GROUP_KW = {package:'package',node:'node',folder:'folder',frame:'frame',cloud:'cloud',database:'database'};
+  groups.forEach(g => {
+    const kw = GROUP_KW[g.groupType] || 'package';
+    out.push(kw + ' "' + (g.name||'Skupina').replace(/"/g,'\\"') + '" {');
+    (compByGroup[g.id]||[]).forEach(c => emitComponent(c, 1));
+    (ifaceByGroup[g.id]||[]).forEach(i => emitInterface(i, 1));
+    out.push('}');
+  });
+  (compByGroup['__root__']||[]).forEach(c => emitComponent(c, 0));
+  (ifaceByGroup['__root__']||[]).forEach(i => emitInterface(i, 0));
+  if(components.length || interfaces.length) out.push('');
+
+  // Vazby
+  relationships.forEach(r => {
+    const from = aliasOf[r.sourceId];
+    const to = aliasOf[r.targetId];
+    if(!from || !to) return;
+    let arrow;
+    switch(r.type){
+      case 'provide': arrow = '-'; break;          // poskytuje rozhraní (čára)
+      case 'use': arrow = '..>'; break;            // používá/vyžaduje (přerušovaná šipka)
+      case 'dependency': arrow = '..>'; break;
+      default: arrow = '-->';
+    }
+    if(r.color) arrow = applyArrowColor(arrow, r.color);
+    let line = from + ' ' + arrow + ' ' + to;
+    if(r.label) line += ' : ' + r.label;
+    out.push(line);
+  });
+  return out.join('\n');
+}
+
+// === GENERÁTOR: DEPLOYMENT ====================================
+const DEPLOY_TYPES = [
+  {value:'node', kw:'node'}, {value:'artifact', kw:'artifact'}, {value:'database', kw:'database'},
+  {value:'cloud', kw:'cloud'}, {value:'component', kw:'component'}, {value:'rectangle', kw:'rectangle'},
+  {value:'folder', kw:'folder'}, {value:'frame', kw:'frame'}, {value:'storage', kw:'storage'},
+  {value:'queue', kw:'queue'}, {value:'card', kw:'card'}, {value:'stack', kw:'stack'}
+];
+function genDeployment(model){
+  const out = [];
+  const nodes = model.nodes || [];
+  const relationships = model.relationships || [];
+  const aliasOf = {};
+  nodes.forEach(n => { aliasOf[n.id] = (n.alias || ('n_'+n.id)).replace(/[^A-Za-z0-9_]/g,'') || 'n'; });
+
+  const childrenOf = {};
+  nodes.forEach(n => childrenOf[n.id] = []);
+  nodes.forEach(n => { if(n.parentId && childrenOf[n.parentId]) childrenOf[n.parentId].push(n); });
+  const rootNodes = nodes.filter(n => !n.parentId);
+  const kwOf = t => { const d = DEPLOY_TYPES.find(x=>x.value===t); return d ? d.kw : 'node'; };
+
+  function emitNode(n, indent){
+    const pad = '  '.repeat(indent);
+    const kw = kwOf(n.nodeType);
+    const color = n.color ? ' ' + (n.color[0]==='#'?n.color:('#'+n.color)) : '';
+    const kids = childrenOf[n.id] || [];
+    if(kids.length){
+      out.push(pad + kw + ' "' + (n.name||'Uzel').replace(/"/g,'\\"') + '" as ' + aliasOf[n.id] + color + ' {');
+      kids.forEach(k => emitNode(k, indent+1));
+      out.push(pad + '}');
+    } else {
+      out.push(pad + kw + ' "' + (n.name||'Uzel').replace(/"/g,'\\"') + '" as ' + aliasOf[n.id] + color);
+    }
+  }
+  rootNodes.forEach(n => emitNode(n, 0));
+  if(nodes.length) out.push('');
+
+  relationships.forEach(r => {
+    const from = aliasOf[r.sourceId];
+    const to = aliasOf[r.targetId];
+    if(!from || !to) return;
+    let arrow;
+    switch(r.linkType){
+      case 'dashed': arrow = '..'; break;
+      case 'bold': arrow = '=='; break;
+      case 'dotted': arrow = '~~'; break;
+      case 'arrow': arrow = '-->'; break;
+      default: arrow = '--';
+    }
+    if(r.color) arrow = applyArrowColor(arrow, r.color);
+    let line = from + ' ' + arrow + ' ' + to;
+    if(r.label) line += ' : ' + r.label;
+    out.push(line);
+  });
+  return out.join('\n');
+}
+
+// === GENERÁTOR: NETWORK (nwdiag) ==============================
+const NWDIAG_SHAPES = [
+  {value:'', label:'(výchozí)'},
+  {value:'node', label:'uzel'}, {value:'database', label:'databáze'}, {value:'cloud', label:'oblak'},
+  {value:'storage', label:'úložiště'}, {value:'queue', label:'fronta'}, {value:'actor', label:'aktér'}
+];
+function genNetwork(model){
+  // nwdiag se vkládá dovnitř @startuml jako blok `nwdiag { ... }`,
+  // aby fungovaly title/header/footer z generatePuml.
+  const out = [];
+  const networks = model.networks || [];
+  const groups = model.groups || [];
+  const peerLinks = model.peerLinks || [];
+
+  out.push('nwdiag {');
+
+  // Skupiny (před sítěmi, jako v dokumentaci)
+  groups.forEach(g => {
+    out.push('  group ' + (g.name ? sanitizeAliasInput(g.name) : '') + ' {');
+    if(g.color) out.push('    color = "' + g.color + '";');
+    if(g.description) out.push('    description = "' + g.description.replace(/"/g,'') + '";');
+    (g.nodeNames || []).forEach(nm => out.push('    ' + nm + ';'));
+    out.push('  }');
+  });
+
+  // Peer linky (mimo sítě)
+  const shapeNodes = {};
+  peerLinks.forEach(l => {
+    if(l.fromShape) shapeNodes[l.from] = l.fromShape;
+    if(l.toShape) shapeNodes[l.to] = l.toShape;
+  });
+  Object.keys(shapeNodes).forEach(nm => {
+    out.push('  ' + nm + ' [shape = ' + shapeNodes[nm] + '];');
+  });
+  peerLinks.forEach(l => {
+    out.push('  ' + l.from + ' -- ' + l.to + ';');
+  });
+
+  // Sítě a jejich uzly
+  networks.forEach(net => {
+    out.push('  network ' + (net.name ? sanitizeAliasInput(net.name) : 'net') + ' {');
+    if(net.address) out.push('    address = "' + net.address + '";');
+    if(net.color) out.push('    color = "' + net.color + '";');
+    (net.nodes || []).forEach(nd => {
+      const attrs = [];
+      if(nd.address) attrs.push('address = "' + nd.address + '"');
+      if(nd.shape) attrs.push('shape = ' + nd.shape);
+      const nm = sanitizeAliasInput(nd.name || 'uzel');
+      out.push('    ' + nm + (attrs.length ? ' [' + attrs.join(', ') + ']' : '') + ';');
+    });
+    out.push('  }');
+  });
+
+  out.push('}');
   return out.join('\n');
 }
 
@@ -2822,6 +3406,25 @@ function renderModelToolbar(d){
       tb.appendChild(actionBtn('Systém (rectangle)', 'Systém (rectangle)', ()=>addSystem(d)));
       tb.appendChild(actionBtn('Vztah', 'Vztah', ()=>addUcRelationship(d)));
       break;
+    case 'state':
+      tb.appendChild(actionBtn('Stav', 'Stav', ()=>addState(d)));
+      tb.appendChild(actionBtn('Přechod', 'Přechod', ()=>addTransition(d)));
+      break;
+    case 'component':
+      tb.appendChild(actionBtn('Komponenta', 'Komponenta', ()=>addComponent(d)));
+      tb.appendChild(actionBtn('Rozhraní', 'Rozhraní', ()=>addInterface(d)));
+      tb.appendChild(actionBtn('Skupina', 'Skupina', ()=>addCompGroup(d)));
+      tb.appendChild(actionBtn('Vazba', 'Vazba', ()=>addCompRelationship(d)));
+      break;
+    case 'deployment':
+      tb.appendChild(actionBtn('Uzel', 'Uzel', ()=>addDeployNode(d)));
+      tb.appendChild(actionBtn('Propojení', 'Propojení', ()=>addDeployLink(d)));
+      break;
+    case 'network':
+      tb.appendChild(actionBtn('Síť', 'Síť', ()=>addNetwork(d)));
+      tb.appendChild(actionBtn('Skupina', 'Skupina', ()=>addNwGroup(d)));
+      tb.appendChild(actionBtn('Přímé propojení', 'Přímé propojení', ()=>addPeerLink(d)));
+      break;
   }
 }
 
@@ -2833,6 +3436,10 @@ function renderModelTree(d){
     case 'class': renderClassTree(d, root); break;
     case 'sequence': renderSequenceTree(d, root); break;
     case 'usecase': renderUseCaseTree(d, root); break;
+    case 'state': renderStateTree(d, root); break;
+    case 'component': renderComponentTree(d, root); break;
+    case 'deployment': renderDeploymentTree(d, root); break;
+    case 'network': renderNetworkTree(d, root); break;
   }
 }
 
@@ -3169,6 +3776,262 @@ function renderUseCaseTree(d, root){
   root.appendChild(wrap);
 }
 
+// === STROM: STATE =============================================
+function renderStateTree(d, root){
+  const m = d.model;
+  const wrap = el('div');
+  const ss = el('section');
+  ss.appendChild(el('h4',null,'Stavy'));
+  const sul = el('ul',{'aria-label':'Stavy'});
+  // hierarchie: kořenové stavy a jejich vnořené
+  const childrenOf = {}; (m.states||[]).forEach(s => childrenOf[s.id]=[]);
+  (m.states||[]).forEach(s => { if(s.parentId && childrenOf[s.parentId]) childrenOf[s.parentId].push(s); });
+  function renderState(s, parentList){
+    const li = el('li');
+    const idx = m.states.findIndex(x=>x.id===s.id);
+    const path = ['states', idx];
+    const isSel = pathEqual(state.selectedPath, path);
+    const badge = (childrenOf[s.id]||[]).length ? 'složený' : 'stav';
+    li.appendChild(treeItem(s.name||'(bez názvu)', badge, 'state', isSel,
+      ()=>{ state.selectedPath = path; renderApp(); },
+      [actionBtn('↑', 'Posunout stav nahoru', ()=>moveModelItem(d, 'states', idx, -1)),
+       actionBtn('↓', 'Posunout stav dolů', ()=>moveModelItem(d, 'states', idx, 1)),
+       actionBtn('×', 'Smazat stav', ()=>deleteState(d, s.id))]));
+    const kids = childrenOf[s.id]||[];
+    if(kids.length){
+      const sub = el('ul');
+      kids.forEach(k => renderState(k, sub));
+      li.appendChild(sub);
+    }
+    parentList.appendChild(li);
+  }
+  (m.states||[]).filter(s=>!s.parentId).forEach(s => renderState(s, sul));
+  if(!(m.states||[]).length) ss.appendChild(el('p',{class:'empty'},'Žádné stavy.'));
+  else ss.appendChild(sul);
+  wrap.appendChild(ss);
+
+  const ts = el('section');
+  ts.appendChild(el('h4',null,'Přechody'));
+  const tul = el('ul',{'aria-label':'Přechody'});
+  const nm = id => id==='__start__'?'(počátek)':id==='__end__'?'(konec)':((m.states.find(x=>x.id===id)||{}).name||'?');
+  (m.transitions||[]).forEach((t, idx) => {
+    const li = el('li');
+    const path = ['transitions', idx];
+    const isSel = pathEqual(state.selectedPath, path);
+    const lab = nm(t.from) + ' → ' + nm(t.to) + (t.event?' : '+t.event:'');
+    li.appendChild(treeItem(lab, 'přechod', 'relation', isSel,
+      ()=>{ state.selectedPath = path; renderApp(); },
+      [actionBtn('↑', 'Posunout přechod nahoru', ()=>moveModelItem(d, 'transitions', idx, -1)),
+       actionBtn('↓', 'Posunout přechod dolů', ()=>moveModelItem(d, 'transitions', idx, 1)),
+       actionBtn('×', 'Smazat přechod', ()=>deleteTransition(d, idx))]));
+    tul.appendChild(li);
+  });
+  if(!(m.transitions||[]).length) ts.appendChild(el('p',{class:'empty'},'Žádné přechody.'));
+  else ts.appendChild(tul);
+  wrap.appendChild(ts);
+  root.appendChild(wrap);
+}
+
+// === STROM: COMPONENT =========================================
+function renderComponentTree(d, root){
+  const m = d.model;
+  const wrap = el('div');
+  const es = el('section');
+  es.appendChild(el('h4',null,'Komponenty a rozhraní'));
+  const eul = el('ul',{'aria-label':'Komponenty a rozhraní'});
+  const compByGroup = {}; (m.components||[]).forEach(c => { const k=c.groupId||'__root__'; (compByGroup[k]=compByGroup[k]||[]).push(c); });
+  const ifaceByGroup = {}; (m.interfaces||[]).forEach(i => { const k=i.groupId||'__root__'; (ifaceByGroup[k]=ifaceByGroup[k]||[]).push(i); });
+  function renderComp(c, parentList){
+    const li = el('li');
+    const idx = m.components.findIndex(x=>x.id===c.id);
+    const path = ['components', idx];
+    const isSel = pathEqual(state.selectedPath, path);
+    li.appendChild(treeItem(c.name||'(bez názvu)', 'komp', 'component', isSel,
+      ()=>{ state.selectedPath = path; renderApp(); },
+      [actionBtn('↑', 'Posunout komponentu nahoru', ()=>moveModelItem(d, 'components', idx, -1)),
+       actionBtn('↓', 'Posunout komponentu dolů', ()=>moveModelItem(d, 'components', idx, 1)),
+       actionBtn('×', 'Smazat komponentu', ()=>deleteComponent(d, c.id))]));
+    parentList.appendChild(li);
+  }
+  function renderIface(i, parentList){
+    const li = el('li');
+    const idx = m.interfaces.findIndex(x=>x.id===i.id);
+    const path = ['interfaces', idx];
+    const isSel = pathEqual(state.selectedPath, path);
+    li.appendChild(treeItem(i.name||'(bez názvu)', 'rozhraní', 'usecase', isSel,
+      ()=>{ state.selectedPath = path; renderApp(); },
+      [actionBtn('↑', 'Posunout rozhraní nahoru', ()=>moveModelItem(d, 'interfaces', idx, -1)),
+       actionBtn('↓', 'Posunout rozhraní dolů', ()=>moveModelItem(d, 'interfaces', idx, 1)),
+       actionBtn('×', 'Smazat rozhraní', ()=>deleteInterface(d, i.id))]));
+    parentList.appendChild(li);
+  }
+  (m.groups||[]).forEach(g => {
+    const li = el('li');
+    const idx = m.groups.findIndex(x=>x.id===g.id);
+    const path = ['groups', idx];
+    const isSel = pathEqual(state.selectedPath, path);
+    li.appendChild(treeItem(g.name||'(bez názvu)', 'skupina', 'package', isSel,
+      ()=>{ state.selectedPath = path; renderApp(); },
+      [actionBtn('↑', 'Posunout skupinu nahoru', ()=>moveModelItem(d, 'groups', idx, -1)),
+       actionBtn('↓', 'Posunout skupinu dolů', ()=>moveModelItem(d, 'groups', idx, 1)),
+       actionBtn('×', 'Smazat skupinu', ()=>deleteCompGroup(d, g.id))]));
+    const sub = el('ul');
+    (compByGroup[g.id]||[]).forEach(c => renderComp(c, sub));
+    (ifaceByGroup[g.id]||[]).forEach(i => renderIface(i, sub));
+    li.appendChild(sub);
+    eul.appendChild(li);
+  });
+  (compByGroup['__root__']||[]).forEach(c => renderComp(c, eul));
+  (ifaceByGroup['__root__']||[]).forEach(i => renderIface(i, eul));
+  if(!(m.components||[]).length && !(m.interfaces||[]).length && !(m.groups||[]).length)
+    es.appendChild(el('p',{class:'empty'},'Žádné prvky.'));
+  else es.appendChild(eul);
+  wrap.appendChild(es);
+
+  const rs = el('section');
+  rs.appendChild(el('h4',null,'Vazby'));
+  const rul = el('ul',{'aria-label':'Vazby'});
+  const nm = id => ((m.components||[]).find(x=>x.id===id)||(m.interfaces||[]).find(x=>x.id===id)||{}).name||'?';
+  (m.relationships||[]).forEach((r, idx) => {
+    const li = el('li');
+    const path = ['relationships', idx];
+    const isSel = pathEqual(state.selectedPath, path);
+    const lab = nm(r.sourceId) + ' — ' + r.type + ' → ' + nm(r.targetId) + (r.label?' ('+r.label+')':'');
+    li.appendChild(treeItem(lab, 'vazba', 'relation', isSel,
+      ()=>{ state.selectedPath = path; renderApp(); },
+      [actionBtn('↑', 'Posunout vazbu nahoru', ()=>moveModelItem(d, 'relationships', idx, -1)),
+       actionBtn('↓', 'Posunout vazbu dolů', ()=>moveModelItem(d, 'relationships', idx, 1)),
+       actionBtn('×', 'Smazat vazbu', ()=>deleteCompRelationship(d, r.id))]));
+    rul.appendChild(li);
+  });
+  if(!(m.relationships||[]).length) rs.appendChild(el('p',{class:'empty'},'Žádné vazby.'));
+  else rs.appendChild(rul);
+  wrap.appendChild(rs);
+  root.appendChild(wrap);
+}
+
+// === STROM: DEPLOYMENT ========================================
+function renderDeploymentTree(d, root){
+  const m = d.model;
+  const wrap = el('div');
+  const ns = el('section');
+  ns.appendChild(el('h4',null,'Uzly a prvky'));
+  const nul = el('ul',{'aria-label':'Uzly'});
+  const childrenOf = {}; (m.nodes||[]).forEach(n => childrenOf[n.id]=[]);
+  (m.nodes||[]).forEach(n => { if(n.parentId && childrenOf[n.parentId]) childrenOf[n.parentId].push(n); });
+  function renderNode(n, parentList){
+    const li = el('li');
+    const idx = m.nodes.findIndex(x=>x.id===n.id);
+    const path = ['nodes', idx];
+    const isSel = pathEqual(state.selectedPath, path);
+    const tw = deployWord(n.nodeType);
+    li.appendChild(treeItem(n.name||'(bez názvu)', tw.nom, 'component', isSel,
+      ()=>{ state.selectedPath = path; renderApp(); },
+      [actionBtn('↑', 'Posunout uzel nahoru', ()=>moveModelItem(d, 'nodes', idx, -1)),
+       actionBtn('↓', 'Posunout uzel dolů', ()=>moveModelItem(d, 'nodes', idx, 1)),
+       actionBtn('×', 'Smazat uzel', ()=>deleteDeployNode(d, n.id))]));
+    const kids = childrenOf[n.id]||[];
+    if(kids.length){ const sub = el('ul'); kids.forEach(k=>renderNode(k, sub)); li.appendChild(sub); }
+    parentList.appendChild(li);
+  }
+  (m.nodes||[]).filter(n=>!n.parentId).forEach(n => renderNode(n, nul));
+  if(!(m.nodes||[]).length) ns.appendChild(el('p',{class:'empty'},'Žádné uzly.'));
+  else ns.appendChild(nul);
+  wrap.appendChild(ns);
+
+  const rs = el('section');
+  rs.appendChild(el('h4',null,'Propojení'));
+  const rul = el('ul',{'aria-label':'Propojení'});
+  const nm = id => ((m.nodes||[]).find(x=>x.id===id)||{}).name||'?';
+  (m.relationships||[]).forEach((r, idx) => {
+    const li = el('li');
+    const path = ['relationships', idx];
+    const isSel = pathEqual(state.selectedPath, path);
+    const lab = nm(r.sourceId) + ' — ' + nm(r.targetId) + (r.label?' ('+r.label+')':'');
+    li.appendChild(treeItem(lab, 'propojení', 'relation', isSel,
+      ()=>{ state.selectedPath = path; renderApp(); },
+      [actionBtn('↑', 'Posunout propojení nahoru', ()=>moveModelItem(d, 'relationships', idx, -1)),
+       actionBtn('↓', 'Posunout propojení dolů', ()=>moveModelItem(d, 'relationships', idx, 1)),
+       actionBtn('×', 'Smazat propojení', ()=>deleteDeployLink(d, r.id))]));
+    rul.appendChild(li);
+  });
+  if(!(m.relationships||[]).length) rs.appendChild(el('p',{class:'empty'},'Žádná propojení.'));
+  else rs.appendChild(rul);
+  wrap.appendChild(rs);
+  root.appendChild(wrap);
+}
+
+// === STROM: NETWORK ===========================================
+function renderNetworkTree(d, root){
+  const m = d.model;
+  const wrap = el('div');
+  const ns = el('section');
+  ns.appendChild(el('h4',null,'Sítě'));
+  const nul = el('ul',{'aria-label':'Sítě'});
+  (m.networks||[]).forEach((net, nIdx) => {
+    const li = el('li');
+    const path = ['networks', nIdx];
+    const isSel = pathEqual(state.selectedPath, path);
+    li.appendChild(treeItem(net.name||'(bez názvu)', 'síť', 'system', isSel,
+      ()=>{ state.selectedPath = path; renderApp(); },
+      [actionBtn('↑', 'Posunout síť nahoru', ()=>moveModelItem(d, 'networks', nIdx, -1)),
+       actionBtn('↓', 'Posunout síť dolů', ()=>moveModelItem(d, 'networks', nIdx, 1)),
+       actionBtn('+', 'Přidat uzel do sítě', ()=>addNwNode(d, net.id)),
+       actionBtn('×', 'Smazat síť', ()=>deleteNetwork(d, net.id))]));
+    const sub = el('ul');
+    (net.nodes||[]).forEach((nd, ndIdx) => {
+      const sli = el('li');
+      const npath = ['networks', nIdx, 'nodes', ndIdx];
+      const nsel = pathEqual(state.selectedPath, npath);
+      const lab = (nd.name||'(bez názvu)') + (nd.address?' ['+nd.address+']':'');
+      sli.appendChild(treeItem(lab, 'uzel', 'component', nsel,
+        ()=>{ state.selectedPath = npath; renderApp(); },
+        [actionBtn('×', 'Smazat uzel ze sítě', ()=>deleteNwNode(d, net.id, nd.id))]));
+      sub.appendChild(sli);
+    });
+    li.appendChild(sub);
+    nul.appendChild(li);
+  });
+  if(!(m.networks||[]).length) ns.appendChild(el('p',{class:'empty'},'Žádné sítě.'));
+  else ns.appendChild(nul);
+  wrap.appendChild(ns);
+
+  const gs = el('section');
+  gs.appendChild(el('h4',null,'Skupiny'));
+  const gul = el('ul',{'aria-label':'Skupiny'});
+  (m.groups||[]).forEach((g, idx) => {
+    const li = el('li');
+    const path = ['groups', idx];
+    const isSel = pathEqual(state.selectedPath, path);
+    li.appendChild(treeItem((g.name||'(bez názvu)') + (g.nodeNames&&g.nodeNames.length?' ('+g.nodeNames.length+')':''), 'skupina', 'package', isSel,
+      ()=>{ state.selectedPath = path; renderApp(); },
+      [actionBtn('↑', 'Posunout skupinu nahoru', ()=>moveModelItem(d, 'groups', idx, -1)),
+       actionBtn('↓', 'Posunout skupinu dolů', ()=>moveModelItem(d, 'groups', idx, 1)),
+       actionBtn('×', 'Smazat skupinu', ()=>deleteNwGroup(d, idx))]));
+    gul.appendChild(li);
+  });
+  if(!(m.groups||[]).length) gs.appendChild(el('p',{class:'empty'},'Žádné skupiny.'));
+  else gs.appendChild(gul);
+  wrap.appendChild(gs);
+
+  const ps = el('section');
+  ps.appendChild(el('h4',null,'Přímá propojení'));
+  const pul = el('ul',{'aria-label':'Přímá propojení'});
+  (m.peerLinks||[]).forEach((l, idx) => {
+    const li = el('li');
+    const path = ['peerLinks', idx];
+    const isSel = pathEqual(state.selectedPath, path);
+    li.appendChild(treeItem((l.from||'?')+' — '+(l.to||'?'), 'propojení', 'relation', isSel,
+      ()=>{ state.selectedPath = path; renderApp(); },
+      [actionBtn('×', 'Smazat propojení', ()=>deletePeerLink(d, idx))]));
+    pul.appendChild(li);
+  });
+  if(!(m.peerLinks||[]).length) ps.appendChild(el('p',{class:'empty'},'Žádná přímá propojení.'));
+  else ps.appendChild(pul);
+  wrap.appendChild(ps);
+  root.appendChild(wrap);
+}
+
 // === DETAIL PANEL =============================================
 function renderDetail(d){
   const root = document.getElementById('detail');
@@ -3182,6 +4045,10 @@ function renderDetail(d){
     case 'class': renderClassDetail(d, root); break;
     case 'sequence': renderSequenceDetail(d, root); break;
     case 'usecase': renderUseCaseDetail(d, root); break;
+    case 'state': renderStateDetail(d, root); break;
+    case 'component': renderComponentDetail(d, root); break;
+    case 'deployment': renderDeploymentDetail(d, root); break;
+    case 'network': renderNetworkDetail(d, root); break;
   }
 }
 
@@ -3840,6 +4707,216 @@ function renderUseCaseDetail(d, root){
   }
 }
 
+// === DETAIL: STATE ============================================
+const STATE_STEREO_OPTIONS = [
+  {value:'', label:'(žádný)'},
+  {value:'choice', label:'rozhodovací uzel (choice)'},
+  {value:'fork', label:'rozvětvení (fork)'},
+  {value:'join', label:'spojení (join)'},
+  {value:'history', label:'historie (history)'},
+  {value:'sdlreceive', label:'přijímací (sdlreceive)'}
+];
+function renderStateDetail(d, root){
+  const path = state.selectedPath, m = d.model;
+  if(path[0] === 'states'){
+    const s = m.states[path[1]];
+    if(!s){ root.appendChild(el('p',{class:'no-selection'},'Stav neexistuje.')); return; }
+    root.appendChild(el('h4',null,'Stav'));
+    root.appendChild(field('Název:', inputText(s.name||'', v=>{s.name=v;softTouch(d);}, 'stName')));
+    root.appendChild(field('Stereotyp:',
+      selectField(s.stereotype||'', STATE_STEREO_OPTIONS, v=>{s.stereotype=v;softTouch(d);}, 'stStereo'),
+      'Speciální typ stavu (rozhodovací uzel, rozvětvení…).'));
+    const others = (m.states||[]).filter(x => x.id !== s.id);
+    root.appendChild(field('Nadřazený stav (kompozitní):',
+      selectField(s.parentId||'',
+        [{value:'',label:'(žádný)'}].concat(others.map(x=>({value:x.id,label:x.name||'(bez názvu)'}))),
+        v=>{s.parentId=v||null;softTouch(d);}, 'stParent'),
+      'Pokud je stav vnořen do jiného (složeného) stavu.'));
+    root.appendChild(field('Popis stavu:', inputArea(s.description||'', v=>{s.description=v;softTouch(d);}, 'stDesc', 3),
+      'Volitelný popisný text zobrazený uvnitř stavu.'));
+  } else if(path[0] === 'transitions'){
+    const t = m.transitions[path[1]];
+    if(!t){ root.appendChild(el('p',{class:'no-selection'},'Přechod neexistuje.')); return; }
+    root.appendChild(el('h4',null,'Přechod'));
+    const opts = [{value:'__start__',label:'(počáteční stav)'},{value:'__end__',label:'(koncový stav)'}]
+      .concat((m.states||[]).map(s=>({value:s.id,label:s.name||'(bez názvu)'})));
+    root.appendChild(field('Z:', selectField(t.from||'', opts, v=>{t.from=v;softTouch(d);}, 'trFrom')));
+    root.appendChild(field('Do:', selectField(t.to||'', opts, v=>{t.to=v;softTouch(d);}, 'trTo')));
+    root.appendChild(field('Událost / popisek:', inputText(t.event||'', v=>{t.event=v;softTouch(d);}, 'trEvent'),
+      'Text u šipky, např. název události nebo podmínky.'));
+    root.appendChild(field('Směr šipky:',
+      selectField(t.direction||'down',
+        [{value:'down',label:'dolů (výchozí)'},{value:'up',label:'nahoru'},{value:'left',label:'doleva'},{value:'right',label:'doprava'}],
+        v=>{t.direction=v;softTouch(d);}, 'trDir')));
+    root.appendChild(colorField('Barva čáry:', t.color||'', v=>{t.color=v;softTouch(d);}, 'trColor', 'Volitelné.'));
+  }
+}
+
+// === DETAIL: COMPONENT ========================================
+const COMP_GROUP_OPTIONS = [
+  {value:'package', label:'balíček (package)'},
+  {value:'node', label:'uzel (node)'},
+  {value:'folder', label:'složka (folder)'},
+  {value:'frame', label:'rámec (frame)'},
+  {value:'cloud', label:'oblak (cloud)'},
+  {value:'database', label:'databáze (database)'}
+];
+function renderComponentDetail(d, root){
+  const path = state.selectedPath, m = d.model;
+  if(path[0] === 'components'){
+    const c = m.components[path[1]];
+    if(!c){ root.appendChild(el('p',{class:'no-selection'},'Komponenta neexistuje.')); return; }
+    root.appendChild(el('h4',null,'Komponenta'));
+    root.appendChild(field('Název:', inputText(c.name||'', v=>{c.name=v;softTouch(d);}, 'coName')));
+    root.appendChild(field('Identifikátor (alias):',
+      inputText(c.alias||'', v=>{c.alias=sanitizeAliasInput(v);softTouch(d);}, 'coAlias'),
+      'Krátký alias bez mezer a diakritiky.'));
+    root.appendChild(field('Skupina:',
+      selectField(c.groupId||'',
+        [{value:'',label:'(žádná)'}].concat((m.groups||[]).map(g=>({value:g.id,label:g.name||'(bez názvu)'}))),
+        v=>{c.groupId=v||null;softTouch(d);}, 'coGroup')));
+    root.appendChild(colorField('Barva:', c.color||'', v=>{c.color=v;softTouch(d);}, 'coColor', 'Volitelné.'));
+  } else if(path[0] === 'interfaces'){
+    const i = m.interfaces[path[1]];
+    if(!i){ root.appendChild(el('p',{class:'no-selection'},'Rozhraní neexistuje.')); return; }
+    root.appendChild(el('h4',null,'Rozhraní'));
+    root.appendChild(field('Název:', inputText(i.name||'', v=>{i.name=v;softTouch(d);}, 'ifName')));
+    root.appendChild(field('Identifikátor (alias):',
+      inputText(i.alias||'', v=>{i.alias=sanitizeAliasInput(v);softTouch(d);}, 'ifAlias'),
+      'Krátký alias bez mezer a diakritiky.'));
+    root.appendChild(field('Skupina:',
+      selectField(i.groupId||'',
+        [{value:'',label:'(žádná)'}].concat((m.groups||[]).map(g=>({value:g.id,label:g.name||'(bez názvu)'}))),
+        v=>{i.groupId=v||null;softTouch(d);}, 'ifGroup')));
+  } else if(path[0] === 'groups'){
+    const g = m.groups[path[1]];
+    if(!g){ root.appendChild(el('p',{class:'no-selection'},'Skupina neexistuje.')); return; }
+    root.appendChild(el('h4',null,'Skupina'));
+    root.appendChild(field('Název:', inputText(g.name||'', v=>{g.name=v;softTouch(d);}, 'cgName')));
+    root.appendChild(field('Typ:',
+      selectField(g.groupType||'package', COMP_GROUP_OPTIONS, v=>{g.groupType=v;softTouch(d);}, 'cgType')));
+  } else if(path[0] === 'relationships'){
+    const r = m.relationships[path[1]];
+    if(!r){ root.appendChild(el('p',{class:'no-selection'},'Vazba neexistuje.')); return; }
+    root.appendChild(el('h4',null,'Vazba'));
+    const ends = (m.components||[]).map(c=>({value:c.id,label:'komponenta: '+(c.name||'?')}))
+      .concat((m.interfaces||[]).map(i=>({value:i.id,label:'rozhraní: '+(i.name||'?')})));
+    root.appendChild(field('Zdroj:', selectField(r.sourceId||'', ends, v=>{r.sourceId=v;softTouch(d);}, 'crSrc')));
+    root.appendChild(field('Cíl:', selectField(r.targetId||'', ends, v=>{r.targetId=v;softTouch(d);}, 'crTgt')));
+    root.appendChild(field('Typ vazby:',
+      selectField(r.type||'use',
+        [{value:'use',label:'používá / vyžaduje (přerušovaná šipka)'},
+         {value:'provide',label:'poskytuje (plná čára)'},
+         {value:'dependency',label:'závislost'},
+         {value:'association',label:'asociace (plná šipka)'}],
+        v=>{r.type=v;softTouch(d);}, 'crType')));
+    root.appendChild(field('Popisek:', inputText(r.label||'', v=>{r.label=v;softTouch(d);}, 'crLabel')));
+    root.appendChild(colorField('Barva čáry:', r.color||'', v=>{r.color=v;softTouch(d);}, 'crColor', 'Volitelné.'));
+  }
+}
+
+// === DETAIL: DEPLOYMENT =======================================
+function renderDeploymentDetail(d, root){
+  const path = state.selectedPath, m = d.model;
+  if(path[0] === 'nodes'){
+    const n = m.nodes[path[1]];
+    if(!n){ root.appendChild(el('p',{class:'no-selection'},'Uzel neexistuje.')); return; }
+    root.appendChild(el('h4',null,'Uzel / prvek'));
+    root.appendChild(field('Název:', inputText(n.name||'', v=>{n.name=v;softTouch(d);}, 'dnName')));
+    root.appendChild(field('Identifikátor (alias):',
+      inputText(n.alias||'', v=>{n.alias=sanitizeAliasInput(v);softTouch(d);}, 'dnAlias'),
+      'Krátký alias bez mezer a diakritiky.'));
+    root.appendChild(field('Typ prvku:',
+      selectField(n.nodeType||'node',
+        DEPLOY_TYPES.map(t=>({value:t.value,label:deployWord(t.value).nom + ' ('+t.kw+')'})),
+        v=>{n.nodeType=v;softTouch(d);}, 'dnType')));
+    const others = (m.nodes||[]).filter(x=>x.id!==n.id);
+    root.appendChild(field('Nadřazený prvek (vnoření):',
+      selectField(n.parentId||'',
+        [{value:'',label:'(žádný)'}].concat(others.map(x=>({value:x.id,label:x.name||'(bez názvu)'}))),
+        v=>{n.parentId=v||null;softTouch(d);}, 'dnParent'),
+      'Pokud je prvek umístěn uvnitř jiného (např. artefakt v uzlu).'));
+    root.appendChild(colorField('Barva:', n.color||'', v=>{n.color=v;softTouch(d);}, 'dnColor', 'Volitelné.'));
+  } else if(path[0] === 'relationships'){
+    const r = m.relationships[path[1]];
+    if(!r){ root.appendChild(el('p',{class:'no-selection'},'Propojení neexistuje.')); return; }
+    root.appendChild(el('h4',null,'Propojení'));
+    const ends = (m.nodes||[]).map(n=>({value:n.id,label:(n.name||'?')}));
+    root.appendChild(field('Z:', selectField(r.sourceId||'', ends, v=>{r.sourceId=v;softTouch(d);}, 'drSrc')));
+    root.appendChild(field('Do:', selectField(r.targetId||'', ends, v=>{r.targetId=v;softTouch(d);}, 'drTgt')));
+    root.appendChild(field('Typ čáry:',
+      selectField(r.linkType||'plain',
+        [{value:'plain',label:'plná čára (--)'},{value:'arrow',label:'šipka (-->)'},
+         {value:'dashed',label:'přerušovaná (..)'},{value:'bold',label:'silná (==)'},{value:'dotted',label:'tečkovaná (~~)'}],
+        v=>{r.linkType=v;softTouch(d);}, 'drType')));
+    root.appendChild(field('Popisek:', inputText(r.label||'', v=>{r.label=v;softTouch(d);}, 'drLabel')));
+    root.appendChild(colorField('Barva čáry:', r.color||'', v=>{r.color=v;softTouch(d);}, 'drColor', 'Volitelné.'));
+  }
+}
+
+// === DETAIL: NETWORK ==========================================
+function renderNetworkDetail(d, root){
+  const path = state.selectedPath, m = d.model;
+  if(path[0] === 'networks' && path.length === 2){
+    const net = m.networks[path[1]];
+    if(!net){ root.appendChild(el('p',{class:'no-selection'},'Síť neexistuje.')); return; }
+    root.appendChild(el('h4',null,'Síť'));
+    root.appendChild(field('Název:', inputText(net.name||'', v=>{net.name=v;softTouch(d);}, 'netName'),
+      'Bez mezer (použije se jako identifikátor v nwdiag).'));
+    root.appendChild(field('Adresní rozsah:', inputText(net.address||'', v=>{net.address=v;softTouch(d);}, 'netAddr'),
+      'Např. „192.168.10.0/24" (volitelné).'));
+    root.appendChild(colorField('Barva:', net.color||'', v=>{net.color=v;softTouch(d);}, 'netColor', 'Volitelné.'));
+    root.appendChild(el('p',{class:'help'},'Uzly se přidávají tlačítkem „+" u sítě ve struktuře. Stejný název uzlu na více sítích vytvoří propojení mezi sítěmi.'));
+  } else if(path[0] === 'networks' && path.length === 4){
+    const net = m.networks[path[1]];
+    const nd = net && net.nodes[path[3]];
+    if(!nd){ root.appendChild(el('p',{class:'no-selection'},'Uzel neexistuje.')); return; }
+    root.appendChild(el('h4',null,'Uzel v síti'));
+    root.appendChild(field('Název:', inputText(nd.name||'', v=>{nd.name=v;softTouch(d);}, 'nndName'),
+      'Bez mezer. Stejný název v jiné síti = propojení mezi sítěmi.'));
+    root.appendChild(field('Adresa:', inputText(nd.address||'', v=>{nd.address=v;softTouch(d);}, 'nndAddr'),
+      'Např. „.1" nebo „210.x.x.1" (volitelné).'));
+    root.appendChild(field('Tvar:',
+      selectField(nd.shape||'', NWDIAG_SHAPES, v=>{nd.shape=v;softTouch(d);}, 'nndShape'),
+      'Vizuální tvar uzlu (volitelné).'));
+  } else if(path[0] === 'groups'){
+    const g = m.groups[path[1]];
+    if(!g){ root.appendChild(el('p',{class:'no-selection'},'Skupina neexistuje.')); return; }
+    root.appendChild(el('h4',null,'Skupina'));
+    root.appendChild(field('Název:', inputText(g.name||'', v=>{g.name=sanitizeAliasInput(v);softTouch(d);}, 'ngName'),
+      'Bez mezer (volitelné).'));
+    root.appendChild(field('Popis:', inputText(g.description||'', v=>{g.description=v;softTouch(d);}, 'ngDesc')));
+    root.appendChild(colorField('Barva:', g.color||'', v=>{g.color=v;softTouch(d);}, 'ngColor', 'Volitelné.'));
+    // výběr uzlů do skupiny (zaškrtávátka podle všech existujících jmen uzlů)
+    const allNames = [];
+    (m.networks||[]).forEach(net => (net.nodes||[]).forEach(nd => { if(allNames.indexOf(nd.name)<0) allNames.push(nd.name); }));
+    const sec = el('section',{class:'section'});
+    sec.appendChild(el('h4',null,'Uzly ve skupině'));
+    if(!allNames.length) sec.appendChild(el('p',{class:'empty'},'Nejprve vytvořte uzly v sítích.'));
+    g.nodeNames = g.nodeNames || [];
+    allNames.forEach(nm => {
+      sec.appendChild(checkboxField(nm, g.nodeNames.indexOf(nm)>=0, checked => {
+        if(checked){ if(g.nodeNames.indexOf(nm)<0) g.nodeNames.push(nm); }
+        else { g.nodeNames = g.nodeNames.filter(x=>x!==nm); }
+        softTouch(d);
+      }));
+    });
+    root.appendChild(sec);
+  } else if(path[0] === 'peerLinks'){
+    const l = m.peerLinks[path[1]];
+    if(!l){ root.appendChild(el('p',{class:'no-selection'},'Propojení neexistuje.')); return; }
+    root.appendChild(el('h4',null,'Přímé propojení'));
+    root.appendChild(field('Z uzlu:', inputText(l.from||'', v=>{l.from=sanitizeAliasInput(v);softTouch(d);}, 'plFrom'),
+      'Název uzlu (bez mezer).'));
+    root.appendChild(field('Do uzlu:', inputText(l.to||'', v=>{l.to=sanitizeAliasInput(v);softTouch(d);}, 'plTo'),
+      'Název uzlu (bez mezer).'));
+    root.appendChild(field('Tvar zdroje:',
+      selectField(l.fromShape||'', NWDIAG_SHAPES, v=>{l.fromShape=v;softTouch(d);}, 'plFromShape')));
+    root.appendChild(field('Tvar cíle:',
+      selectField(l.toShape||'', NWDIAG_SHAPES, v=>{l.toShape=v;softTouch(d);}, 'plToShape')));
+  }
+}
+
 // === AKCE: ACTIVITY ===========================================
 function addActivityNode(d, type, stereotype){
   // Vytvoříme nový uzel
@@ -4279,6 +5356,192 @@ async function deleteUcRelationship(d, id){
   state.selectedPath = null;
   touchDiagram(d);
   renderApp();
+}
+
+// === AKCE: STATE ==============================================
+async function addState(d){
+  const v = await dlgPrompt('Nový stav', 'Název:', '', '');
+  if(!v) return;
+  const existing = (d.model.states||[]).map(s=>s.alias).filter(Boolean);
+  const alias = generateAlias(v, existing);
+  d.model.states.push({id:uid('st'),name:v,alias,stereotype:'',parentId:null,description:''});
+  state.selectedPath = ['states', d.model.states.length-1];
+  touchDiagram(d); renderApp();
+}
+async function deleteState(d, id){
+  const ok = await dlgConfirm('Smazat stav?', 'Přechody a vnoření spojené s tímto stavem se uvolní.');
+  if(!ok) return;
+  d.model.states.forEach(s => { if(s.parentId === id) s.parentId = null; });
+  d.model.states = d.model.states.filter(s => s.id !== id);
+  d.model.transitions = d.model.transitions.filter(t => t.from !== id && t.to !== id);
+  state.selectedPath = null; touchDiagram(d); renderApp();
+}
+async function addTransition(d){
+  if(!(d.model.states||[]).length){ status('Nejprve přidejte stavy.', 'error'); return; }
+  const first = d.model.states[0].id;
+  d.model.transitions.push({id:uid('tr'),from:'__start__',to:first,event:'',direction:'down',color:''});
+  state.selectedPath = ['transitions', d.model.transitions.length-1];
+  touchDiagram(d); renderApp();
+}
+async function deleteTransition(d, idx){
+  const ok = await dlgConfirm('Smazat přechod?', 'Tato akce odstraní přechod.');
+  if(!ok) return;
+  d.model.transitions.splice(idx, 1);
+  state.selectedPath = null; touchDiagram(d); renderApp();
+}
+
+// === AKCE: COMPONENT ==========================================
+async function addComponent(d){
+  const v = await dlgPrompt('Nová komponenta', 'Název:', '', '');
+  if(!v) return;
+  const existing = (d.model.components||[]).map(c=>c.alias).filter(Boolean)
+    .concat((d.model.interfaces||[]).map(i=>i.alias).filter(Boolean));
+  const alias = generateAlias(v, existing);
+  d.model.components.push({id:uid('co'),name:v,alias,groupId:null,color:''});
+  state.selectedPath = ['components', d.model.components.length-1];
+  touchDiagram(d); renderApp();
+}
+async function deleteComponent(d, id){
+  const ok = await dlgConfirm('Smazat komponentu?', 'Vazby s ní se smažou také.');
+  if(!ok) return;
+  d.model.components = d.model.components.filter(c => c.id !== id);
+  d.model.relationships = d.model.relationships.filter(r => r.sourceId !== id && r.targetId !== id);
+  state.selectedPath = null; touchDiagram(d); renderApp();
+}
+async function addInterface(d){
+  const v = await dlgPrompt('Nové rozhraní', 'Název:', '', '');
+  if(!v) return;
+  const existing = (d.model.components||[]).map(c=>c.alias).filter(Boolean)
+    .concat((d.model.interfaces||[]).map(i=>i.alias).filter(Boolean));
+  const alias = generateAlias(v, existing);
+  d.model.interfaces.push({id:uid('if'),name:v,alias,groupId:null});
+  state.selectedPath = ['interfaces', d.model.interfaces.length-1];
+  touchDiagram(d); renderApp();
+}
+async function deleteInterface(d, id){
+  const ok = await dlgConfirm('Smazat rozhraní?', 'Vazby s ním se smažou také.');
+  if(!ok) return;
+  d.model.interfaces = d.model.interfaces.filter(i => i.id !== id);
+  d.model.relationships = d.model.relationships.filter(r => r.sourceId !== id && r.targetId !== id);
+  state.selectedPath = null; touchDiagram(d); renderApp();
+}
+async function addCompGroup(d){
+  const v = await dlgPrompt('Nová skupina', 'Název:', '', '');
+  if(!v) return;
+  d.model.groups.push({id:uid('cg'),name:v,groupType:'package'});
+  state.selectedPath = ['groups', d.model.groups.length-1];
+  touchDiagram(d); renderApp();
+}
+async function deleteCompGroup(d, id){
+  const ok = await dlgConfirm('Smazat skupinu?', 'Prvky v ní zůstanou (mimo skupinu).');
+  if(!ok) return;
+  d.model.components.forEach(c => { if(c.groupId === id) c.groupId = null; });
+  d.model.interfaces.forEach(i => { if(i.groupId === id) i.groupId = null; });
+  d.model.groups = d.model.groups.filter(g => g.id !== id);
+  state.selectedPath = null; touchDiagram(d); renderApp();
+}
+async function addCompRelationship(d){
+  const all = (d.model.components||[]).concat(d.model.interfaces||[]);
+  if(all.length < 1){ status('Nejprve přidejte komponenty nebo rozhraní.', 'error'); return; }
+  const first = all[0].id, second = all[1] ? all[1].id : all[0].id;
+  d.model.relationships.push({id:uid('cr'),sourceId:first,targetId:second,type:'use',label:'',color:''});
+  state.selectedPath = ['relationships', d.model.relationships.length-1];
+  touchDiagram(d); renderApp();
+}
+async function deleteCompRelationship(d, id){
+  const ok = await dlgConfirm('Smazat vazbu?', 'Tato akce odstraní vazbu.');
+  if(!ok) return;
+  d.model.relationships = d.model.relationships.filter(r => r.id !== id);
+  state.selectedPath = null; touchDiagram(d); renderApp();
+}
+
+// === AKCE: DEPLOYMENT =========================================
+async function addDeployNode(d){
+  const v = await dlgPrompt('Nový uzel / prvek', 'Název:', '', '');
+  if(!v) return;
+  const existing = (d.model.nodes||[]).map(n=>n.alias).filter(Boolean);
+  const alias = generateAlias(v, existing);
+  d.model.nodes.push({id:uid('dn'),name:v,alias,nodeType:'node',parentId:null,color:''});
+  state.selectedPath = ['nodes', d.model.nodes.length-1];
+  touchDiagram(d); renderApp();
+}
+async function deleteDeployNode(d, id){
+  const ok = await dlgConfirm('Smazat uzel?', 'Vnořené prvky se uvolní, propojení se smažou.');
+  if(!ok) return;
+  d.model.nodes.forEach(n => { if(n.parentId === id) n.parentId = null; });
+  d.model.nodes = d.model.nodes.filter(n => n.id !== id);
+  d.model.relationships = d.model.relationships.filter(r => r.sourceId !== id && r.targetId !== id);
+  state.selectedPath = null; touchDiagram(d); renderApp();
+}
+async function addDeployLink(d){
+  if(!(d.model.nodes||[]).length){ status('Nejprve přidejte uzly.', 'error'); return; }
+  const first = d.model.nodes[0].id, second = d.model.nodes[1] ? d.model.nodes[1].id : first;
+  d.model.relationships.push({id:uid('dr'),sourceId:first,targetId:second,linkType:'plain',label:'',color:''});
+  state.selectedPath = ['relationships', d.model.relationships.length-1];
+  touchDiagram(d); renderApp();
+}
+async function deleteDeployLink(d, id){
+  const ok = await dlgConfirm('Smazat propojení?', 'Tato akce odstraní propojení.');
+  if(!ok) return;
+  d.model.relationships = d.model.relationships.filter(r => r.id !== id);
+  state.selectedPath = null; touchDiagram(d); renderApp();
+}
+
+// === AKCE: NETWORK ============================================
+async function addNetwork(d){
+  const v = await dlgPrompt('Nová síť', 'Název (bez mezer):', '', 'Použije se jako identifikátor sítě v nwdiag.');
+  if(!v) return;
+  d.model.networks.push({id:uid('nw'),name:sanitizeAliasInput(v),address:'',color:'',nodes:[]});
+  state.selectedPath = ['networks', d.model.networks.length-1];
+  touchDiagram(d); renderApp();
+}
+async function deleteNetwork(d, id){
+  const ok = await dlgConfirm('Smazat síť?', 'Uzly definované v této síti se smažou.');
+  if(!ok) return;
+  d.model.networks = d.model.networks.filter(n => n.id !== id);
+  state.selectedPath = null; touchDiagram(d); renderApp();
+}
+async function addNwNode(d, networkId){
+  const net = d.model.networks.find(n => n.id === networkId);
+  if(!net) return;
+  const v = await dlgPrompt('Nový uzel v síti', 'Název (bez mezer):', '', 'Stejný název v jiné síti vytvoří propojení mezi sítěmi.');
+  if(!v) return;
+  net.nodes = net.nodes || [];
+  net.nodes.push({id:uid('nn'),name:sanitizeAliasInput(v),address:'',shape:''});
+  const nIdx = d.model.networks.indexOf(net);
+  state.selectedPath = ['networks', nIdx, 'nodes', net.nodes.length-1];
+  touchDiagram(d); renderApp();
+}
+async function deleteNwNode(d, networkId, nodeId){
+  const net = d.model.networks.find(n => n.id === networkId);
+  if(!net) return;
+  const ok = await dlgConfirm('Smazat uzel ze sítě?', 'Uzel bude odebrán z této sítě.');
+  if(!ok) return;
+  net.nodes = (net.nodes||[]).filter(nd => nd.id !== nodeId);
+  state.selectedPath = null; touchDiagram(d); renderApp();
+}
+async function addNwGroup(d){
+  const v = await dlgPrompt('Nová skupina', 'Název (volitelné, bez mezer):', '', '');
+  d.model.groups.push({id:uid('ng'),name:v?sanitizeAliasInput(v):'',color:'',description:'',nodeNames:[]});
+  state.selectedPath = ['groups', d.model.groups.length-1];
+  touchDiagram(d); renderApp();
+}
+async function deleteNwGroup(d, idx){
+  const ok = await dlgConfirm('Smazat skupinu?', 'Uzly zůstanou ve svých sítích.');
+  if(!ok) return;
+  d.model.groups.splice(idx, 1);
+  state.selectedPath = null; touchDiagram(d); renderApp();
+}
+async function addPeerLink(d){
+  d.model.peerLinks.push({id:uid('pl'),from:'',to:'',fromShape:'',toShape:''});
+  state.selectedPath = ['peerLinks', d.model.peerLinks.length-1];
+  touchDiagram(d); renderApp();
+}
+async function deletePeerLink(d, idx){
+  const ok = await dlgConfirm('Smazat přímé propojení?', 'Tato akce odstraní propojení.');
+  if(!ok) return;
+  d.model.peerLinks.splice(idx, 1);
+  state.selectedPath = null; touchDiagram(d); renderApp();
 }
 
 // === SLOŽKY ===================================================
@@ -4758,7 +6021,11 @@ const DIAGRAM_TYPE_LABEL = {
   activity: 'Aktivitní diagram (diagram procesu)',
   class: 'Diagram tříd',
   sequence: 'Sekvenční diagram',
-  usecase: 'Diagram případů užití'
+  usecase: 'Diagram případů užití',
+  state: 'Stavový diagram',
+  component: 'Komponentový diagram',
+  deployment: 'Diagram nasazení',
+  network: 'Síťový diagram'
 };
 
 function generateDescriptionAction(){
@@ -4822,6 +6089,37 @@ function diagramSummaryLine(d){
     const r = (d.model.relationships||[]).length;
     const parts = [a + ' ' + czCount(a,'aktéra','aktéry','aktérů'), u + ' ' + czCount(u,'případ užití','případy užití','případů užití')];
     if(r) parts.push(r + ' ' + czCount(r,'vztah','vztahy','vztahů'));
+    return DIAGRAM_TYPE_LABEL[d.type] + ', obsahuje ' + joinCz(parts) + '.';
+  }
+  if(d.type === 'state'){
+    const s = (d.model.states||[]).length;
+    const t = (d.model.transitions||[]).length;
+    const parts = [s + ' ' + czCount(s,'stav','stavy','stavů')];
+    if(t) parts.push(t + ' ' + czCount(t,'přechod','přechody','přechodů'));
+    return DIAGRAM_TYPE_LABEL[d.type] + ', obsahuje ' + joinCz(parts) + '.';
+  }
+  if(d.type === 'component'){
+    const c = (d.model.components||[]).length;
+    const i = (d.model.interfaces||[]).length;
+    const r = (d.model.relationships||[]).length;
+    const parts = [c + ' ' + czCount(c,'komponentu','komponenty','komponent')];
+    if(i) parts.push(i + ' ' + czCount(i,'rozhraní','rozhraní','rozhraní'));
+    if(r) parts.push(r + ' ' + czCount(r,'vazbu','vazby','vazeb'));
+    return DIAGRAM_TYPE_LABEL[d.type] + ', obsahuje ' + joinCz(parts) + '.';
+  }
+  if(d.type === 'deployment'){
+    const n = (d.model.nodes||[]).length;
+    const r = (d.model.relationships||[]).length;
+    const parts = [n + ' ' + czCount(n,'prvek','prvky','prvků')];
+    if(r) parts.push(r + ' ' + czCount(r,'propojení','propojení','propojení'));
+    return DIAGRAM_TYPE_LABEL[d.type] + ', obsahuje ' + joinCz(parts) + '.';
+  }
+  if(d.type === 'network'){
+    const nets = (d.model.networks||[]).length;
+    const allNames = new Set();
+    (d.model.networks||[]).forEach(net => (net.nodes||[]).forEach(nd => allNames.add(nd.name)));
+    const parts = [nets + ' ' + czCount(nets,'síť','sítě','sítí')];
+    if(allNames.size) parts.push(allNames.size + ' ' + czCount(allNames.size,'uzel','uzly','uzlů'));
     return DIAGRAM_TYPE_LABEL[d.type] + ', obsahuje ' + joinCz(parts) + '.';
   }
   return (DIAGRAM_TYPE_LABEL[d.type] || d.type) + '.';
@@ -5159,9 +6457,9 @@ function openHelp(){
     lines.forEach(l => c.appendChild(el('p',null,l)));
   };
   make('Co aplikace umí',
-    'Editor diagramů PlantUML pro čtyři typy: aktivitní (flow/action), třídní (class), sekvenční (sequence/zprávy) a use case. Editujete strukturovaně přes formuláře, zdrojový kód PlantUML se generuje automaticky.');
+    'Editor diagramů PlantUML pro osm typů: aktivitní (flow/action), třídní (class), sekvenční (sequence/zprávy), use case, stavový (state), komponentový (component), nasazení (deployment) a síťový (network/nwdiag). Editujete strukturovaně přes formuláře, zdrojový kód PlantUML se generuje automaticky.');
   make('Textový popis a dokument',
-    'Tlačítko „Vygenerovat popis" (Alt+T) sestaví čtivý textový popis diagramu. U aktivitního diagramu je to souvislý text členěný do odstavců — kdo co dělá, jak se proces větví, jaké jsou poznámky a typy akcí. U sekvenčního diagramu je to výčet zpráv ve tvaru „Od → Pro: text (poznámka)" doplněný o odstavce a odrážky pro alternativy, smyčky a souběžné větve. U diagramu tříd popíše jednotlivé prvky (jejich atributy a metody), seskupení do balíčků a vztahy mezi nimi. U diagramu případů užití vypíše aktéry, jejich činnosti a vztahy. Popis se zobrazí v poli pod zdrojovým kódem a lze ho zkopírovat.',
+    'Tlačítko „Vygenerovat popis" (Alt+T) sestaví čtivý textový popis diagramu. U aktivitního diagramu je to souvislý text členěný do odstavců — kdo co dělá, jak se proces větví, jaké jsou poznámky a typy akcí. U sekvenčního diagramu je to výčet zpráv ve tvaru „Od → Pro: text (poznámka)" doplněný o odstavce a odrážky pro alternativy, smyčky a souběžné větve. U diagramu tříd popíše jednotlivé prvky (jejich atributy a metody), seskupení do balíčků a vztahy mezi nimi. U diagramu případů užití vypíše aktéry, jejich činnosti a vztahy. U stavového diagramu popíše počáteční stav, přechody a popisy stavů. U komponentového diagramu komponenty, rozhraní a co která komponenta poskytuje či používá. U diagramu nasazení uzly a jejich obsah včetně propojení. U síťového diagramu jednotlivé sítě, jejich uzly s adresami a uzly sdílené mezi více sítěmi. Popis se zobrazí v poli pod zdrojovým kódem a lze ho zkopírovat.',
     'Z diagramu lze také vytvořit dokument: tlačítka „Kopírovat MD", „Uložit MD" a „Uložit DOCX". Dokument obsahuje název diagramu, souhrn počtu prvků, verzi, datum, obrázek diagramu (PNG z PlantUML serveru) a textový popis.',
     'DOCX se generuje v prohlížeči i s vloženým obrázkem. Knihovna pro tvorbu DOCX se při prvním použití stáhne z internetu (CDN), proto je pro DOCX export potřeba připojení. Obrázek do dokumentu vykresluje server plantuml.com, takže i ten vyžaduje internet.');
   make('Klávesové zkratky',
