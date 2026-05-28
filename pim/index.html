@@ -1853,9 +1853,11 @@ function getUnlockedSecured(entityId) {
 }
 function lockSecuredEntity(entityId) {
   delete _unlockedSecured[entityId];
+  if (typeof state !== 'undefined' && state._securedEditLoaded) delete state._securedEditLoaded[entityId];
 }
 function lockAllSecured() {
   for (const k in _unlockedSecured) delete _unlockedSecured[k];
+  if (typeof state !== 'undefined' && state._securedEditLoaded) state._securedEditLoaded = {};
 }
 let viewHistory = [];
 let fileDb = null;
@@ -7010,6 +7012,11 @@ function renderAll(main) {
         '<div><label for="filter-aspect">Aspekt</label><select id="filter-aspect"><option value="">— všechny —</option>' + aspectOpts + '</select></div>' +
         '<div><label for="filter-tag">Tag</label><select id="filter-tag"><option value="">— všechny —</option>' + tagOpts + '</select></div>' +
         '<div><label for="filter-tag-not">Nemá tag</label><select id="filter-tag-not"><option value="">— bez omezení —</option>' + tagOpts + '</select></div>' +
+        '<div><label for="filter-attach">Přílohy</label><select id="filter-attach">' +
+          '<option value="">— libovolně —</option>' +
+          '<option value="yes">Má přílohu</option>' +
+          '<option value="no">Nemá přílohu</option>' +
+        '</select></div>' +
         '<div><label for="filter-archived">Archiv</label><select id="filter-archived">' +
           '<option value="active">Jen aktivní</option>' +
           '<option value="all">+ archiv</option>' +
@@ -7096,6 +7103,7 @@ function renderAll(main) {
     sa = document.getElementById('filter-aspect'),
     st = document.getElementById('filter-tag'),
     stn = document.getElementById('filter-tag-not'),
+    fa = document.getElementById('filter-attach'),
     sar = document.getElementById('filter-archived'),
     sib = document.getElementById('filter-inbox'),
     su = document.getElementById('filter-updated'),
@@ -7123,6 +7131,9 @@ function renderAll(main) {
       const notTag = stn.value;
       r = r.filter(e => !(e.tags || []).includes(notTag));
     }
+    // Přílohy
+    if (fa && fa.value === 'yes') r = r.filter(e => e.attachments && e.attachments.length > 0);
+    else if (fa && fa.value === 'no') r = r.filter(e => !e.attachments || e.attachments.length === 0);
     // Datum změny
     if (su.value) {
       const days = Number(su.value);
@@ -7233,6 +7244,7 @@ function renderAll(main) {
     if (sa.value) n++;
     if (st.value) n++;
     if (stn && stn.value) n++;
+    if (fa && fa.value) n++;
     if (sar.value !== 'active') n++;
     if (sib.value) n++;
     if (su.value) n++;
@@ -7268,14 +7280,14 @@ function renderAll(main) {
     });
   }
 
-  [it, sa, st, stn, sar, sib, su, sc, sts, spr, sdl, sct, srl, scf].forEach(el => {
+  [it, sa, st, stn, fa, sar, sib, su, sc, sts, spr, sdl, sct, srl, scf].forEach(el => {
     if (!el) return;
     if (el.tagName === 'INPUT') el.oninput = update;
     el.onchange = update;
   });
   document.getElementById('filter-reset').onclick = () => {
     state.filter = { aspect:'', tag:'', text:'', status:'', attrFilters: [] };
-    it.value = ''; sa.value = ''; st.value = ''; if (stn) stn.value = ''; sar.value = 'active';
+    it.value = ''; sa.value = ''; st.value = ''; if (stn) stn.value = ''; if (fa) fa.value = ''; sar.value = 'active';
     sib.value = ''; su.value = ''; sc.value = '';
     sts.value = ''; spr.value = ''; sdl.value = '';
     sct.value = ''; srl.value = ''; scf.value = '';
@@ -9704,6 +9716,10 @@ function renderDetailRead(main, e) {
         (e.archived ? '<div class="meta">🗄 Archivováno</div>' : '') +
       '</div>' +
       '<div class="detail-actions">' +
+      (isSecuredLocked
+        ? // Zamčená Secured entita: jen základní akce, žádná editace obsahu
+          '<button id="btn-open-standalone" title="Otevřít tuto entitu v samostatném okně">🪟 Samostatné okno</button>'
+        :
         (ttHasAspect(e)
           ? (ttIsRunning(e)
               ? '<button id="btn-tt-toggle" class="danger" title="Zastavit timer (Z)" aria-live="off">⏸ Zastavit (<span id="btn-tt-time" aria-live="off">' + ttFmtDuration(Math.floor((Date.now() - new Date(ttGetRunningSince(e)).getTime()) / 1000)) + '</span>)</button>'
@@ -9727,7 +9743,8 @@ function renderDetailRead(main, e) {
         '<button id="btn-open-standalone" title="Otevřít tuto entitu v samostatném okně (lze používat současně s hlavní aplikací)">🪟 Samostatné okno</button>' +
         '<button id="btn-entity-export" title="Export entity (MD, DOCX, PDF) s volbou částí">🖨 Export / tisk…</button>' +
         (e.inbox ? '<button id="leave-inbox">Vyjmout z Inboxu</button>' : '') +
-        (isProject ? '<button id="open-outline">Outline</button>' : '') +
+        (isProject ? '<button id="open-outline">Outline</button>' : '')
+      ) +
       '</div>' +
     '</div>' +
     (attrsHtml ? '<dl class="read-attrs">' + attrsHtml + '</dl>' : '') +
@@ -9823,7 +9840,7 @@ function renderDetailRead(main, e) {
     '</dl></details>';
 
   document.getElementById('back-btn').onclick = goBack;
-  document.getElementById('btn-edit').onclick = () => { state.detailMode = 'edit'; render(); };
+  { const _b = document.getElementById('btn-edit'); if (_b) _b.onclick = () => { state.detailMode = 'edit'; render(); }; }
   const ttBtn = document.getElementById('btn-tt-toggle');
   if (ttBtn) ttBtn.onclick = () => {
     if (ttIsRunning(e)) {
@@ -9869,15 +9886,15 @@ function renderDetailRead(main, e) {
 
   const btnPrev = document.getElementById('btn-preview');
   if (btnPrev) btnPrev.onclick = () => openPreviewWindow(e);
-  document.getElementById('btn-focus').onclick = () => { state.focus = !state.focus; render(); };
-  document.getElementById('btn-toggle-anno').onclick = () => { state.annotationMode = !state.annotationMode; render(); };
-  document.getElementById('btn-add-link').onclick = () => openLinkDialog(e);
-  document.getElementById('btn-create-related').onclick = () => openCreateRelatedDialog(e);
-  document.getElementById('btn-add-comment-top').onclick = () => openCommentDialog(e);
-  document.getElementById('btn-duplicate').onclick = () => duplicateEntity(e);
+  { const _b = document.getElementById('btn-focus'); if (_b) _b.onclick = () => { state.focus = !state.focus; render(); }; }
+  { const _b = document.getElementById('btn-toggle-anno'); if (_b) _b.onclick = () => { state.annotationMode = !state.annotationMode; render(); }; }
+  { const _b = document.getElementById('btn-add-link'); if (_b) _b.onclick = () => openLinkDialog(e); }
+  { const _b = document.getElementById('btn-create-related'); if (_b) _b.onclick = () => openCreateRelatedDialog(e); }
+  { const _b = document.getElementById('btn-add-comment-top'); if (_b) _b.onclick = () => openCommentDialog(e); }
+  { const _b = document.getElementById('btn-duplicate'); if (_b) _b.onclick = () => duplicateEntity(e); }
   const btnStandaloneTop = document.getElementById('btn-open-standalone');
   if (btnStandaloneTop) btnStandaloneTop.onclick = () => openEntityInStandaloneWindow(e.id);
-  document.getElementById('btn-entity-export').onclick = () => openEntityExportDialog(e);
+  { const _b = document.getElementById('btn-entity-export'); if (_b) _b.onclick = () => openEntityExportDialog(e); }
   // Tlačítka „Zkopírovat zdroj/formátované" pro tělo (jen pokud má tělo)
   const copySrcBtn = document.getElementById('btn-copy-body-source');
   if (copySrcBtn) copySrcBtn.onclick = () => copyBodySource(e);
@@ -10772,17 +10789,21 @@ function renderDetailEdit(main, e) {
     document.getElementById('secured-unlock-btn').onclick = () => openSecuredUnlockDialog(e);
     return;
   }
-  // Pokud je odemčená: dočasně přesuneme plain payload do entity pro editaci
+  // Pokud je odemčená: přesuneme plain payload do entity pro editaci.
+  // Příznak _securedEditLoaded[id] zajistí, že se to provede jen JEDNOU při vstupu do
+  // edit modu (ne při každém re-renderu), jinak by se přepisovaly rozpracované změny.
   if (isSecuredEntity(e) && isSecuredUnlocked(e.id)) {
-    const unl = getUnlockedSecured(e.id);
-    if (unl) {
-      if (typeof unl.body === 'string' && !e.body) e.body = unl.body;
-      if (!e.attributes) e.attributes = {};
-      Object.keys(unl.attrs || {}).forEach(k => {
-        if (e.attributes[k] === undefined || e.attributes[k] === '') {
+    if (!state._securedEditLoaded) state._securedEditLoaded = {};
+    if (!state._securedEditLoaded[e.id]) {
+      const unl = getUnlockedSecured(e.id);
+      if (unl) {
+        if (typeof unl.body === 'string') e.body = unl.body;
+        if (!e.attributes) e.attributes = {};
+        Object.keys(unl.attrs || {}).forEach(k => {
           e.attributes[k] = unl.attrs[k];
-        }
-      });
+        });
+      }
+      state._securedEditLoaded[e.id] = true;
     }
   }
   const allTags = getAllTags();
@@ -11113,8 +11134,10 @@ function renderDetailEdit(main, e) {
         } else if (pwd) {
           try {
             await applySecuredEncryption(e, pwd);
-            // Po šifrování zachováme v paměti odemčený stav
+            // Po šifrování zachováme v paměti odemčený stav (aktuální obsah!)
             _unlockedSecured[e.id] = payloadSnapshot;
+            // Reset příznaku načtení pro příští edit
+            if (state._securedEditLoaded) delete state._securedEditLoaded[e.id];
             toast('🔒 Obsah zašifrován.');
           } catch (err) {
             alertMsg('Chyba šifrování: ' + (err.message || err));
@@ -24745,6 +24768,11 @@ function renderAll(main) {
         '<div><label for="filter-aspect">Aspekt</label><select id="filter-aspect"><option value="">— všechny —</option>' + aspectOpts + '</select></div>' +
         '<div><label for="filter-tag">Tag</label><select id="filter-tag"><option value="">— všechny —</option>' + tagOpts + '</select></div>' +
         '<div><label for="filter-tag-not">Nemá tag</label><select id="filter-tag-not"><option value="">— bez omezení —</option>' + tagOpts + '</select></div>' +
+        '<div><label for="filter-attach">Přílohy</label><select id="filter-attach">' +
+          '<option value="">— libovolně —</option>' +
+          '<option value="yes">Má přílohu</option>' +
+          '<option value="no">Nemá přílohu</option>' +
+        '</select></div>' +
         '<div><label for="filter-archived">Archiv</label><select id="filter-archived">' +
           '<option value="active">Jen aktivní</option>' +
           '<option value="all">+ archiv</option>' +
@@ -24823,6 +24851,7 @@ function renderAll(main) {
     sa = document.getElementById('filter-aspect'),
     st = document.getElementById('filter-tag'),
     stn = document.getElementById('filter-tag-not'),
+    fa = document.getElementById('filter-attach'),
     sar = document.getElementById('filter-archived'),
     sib = document.getElementById('filter-inbox'),
     su = document.getElementById('filter-updated'),
@@ -24850,6 +24879,9 @@ function renderAll(main) {
       const notTag = stn.value;
       r = r.filter(e => !(e.tags || []).includes(notTag));
     }
+    // Přílohy
+    if (fa && fa.value === 'yes') r = r.filter(e => e.attachments && e.attachments.length > 0);
+    else if (fa && fa.value === 'no') r = r.filter(e => !e.attachments || e.attachments.length === 0);
     // Datum změny
     if (su.value) {
       const days = Number(su.value);
@@ -24955,6 +24987,7 @@ function renderAll(main) {
     if (sa.value) n++;
     if (st.value) n++;
     if (stn && stn.value) n++;
+    if (fa && fa.value) n++;
     if (sar.value !== 'active') n++;
     if (sib.value) n++;
     if (su.value) n++;
@@ -24989,14 +25022,14 @@ function renderAll(main) {
     });
   }
 
-  [it, sa, st, stn, sar, sib, su, sc, sts, spr, sdl, sct, srl, scf].forEach(el => {
+  [it, sa, st, stn, fa, sar, sib, su, sc, sts, spr, sdl, sct, srl, scf].forEach(el => {
     if (!el) return;
     if (el.tagName === 'INPUT') el.oninput = update;
     el.onchange = update;
   });
   document.getElementById('filter-reset').onclick = () => {
     state.filter = { aspect:'', tag:'', text:'', status:'' };
-    it.value = ''; sa.value = ''; st.value = ''; if (stn) stn.value = ''; sar.value = 'active';
+    it.value = ''; sa.value = ''; st.value = ''; if (stn) stn.value = ''; if (fa) fa.value = ''; sar.value = 'active';
     sib.value = ''; su.value = ''; sc.value = '';
     sts.value = ''; spr.value = ''; sdl.value = '';
     sct.value = ''; srl.value = ''; scf.value = '';
