@@ -1072,6 +1072,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <legend>Formát výstupu</legend>
       <div class="btn-group" style="flex-wrap:wrap;gap:0.4em;">
         <button type="button" id="eex-md-copy">📋 Kopírovat MD</button>
+        <button type="button" id="eex-html-copy">✨ Kopírovat formátované</button>
         <button type="button" id="eex-md-download">📥 Stáhnout MD</button>
         <button type="button" id="eex-docx">📄 Stáhnout DOCX</button>
         <button type="button" id="eex-pdf">🖨 Tisk / PDF</button>
@@ -12647,6 +12648,83 @@ function processQuickAnnotations(entity) {
 }
 
 // === SECURED ASPECT — dialogy ===
+// Onboarding dialog: nepodařilo se načíst z GitHubu (private repo bez tokenu / 404).
+// Zeptá se uživatele na API klíč (a jméno, pokud chybí), uloží a zkusí načíst znovu.
+function openGithubTokenOnboarding(owner, repo, path, branch) {
+  const existing = document.getElementById('gh-token-onboard-dialog');
+  if (existing) existing.remove();
+  const needName = !state.settings.userName;
+  const d = document.createElement('dialog');
+  d.id = 'gh-token-onboard-dialog';
+  d.innerHTML =
+    '<h2>🔑 Přístup k zabezpečenému projektu</h2>' +
+    '<p class="meta">Tento projekt je na privátním GitHub repozitáři a vyžaduje přístupový klíč (token), který vám poskytl správce.</p>' +
+    '<dl class="read-attrs" style="margin:0.5em 0;">' +
+      '<dt>Vlastník</dt><dd>' + escapeHtml(owner) + '</dd>' +
+      '<dt>Repozitář</dt><dd>' + escapeHtml(repo) + '</dd>' +
+      '<dt>Soubor</dt><dd>' + escapeHtml(path) + '</dd>' +
+      '<dt>Větev</dt><dd>' + escapeHtml(branch || 'main') + '</dd>' +
+    '</dl>' +
+    '<form method="dialog">' +
+      '<label for="ghob-token">Přístupový klíč (API token)</label>' +
+      '<input type="password" id="ghob-token" autocomplete="off" placeholder="github_pat_… nebo ghp_…">' +
+      (needName
+        ? '<label for="ghob-name">Vaše jméno (pro komentáře a revize)</label>' +
+          '<input type="text" id="ghob-name" autocomplete="name" placeholder="Jan Novák">'
+        : '') +
+      '<div id="ghob-err" class="meta" style="color:#c33;min-height:1.2em;"></div>' +
+      '<div class="btn-group" style="margin-top:1em;">' +
+        '<button type="button" class="primary" id="ghob-ok">Uložit a načíst projekt</button>' +
+        '<button type="button" id="ghob-cancel">Zrušit</button>' +
+      '</div>' +
+    '</form>';
+  document.body.appendChild(d);
+  const tokenEl = d.querySelector('#ghob-token');
+  const nameEl = d.querySelector('#ghob-name');
+  const errEl = d.querySelector('#ghob-err');
+  async function doOk() {
+    const token = tokenEl.value.trim();
+    if (!token) { errEl.textContent = 'Zadejte přístupový klíč.'; return; }
+    if (needName && nameEl && !nameEl.value.trim()) { errEl.textContent = 'Zadejte své jméno.'; return; }
+    errEl.textContent = 'Ověřuji a načítám…';
+    // Uložit jméno
+    if (needName && nameEl && nameEl.value.trim()) {
+      state.settings.userName = nameEl.value.trim();
+    }
+    // Uložit token
+    GH.setToken(token);
+    // Nastavit GH konfiguraci a auto-load
+    state.settings.github.owner = owner;
+    state.settings.github.repo = repo;
+    state.settings.github.path = path;
+    state.settings.github.branch = branch || 'main';
+    state.settings.github.autoLoadOnStart = true;
+    save();
+    // Zkusit načíst
+    try {
+      await GH.downloadAndLoad(false);
+      d.close(); d.remove();
+      toast('✓ Projekt načten. Přístupový klíč uložen, projekt se bude načítat automaticky.');
+      render();
+    } catch (err) {
+      const st = err && err.status;
+      if (st === 401 || st === 403) {
+        errEl.textContent = 'Klíč byl odmítnut (neplatný nebo bez oprávnění k tomuto repozitáři).';
+      } else if (st === 404) {
+        errEl.textContent = 'Soubor nebo repozitář nenalezen. Zkontrolujte, že klíč má přístup k tomuto repozitáři.';
+      } else {
+        errEl.textContent = 'Načtení selhalo: ' + (err.message || err);
+      }
+      // Token raději nemazat, uživatel může zkusit znovu
+    }
+  }
+  d.querySelector('#ghob-ok').onclick = doOk;
+  d.querySelector('#ghob-cancel').onclick = () => { d.close(); d.remove(); statusMsg('Načtení projektu zrušeno.'); };
+  tokenEl.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doOk(); } };
+  d.showModal();
+  setTimeout(() => tokenEl.focus(), 50);
+}
+
 function openSecuredUnlockDialog(entity) {
   const d = document.createElement('dialog');
   d.id = 'secured-unlock-dialog';
@@ -14387,6 +14465,7 @@ function openEntityExportDialog(entity) {
 
   // Akce
   document.getElementById('eex-md-copy').onclick = () => { copyEntityAsMarkdown(entity, selection); };
+  { const _b = document.getElementById('eex-html-copy'); if (_b) _b.onclick = () => { copyEntityAsFormatted(entity, selection); }; }
   document.getElementById('eex-md-download').onclick = () => { downloadEntityAsMarkdown(entity, selection); d.close(); };
   document.getElementById('eex-docx').onclick = () => { downloadEntityAsDocx(entity, selection); d.close(); };
   document.getElementById('eex-pdf').onclick = () => { exportEntityAsPdf(entity, selection); d.close(); };
@@ -17666,8 +17745,20 @@ async function init() {
         state.settings.github.path = m[3];
         if (!state.settings.github.branch) state.settings.github.branch = 'main';
         statusMsg('Načítám z GitHubu…');
-        await GH.downloadAndLoad(false);
-        didLoadFromGh = true;
+        try {
+          await GH.downloadAndLoad(false, true);
+          didLoadFromGh = true;
+        } catch (loadErr) {
+          // 401/403/404 obvykle = private repo bez tokenu nebo neplatný token.
+          // Nabídneme uživateli zadat API klíč (a jméno) a zkusit znovu.
+          const st = loadErr && loadErr.status;
+          if (st === 401 || st === 403 || st === 404) {
+            setView('inbox');
+            openGithubTokenOnboarding(m[1], m[2], m[3], state.settings.github.branch);
+          } else {
+            alertMsg('Načtení z GitHubu selhalo: ' + (loadErr.message || loadErr));
+          }
+        }
       }
     } catch (e) { alertMsg('Chybný parametr ?id v URL: ' + e.message); }
   } else if (state.settings.github && state.settings.github.autoLoadOnStart && GH.isConfigured()) {
@@ -18362,7 +18453,7 @@ const GH = {
     }
   },
 
-  async downloadAndLoad(silent = false) {
+  async downloadAndLoad(silent = false, throwOnError = false) {
     if (!this.isConfigured()) { alertMsg('GitHub není nakonfigurován.'); return false; }
     this._setStatus('syncing');
     if (!silent) toast('Načítám z GitHubu…', 60000); // dlouho – zruší se přes nový toast
@@ -18392,6 +18483,11 @@ const GH = {
       render();
       return true;
     } catch (e) {
+      if (throwOnError) {
+        // Necháme volajícího rozhodnout (např. onboarding dialog pro token)
+        this._setStatus('error', e.message);
+        throw e;
+      }
       if (e.status === 404) {
         this._setStatus('error', 'Soubor na GitHubu zatím neexistuje – nahrajte ho stiskem „Nahrát na GitHub".');
         if (!silent) {
@@ -19630,6 +19726,66 @@ async function copyEntityAsMarkdown(entity, selection) {
     } catch (e2) {
       alertMsg('Kopírování selhalo: ' + e2.message);
     }
+  }
+}
+
+// Zkopíruje export entity jako formátovaný (rich-text) obsah – vložitelné do Wordu,
+// Outlooku, Gmailu apod. Vyrenderuje exportní Markdown na HTML.
+async function copyEntityAsFormatted(entity, selection) {
+  const model = buildEntityExportModel(entity, selection);
+  const md = renderEntityAsMarkdown(model);
+  if (!md.trim()) { toast('Není co kopírovat.'); return; }
+  try {
+    const renderedHtml = renderMarkdown(md);
+    const styled = '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+      '<style>' +
+      'body { font-family: "Calibri", "Segoe UI", Arial, sans-serif; font-size: 11pt; line-height: 1.5; }' +
+      'h1, h2, h3, h4 { font-family: inherit; }' +
+      'h1 { font-size: 18pt; }' +
+      'h2 { font-size: 15pt; }' +
+      'h3 { font-size: 13pt; }' +
+      'h4 { font-size: 11.5pt; }' +
+      'pre { background: #f5f5f5; padding: 0.5em; border-radius: 3px; font-family: Consolas, "Courier New", monospace; }' +
+      'code { background: #f5f5f5; padding: 0 0.3em; font-family: Consolas, "Courier New", monospace; }' +
+      'blockquote { border-left: 3px solid #888; margin: 0.5em 0; padding: 0.2em 0.8em; color: #555; }' +
+      'a { color: #0066cc; text-decoration: underline; }' +
+      'ul, ol { padding-left: 1.5em; }' +
+      'table { border-collapse: collapse; }' +
+      'th, td { border: 1px solid #999; padding: 0.3em 0.6em; }' +
+      'ins.cm-ins { background: #d4f8d4; text-decoration: none; }' +
+      'del.cm-del { background: #ffd6d6; text-decoration: line-through; }' +
+      'mark.cm-mark { background: #fff2a8; }' +
+      '</style></head><body>' +
+      renderedHtml +
+      '</body></html>';
+    if (navigator.clipboard && window.ClipboardItem) {
+      const htmlBlob = new Blob([styled], { type: 'text/html' });
+      const textBlob = new Blob([md], { type: 'text/plain' });
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'text/html': htmlBlob, 'text/plain': textBlob })
+      ]);
+      toast('✓ Formátovaný výstup zkopírován. Vložte do Wordu, Outlooku, Gmailu nebo jiné aplikace s podporou formátování.');
+      playSound('save');
+      return;
+    }
+    // Fallback: contentEditable + execCommand
+    const tmp = document.createElement('div');
+    tmp.contentEditable = 'true';
+    tmp.style.cssText = 'position:fixed;left:-10000px;top:0;';
+    tmp.innerHTML = renderedHtml;
+    document.body.appendChild(tmp);
+    const range = document.createRange();
+    range.selectNodeContents(tmp);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    const ok = document.execCommand('copy');
+    sel.removeAllRanges();
+    tmp.remove();
+    if (ok) { toast('✓ Formátovaný výstup zkopírován.'); playSound('save'); }
+    else throw new Error('execCommand selhal');
+  } catch (e) {
+    alertMsg('Formátované kopírování selhalo: ' + e.message + '. Zkuste „Kopírovat MD".');
   }
 }
 
