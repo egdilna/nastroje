@@ -167,6 +167,22 @@ hr{border:none;border-top:1px solid #ddd;margin:1em 0}
     </div>
     <label for="source" class="muted">Generovaný PlantUML kód (jen pro čtení):</label>
     <textarea id="source" readonly aria-label="Generovaný PlantUML kód"></textarea>
+
+    <h2>Textový popis</h2>
+    <div role="toolbar" aria-label="Akce textového popisu">
+      <button id="btnGenDescription" accesskey="t" title="Vygenerovat čtivý textový popis diagramu (Alt+T)">Vygenerovat popis</button>
+      <button id="btnCopyDescription" title="Zkopírovat textový popis do schránky">Zkopírovat popis</button>
+    </div>
+    <label for="description" class="muted">Čtivý popis diagramu (jen pro čtení):</label>
+    <textarea id="description" readonly aria-label="Textový popis diagramu" placeholder="Klikněte na „Vygenerovat popis"."></textarea>
+
+    <h2>Dokument</h2>
+    <div role="toolbar" aria-label="Akce dokumentu">
+      <button id="btnCopyDocMd" title="Zkopírovat dokument jako Markdown do schránky">Kopírovat MD</button>
+      <button id="btnSaveDocMd" title="Uložit dokument jako Markdown soubor">Uložit MD</button>
+      <button id="btnSaveDocDocx" title="Uložit dokument jako Word (DOCX)">Uložit DOCX</button>
+    </div>
+    <div class="help">Dokument obsahuje název, souhrn prvků, verzi, datum, obrázek diagramu a textový popis.</div>
   </aside>
 </div>
 
@@ -665,6 +681,254 @@ function emptyModelFor(type){
   return {};
 }
 function touchDiagram(d){ if(d){ d.modified = nowIso(); state.project.modified = nowIso(); } }
+
+// === TEXTOVÝ POPIS DIAGRAMU ===================================
+// Sestaví čtivý souvislý popis activity diagramu z jeho prvků.
+// Pracuje pouze s názvy v 1. pádě (žádné skloňování) — názvy prvků vždy stojí
+// v uvozovkách jako citace nebo za uvozujícím slovem, které pád nevyžaduje.
+
+// Slovní popis stereotypu: vrací funkci, která obalí název akce.
+// Styl: úkol „Akce", procedura „Akce", „Akce" (vstup), „Akce" (výstup)...
+function describeActionPhrase(text, stereotype){
+  const t = '„' + (text || '(bez názvu)') + '"';
+  switch(stereotype){
+    case 'task':       return 'úkol ' + t;
+    case 'procedure':  return 'procedura ' + t;
+    case 'input':      return t + ' (vstup)';
+    case 'output':     return t + ' (výstup)';
+    case 'save':       return t + ' (uložení stavu)';
+    case 'load':       return t + ' (načtení stavu)';
+    case 'continuous': return t + ' (průběžná akce)';
+    default:           return t;
+  }
+}
+
+// Hlavní funkce: vrací textový popis activity diagramu (prostý text, odstavce
+// oddělené prázdným řádkem).
+function describeActivity(model){
+  const children = (model && model.children) || [];
+  const swimlanes = (model && model.swimlanes) || [];
+
+  // Zjisti, kde diagram fakticky začíná (poslední deklarovaná dráha = první aktivní).
+  function findFirstSwimlane(nodes){
+    for(const n of (nodes||[])){
+      if(n.type === 'action' && n.swimlane) return n.swimlane;
+      if(n.branches){ for(const b of n.branches){ const r = findFirstSwimlane(b.children); if(r) return r; } }
+      if(n.children){ const r = findFirstSwimlane(n.children); if(r) return r; }
+    }
+    return null;
+  }
+
+  // Deterministické střídání formulací (podle čítače) — pro čtivost bez náhody.
+  let handoverCounter = 0;
+  const handoverPhrases = [
+    'Slovo přebírá dráha',
+    'Na řadě je dráha',
+    'Pokračuje dráha',
+    'Štafetu přebírá dráha'
+  ];
+  function handoverPhrase(){
+    const p = handoverPhrases[handoverCounter % handoverPhrases.length];
+    handoverCounter++;
+    return p;
+  }
+
+  let noteCounter = 0;
+  const notePhrases = [
+    'k tomu poznámka',
+    's poznámkou',
+    's doplňujícím textem',
+    'a poznámka uvádí'
+  ];
+  function notePhrase(){
+    const p = notePhrases[noteCounter % notePhrases.length];
+    noteCounter++;
+    return p;
+  }
+
+  // Sestavujeme věty do pole; spojíme je do odstavců.
+  const sentences = [];
+  let currentSwimlane = null;
+
+  function noteSuffix(noteText){
+    if(!noteText) return '';
+    const oneLine = noteText.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).join(' ');
+    if(!oneLine) return '';
+    return ' (' + notePhrase() + ': „' + oneLine + '")';
+  }
+
+  // Zpracuje seznam uzlů; přepínání drah řeší průběžně.
+  function walk(nodes){
+    (nodes || []).forEach(n => {
+      // Přepnutí dráhy
+      if(n.swimlane && n.swimlane !== currentSwimlane){
+        currentSwimlane = n.swimlane;
+        sentences.push(handoverPhrase() + ' „' + n.swimlane + '".');
+      }
+      switch(n.type){
+        case 'start':
+          // start řešíme v úvodu, zde ignorujeme
+          break;
+        case 'stop':
+        case 'end':
+          sentences.push('Tím proces končí.');
+          break;
+        case 'action': {
+          sentences.push(capitalize(describeActionPhrase(n.text, n.stereotype)) + noteSuffix(n.note) + '.');
+          break;
+        }
+        case 'arrow': {
+          if(n.text) sentences.push('Přechod: „' + n.text + '".');
+          break;
+        }
+        case 'note': {
+          // Samostatná poznámka (ne připojená k akci)
+          const oneLine = (n.text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean).join(' ');
+          if(oneLine) sentences.push('Poznámka: „' + oneLine + '".');
+          break;
+        }
+        case 'if': {
+          const cond = n.condition || '(podmínka)';
+          const branches = n.branches || [];
+          sentences.push('Zde se proces větví podle otázky „' + cond + '".');
+          branches.forEach((b, idx) => {
+            const label = b.label || '';
+            const bcond = b.condition || '';
+            let intro;
+            if(idx === 0){
+              intro = label ? 'Pokud „' + label + '":' : 'V první větvi:';
+            } else if(idx === branches.length - 1 && branches.length >= 2){
+              intro = label ? 'Jinak („' + label + '"):' : 'Jinak:';
+            } else {
+              // elseif
+              if(bcond && label) intro = 'Další možnost při „' + bcond + '" („' + label + '"):';
+              else if(bcond) intro = 'Další možnost při „' + bcond + '":';
+              else if(label) intro = 'Další možnost („' + label + '"):';
+              else intro = 'Další možnost:';
+            }
+            const childCount = (b.children || []).length;
+            if(childCount === 0){
+              sentences.push(intro + ' tato větev nemá žádné kroky.');
+            } else {
+              sentences.push(intro);
+              walk(b.children);
+            }
+          });
+          sentences.push('Tím větvení končí.');
+          break;
+        }
+        case 'while': {
+          const cond = n.condition || '(podmínka)';
+          sentences.push('Následující kroky se opakují, dokud platí „' + cond + '":');
+          walk(n.children);
+          sentences.push('Tím se smyčka uzavírá.');
+          break;
+        }
+        case 'repeat': {
+          const cond = n.condition || '(podmínka)';
+          sentences.push('Následující kroky se provádějí opakovaně; opakování řídí podmínka „' + cond + '":');
+          walk(n.children);
+          sentences.push('Tím se opakování uzavírá.');
+          break;
+        }
+        case 'fork': {
+          const branches = n.branches || [];
+          sentences.push('Souběžně probíhá ' + czNumBranches(branches.length) + ':');
+          branches.forEach((b, idx) => {
+            sentences.push('Větev ' + (idx+1) + ':');
+            walk(b.children);
+          });
+          sentences.push('Tím se souběžné větve spojují.');
+          break;
+        }
+        case 'split': {
+          const branches = n.branches || [];
+          sentences.push('Tok se rozděluje do ' + czNumBranches(branches.length) + ':');
+          branches.forEach((b, idx) => {
+            sentences.push('Větev ' + (idx+1) + ':');
+            walk(b.children);
+          });
+          sentences.push('Tím se rozdělené větve spojují.');
+          break;
+        }
+        case 'detach': sentences.push('Tok se zde odpojuje.'); break;
+        case 'kill': sentences.push('Tok zde končí (kill).'); break;
+        case 'break': sentences.push('Zde nastává přerušení (break).'); break;
+      }
+    });
+  }
+
+  // ÚVOD
+  const intro = [];
+  if(swimlanes.length === 1){
+    intro.push('Proces se odehrává v dráze „' + swimlanes[0].name + '".');
+  } else if(swimlanes.length === 2){
+    intro.push('Proces se odehrává ve dvou drahách: „' + swimlanes[0].name + '" a „' + swimlanes[1].name + '".');
+  } else if(swimlanes.length > 2){
+    const names = swimlanes.map(s => '„' + s.name + '"');
+    const last = names.pop();
+    intro.push('Proces se odehrává ve ' + swimlanes.length + ' drahách: ' + names.join(', ') + ' a ' + last + '.');
+  }
+  const firstLane = findFirstSwimlane(children);
+  if(firstLane){
+    intro.push('Začíná v dráze „' + firstLane + '".');
+    currentSwimlane = firstLane;  // start už je v této dráze, nehlásíme přepnutí
+  } else {
+    intro.push('Proces začíná.');
+  }
+
+  walk(children);
+
+  // Spojení do odstavců: úvod je první odstavec, pak věty plynou.
+  const introPara = intro.join(' ');
+  const bodyPara = sentences.join(' ');
+  return introPara + '\n\n' + bodyPara;
+}
+
+function capitalize(s){
+  if(!s) return s;
+  // Pokud začíná uvozovkou, kapitalizujeme první písmeno až za ní
+  if(s[0] === '„' && s.length > 1){
+    return '„' + s[1].toUpperCase() + s.slice(2);
+  }
+  return s[0].toUpperCase() + s.slice(1);
+}
+
+function czNumBranches(n){
+  if(n === 2) return 'dvě větve';
+  if(n === 3) return 'tři větve';
+  if(n === 4) return 'čtyři větve';
+  if(n >= 5) return n + ' větví';
+  return 'větve';
+}
+
+// Spočítá prvky activity diagramu pro souhrn v dokumentu.
+function countActivityElements(model){
+  let actions = 0, decisions = 0, notes = 0, loops = 0, forks = 0;
+  function walk(nodes){
+    (nodes||[]).forEach(n => {
+      if(n.type === 'action'){ actions++; if(n.note) notes++; }
+      else if(n.type === 'if') decisions++;
+      else if(n.type === 'while' || n.type === 'repeat') loops++;
+      else if(n.type === 'fork' || n.type === 'split') forks++;
+      else if(n.type === 'note') notes++;
+      if(n.branches) n.branches.forEach(b => walk(b.children));
+      if(n.children) walk(n.children);
+    });
+  }
+  walk((model && model.children) || []);
+  return {actions, decisions, notes, loops, forks};
+}
+
+// Obecná funkce: vrátí textový popis diagramu podle typu.
+// Zatím implementováno jen pro activity; ostatní typy doplníme později.
+function describeDiagram(diagram){
+  if(!diagram) return '';
+  switch(diagram.type){
+    case 'activity': return describeActivity(diagram.model);
+    default: return '(Textový popis je zatím dostupný jen pro aktivitní diagramy.)';
+  }
+}
 
 // === GENERÁTORY ===============================================
 function generatePuml(diagram){
@@ -1354,7 +1618,18 @@ function parseActivity(text){
       const buf = [];
       i++;
       while(i<lines.length && lines[i].trim() !== 'end note'){ buf.push(lines[i]); i++; }
-      pushChild({id:uid('n'),type:'note',position:pos,text:buf.join('\n')});
+      const noteText = buf.join('\n');
+      // Pokud bezprostředně předchozí prvek v aktuálním kontejneru je akce bez poznámky,
+      // připojíme poznámku k ní (přirozenější model). Jinak samostatný uzel note.
+      const top = stack[stack.length-1];
+      const container = top.node[top.key];
+      const prev = container[container.length-1];
+      if(prev && prev.type === 'action' && !prev.note){
+        prev.note = noteText;
+        prev.notePosition = pos;
+      } else {
+        pushChild({id:uid('n'),type:'note',position:pos,text:noteText});
+      }
       continue;
     }
   }
@@ -1910,6 +2185,8 @@ function renderCurrentDiagram(){
 function selectDiagram(id){
   state.selectedDiagramId = id;
   state.selectedPath = null;
+  const desc = document.getElementById('description');
+  if(desc) desc.value = '';  // popis se týká konkrétního diagramu; po přepnutí vyčistit
   renderApp();
 }
 
@@ -3884,6 +4161,294 @@ async function copySourceAction(){
   }
 }
 
+// === TEXTOVÝ POPIS A DOKUMENT =================================
+const DIAGRAM_TYPE_LABEL = {
+  activity: 'Aktivitní diagram (diagram procesu)',
+  class: 'Diagram tříd',
+  sequence: 'Sekvenční diagram',
+  usecase: 'Diagram případů užití'
+};
+
+function generateDescriptionAction(){
+  const d = getCurrentDiagram();
+  if(!d){ status('Žádný diagram není vybrán.', 'error'); return; }
+  const desc = describeDiagram(d);
+  document.getElementById('description').value = desc;
+  status('Textový popis vygenerován.', 'success');
+}
+
+async function copyDescriptionAction(){
+  const ta = document.getElementById('description');
+  let txt = ta.value;
+  if(!txt){
+    // pokud popis ještě není vygenerovaný, vygenerujeme ho teď
+    const d = getCurrentDiagram();
+    if(d){ txt = describeDiagram(d); ta.value = txt; }
+  }
+  if(!txt){ status('Popis je prázdný.', 'error'); return; }
+  try {
+    await navigator.clipboard.writeText(txt);
+    status('Popis zkopírován do schránky.', 'success');
+  } catch(e){
+    ta.focus(); ta.select();
+    try { document.execCommand('copy'); status('Popis zkopírován.', 'success'); }
+    catch(e2){ status('Kopírování selhalo, popis je vybraný — použijte Ctrl+C.', 'error'); }
+  }
+}
+
+// Sestaví souhrnnou větu o počtu prvků podle typu diagramu.
+function diagramSummaryLine(d){
+  if(d.type === 'activity'){
+    const c = countActivityElements(d.model);
+    const parts = [];
+    parts.push(c.actions + ' ' + czCount(c.actions, 'akci', 'akce', 'akcí'));
+    if(c.decisions) parts.push(c.decisions + ' ' + czCount(c.decisions, 'větvení', 'větvení', 'větvení'));
+    if(c.loops) parts.push(c.loops + ' ' + czCount(c.loops, 'smyčku', 'smyčky', 'smyček'));
+    if(c.forks) parts.push(c.forks + ' ' + czCount(c.forks, 'souběh', 'souběhy', 'souběhů'));
+    if(c.notes) parts.push(c.notes + ' ' + czCount(c.notes, 'poznámku', 'poznámky', 'poznámek'));
+    return DIAGRAM_TYPE_LABEL[d.type] + ', obsahuje ' + joinCz(parts) + '.';
+  }
+  if(d.type === 'class'){
+    const cls = (d.model.classes||[]).length;
+    const rel = (d.model.relationships||[]).length;
+    const pkg = (d.model.packages||[]).length;
+    const parts = [cls + ' ' + czCount(cls,'třídu','třídy','tříd')];
+    if(rel) parts.push(rel + ' ' + czCount(rel,'vztah','vztahy','vztahů'));
+    if(pkg) parts.push(pkg + ' ' + czCount(pkg,'balíček','balíčky','balíčků'));
+    return DIAGRAM_TYPE_LABEL[d.type] + ', obsahuje ' + joinCz(parts) + '.';
+  }
+  if(d.type === 'sequence'){
+    const p = (d.model.participants||[]).length;
+    const msgs = countSequenceMessages(d.model);
+    const parts = [p + ' ' + czCount(p,'účastníka','účastníky','účastníků')];
+    if(msgs) parts.push(msgs + ' ' + czCount(msgs,'zprávu','zprávy','zpráv'));
+    return DIAGRAM_TYPE_LABEL[d.type] + ', obsahuje ' + joinCz(parts) + '.';
+  }
+  if(d.type === 'usecase'){
+    const a = (d.model.actors||[]).length;
+    const u = (d.model.useCases||[]).length;
+    const r = (d.model.relationships||[]).length;
+    const parts = [a + ' ' + czCount(a,'aktéra','aktéry','aktérů'), u + ' ' + czCount(u,'případ užití','případy užití','případů užití')];
+    if(r) parts.push(r + ' ' + czCount(r,'vztah','vztahy','vztahů'));
+    return DIAGRAM_TYPE_LABEL[d.type] + ', obsahuje ' + joinCz(parts) + '.';
+  }
+  return (DIAGRAM_TYPE_LABEL[d.type] || d.type) + '.';
+}
+
+function countSequenceMessages(model){
+  let n = 0;
+  function walk(nodes){
+    (nodes||[]).forEach(x => {
+      if(x.type === 'message') n++;
+      if(x.branches) x.branches.forEach(b => walk(b.children));
+      if(x.children) walk(x.children);
+    });
+  }
+  walk((model && model.children) || []);
+  return n;
+}
+
+// České počítání: 1 → sg, 2-4 → pl-few, 5+ a 0 → pl-many
+function czCount(n, one, few, many){
+  if(n === 1) return one;
+  if(n >= 2 && n <= 4) return few;
+  return many;
+}
+// Spojí seznam česky: "a, b a c"
+function joinCz(parts){
+  if(parts.length === 0) return '';
+  if(parts.length === 1) return parts[0];
+  const copy = parts.slice();
+  const last = copy.pop();
+  return copy.join(', ') + ' a ' + last;
+}
+
+// Sestaví Markdown dokument k diagramu podle vzoru.
+function buildDiagramMarkdown(d){
+  const src = generatePuml(d);
+  const pngUrl = plantUmlUrl(src, 'png');
+  // Verze a datum: poslední uložená verze, jinak aktuální čas
+  const versions = d.versions || [];
+  const lastVer = versions.length ? versions[versions.length-1] : null;
+  const verLabel = lastVer ? (lastVer.label || ('verze ' + versions.length)) : '(neuloženo)';
+  const dateStr = lastVer ? fmtDate(lastVer.timestamp) : fmtDate(nowIso());
+  const desc = describeDiagram(d);
+  const name = d.name || '(bez názvu)';
+
+  const lines = [];
+  lines.push('### Diagram: ' + name);
+  lines.push('');
+  lines.push(diagramSummaryLine(d));
+  lines.push('');
+  lines.push('Verze: ' + verLabel);
+  lines.push('');
+  lines.push('Datum: ' + dateStr);
+  lines.push('');
+  lines.push('![Diagram ' + name.replace(/[\[\]]/g,'') + '](' + pngUrl + ')');
+  lines.push('');
+  lines.push(desc);
+  lines.push('');
+  return lines.join('\n');
+}
+
+async function copyDocMdAction(){
+  const d = getCurrentDiagram();
+  if(!d){ status('Žádný diagram není vybrán.', 'error'); return; }
+  const md = buildDiagramMarkdown(d);
+  try {
+    await navigator.clipboard.writeText(md);
+    status('Dokument (Markdown) zkopírován do schránky.', 'success');
+  } catch(e){
+    status('Kopírování selhalo. Zkuste uložit jako MD.', 'error');
+  }
+}
+
+function saveDocMdAction(){
+  const d = getCurrentDiagram();
+  if(!d){ status('Žádný diagram není vybrán.', 'error'); return; }
+  const md = buildDiagramMarkdown(d);
+  const safeName = (d.name || 'diagram').replace(/[^A-Za-z0-9_\u00C0-\u017F\- ]/g,'_').trim() || 'diagram';
+  downloadBlob(safeName + '.md', new Blob([md], {type:'text/markdown;charset=utf-8'}));
+  status('Dokument uložen jako Markdown.', 'success');
+}
+
+// Stáhne PNG diagramu z PlantUML serveru jako ArrayBuffer (pro vložení do DOCX).
+// Vrací {buffer, width, height} nebo vyhodí chybu.
+async function fetchDiagramPng(d){
+  const src = generatePuml(d);
+  const url = plantUmlUrl(src, 'png');
+  const resp = await fetch(url);
+  if(!resp.ok) throw new Error('PlantUML server vrátil ' + resp.status);
+  const buffer = await resp.arrayBuffer();
+  // Zjistíme rozměry PNG z hlavičky (IHDR na bytech 16-24)
+  let width = 600, height = 400;
+  try {
+    const dv = new DataView(buffer);
+    // PNG signatura 8 bajtů, pak IHDR chunk: 4 délka + 4 "IHDR" + 4 width + 4 height
+    if(dv.getUint32(0) === 0x89504e47){
+      width = dv.getUint32(16);
+      height = dv.getUint32(20);
+    }
+  } catch(e){ /* ponecháme default */ }
+  return {buffer, width, height};
+}
+
+// Lazy-load knihovny docx z CDN (jen při prvním použití DOCX exportu).
+// Vrací Promise s objektem docx. Drží se v paměti, takže další volání je okamžité.
+let _docxLoadPromise = null;
+function loadDocxLibrary(){
+  if(window.docx) return Promise.resolve(window.docx);
+  if(_docxLoadPromise) return _docxLoadPromise;
+  // Pořadí CDN zdrojů – pokud první selže, zkusí se další.
+  // Cesta dist/index.umd.cjs odpovídá poli "main" v package.json balíčku docx@9.5.1.
+  const sources = [
+    'https://cdn.jsdelivr.net/npm/docx@9.5.1/dist/index.umd.cjs',
+    'https://unpkg.com/docx@9.5.1/dist/index.umd.cjs',
+    'https://cdn.jsdelivr.net/npm/docx@9/dist/index.umd.cjs'
+  ];
+  _docxLoadPromise = new Promise((resolve, reject) => {
+    let idx = 0;
+    function tryNext(){
+      if(idx >= sources.length){
+        _docxLoadPromise = null; // umožní příští pokus
+        reject(new Error('Žádný z CDN zdrojů knihovny docx není dostupný.'));
+        return;
+      }
+      const url = sources[idx++];
+      const s = document.createElement('script');
+      s.src = url;
+      s.async = true;
+      s.onload = () => {
+        // UMD build vystaví globální 'docx'
+        if(window.docx) resolve(window.docx);
+        else { s.remove(); tryNext(); }
+      };
+      s.onerror = () => { s.remove(); tryNext(); };
+      document.head.appendChild(s);
+    }
+    tryNext();
+  });
+  return _docxLoadPromise;
+}
+
+async function saveDocDocxAction(){
+  const d = getCurrentDiagram();
+  if(!d){ status('Žádný diagram není vybrán.', 'error'); return; }
+  status('Načítám knihovnu pro DOCX z internetu…', 'info');
+  let D;
+  try {
+    D = await loadDocxLibrary();
+  } catch(e){
+    debug('loadDocxLibrary', e.message);
+    status('Knihovnu pro DOCX se nepodařilo načíst (' + e.message + '). Zkontrolujte připojení k internetu.', 'error');
+    return;
+  }
+  status('Připravuji DOCX, stahuji obrázek diagramu…', 'info');
+  try {
+    // 1) Stáhnout PNG
+    let png = null;
+    try {
+      png = await fetchDiagramPng(d);
+    } catch(e){
+      debug('fetchDiagramPng', e.message);
+      status('Obrázek se nepodařilo stáhnout (' + e.message + '). DOCX bude bez obrázku.', 'error');
+    }
+
+    // 2) Připravit metadata
+    const versions = d.versions || [];
+    const lastVer = versions.length ? versions[versions.length-1] : null;
+    const verLabel = lastVer ? (lastVer.label || ('verze ' + versions.length)) : '(neuloženo)';
+    const dateStr = lastVer ? fmtDate(lastVer.timestamp) : fmtDate(nowIso());
+    const name = d.name || '(bez názvu)';
+    const summary = diagramSummaryLine(d);
+    const desc = describeDiagram(d);
+
+    // 3) Sestavit odstavce
+    const children = [];
+    children.push(new D.Paragraph({
+      heading: D.HeadingLevel.HEADING_3,
+      children: [new D.TextRun({text: 'Diagram: ' + name})]
+    }));
+    children.push(new D.Paragraph({children:[new D.TextRun(summary)]}));
+    children.push(new D.Paragraph({children:[new D.TextRun({text:'Verze: ', bold:true}), new D.TextRun(verLabel)]}));
+    children.push(new D.Paragraph({children:[new D.TextRun({text:'Datum: ', bold:true}), new D.TextRun(dateStr)]}));
+
+    // 4) Obrázek (zmenšíme na max šířku ~600 px pro stránku A4)
+    if(png){
+      let w = png.width, h = png.height;
+      const maxW = 600;
+      if(w > maxW){ h = Math.round(h * maxW / w); w = maxW; }
+      children.push(new D.Paragraph({
+        children: [new D.ImageRun({
+          data: png.buffer,
+          transformation: { width: w, height: h },
+          type: 'png'
+        })]
+      }));
+    }
+
+    // 5) Textový popis — rozdělit na odstavce dle prázdných řádků
+    desc.split(/\n\n+/).forEach(para => {
+      const clean = para.replace(/\n/g, ' ').trim();
+      if(clean) children.push(new D.Paragraph({children:[new D.TextRun(clean)]}));
+    });
+
+    // 6) Vytvořit dokument
+    const doc = new D.Document({
+      sections: [{properties:{}, children: children}]
+    });
+
+    // 7) Zabalit a stáhnout
+    const blob = await D.Packer.toBlob(doc);
+    const safeName = (name).replace(/[^A-Za-z0-9_\u00C0-\u017F\- ]/g,'_').trim() || 'diagram';
+    downloadBlob(safeName + '.docx', blob);
+    status('Dokument uložen jako DOCX.', 'success');
+  } catch(e){
+    debug('saveDocDocx', e.stack || e.message);
+    status('Chyba při tvorbě DOCX: ' + e.message, 'error');
+  }
+}
+
 function importPumlAction(file){
   const reader = new FileReader();
   reader.onload = e => importPumlText(e.target.result, file.name);
@@ -3987,6 +4552,10 @@ function openHelp(){
   };
   make('Co aplikace umí',
     'Editor diagramů PlantUML pro čtyři typy: aktivitní (flow/action), třídní (class), sekvenční (sequence/zprávy) a use case. Editujete strukturovaně přes formuláře, zdrojový kód PlantUML se generuje automaticky.');
+  make('Textový popis a dokument',
+    'Tlačítko „Vygenerovat popis" (Alt+T) sestaví čtivý souvislý textový popis aktivitního diagramu — kdo co dělá, jak se proces větví, jaké jsou poznámky a typy akcí. Popis se zobrazí v poli pod zdrojovým kódem a lze ho zkopírovat.',
+    'Z diagramu lze také vytvořit dokument: tlačítka „Kopírovat MD", „Uložit MD" a „Uložit DOCX". Dokument obsahuje název diagramu, souhrn počtu prvků, verzi, datum, obrázek diagramu (PNG z PlantUML serveru) a textový popis.',
+    'DOCX se generuje v prohlížeči i s vloženým obrázkem. Knihovna pro tvorbu DOCX se při prvním použití stáhne z internetu (CDN), proto je pro DOCX export potřeba připojení. Obrázek do dokumentu vykresluje server plantuml.com, takže i ten vyžaduje internet.');
   make('Klávesové zkratky',
     'Globální: Alt+N nový projekt, Alt+O načíst, Alt+S uložit, Alt+M importovat .puml, Alt+H nápověda, Alt+D nový diagram, Alt+F nová složka, Alt+W uložit verzi, Alt+U stáhnout .puml.',
     'Náhled a export: Alt+V náhled v okně, Alt+I promítání, Alt+E stáhnout PNG, Alt+C zkopírovat zdrojový kód do schránky.',
@@ -4063,6 +4632,11 @@ function init(){
   document.getElementById('btnDownloadPng').addEventListener('click', downloadPngAction);
   document.getElementById('btnDownloadPuml').addEventListener('click', downloadPumlAction);
   document.getElementById('btnCopySource').addEventListener('click', copySourceAction);
+  document.getElementById('btnGenDescription').addEventListener('click', generateDescriptionAction);
+  document.getElementById('btnCopyDescription').addEventListener('click', copyDescriptionAction);
+  document.getElementById('btnCopyDocMd').addEventListener('click', copyDocMdAction);
+  document.getElementById('btnSaveDocMd').addEventListener('click', saveDocMdAction);
+  document.getElementById('btnSaveDocDocx').addEventListener('click', saveDocDocxAction);
 
   // Settings dialog
   document.getElementById('dlgSettingsOk').addEventListener('click', saveSettings);
