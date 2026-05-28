@@ -920,13 +920,225 @@ function countActivityElements(model){
   return {actions, decisions, notes, loops, forks};
 }
 
-// Obecná funkce: vrátí textový popis diagramu podle typu.
-// Zatím implementováno jen pro activity; ostatní typy doplníme později.
+// === BLOKOVÝ MODEL POPISU =====================================
+// Některé popisy (sekvence) potřebují strukturu odstavců a víceúrovňových
+// odrážek. Reprezentujeme je jako pole bloků:
+//   {type:'para', text}              — odstavec
+//   {type:'bullet', level, text}     — odrážka (level 0 = první úroveň)
+// Renderery převedou bloky na plain text, Markdown nebo DOCX odstavce.
+
+function blocksToPlainText(blocks){
+  const lines = [];
+  blocks.forEach(b => {
+    if(b.type === 'para'){
+      if(lines.length) lines.push('');  // prázdný řádek před odstavcem
+      lines.push(b.text);
+    } else if(b.type === 'bullet'){
+      const indent = '  '.repeat(b.level || 0);
+      lines.push(indent + '• ' + b.text);
+    }
+  });
+  return lines.join('\n');
+}
+
+function blocksToMarkdown(blocks){
+  const lines = [];
+  blocks.forEach((b, i) => {
+    if(b.type === 'para'){
+      if(lines.length && lines[lines.length-1] !== '') lines.push('');
+      lines.push(b.text);
+      lines.push('');
+    } else if(b.type === 'bullet'){
+      const indent = '  '.repeat(b.level || 0);
+      lines.push(indent + '- ' + b.text);
+    }
+  });
+  // odstraň případný koncový prázdný řádek
+  while(lines.length && lines[lines.length-1] === '') lines.pop();
+  return lines.join('\n');
+}
+
+// === SEKVENČNÍ DIAGRAM — POPIS ================================
+const SEQ_PARTICIPANT_TYPE = {
+  actor: 'aktéra',
+  participant: 'účastníka',
+  boundary: 'hraniční prvek',
+  control: 'řídicí prvek',
+  entity: 'entitu',
+  database: 'databázi',
+  collections: 'kolekci',
+  queue: 'frontu'
+};
+
+// Vrátí pole bloků popisujících sekvenční diagram.
+function describeSequenceBlocks(model){
+  const participants = (model && model.participants) || [];
+  const nameOf = {};
+  participants.forEach(p => { nameOf[p.id] = p.name || p.alias || '(bez názvu)'; });
+
+  const blocks = [];
+
+  // ÚVOD — výčet účastníků s typem
+  if(participants.length){
+    const parts = participants.map(p => {
+      const typeWord = SEQ_PARTICIPANT_TYPE[p.type] || 'účastníka';
+      return typeWord + ' „' + (p.name || p.alias || '(bez názvu)') + '"';
+    });
+    blocks.push({type:'para', text: 'Tato sekvence zahrnuje ' + joinCz(parts) + '.'});
+  } else {
+    blocks.push({type:'para', text: 'Tato sekvence zatím nemá žádné účastníky.'});
+  }
+
+  // Formátování jedné zprávy: "Od → Pro: text (poznámka)"
+  function messageLine(n){
+    const from = nameOf[n.from] || '(?)';
+    const to = nameOf[n.to] || '(?)';
+    let line;
+    if(n.from === n.to){
+      // sebezpráva: "Účastník → sám sobě: text"
+      line = from + ' → sám sobě: ' + (n.text || '(bez textu)');
+    } else {
+      line = from + ' → ' + to + ': ' + (n.text || '(bez textu)');
+    }
+    if(n.note){
+      const oneLine = n.note.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).join(' ');
+      if(oneLine) line += ' (' + oneLine + ')';
+    }
+    return line;
+  }
+
+  // Rekurzivní průchod. level = úroveň odrážek; topLevel rozhoduje, zda jsou
+  // zprávy samostatné odstavce (true) nebo odrážky (false).
+  function walk(nodes, level, asBullets){
+    (nodes || []).forEach(n => {
+      switch(n.type){
+        case 'message': {
+          if(asBullets) blocks.push({type:'bullet', level, text: messageLine(n)});
+          else blocks.push({type:'para', text: messageLine(n)});
+          break;
+        }
+        case 'group': {
+          const t = n.groupType || 'group';
+          if(t === 'alt'){
+            const para = 'Podle podmínky se výměna větví:';
+            pushParaOrBullet(para, level, asBullets);
+            const branchLevel = asBullets ? level + 1 : 0;
+            (n.branches || []).forEach((b, idx) => {
+              const label = b.label || '';
+              let head;
+              if(idx === 0) head = label ? 'Pokud „' + label + '":' : 'V první větvi:';
+              else if(idx === (n.branches.length - 1)) head = label ? 'V opačném případě („' + label + '"):' : 'V opačném případě:';
+              else head = label ? 'Jinak při „' + label + '":' : 'Jinak:';
+              blocks.push({type:'bullet', level: branchLevel, text: head});
+              walk(b.children, branchLevel + 1, true);
+            });
+          } else if(t === 'par'){
+            pushParaOrBullet('Souběžně probíhá několik větví:', level, asBullets);
+            const branchLevel = asBullets ? level + 1 : 0;
+            (n.branches || []).forEach((b, idx) => {
+              blocks.push({type:'bullet', level: branchLevel, text: 'Větev ' + (idx+1) + ':'});
+              walk(b.children, branchLevel + 1, true);
+            });
+          } else if(t === 'loop'){
+            const cond = n.label ? ' (' + n.label + ')' : '';
+            pushParaOrBullet('Následující výměna se opakuje' + cond + ':', level, asBullets);
+            walk(n.children, asBullets ? level + 1 : 0, true);
+          } else if(t === 'opt'){
+            const cond = n.label ? ' („' + n.label + '")' : '';
+            pushParaOrBullet('Volitelně' + cond + ':', level, asBullets);
+            walk(n.children, asBullets ? level + 1 : 0, true);
+          } else if(t === 'critical'){
+            const cond = n.label ? ' („' + n.label + '")' : '';
+            pushParaOrBullet('Kritická sekce' + cond + ':', level, asBullets);
+            walk(n.children, asBullets ? level + 1 : 0, true);
+          } else if(t === 'break'){
+            const cond = n.label ? ' („' + n.label + '")' : '';
+            pushParaOrBullet('Přerušení' + cond + ':', level, asBullets);
+            walk(n.children, asBullets ? level + 1 : 0, true);
+          } else {
+            // obecná skupina
+            const cond = n.label ? ' „' + n.label + '"' : '';
+            pushParaOrBullet('Skupina' + cond + ':', level, asBullets);
+            walk(n.children, asBullets ? level + 1 : 0, true);
+          }
+          break;
+        }
+        case 'note': {
+          const oneLine = (n.text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean).join(' ');
+          if(oneLine){
+            const txt = 'Poznámka: ' + oneLine;
+            if(asBullets) blocks.push({type:'bullet', level, text: txt});
+            else blocks.push({type:'para', text: txt});
+          }
+          break;
+        }
+        case 'divider': {
+          const txt = '— ' + (n.text || '') + ' —';
+          if(asBullets) blocks.push({type:'bullet', level, text: txt});
+          else blocks.push({type:'para', text: txt});
+          break;
+        }
+        case 'delay': {
+          const txt = n.text ? ('Prodleva: ' + n.text) : 'Prodleva.';
+          if(asBullets) blocks.push({type:'bullet', level, text: txt});
+          else blocks.push({type:'para', text: txt});
+          break;
+        }
+        case 'reference': {
+          const refnames = (n.over||[]).map(id => nameOf[id]).filter(Boolean).map(x=>'„'+x+'"').join(', ');
+          const txt = 'Odkaz na jinou sekvenci: ' + (n.text||'') + (refnames ? ' (zahrnuje ' + refnames + ')' : '');
+          if(asBullets) blocks.push({type:'bullet', level, text: txt});
+          else blocks.push({type:'para', text: txt});
+          break;
+        }
+        case 'autonumber': break; // číslování nezmiňujeme v popisu
+      }
+    });
+  }
+
+  function pushParaOrBullet(text, level, asBullets){
+    if(asBullets) blocks.push({type:'bullet', level, text});
+    else blocks.push({type:'para', text});
+  }
+
+  walk((model && model.children) || [], 0, false);
+  return blocks;
+}
+
+// Spočítá prvky sekvenčního diagramu.
+function countSequenceElements(model){
+  let messages = 0, groups = 0, notes = 0;
+  function walk(nodes){
+    (nodes||[]).forEach(n => {
+      if(n.type === 'message'){ messages++; if(n.note) notes++; }
+      else if(n.type === 'group') groups++;
+      else if(n.type === 'note') notes++;
+      if(n.branches) n.branches.forEach(b => walk(b.children));
+      if(n.children) walk(n.children);
+    });
+  }
+  walk((model && model.children) || []);
+  return {participants: (model.participants||[]).length, messages, groups, notes};
+}
+
+// Obecná funkce: vrátí textový popis diagramu podle typu (jako prostý text).
 function describeDiagram(diagram){
   if(!diagram) return '';
   switch(diagram.type){
     case 'activity': return describeActivity(diagram.model);
-    default: return '(Textový popis je zatím dostupný jen pro aktivitní diagramy.)';
+    case 'sequence': return blocksToPlainText(describeSequenceBlocks(diagram.model));
+    default: return '(Textový popis je zatím dostupný pro aktivitní a sekvenční diagramy.)';
+  }
+}
+
+// Vrátí popis jako Markdown (pro dokument). Activity = prostý text (odstavce),
+// sequence = odstavce + odrážky.
+function describeDiagramMarkdown(diagram){
+  if(!diagram) return '';
+  switch(diagram.type){
+    case 'activity': return describeActivity(diagram.model);
+    case 'sequence': return blocksToMarkdown(describeSequenceBlocks(diagram.model));
+    default: return '(Textový popis je zatím dostupný pro aktivitní a sekvenční diagramy.)';
   }
 }
 
@@ -4272,7 +4484,7 @@ function buildDiagramMarkdown(d){
   const lastVer = versions.length ? versions[versions.length-1] : null;
   const verLabel = lastVer ? (lastVer.label || ('verze ' + versions.length)) : '(neuloženo)';
   const dateStr = lastVer ? fmtDate(lastVer.timestamp) : fmtDate(nowIso());
-  const desc = describeDiagram(d);
+  const desc = describeDiagramMarkdown(d);
   const name = d.name || '(bez názvu)';
 
   const lines = [];
@@ -4401,7 +4613,6 @@ async function saveDocDocxAction(){
     const dateStr = lastVer ? fmtDate(lastVer.timestamp) : fmtDate(nowIso());
     const name = d.name || '(bez názvu)';
     const summary = diagramSummaryLine(d);
-    const desc = describeDiagram(d);
 
     // 3) Sestavit odstavce
     const children = [];
@@ -4427,11 +4638,28 @@ async function saveDocDocxAction(){
       }));
     }
 
-    // 5) Textový popis — rozdělit na odstavce dle prázdných řádků
-    desc.split(/\n\n+/).forEach(para => {
-      const clean = para.replace(/\n/g, ' ').trim();
-      if(clean) children.push(new D.Paragraph({children:[new D.TextRun(clean)]}));
-    });
+    // 5) Textový popis — podle typu diagramu.
+    //    Sekvence používá blokovou strukturu (odstavce + víceúrovňové odrážky),
+    //    ostatní typy prostý text rozdělený na odstavce.
+    if(d.type === 'sequence'){
+      const descBlocks = describeSequenceBlocks(d.model);
+      descBlocks.forEach(b => {
+        if(b.type === 'para'){
+          children.push(new D.Paragraph({children:[new D.TextRun(b.text)]}));
+        } else if(b.type === 'bullet'){
+          children.push(new D.Paragraph({
+            text: b.text,
+            bullet: { level: b.level || 0 }
+          }));
+        }
+      });
+    } else {
+      const desc = describeDiagram(d);
+      desc.split(/\n\n+/).forEach(para => {
+        const clean = para.replace(/\n/g, ' ').trim();
+        if(clean) children.push(new D.Paragraph({children:[new D.TextRun(clean)]}));
+      });
+    }
 
     // 6) Vytvořit dokument
     const doc = new D.Document({
@@ -4553,7 +4781,7 @@ function openHelp(){
   make('Co aplikace umí',
     'Editor diagramů PlantUML pro čtyři typy: aktivitní (flow/action), třídní (class), sekvenční (sequence/zprávy) a use case. Editujete strukturovaně přes formuláře, zdrojový kód PlantUML se generuje automaticky.');
   make('Textový popis a dokument',
-    'Tlačítko „Vygenerovat popis" (Alt+T) sestaví čtivý souvislý textový popis aktivitního diagramu — kdo co dělá, jak se proces větví, jaké jsou poznámky a typy akcí. Popis se zobrazí v poli pod zdrojovým kódem a lze ho zkopírovat.',
+    'Tlačítko „Vygenerovat popis" (Alt+T) sestaví čtivý textový popis diagramu. U aktivitního diagramu je to souvislý text — kdo co dělá, jak se proces větví, jaké jsou poznámky a typy akcí. U sekvenčního diagramu je to výčet zpráv ve tvaru „Od → Pro: text (poznámka)" doplněný o odstavce a odrážky pro alternativy, smyčky a souběžné větve. Popis se zobrazí v poli pod zdrojovým kódem a lze ho zkopírovat.',
     'Z diagramu lze také vytvořit dokument: tlačítka „Kopírovat MD", „Uložit MD" a „Uložit DOCX". Dokument obsahuje název diagramu, souhrn počtu prvků, verzi, datum, obrázek diagramu (PNG z PlantUML serveru) a textový popis.',
     'DOCX se generuje v prohlížeči i s vloženým obrázkem. Knihovna pro tvorbu DOCX se při prvním použití stáhne z internetu (CDN), proto je pro DOCX export potřeba připojení. Obrázek do dokumentu vykresluje server plantuml.com, takže i ten vyžaduje internet.');
   make('Klávesové zkratky',
