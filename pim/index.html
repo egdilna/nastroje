@@ -95,6 +95,9 @@ body.theme-dark .toolbar { background: #222; }
 .toolbar > div { flex: 1 1 200px; min-width: 0; }
 .toolbar label { margin-top: 0; font-size: 0.9em; }
 .entity-row { padding: 0.5em 0; border-bottom: 1px solid #eee; }
+/* H5 obal jen pro screen-reader navigaci po nadpisech – vizuálně se chová jako běžný text/odkaz. */
+.entity-row-heading { display: inline; margin: 0; padding: 0; font-size: inherit; font-weight: inherit; font-family: inherit; line-height: inherit; color: inherit; }
+.entity-row-heading a { font-weight: inherit; }
 .entity-row:last-child { border-bottom: none; }
 .entity-row a { color: #0066cc; text-decoration: none; font-weight: 500; }
 .entity-row a:hover { text-decoration: underline; }
@@ -2586,7 +2589,7 @@ function _pluck(freq, when, dur) {
 }
 function _bubble() {
   const a = _audioCtx(); if (!a) return;
-  const t0 = a.currentTime;
+  const t0 = a.currentTime + 0.05;
   const osc = a.createOscillator();
   osc.type = 'sine';
   osc.frequency.setValueAtTime(400, t0);
@@ -2599,34 +2602,62 @@ function _bubble() {
 }
 function _modem() {
   const a = _audioCtx(); if (!a) return;
-  const t0 = a.currentTime;
-  const osc1 = a.createOscillator(); osc1.type = 'sawtooth';
-  osc1.frequency.setValueAtTime(800, t0);
-  osc1.frequency.exponentialRampToValueAtTime(1600, t0 + 0.15);
-  const g1 = a.createGain();
-  g1.gain.setValueAtTime(0.12, t0);
-  g1.gain.exponentialRampToValueAtTime(0.001, t0 + 0.16);
-  osc1.connect(g1); g1.connect(a.destination);
-  osc1.start(t0); osc1.stop(t0 + 0.17);
-  const osc2 = a.createOscillator(); osc2.type = 'sawtooth';
-  osc2.frequency.setValueAtTime(1200, t0 + 0.2);
-  osc2.frequency.exponentialRampToValueAtTime(2400, t0 + 0.35);
-  const g2 = a.createGain();
-  g2.gain.setValueAtTime(0.12, t0 + 0.2);
-  g2.gain.exponentialRampToValueAtTime(0.001, t0 + 0.36);
-  osc2.connect(g2); g2.connect(a.destination);
-  osc2.start(t0 + 0.2); osc2.stop(t0 + 0.37);
+  // Buffer 0.1 s, aby se stihl resume() AudioContextu (může být suspended při prvním kliknutí).
+  const t0 = a.currentTime + 0.1;
+  // Helper: ulož sweep s ADSR
+  function sweep(freqStart, freqEnd, when, dur, gain, type) {
+    const osc = a.createOscillator();
+    osc.type = type || 'square';
+    osc.frequency.setValueAtTime(freqStart, when);
+    osc.frequency.exponentialRampToValueAtTime(freqEnd, when + dur);
+    const g = a.createGain();
+    g.gain.setValueAtTime(0, when);
+    g.gain.linearRampToValueAtTime(gain, when + 0.01);
+    g.gain.setValueAtTime(gain, when + dur - 0.03);
+    g.gain.exponentialRampToValueAtTime(0.001, when + dur);
+    osc.connect(g); g.connect(a.destination);
+    osc.start(when); osc.stop(when + dur + 0.02);
+  }
+  // 1) Krátký dvojzvuk – „wii-uu" jako probing modem (high → low)
+  sweep(1600, 1100, t0,        0.08, 0.18, 'square');
+  sweep(1100, 1600, t0 + 0.10, 0.08, 0.18, 'square');
+  // 2) Pauza, pak charakteristický „DEEERRR" — dvě paralelní sawtooth o dvou různých frekvencích
+  const carrierStart = t0 + 0.30;
+  const carrierDur = 0.50;
+  // Hlavní carrier 1200 Hz
+  const c1 = a.createOscillator(); c1.type = 'sawtooth'; c1.frequency.value = 1200;
+  const cg1 = a.createGain();
+  cg1.gain.setValueAtTime(0, carrierStart);
+  cg1.gain.linearRampToValueAtTime(0.14, carrierStart + 0.02);
+  cg1.gain.setValueAtTime(0.14, carrierStart + carrierDur - 0.04);
+  cg1.gain.exponentialRampToValueAtTime(0.001, carrierStart + carrierDur);
+  c1.connect(cg1); cg1.connect(a.destination);
+  c1.start(carrierStart); c1.stop(carrierStart + carrierDur + 0.02);
+  // Druhý carrier 2400 Hz (kvinta) — dělá to typický „kovový" modem zvuk
+  const c2 = a.createOscillator(); c2.type = 'sawtooth'; c2.frequency.value = 2400;
+  const cg2 = a.createGain();
+  cg2.gain.setValueAtTime(0, carrierStart);
+  cg2.gain.linearRampToValueAtTime(0.10, carrierStart + 0.02);
+  cg2.gain.setValueAtTime(0.10, carrierStart + carrierDur - 0.04);
+  cg2.gain.exponentialRampToValueAtTime(0.001, carrierStart + carrierDur);
+  c2.connect(cg2); cg2.connect(a.destination);
+  c2.start(carrierStart); c2.stop(carrierStart + carrierDur + 0.02);
+  // Vibrato/warble přes carrier 1
+  const lfo = a.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 18;
+  const lfoGain = a.createGain(); lfoGain.gain.value = 80;
+  lfo.connect(lfoGain); lfoGain.connect(c1.frequency);
+  lfo.start(carrierStart); lfo.stop(carrierStart + carrierDur);
 }
 function _bell() {
   const a = _audioCtx(); if (!a) return;
-  const t0 = a.currentTime;
+  const t0 = a.currentTime + 0.05;
   _pluck(880, t0, 0.4);
   _pluck(1175, t0 + 0.15, 0.6);
   _pluck(1760, t0 + 0.25, 0.5);
 }
 function _errorSound() {
   const a = _audioCtx(); if (!a) return;
-  const t0 = a.currentTime;
+  const t0 = a.currentTime + 0.05;
   function tone(freq, dur) {
     const osc = a.createOscillator();
     osc.type = 'sawtooth'; osc.frequency.value = freq;
@@ -2641,7 +2672,7 @@ function _errorSound() {
 }
 function _fanfare() {
   const a = _audioCtx(); if (!a) return;
-  const t0 = a.currentTime;
+  const t0 = a.currentTime + 0.05;
   _brassNote(523, 0.16, t0,        0.20, false);
   _brassNote(659, 0.16, t0 + 0.16, 0.20, false);
   _brassNote(784, 0.16, t0 + 0.32, 0.22, false);
@@ -2655,7 +2686,7 @@ function _fanfare() {
 }
 function _tap(freq) {
   const a = _audioCtx(); if (!a) return;
-  const t0 = a.currentTime;
+  const t0 = a.currentTime + 0.05;
   const osc = a.createOscillator();
   osc.type = 'triangle';
   osc.frequency.value = freq || 1200;
@@ -6003,7 +6034,7 @@ function entityRowHtml(e) {
   const dateStr = date ? '<span class="meta">' + escapeHtml(fmtDate(date)) + '</span>' : '';
   const att = (e.attachments && e.attachments.length > 0) ? '<span class="meta" title="přílohy">📎' + e.attachments.length + '</span>' : '';
   return '<div class="entity-row">' +
-    '<div><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a> ' + status + ' ' + dateStr + ' ' + att + '</div>' +
+    '<div><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h5> ' + status + ' ' + dateStr + ' ' + att + '</div>' +
     '<div>' + aspects + ' ' + tags + '</div>' +
     '<div class="meta">Změněno ' + escapeHtml(fmtRelative(e.updated_at)) + '</div></div>';
 }
@@ -6443,7 +6474,7 @@ function renderDashboard(main) {
       checkbox +
       '<span class="cal-icon">' + (it.icon || '') + '</span>' +
       '<span class="cal-kind">' + escapeHtml(it.kind) + ':</span> ' +
-      '<a href="#" data-entity="' + escapeHtml(it.entity.id) + '">' + getDisplayTitleWithBadges(it.entity) + '</a>' +
+      '<h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(it.entity.id) + '">' + getDisplayTitleWithBadges(it.entity) + '</a></h5>' +
       (timeStr ? ' <span class="meta">' + escapeHtml(timeStr) + '</span>' : '') +
     '</div>';
   }
@@ -6527,7 +6558,7 @@ function renderDashboard(main) {
       '<h2>🕐 Naposledy změněné (' + recentlyUpdated.length + ')</h2>' +
       recentlyUpdated.map(e =>
         '<div class="dash-item">' +
-          '<a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a>' +
+          '<h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h5>' +
           ' <span class="meta">' + escapeHtml(fmtRelative(e.updated_at)) + '</span>' +
         '</div>'
       ).join('') +
@@ -6555,7 +6586,7 @@ function renderDashboard(main) {
             const daysLate = Math.round((todayMs - new Date(dl).getTime()) / 86400000);
             return '<div class="dash-item">' +
               '<input type="checkbox" class="dash-task-check" data-entity-id="' + escapeHtml(e.id) + '" aria-label="Označit úkol „' + escapeHtml(getDisplayTitle(e)) + '" jako hotový">' +
-              '<a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a>' +
+              '<h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h5>' +
               ' <span class="meta" style="color:#c33;">— ' + daysLate + ' ' + (daysLate === 1 ? 'den' : daysLate < 5 ? 'dny' : 'dnů') + ' po termínu</span>' +
             '</div>';
           }).join('') +
@@ -6594,7 +6625,7 @@ function renderDashboard(main) {
       ? '<section class="dash-section">' +
           '<h2>Nezodpovězené otázky (' + unansweredQuestions.length + ')</h2>' +
           unansweredQuestions.map(e =>
-            '<div class="dash-item"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></div>'
+            '<div class="dash-item"><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h5></div>'
           ).join('') +
         '</section>'
       : '');
@@ -6730,7 +6761,7 @@ function renderDashboardTagSection() {
     h += '<p class="meta">Entity s tagem „' + escapeHtml(selectedTag) + '" (' + entitiesWithTag.length + '), seřazeno od nejnovější změny:</p>';
     h += entitiesWithTag.slice(0, 30).map(e =>
       '<div class="dash-item">' +
-        '<a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a>' +
+        '<h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h5>' +
         openInPanelBtnHtml(e.id) +
         ' <button type="button" class="dash-remove-tag-btn" data-remove-tag-from="' + escapeHtml(e.id) + '" title="Odebrat z této entity tag „' + escapeHtml(selectedTag) + '"" aria-label="Odebrat z entity „' + escapeHtml(getDisplayTitle(e)) + '" tag „' + escapeHtml(selectedTag) + '"">🏷️✕</button>' +
         ' <span class="meta">' + escapeHtml(fmtRelative(e.updated_at)) + '</span>' +
@@ -6806,7 +6837,7 @@ function renderEntityTableHtml(entities, sort, options) {
       h += '<td><input type="checkbox" class="bulk-select" data-entity-id="' + escapeHtml(e.id) + '"' +
         (isSel ? ' checked' : '') + ' aria-label="Vybrat ' + escapeHtml(getDisplayTitle(e)) + '"></td>';
     }
-    h += '<td><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></td>' +
+    h += '<td><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h5></td>' +
       '<td>' + getEntityDetailsHtml(e) + '</td>' +
       '<td>' + (e.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + '</td>' +
       '<td>' + (e.tags || []).map(t => '<a href="#" class="tag" data-tag="' + escapeHtml(t) + '">' + escapeHtml(t) + '</a>').join(' ') + '</td>' +
@@ -7625,7 +7656,7 @@ function taskRowHtml(e) {
     '<input type="checkbox" data-task-id="' + escapeHtml(e.id) + '"' + (done ? ' checked' : '') +
     ' aria-label="Hotovo: ' + escapeHtml(getDisplayTitle(e)) + '">' +
     '<span style="' + (done ? 'text-decoration:line-through;color:#888;' : '') + '">' +
-    '<a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a> ' + pr + ' ' + dl +
+    '<h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h5> ' + pr + ' ' + dl +
     '</span></label><div>' + tags + '</div></div>';
 }
 
@@ -7692,7 +7723,7 @@ function renderCalendar(main) {
     return '<div class="calendar-row">' +
       '<span class="cal-icon" aria-hidden="true">' + (it.icon || '') + '</span>' +
       '<span class="cal-kind">' + escapeHtml(it.key) + ':</span> ' +
-      '<a href="#" data-entity="' + escapeHtml(it.entity.id) + '">' + getDisplayTitleWithBadges(it.entity) + '</a>' +
+      '<h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(it.entity.id) + '">' + getDisplayTitleWithBadges(it.entity) + '</a></h5>' +
       '<span class="meta cal-time">' + escapeHtml(fmtDateTime(it.iso)) + '</span>' +
       rescheduleBtns +
     '</div>';
@@ -8052,10 +8083,10 @@ function renderLinksView(main) {
             actions = '<span class="meta">Vazba v textu — upravte v entitě „z"</span>';
           }
           return '<tr>' +
-            '<td><a href="#" data-entity="' + escapeHtml(l.from.id) + '">' + getDisplayTitleWithBadges(l.from) + '</a>' +
+            '<td><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(l.from.id) + '">' + getDisplayTitleWithBadges(l.from) + '</a></h5>' +
               (fromAspects ? ' <span class="meta">(' + escapeHtml(fromAspects) + ')</span>' : '') + '</td>' +
             '<td>' + escapeHtml(l.typeLabel) + noteTxt + '</td>' +
-            '<td><a href="#" data-entity="' + escapeHtml(l.to.id) + '">' + getDisplayTitleWithBadges(l.to) + '</a></td>' +
+            '<td><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(l.to.id) + '">' + getDisplayTitleWithBadges(l.to) + '</a></h5></td>' +
             '<td>' + escapeHtml(toAspects) + '</td>' +
             '<td>' + actions + '</td>' +
           '</tr>';
@@ -8235,7 +8266,7 @@ function renderRelatedView(main) {
       '<table><thead><tr><th>Entita</th><th>Aspekty</th><th>Skóre</th><th>Důvody</th><th>Akce</th></tr></thead><tbody>' +
       r.results.map(x => {
         return '<tr>' +
-          '<td><a href="#" data-entity="' + escapeHtml(x.entity.id) + '">' + getDisplayTitleWithBadges(x.entity) + '</a></td>' +
+          '<td><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(x.entity.id) + '">' + getDisplayTitleWithBadges(x.entity) + '</a></h5></td>' +
           '<td>' + (x.entity.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + '</td>' +
           '<td>' + x.score + '</td>' +
           '<td class="meta">' + escapeHtml(x.reasons.join('; ')) + '</td>' +
@@ -8448,7 +8479,7 @@ function renderReplaceView(main) {
       found.places.forEach((p, pi) => {
         const fieldLabel = p.field === 'title' ? 'Název' : (p.field === 'body' ? 'Tělo' : 'Komentář #' + (p.commentIdx + 1));
         h += '<tr>' +
-          '<td><a href="#" data-entity="' + escapeHtml(found.entity.id) + '">' + getDisplayTitleWithBadges(found.entity) + '</a></td>' +
+          '<td><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(found.entity.id) + '">' + getDisplayTitleWithBadges(found.entity) + '</a></h5></td>' +
           '<td>' + fieldLabel + '</td>' +
           '<td>' + p.count + '</td>' +
           '<td><code>' + escapeHtml(p.preview) + '</code></td>' +
@@ -8922,7 +8953,7 @@ function renderTimeTrackingView(main) {
       const since = ttGetRunningSince(r);
       const secs = Math.floor((Date.now() - new Date(since).getTime()) / 1000);
       html += '<li>' +
-        '<a href="#" data-entity="' + escapeHtml(r.id) + '">' + getDisplayTitleWithBadges(r) + '</a>' +
+        '<h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(r.id) + '">' + getDisplayTitleWithBadges(r) + '</a></h5>' +
         ' <span class="tt-live-duration" aria-live="off" data-tt-start="' + escapeHtml(since) + '">' + ttFmtDuration(secs) + '</span> ' +
         '<button type="button" class="danger ttv-stop" data-tt-entity="' + escapeHtml(r.id) + '">⏹ Zastavit</button>' +
       '</li>';
@@ -8967,7 +8998,7 @@ function renderTimeTrackingView(main) {
     perEntity.forEach(x => {
       const aspectLabels = (x.entity.aspects || []).map(a => aspectLabel(a)).join(', ');
       html += '<tr' + (x.running ? ' class="tt-row-running"' : '') + '>' +
-        '<td><a href="#" data-entity="' + escapeHtml(x.entity.id) + '">' + getDisplayTitleWithBadges(x.entity) + '</a>' +
+        '<td><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(x.entity.id) + '">' + getDisplayTitleWithBadges(x.entity) + '</a></h5>' +
           (x.running ? ' <span class="tt-running-badge">aktivní</span>' : '') + '</td>' +
         '<td>' + escapeHtml(aspectLabels) + '</td>' +
         '<td>' + x.entryCount + '</td>' +
@@ -9025,7 +9056,7 @@ function renderTimeTrackingView(main) {
           togglCell = '<span class="meta" title="Toggl integrace není nakonfigurována – otevřete Nastavení">—</span>';
         }
         html += '<tr>' +
-          '<td><a href="#" data-entity="' + escapeHtml(item.entity.id) + '">' + getDisplayTitleWithBadges(item.entity) + '</a></td>' +
+          '<td><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(item.entity.id) + '">' + getDisplayTitleWithBadges(item.entity) + '</a></h5></td>' +
           '<td>' + escapeHtml(sD.toLocaleTimeString('cs', {hour:'2-digit',minute:'2-digit'})) + '</td>' +
           '<td>' + escapeHtml(eD.toLocaleTimeString('cs', {hour:'2-digit',minute:'2-digit'})) + '</td>' +
           '<td>' + escapeHtml(ttFmtDuration(ttEntryDuration(en))) + '</td>' +
@@ -9210,7 +9241,7 @@ function renderFlagsView(main) {
       html += '<section class="flags-section"><h3>' + em + ' (' + entries.length + ' entit, ' + entries.reduce((s, x) => s + x.count, 0) + ' výskytů)</h3><ul class="entity-list">';
       entries.forEach(ent => {
         html += '<li>' +
-          '<a href="#" class="entity-link" data-entity="' + escapeHtml(ent.entity.id) + '">' + getDisplayTitleWithBadges(ent.entity) + '</a>' +
+          '<h5 class="entity-row-heading"><a href="#" class="entity-link" data-entity="' + escapeHtml(ent.entity.id) + '">' + getDisplayTitleWithBadges(ent.entity) + '</a></h5>' +
           ' <span class="meta">(' + ent.count + '×)</span>' +
           '</li>';
       });
@@ -10124,7 +10155,7 @@ function renderDetailRead(main, e) {
     projectDashHtml +
     databaseHtml +
     (refsHtml ? '<details class="section-collapsible"><summary>Odkazy</summary><h3>Odkazy</h3>' + refsHtml + '</details>' : '') +
-    ((linksHtml || inverseHtml) ? '<details class="section-collapsible"><summary>Vazby</summary><h3>Vazby</h3>' +
+    ((linksHtml || inverseHtml) ? '<details open class="section-collapsible"><summary>Vazby</summary><h3>Vazby</h3>' +
       (linksHtml ? '<p><strong>Odchozí vazby</strong></p>' + linksHtml : '') +
       (inverseHtml ? '<p style="margin-top:1em;"><strong>Příchozí vazby</strong></p>' + inverseHtml : '') +
     '</details>' : '') +
@@ -10187,10 +10218,10 @@ function renderDetailRead(main, e) {
       relGroups.forEach(g => relCnt += g.comments.length);
       if (ownCnt === 0 && relCnt === 0) {
         // Pořád ukázat sekci s tlačítkem pro přidání komentáře (jen vlastní)
-        return '<details class="section-collapsible"><summary>Komentáře</summary><h3>Komentáře</h3>' + renderCommentsSection(e) + '</details>';
+        return '<details open class="section-collapsible"><summary>Komentáře</summary><h3>Komentáře</h3>' + renderCommentsSection(e) + '</details>';
       }
       const totalLbl = ' (' + (ownCnt + relCnt) + ')';
-      let h = '<details class="section-collapsible"><summary>Komentáře' + totalLbl + '</summary><h3>Komentáře' + totalLbl + '</h3>';
+      let h = '<details open class="section-collapsible"><summary>Komentáře' + totalLbl + '</summary><h3>Komentáře' + totalLbl + '</h3>';
       h += '<p><strong>K této entitě (' + ownCnt + ')</strong></p>';
       h += renderCommentsSection(e);
       if (relCnt > 0) {
@@ -11434,7 +11465,7 @@ function renderDetailEdit(main, e) {
         '<table><thead><tr><th scope="col">Entita</th><th scope="col">Aspekty</th><th scope="col">Skóre</th><th scope="col">Důvody</th><th scope="col">Akce</th></tr></thead><tbody>' +
         results.map((x, idx) => {
           return '<tr>' +
-            '<td><a href="#" data-entity="' + escapeHtml(x.entity.id) + '">' + getDisplayTitleWithBadges(x.entity) + '</a></td>' +
+            '<td><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(x.entity.id) + '">' + getDisplayTitleWithBadges(x.entity) + '</a></h5></td>' +
             '<td>' + (x.entity.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + '</td>' +
             '<td>' + x.score + '</td>' +
             '<td class="meta">' + escapeHtml(x.reasons.join('; ')) + '</td>' +
@@ -19465,16 +19496,20 @@ function buildEntityExportModel(entity, selection) {
     }
     if (sel.eventTasks !== false && typeof getEventTasksWithRelation === 'function') {
       const _taskStatusLabels = { todo: 'K udělání', in_progress: 'Probíhá', waiting: 'Čeká', done: 'Hotovo', cancelled: 'Zrušeno' };
+      const _relLabels = { partOf: 'součást', mentions: 'zmíněn', legacy: 'vazba' };
       getEventTasksWithRelation(e).forEach(x => {
         const t = x.entity;
         const statusVal = t.attributes && t.attributes.status;
         const statusLbl = _taskStatusLabels[statusVal] || statusVal || '';
         const deadline = t.attributes && t.attributes.deadline;
+        const lastComment = (typeof getLastCommentText === 'function') ? getLastCommentText(t) : '';
         model.eventTasks.push({
           title: getDisplayTitle(t),
           status: statusLbl,
           deadline: deadline ? fmtDate(deadline) : '',
-          relation: x.relation
+          relation: x.relation,
+          relationLabel: _relLabels[x.relation] || x.relation,
+          lastComment: lastComment || ''
         });
       });
     }
@@ -19547,26 +19582,23 @@ function renderEntityAsMarkdown(model) {
     lines.push('');
   }
 
-  // Event: účastníci
+  // Event: účastníci — jeden odstavec, jména oddělená čárkou
   if (model.eventAttendees && model.eventAttendees.length > 0) {
     lines.push('## Účastníci schůzky');
     lines.push('');
-    model.eventAttendees.forEach(p => {
-      const asp = (p.aspects && p.aspects.length > 0) ? ' (' + p.aspects.join(', ') + ')' : '';
-      lines.push('- ' + p.title + asp);
-    });
+    lines.push(model.eventAttendees.map(p => p.title).join(', '));
     lines.push('');
   }
 
-  // Event: úkoly (tabulka)
+  // Event: úkoly — tabulka pod tělem, sloupce: Úkol | Termín | Stav | Poslední komentář
   if (model.eventTasks && model.eventTasks.length > 0) {
-    lines.push('## Úkoly ze schůzky');
+    lines.push('## Úkoly schůzky');
     lines.push('');
-    lines.push('| Úkol | Stav | Termín |');
-    lines.push('| --- | --- | --- |');
+    lines.push('| Úkol | Termín | Stav | Poslední komentář |');
+    lines.push('| --- | --- | --- | --- |');
     model.eventTasks.forEach(t => {
       const esc = s => String(s || '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
-      lines.push('| ' + esc(t.title) + ' | ' + esc(t.status) + ' | ' + esc(t.deadline) + ' |');
+      lines.push('| ' + esc(t.title) + ' | ' + esc(t.deadline) + ' | ' + esc(t.status) + ' | ' + esc(t.lastComment || '') + ' |');
     });
     lines.push('');
   }
@@ -20369,6 +20401,33 @@ function renderEntityAsHtmlForPrint(model) {
 
   if (model.body && model.body.trim()) {
     h += '<div>' + renderMarkdown(model.body) + '</div>';
+  }
+
+  // Event: účastníci jako odstavec, jména oddělená čárkou
+  if (model.eventAttendees && model.eventAttendees.length > 0) {
+    h += '<h2>Účastníci schůzky</h2>';
+    h += '<p>' + model.eventAttendees.map(p => esc(p.title)).join(', ') + '</p>';
+  }
+
+  // Event: úkoly — tabulka pod tělem se sloupci Úkol | Termín | Stav | Poslední komentář
+  if (model.eventTasks && model.eventTasks.length > 0) {
+    h += '<h2>Úkoly schůzky</h2>';
+    h += '<table style="width:100%;border-collapse:collapse;margin:0.5em 0;">' +
+      '<thead><tr>' +
+        '<th style="border:1px solid #999;padding:0.3em 0.5em;text-align:left;background:#f0f0f0;">Úkol</th>' +
+        '<th style="border:1px solid #999;padding:0.3em 0.5em;text-align:left;background:#f0f0f0;">Termín</th>' +
+        '<th style="border:1px solid #999;padding:0.3em 0.5em;text-align:left;background:#f0f0f0;">Stav</th>' +
+        '<th style="border:1px solid #999;padding:0.3em 0.5em;text-align:left;background:#f0f0f0;">Poslední komentář</th>' +
+      '</tr></thead><tbody>';
+    model.eventTasks.forEach(t => {
+      h += '<tr>' +
+        '<td style="border:1px solid #999;padding:0.3em 0.5em;">' + esc(t.title) + '</td>' +
+        '<td style="border:1px solid #999;padding:0.3em 0.5em;">' + esc(t.deadline || '') + '</td>' +
+        '<td style="border:1px solid #999;padding:0.3em 0.5em;">' + esc(t.status || '') + '</td>' +
+        '<td style="border:1px solid #999;padding:0.3em 0.5em;font-size:0.9em;color:#555;">' + esc(t.lastComment || '') + '</td>' +
+      '</tr>';
+    });
+    h += '</tbody></table>';
   }
 
   if (model.attachments.length > 0) {
@@ -22030,6 +22089,9 @@ body.theme-dark .toolbar { background: #222; }
 .toolbar > div { flex: 1 1 200px; min-width: 0; }
 .toolbar label { margin-top: 0; font-size: 0.9em; }
 .entity-row { padding: 0.5em 0; border-bottom: 1px solid #eee; }
+/* H5 obal jen pro screen-reader navigaci po nadpisech – vizuálně se chová jako běžný text/odkaz. */
+.entity-row-heading { display: inline; margin: 0; padding: 0; font-size: inherit; font-weight: inherit; font-family: inherit; line-height: inherit; color: inherit; }
+.entity-row-heading a { font-weight: inherit; }
 .entity-row:last-child { border-bottom: none; }
 .entity-row a { color: #0066cc; text-decoration: none; font-weight: 500; }
 .entity-row a:hover { text-decoration: underline; }
@@ -23399,7 +23461,7 @@ function _pluck(freq, when, dur) {
 }
 function _bubble() {
   const a = _audioCtx(); if (!a) return;
-  const t0 = a.currentTime;
+  const t0 = a.currentTime + 0.05;
   const osc = a.createOscillator();
   osc.type = 'sine';
   osc.frequency.setValueAtTime(400, t0);
@@ -23412,34 +23474,62 @@ function _bubble() {
 }
 function _modem() {
   const a = _audioCtx(); if (!a) return;
-  const t0 = a.currentTime;
-  const osc1 = a.createOscillator(); osc1.type = 'sawtooth';
-  osc1.frequency.setValueAtTime(800, t0);
-  osc1.frequency.exponentialRampToValueAtTime(1600, t0 + 0.15);
-  const g1 = a.createGain();
-  g1.gain.setValueAtTime(0.12, t0);
-  g1.gain.exponentialRampToValueAtTime(0.001, t0 + 0.16);
-  osc1.connect(g1); g1.connect(a.destination);
-  osc1.start(t0); osc1.stop(t0 + 0.17);
-  const osc2 = a.createOscillator(); osc2.type = 'sawtooth';
-  osc2.frequency.setValueAtTime(1200, t0 + 0.2);
-  osc2.frequency.exponentialRampToValueAtTime(2400, t0 + 0.35);
-  const g2 = a.createGain();
-  g2.gain.setValueAtTime(0.12, t0 + 0.2);
-  g2.gain.exponentialRampToValueAtTime(0.001, t0 + 0.36);
-  osc2.connect(g2); g2.connect(a.destination);
-  osc2.start(t0 + 0.2); osc2.stop(t0 + 0.37);
+  // Buffer 0.1 s, aby se stihl resume() AudioContextu (může být suspended při prvním kliknutí).
+  const t0 = a.currentTime + 0.1;
+  // Helper: ulož sweep s ADSR
+  function sweep(freqStart, freqEnd, when, dur, gain, type) {
+    const osc = a.createOscillator();
+    osc.type = type || 'square';
+    osc.frequency.setValueAtTime(freqStart, when);
+    osc.frequency.exponentialRampToValueAtTime(freqEnd, when + dur);
+    const g = a.createGain();
+    g.gain.setValueAtTime(0, when);
+    g.gain.linearRampToValueAtTime(gain, when + 0.01);
+    g.gain.setValueAtTime(gain, when + dur - 0.03);
+    g.gain.exponentialRampToValueAtTime(0.001, when + dur);
+    osc.connect(g); g.connect(a.destination);
+    osc.start(when); osc.stop(when + dur + 0.02);
+  }
+  // 1) Krátký dvojzvuk – „wii-uu" jako probing modem (high → low)
+  sweep(1600, 1100, t0,        0.08, 0.18, 'square');
+  sweep(1100, 1600, t0 + 0.10, 0.08, 0.18, 'square');
+  // 2) Pauza, pak charakteristický „DEEERRR" — dvě paralelní sawtooth o dvou různých frekvencích
+  const carrierStart = t0 + 0.30;
+  const carrierDur = 0.50;
+  // Hlavní carrier 1200 Hz
+  const c1 = a.createOscillator(); c1.type = 'sawtooth'; c1.frequency.value = 1200;
+  const cg1 = a.createGain();
+  cg1.gain.setValueAtTime(0, carrierStart);
+  cg1.gain.linearRampToValueAtTime(0.14, carrierStart + 0.02);
+  cg1.gain.setValueAtTime(0.14, carrierStart + carrierDur - 0.04);
+  cg1.gain.exponentialRampToValueAtTime(0.001, carrierStart + carrierDur);
+  c1.connect(cg1); cg1.connect(a.destination);
+  c1.start(carrierStart); c1.stop(carrierStart + carrierDur + 0.02);
+  // Druhý carrier 2400 Hz (kvinta) — dělá to typický „kovový" modem zvuk
+  const c2 = a.createOscillator(); c2.type = 'sawtooth'; c2.frequency.value = 2400;
+  const cg2 = a.createGain();
+  cg2.gain.setValueAtTime(0, carrierStart);
+  cg2.gain.linearRampToValueAtTime(0.10, carrierStart + 0.02);
+  cg2.gain.setValueAtTime(0.10, carrierStart + carrierDur - 0.04);
+  cg2.gain.exponentialRampToValueAtTime(0.001, carrierStart + carrierDur);
+  c2.connect(cg2); cg2.connect(a.destination);
+  c2.start(carrierStart); c2.stop(carrierStart + carrierDur + 0.02);
+  // Vibrato/warble přes carrier 1
+  const lfo = a.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 18;
+  const lfoGain = a.createGain(); lfoGain.gain.value = 80;
+  lfo.connect(lfoGain); lfoGain.connect(c1.frequency);
+  lfo.start(carrierStart); lfo.stop(carrierStart + carrierDur);
 }
 function _bell() {
   const a = _audioCtx(); if (!a) return;
-  const t0 = a.currentTime;
+  const t0 = a.currentTime + 0.05;
   _pluck(880, t0, 0.4);
   _pluck(1175, t0 + 0.15, 0.6);
   _pluck(1760, t0 + 0.25, 0.5);
 }
 function _errorSound() {
   const a = _audioCtx(); if (!a) return;
-  const t0 = a.currentTime;
+  const t0 = a.currentTime + 0.05;
   function tone(freq, dur) {
     const osc = a.createOscillator();
     osc.type = 'sawtooth'; osc.frequency.value = freq;
@@ -23454,7 +23544,7 @@ function _errorSound() {
 }
 function _fanfare() {
   const a = _audioCtx(); if (!a) return;
-  const t0 = a.currentTime;
+  const t0 = a.currentTime + 0.05;
   _brassNote(523, 0.16, t0,        0.20, false);
   _brassNote(659, 0.16, t0 + 0.16, 0.20, false);
   _brassNote(784, 0.16, t0 + 0.32, 0.22, false);
@@ -23468,7 +23558,7 @@ function _fanfare() {
 }
 function _tap(freq) {
   const a = _audioCtx(); if (!a) return;
-  const t0 = a.currentTime;
+  const t0 = a.currentTime + 0.05;
   const osc = a.createOscillator();
   osc.type = 'triangle';
   osc.frequency.value = freq || 1200;
@@ -24972,7 +25062,7 @@ function entityRowHtml(e) {
   const dateStr = date ? '<span class="meta">' + escapeHtml(fmtDate(date)) + '</span>' : '';
   const att = (e.attachments && e.attachments.length > 0) ? '<span class="meta" title="přílohy">📎' + e.attachments.length + '</span>' : '';
   return '<div class="entity-row">' +
-    '<div><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a> ' + status + ' ' + dateStr + ' ' + att + '</div>' +
+    '<div><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h5> ' + status + ' ' + dateStr + ' ' + att + '</div>' +
     '<div>' + aspects + ' ' + tags + '</div>' +
     '<div class="meta">Změněno ' + escapeHtml(fmtRelative(e.updated_at)) + '</div></div>';
 }
@@ -25121,7 +25211,7 @@ function renderEntityTableHtml(entities, sort, options) {
       h += '<td><input type="checkbox" class="bulk-select" data-entity-id="' + escapeHtml(e.id) + '"' +
         (isSel ? ' checked' : '') + ' aria-label="Vybrat ' + escapeHtml(getDisplayTitle(e)) + '"></td>';
     }
-    h += '<td><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></td>' +
+    h += '<td><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h5></td>' +
       '<td>' + getEntityDetailsHtml(e) + '</td>' +
       '<td>' + (e.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + '</td>' +
       '<td>' + (e.tags || []).map(t => '<a href="#" class="tag" data-tag="' + escapeHtml(t) + '">' + escapeHtml(t) + '</a>').join(' ') + '</td>' +
@@ -25887,7 +25977,7 @@ function taskRowHtml(e) {
     '<input type="checkbox" data-task-id="' + escapeHtml(e.id) + '"' + (done ? ' checked' : '') +
     ' aria-label="Hotovo: ' + escapeHtml(getDisplayTitle(e)) + '">' +
     '<span style="' + (done ? 'text-decoration:line-through;color:#888;' : '') + '">' +
-    '<a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a> ' + pr + ' ' + dl +
+    '<h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h5> ' + pr + ' ' + dl +
     '</span></label><div>' + tags + '</div></div>';
 }
 
@@ -26096,10 +26186,10 @@ function renderLinksView(main) {
           const toAspects = (l.to.aspects || []).map(a => aspectLabel(a)).join(', ');
           const noteTxt = l.note ? ' <span class="meta">(' + escapeHtml(l.note) + ')</span>' : '';
           return '<tr>' +
-            '<td><a href="#" data-entity="' + escapeHtml(l.from.id) + '">' + getDisplayTitleWithBadges(l.from) + '</a>' +
+            '<td><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(l.from.id) + '">' + getDisplayTitleWithBadges(l.from) + '</a></h5>' +
               (fromAspects ? ' <span class="meta">(' + escapeHtml(fromAspects) + ')</span>' : '') + '</td>' +
             '<td>' + escapeHtml(l.typeLabel) + noteTxt + '</td>' +
-            '<td><a href="#" data-entity="' + escapeHtml(l.to.id) + '">' + getDisplayTitleWithBadges(l.to) + '</a></td>' +
+            '<td><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(l.to.id) + '">' + getDisplayTitleWithBadges(l.to) + '</a></h5></td>' +
             '<td>' + escapeHtml(toAspects) + '</td>' +
           '</tr>';
         }).join('') +
@@ -26725,7 +26815,7 @@ function renderDetailRead(main, e) {
     projectDashHtml +
     databaseHtml +
     (refsHtml ? '<details class="section-collapsible"><summary>Odkazy</summary><h3>Odkazy</h3>' + refsHtml + '</details>' : '') +
-    ((linksHtml || inverseHtml) ? '<details class="section-collapsible"><summary>Vazby</summary><h3>Vazby</h3>' +
+    ((linksHtml || inverseHtml) ? '<details open class="section-collapsible"><summary>Vazby</summary><h3>Vazby</h3>' +
       (linksHtml ? '<p><strong>Odchozí vazby</strong></p>' + linksHtml : '') +
       (inverseHtml ? '<p style="margin-top:1em;"><strong>Příchozí vazby</strong></p>' + inverseHtml : '') +
     '</details>' : '') +
@@ -26753,10 +26843,10 @@ function renderDetailRead(main, e) {
       relGroups.forEach(g => relCnt += g.comments.length);
       if (ownCnt === 0 && relCnt === 0) {
         // Pořád ukázat sekci s tlačítkem pro přidání komentáře (jen vlastní)
-        return '<details class="section-collapsible"><summary>Komentáře</summary><h3>Komentáře</h3>' + renderCommentsSection(e) + '</details>';
+        return '<details open class="section-collapsible"><summary>Komentáře</summary><h3>Komentáře</h3>' + renderCommentsSection(e) + '</details>';
       }
       const totalLbl = ' (' + (ownCnt + relCnt) + ')';
-      let h = '<details class="section-collapsible"><summary>Komentáře' + totalLbl + '</summary><h3>Komentáře' + totalLbl + '</h3>';
+      let h = '<details open class="section-collapsible"><summary>Komentáře' + totalLbl + '</summary><h3>Komentáře' + totalLbl + '</h3>';
       h += '<p><strong>K této entitě (' + ownCnt + ')</strong></p>';
       h += renderCommentsSection(e);
       if (relCnt > 0) {
