@@ -105,6 +105,7 @@ hr{border:none;border-top:1px solid #ddd;margin:1em 0}
       <button id="btnLoadProject" accesskey="o" title="Načíst projekt – libovolný soubor (Alt+O)">Načíst projekt</button>
       <button id="btnSaveProject" accesskey="s" title="Uložit projekt jako .pup (Alt+S)">Uložit projekt</button>
       <button id="btnImportPuml" accesskey="m" title="iMportovat .puml (Alt+M)">Importovat .puml</button>
+      <button id="btnImportPupe" title="Importovat diagramy/složky z .pupe do aktuálního projektu">Importovat .pupe</button>
       <button id="btnProjectSettings" title="Nastavení projektu (včetně názvu)">Nastavení projektu</button>
       <button id="btnHelp" accesskey="h" title="Nápověda (Alt+H)">Nápověda</button>
     </div>
@@ -127,6 +128,7 @@ hr{border:none;border-top:1px solid #ddd;margin:1em 0}
       <button id="btnRenameDiagram">Přejmenovat</button>
       <button id="btnMoveDiagram">Přesunout do složky</button>
       <button id="btnDuplicateDiagram">Duplikovat</button>
+      <button id="btnExportDiagramPupe" title="Exportovat tento diagram jako .pupe (pro přenos do jiného projektu)">Exportovat (.pupe)</button>
       <button id="btnDeleteDiagram">Smazat diagram</button>
       <button id="btnDiagramSettings">Nastavení diagramu</button>
     </div>
@@ -3284,7 +3286,8 @@ function renderDiagramTree(){
     const li = el('li');
     const item = treeItem(folder.name, 'složka', 'package', false,
       ()=>renameFolderAction(folder.id),
-      [actionBtn('×', 'Smazat složku ' + folder.name, ()=>deleteFolderAction(folder.id))]);
+      [actionBtn('⤓', 'Exportovat složku ' + folder.name + ' jako .pupe', ()=>exportFolderPupe(folder.id)),
+       actionBtn('×', 'Smazat složku ' + folder.name, ()=>deleteFolderAction(folder.id))]);
     // přejmenování při kliknutí na label – upravme aria-label
     const labelBtn = item.querySelector('a.label');
     if(labelBtn) labelBtn.setAttribute('aria-label', 'složka ' + folder.name);
@@ -3298,7 +3301,7 @@ function renderDiagramTree(){
   function renderDiagramItem(d, parentList){
     const li = el('li');
     const isSel = state.selectedDiagramId === d.id;
-    const typeBadge = ({activity:'flow',class:'class',sequence:'seq',usecase:'usecase'})[d.type] || d.type;
+    const typeBadge = ({activity:'flow',class:'class',sequence:'seq',usecase:'usecase',state:'state',component:'komp',deployment:'nasazení',network:'síť'})[d.type] || d.type;
     const item = treeItem(d.name, typeBadge, '', isSel,
       ()=>selectDiagram(d.id),
       []);
@@ -5819,6 +5822,137 @@ function migrateActivityShapesToStereotypes(project){
   });
 }
 
+// === PŘENOS DIAGRAMŮ A SLOŽEK MEZI PROJEKTY (.pupe) ===========
+// Formát .pupe (PlantUML Editor Export) je JSON balíček obsahující
+// jeden nebo více diagramů (včetně verzí a nastavení) a volitelně
+// hierarchii složek. Při importu se ID přegenerují, aby nekolidovaly
+// s cílovým projektem, a reference (folderId/parentId) se přemapují.
+
+// Vrátí množinu složek tvořících podstrom dané složky (včetně ní).
+function collectFolderSubtree(folderId){
+  const all = state.project.folders || [];
+  const result = [];
+  const stack = [folderId];
+  while(stack.length){
+    const id = stack.pop();
+    const f = all.find(x => x.id === id);
+    if(f){ result.push(f); }
+    all.filter(x => x.parentId === id).forEach(x => stack.push(x.id));
+  }
+  return result;
+}
+
+// Exportuje jeden diagram jako .pupe.
+function exportDiagramPupe(d){
+  if(!d){ status('Žádný diagram k exportu.', 'error'); return; }
+  const pkg = {
+    pupeVersion: 1,
+    kind: 'diagram',
+    exported: nowIso(),
+    sourceProject: (state.project && state.project.projectName) || '',
+    folders: [],
+    diagrams: [deepClone(d)]
+  };
+  // diagram exportujeme bez vazby na složku (v cíli půjde do kořene)
+  pkg.diagrams[0].folderId = null;
+  const json = JSON.stringify(pkg, null, 2);
+  const safe = (d.name || 'diagram').replace(/[^A-Za-z0-9_\u00C0-\u017F\- ]/g,'_').trim() || 'diagram';
+  downloadBlob(safe + '.pupe', new Blob([json], {type:'application/json'}));
+  status('Diagram exportován jako .pupe.', 'success');
+}
+
+// Exportuje složku se vším obsahem (vnořené složky + diagramy) jako .pupe.
+function exportFolderPupe(folderId){
+  const folder = (state.project.folders || []).find(f => f.id === folderId);
+  if(!folder){ status('Složka neexistuje.', 'error'); return; }
+  const subtree = collectFolderSubtree(folderId);
+  const subtreeIds = new Set(subtree.map(f => f.id));
+  const diagrams = (state.project.diagrams || []).filter(d => d.folderId && subtreeIds.has(d.folderId));
+  const pkg = {
+    pupeVersion: 1,
+    kind: 'folder',
+    exported: nowIso(),
+    sourceProject: (state.project && state.project.projectName) || '',
+    rootFolderId: folderId,
+    folders: subtree.map(deepClone),
+    diagrams: diagrams.map(deepClone)
+  };
+  const json = JSON.stringify(pkg, null, 2);
+  const safe = (folder.name || 'slozka').replace(/[^A-Za-z0-9_\u00C0-\u017F\- ]/g,'_').trim() || 'slozka';
+  downloadBlob(safe + '.pupe', new Blob([json], {type:'application/json'}));
+  status('Složka „' + folder.name + '" exportována jako .pupe.', 'success');
+}
+
+// Načte .pupe soubor a vloží jeho obsah do AKTUÁLNÍHO projektu.
+function loadPupeText(text, fileName){
+  if(!state.project){ status('Nejprve vytvořte nebo načtěte projekt.', 'error'); return; }
+  let pkg;
+  try { pkg = JSON.parse(text); }
+  catch(err){ status('Soubor .pupe není platný JSON: ' + err.message, 'error'); return; }
+  if(!pkg || typeof pkg !== 'object' || !Array.isArray(pkg.diagrams)){
+    status('Soubor neobsahuje platný balíček .pupe.', 'error');
+    return;
+  }
+
+  // Přemapování ID složek: staré → nové
+  const folderIdMap = {};
+  (pkg.folders || []).forEach(f => { folderIdMap[f.id] = uid('fl'); });
+
+  // Vložíme složky s novými ID a přemapovaným parentId.
+  // Pokud rodič není součástí balíčku, složka se umístí do kořene.
+  const newFolders = (pkg.folders || []).map(f => {
+    const nf = deepClone(f);
+    nf.id = folderIdMap[f.id];
+    nf.parentId = (f.parentId && folderIdMap[f.parentId]) ? folderIdMap[f.parentId] : null;
+    return nf;
+  });
+
+  // Vložíme diagramy s novými ID, přemapovaným folderId a novými ID verzí.
+  let migratedCount = 0;
+  const newDiagrams = (pkg.diagrams || []).map(d => {
+    const nd = deepClone(d);
+    nd.id = uid('dg');
+    nd.folderId = (d.folderId && folderIdMap[d.folderId]) ? folderIdMap[d.folderId] : null;
+    nd.settings = nd.settings || {};
+    nd.versions = (nd.versions || []).map(v => {
+      const nv = deepClone(v);
+      nv.id = uid('ver');
+      return nv;
+    });
+    // bezpečnostní normalizace stejně jako u načtení projektu
+    if(nd.type === 'activity' && nd.model){
+      const walk = (children) => (children||[]).forEach(n => {
+        if(n.type === 'action' && n.shape !== undefined){
+          if(n.stereotype === undefined) n.stereotype = LEGACY_SHAPE_TO_STEREOTYPE[n.shape] || '';
+          delete n.shape;
+        }
+        if(n.branches) n.branches.forEach(b => walk(b.children));
+        if(n.children) walk(n.children);
+      });
+      walk(nd.model.children || []);
+    }
+    migratedCount++;
+    return nd;
+  });
+
+  // Ošetření kolize názvů složek na kořeni (informativní, ne blokující):
+  // necháme názvy tak jak jsou; uživatel je může přejmenovat.
+  state.project.folders = (state.project.folders || []).concat(newFolders);
+  state.project.diagrams = (state.project.diagrams || []).concat(newDiagrams);
+  state.project.modified = nowIso();
+
+  // Vybereme první importovaný diagram, pokud nějaký je.
+  if(newDiagrams.length){
+    state.selectedDiagramId = newDiagrams[0].id;
+    state.selectedPath = null;
+  }
+  renderApp();
+
+  const kindLabel = pkg.kind === 'folder' ? 'Složka' : 'Diagram';
+  const folderInfo = newFolders.length ? (' a ' + newFolders.length + ' ' + czCount(newFolders.length,'složka','složky','složek')) : '';
+  status(kindLabel + ' importován: ' + migratedCount + ' ' + czCount(migratedCount,'diagram','diagramy','diagramů') + folderInfo + '.', 'success');
+}
+
 function downloadPumlAction(){
   const d = getCurrentDiagram();
   if(!d){ status('Žádný diagram k exportu.', 'error'); return; }
@@ -6479,7 +6613,10 @@ function openHelp(){
     'Titulek, hlavička a patička mohou být víceřádkové. Popisek (caption) je vždy jednořádkový – PlantUML tak funguje.');
   make('Soubory projektu',
     'Projekt se ukládá jako jediný soubor s příponou .pup (PlantUML Project) – obsahuje všechny diagramy, složky, verze a nastavení v JSON formátu.',
-    'Při načítání projektu si můžete vybrat jakýkoli soubor – aplikace si sama rozezná, zda je to projekt nebo PUML zdroj. Načtení tedy funguje i u souborů bez přípony nebo přejmenovaných.');
+    'Při načítání projektu si můžete vybrat jakýkoli soubor – aplikace si sama rozezná, zda je to projekt (.pup), přenosový balíček (.pupe) nebo PUML zdroj. Načtení tedy funguje i u souborů bez přípony nebo přejmenovaných.');
+  make('Přenos diagramů a složek mezi projekty (.pupe)',
+    'Jednotlivý diagram i celou složku lze přenést do jiného projektu pomocí souboru s příponou .pupe (PlantUML Editor Export). U vybraného diagramu slouží tlačítko „Exportovat (.pupe)", u složky tlačítko se šipkou dolů (⤓) přímo ve stromu vlevo. Export složky zahrnuje i všechny vnořené podsložky a jejich diagramy.',
+    'Balíček .pupe nese kompletní obsah včetně historie verzí a nastavení. Import se provádí tlačítkem „Importovat .pupe" – obsah se vloží do právě otevřeného projektu. Identifikátory se při importu automaticky přegenerují, takže nemůže dojít ke kolizi s existujícími diagramy; hierarchie složek a zařazení diagramů zůstane zachováno. Importované složky se přidají vedle stávajících (případné shody názvů nevadí, lze je přejmenovat).');
   make('Promítání',
     'Tlačítko „Promítat" otevře vykreslený SVG diagram v samostatném okně. To se hodí, pokud chcete diagram zobrazit na druhé obrazovce nebo projektoru a v původním okně pokračovat v úpravách.',
     'Po otevření promítání se tlačítko změní na „Překreslit promítání" – kdykoliv kliknete, okno se aktualizuje aktuálním stavem diagramu. Promítací okno samo nemá žádné ovládání obsahu – vše řídíte z hlavní aplikace.',
@@ -6519,6 +6656,7 @@ function init(){
   document.getElementById('btnLoadProject').addEventListener('click', () => triggerFile('project'));
   document.getElementById('btnSaveProject').addEventListener('click', downloadProjectJson);
   document.getElementById('btnImportPuml').addEventListener('click', () => triggerFile('puml'));
+  document.getElementById('btnImportPupe').addEventListener('click', () => triggerFile('pupe'));
   document.getElementById('btnProjectSettings').addEventListener('click', openProjectSettings);
   document.getElementById('btnHelp').addEventListener('click', openHelp);
 
@@ -6528,6 +6666,7 @@ function init(){
   document.getElementById('btnRenameDiagram').addEventListener('click', renameDiagramAction);
   document.getElementById('btnMoveDiagram').addEventListener('click', moveDiagramAction);
   document.getElementById('btnDuplicateDiagram').addEventListener('click', duplicateDiagramAction);
+  document.getElementById('btnExportDiagramPupe').addEventListener('click', () => exportDiagramPupe(getCurrentDiagram()));
   document.getElementById('btnDeleteDiagram').addEventListener('click', deleteDiagramAction);
   document.getElementById('btnDiagramSettings').addEventListener('click', openDiagramSettings);
   document.getElementById('btnSaveVersion').addEventListener('click', saveVersionAction);
@@ -6562,8 +6701,14 @@ function init(){
         const text = ev.target.result || '';
         const trimmed = text.trim();
         if(trimmed.startsWith('{')){
-          // JSON projekt
-          loadProjectJsonText(text, f.name);
+          // Rozlišíme .pupe balíček od plného projektu podle klíče pupeVersion/kind.
+          let probe = null;
+          try { probe = JSON.parse(text); } catch(e){}
+          if(probe && (probe.pupeVersion || probe.kind === 'diagram' || probe.kind === 'folder')){
+            loadPupeText(text, f.name);
+          } else {
+            loadProjectJsonText(text, f.name);
+          }
         } else if(/@startuml/i.test(trimmed) || /^\s*(start|class\s+|interface\s+|actor\s+|participant\s+|usecase\s+)/m.test(trimmed)){
           // PUML zdroj
           importPumlText(text, f.name);
@@ -6575,6 +6720,11 @@ function init(){
       reader.readAsText(f, 'utf-8');
     } else if(pendingFileMode === 'puml'){
       importPumlAction(f);
+    } else if(pendingFileMode === 'pupe'){
+      const reader = new FileReader();
+      reader.onload = ev => loadPupeText(ev.target.result || '', f.name);
+      reader.onerror = () => status('Chyba při čtení souboru.', 'error');
+      reader.readAsText(f, 'utf-8');
     }
     pendingFileMode = null;
   });
