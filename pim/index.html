@@ -2521,65 +2521,180 @@ function playNoise(duration, opts) {
 
 // Zvukové efekty pro různé události. Každá má charakteristický krátký motiv (200-500 ms),
 // aby uživatel slyšel rozdíl mezi „načteno", „uloženo", „chyba" atd.
+function _audioCtx() {
+  if (!window._pimAudioCtx) {
+    try { window._pimAudioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (e) { return null; }
+  }
+  const a = window._pimAudioCtx;
+  if (a && a.state === 'suspended') { try { a.resume(); } catch (e) {} }
+  return a;
+}
+function _brassNote(freq, dur, when, gain, vibrato) {
+  const a = _audioCtx(); if (!a) return;
+  const t0 = when;
+  const out = a.createGain();
+  out.gain.value = 0;
+  const harmonics = [
+    { mult: 1, amp: 0.50 }, { mult: 2, amp: 0.42 }, { mult: 3, amp: 0.35 },
+    { mult: 4, amp: 0.28 }, { mult: 5, amp: 0.22 }, { mult: 6, amp: 0.16 },
+    { mult: 7, amp: 0.10 }, { mult: 8, amp: 0.06 }
+  ];
+  harmonics.forEach(h => {
+    const osc = a.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = freq * h.mult;
+    const g = a.createGain();
+    g.gain.value = h.amp;
+    osc.connect(g); g.connect(out);
+    if (vibrato) {
+      const lfo = a.createOscillator();
+      lfo.frequency.value = 5.5;
+      const lfoGain = a.createGain();
+      lfoGain.gain.value = freq * h.mult * 0.006;
+      lfo.connect(lfoGain); lfoGain.connect(osc.frequency);
+      lfo.start(t0 + 0.15); lfo.stop(t0 + dur + 0.05);
+    }
+    osc.start(t0); osc.stop(t0 + dur + 0.05);
+  });
+  const lp = a.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = freq * 8;
+  lp.Q.value = 0.8;
+  out.connect(lp); lp.connect(a.destination);
+  const G = gain || 0.18;
+  out.gain.setValueAtTime(0, t0);
+  out.gain.linearRampToValueAtTime(G, t0 + 0.03);
+  out.gain.linearRampToValueAtTime(G * 0.85, t0 + 0.1);
+  out.gain.setValueAtTime(G * 0.85, t0 + Math.max(0.15, dur - 0.15));
+  out.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+}
+function _pluck(freq, when, dur) {
+  const a = _audioCtx(); if (!a) return;
+  const osc = a.createOscillator();
+  osc.type = 'triangle';
+  osc.frequency.value = freq;
+  const g = a.createGain();
+  g.gain.setValueAtTime(0.3, when);
+  g.gain.exponentialRampToValueAtTime(0.001, when + dur);
+  const filt = a.createBiquadFilter();
+  filt.type = 'lowpass';
+  filt.frequency.setValueAtTime(4000, when);
+  filt.frequency.exponentialRampToValueAtTime(800, when + dur);
+  osc.connect(filt); filt.connect(g); g.connect(a.destination);
+  osc.start(when); osc.stop(when + dur + 0.05);
+}
+function _bubble() {
+  const a = _audioCtx(); if (!a) return;
+  const t0 = a.currentTime;
+  const osc = a.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(400, t0);
+  osc.frequency.exponentialRampToValueAtTime(900, t0 + 0.12);
+  const g = a.createGain();
+  g.gain.setValueAtTime(0.25, t0);
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.15);
+  osc.connect(g); g.connect(a.destination);
+  osc.start(t0); osc.stop(t0 + 0.15);
+}
+function _modem() {
+  const a = _audioCtx(); if (!a) return;
+  const t0 = a.currentTime;
+  const osc1 = a.createOscillator(); osc1.type = 'sawtooth';
+  osc1.frequency.setValueAtTime(800, t0);
+  osc1.frequency.exponentialRampToValueAtTime(1600, t0 + 0.15);
+  const g1 = a.createGain();
+  g1.gain.setValueAtTime(0.12, t0);
+  g1.gain.exponentialRampToValueAtTime(0.001, t0 + 0.16);
+  osc1.connect(g1); g1.connect(a.destination);
+  osc1.start(t0); osc1.stop(t0 + 0.17);
+  const osc2 = a.createOscillator(); osc2.type = 'sawtooth';
+  osc2.frequency.setValueAtTime(1200, t0 + 0.2);
+  osc2.frequency.exponentialRampToValueAtTime(2400, t0 + 0.35);
+  const g2 = a.createGain();
+  g2.gain.setValueAtTime(0.12, t0 + 0.2);
+  g2.gain.exponentialRampToValueAtTime(0.001, t0 + 0.36);
+  osc2.connect(g2); g2.connect(a.destination);
+  osc2.start(t0 + 0.2); osc2.stop(t0 + 0.37);
+}
+function _bell() {
+  const a = _audioCtx(); if (!a) return;
+  const t0 = a.currentTime;
+  _pluck(880, t0, 0.4);
+  _pluck(1175, t0 + 0.15, 0.6);
+  _pluck(1760, t0 + 0.25, 0.5);
+}
+function _errorSound() {
+  const a = _audioCtx(); if (!a) return;
+  const t0 = a.currentTime;
+  function tone(freq, dur) {
+    const osc = a.createOscillator();
+    osc.type = 'sawtooth'; osc.frequency.value = freq;
+    const g = a.createGain();
+    g.gain.setValueAtTime(0.15, t0);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    osc.connect(g); g.connect(a.destination);
+    osc.start(t0); osc.stop(t0 + dur);
+  }
+  tone(220, 0.25);
+  tone(233, 0.25);
+}
+function _fanfare() {
+  const a = _audioCtx(); if (!a) return;
+  const t0 = a.currentTime;
+  _brassNote(523, 0.16, t0,        0.20, false);
+  _brassNote(659, 0.16, t0 + 0.16, 0.20, false);
+  _brassNote(784, 0.16, t0 + 0.32, 0.22, false);
+  const cs = t0 + 0.55;
+  const cd = 1.5;
+  _brassNote(261, cd, cs, 0.16, true);
+  _brassNote(523, cd, cs, 0.18, true);
+  _brassNote(659, cd, cs, 0.17, true);
+  _brassNote(784, cd, cs, 0.20, true);
+  _brassNote(1047, cd, cs, 0.16, true);
+}
+function _tap(freq) {
+  const a = _audioCtx(); if (!a) return;
+  const t0 = a.currentTime;
+  const osc = a.createOscillator();
+  osc.type = 'triangle';
+  osc.frequency.value = freq || 1200;
+  const g = a.createGain();
+  g.gain.setValueAtTime(0.12, t0);
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.05);
+  osc.connect(g); g.connect(a.destination);
+  osc.start(t0); osc.stop(t0 + 0.06);
+}
+
 function playSound(kind) {
   if (!state.settings || !state.settings.audioFeedback) return;
   switch (kind) {
-    case 'load':
-      // Načtení dat – stoupavé tři tóny (C5 → E5 → G5), durmolový rozklad
-      playTone(523, 0.12, { peak: 0.25 });
-      setTimeout(() => playTone(659, 0.12, { peak: 0.25 }), 100);
-      setTimeout(() => playTone(784, 0.18, { peak: 0.3 }), 200);
+    case 'task-done':
+    case 'done':
+    case 'success':
+      _fanfare();
       break;
-    case 'save':
-      // Uložení – výrazný zvonkový tón (G5 → C6) s lehkým zazvoněním
-      playTone(784, 0.1, { peak: 0.28, type: 'triangle' });
-      setTimeout(() => playTone(1047, 0.18, { peak: 0.25, type: 'triangle' }), 60);
+    case 'load':
+      _bell();
       break;
     case 'save-gh':
-      // Uložení na GitHub – 4-tónový triumf (C5-E5-G5-C6) zvonkový
-      playTone(523, 0.1, { peak: 0.28 });
-      setTimeout(() => playTone(659, 0.1, { peak: 0.28 }), 90);
-      setTimeout(() => playTone(784, 0.1, { peak: 0.28 }), 180);
-      setTimeout(() => playTone(1047, 0.25, { peak: 0.32, type: 'triangle' }), 270);
+      _modem();
       break;
+    case 'save':
     case 'save-entity':
-      // Uložení entity z editu – výrazný tón A5 → C6 (krátký dvojtón)
-      playTone(880, 0.1, { peak: 0.28 });
-      setTimeout(() => playTone(1047, 0.16, { peak: 0.28 }), 80);
-      break;
-    case 'success':
-      // Obecný úspěch – majorové trio (E5 → G5 → C6)
-      playTone(659, 0.1, { peak: 0.28 });
-      setTimeout(() => playTone(784, 0.1, { peak: 0.28 }), 90);
-      setTimeout(() => playTone(1047, 0.2, { peak: 0.3, type: 'triangle' }), 180);
+    case 'notify':
+      _bubble();
       break;
     case 'error':
-      // Chyba – klesající dvojtón (A4 → E4) výrazně, square pro pevnost
-      playTone(440, 0.18, { peak: 0.3, type: 'square' });
-      setTimeout(() => playTone(330, 0.28, { peak: 0.3, type: 'square' }), 170);
-      break;
+    case 'delete':
     case 'warning':
-      // Varování – dva stejné tóny (A4-A4) s pauzou
-      playTone(440, 0.1, { peak: 0.28, type: 'square' });
-      setTimeout(() => playTone(440, 0.15, { peak: 0.28, type: 'square' }), 180);
+      _errorSound();
       break;
     case 'click':
-      // Krátký, ale slyšitelný cvak — kratší, ale s výraznější amplitudou
-      playTone(1200, 0.05, { peak: 0.18, type: 'triangle' });
-      break;
-    case 'delete':
-      // Smazání – sestupný motiv (C5 → A4 → F4) s důrazem
-      playTone(523, 0.1, { peak: 0.28, type: 'square' });
-      setTimeout(() => playTone(440, 0.1, { peak: 0.28, type: 'square' }), 90);
-      setTimeout(() => playTone(349, 0.2, { peak: 0.28, type: 'square' }), 180);
-      break;
-    case 'notify':
-      // Výrazný „Hej, něco se stalo" — jednoduchý, ale slyšitelný motiv (E5-G5)
-      playTone(659, 0.12, { peak: 0.3, type: 'triangle' });
-      setTimeout(() => playTone(784, 0.18, { peak: 0.3, type: 'triangle' }), 110);
+      _tap(1200);
       break;
     default:
-      playTone(880, 0.1, { peak: 0.25 });
+      _tap(880);
   }
 }
 // ==== MARKDOWN ====
@@ -23213,65 +23328,180 @@ function playNoise(duration, opts) {
 
 // Zvukové efekty pro různé události. Každá má charakteristický krátký motiv (200-500 ms),
 // aby uživatel slyšel rozdíl mezi „načteno", „uloženo", „chyba" atd.
+function _audioCtx() {
+  if (!window._pimAudioCtx) {
+    try { window._pimAudioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (e) { return null; }
+  }
+  const a = window._pimAudioCtx;
+  if (a && a.state === 'suspended') { try { a.resume(); } catch (e) {} }
+  return a;
+}
+function _brassNote(freq, dur, when, gain, vibrato) {
+  const a = _audioCtx(); if (!a) return;
+  const t0 = when;
+  const out = a.createGain();
+  out.gain.value = 0;
+  const harmonics = [
+    { mult: 1, amp: 0.50 }, { mult: 2, amp: 0.42 }, { mult: 3, amp: 0.35 },
+    { mult: 4, amp: 0.28 }, { mult: 5, amp: 0.22 }, { mult: 6, amp: 0.16 },
+    { mult: 7, amp: 0.10 }, { mult: 8, amp: 0.06 }
+  ];
+  harmonics.forEach(h => {
+    const osc = a.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = freq * h.mult;
+    const g = a.createGain();
+    g.gain.value = h.amp;
+    osc.connect(g); g.connect(out);
+    if (vibrato) {
+      const lfo = a.createOscillator();
+      lfo.frequency.value = 5.5;
+      const lfoGain = a.createGain();
+      lfoGain.gain.value = freq * h.mult * 0.006;
+      lfo.connect(lfoGain); lfoGain.connect(osc.frequency);
+      lfo.start(t0 + 0.15); lfo.stop(t0 + dur + 0.05);
+    }
+    osc.start(t0); osc.stop(t0 + dur + 0.05);
+  });
+  const lp = a.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = freq * 8;
+  lp.Q.value = 0.8;
+  out.connect(lp); lp.connect(a.destination);
+  const G = gain || 0.18;
+  out.gain.setValueAtTime(0, t0);
+  out.gain.linearRampToValueAtTime(G, t0 + 0.03);
+  out.gain.linearRampToValueAtTime(G * 0.85, t0 + 0.1);
+  out.gain.setValueAtTime(G * 0.85, t0 + Math.max(0.15, dur - 0.15));
+  out.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+}
+function _pluck(freq, when, dur) {
+  const a = _audioCtx(); if (!a) return;
+  const osc = a.createOscillator();
+  osc.type = 'triangle';
+  osc.frequency.value = freq;
+  const g = a.createGain();
+  g.gain.setValueAtTime(0.3, when);
+  g.gain.exponentialRampToValueAtTime(0.001, when + dur);
+  const filt = a.createBiquadFilter();
+  filt.type = 'lowpass';
+  filt.frequency.setValueAtTime(4000, when);
+  filt.frequency.exponentialRampToValueAtTime(800, when + dur);
+  osc.connect(filt); filt.connect(g); g.connect(a.destination);
+  osc.start(when); osc.stop(when + dur + 0.05);
+}
+function _bubble() {
+  const a = _audioCtx(); if (!a) return;
+  const t0 = a.currentTime;
+  const osc = a.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(400, t0);
+  osc.frequency.exponentialRampToValueAtTime(900, t0 + 0.12);
+  const g = a.createGain();
+  g.gain.setValueAtTime(0.25, t0);
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.15);
+  osc.connect(g); g.connect(a.destination);
+  osc.start(t0); osc.stop(t0 + 0.15);
+}
+function _modem() {
+  const a = _audioCtx(); if (!a) return;
+  const t0 = a.currentTime;
+  const osc1 = a.createOscillator(); osc1.type = 'sawtooth';
+  osc1.frequency.setValueAtTime(800, t0);
+  osc1.frequency.exponentialRampToValueAtTime(1600, t0 + 0.15);
+  const g1 = a.createGain();
+  g1.gain.setValueAtTime(0.12, t0);
+  g1.gain.exponentialRampToValueAtTime(0.001, t0 + 0.16);
+  osc1.connect(g1); g1.connect(a.destination);
+  osc1.start(t0); osc1.stop(t0 + 0.17);
+  const osc2 = a.createOscillator(); osc2.type = 'sawtooth';
+  osc2.frequency.setValueAtTime(1200, t0 + 0.2);
+  osc2.frequency.exponentialRampToValueAtTime(2400, t0 + 0.35);
+  const g2 = a.createGain();
+  g2.gain.setValueAtTime(0.12, t0 + 0.2);
+  g2.gain.exponentialRampToValueAtTime(0.001, t0 + 0.36);
+  osc2.connect(g2); g2.connect(a.destination);
+  osc2.start(t0 + 0.2); osc2.stop(t0 + 0.37);
+}
+function _bell() {
+  const a = _audioCtx(); if (!a) return;
+  const t0 = a.currentTime;
+  _pluck(880, t0, 0.4);
+  _pluck(1175, t0 + 0.15, 0.6);
+  _pluck(1760, t0 + 0.25, 0.5);
+}
+function _errorSound() {
+  const a = _audioCtx(); if (!a) return;
+  const t0 = a.currentTime;
+  function tone(freq, dur) {
+    const osc = a.createOscillator();
+    osc.type = 'sawtooth'; osc.frequency.value = freq;
+    const g = a.createGain();
+    g.gain.setValueAtTime(0.15, t0);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    osc.connect(g); g.connect(a.destination);
+    osc.start(t0); osc.stop(t0 + dur);
+  }
+  tone(220, 0.25);
+  tone(233, 0.25);
+}
+function _fanfare() {
+  const a = _audioCtx(); if (!a) return;
+  const t0 = a.currentTime;
+  _brassNote(523, 0.16, t0,        0.20, false);
+  _brassNote(659, 0.16, t0 + 0.16, 0.20, false);
+  _brassNote(784, 0.16, t0 + 0.32, 0.22, false);
+  const cs = t0 + 0.55;
+  const cd = 1.5;
+  _brassNote(261, cd, cs, 0.16, true);
+  _brassNote(523, cd, cs, 0.18, true);
+  _brassNote(659, cd, cs, 0.17, true);
+  _brassNote(784, cd, cs, 0.20, true);
+  _brassNote(1047, cd, cs, 0.16, true);
+}
+function _tap(freq) {
+  const a = _audioCtx(); if (!a) return;
+  const t0 = a.currentTime;
+  const osc = a.createOscillator();
+  osc.type = 'triangle';
+  osc.frequency.value = freq || 1200;
+  const g = a.createGain();
+  g.gain.setValueAtTime(0.12, t0);
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.05);
+  osc.connect(g); g.connect(a.destination);
+  osc.start(t0); osc.stop(t0 + 0.06);
+}
+
 function playSound(kind) {
   if (!state.settings || !state.settings.audioFeedback) return;
   switch (kind) {
-    case 'load':
-      // Načtení dat – stoupavé tři tóny (C5 → E5 → G5), durmolový rozklad
-      playTone(523, 0.12, { peak: 0.25 });
-      setTimeout(() => playTone(659, 0.12, { peak: 0.25 }), 100);
-      setTimeout(() => playTone(784, 0.18, { peak: 0.3 }), 200);
+    case 'task-done':
+    case 'done':
+    case 'success':
+      _fanfare();
       break;
-    case 'save':
-      // Uložení – výrazný zvonkový tón (G5 → C6) s lehkým zazvoněním
-      playTone(784, 0.1, { peak: 0.28, type: 'triangle' });
-      setTimeout(() => playTone(1047, 0.18, { peak: 0.25, type: 'triangle' }), 60);
+    case 'load':
+      _bell();
       break;
     case 'save-gh':
-      // Uložení na GitHub – 4-tónový triumf (C5-E5-G5-C6) zvonkový
-      playTone(523, 0.1, { peak: 0.28 });
-      setTimeout(() => playTone(659, 0.1, { peak: 0.28 }), 90);
-      setTimeout(() => playTone(784, 0.1, { peak: 0.28 }), 180);
-      setTimeout(() => playTone(1047, 0.25, { peak: 0.32, type: 'triangle' }), 270);
+      _modem();
       break;
+    case 'save':
     case 'save-entity':
-      // Uložení entity z editu – výrazný tón A5 → C6 (krátký dvojtón)
-      playTone(880, 0.1, { peak: 0.28 });
-      setTimeout(() => playTone(1047, 0.16, { peak: 0.28 }), 80);
-      break;
-    case 'success':
-      // Obecný úspěch – majorové trio (E5 → G5 → C6)
-      playTone(659, 0.1, { peak: 0.28 });
-      setTimeout(() => playTone(784, 0.1, { peak: 0.28 }), 90);
-      setTimeout(() => playTone(1047, 0.2, { peak: 0.3, type: 'triangle' }), 180);
+    case 'notify':
+      _bubble();
       break;
     case 'error':
-      // Chyba – klesající dvojtón (A4 → E4) výrazně, square pro pevnost
-      playTone(440, 0.18, { peak: 0.3, type: 'square' });
-      setTimeout(() => playTone(330, 0.28, { peak: 0.3, type: 'square' }), 170);
-      break;
+    case 'delete':
     case 'warning':
-      // Varování – dva stejné tóny (A4-A4) s pauzou
-      playTone(440, 0.1, { peak: 0.28, type: 'square' });
-      setTimeout(() => playTone(440, 0.15, { peak: 0.28, type: 'square' }), 180);
+      _errorSound();
       break;
     case 'click':
-      // Krátký, ale slyšitelný cvak — kratší, ale s výraznější amplitudou
-      playTone(1200, 0.05, { peak: 0.18, type: 'triangle' });
-      break;
-    case 'delete':
-      // Smazání – sestupný motiv (C5 → A4 → F4) s důrazem
-      playTone(523, 0.1, { peak: 0.28, type: 'square' });
-      setTimeout(() => playTone(440, 0.1, { peak: 0.28, type: 'square' }), 90);
-      setTimeout(() => playTone(349, 0.2, { peak: 0.28, type: 'square' }), 180);
-      break;
-    case 'notify':
-      // Výrazný „Hej, něco se stalo" — jednoduchý, ale slyšitelný motiv (E5-G5)
-      playTone(659, 0.12, { peak: 0.3, type: 'triangle' });
-      setTimeout(() => playTone(784, 0.18, { peak: 0.3, type: 'triangle' }), 110);
+      _tap(1200);
       break;
     default:
-      playTone(880, 0.1, { peak: 0.25 });
+      _tap(880);
   }
 }
 // ==== MARKDOWN ====
