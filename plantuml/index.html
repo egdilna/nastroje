@@ -774,20 +774,41 @@ function touchDiagram(d){ if(d){ d.modified = nowIso(); state.project.modified =
 // místo plné definice reference `sharedRef = alias`.
 
 // Které „kindy" jsou sdílitelné podle typu diagramu (resp. tabulka v modelu).
+// Klíčem je `diagramType.table`. Každá konfigurace popisuje, jak povýšit prvek
+// dané tabulky na sdílený.
 const SHARED_KINDS = {
-  // class diagram – sdílíme třídu/rozhraní/abstrakt/výčet/strukturu/anotaci/entitu
-  class: { table: 'classes', stereotypeField: 'stereotype',
+  // class diagram – třídy
+  'class.classes': { table: 'classes', stereotypeField: 'stereotype',
     sharedFields: ['name','stereotype','attributes','methods','values','alias'],
     localFields: ['color','packageId','note'] },
-  // sequence diagram – sdílíme účastníka (jeho jméno + typ)
-  sequence: { table: 'participants', stereotypeField: 'type',
+  // sequence diagram – účastníci
+  'sequence.participants': { table: 'participants', stereotypeField: 'type',
     sharedFields: ['name','type','alias'],
     localFields: [] },
-  // use case diagram – sdílíme aktéry; case'y necháváme lokální, viz níže
-  usecase: { table: 'actors', stereotypeField: 'type',
+  // use case diagram – aktéři
+  'usecase.actors': { table: 'actors', stereotypeField: 'type',
     sharedFields: ['name','type','alias'],
-    localFields: [] }
+    localFields: [] },
+  // use case diagram – případy užití (sdílíme název, alias a popis)
+  'usecase.useCases': { table: 'useCases', stereotypeField: '',
+    sharedFields: ['name','alias','description'],
+    localFields: ['systemId'] }
 };
+
+// Pomocný getter: vrátí konfiguraci pro daný typ diagramu a tabulku.
+function sharedConfig(diagramType, table){
+  return SHARED_KINDS[diagramType + '.' + table] || null;
+}
+
+// Zpětně kompatibilní: pro diagramy s jedinou „výchozí" tabulkou (class, sequence)
+// vrátí tu jednu. Pro usecase vrací actors (původní chování), jiné použití
+// vyžaduje volat sharedConfig se specifickou tabulkou.
+function defaultSharedConfig(diagramType){
+  if(diagramType === 'class') return SHARED_KINDS['class.classes'];
+  if(diagramType === 'sequence') return SHARED_KINDS['sequence.participants'];
+  if(diagramType === 'usecase') return SHARED_KINDS['usecase.actors'];
+  return null;
+}
 
 // Vyhledá sdílenou definici podle aliasu.
 function findShared(alias){
@@ -798,6 +819,14 @@ function findShared(alias){
 // Vrátí „efektivní" data prvku — buď ze sdílené definice (přebíjené lokálními
 // poli pokud existují), nebo přímo z prvku. Klíče sharedFields přicházejí ze
 // sdílené definice, klíče localFields zůstávají z prvku.
+// Pro strom: vrátí název prvku přes effective() s přidaným prefixem 🔗 pokud
+// jde o sdílený prvek. Emoji slouží jako vizuální i přístupnostní indikátor.
+function sharedTreeLabel(elem){
+  const eff = effective(elem);
+  const name = eff.name || '(bez názvu)';
+  return elem.sharedRef ? '🔗 ' + name : name;
+}
+
 function effective(elem){
   if(!elem || !elem.sharedRef) return elem;
   const sh = findShared(elem.sharedRef);
@@ -820,7 +849,7 @@ function findSharedUsages(alias){
   if(!state.project) return usages;
   (state.project.diagrams || []).forEach(d => {
     const m = d.model || {};
-    ['classes','participants','actors'].forEach(table => {
+    ['classes','participants','actors','useCases'].forEach(table => {
       (m[table] || []).forEach(e => {
         if(e.sharedRef === alias) usages.push({diagramId:d.id, diagramName:d.name, table, elementId:e.id});
       });
@@ -845,7 +874,7 @@ function renameSharedAlias(oldAlias, newAlias){
   if(!state.project || oldAlias === newAlias) return;
   (state.project.diagrams || []).forEach(d => {
     const m = d.model || {};
-    ['classes','participants','actors'].forEach(table => {
+    ['classes','participants','actors','useCases'].forEach(table => {
       (m[table] || []).forEach(e => {
         if(e.sharedRef === oldAlias) e.sharedRef = newAlias;
       });
@@ -855,16 +884,19 @@ function renameSharedAlias(oldAlias, newAlias){
 
 // Povýší prvek na sdílený: vytvoří záznam v sharedElements a v prvku ponechá
 // jen lokální pole + sharedRef. Vrátí alias nového sdíleného záznamu.
-function promoteToShared(diagramType, elem){
-  const cfg = SHARED_KINDS[diagramType];
+// `table` určuje konfiguraci (např. 'classes', 'participants', 'actors', 'useCases').
+function promoteToShared(diagramType, elem, table){
+  // Pokud table není zadáno, použijeme výchozí podle typu diagramu.
+  const cfg = table ? sharedConfig(diagramType, table) : defaultSharedConfig(diagramType);
   if(!cfg) return null;
   state.project.sharedElements = state.project.sharedElements || [];
   const sh = {};
   cfg.sharedFields.forEach(f => { if(elem[f] !== undefined) sh[f] = elem[f]; });
-  // určí kind podle typu diagramu (class diagram → kind je sterotyp/typ prvku)
-  sh.kind = diagramType === 'class' ? (elem.stereotype || 'class')
-          : diagramType === 'sequence' ? 'participant'
-          : 'actor';
+  // Kind určíme podle typu diagramu a tabulky.
+  if(diagramType === 'class') sh.kind = elem.stereotype || 'class';
+  else if(diagramType === 'sequence') sh.kind = 'participant';
+  else if(diagramType === 'usecase' && (table === 'useCases')) sh.kind = 'usecase';
+  else sh.kind = 'actor';
   sh.alias = uniqueSharedAlias(elem.alias || elem.name);
   state.project.sharedElements.push(sh);
   // smaž ze sdílených polí v lokálním prvku (zůstanou jen lokální + sharedRef)
@@ -876,10 +908,10 @@ function promoteToShared(diagramType, elem){
 
 // Sdílení zruší — buď jen pro tento prvek (rozpojí), nebo všude (každý výskyt
 // se stane samostatným lokálním prvkem). Vrátí true při úspěchu.
-function unshareElement(diagramType, elem, mode){
+function unshareElement(diagramType, elem, mode, table){
   const sh = findShared(elem.sharedRef);
   if(!sh) return false;
-  const cfg = SHARED_KINDS[diagramType];
+  const cfg = table ? sharedConfig(diagramType, table) : defaultSharedConfig(diagramType);
   if(!cfg) return false;
   if(mode === 'this'){
     // zkopíruje data ze sh do prvku, smaže sharedRef
@@ -888,12 +920,12 @@ function unshareElement(diagramType, elem, mode){
     return true;
   }
   if(mode === 'all'){
-    // všechny výskyty převede na lokální
+    // všechny výskyty převede na lokální — projdeme všechny tabulky napříč diagramy
     const alias = elem.sharedRef;
     (state.project.diagrams || []).forEach(d => {
       const m = d.model || {};
-      [cfg.table].forEach(table => {
-        (m[table] || []).forEach(e => {
+      ['classes','participants','actors','useCases'].forEach(tbl => {
+        (m[tbl] || []).forEach(e => {
           if(e.sharedRef === alias){
             cfg.sharedFields.forEach(f => { if(sh[f] !== undefined) e[f] = deepClone(sh[f]); });
             delete e.sharedRef;
@@ -909,7 +941,7 @@ function unshareElement(diagramType, elem, mode){
 }
 
 // Vrátí seznam sdílených prvků kompatibilních s daným typem diagramu.
-function sharedForDiagram(diagramType){
+function sharedForDiagram(diagramType, table){
   if(!state.project || !state.project.sharedElements) return [];
   if(diagramType === 'class'){
     return state.project.sharedElements.filter(s =>
@@ -919,42 +951,51 @@ function sharedForDiagram(diagramType){
     return state.project.sharedElements.filter(s => s.kind === 'participant');
   }
   if(diagramType === 'usecase'){
-    return state.project.sharedElements.filter(s => s.kind === 'actor');
+    // Pokud je zadána tabulka, filtrujeme přesně, jinak vrátíme oboje (actor + usecase).
+    if(table === 'actors') return state.project.sharedElements.filter(s => s.kind === 'actor');
+    if(table === 'useCases') return state.project.sharedElements.filter(s => s.kind === 'usecase');
+    return state.project.sharedElements.filter(s => s.kind === 'actor' || s.kind === 'usecase');
   }
   return [];
 }
 
 // Otevře dialog se seznamem sdílených prvků a vloží vybraný do aktuálního diagramu.
-async function insertSharedAction(d){
-  if(!d || !SHARED_KINDS[d.type]){
+async function insertSharedAction(d, table){
+  if(!d){ status('Žádný diagram není otevřen.', 'error'); return; }
+  // Pokud tabulka nezadána, vezmeme výchozí podle typu diagramu.
+  const cfg = table ? sharedConfig(d.type, table) : defaultSharedConfig(d.type);
+  if(!cfg){
     status('Sdílené prvky nejsou pro tento typ diagramu podporovány.', 'error'); return;
   }
-  const list = sharedForDiagram(d.type);
+  const list = sharedForDiagram(d.type, cfg.table);
   // odfiltrujeme prvky, které už v tomto diagramu jsou
-  const cfg = SHARED_KINDS[d.type];
   const presentAliases = new Set((d.model[cfg.table]||[]).map(e => e.sharedRef).filter(Boolean));
   const available = list.filter(s => !presentAliases.has(s.alias));
   if(!available.length){
-    if(!list.length) status('V projektu zatím nejsou žádné sdílené prvky pro tento typ diagramu. Sdíleným uděláte prvek zaškrtnutím „Společný pro celý projekt" v jeho detailu.', 'error');
+    if(!list.length) status('V projektu zatím nejsou žádné sdílené prvky pro tento typ. Sdíleným uděláte prvek zaškrtnutím „Společný pro celý projekt" v jeho detailu.', 'error');
     else status('Všechny sdílené prvky tohoto typu už v diagramu jsou.', 'error');
     return;
   }
   const opts = available.map(s => ({
     value: s.alias,
-    label: (s.name || s.alias) + (s.kind && s.kind !== 'participant' && s.kind !== 'actor' ? ' [' + s.kind + ']' : '')
+    label: (s.name || s.alias) + (s.kind && ['participant','actor','usecase'].indexOf(s.kind)<0 ? ' [' + s.kind + ']' : '')
   }));
   const choice = await dlgChoice('Vložit sdílený prvek', 'Vyberte prvek ze sdíleného katalogu projektu:', opts, opts[0].value);
   if(!choice) return;
   const sh = findShared(choice.value);
   if(!sh){ status('Sdílená definice nenalezena.', 'error'); return; }
   // vytvoř lokální reference
-  const newId = uid(d.type === 'class' ? 'c' : (d.type === 'sequence' ? 'p' : 'a'));
+  const idPrefix = cfg.table === 'classes' ? 'c'
+    : cfg.table === 'participants' ? 'p'
+    : cfg.table === 'actors' ? 'a'
+    : cfg.table === 'useCases' ? 'u' : 'x';
+  const newId = uid(idPrefix);
   const elem = { id: newId, sharedRef: sh.alias };
-  // u třídy si můžeme zachovat lokální packageId / color (zatím prázdné)
-  if(d.type === 'class'){ elem.packageId = null; elem.color = ''; }
+  // lokální pole default
+  if(cfg.table === 'classes'){ elem.packageId = null; elem.color = ''; }
+  if(cfg.table === 'useCases'){ elem.systemId = null; }
   d.model[cfg.table] = d.model[cfg.table] || [];
   d.model[cfg.table].push(elem);
-  // vyber nový prvek
   state.selectedPath = [cfg.table, d.model[cfg.table].length - 1];
   touchDiagram(d);
   renderApp();
@@ -1645,12 +1686,13 @@ function countClassElements(model){
 function describeUseCase(model){
   const rawActors = (model && model.actors) || [];
   const actors = rawActors.map(effective);
-  const useCases = (model && model.useCases) || [];
+  const rawUseCases = (model && model.useCases) || [];
+  const useCases = rawUseCases.map(effective);
   const systems = (model && model.systems) || [];
   const relationships = (model && model.relationships) || [];
 
   const actorById = {}; rawActors.forEach((ra,i) => actorById[ra.id] = actors[i]);
-  const ucById = {}; useCases.forEach(u => ucById[u.id] = u);
+  const ucById = {}; rawUseCases.forEach((ru,i) => ucById[ru.id] = useCases[i]);
   const sysById = {}; systems.forEach(s => sysById[s.id] = s);
 
   function actorWord(a){ return (a && a.type === 'system') ? 'systémový aktér' : 'aktér'; }
@@ -2572,12 +2614,14 @@ function genUseCase(model){
     else out.push('actor "' + name.replace(/"/g,'\\"') + '" as ' + al);
   });
   if(actors.length) out.push('');
-  useCases.forEach(u => {
-    aliasU[u.id] = (u.alias || ('u_'+u.id)).replace(/[^A-Za-z0-9_]/g,'') || 'u';
+  useCases.forEach(rawU => {
+    const u = effective(rawU);
+    aliasU[rawU.id] = (u.alias || ('u_'+rawU.id)).replace(/[^A-Za-z0-9_]/g,'') || 'u';
   });
-  function emitUC(u, indent){
+  function emitUC(rawU, indent){
+    const u = effective(rawU);
     const pad = '  '.repeat(indent);
-    out.push(pad + 'usecase "' + (u.name||'').replace(/"/g,'\\"') + '" as ' + aliasU[u.id]);
+    out.push(pad + 'usecase "' + (u.name||'').replace(/"/g,'\\"') + '" as ' + aliasU[rawU.id]);
   }
   const ucBy = {};
   useCases.forEach(u => { const k = u.systemId || '__root__'; (ucBy[k] = ucBy[k] || []).push(u); });
@@ -3425,8 +3469,8 @@ function renderSharedElementsList(){
     const li = el('li');
     const usages = findSharedUsages(s.alias);
     const kindLabel = ({class:'třída',interface:'rozhraní',abstract:'abstraktní třída',enum:'výčet',
-      struct:'struktura',annotation:'anotace',entity:'entita',actor:'aktér',participant:'účastník'})[s.kind] || s.kind;
-    const label = (s.name || s.alias) + ' — ' + kindLabel + ' (' + usages.length + ' ' +
+      struct:'struktura',annotation:'anotace',entity:'entita',actor:'aktér',participant:'účastník',usecase:'činnost'})[s.kind] || s.kind;
+    const label = '🔗 ' + (s.name || s.alias) + ' — ' + kindLabel + ' (' + usages.length + ' ' +
       czCount(usages.length,'použití','použití','použití') + ')';
     li.appendChild(treeItem(label, kindLabel, 'class', false,
       ()=>{ // klik na položku: pokud má použití, skoč na první diagram k ní
@@ -3552,10 +3596,13 @@ function treeItem(label, badgeText, badgeClass, isSelected, onSelect, extraButto
   const a = document.createElement('a');
   a.href = '#';
   a.className = 'label';
-  // aria-label = celý popis pro screen reader (badge slovně + jméno + stav)
+  // aria-label = celý popis pro screen reader (badge slovně + jméno + stav).
+  // Emoji 🔗 (značka sdíleného prvku) nahradíme slovem „sdílený", aby ho
+  // screen reader přečetl srozumitelně.
   const ariaParts = [];
   if(badgeText) ariaParts.push(badgeText);
-  ariaParts.push(label || '(bez názvu)');
+  const ariaLabel = (label || '(bez názvu)').replace(/^🔗\s*/, 'sdílený ');
+  ariaParts.push(ariaLabel);
   a.setAttribute('aria-label', ariaParts.join(' ') + (isSelected ? ' (vybráno)' : ''));
   if(isSelected) a.setAttribute('aria-current', 'true');
   // visuální obsah
@@ -3794,7 +3841,8 @@ function renderModelToolbar(d){
       tb.appendChild(actionBtn('Use case', 'Use case', ()=>addUseCase(d)));
       tb.appendChild(actionBtn('Systém (rectangle)', 'Systém (rectangle)', ()=>addSystem(d)));
       tb.appendChild(actionBtn('Vztah', 'Vztah', ()=>addUcRelationship(d)));
-      tb.appendChild(actionBtn('Vložit sdílený…', 'Vložit existující sdílený prvek', ()=>insertSharedAction(d)));
+      tb.appendChild(actionBtn('Vložit sdíleného aktéra…', 'Vložit existujícího sdíleného aktéra', ()=>insertSharedAction(d, 'actors')));
+      tb.appendChild(actionBtn('Vložit sdílený use case…', 'Vložit existující sdílený use case', ()=>insertSharedAction(d, 'useCases')));
       break;
     case 'state':
       tb.appendChild(actionBtn('Stav', 'Stav', ()=>addState(d)));
@@ -3957,8 +4005,9 @@ function renderClassTree(d, root){
     const idx = m.classes.findIndex(x=>x.id===c.id);
     const path = ['classes', idx];
     const isSel = pathEqual(state.selectedPath, path);
-    const badge = c.stereotype || 'class';
-    li.appendChild(treeItem(c.name || '(bez názvu)', badge, badge, isSel,
+    const eff = effective(c);
+    const badge = eff.stereotype || 'class';
+    li.appendChild(treeItem(sharedTreeLabel(c), badge, badge, isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
       [actionBtn('↑', 'Posunout třídu nahoru', ()=>moveModelItem(d, 'classes', idx, -1)),
        actionBtn('↓', 'Posunout třídu dolů', ()=>moveModelItem(d, 'classes', idx, 1)),
@@ -3981,7 +4030,9 @@ function renderClassTree(d, root){
     const isSel = pathEqual(state.selectedPath, path);
     const from = m.classes.find(c=>c.id===r.sourceClassId);
     const to = m.classes.find(c=>c.id===r.targetClassId);
-    const lab = (from?from.name:'?') + ' — ' + r.type + ' → ' + (to?to.name:'?') + (r.label?' ('+r.label+')':'');
+    const fromName = from ? (effective(from).name || '(bez názvu)') : '?';
+    const toName = to ? (effective(to).name || '(bez názvu)') : '?';
+    const lab = fromName + ' — ' + r.type + ' → ' + toName + (r.label?' ('+r.label+')':'');
     li.appendChild(treeItem(lab, 'rel', 'relation', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
       [actionBtn('↑', 'Posunout vztah nahoru', ()=>moveModelItem(d, 'relationships', idx, -1)),
@@ -4006,8 +4057,11 @@ function renderSequenceTree(d, root){
     const li = el('li');
     const path = ['participants', idx];
     const isSel = pathEqual(state.selectedPath, path);
-    li.appendChild(treeItem((p.name||p.alias) + (p.alias && p.alias !== p.name ? ' ['+p.alias+']' : ''),
-      p.type, 'actor', isSel,
+    const eff = effective(p);
+    const baseName = eff.name || eff.alias || '(bez názvu)';
+    const aliasShown = eff.alias && eff.alias !== eff.name ? ' [' + eff.alias + ']' : '';
+    const label = (p.sharedRef ? '🔗 ' : '') + baseName + aliasShown;
+    li.appendChild(treeItem(label, eff.type, 'actor', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
       [ actionBtn('↑', 'Posunout účastníka nahoru', ()=>moveParticipant(d, idx, -1)),
         actionBtn('↓', 'Posunout účastníka dolů', ()=>moveParticipant(d, idx, 1)),
@@ -4022,7 +4076,7 @@ function renderSequenceTree(d, root){
   ms.appendChild(el('h4',null,'Zprávy a skupiny'));
   const mul = el('ul',{'aria-label':'Strom zpráv'});
   const aliases = {};
-  (m.participants||[]).forEach(p => aliases[p.id] = p.name || p.alias);
+  (m.participants||[]).forEach(p => { const eff = effective(p); aliases[p.id] = eff.name || eff.alias; });
   function walk(children, basePath, parentList){
     children.forEach((n, idx) => {
       const path = basePath.concat([idx]);
@@ -4091,8 +4145,12 @@ function renderUseCaseTree(d, root){
     const li = el('li');
     const path = ['actors', idx];
     const isSel = pathEqual(state.selectedPath, path);
-    li.appendChild(treeItem((a.name||'(bez názvu)') + ' ['+a.alias+']',
-      a.type==='system'?'sys':'actor', 'actor', isSel,
+    const eff = effective(a);
+    const baseName = eff.name || '(bez názvu)';
+    const aliasShown = eff.alias ? ' [' + eff.alias + ']' : '';
+    const label = (a.sharedRef ? '🔗 ' : '') + baseName + aliasShown;
+    li.appendChild(treeItem(label,
+      eff.type==='system'?'sys':'actor', 'actor', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
       [actionBtn('↑', 'Posunout aktéra nahoru', ()=>moveModelItem(d, 'actors', idx, -1)),
        actionBtn('↓', 'Posunout aktéra dolů', ()=>moveModelItem(d, 'actors', idx, 1)),
@@ -4128,7 +4186,11 @@ function renderUseCaseTree(d, root){
     const idx = m.useCases.findIndex(x=>x.id===u.id);
     const path = ['useCases', idx];
     const isSel = pathEqual(state.selectedPath, path);
-    li.appendChild(treeItem(u.name + ' ['+u.alias+']', 'uc', 'usecase', isSel,
+    const eff = effective(u);
+    const baseName = eff.name || '(bez názvu)';
+    const aliasShown = eff.alias ? ' [' + eff.alias + ']' : '';
+    const label = (u.sharedRef ? '🔗 ' : '') + baseName + aliasShown;
+    li.appendChild(treeItem(label, 'uc', 'usecase', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
       [actionBtn('↑', 'Posunout use case nahoru', ()=>moveModelItem(d, 'useCases', idx, -1)),
        actionBtn('↓', 'Posunout use case dolů', ()=>moveModelItem(d, 'useCases', idx, 1)),
@@ -4152,7 +4214,9 @@ function renderUseCaseTree(d, root){
     const findEnt = (id, t) => (t==='actor' ? m.actors : m.useCases).find(x => x.id === id);
     const src = findEnt(r.sourceId, r.sourceType);
     const tgt = findEnt(r.targetId, r.targetType);
-    const lab = (src?src.name:'?') + ' — ' + r.type + ' → ' + (tgt?tgt.name:'?') + (r.label?' ('+r.label+')':'');
+    const srcName = src ? (effective(src).name || '(bez názvu)') : '?';
+    const tgtName = tgt ? (effective(tgt).name || '(bez názvu)') : '?';
+    const lab = srcName + ' — ' + r.type + ' → ' + tgtName + (r.label?' ('+r.label+')':'');
     li.appendChild(treeItem(lab, 'rel', 'relation', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
       [actionBtn('↑', 'Posunout vztah nahoru', ()=>moveModelItem(d, 'relationships', idx, -1)),
@@ -4744,8 +4808,8 @@ function renderClassDetail(d, root){
 }
 
 // Sekce „Sdílení s ostatními diagramy" — zaškrtávátko a info.
-function renderSharingSection(diagramType, d, elem, root){
-  const cfg = SHARED_KINDS[diagramType];
+function renderSharingSection(diagramType, d, elem, root, table){
+  const cfg = table ? sharedConfig(diagramType, table) : defaultSharedConfig(diagramType);
   if(!cfg) return;
   const isShared = !!elem.sharedRef;
   const sec = el('section', {class:'section'});
@@ -4755,7 +4819,7 @@ function renderSharingSection(diagramType, d, elem, root){
     isShared,
     async (checked) => {
       if(checked){
-        promoteToShared(diagramType, elem);
+        promoteToShared(diagramType, elem, cfg.table);
         touchDiagram(d); renderApp();
         status('Prvek byl povýšen na sdílený. Změny se nyní projeví ve všech diagramech, kde je použit.', 'success');
       } else {
@@ -4772,7 +4836,7 @@ function renderSharingSection(diagramType, d, elem, root){
           if(!choice) return;
           mode = choice.value;
         }
-        unshareElement(diagramType, elem, mode);
+        unshareElement(diagramType, elem, mode, cfg.table);
         touchDiagram(d); renderApp();
         status('Sdílení zrušeno.', 'success');
       }
@@ -5145,16 +5209,28 @@ function renderUseCaseDetail(d, root){
   } else if(path[0] === 'useCases'){
     const u = m.useCases[path[1]];
     if(!u){ root.appendChild(el('p',{class:'no-selection'},'Use case neexistuje.')); return; }
-    root.appendChild(el('h4',null,'Use case'));
-    root.appendChild(field('Název:', inputText(u.name||'', v=>{u.name=v;softTouch(d);})));
+    renderSharingSection('usecase', d, u, root, 'useCases');
+    const editTarget = u.sharedRef ? (findShared(u.sharedRef) || u) : u;
+    const shared = !!u.sharedRef && !!findShared(u.sharedRef);
+    root.appendChild(el('h4',null, shared ? 'Sdílený use case (definice pro celý projekt)' : 'Use case'));
+    root.appendChild(field('Název:', inputText(editTarget.name||'', v=>{editTarget.name=v;state.project.modified=nowIso();softTouch(d);})));
     root.appendChild(field('Identifikátor (alias):',
-      inputText(u.alias||'', v=>{u.alias=sanitizeAliasInput(v);softTouch(d);}),
-      'Krátký alias bez mezer a diakritiky. V PlantUML se generuje jako "as ' + (u.alias||'<alias>') + '".'));
-    root.appendChild(field('Popis (poznámka):', inputArea(u.description||'', v=>{u.description=v;softTouch(d);})));
-    root.appendChild(field('Patří do systému:',
+      inputText(editTarget.alias||'', v=>{
+        const old = editTarget.alias;
+        const ne = sanitizeAliasInput(v);
+        editTarget.alias = ne;
+        if(shared && old && ne && old !== ne) renameSharedAlias(old, ne);
+        state.project.modified = nowIso();
+        softTouch(d);
+      }),
+      'Krátký alias bez mezer a diakritiky. V PlantUML se generuje jako "as ' + (editTarget.alias||'<alias>') + '".' + (shared ? ' Při změně se automaticky přepíše ve všech diagramech.' : '')));
+    root.appendChild(field('Popis (poznámka):', inputArea(editTarget.description||'', v=>{editTarget.description=v;state.project.modified=nowIso();softTouch(d);})));
+    // Patří do systému je LOKÁLNÍ, vždy z 'u', ne z editTarget.
+    root.appendChild(field('Patří do systému (lokální):',
       selectField(u.systemId||'',
         [{value:'',label:'(žádný)'}].concat((m.systems||[]).map(s=>({value:s.id,label:s.name}))),
-        v=>{u.systemId=v||null;softTouch(d);})));
+        v=>{u.systemId=v||null;softTouch(d);}),
+      shared ? 'Toto nastavení je lokální — určuje umístění v tomto konkrétním diagramu.' : ''));
   } else if(path[0] === 'systems'){
     const s = m.systems[path[1]];
     if(!s){ root.appendChild(el('p',{class:'no-selection'},'Systém neexistuje.')); return; }
@@ -6875,6 +6951,11 @@ function buildDiagramMarkdown(d){
   const tc = effectiveTitleCaption(d);
 
   const lines = [];
+  // Header nahoře, kurzívou — kaskáda projekt → diagram.
+  if(tc.header){
+    lines.push('*' + tc.header.replace(/\r?\n/g, ' ') + '*');
+    lines.push('');
+  }
   lines.push('### Diagram: ' + name);
   lines.push('');
   lines.push(diagramSummaryLine(d));
@@ -6897,16 +6978,23 @@ function buildDiagramMarkdown(d){
   }
   lines.push(desc);
   lines.push('');
+  // Footer dole, kurzívou.
+  if(tc.footer){
+    lines.push('*' + tc.footer.replace(/\r?\n/g, ' ') + '*');
+    lines.push('');
+  }
   return lines.join('\n');
 }
 
-// Vrátí efektivní title a caption pro diagram (kaskáda projekt → diagram).
+// Vrátí efektivní title, caption, header a footer pro diagram (kaskáda projekt → diagram).
 function effectiveTitleCaption(d){
   const proj = (state.project && state.project.settings) || {};
   const ds = d.settings || {};
   return {
     title: ds.title || proj.title || '',
-    caption: ds.caption || proj.caption || ''
+    caption: ds.caption || proj.caption || '',
+    header: ds.header || proj.header || '',
+    footer: ds.footer || proj.footer || ''
   };
 }
 
@@ -7023,6 +7111,14 @@ async function saveDocDocxAction(){
 
     // 3) Sestavit odstavce
     const children = [];
+    // Efektivní title/caption/header/footer z nastavení (kaskáda projekt → diagram).
+    const tc = effectiveTitleCaption(d);
+    // Header nahoře, kurzívou.
+    if(tc.header){
+      children.push(new D.Paragraph({
+        children: [new D.TextRun({text: tc.header.replace(/\r?\n/g, ' '), italics: true})]
+      }));
+    }
     children.push(new D.Paragraph({
       heading: D.HeadingLevel.HEADING_3,
       children: [new D.TextRun({text: 'Diagram: ' + name})]
@@ -7047,7 +7143,6 @@ async function saveDocDocxAction(){
 
     // 4b) Pod obrázkem: název diagramu z nastavení (title) a caption.
     // Mohou se lišit od pojmenování diagramu v projektu, proto je vypisujeme.
-    const tc = effectiveTitleCaption(d);
     if(tc.title){
       children.push(new D.Paragraph({
         children: [new D.TextRun({text: tc.title.replace(/\r?\n/g, ' '), bold: true})]
@@ -7080,6 +7175,13 @@ async function saveDocDocxAction(){
         const clean = para.replace(/\n/g, ' ').trim();
         if(clean) children.push(new D.Paragraph({children:[new D.TextRun(clean)]}));
       });
+    }
+
+    // 5b) Footer dole, kurzívou — kaskáda projekt → diagram.
+    if(tc.footer){
+      children.push(new D.Paragraph({
+        children: [new D.TextRun({text: tc.footer.replace(/\r?\n/g, ' '), italics: true})]
+      }));
     }
 
     // 6) Vytvořit dokument
@@ -7205,14 +7307,15 @@ function openHelp(){
     'Aplikace má dva pohledy. „Pohled na projekt" obsahuje strom složek a diagramů a seznam sdílených prvků projektu — sem se vrátíte tlačítkem „← Zpět na projekt". „Pohled na diagram" se otevře po kliknutí na diagram a má tři karty: „Diagram" (akce vybraného diagramu, verze, validace), „Tvorba" (vkládání a editace prvků, struktura vlevo, detail vpravo) a „Výstup" (vykreslený diagram inline, zdrojový kód, textový popis, dokument). Mezi kartami se přepíná tlačítky nebo šipkami doleva/doprava.',
     'Na kartě „Výstup" se vykreslený diagram nenačítá automaticky — klikněte na „Načíst / aktualizovat náhled" pro zobrazení (nebo opětovné překreslení). Důvod: vykreslení vyžaduje volání na server, takže ho spouštíme cíleně.');
   make('Sdílené prvky projektu',
-    'Prvky používané ve více diagramech mohou být „společné pro celý projekt" — jejich definice (název, stereotyp, atributy, metody) žije v projektu a změny se promítnou všude. Funguje to pro třídy/rozhraní/výčty atd. v class diagramech, pro účastníky v sequence diagramech a pro aktéry v use case diagramech.',
-    'Prvek povýšíte na sdílený zaškrtnutím „Společný pro celý projekt" v jeho detailu. Od té chvíle se edituje sdílená definice; lokální zůstávají jen věci jako barva nebo přiřazení do balíčku.',
-    'Pro vložení existujícího sdíleného prvku do dalšího diagramu použijte tlačítko „Vložit sdílený…" v toolbaru daného typu diagramu. Otevře se výběr ze sdíleného katalogu projektu.',
+    'Prvky používané ve více diagramech mohou být „společné pro celý projekt" — jejich definice (název, stereotyp, atributy, metody) žije v projektu a změny se promítnou všude. Funguje to pro třídy/rozhraní/výčty atd. v class diagramech, pro účastníky v sequence diagramech a v use case diagramech jak pro aktéry, tak pro samotné případy užití (sdílí se jejich název, alias a popis; přiřazení do systému zůstává lokální).',
+    'Prvek povýšíte na sdílený zaškrtnutím „Společný pro celý projekt" v jeho detailu. Od té chvíle se edituje sdílená definice; lokální zůstávají jen věci jako barva, balíček nebo (u case) přiřazení do systému.',
+    'Pro vložení existujícího sdíleného prvku do dalšího diagramu použijte tlačítko „Vložit sdílený…" v toolbaru daného typu diagramu. V use case diagramu jsou samostatná tlačítka „Vložit sdíleného aktéra…" a „Vložit sdílený use case…".',
     'Změna aliasu sdíleného prvku se automaticky promítne do všech diagramů, kde je použit. Seznam všech sdílených prvků (s počtem použití) najdete v pohledu na projekt v sekci „Sdílené prvky projektu". Kliknutím na položku skočíte na první diagram, kde je prvek použit.',
     'Při exportu .pupe se sdílené prvky balí s sebou. Při importu do projektu, kde už existuje sdílený prvek se stejným aliasem, se použije ten cílový (předpokládáme, že si ho uživatel přizpůsobil).');
   make('Textový popis a dokument',
     'Tlačítko „Vygenerovat popis" (Alt+T) sestaví čtivý textový popis diagramu. U aktivitního diagramu je to souvislý text členěný do odstavců — kdo co dělá, jak se proces větví, jaké jsou poznámky a typy akcí. U sekvenčního diagramu je to výčet zpráv ve tvaru „Od → Pro: text (poznámka)" doplněný o odstavce a odrážky pro alternativy, smyčky a souběžné větve. U diagramu tříd popíše jednotlivé prvky (jejich atributy a metody), seskupení do balíčků a vztahy mezi nimi. U diagramu případů užití vypíše aktéry, jejich činnosti a vztahy. U stavového diagramu popíše počáteční stav, přechody a popisy stavů. U komponentového diagramu komponenty, rozhraní a co která komponenta poskytuje či používá. U diagramu nasazení uzly a jejich obsah včetně propojení. U síťového diagramu jednotlivé sítě, jejich uzly s adresami a uzly sdílené mezi více sítěmi. Popis se zobrazí v poli pod zdrojovým kódem a lze ho zkopírovat.',
     'Z diagramu lze také vytvořit dokument: tlačítka „Kopírovat MD", „Uložit MD" a „Uložit DOCX". Dokument obsahuje název diagramu, souhrn počtu prvků, verzi, datum, obrázek diagramu (PNG z PlantUML serveru) a textový popis.',
+    'V dokumentu jsou navíc respektovány hodnoty z nastavení diagramu i projektu (kaskáda projekt → diagram, diagram má přednost): nahoře dokumentu se objeví header kurzívou, pod obrázkem název (title) tučně a caption kurzívou, na konci footer kurzívou. Hodnoty bez obsahu se vynechávají.',
     'DOCX se generuje v prohlížeči i s vloženým obrázkem. Knihovna pro tvorbu DOCX se při prvním použití stáhne z internetu (CDN), proto je pro DOCX export potřeba připojení. Obrázek do dokumentu vykresluje server plantuml.com, takže i ten vyžaduje internet.');
   make('Klávesové zkratky',
     'Globální: Alt+N nový projekt, Alt+O načíst, Alt+S uložit, Alt+M importovat .puml, Alt+H nápověda, Alt+D nový diagram, Alt+F nová složka, Alt+W uložit verzi, Alt+U stáhnout .puml.',
