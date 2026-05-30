@@ -111,7 +111,8 @@ hr{border:none;border-top:1px solid #ddd;margin:1em 0}
 <header>
   <h1 id="appHeading">PlantUML editor — <span id="projectNameDisplay">Nový projekt</span></h1>
   <div class="row">
-    <div role="toolbar" aria-label="Akce projektu">
+    <!-- Toolbar pro projektový pohled: vidíme ho jen, když je activeView='project'. -->
+    <div role="toolbar" aria-label="Akce projektu" id="projectToolbar">
       <button id="btnNewProject" accesskey="n" title="Nový projekt (Alt+N)">Nový projekt</button>
       <button id="btnLoadProject" accesskey="o" title="Načíst projekt – libovolný soubor (Alt+O)">Načíst projekt</button>
       <button id="btnSaveProject" accesskey="s" title="Uložit projekt jako .pup (Alt+S)">Uložit projekt</button>
@@ -119,6 +120,14 @@ hr{border:none;border-top:1px solid #ddd;margin:1em 0}
       <button id="btnImportPupe" title="Importovat diagramy/složky z .pupe do aktuálního projektu">Importovat .pupe</button>
       <button id="btnProjectSettings" title="Nastavení projektu (včetně názvu)">Nastavení projektu</button>
       <button id="btnHelp" accesskey="h" title="Nápověda (Alt+H)">Nápověda</button>
+    </div>
+    <!-- Toolbar pro diagramový pohled: jen Zpět + Uložit projekt + Nápověda.
+         Klávesové zkratky pro celý projekt fungují i tady (Alt+N/O/S/M/H), tlačítka jen skrýváme,
+         aby uživatele nerušila — vše ostatní je v rámci pohledu na projekt. -->
+    <div role="toolbar" aria-label="Akce v pohledu na diagram" id="diagramHeaderToolbar" style="display:none">
+      <button id="btnBackToProjectHeader" accesskey="b" title="Zpět na seznam diagramů (Alt+B)">← Zpět na projekt</button>
+      <button id="btnSaveProjectInDiagram" accesskey="s" title="Uložit projekt jako .pup (Alt+S)">Uložit projekt</button>
+      <button id="btnHelpInDiagram" accesskey="h" title="Nápověda (Alt+H)">Nápověda</button>
     </div>
   </div>
 </header>
@@ -143,11 +152,6 @@ hr{border:none;border-top:1px solid #ddd;margin:1em 0}
 
 <!-- POHLED 2: DIAGRAM (s kartami) -->
 <div id="viewDiagram" class="app-view" role="region" aria-label="Pohled na otevřený diagram" style="display:none">
-  <div style="margin-bottom:.5em">
-    <button id="btnBackToProject" title="Zpět na seznam diagramů">← Zpět na projekt</button>
-    <span id="currentDiagramHeading" style="margin-left:1em;font-weight:bold;color:#1e3a5f"></span>
-  </div>
-
   <div class="tabs" role="tablist" aria-label="Karty diagramu">
     <button class="tab" role="tab" id="tabBtnDiagram" aria-controls="tabPanelDiagram" aria-selected="true">Diagram</button>
     <button class="tab" role="tab" id="tabBtnEdit" aria-controls="tabPanelEdit" aria-selected="false">Tvorba</button>
@@ -4078,11 +4082,13 @@ function validateDiagram(diagram){
 // === RENDER: APP / DIAGRAMOVÝ STROM / CURRENT =================
 function renderApp(){
   const projectName = state.project ? state.project.projectName : '(žádný projekt)';
-  document.getElementById('projectNameDisplay').textContent = projectName;
   document.title = 'PlantUML editor — ' + projectName;
   renderDiagramTree();
   renderSharedElementsList();
   renderCurrentDiagram();
+  // Po případném překreslení strom + diagram aktualizujeme hlavičku jako poslední,
+  // aby reflektovala aktivní pohled a případně i přejmenování diagramu.
+  updateHeaderTitle();
 }
 
 // === SDÍLENÉ PRVKY — SEZNAM ====================================
@@ -4160,6 +4166,8 @@ function switchView(view){
     vD.style.display = 'none';
     vP.style.display = '';
   }
+  // Hlavička aplikace musí reflektovat nový pohled (název v H1 + viditelný toolbar).
+  updateHeaderTitle();
 }
 
 // === KARTY V POHLEDU DIAGRAMU ================================
@@ -4394,19 +4402,17 @@ function renderDiagramTree(){
 }
 
 function renderCurrentDiagram(){
-  const heading = document.getElementById('currentDiagramHeading');
   const source = document.getElementById('source');
   const d = getCurrentDiagram();
   if(!d){
-    if(heading) heading.textContent = '';
     if(source) source.value = '';
     // pokud není diagram, vrátíme se do projektového pohledu
     if(state.activeView === 'diagram') switchView('project');
     return;
   }
-  const typeEntry = TYPES.find(t=>t.value===d.type);
-  const typeName = typeEntry ? typeEntry.label : d.type;
-  if(heading) heading.textContent = d.name + ' — ' + typeName;
+  // Hlavička aplikace ukáže v diagramovém pohledu název diagramu, v projektovém název projektu.
+  // O nastavení se stará updateHeaderTitle, který je volaný také ze switchView.
+  updateHeaderTitle();
   renderModelToolbar(d);
   renderModelTree(d);
   renderDetail(d);
@@ -4414,6 +4420,42 @@ function renderCurrentDiagram(){
   renderValidation(d);
   try { if(source) source.value = generatePuml(d); }
   catch(e){ if(source) source.value = '! Chyba při generování: ' + e.message; debug('Generování PUML', e.stack || e.message); }
+}
+
+// Nastaví hlavičku H1 podle aktivního pohledu:
+// - projektový → „PlantUML editor — <název projektu>"
+// - diagramový → „<název diagramu> — <typ>"
+// Také přepne, který toolbar v hlavičce je vidět.
+function updateHeaderTitle(){
+  const display = document.getElementById('projectNameDisplay');
+  const projTb = document.getElementById('projectToolbar');
+  const diagTb = document.getElementById('diagramHeaderToolbar');
+  const h1 = document.getElementById('appHeading');
+  if(state.activeView === 'diagram'){
+    const d = getCurrentDiagram();
+    if(d){
+      const typeEntry = TYPES.find(t=>t.value===d.type);
+      const typeName = typeEntry ? typeEntry.label : d.type;
+      // Předěláme H1 jen na název diagramu + typ, bez prefixu „PlantUML editor".
+      if(h1) h1.textContent = d.name + ' — ' + typeName;
+    }
+    if(projTb) projTb.style.display = 'none';
+    if(diagTb) diagTb.style.display = '';
+  } else {
+    // projektový pohled
+    const name = (state.project && state.project.projectName) || '(žádný projekt)';
+    if(h1){
+      // Vrátíme původní strukturu: „PlantUML editor — <projectNameDisplay>".
+      h1.textContent = '';
+      h1.appendChild(document.createTextNode('PlantUML editor — '));
+      const sp = document.createElement('span');
+      sp.id = 'projectNameDisplay';
+      sp.textContent = name;
+      h1.appendChild(sp);
+    }
+    if(projTb) projTb.style.display = '';
+    if(diagTb) diagTb.style.display = 'none';
+  }
 }
 
 function selectDiagram(id){
@@ -8614,7 +8656,8 @@ function openHelp(){
   make('EBNF gramatika',
     'Diagram syntaxe formálního jazyka v Extended Backus-Naur Form. Každé pravidlo má identifikátor a výraz (pravou stranu) s metaznaky: | (alternativa), , (zřetězení), [...] (volitelné), {...} (opakování), (...) (skupina), \"…\" nebo \'…\' (terminál), ? … ? (speciální).');
   make('Pohledy a karty',
-    'Aplikace má dva pohledy. „Pohled na projekt" obsahuje strom složek a diagramů a seznam sdílených prvků projektu — sem se vrátíte tlačítkem „← Zpět na projekt". „Pohled na diagram" se otevře po kliknutí na diagram a má tři karty: „Diagram" (akce vybraného diagramu, verze, validace), „Tvorba" (vkládání a editace prvků, struktura vlevo, detail vpravo) a „Výstup" (vykreslený diagram inline, zdrojový kód, textový popis, dokument). Mezi kartami se přepíná tlačítky nebo šipkami doleva/doprava.',
+    'Aplikace má dva pohledy. „Pohled na projekt" obsahuje strom složek a diagramů a seznam sdílených prvků projektu — sem se vrátíte tlačítkem „← Zpět na projekt" (Alt+B). „Pohled na diagram" se otevře po kliknutí na diagram a má tři karty: „Diagram" (akce vybraného diagramu, verze, validace), „Tvorba" (vkládání a editace prvků, struktura vlevo, detail vpravo) a „Výstup" (vykreslený diagram inline, zdrojový kód, textový popis, dokument). Mezi kartami se přepíná tlačítky nebo šipkami doleva/doprava.',
+    'Hlavička aplikace je kontextová a ukazuje jen to, co se zrovna hodí. V projektovém pohledu vidíte celý projektový toolbar (Nový / Načíst / Uložit / Importovat .puml / Importovat .pupe / Nastavení / Nápověda) a v H1 je název projektu. V diagramovém pohledu má hlavička jen „← Zpět na projekt", „Uložit projekt" a „Nápověda", a H1 ukazuje název otevřeného diagramu i s typem. Klávesové zkratky Alt+N (nový projekt), Alt+O (načíst), Alt+S (uložit), Alt+M (importovat .puml) a Alt+H (nápověda) fungují bez ohledu na pohled.',
     'Na kartě „Výstup" se vykreslený diagram nenačítá automaticky — klikněte na „Načíst / aktualizovat náhled" pro zobrazení (nebo opětovné překreslení). Důvod: vykreslení vyžaduje volání na server, takže ho spouštíme cíleně.');
   make('Sdílené prvky projektu',
     'Prvky používané ve více diagramech mohou být „společné pro celý projekt" — jejich definice (název, stereotyp, atributy, metody) žije v projektu a změny se promítnou všude. Funguje to pro třídy/rozhraní/výčty atd. v class diagramech, pro účastníky v sequence diagramech a v use case diagramech jak pro aktéry, tak pro samotné případy užití (sdílí se jejich název, alias a popis; přiřazení do systému zůstává lokální).',
@@ -8691,9 +8734,12 @@ function init(){
   document.getElementById('btnImportPupe').addEventListener('click', () => triggerFile('pupe'));
   document.getElementById('btnProjectSettings').addEventListener('click', openProjectSettings);
   document.getElementById('btnHelp').addEventListener('click', openHelp);
+  // Tlačítka v hlavičce pro diagramový pohled (jen Zpět / Uložit projekt / Nápověda)
+  document.getElementById('btnBackToProjectHeader').addEventListener('click', () => switchView('project'));
+  document.getElementById('btnSaveProjectInDiagram').addEventListener('click', downloadProjectJson);
+  document.getElementById('btnHelpInDiagram').addEventListener('click', openHelp);
 
   // Přepínání pohledu / karet
-  document.getElementById('btnBackToProject').addEventListener('click', () => switchView('project'));
   document.getElementById('tabBtnDiagram').addEventListener('click', () => switchTab('diagram'));
   document.getElementById('tabBtnEdit').addEventListener('click', () => switchTab('edit'));
   document.getElementById('tabBtnOutput').addEventListener('click', () => switchTab('output'));
