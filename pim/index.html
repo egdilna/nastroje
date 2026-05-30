@@ -5754,6 +5754,23 @@ function updateNavCounts() {
 }
 
 function render() {
+  // Snapshot stavu collapsible sekcí v detail view, aby se po re-renderu zachoval.
+  // (Dočasně v paměti, neukládá se do projektu.)
+  if (state.view === 'detail' && state.detailId) {
+    const _main = document.getElementById('main');
+    if (_main) {
+      const snapshot = {};
+      _main.querySelectorAll('details.section-collapsible').forEach(d => {
+        const sum = d.querySelector('summary');
+        const key = d.id || (sum && sum.textContent.trim()) || '';
+        if (key) snapshot[key] = d.open;
+      });
+      if (Object.keys(snapshot).length > 0) {
+        state._detailSectionsOpen = state._detailSectionsOpen || {};
+        state._detailSectionsOpen[state.detailId] = snapshot;
+      }
+    }
+  }
   updateChrome();
   const counts = getCounts();
   document.getElementById('count-inbox').textContent = counts.inbox > 0 ? counts.inbox : '';
@@ -6449,9 +6466,10 @@ function renderDashboard(main) {
       if (l.type === 'answers' && l.to) answeredQuestionIds.add(l.to);
     });
   });
-  const unansweredQuestions = db.entities.filter(e =>
+  const unansweredQuestionsAll = db.entities.filter(e =>
     !e.archived && (e.aspects || []).includes('Question') && !answeredQuestionIds.has(e.id)
-  ).slice(0, 5);
+  );
+  const unansweredQuestions = unansweredQuestionsAll.slice(0, 10);
 
   // Nedávno změněné – top 10
   const recentlyUpdated = [...db.entities].filter(e => !e.archived)
@@ -6553,6 +6571,9 @@ function renderDashboard(main) {
         : todayItems.map(itemRow).join('')) +
     '</section>' +
 
+    // === Podle tagu (uložený výběr) ===
+    renderDashboardTagSection() +
+
     // === Nedávno upravené ===
     '<section class="dash-section">' +
       '<h2>🕐 Naposledy změněné (' + recentlyUpdated.length + ')</h2>' +
@@ -6594,9 +6615,6 @@ function renderDashboard(main) {
         '</section>'
       : '') +
 
-    // === Podle tagu (uložený výběr) ===
-    renderDashboardTagSection() +
-
     // === Trackery ===
     (trackers.length > 0
       ? '<section class="dash-section dash-trackers">' +
@@ -6621,17 +6639,35 @@ function renderDashboard(main) {
       : '') +
 
     // === Otázky bez odpovědi ===
-    (unansweredQuestions.length > 0
+    (unansweredQuestionsAll.length > 0
       ? '<section class="dash-section">' +
-          '<h2>Nezodpovězené otázky (' + unansweredQuestions.length + ')</h2>' +
+          '<h2>Nezodpovězené otázky (' + unansweredQuestionsAll.length + ')</h2>' +
           unansweredQuestions.map(e =>
             '<div class="dash-item"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></div>'
           ).join('') +
+          (unansweredQuestionsAll.length > unansweredQuestions.length
+            ? '<div class="dash-item"><button type="button" id="dash-show-all-questions">Zobrazit všechny (' + unansweredQuestionsAll.length + ')</button></div>'
+            : '') +
         '</section>'
       : '');
 
   // Handlery
   attachEntityRowHandlers(main);
+
+  // "Zobrazit všechny" – nahradí otázky úplným seznamem (jen na tomto rendru)
+  const showAllBtn = document.getElementById('dash-show-all-questions');
+  if (showAllBtn) {
+    showAllBtn.onclick = () => {
+      const sect = showAllBtn.closest('.dash-section');
+      if (!sect) return;
+      const h2 = sect.querySelector('h2');
+      const newHtml = unansweredQuestionsAll.map(e =>
+        '<div class="dash-item"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></div>'
+      ).join('');
+      sect.innerHTML = h2.outerHTML + newHtml;
+      attachEntityRowHandlers(sect);
+    };
+  }
 
   // Rychlé zachycení do Inboxu – první řádek = název, zbytek = body
   const inboxForm = document.getElementById('dash-quick-form');
@@ -10586,6 +10622,18 @@ function renderDetailRead(main, e) {
       });
     };
   });
+
+  // Obnovit stav collapsible sekcí (snapshot z předchozího renderu)
+  const _snap = state._detailSectionsOpen && state._detailSectionsOpen[e.id];
+  if (_snap) {
+    main.querySelectorAll('details.section-collapsible').forEach(d => {
+      const sum = d.querySelector('summary');
+      const key = d.id || (sum && sum.textContent.trim()) || '';
+      if (key && Object.prototype.hasOwnProperty.call(_snap, key)) {
+        d.open = _snap[key];
+      }
+    });
+  }
 }
 
 // === KOPÍROVÁNÍ TĚLA ENTITY ===
