@@ -610,7 +610,11 @@ const TYPES = [
   {value:'state', label:'Stavový diagram (state)'},
   {value:'component', label:'Komponentový diagram (component)'},
   {value:'deployment', label:'Diagram nasazení (deployment)'},
-  {value:'network', label:'Síťový diagram (network / nwdiag)'}
+  {value:'network', label:'Síťový diagram (network / nwdiag)'},
+  {value:'gantt', label:'Ganttův diagram (project)'},
+  {value:'timeline', label:'Časová osa (chronology)'},
+  {value:'timing', label:'Časový průběh (timing)'},
+  {value:'ebnf', label:'EBNF gramatika'}
 ];
 
 // Paleta 40 barev v češtině. Hodnoty jsou CSS / PlantUML názvy barev,
@@ -761,9 +765,14 @@ function emptyModelFor(type){
     case 'component': return {components:[], interfaces:[], groups:[], relationships:[]};
     case 'deployment': return {nodes:[], relationships:[]};
     case 'network': return {networks:[], groups:[], peerLinks:[]};
+    case 'gantt': return {projectStart: todayIso(), printScale:'daily', tasks:[], milestones:[]};
+    case 'timeline': return {events:[]};
+    case 'ebnf': return {rules:[]};
+    case 'timing': return {participants:[], frames:[], notes:[], highlights:[], hideTimeAxis:false, dateFormat:''};
   }
   return {};
 }
+function todayIso(){ return new Date().toISOString().slice(0,10); }
 function touchDiagram(d){ if(d){ d.modified = nowIso(); state.project.modified = nowIso(); } }
 
 // === SDÍLENÉ PRVKY ============================================
@@ -792,7 +801,15 @@ const SHARED_KINDS = {
   // use case diagram – případy užití (sdílíme název, alias a popis)
   'usecase.useCases': { table: 'useCases', stereotypeField: '',
     sharedFields: ['name','alias','description'],
-    localFields: ['systemId'] }
+    localFields: ['systemId'] },
+  // Gantt – úlohy (sdílí label, alias, duration; lokální zůstává startMode, startDate, refTaskId, refPoint, offset, color)
+  'gantt.tasks': { table: 'tasks', stereotypeField: '',
+    sharedFields: ['label','alias','duration'],
+    localFields: ['startMode','startDate','refTaskId','refPoint','offset','color'] },
+  // Gantt – milníky (sdílí label, alias; lokální zůstává date, refTaskId, refPoint, offset)
+  'gantt.milestones': { table: 'milestones', stereotypeField: '',
+    sharedFields: ['label','alias'],
+    localFields: ['date','refTaskId','refPoint','offset'] }
 };
 
 // Pomocný getter: vrátí konfiguraci pro daný typ diagramu a tabulku.
@@ -849,7 +866,7 @@ function findSharedUsages(alias){
   if(!state.project) return usages;
   (state.project.diagrams || []).forEach(d => {
     const m = d.model || {};
-    ['classes','participants','actors','useCases'].forEach(table => {
+    ['classes','participants','actors','useCases','tasks','milestones'].forEach(table => {
       (m[table] || []).forEach(e => {
         if(e.sharedRef === alias) usages.push({diagramId:d.id, diagramName:d.name, table, elementId:e.id});
       });
@@ -874,7 +891,7 @@ function renameSharedAlias(oldAlias, newAlias){
   if(!state.project || oldAlias === newAlias) return;
   (state.project.diagrams || []).forEach(d => {
     const m = d.model || {};
-    ['classes','participants','actors','useCases'].forEach(table => {
+    ['classes','participants','actors','useCases','tasks','milestones'].forEach(table => {
       (m[table] || []).forEach(e => {
         if(e.sharedRef === oldAlias) e.sharedRef = newAlias;
       });
@@ -896,8 +913,11 @@ function promoteToShared(diagramType, elem, table){
   if(diagramType === 'class') sh.kind = elem.stereotype || 'class';
   else if(diagramType === 'sequence') sh.kind = 'participant';
   else if(diagramType === 'usecase' && (table === 'useCases')) sh.kind = 'usecase';
+  else if(diagramType === 'gantt' && (table === 'tasks')) sh.kind = 'gantt_task';
+  else if(diagramType === 'gantt' && (table === 'milestones')) sh.kind = 'gantt_milestone';
   else sh.kind = 'actor';
-  sh.alias = uniqueSharedAlias(elem.alias || elem.name);
+  // Základ aliasu: alias, případně name nebo label
+  sh.alias = uniqueSharedAlias(elem.alias || elem.name || elem.label);
   state.project.sharedElements.push(sh);
   // smaž ze sdílených polí v lokálním prvku (zůstanou jen lokální + sharedRef)
   cfg.sharedFields.forEach(f => { if(f !== 'alias') delete elem[f]; });
@@ -924,7 +944,7 @@ function unshareElement(diagramType, elem, mode, table){
     const alias = elem.sharedRef;
     (state.project.diagrams || []).forEach(d => {
       const m = d.model || {};
-      ['classes','participants','actors','useCases'].forEach(tbl => {
+      ['classes','participants','actors','useCases','tasks','milestones'].forEach(tbl => {
         (m[tbl] || []).forEach(e => {
           if(e.sharedRef === alias){
             cfg.sharedFields.forEach(f => { if(sh[f] !== undefined) e[f] = deepClone(sh[f]); });
@@ -955,6 +975,11 @@ function sharedForDiagram(diagramType, table){
     if(table === 'actors') return state.project.sharedElements.filter(s => s.kind === 'actor');
     if(table === 'useCases') return state.project.sharedElements.filter(s => s.kind === 'usecase');
     return state.project.sharedElements.filter(s => s.kind === 'actor' || s.kind === 'usecase');
+  }
+  if(diagramType === 'gantt'){
+    if(table === 'tasks') return state.project.sharedElements.filter(s => s.kind === 'gantt_task');
+    if(table === 'milestones') return state.project.sharedElements.filter(s => s.kind === 'gantt_milestone');
+    return state.project.sharedElements.filter(s => s.kind === 'gantt_task' || s.kind === 'gantt_milestone');
   }
   return [];
 }
@@ -988,12 +1013,16 @@ async function insertSharedAction(d, table){
   const idPrefix = cfg.table === 'classes' ? 'c'
     : cfg.table === 'participants' ? 'p'
     : cfg.table === 'actors' ? 'a'
-    : cfg.table === 'useCases' ? 'u' : 'x';
+    : cfg.table === 'useCases' ? 'u'
+    : cfg.table === 'tasks' ? 'gt'
+    : cfg.table === 'milestones' ? 'gm' : 'x';
   const newId = uid(idPrefix);
   const elem = { id: newId, sharedRef: sh.alias };
   // lokální pole default
   if(cfg.table === 'classes'){ elem.packageId = null; elem.color = ''; }
   if(cfg.table === 'useCases'){ elem.systemId = null; }
+  if(cfg.table === 'tasks'){ elem.startMode = 'project'; elem.startDate = ''; elem.refTaskId = null; elem.refPoint = 'end'; elem.offset = 0; elem.color = ''; }
+  if(cfg.table === 'milestones'){ elem.date = ''; elem.refTaskId = null; elem.refPoint = 'end'; elem.offset = 0; }
   d.model[cfg.table] = d.model[cfg.table] || [];
   d.model[cfg.table].push(elem);
   state.selectedPath = [cfg.table, d.model[cfg.table].length - 1];
@@ -2150,6 +2179,258 @@ function countNetworkElements(model){
   return { networks:(model.networks||[]).length, nodes:allNodeNames.size, groups:(model.groups||[]).length };
 }
 
+// === GANTT — POPIS ===========================================
+// Datum v ISO -> český řádek typu "1. ledna 2025"
+const CZ_MONTHS_GEN = ['ledna','února','března','dubna','května','června','července','srpna','září','října','listopadu','prosince'];
+function fmtDateCz(iso){
+  if(!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return iso || '';
+  const d = new Date(iso + 'T00:00:00Z');
+  return d.getUTCDate() + '. ' + CZ_MONTHS_GEN[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
+}
+const SCALE_WORD = {daily:'denní', weekly:'týdenní', monthly:'měsíční'};
+function describeGantt(model){
+  const tasks = model.tasks || [];
+  const milestones = model.milestones || [];
+  if(tasks.length === 0 && milestones.length === 0){
+    return 'Ganttův diagram zatím neobsahuje žádné úlohy ani milníky.';
+  }
+  const solved = solveGanttDates(model);
+  const taskById = {}; tasks.forEach(t => taskById[t.id] = t);
+  const solTaskById = {}; solved.tasks.forEach(t => solTaskById[t.id] = t);
+  const solMsById = {}; solved.milestones.forEach(m => solMsById[m.id] = m);
+
+  const paras = [];
+  // ÚVOD
+  const introParts = [];
+  introParts.push(tasks.length + ' ' + czCount(tasks.length, 'úlohu','úlohy','úloh'));
+  if(milestones.length) introParts.push(milestones.length + ' ' + czCount(milestones.length, 'milník','milníky','milníků'));
+  let intro = 'Projekt obsahuje ' + joinCz(introParts) + '. Začíná ' + fmtDateCz(solved.projStart) + '.';
+  if(model.printScale && model.printScale !== 'daily'){
+    intro += ' Časová osa je ' + (SCALE_WORD[model.printScale] || model.printScale) + '.';
+  }
+  paras.push(intro);
+
+  // ÚLOHY — každá vlastní věta
+  if(tasks.length){
+    const sentences = [];
+    tasks.forEach(t => {
+      const sol = solTaskById[t.id] || {};
+      const eff = effective(t);
+      const label = '„' + (sol.label || eff.label || '(bez názvu)') + '"';
+      const dur = sol.durationDays || Math.max(1, eff.duration||1);
+      const durWord = dur + ' ' + czCount(dur, 'den', 'dny', 'dnů');
+      let timing;
+      if(t.startMode === 'absolute' && t.startDate){
+        timing = 'začíná ' + fmtDateCz(t.startDate);
+      } else if(t.startMode === 'after' && t.refTaskId){
+        const ref = taskById[t.refTaskId];
+        const refEff = ref ? effective(ref) : null;
+        const refLabel = refEff ? '„' + (refEff.label || '') + '"' : '(neznámá úloha)';
+        const refPt = t.refPoint === 'start' ? 'začátku' : 'skončení';
+        const off = t.offset || 0;
+        if(off > 0){
+          timing = 'začíná ' + off + ' ' + czCount(off,'den','dny','dnů') + ' po ' + refPt + ' úlohy ' + refLabel;
+        } else if(off < 0){
+          timing = 'začíná ' + (-off) + ' ' + czCount(-off,'den','dny','dnů') + ' před ' + refPt + ' úlohy ' + refLabel;
+        } else {
+          timing = (t.refPoint === 'start' ? 'začíná spolu s úlohou ' : 'navazuje na úlohu ') + refLabel;
+        }
+        // přidáme absolutní datum do závorky
+        if(sol.startDate) timing += ' (' + fmtDateCz(sol.startDate) + ')';
+      } else {
+        timing = 'začíná na začátku projektu';
+        if(sol.startDate) timing += ' (' + fmtDateCz(sol.startDate) + ')';
+      }
+      let sentence = 'Úloha ' + label + ' trvá ' + durWord + ' a ' + timing + '.';
+      if(sol.endDate && sol.startDate && sol.startDate !== sol.endDate){
+        sentence += ' Končí ' + fmtDateCz(sol.endDate) + '.';
+      }
+      sentences.push(sentence);
+    });
+    paras.push(sentences.join(' '));
+  }
+
+  // MILNÍKY
+  if(milestones.length){
+    const sentences = [];
+    milestones.forEach(m => {
+      const sol = solMsById[m.id] || {};
+      const eff = effective(m);
+      const label = '„' + (sol.label || eff.label || '(bez názvu)') + '"';
+      let when;
+      if(m.date){
+        when = 'na datum ' + fmtDateCz(m.date);
+      } else if(m.refTaskId){
+        const ref = taskById[m.refTaskId];
+        const refEff = ref ? effective(ref) : null;
+        const refLabel = refEff ? '„' + (refEff.label || '') + '"' : '(neznámá úloha)';
+        const refPt = m.refPoint === 'start' ? 'začátek' : 'skončení';
+        const off = m.offset || 0;
+        if(off > 0){
+          when = off + ' ' + czCount(off,'den','dny','dnů') + ' po ' + (m.refPoint==='start'?'začátku':'skončení') + ' úlohy ' + refLabel;
+        } else if(off < 0){
+          when = (-off) + ' ' + czCount(-off,'den','dny','dnů') + ' před ' + (m.refPoint==='start'?'začátkem':'skončením') + ' úlohy ' + refLabel;
+        } else {
+          when = (m.refPoint==='start'?'na začátek':'na skončení') + ' úlohy ' + refLabel;
+        }
+        if(sol.date) when += ' (' + fmtDateCz(sol.date) + ')';
+      } else {
+        when = '(bez vazby)';
+      }
+      sentences.push('Milník ' + label + ' připadá ' + when + '.');
+    });
+    paras.push(sentences.join(' '));
+  }
+
+  return paras.join('\n\n');
+}
+function countGanttElements(model){
+  return { tasks:(model.tasks||[]).length, milestones:(model.milestones||[]).length };
+}
+
+// === TIMELINE — POPIS ========================================
+function describeTimeline(model){
+  const events = (model.events || []).slice().sort((a,b) => (a.date||'').localeCompare(b.date||''));
+  if(!events.length) return 'Časová osa zatím neobsahuje žádné události.';
+  const paras = [];
+  paras.push('Časová osa zachycuje ' + events.length + ' ' + czCount(events.length,'událost','události','událostí') + '.');
+  const sentences = events.map(ev => {
+    let s = 'Událost „' + (ev.label || '(bez názvu)') + '" se odehrála ' + fmtDateCz(ev.date || '') + '.';
+    if(ev.description){
+      const oneLine = ev.description.split(/\r?\n/).map(x=>x.trim()).filter(Boolean).join(' ');
+      if(oneLine) s += ' ' + oneLine + (/[.!?]$/.test(oneLine) ? '' : '.');
+    }
+    return s;
+  });
+  paras.push(sentences.join(' '));
+  return paras.join('\n\n');
+}
+function countTimelineElements(model){
+  return { events:(model.events||[]).length };
+}
+
+// === EBNF — POPIS ============================================
+function describeEbnf(model){
+  const rules = model.rules || [];
+  if(!rules.length) return 'Gramatika zatím neobsahuje žádná pravidla.';
+  const paras = [];
+  paras.push('Gramatika definuje ' + rules.length + ' ' + czCount(rules.length,'pravidlo','pravidla','pravidel') + ', a to: ' +
+    rules.map(r => '„' + (r.name || 'pravidlo') + '"').join(', ') + '.');
+  const sentences = rules.map(r => {
+    const nm = '„' + (r.name || 'pravidlo') + '"';
+    let s = 'Pravidlo ' + nm + ' je definováno jako: ' + (r.expression || '(prázdné)') + '.';
+    if(r.comment) s += ' (' + r.comment + ')';
+    return s;
+  });
+  paras.push(sentences.join(' '));
+  return paras.join('\n\n');
+}
+function countEbnfElements(model){
+  return { rules:(model.rules||[]).length };
+}
+
+// === TIMING — POPIS ==========================================
+const TIMING_SIG_WORD = {
+  robust:'robustní (více stavů)',
+  concise:'jednoduchý (datový)',
+  binary:'binární (vysoký/nízký)',
+  clock:'hodinový',
+  analog:'analogový (spojitý)',
+  rectangle:'obdélníkový'
+};
+function describeTiming(model){
+  const participants = model.participants || [];
+  const frames = (model.frames || []).slice().sort((a,b) => (parseFloat(a.time)||0) - (parseFloat(b.time)||0));
+  const notes = model.notes || [];
+  const highlights = model.highlights || [];
+  if(!participants.length && !frames.length){
+    return 'Timing diagram zatím neobsahuje žádné účastníky ani časové rámce.';
+  }
+  const paras = [];
+  // Úvod
+  const parts = [];
+  parts.push(participants.length + ' ' + czCount(participants.length,'účastníka','účastníky','účastníků'));
+  if(frames.length) parts.push(frames.length + ' ' + czCount(frames.length,'časový rámec','časové rámce','časových rámců'));
+  let intro = 'Diagram popisuje časový průběh ' + joinCz(parts) + '.';
+  if(model.hideTimeAxis) intro += ' Časová osa není zobrazena.';
+  paras.push(intro);
+
+  // Seznam účastníků s jejich typem
+  if(participants.length){
+    const sentences = participants.map(p => {
+      const nm = '„' + (p.name || p.alias || '(bez názvu)') + '"';
+      const kw = TIMING_SIG_WORD[p.sigType] || p.sigType || '';
+      let s = 'Účastník ' + nm + ' je ' + kw + ' signál';
+      if(p.sigType === 'clock'){
+        const bits = [];
+        if(p.period) bits.push('perioda ' + p.period);
+        if(p.pulse) bits.push('puls ' + p.pulse);
+        if(p.offset) bits.push('posun ' + p.offset);
+        if(bits.length) s += ' (' + bits.join(', ') + ')';
+      }
+      if(p.sigType === 'analog' && p.between){
+        s += ' v rozsahu ' + p.between[0] + ' až ' + p.between[1];
+      }
+      s += '.';
+      return s;
+    });
+    paras.push(sentences.join(' '));
+  }
+
+  // Časové rámce a stavy
+  if(frames.length){
+    const partById = {};
+    participants.forEach(p => partById[p.id] = p);
+    const sentences = [];
+    frames.forEach(f => {
+      const states = (f.states || []).filter(st => partById[st.participantId]);
+      const msgs = (f.messages || []).filter(m => partById[m.from] && partById[m.to]);
+      if(!states.length && !msgs.length) return;
+      const stateBits = states.map(st => {
+        const p = partById[st.participantId];
+        return '„' + (p.name || p.alias) + '" má hodnotu „' + (st.value||'') + '"';
+      });
+      const msgBits = msgs.map(m => {
+        const pF = partById[m.from], pT = partById[m.to];
+        return '„' + (pF.name||pF.alias) + '" pošle „' + (pT.name||pT.alias) + '" zprávu „' + (m.label||'') + '"';
+      });
+      const allBits = stateBits.concat(msgBits);
+      sentences.push('V čase ' + f.time + ' ' + joinCz(allBits) + '.');
+    });
+    if(sentences.length) paras.push(sentences.join(' '));
+  }
+
+  // Poznámky
+  if(notes.length){
+    const partById = {};
+    participants.forEach(p => partById[p.id] = p);
+    const sentences = notes.map(n => {
+      const p = partById[n.participantId];
+      if(!p) return '';
+      const where = n.position === 'bottom' ? 'pod' : 'nad';
+      return 'K účastníkovi „' + (p.name||p.alias) + '" je ' + where + ' jeho průběhem poznámka: „' + (n.text||'') + '".';
+    }).filter(Boolean);
+    if(sentences.length) paras.push(sentences.join(' '));
+  }
+
+  // Highlighty
+  if(highlights.length){
+    const sentences = highlights.map(h => {
+      return 'Interval od ' + h.from + ' do ' + h.to + ' je zvýrazněn' + (h.label ? ' jako „' + h.label + '"' : '') + '.';
+    });
+    paras.push(sentences.join(' '));
+  }
+
+  return paras.join('\n\n');
+}
+function countTimingElements(model){
+  return {
+    participants:(model.participants||[]).length,
+    frames:(model.frames||[]).length,
+    notes:(model.notes||[]).length
+  };
+}
+
 // Obecná funkce: vrátí textový popis diagramu podle typu (jako prostý text).
 function describeDiagram(diagram){
   if(!diagram) return '';
@@ -2162,6 +2443,10 @@ function describeDiagram(diagram){
     case 'component': return describeComponent(diagram.model);
     case 'deployment': return describeDeployment(diagram.model);
     case 'network': return describeNetwork(diagram.model);
+    case 'gantt': return describeGantt(diagram.model);
+    case 'timeline': return describeTimeline(diagram.model);
+    case 'timing': return describeTiming(diagram.model);
+    case 'ebnf': return describeEbnf(diagram.model);
     default: return '(Textový popis zatím není pro tento typ diagramu dostupný.)';
   }
 }
@@ -2179,6 +2464,10 @@ function describeDiagramMarkdown(diagram){
     case 'component': return describeComponent(diagram.model);
     case 'deployment': return describeDeployment(diagram.model);
     case 'network': return describeNetwork(diagram.model);
+    case 'gantt': return describeGantt(diagram.model);
+    case 'timeline': return describeTimeline(diagram.model);
+    case 'timing': return describeTiming(diagram.model);
+    case 'ebnf': return describeEbnf(diagram.model);
     default: return '(Textový popis zatím není pro tento typ diagramu dostupný.)';
   }
 }
@@ -2186,6 +2475,11 @@ function describeDiagramMarkdown(diagram){
 // === GENERÁTORY ===============================================
 function generatePuml(diagram){
   if(!diagram) return '';
+  // Speciální typy mají vlastní obal (@startgantt, @startchronology, @startebnf)
+  // a podporují vlastní podmnožinu hlaviček (title/header/footer u gantt/chronology).
+  if(diagram.type === 'gantt') return genGantt(diagram);
+  if(diagram.type === 'timeline') return genTimeline(diagram);
+  if(diagram.type === 'ebnf') return genEbnf(diagram);
   const proj = (state.project && state.project.settings) || {};
   const ds = diagram.settings || {};
   const out = [];
@@ -2231,6 +2525,7 @@ function generatePuml(diagram){
     case 'component': out.push(genComponent(diagram.model)); break;
     case 'deployment': out.push(genDeployment(diagram.model)); break;
     case 'network': out.push(genNetwork(diagram.model)); break;
+    case 'timing': out.push(genTiming(diagram.model)); break;
   }
   out.push('@enduml');
   return out.join('\n');
@@ -2898,6 +3193,334 @@ function genNetwork(model){
   return out.join('\n');
 }
 
+// === ŘEŠENÍ ABSOLUTNÍCH DAT V GANTTU =========================
+// Spočítá pro každý task absolutní datum začátku a konce. Tasky tvoří DAG
+// (závislosti `after` jiný task), proto použijeme topologické řazení
+// s pevným bodem. Vrací mapu `id → {startDate, endDate, durationDays}`.
+function solveGanttDates(model){
+  const projStart = model.projectStart || todayIso();
+  const tasks = model.tasks || [];
+  const milestones = model.milestones || [];
+  const dateById = {}; // id → Date (start)
+  const endById = {};  // id → Date (end exclusive: day po posledním pracovním dni)
+
+  // Helper: přičtení dnů k datu (čistě kalendářní, bez víkendů – PlantUML defaultně
+  // taky nevynechává víkendy, pokud se to neřekne).
+  function addDays(iso, days){
+    const d = new Date(iso + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0,10);
+  }
+  function maxDate(a, b){ return a > b ? a : b; }
+
+  // Iterativní řešení – několikrát projdeme, dokud se něco mění (max ~100 kol).
+  // Pokud cyklus nebo nedefinovaný předchůdce, zbylé úlohy začnou v projektu.
+  const allIds = new Set(tasks.map(t => t.id));
+  let changed = true, rounds = 0;
+  while(changed && rounds++ < 100){
+    changed = false;
+    tasks.forEach(t => {
+      if(dateById[t.id]) return; // už spočítáno
+      const eff = effective(t);
+      let start = null;
+      if(t.startMode === 'absolute' && t.startDate){
+        start = t.startDate;
+      } else if(t.startMode === 'project' || !t.startMode){
+        start = projStart;
+      } else if(t.startMode === 'after' && t.refTaskId && allIds.has(t.refTaskId)){
+        const refEnd = endById[t.refTaskId];
+        const refStart = dateById[t.refTaskId];
+        if(t.refPoint === 'start' && refStart){
+          start = addDays(refStart, t.offset || 0);
+        } else if(refEnd){
+          start = addDays(refEnd, t.offset || 0);
+        }
+      }
+      if(start){
+        dateById[t.id] = start;
+        const dur = Math.max(1, eff.duration || 1);
+        endById[t.id] = addDays(start, dur - 1); // poslední den úlohy
+        changed = true;
+      }
+    });
+  }
+  // Tasky, které se nepodařilo vyřešit – posaď je na začátek projektu.
+  tasks.forEach(t => {
+    const eff = effective(t);
+    if(!dateById[t.id]){
+      dateById[t.id] = projStart;
+      endById[t.id] = addDays(projStart, Math.max(1, eff.duration || 1) - 1);
+    }
+  });
+
+  // Milníky
+  const msDateById = {};
+  milestones.forEach(m => {
+    if(m.date){ msDateById[m.id] = m.date; return; }
+    if(m.refTaskId){
+      const refStart = dateById[m.refTaskId];
+      const refEnd = endById[m.refTaskId];
+      const ref = m.refPoint === 'start' ? refStart : refEnd;
+      if(ref) msDateById[m.id] = addDays(ref, m.offset || 0);
+    }
+  });
+
+  return {
+    projStart,
+    tasks: tasks.map(t => {
+      const eff = effective(t);
+      return {
+        id: t.id, label: eff.label, alias: eff.alias,
+        startDate: dateById[t.id], endDate: endById[t.id],
+        durationDays: Math.max(1, eff.duration || 1)
+      };
+    }),
+    milestones: milestones.map(m => {
+      const eff = effective(m);
+      return {
+        id: m.id, label: eff.label, date: msDateById[m.id] || null
+      };
+    })
+  };
+}
+
+// === GENERÁTOR: GANTT ========================================
+function genGantt(diagram){
+  const model = diagram.model || {};
+  const proj = (state.project && state.project.settings) || {};
+  const ds = diagram.settings || {};
+  const out = [];
+  out.push('@startgantt');
+
+  // title / caption / header / footer fungují i v Ganttu
+  const title = ds.title || proj.title;
+  if(title){
+    if(title.indexOf('\n') >= 0){
+      out.push('title');
+      title.split(/\r?\n/).forEach(l => out.push(l));
+      out.push('end title');
+    } else { out.push('title ' + title); }
+  }
+  const header = ds.header || proj.header;
+  if(header) out.push('header\n' + header + '\nendheader');
+  const footer = ds.footer || proj.footer;
+  if(footer) out.push('footer\n' + footer + '\nendfooter');
+  const caption = ds.caption || proj.caption;
+  if(caption) out.push('caption ' + caption.replace(/\r?\n/g, ' '));
+
+  // Začátek projektu (ISO)
+  out.push('Project starts ' + (model.projectStart || todayIso()));
+  // Měřítko: daily / weekly / monthly
+  if(model.printScale && model.printScale !== 'daily'){
+    out.push('printscale ' + model.printScale);
+  }
+  out.push('');
+
+  const taskAlias = {}; // id → alias (bezpečný)
+  (model.tasks||[]).forEach((rawT, i) => {
+    const t = effective(rawT);
+    taskAlias[rawT.id] = (t.alias || ('T'+(i+1))).replace(/[^A-Za-z0-9_]/g,'') || ('T'+(i+1));
+  });
+  const msAlias = {};
+  (model.milestones||[]).forEach((rawM, i) => {
+    const m = effective(rawM);
+    msAlias[rawM.id] = (m.alias || ('M'+(i+1))).replace(/[^A-Za-z0-9_]/g,'') || ('M'+(i+1));
+  });
+
+  (model.tasks||[]).forEach(rawT => {
+    const t = effective(rawT);
+    const label = (t.label || 'Úloha').replace(/\]/g,'');
+    const a = taskAlias[rawT.id];
+    // Vždy generujeme jako: [Label] as [alias] lasts N days
+    out.push('[' + label + '] as [' + a + '] lasts ' + Math.max(1, t.duration||1) + ' days');
+    // Lokální fields zůstávají na rawT
+    if(rawT.startMode === 'absolute' && rawT.startDate){
+      out.push('[' + a + '] starts ' + rawT.startDate);
+    } else if(rawT.startMode === 'after' && rawT.refTaskId){
+      const refA = taskAlias[rawT.refTaskId];
+      if(refA){
+        const pt = rawT.refPoint === 'start' ? "'s start" : "'s end";
+        const off = rawT.offset || 0;
+        if(off > 0){
+          out.push('[' + a + '] starts ' + off + ' days after [' + refA + ']' + pt);
+        } else if(off < 0){
+          out.push('[' + a + '] starts ' + (-off) + ' days before [' + refA + ']' + pt);
+        } else {
+          out.push('[' + a + '] starts at [' + refA + ']' + pt);
+        }
+      }
+    } // jinak: výchozí (od začátku projektu)
+    if(rawT.color){
+      out.push('[' + a + '] is colored in ' + rawT.color);
+    }
+  });
+
+  (model.milestones||[]).forEach(rawM => {
+    const m = effective(rawM);
+    const a = msAlias[rawM.id];
+    const label = (m.label || 'Milník').replace(/\]/g,'');
+    if(rawM.date){
+      out.push('[' + label + '] happens on ' + rawM.date);
+    } else if(rawM.refTaskId){
+      const refA = taskAlias[rawM.refTaskId];
+      if(refA){
+        const pt = rawM.refPoint === 'start' ? "'s start" : "'s end";
+        const off = rawM.offset || 0;
+        if(off > 0){
+          out.push('[' + label + '] happens ' + off + ' days after [' + refA + ']' + pt);
+        } else if(off < 0){
+          out.push('[' + label + '] happens ' + (-off) + ' days before [' + refA + ']' + pt);
+        } else {
+          out.push('[' + label + '] happens at [' + refA + ']' + pt);
+        }
+      }
+    }
+  });
+
+  out.push('@endgantt');
+  return out.join('\n');
+}
+
+// === GENERÁTOR: TIMELINE (chronology) ========================
+function genTimeline(diagram){
+  const model = diagram.model || {};
+  const proj = (state.project && state.project.settings) || {};
+  const ds = diagram.settings || {};
+  const out = [];
+  out.push('@startchronology');
+  const title = ds.title || proj.title;
+  if(title) out.push('title ' + title.replace(/\r?\n/g, ' '));
+  const header = ds.header || proj.header;
+  if(header) out.push('header\n' + header + '\nendheader');
+  const footer = ds.footer || proj.footer;
+  if(footer) out.push('footer\n' + footer + '\nendfooter');
+
+  // Události chronologicky (rendrují se v pořadí jak je vidíme; PlantUML si je seřadí podle data)
+  (model.events||[]).forEach(ev => {
+    const label = (ev.label || 'Událost').replace(/\]/g,'');
+    const date = ev.date || todayIso();
+    out.push('[' + label + '] happens on ' + date);
+  });
+
+  out.push('@endchronology');
+  return out.join('\n');
+}
+
+// === GENERÁTOR: EBNF =========================================
+function genEbnf(diagram){
+  const model = diagram.model || {};
+  const proj = (state.project && state.project.settings) || {};
+  const ds = diagram.settings || {};
+  const out = [];
+  out.push('@startebnf');
+  const title = ds.title || proj.title;
+  if(title) out.push('title ' + title.replace(/\r?\n/g, ' '));
+
+  (model.rules||[]).forEach(r => {
+    if(r.comment){
+      // EBNF komentáře jsou (* ... *)
+      const cm = r.comment.replace(/\*\)/g,'* )');
+      out.push('(* ' + cm + ' *)');
+    }
+    const name = (r.name || 'rule').replace(/[^A-Za-z0-9_\u00C0-\u017F\-]/g,'_');
+    const expr = (r.expression || '').trim();
+    if(expr){
+      // jednořádkový tvar; pokud výraz neobsahuje koncový středník, doplníme
+      const semi = expr.endsWith(';') ? '' : ';';
+      out.push(name + ' = ' + expr + semi);
+    } else {
+      out.push(name + ' = ;');
+    }
+  });
+
+  out.push('@endebnf');
+  return out.join('\n');
+}
+
+// === GENERÁTOR: TIMING =======================================
+// Timing patří do @startuml/@enduml (řídí to generatePuml), takže tady
+// vrátíme jen obsah mezi nimi.
+const TIMING_SIG_KEYWORDS = {
+  robust:'robust', concise:'concise', binary:'binary', clock:'clock', analog:'analog', rectangle:'rectangle'
+};
+function genTiming(model){
+  const out = [];
+  const participants = model.participants || [];
+  const frames = (model.frames || []).slice().sort((a,b) => (parseFloat(a.time)||0) - (parseFloat(b.time)||0));
+  const notes = model.notes || [];
+  const highlights = model.highlights || [];
+
+  if(model.hideTimeAxis) out.push('hide time-axis');
+  if(model.dateFormat) out.push('use date format "' + model.dateFormat + '"');
+
+  const aliasOf = {};
+  participants.forEach((p, i) => {
+    const a = (p.alias || ('S' + (i+1))).replace(/[^A-Za-z0-9_]/g,'') || ('S' + (i+1));
+    aliasOf[p.id] = a;
+    const kw = TIMING_SIG_KEYWORDS[p.sigType] || 'concise';
+    const name = (p.name || '').replace(/"/g,'\\"');
+    let line = kw + ' "' + name + '" as ' + a;
+    // clock: period, pulse, offset
+    if(p.sigType === 'clock'){
+      if(p.period) line += ' with period ' + p.period;
+      if(p.pulse) line += ' pulse ' + p.pulse;
+      if(p.offset) line += ' offset ' + p.offset;
+    }
+    // analog: between min and max
+    if(p.sigType === 'analog' && p.between){
+      const [mn, mx] = p.between;
+      if(mn !== undefined && mx !== undefined) line += ' between ' + mn + ' and ' + mx;
+    }
+    out.push(line);
+  });
+
+  if(participants.length) out.push('');
+
+  // Stavy v jednotlivých časových rámcích
+  frames.forEach(f => {
+    out.push('@' + f.time);
+    (f.states || []).forEach(st => {
+      const a = aliasOf[st.participantId];
+      if(!a) return;
+      const val = String(st.value || '').replace(/"/g,'\\"');
+      // Pokud hodnota obsahuje mezeru nebo speciální znaky, dáme do uvozovek.
+      const needsQuote = /[\s",{}]/.test(val) && !/^\{.*\}$/.test(val);
+      const quoted = needsQuote ? '"' + val + '"' : val;
+      let line = a + ' is ' + quoted;
+      if(st.color) line += ' #' + st.color.replace(/^#/,'');
+      out.push(line);
+    });
+    // Zprávy
+    (f.messages || []).forEach(msg => {
+      const aFrom = aliasOf[msg.from];
+      const aTo = aliasOf[msg.to];
+      if(!aFrom || !aTo) return;
+      const arrow = msg.atTimeOffset ? ('@+' + msg.atTimeOffset) : '';
+      out.push(aFrom + ' -> ' + aTo + arrow + ' : ' + (msg.label || ''));
+    });
+  });
+
+  // Poznámky
+  if(notes.length && participants.length) out.push('');
+  notes.forEach(n => {
+    const a = aliasOf[n.participantId];
+    if(!a) return;
+    const pos = (n.position === 'bottom') ? 'bottom' : 'top';
+    out.push('note ' + pos + ' of ' + a + ' : ' + (n.text || ''));
+  });
+
+  // Highlighty
+  highlights.forEach(h => {
+    if(h.from === undefined || h.to === undefined) return;
+    let line = 'highlight ' + h.from + ' to ' + h.to;
+    if(h.color) line += ' #' + h.color.replace(/^#/,'');
+    if(h.label) line += ' : ' + h.label;
+    out.push(line);
+  });
+
+  return out.join('\n');
+}
+
 // === PARSERY (best-effort) ====================================
 function parsePuml(source){
   const text = source.replace(/^\s*@startuml.*$/m,'').replace(/^\s*@enduml.*$/m,'').trim();
@@ -3479,7 +4102,8 @@ function renderSharedElementsList(){
     const li = el('li');
     const usages = findSharedUsages(s.alias);
     const kindLabel = ({class:'třída',interface:'rozhraní',abstract:'abstraktní třída',enum:'výčet',
-      struct:'struktura',annotation:'anotace',entity:'entita',actor:'aktér',participant:'účastník',usecase:'činnost'})[s.kind] || s.kind;
+      struct:'struktura',annotation:'anotace',entity:'entita',actor:'aktér',participant:'účastník',usecase:'činnost',
+      gantt_task:'úloha',gantt_milestone:'milník'})[s.kind] || s.kind;
     const label = '🔗 ' + (s.name || s.alias) + ' — ' + kindLabel + ' (' + usages.length + ' ' +
       czCount(usages.length,'použití','použití','použití') + ')';
     li.appendChild(treeItem(label, kindLabel, 'class', false,
@@ -3873,6 +4497,26 @@ function renderModelToolbar(d){
       tb.appendChild(actionBtn('Skupina', 'Skupina', ()=>addNwGroup(d)));
       tb.appendChild(actionBtn('Přímé propojení', 'Přímé propojení', ()=>addPeerLink(d)));
       break;
+    case 'gantt':
+      tb.appendChild(actionBtn('Úloha', 'Přidat úlohu', ()=>addGanttTask(d)));
+      tb.appendChild(actionBtn('Milník', 'Přidat milník', ()=>addGanttMilestone(d)));
+      tb.appendChild(actionBtn('Vložit sdílenou úlohu…', 'Vložit existující sdílenou úlohu', ()=>insertSharedAction(d, 'tasks')));
+      tb.appendChild(actionBtn('Vložit sdílený milník…', 'Vložit existující sdílený milník', ()=>insertSharedAction(d, 'milestones')));
+      tb.appendChild(actionBtn('Nastavení projektu…', 'Nastavení Gantt diagramu', ()=>editGanttSettings(d)));
+      break;
+    case 'timeline':
+      tb.appendChild(actionBtn('Událost', 'Přidat událost', ()=>addTimelineEvent(d)));
+      break;
+    case 'ebnf':
+      tb.appendChild(actionBtn('Pravidlo', 'Přidat pravidlo', ()=>addEbnfRule(d)));
+      break;
+    case 'timing':
+      tb.appendChild(actionBtn('Účastník/Signál', 'Přidat účastníka (signál)', ()=>addTimingParticipant(d)));
+      tb.appendChild(actionBtn('Časový rámec', 'Přidat časový rámec', ()=>addTimingFrame(d)));
+      tb.appendChild(actionBtn('Poznámka', 'Přidat poznámku', ()=>addTimingNote(d)));
+      tb.appendChild(actionBtn('Highlight', 'Přidat zvýrazněný interval', ()=>addTimingHighlight(d)));
+      tb.appendChild(actionBtn('Nastavení…', 'Nastavení timing diagramu', ()=>{state.selectedPath=null;renderApp();}));
+      break;
   }
 }
 
@@ -3888,6 +4532,10 @@ function renderModelTree(d){
     case 'component': renderComponentTree(d, root); break;
     case 'deployment': renderDeploymentTree(d, root); break;
     case 'network': renderNetworkTree(d, root); break;
+    case 'gantt': renderGanttTree(d, root); break;
+    case 'timeline': renderTimelineTree(d, root); break;
+    case 'ebnf': renderEbnfTree(d, root); break;
+    case 'timing': renderTimingTree(d, root); break;
   }
 }
 
@@ -4513,6 +5161,10 @@ function renderDetail(d){
     case 'component': renderComponentDetail(d, root); break;
     case 'deployment': renderDeploymentDetail(d, root); break;
     case 'network': renderNetworkDetail(d, root); break;
+    case 'gantt': renderGanttDetail(d, root); break;
+    case 'timeline': renderTimelineDetail(d, root); break;
+    case 'ebnf': renderEbnfDetail(d, root); break;
+    case 'timing': renderTimingDetail(d, root); break;
   }
 }
 
@@ -5492,6 +6144,618 @@ function renderNetworkDetail(d, root){
     root.appendChild(field('Tvar cíle:',
       selectField(l.toShape||'', NWDIAG_SHAPES, v=>{l.toShape=v;softTouch(d);}, 'plToShape')));
   }
+}
+
+// === STROM: GANTT ============================================
+function renderGanttTree(d, root){
+  const m = d.model;
+  const wrap = el('div');
+  const ts = el('section');
+  ts.appendChild(el('h4',null,'Úlohy'));
+  const tul = el('ul',{'aria-label':'Úlohy'});
+  const taskNameById = {};
+  (m.tasks||[]).forEach(t => { taskNameById[t.id] = effective(t).label || '(bez názvu)'; });
+  (m.tasks||[]).forEach((t, idx) => {
+    const li = el('li');
+    const path = ['tasks', idx];
+    const isSel = pathEqual(state.selectedPath, path);
+    const eff = effective(t);
+    const baseLabel = (eff.label || '(bez názvu)') + ' — ' + Math.max(1, eff.duration||1) + ' ' +
+      czCount(Math.max(1,eff.duration||1),'den','dny','dnů');
+    const label = (t.sharedRef ? '🔗 ' : '') + baseLabel;
+    li.appendChild(treeItem(label, 'úloha', 'class', isSel,
+      ()=>{ state.selectedPath = path; renderApp(); },
+      [actionBtn('↑', 'Posunout úlohu nahoru', ()=>moveModelItem(d, 'tasks', idx, -1)),
+       actionBtn('↓', 'Posunout úlohu dolů', ()=>moveModelItem(d, 'tasks', idx, 1)),
+       actionBtn('×', 'Smazat úlohu', ()=>deleteGanttTask(d, t.id))]));
+    tul.appendChild(li);
+  });
+  if(!(m.tasks||[]).length) ts.appendChild(el('p',{class:'empty'},'Žádné úlohy.'));
+  else ts.appendChild(tul);
+  wrap.appendChild(ts);
+
+  const ms = el('section');
+  ms.appendChild(el('h4',null,'Milníky'));
+  const mul = el('ul',{'aria-label':'Milníky'});
+  (m.milestones||[]).forEach((mlst, idx) => {
+    const li = el('li');
+    const path = ['milestones', idx];
+    const isSel = pathEqual(state.selectedPath, path);
+    const eff = effective(mlst);
+    let when = mlst.date || (mlst.refTaskId ? 'vázáno na úlohu ' + (taskNameById[mlst.refTaskId]||'?') : '(bez termínu)');
+    const baseLabel = (eff.label || '(bez názvu)') + ' — ' + when;
+    const label = (mlst.sharedRef ? '🔗 ' : '') + baseLabel;
+    li.appendChild(treeItem(label, 'milník', 'state', isSel,
+      ()=>{ state.selectedPath = path; renderApp(); },
+      [actionBtn('↑', 'Posunout milník nahoru', ()=>moveModelItem(d, 'milestones', idx, -1)),
+       actionBtn('↓', 'Posunout milník dolů', ()=>moveModelItem(d, 'milestones', idx, 1)),
+       actionBtn('×', 'Smazat milník', ()=>deleteGanttMilestone(d, mlst.id))]));
+    mul.appendChild(li);
+  });
+  if(!(m.milestones||[]).length) ms.appendChild(el('p',{class:'empty'},'Žádné milníky.'));
+  else ms.appendChild(mul);
+  wrap.appendChild(ms);
+  root.appendChild(wrap);
+}
+
+// === DETAIL: GANTT ===========================================
+function renderGanttDetail(d, root){
+  const path = state.selectedPath, m = d.model;
+  if(!path){
+    // pokud není vybráno, ukážeme nastavení projektu
+    root.appendChild(el('h4',null,'Nastavení Gantt diagramu'));
+    root.appendChild(field('Začátek projektu (YYYY-MM-DD):',
+      inputText(m.projectStart || '', v=>{m.projectStart = v.trim(); softTouch(d);}, 'gnStart'),
+      'Datum ve formátu rok-měsíc-den, např. 2025-09-01.'));
+    root.appendChild(field('Měřítko časové osy:',
+      selectField(m.printScale || 'daily',
+        [{value:'daily',label:'denní'},{value:'weekly',label:'týdenní'},{value:'monthly',label:'měsíční'}],
+        v=>{m.printScale = v; softTouch(d);}, 'gnScale')));
+    return;
+  }
+  if(path[0] === 'tasks'){
+    const t = m.tasks[path[1]];
+    if(!t){ root.appendChild(el('p',{class:'no-selection'},'Úloha neexistuje.')); return; }
+    // Sekce sdílení
+    renderSharingSection('gantt', d, t, root, 'tasks');
+    const editTarget = t.sharedRef ? (findShared(t.sharedRef) || t) : t;
+    const shared = !!t.sharedRef && !!findShared(t.sharedRef);
+    root.appendChild(el('h4',null, shared ? 'Sdílená úloha (definice pro celý projekt)' : 'Úloha'));
+    root.appendChild(field('Název úlohy:',
+      inputText(editTarget.label||'', v=>{editTarget.label=v;state.project.modified=nowIso();softTouch(d);}, 'gtLabel')));
+    root.appendChild(field('Identifikátor (alias):',
+      inputText(editTarget.alias||'', v=>{
+        const old = editTarget.alias;
+        const ne = sanitizeAliasInput(v);
+        editTarget.alias = ne;
+        if(shared && old && ne && old !== ne) renameSharedAlias(old, ne);
+        state.project.modified = nowIso();
+        softTouch(d);
+      }, 'gtAlias'),
+      'Krátký alias bez mezer.'));
+    root.appendChild(field('Trvání (počet dnů):',
+      inputText(String(editTarget.duration||1),
+        v=>{const n=parseInt(v,10); editTarget.duration = isNaN(n)?1:Math.max(1,n); state.project.modified=nowIso(); softTouch(d);}, 'gtDur')));
+    // Lokální pole (zůstávají vždy na t)
+    if(shared){
+      root.appendChild(el('h4', null, 'Lokální zařazení v tomto diagramu'));
+      root.appendChild(el('p',{class:'help'},'Tyto hodnoty určují, kam úloha sedí v tomto konkrétním diagramu. Sdílená definice je nemění.'));
+    }
+    root.appendChild(field('Začátek úlohy:',
+      selectField(t.startMode||'project',
+        [{value:'project',label:'na začátku projektu'},
+         {value:'absolute',label:'absolutní datum'},
+         {value:'after',label:'po jiné úloze / dle vazby'}],
+        v=>{t.startMode=v;softTouch(d);renderApp();}, 'gtMode')));
+    if(t.startMode === 'absolute'){
+      root.appendChild(field('Datum začátku (YYYY-MM-DD):',
+        inputText(t.startDate||'', v=>{t.startDate=v.trim();softTouch(d);}, 'gtAbsDate')));
+    } else if(t.startMode === 'after'){
+      const others = (m.tasks||[]).filter(x => x.id !== t.id);
+      root.appendChild(field('Reference na úlohu:',
+        selectField(t.refTaskId||'',
+          [{value:'',label:'(vyberte)'}].concat(others.map(x=>({value:x.id,label:effective(x).label||'(bez názvu)'}))),
+          v=>{t.refTaskId=v||null;softTouch(d);}, 'gtRef')));
+      root.appendChild(field('Bod reference:',
+        selectField(t.refPoint||'end',
+          [{value:'end',label:'konec referenční úlohy'},{value:'start',label:'začátek referenční úlohy'}],
+          v=>{t.refPoint=v;softTouch(d);}, 'gtRefPt')));
+      root.appendChild(field('Posun (dny; kladné = po, záporné = před):',
+        inputText(String(t.offset||0), v=>{const n=parseInt(v,10); t.offset = isNaN(n)?0:n; softTouch(d);}, 'gtOff')));
+    }
+    root.appendChild(field('Barva (název nebo #hex; např. Lavender/LightBlue):',
+      inputText(t.color||'', v=>{t.color=v;softTouch(d);}, 'gtColor'),
+      'Volitelné. PlantUML přijímá pojmenované barvy i hex.'));
+    // Pomocný výpočet absolutních dat — ukážeme v nápovědě
+    const solved = solveGanttDates(m);
+    const sol = (solved.tasks||[]).find(x => x.id === t.id);
+    if(sol && sol.startDate){
+      root.appendChild(el('p',{class:'help'},
+        'Vyřešený termín: začíná ' + fmtDateCz(sol.startDate) +
+        (sol.endDate ? ', končí ' + fmtDateCz(sol.endDate) : '') + '.'));
+    }
+  } else if(path[0] === 'milestones'){
+    const mlst = m.milestones[path[1]];
+    if(!mlst){ root.appendChild(el('p',{class:'no-selection'},'Milník neexistuje.')); return; }
+    renderSharingSection('gantt', d, mlst, root, 'milestones');
+    const editTarget = mlst.sharedRef ? (findShared(mlst.sharedRef) || mlst) : mlst;
+    const shared = !!mlst.sharedRef && !!findShared(mlst.sharedRef);
+    root.appendChild(el('h4',null, shared ? 'Sdílený milník (definice pro celý projekt)' : 'Milník'));
+    root.appendChild(field('Název milníku:',
+      inputText(editTarget.label||'', v=>{editTarget.label=v;state.project.modified=nowIso();softTouch(d);}, 'gmLabel')));
+    root.appendChild(field('Identifikátor (alias):',
+      inputText(editTarget.alias||'', v=>{
+        const old = editTarget.alias;
+        const ne = sanitizeAliasInput(v);
+        editTarget.alias = ne;
+        if(shared && old && ne && old !== ne) renameSharedAlias(old, ne);
+        state.project.modified = nowIso();
+        softTouch(d);
+      }, 'gmAlias')));
+    if(shared){
+      root.appendChild(el('h4', null, 'Lokální zařazení v tomto diagramu'));
+      root.appendChild(el('p',{class:'help'},'Termín milníku v tomto konkrétním diagramu.'));
+    }
+    root.appendChild(field('Typ termínu:',
+      selectField(mlst.refTaskId ? 'ref' : 'abs',
+        [{value:'abs',label:'absolutní datum'},{value:'ref',label:'vazba na úlohu'}],
+        v=>{
+          if(v === 'abs'){ mlst.refTaskId = null; mlst.refPoint = ''; mlst.offset = 0; }
+          else { mlst.date = ''; }
+          softTouch(d); renderApp();
+        }, 'gmMode')));
+    if(mlst.refTaskId || (!mlst.date && (m.tasks||[]).length)){
+      root.appendChild(field('Reference na úlohu:',
+        selectField(mlst.refTaskId||'',
+          [{value:'',label:'(vyberte)'}].concat((m.tasks||[]).map(x=>({value:x.id,label:effective(x).label||'(bez názvu)'}))),
+          v=>{mlst.refTaskId=v||null;softTouch(d);}, 'gmRef')));
+      root.appendChild(field('Bod reference:',
+        selectField(mlst.refPoint||'end',
+          [{value:'end',label:'skončení'},{value:'start',label:'začátek'}],
+          v=>{mlst.refPoint=v;softTouch(d);}, 'gmRefPt')));
+      root.appendChild(field('Posun (dny):',
+        inputText(String(mlst.offset||0), v=>{const n=parseInt(v,10); mlst.offset=isNaN(n)?0:n; softTouch(d);}, 'gmOff')));
+    } else {
+      root.appendChild(field('Datum (YYYY-MM-DD):',
+        inputText(mlst.date||'', v=>{mlst.date=v.trim();softTouch(d);}, 'gmDate')));
+    }
+    const solved = solveGanttDates(m);
+    const sol = (solved.milestones||[]).find(x => x.id === mlst.id);
+    if(sol && sol.date){
+      root.appendChild(el('p',{class:'help'}, 'Vyřešený termín: ' + fmtDateCz(sol.date) + '.'));
+    }
+  }
+}
+
+// === STROM: TIMELINE =========================================
+function renderTimelineTree(d, root){
+  const m = d.model;
+  const ts = el('section');
+  ts.appendChild(el('h4',null,'Události'));
+  const tul = el('ul',{'aria-label':'Události'});
+  (m.events||[]).forEach((ev, idx) => {
+    const li = el('li');
+    const path = ['events', idx];
+    const isSel = pathEqual(state.selectedPath, path);
+    const label = (ev.label || '(bez názvu)') + (ev.date ? ' — ' + ev.date : '');
+    li.appendChild(treeItem(label, 'událost', 'state', isSel,
+      ()=>{ state.selectedPath = path; renderApp(); },
+      [actionBtn('↑', 'Posunout událost nahoru', ()=>moveModelItem(d, 'events', idx, -1)),
+       actionBtn('↓', 'Posunout událost dolů', ()=>moveModelItem(d, 'events', idx, 1)),
+       actionBtn('×', 'Smazat událost', ()=>deleteTimelineEvent(d, ev.id))]));
+    tul.appendChild(li);
+  });
+  if(!(m.events||[]).length) ts.appendChild(el('p',{class:'empty'},'Žádné události.'));
+  else ts.appendChild(tul);
+  root.appendChild(ts);
+}
+
+// === DETAIL: TIMELINE ========================================
+function renderTimelineDetail(d, root){
+  const path = state.selectedPath, m = d.model;
+  if(!path || path[0] !== 'events') return;
+  const ev = m.events[path[1]];
+  if(!ev){ root.appendChild(el('p',{class:'no-selection'},'Událost neexistuje.')); return; }
+  root.appendChild(el('h4',null,'Událost'));
+  root.appendChild(field('Název:', inputText(ev.label||'', v=>{ev.label=v;softTouch(d);}, 'tlLabel')));
+  root.appendChild(field('Datum (YYYY-MM-DD):',
+    inputText(ev.date||'', v=>{ev.date=v.trim();softTouch(d);}, 'tlDate')));
+  root.appendChild(field('Popis (volitelné):',
+    inputArea(ev.description||'', v=>{ev.description=v;softTouch(d);}, 'tlDesc', 3)));
+}
+
+// === STROM: EBNF =============================================
+function renderEbnfTree(d, root){
+  const m = d.model;
+  const rs = el('section');
+  rs.appendChild(el('h4',null,'Pravidla gramatiky'));
+  const rul = el('ul',{'aria-label':'Pravidla'});
+  (m.rules||[]).forEach((r, idx) => {
+    const li = el('li');
+    const path = ['rules', idx];
+    const isSel = pathEqual(state.selectedPath, path);
+    li.appendChild(treeItem(r.name || '(bez názvu)', 'pravidlo', 'class', isSel,
+      ()=>{ state.selectedPath = path; renderApp(); },
+      [actionBtn('↑', 'Posunout pravidlo nahoru', ()=>moveModelItem(d, 'rules', idx, -1)),
+       actionBtn('↓', 'Posunout pravidlo dolů', ()=>moveModelItem(d, 'rules', idx, 1)),
+       actionBtn('×', 'Smazat pravidlo', ()=>deleteEbnfRule(d, r.id))]));
+    rul.appendChild(li);
+  });
+  if(!(m.rules||[]).length) rs.appendChild(el('p',{class:'empty'},'Žádná pravidla.'));
+  else rs.appendChild(rul);
+  root.appendChild(rs);
+}
+
+// === DETAIL: EBNF ============================================
+function renderEbnfDetail(d, root){
+  const path = state.selectedPath, m = d.model;
+  if(!path || path[0] !== 'rules') return;
+  const r = m.rules[path[1]];
+  if(!r){ root.appendChild(el('p',{class:'no-selection'},'Pravidlo neexistuje.')); return; }
+  root.appendChild(el('h4',null,'Pravidlo gramatiky'));
+  root.appendChild(field('Název (identifikátor):',
+    inputText(r.name||'', v=>{r.name=v.replace(/\s+/g,'_');softTouch(d);}, 'eName'),
+    'Bez mezer. Vlevo od „=", např. „digit", „identifier".'));
+  root.appendChild(field('Výraz (EBNF pravá strana):',
+    inputArea(r.expression||'', v=>{r.expression=v;softTouch(d);}, 'eExpr', 3),
+    'Pravá strana pravidla. Metaznaky: | (alternativa), , (zřetězení), [...] (volitelně), {...} (opakování), (...) (skupina), \"…\" nebo \'…\' (terminál), ? … ? (speciální). Středník na konci se doplní automaticky.'));
+  // Pomocné tlačítka pro vkládání metaznaků
+  const helpers = el('div', {style:'margin:.3em 0', role:'group', 'aria-label':'Vložit EBNF metaznak'});
+  const ins = (txt) => {
+    r.expression = (r.expression||'') + txt;
+    softTouch(d); renderApp();
+  };
+  [['| ','alternativa'],[', ','zřetězení'],['[ ]','volitelně'],['{ }','opakování'],['( )','skupina'],['" "','terminál'],['? ?','speciální']].forEach(([t,n]) => {
+    helpers.appendChild(el('button', {type:'button', title:'Vložit ' + n, onclick:()=>ins(t)}, t.trim()));
+  });
+  root.appendChild(helpers);
+  root.appendChild(field('Komentář (volitelné):',
+    inputText(r.comment||'', v=>{r.comment=v;softTouch(d);}, 'eComm'),
+    'Volitelný popis pravidla, zobrazí se jako EBNF komentář (* ... *).'));
+}
+
+// === AKCE: GANTT =============================================
+async function addGanttTask(d){
+  const v = await dlgPrompt('Nová úloha', 'Název úlohy:', '', '');
+  if(!v) return;
+  d.model.tasks = d.model.tasks || [];
+  const t = {id: uid('gt'), label: v, alias: '', duration: 7, startMode: 'project', startDate:'', refTaskId:null, refPoint:'end', offset:0, color:''};
+  d.model.tasks.push(t);
+  state.selectedPath = ['tasks', d.model.tasks.length-1];
+  touchDiagram(d); renderApp();
+}
+async function deleteGanttTask(d, id){
+  const ok = await dlgConfirm('Smazat úlohu?', 'Tato akce odstraní úlohu. Návazné úlohy mohou zůstat bez reference.');
+  if(!ok) return;
+  d.model.tasks = (d.model.tasks||[]).filter(t => t.id !== id);
+  // uvolnit reference v jiných úlohách a milnících
+  (d.model.tasks||[]).forEach(t => { if(t.refTaskId === id){ t.refTaskId = null; t.startMode = 'project'; }});
+  (d.model.milestones||[]).forEach(m => { if(m.refTaskId === id){ m.refTaskId = null; }});
+  state.selectedPath = null; touchDiagram(d); renderApp();
+}
+async function addGanttMilestone(d){
+  const v = await dlgPrompt('Nový milník', 'Název milníku:', '', '');
+  if(!v) return;
+  d.model.milestones = d.model.milestones || [];
+  d.model.milestones.push({id: uid('gm'), label: v, alias:'', date:'', refTaskId:null, refPoint:'end', offset:0});
+  state.selectedPath = ['milestones', d.model.milestones.length-1];
+  touchDiagram(d); renderApp();
+}
+async function deleteGanttMilestone(d, id){
+  const ok = await dlgConfirm('Smazat milník?', 'Tato akce odstraní milník.');
+  if(!ok) return;
+  d.model.milestones = (d.model.milestones||[]).filter(m => m.id !== id);
+  state.selectedPath = null; touchDiagram(d); renderApp();
+}
+async function editGanttSettings(d){
+  state.selectedPath = null;
+  renderApp();
+  status('Vyberte nastavení v panelu detailu vpravo.', 'success');
+}
+
+// === AKCE: TIMELINE ==========================================
+async function addTimelineEvent(d){
+  const v = await dlgPrompt('Nová událost', 'Název události:', '', '');
+  if(!v) return;
+  d.model.events = d.model.events || [];
+  d.model.events.push({id: uid('ev'), label: v, date: todayIso(), description: ''});
+  state.selectedPath = ['events', d.model.events.length-1];
+  touchDiagram(d); renderApp();
+}
+async function deleteTimelineEvent(d, id){
+  const ok = await dlgConfirm('Smazat událost?', 'Tato akce odstraní událost.');
+  if(!ok) return;
+  d.model.events = (d.model.events||[]).filter(e => e.id !== id);
+  state.selectedPath = null; touchDiagram(d); renderApp();
+}
+
+// === AKCE: EBNF ==============================================
+async function addEbnfRule(d){
+  const v = await dlgPrompt('Nové pravidlo', 'Název pravidla (identifikátor):', '', '');
+  if(!v) return;
+  const name = v.replace(/\s+/g,'_');
+  d.model.rules = d.model.rules || [];
+  d.model.rules.push({id: uid('er'), name, expression:'', comment:''});
+  state.selectedPath = ['rules', d.model.rules.length-1];
+  touchDiagram(d); renderApp();
+}
+async function deleteEbnfRule(d, id){
+  const ok = await dlgConfirm('Smazat pravidlo?', 'Tato akce odstraní pravidlo.');
+  if(!ok) return;
+  d.model.rules = (d.model.rules||[]).filter(r => r.id !== id);
+  state.selectedPath = null; touchDiagram(d); renderApp();
+}
+
+// === STROM: TIMING ===========================================
+function renderTimingTree(d, root){
+  const m = d.model;
+  // Účastníci
+  const ps = el('section');
+  ps.appendChild(el('h4',null,'Účastníci (signály)'));
+  const pul = el('ul',{'aria-label':'Účastníci timing diagramu'});
+  const partById = {};
+  (m.participants||[]).forEach(p => partById[p.id] = p);
+  (m.participants||[]).forEach((p, idx) => {
+    const li = el('li');
+    const path = ['participants', idx];
+    const isSel = pathEqual(state.selectedPath, path);
+    const baseName = p.name || p.alias || '(bez názvu)';
+    const sigW = (TIMING_SIG_WORD[p.sigType] || p.sigType || 'concise').replace(/\s*\(.+/,'');
+    li.appendChild(treeItem(baseName + ' — ' + sigW, p.sigType||'concise', 'actor', isSel,
+      ()=>{ state.selectedPath = path; renderApp(); },
+      [actionBtn('↑', 'Posunout účastníka nahoru', ()=>moveModelItem(d, 'participants', idx, -1)),
+       actionBtn('↓', 'Posunout účastníka dolů', ()=>moveModelItem(d, 'participants', idx, 1)),
+       actionBtn('×', 'Smazat účastníka', ()=>deleteTimingParticipant(d, p.id))]));
+    pul.appendChild(li);
+  });
+  if(!(m.participants||[]).length) ps.appendChild(el('p',{class:'empty'},'Žádní účastníci.'));
+  else ps.appendChild(pul);
+  root.appendChild(ps);
+
+  // Časové rámce
+  const fs = el('section');
+  fs.appendChild(el('h4',null,'Časové rámce'));
+  const ful = el('ul',{'aria-label':'Časové rámce'});
+  const frSorted = (m.frames||[]).map((f,i)=>({f,i})).sort((a,b)=>(parseFloat(a.f.time)||0)-(parseFloat(b.f.time)||0));
+  frSorted.forEach(({f, i}) => {
+    const li = el('li');
+    const path = ['frames', i];
+    const isSel = pathEqual(state.selectedPath, path);
+    const stCount = (f.states||[]).length;
+    const msgCount = (f.messages||[]).length;
+    const label = '@' + f.time + ' — ' + stCount + ' ' + czCount(stCount,'stav','stavy','stavů') +
+      (msgCount ? ', ' + msgCount + ' ' + czCount(msgCount,'zpráva','zprávy','zpráv') : '');
+    li.appendChild(treeItem(label, 'rámec', 'state', isSel,
+      ()=>{ state.selectedPath = path; renderApp(); },
+      [actionBtn('×', 'Smazat časový rámec', ()=>deleteTimingFrame(d, f.id))]));
+    ful.appendChild(li);
+  });
+  if(!(m.frames||[]).length) fs.appendChild(el('p',{class:'empty'},'Žádné časové rámce.'));
+  else fs.appendChild(ful);
+  root.appendChild(fs);
+
+  // Poznámky
+  if((m.notes||[]).length){
+    const ns = el('section');
+    ns.appendChild(el('h4',null,'Poznámky'));
+    const nul = el('ul',{'aria-label':'Poznámky'});
+    (m.notes||[]).forEach((n, idx) => {
+      const li = el('li');
+      const path = ['notes', idx];
+      const isSel = pathEqual(state.selectedPath, path);
+      const p = partById[n.participantId];
+      const pname = p ? (p.name||p.alias) : '(?)';
+      const where = n.position === 'bottom' ? 'pod' : 'nad';
+      li.appendChild(treeItem(where + ' „' + pname + '": ' + (n.text||'').slice(0,40),
+        'poznámka', 'state', isSel,
+        ()=>{ state.selectedPath = path; renderApp(); },
+        [actionBtn('×', 'Smazat poznámku', ()=>deleteTimingNote(d, n.id))]));
+      nul.appendChild(li);
+    });
+    ns.appendChild(nul);
+    root.appendChild(ns);
+  }
+
+  // Highlighty
+  if((m.highlights||[]).length){
+    const hs = el('section');
+    hs.appendChild(el('h4',null,'Zvýrazněné intervaly'));
+    const hul = el('ul',{'aria-label':'Highlighty'});
+    (m.highlights||[]).forEach((h, idx) => {
+      const li = el('li');
+      const path = ['highlights', idx];
+      const isSel = pathEqual(state.selectedPath, path);
+      const label = h.from + ' – ' + h.to + (h.label ? ': ' + h.label : '');
+      li.appendChild(treeItem(label, 'highlight', 'state', isSel,
+        ()=>{ state.selectedPath = path; renderApp(); },
+        [actionBtn('×', 'Smazat highlight', ()=>deleteTimingHighlight(d, h.id))]));
+      hul.appendChild(li);
+    });
+    hs.appendChild(hul);
+    root.appendChild(hs);
+  }
+}
+
+// === DETAIL: TIMING ==========================================
+function renderTimingDetail(d, root){
+  const path = state.selectedPath, m = d.model;
+  if(!path){
+    // Nastavení timing diagramu
+    root.appendChild(el('h4',null,'Nastavení timing diagramu'));
+    root.appendChild(checkboxField('Skrýt časovou osu (hide time-axis)',
+      !!m.hideTimeAxis, v=>{m.hideTimeAxis=v;softTouch(d);}));
+    root.appendChild(field('Formát data (volitelné, např. yy-MM-dd):',
+      inputText(m.dateFormat||'', v=>{m.dateFormat=v.trim();softTouch(d);}, 'tmDateFmt'),
+      'Formát zobrazení dat na ose. Použije se jen pokud používáte konkrétní datumy v časech rámců.'));
+    return;
+  }
+  if(path[0] === 'participants'){
+    const p = m.participants[path[1]];
+    if(!p){ root.appendChild(el('p',{class:'no-selection'},'Účastník neexistuje.')); return; }
+    root.appendChild(el('h4',null,'Účastník / signál'));
+    root.appendChild(field('Název:', inputText(p.name||'', v=>{p.name=v;softTouch(d);}, 'tpName')));
+    root.appendChild(field('Alias (krátký, bez mezer):',
+      inputText(p.alias||'', v=>{p.alias=sanitizeAliasInput(v);softTouch(d);}, 'tpAlias')));
+    root.appendChild(field('Typ signálu:',
+      selectField(p.sigType||'concise', [
+        {value:'concise', label:'concise (jednoduchý datový)'},
+        {value:'robust', label:'robust (více pojmenovaných stavů)'},
+        {value:'binary', label:'binary (high/low)'},
+        {value:'clock', label:'clock (hodinový)'},
+        {value:'analog', label:'analog (spojitý)'},
+        {value:'rectangle', label:'rectangle (obdélníkový)'}
+      ], v=>{p.sigType=v;softTouch(d);renderApp();}, 'tpType')));
+    if(p.sigType === 'clock'){
+      root.appendChild(field('Perioda:',
+        inputText(String(p.period||''), v=>{const n=parseFloat(v); p.period=isNaN(n)?undefined:n;softTouch(d);}, 'tpPer')));
+      root.appendChild(field('Puls (volitelné):',
+        inputText(String(p.pulse||''), v=>{const n=parseFloat(v); p.pulse=isNaN(n)?undefined:n;softTouch(d);}, 'tpPul')));
+      root.appendChild(field('Posun (volitelné):',
+        inputText(String(p.offset||''), v=>{const n=parseFloat(v); p.offset=isNaN(n)?undefined:n;softTouch(d);}, 'tpOff')));
+    }
+    if(p.sigType === 'analog'){
+      const bt = p.between || [];
+      root.appendChild(field('Rozsah od:',
+        inputText(String(bt[0] !== undefined ? bt[0] : ''),
+          v=>{const n=parseFloat(v); if(!isNaN(n)){p.between=[n, (p.between||[])[1]||0];softTouch(d);}}, 'tpBmin')));
+      root.appendChild(field('Rozsah do:',
+        inputText(String(bt[1] !== undefined ? bt[1] : ''),
+          v=>{const n=parseFloat(v); if(!isNaN(n)){p.between=[(p.between||[])[0]||0, n];softTouch(d);}}, 'tpBmax')));
+    }
+  } else if(path[0] === 'frames'){
+    const f = m.frames[path[1]];
+    if(!f){ root.appendChild(el('p',{class:'no-selection'},'Časový rámec neexistuje.')); return; }
+    root.appendChild(el('h4',null,'Časový rámec'));
+    root.appendChild(field('Čas:',
+      inputText(String(f.time||''), v=>{f.time=v.trim();softTouch(d);}, 'tfTime'),
+      'Lineární číslo (např. 100), relativní (např. +50), nebo datum (např. 2024/07/02).'));
+    // Editor stavů
+    root.appendChild(el('h4', null, 'Stavy v tomto čase'));
+    f.states = f.states || [];
+    const partOpts = [{value:'',label:'(vyberte)'}].concat((m.participants||[]).map(p=>({value:p.id,label:p.name||p.alias})));
+    f.states.forEach((st, sidx) => {
+      const sec = el('section', {class:'section'});
+      sec.appendChild(field('Účastník:',
+        selectField(st.participantId||'', partOpts, v=>{st.participantId=v;softTouch(d);}, 'tfSp_'+sidx)));
+      sec.appendChild(field('Hodnota / stav:',
+        inputText(st.value||'', v=>{st.value=v;softTouch(d);}, 'tfSv_'+sidx),
+        'Např. „Idle", „Processing", „0x4F", „high", „1.5". Texty s mezerami se obalí do uvozovek.'));
+      sec.appendChild(field('Barva (volitelné, např. LightCyan):',
+        inputText(st.color||'', v=>{st.color=v.replace(/^#/,'');softTouch(d);}, 'tfSc_'+sidx)));
+      sec.appendChild(el('button', {type:'button', onclick:()=>{f.states.splice(sidx,1);softTouch(d);renderApp();}}, 'Odstranit stav'));
+      root.appendChild(sec);
+    });
+    root.appendChild(el('button', {type:'button', onclick:()=>{
+      f.states.push({participantId: (m.participants[0]||{}).id, value:''});
+      softTouch(d); renderApp();
+    }}, 'Přidat stav'));
+    // Editor zpráv
+    root.appendChild(el('h4', null, 'Zprávy v tomto čase'));
+    f.messages = f.messages || [];
+    f.messages.forEach((msg, midx) => {
+      const sec = el('section', {class:'section'});
+      sec.appendChild(field('Z účastníka:',
+        selectField(msg.from||'', partOpts, v=>{msg.from=v;softTouch(d);}, 'tfMf_'+midx)));
+      sec.appendChild(field('K účastníkovi:',
+        selectField(msg.to||'', partOpts, v=>{msg.to=v;softTouch(d);}, 'tfMt_'+midx)));
+      sec.appendChild(field('Popis zprávy:',
+        inputText(msg.label||'', v=>{msg.label=v;softTouch(d);}, 'tfMl_'+midx)));
+      sec.appendChild(field('Posun cíle (volitelné, např. +50):',
+        inputText(String(msg.atTimeOffset||''), v=>{msg.atTimeOffset=v.trim();softTouch(d);}, 'tfMo_'+midx)));
+      sec.appendChild(el('button', {type:'button', onclick:()=>{f.messages.splice(midx,1);softTouch(d);renderApp();}}, 'Odstranit zprávu'));
+      root.appendChild(sec);
+    });
+    root.appendChild(el('button', {type:'button', onclick:()=>{
+      f.messages.push({from:(m.participants[0]||{}).id, to:(m.participants[1]||m.participants[0]||{}).id, label:''});
+      softTouch(d); renderApp();
+    }}, 'Přidat zprávu'));
+  } else if(path[0] === 'notes'){
+    const n = m.notes[path[1]];
+    if(!n){ root.appendChild(el('p',{class:'no-selection'},'Poznámka neexistuje.')); return; }
+    root.appendChild(el('h4',null,'Poznámka'));
+    const partOpts = (m.participants||[]).map(p=>({value:p.id,label:p.name||p.alias}));
+    root.appendChild(field('K účastníkovi:',
+      selectField(n.participantId||'', [{value:'',label:'(vyberte)'}].concat(partOpts),
+        v=>{n.participantId=v;softTouch(d);}, 'tnPart')));
+    root.appendChild(field('Pozice:',
+      selectField(n.position||'top',
+        [{value:'top',label:'nad signálem'},{value:'bottom',label:'pod signálem'}],
+        v=>{n.position=v;softTouch(d);}, 'tnPos')));
+    root.appendChild(field('Text:', inputArea(n.text||'', v=>{n.text=v;softTouch(d);}, 'tnText', 3)));
+  } else if(path[0] === 'highlights'){
+    const h = m.highlights[path[1]];
+    if(!h){ root.appendChild(el('p',{class:'no-selection'},'Zvýraznění neexistuje.')); return; }
+    root.appendChild(el('h4',null,'Zvýrazněný interval'));
+    root.appendChild(field('Od (čas):',
+      inputText(String(h.from||''), v=>{h.from=v.trim();softTouch(d);}, 'thFr')));
+    root.appendChild(field('Do (čas):',
+      inputText(String(h.to||''), v=>{h.to=v.trim();softTouch(d);}, 'thTo')));
+    root.appendChild(field('Barva (volitelné, např. Gold):',
+      inputText(h.color||'', v=>{h.color=v.replace(/^#/,'');softTouch(d);}, 'thCol')));
+    root.appendChild(field('Popisek (volitelné):',
+      inputText(h.label||'', v=>{h.label=v;softTouch(d);}, 'thLab')));
+  }
+}
+
+// === AKCE: TIMING ============================================
+async function addTimingParticipant(d){
+  const v = await dlgPrompt('Nový účastník (signál)', 'Název:', '', '');
+  if(!v) return;
+  d.model.participants = d.model.participants || [];
+  const p = {id: uid('ts'), name: v, alias: '', sigType: 'concise'};
+  d.model.participants.push(p);
+  state.selectedPath = ['participants', d.model.participants.length-1];
+  touchDiagram(d); renderApp();
+}
+async function deleteTimingParticipant(d, id){
+  const ok = await dlgConfirm('Smazat účastníka?', 'Smazání odstraní i jeho stavy v časových rámcích, poznámky a zprávy odkazující na něj.');
+  if(!ok) return;
+  d.model.participants = (d.model.participants||[]).filter(p => p.id !== id);
+  (d.model.frames||[]).forEach(f => {
+    f.states = (f.states||[]).filter(st => st.participantId !== id);
+    f.messages = (f.messages||[]).filter(m => m.from !== id && m.to !== id);
+  });
+  d.model.notes = (d.model.notes||[]).filter(n => n.participantId !== id);
+  state.selectedPath = null; touchDiagram(d); renderApp();
+}
+async function addTimingFrame(d){
+  const v = await dlgPrompt('Nový časový rámec', 'Čas (např. 0, 100, +50, 2024/07/02):', '0', '');
+  if(v === null || v === undefined) return;
+  d.model.frames = d.model.frames || [];
+  d.model.frames.push({id: uid('tf'), time: v.trim() || '0', states: [], messages: []});
+  state.selectedPath = ['frames', d.model.frames.length-1];
+  touchDiagram(d); renderApp();
+}
+async function deleteTimingFrame(d, id){
+  const ok = await dlgConfirm('Smazat časový rámec?', 'Smazání odstraní rámec včetně všech jeho stavů a zpráv.');
+  if(!ok) return;
+  d.model.frames = (d.model.frames||[]).filter(f => f.id !== id);
+  state.selectedPath = null; touchDiagram(d); renderApp();
+}
+async function addTimingNote(d){
+  if(!(d.model.participants||[]).length){ status('Nejprve vytvořte alespoň jednoho účastníka.', 'error'); return; }
+  d.model.notes = d.model.notes || [];
+  d.model.notes.push({id: uid('tn'), participantId: d.model.participants[0].id, position:'top', text:''});
+  state.selectedPath = ['notes', d.model.notes.length-1];
+  touchDiagram(d); renderApp();
+}
+async function deleteTimingNote(d, id){
+  const ok = await dlgConfirm('Smazat poznámku?', 'Tato akce odstraní poznámku.');
+  if(!ok) return;
+  d.model.notes = (d.model.notes||[]).filter(n => n.id !== id);
+  state.selectedPath = null; touchDiagram(d); renderApp();
+}
+async function addTimingHighlight(d){
+  d.model.highlights = d.model.highlights || [];
+  d.model.highlights.push({id: uid('th'), from:'0', to:'100', color:'', label:''});
+  state.selectedPath = ['highlights', d.model.highlights.length-1];
+  touchDiagram(d); renderApp();
+}
+async function deleteTimingHighlight(d, id){
+  const ok = await dlgConfirm('Smazat zvýrazněný interval?', 'Tato akce odstraní interval.');
+  if(!ok) return;
+  d.model.highlights = (d.model.highlights||[]).filter(h => h.id !== id);
+  state.selectedPath = null; touchDiagram(d); renderApp();
 }
 
 // === AKCE: ACTIVITY ===========================================
@@ -6818,7 +8082,11 @@ const DIAGRAM_TYPE_LABEL = {
   state: 'Stavový diagram',
   component: 'Komponentový diagram',
   deployment: 'Diagram nasazení',
-  network: 'Síťový diagram'
+  network: 'Síťový diagram',
+  gantt: 'Ganttův diagram',
+  timeline: 'Časová osa',
+  timing: 'Časový průběh (timing)',
+  ebnf: 'EBNF gramatika'
 };
 
 function generateDescriptionAction(){
@@ -6913,6 +8181,28 @@ function diagramSummaryLine(d){
     (d.model.networks||[]).forEach(net => (net.nodes||[]).forEach(nd => allNames.add(nd.name)));
     const parts = [nets + ' ' + czCount(nets,'síť','sítě','sítí')];
     if(allNames.size) parts.push(allNames.size + ' ' + czCount(allNames.size,'uzel','uzly','uzlů'));
+    return DIAGRAM_TYPE_LABEL[d.type] + ', obsahuje ' + joinCz(parts) + '.';
+  }
+  if(d.type === 'gantt'){
+    const t = (d.model.tasks||[]).length;
+    const m = (d.model.milestones||[]).length;
+    const parts = [t + ' ' + czCount(t,'úlohu','úlohy','úloh')];
+    if(m) parts.push(m + ' ' + czCount(m,'milník','milníky','milníků'));
+    return DIAGRAM_TYPE_LABEL[d.type] + ', obsahuje ' + joinCz(parts) + '.';
+  }
+  if(d.type === 'timeline'){
+    const e = (d.model.events||[]).length;
+    return DIAGRAM_TYPE_LABEL[d.type] + ', obsahuje ' + e + ' ' + czCount(e,'událost','události','událostí') + '.';
+  }
+  if(d.type === 'ebnf'){
+    const r = (d.model.rules||[]).length;
+    return DIAGRAM_TYPE_LABEL[d.type] + ', obsahuje ' + r + ' ' + czCount(r,'pravidlo','pravidla','pravidel') + '.';
+  }
+  if(d.type === 'timing'){
+    const p = (d.model.participants||[]).length;
+    const f = (d.model.frames||[]).length;
+    const parts = [p + ' ' + czCount(p,'účastníka','účastníky','účastníků')];
+    if(f) parts.push(f + ' ' + czCount(f,'časový rámec','časové rámce','časových rámců'));
     return DIAGRAM_TYPE_LABEL[d.type] + ', obsahuje ' + joinCz(parts) + '.';
   }
   return (DIAGRAM_TYPE_LABEL[d.type] || d.type) + '.';
@@ -7312,7 +8602,17 @@ function openHelp(){
     lines.forEach(l => c.appendChild(el('p',null,l)));
   };
   make('Co aplikace umí',
-    'Editor diagramů PlantUML pro osm typů: aktivitní (flow/action), třídní (class), sekvenční (sequence/zprávy), use case, stavový (state), komponentový (component), nasazení (deployment) a síťový (network/nwdiag). Editujete strukturovaně přes formuláře, zdrojový kód PlantUML se generuje automaticky.');
+    'Editor diagramů PlantUML pro dvanáct typů: aktivitní (flow/action), třídní (class), sekvenční (sequence/zprávy), use case, stavový (state), komponentový (component), nasazení (deployment), síťový (network/nwdiag), Ganttův diagram (project), časová osa (chronology), časový průběh (timing) a EBNF gramatika.');
+  make('Ganttův diagram',
+    'Gantt zobrazuje úlohy projektu na časové ose. U každé úlohy zadáte název, trvání ve dnech a způsob začátku — buď absolutní datum, nebo vazba na jinou úlohu (např. „začíná 3 dny po skončení Návrhu"). Milníky jsou body v čase: buď přímé datum, nebo vazba na úlohu.',
+    'V textovém popisu se u relativně definovaných úloh (těch s vazbou na jinou úlohu) automaticky uvádí v závorce vypočítané absolutní datum.',
+    'Úlohy i milníky lze povýšit na sdílené prvky projektu, aby šly recyklovat napříč více Gantty (např. typová úloha „Schvalovací řízení trvá 5 dnů" se zachová a změna trvání se promítne všude). Sdílí se název, alias a trvání úlohy (u milníku jen název a alias); konkrétní zařazení v daném diagramu (start, vazba na jinou úlohu, posun, barva) zůstává lokální. Tlačítka „Vložit sdílenou úlohu…" a „Vložit sdílený milník…" jsou v toolbaru Gantt diagramu.');
+  make('Časová osa (chronology)',
+    'Jednoduchá vizualizace událostí v čase. Každá událost má název, datum a volitelný popis.');
+  make('Časový průběh (timing)',
+    'Timing diagram zobrazuje, jak se v čase mění stavy několika signálů či účastníků. Účastník může být robustní (více pojmenovaných stavů), concise (jednoduchý datový), binary (high/low), clock (hodinový s periodou, pulsem a posunem), analog (spojitý s rozsahem) nebo rectangle. V „časových rámcích" (čase X) říkáte, jakou hodnotu má kterých účastník, případně jakou zprávu jeden účastníkovi pošle. Lze přidat poznámky (nad/pod signálem) a zvýrazněné intervaly (highlight). Volitelně lze skrýt časovou osu nebo zvolit formát data.');
+  make('EBNF gramatika',
+    'Diagram syntaxe formálního jazyka v Extended Backus-Naur Form. Každé pravidlo má identifikátor a výraz (pravou stranu) s metaznaky: | (alternativa), , (zřetězení), [...] (volitelné), {...} (opakování), (...) (skupina), \"…\" nebo \'…\' (terminál), ? … ? (speciální).');
   make('Pohledy a karty',
     'Aplikace má dva pohledy. „Pohled na projekt" obsahuje strom složek a diagramů a seznam sdílených prvků projektu — sem se vrátíte tlačítkem „← Zpět na projekt". „Pohled na diagram" se otevře po kliknutí na diagram a má tři karty: „Diagram" (akce vybraného diagramu, verze, validace), „Tvorba" (vkládání a editace prvků, struktura vlevo, detail vpravo) a „Výstup" (vykreslený diagram inline, zdrojový kód, textový popis, dokument). Mezi kartami se přepíná tlačítky nebo šipkami doleva/doprava.',
     'Na kartě „Výstup" se vykreslený diagram nenačítá automaticky — klikněte na „Načíst / aktualizovat náhled" pro zobrazení (nebo opětovné překreslení). Důvod: vykreslení vyžaduje volání na server, takže ho spouštíme cíleně.');
