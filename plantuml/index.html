@@ -812,7 +812,15 @@ const SHARED_KINDS = {
   // Gantt – milníky (sdílí label, alias; lokální zůstává date, refTaskId, refPoint, offset)
   'gantt.milestones': { table: 'milestones', stereotypeField: '',
     sharedFields: ['label','alias'],
-    localFields: ['date','refTaskId','refPoint','offset'] }
+    localFields: ['date','refTaskId','refPoint','offset'] },
+  // Component – komponenty (sdílí název, alias, stereotyp; lokální zůstává groupId, color, note)
+  'component.components': { table: 'components', stereotypeField: 'stereotype',
+    sharedFields: ['name','alias','stereotype'],
+    localFields: ['groupId','color','note'] },
+  // Component – rozhraní (sdílí název, alias; lokální zůstává groupId)
+  'component.interfaces': { table: 'interfaces', stereotypeField: '',
+    sharedFields: ['name','alias'],
+    localFields: ['groupId'] }
 };
 
 // Pomocný getter: vrátí konfiguraci pro daný typ diagramu a tabulku.
@@ -869,7 +877,7 @@ function findSharedUsages(alias){
   if(!state.project) return usages;
   (state.project.diagrams || []).forEach(d => {
     const m = d.model || {};
-    ['classes','participants','actors','useCases','tasks','milestones'].forEach(table => {
+    ['classes','participants','actors','useCases','tasks','milestones','components','interfaces'].forEach(table => {
       (m[table] || []).forEach(e => {
         if(e.sharedRef === alias) usages.push({diagramId:d.id, diagramName:d.name, table, elementId:e.id});
       });
@@ -894,7 +902,7 @@ function renameSharedAlias(oldAlias, newAlias){
   if(!state.project || oldAlias === newAlias) return;
   (state.project.diagrams || []).forEach(d => {
     const m = d.model || {};
-    ['classes','participants','actors','useCases','tasks','milestones'].forEach(table => {
+    ['classes','participants','actors','useCases','tasks','milestones','components','interfaces'].forEach(table => {
       (m[table] || []).forEach(e => {
         if(e.sharedRef === oldAlias) e.sharedRef = newAlias;
       });
@@ -918,6 +926,8 @@ function promoteToShared(diagramType, elem, table){
   else if(diagramType === 'usecase' && (table === 'useCases')) sh.kind = 'usecase';
   else if(diagramType === 'gantt' && (table === 'tasks')) sh.kind = 'gantt_task';
   else if(diagramType === 'gantt' && (table === 'milestones')) sh.kind = 'gantt_milestone';
+  else if(diagramType === 'component' && (table === 'components')) sh.kind = 'comp_' + (elem.stereotype || 'component');
+  else if(diagramType === 'component' && (table === 'interfaces')) sh.kind = 'comp_interface';
   else sh.kind = 'actor';
   // Základ aliasu: alias, případně name nebo label
   sh.alias = uniqueSharedAlias(elem.alias || elem.name || elem.label);
@@ -947,7 +957,7 @@ function unshareElement(diagramType, elem, mode, table){
     const alias = elem.sharedRef;
     (state.project.diagrams || []).forEach(d => {
       const m = d.model || {};
-      ['classes','participants','actors','useCases','tasks','milestones'].forEach(tbl => {
+      ['classes','participants','actors','useCases','tasks','milestones','components','interfaces'].forEach(tbl => {
         (m[tbl] || []).forEach(e => {
           if(e.sharedRef === alias){
             cfg.sharedFields.forEach(f => { if(sh[f] !== undefined) e[f] = deepClone(sh[f]); });
@@ -984,6 +994,12 @@ function sharedForDiagram(diagramType, table){
     if(table === 'milestones') return state.project.sharedElements.filter(s => s.kind === 'gantt_milestone');
     return state.project.sharedElements.filter(s => s.kind === 'gantt_task' || s.kind === 'gantt_milestone');
   }
+  if(diagramType === 'component'){
+    if(table === 'interfaces') return state.project.sharedElements.filter(s => s.kind === 'comp_interface');
+    if(table === 'components') return state.project.sharedElements.filter(s => typeof s.kind === 'string' && s.kind.startsWith('comp_') && s.kind !== 'comp_interface');
+    // bez table: oboje
+    return state.project.sharedElements.filter(s => typeof s.kind === 'string' && s.kind.startsWith('comp_'));
+  }
   return [];
 }
 
@@ -1018,7 +1034,9 @@ async function insertSharedAction(d, table){
     : cfg.table === 'actors' ? 'a'
     : cfg.table === 'useCases' ? 'u'
     : cfg.table === 'tasks' ? 'gt'
-    : cfg.table === 'milestones' ? 'gm' : 'x';
+    : cfg.table === 'milestones' ? 'gm'
+    : cfg.table === 'components' ? 'cp'
+    : cfg.table === 'interfaces' ? 'if' : 'x';
   const newId = uid(idPrefix);
   const elem = { id: newId, sharedRef: sh.alias };
   // lokální pole default
@@ -1026,6 +1044,8 @@ async function insertSharedAction(d, table){
   if(cfg.table === 'useCases'){ elem.systemId = null; }
   if(cfg.table === 'tasks'){ elem.startMode = 'project'; elem.startDate = ''; elem.refTaskId = null; elem.refPoint = 'end'; elem.offset = 0; elem.color = ''; }
   if(cfg.table === 'milestones'){ elem.date = ''; elem.refTaskId = null; elem.refPoint = 'end'; elem.offset = 0; }
+  if(cfg.table === 'components'){ elem.groupId = null; elem.color = ''; elem.note = ''; }
+  if(cfg.table === 'interfaces'){ elem.groupId = null; }
   d.model[cfg.table] = d.model[cfg.table] || [];
   d.model[cfg.table].push(elem);
   state.selectedPath = [cfg.table, d.model[cfg.table].length - 1];
@@ -1925,12 +1945,17 @@ const COMPONENT_GROUP_WORD = {
   package:'balíček', node:'uzel', folder:'složka', frame:'rámec', cloud:'oblak', database:'databáze'
 };
 function describeComponent(model){
-  const components = (model && model.components) || [];
-  const interfaces = (model && model.interfaces) || [];
+  const rawComponents = (model && model.components) || [];
+  const rawInterfaces = (model && model.interfaces) || [];
+  const components = rawComponents.map(effective);
+  const interfaces = rawInterfaces.map(effective);
   const groups = (model && model.groups) || [];
   const relationships = (model && model.relationships) || [];
-  const compById = {}; components.forEach(c => compById[c.id]=c);
-  const ifaceById = {}; interfaces.forEach(i => ifaceById[i.id]=i);
+  const compById = {}; rawComponents.forEach((rc,i) => compById[rc.id] = components[i]);
+  const ifaceById = {}; rawInterfaces.forEach((ri,i) => ifaceById[ri.id] = interfaces[i]);
+  // Pro skupiny potřebujeme původní (raw) prvky kvůli groupId (lokální).
+  const rawCompById = {}; rawComponents.forEach(rc => rawCompById[rc.id] = rc);
+  const rawIfaceById = {}; rawInterfaces.forEach(ri => rawIfaceById[ri.id] = ri);
   const nameOf = id => {
     if(compById[id]) return {kind:'komponenta', word:'komponentu', q:'„'+(compById[id].name||'')+'"'};
     if(ifaceById[id]) return {kind:'rozhraní', word:'rozhraní', q:'„'+(ifaceById[id].name||'')+'"'};
@@ -1948,9 +1973,11 @@ function describeComponent(model){
   introText += '.';
   paras.push(introText);
 
-  // PRVKY podle skupin (každá skupina vlastní odstavec)
-  const compByGroup = {}; components.forEach(c => { const k=c.groupId||'__root__'; (compByGroup[k]=compByGroup[k]||[]).push(c); });
-  const ifaceByGroup = {}; interfaces.forEach(i => { const k=i.groupId||'__root__'; (ifaceByGroup[k]=ifaceByGroup[k]||[]).push(i); });
+  // PRVKY podle skupin (každá skupina vlastní odstavec) — groupId čteme z raw prvků (lokální).
+  const compByGroup = {};
+  rawComponents.forEach(rc => { const k=rc.groupId||'__root__'; (compByGroup[k]=compByGroup[k]||[]).push(compById[rc.id]); });
+  const ifaceByGroup = {};
+  rawInterfaces.forEach(ri => { const k=ri.groupId||'__root__'; (ifaceByGroup[k]=ifaceByGroup[k]||[]).push(ifaceById[ri.id]); });
   function listElems(comps, ifaces){
     const parts = [];
     comps.forEach(c => parts.push('komponentu „' + (c.name||'') + '"'));
@@ -3034,17 +3061,28 @@ function genComponent(model){
   const groups = model.groups || [];
   const relationships = model.relationships || [];
   const aliasOf = {};
-  components.forEach(c => { aliasOf[c.id] = (c.alias || ('c_'+c.id)).replace(/[^A-Za-z0-9_]/g,'') || 'c'; });
-  interfaces.forEach(i => { aliasOf[i.id] = (i.alias || ('i_'+i.id)).replace(/[^A-Za-z0-9_]/g,'') || 'i'; });
+  components.forEach(rawC => {
+    const c = effective(rawC);
+    aliasOf[rawC.id] = (c.alias || ('c_'+rawC.id)).replace(/[^A-Za-z0-9_]/g,'') || 'c';
+  });
+  interfaces.forEach(rawI => {
+    const i = effective(rawI);
+    aliasOf[rawI.id] = (i.alias || ('i_'+rawI.id)).replace(/[^A-Za-z0-9_]/g,'') || 'i';
+  });
 
-  function emitComponent(c, indent){
+  const COMP_STEREO_KW = {component:'component', database:'database', queue:'queue', cloud:'cloud',
+    node:'node', folder:'folder', frame:'frame', file:'file'};
+  function emitComponent(rawC, indent){
+    const c = effective(rawC);
     const pad = '  '.repeat(indent);
-    const color = c.color ? ' ' + (c.color[0]==='#'?c.color:('#'+c.color)) : '';
-    out.push(pad + 'component "' + (c.name||'Komponenta').replace(/"/g,'\\"') + '" as ' + aliasOf[c.id] + color);
+    const color = rawC.color ? ' ' + (rawC.color[0]==='#'?rawC.color:('#'+rawC.color)) : '';
+    const kw = COMP_STEREO_KW[c.stereotype] || 'component';
+    out.push(pad + kw + ' "' + (c.name||'Komponenta').replace(/"/g,'\\"') + '" as ' + aliasOf[rawC.id] + color);
   }
-  function emitInterface(i, indent){
+  function emitInterface(rawI, indent){
+    const i = effective(rawI);
     const pad = '  '.repeat(indent);
-    out.push(pad + 'interface "' + (i.name||'Rozhraní').replace(/"/g,'\\"') + '" as ' + aliasOf[i.id]);
+    out.push(pad + 'interface "' + (i.name||'Rozhraní').replace(/"/g,'\\"') + '" as ' + aliasOf[rawI.id]);
   }
 
   // Komponenty/rozhraní podle skupiny
@@ -4106,9 +4144,18 @@ function renderSharedElementsList(){
   sorted.forEach(s => {
     const li = el('li');
     const usages = findSharedUsages(s.alias);
-    const kindLabel = ({class:'třída',interface:'rozhraní',abstract:'abstraktní třída',enum:'výčet',
-      struct:'struktura',annotation:'anotace',entity:'entita',actor:'aktér',participant:'účastník',usecase:'činnost',
-      gantt_task:'úloha',gantt_milestone:'milník'})[s.kind] || s.kind;
+    const kindLabel = (function(){
+      const labels = {class:'třída',interface:'rozhraní',abstract:'abstraktní třída',enum:'výčet',
+        struct:'struktura',annotation:'anotace',entity:'entita',actor:'aktér',participant:'účastník',usecase:'činnost',
+        gantt_task:'úloha',gantt_milestone:'milník',
+        comp_component:'komponenta', comp_database:'databáze', comp_queue:'fronta', comp_cloud:'cloud',
+        comp_node:'uzel', comp_folder:'složka', comp_frame:'rámec', comp_file:'soubor',
+        comp_interface:'rozhraní'};
+      if(labels[s.kind]) return labels[s.kind];
+      // fallback: bez prefixu comp_
+      if(typeof s.kind === 'string' && s.kind.startsWith('comp_')) return s.kind.slice(5);
+      return s.kind;
+    })();
     const label = '🔗 ' + (s.name || s.alias) + ' — ' + kindLabel + ' (' + usages.length + ' ' +
       czCount(usages.length,'použití','použití','použití') + ')';
     li.appendChild(treeItem(label, kindLabel, 'class', false,
@@ -4380,7 +4427,11 @@ function renderDiagramTree(){
   function renderDiagramItem(d, parentList){
     const li = el('li');
     const isSel = state.selectedDiagramId === d.id;
-    const typeBadge = ({activity:'flow',class:'class',sequence:'seq',usecase:'usecase',state:'state',component:'komp',deployment:'nasazení',network:'síť'})[d.type] || d.type;
+    const typeBadge = ({
+      activity:'aktivitní',class:'třídy',sequence:'sekvenční',usecase:'případy užití',
+      state:'stavový',component:'komponentový',deployment:'nasazení',network:'síťový',
+      gantt:'gantt',timeline:'časová osa',timing:'časový průběh',ebnf:'EBNF'
+    })[d.type] || d.type;
     const item = treeItem(d.name, typeBadge, '', isSel,
       ()=>selectDiagram(d.id),
       []);
@@ -4528,6 +4579,8 @@ function renderModelToolbar(d){
       tb.appendChild(actionBtn('Rozhraní', 'Rozhraní', ()=>addInterface(d)));
       tb.appendChild(actionBtn('Skupina', 'Skupina', ()=>addCompGroup(d)));
       tb.appendChild(actionBtn('Vazba', 'Vazba', ()=>addCompRelationship(d)));
+      tb.appendChild(actionBtn('Vložit sdílenou komponentu…', 'Vložit existující sdílenou komponentu', ()=>insertSharedAction(d, 'components')));
+      tb.appendChild(actionBtn('Vložit sdílené rozhraní…', 'Vložit existující sdílené rozhraní', ()=>insertSharedAction(d, 'interfaces')));
       break;
     case 'deployment':
       tb.appendChild(actionBtn('Uzel', 'Uzel', ()=>addDeployNode(d)));
@@ -4604,7 +4657,7 @@ function renderActivityTree(d, root){
           const blab = (n.type === 'if'
             ? (bidx===0 ? 'větev: ' : (bidx===n.branches.length-1 ? 'else: ' : 'elseif: ')) + (b.label||'')
             : 'větev '+(bidx+1));
-          bli.appendChild(treeItem(blab, 'br', 'branch', bSel,
+          bli.appendChild(treeItem(blab, 'větev', 'branch', bSel,
             ()=>{ state.selectedPath = bpath; renderApp(); },
             [ actionBtn('×', 'Smazat větev', ()=>deleteActivityBranch(d, path, bidx)) ]));
           const subUl = el('ul');
@@ -4637,9 +4690,9 @@ function renderActivityTree(d, root){
 }
 function activityNodeLabel(n){
   switch(n.type){
-    case 'start': return {label:'(začátek)', badge:'START', cls:'start'};
-    case 'stop': return {label:'(konec)', badge:'STOP', cls:'stop'};
-    case 'end': return {label:'(end)', badge:'END', cls:'end'};
+    case 'start': return {label:'(začátek)', badge:'začátek', cls:'start'};
+    case 'stop': return {label:'(konec)', badge:'konec', cls:'stop'};
+    case 'end': return {label:'(end)', badge:'end', cls:'end'};
     case 'action': {
       // Migrace legacy 'shape' → 'stereotype' za běhu (kdyby v paměti zbyla stará data)
       let stereo = n.stereotype;
@@ -4649,23 +4702,23 @@ function activityNodeLabel(n){
       const sh = stereo ? ' ['+stereo+']' : '';
       return {label:(n.text || '(prázdná akce)') + sh, badge:'akce', cls:'act'};
     }
-    case 'if': return {label:n.condition || '(podmínka)', badge:'if', cls:'if'};
-    case 'while': return {label:n.condition || '(podmínka)', badge:'while', cls:'while'};
-    case 'repeat': return {label:n.condition || '(podmínka)', badge:'repeat', cls:'repeat'};
-    case 'fork': return {label:'paralelní rozvětvení', badge:'fork', cls:'fork'};
-    case 'split': return {label:'větvení', badge:'split', cls:'fork'};
-    case 'note': return {label:n.text ? n.text.split('\n')[0] : '(poznámka)', badge:'note', cls:'note'};
+    case 'if': return {label:n.condition || '(podmínka)', badge:'podmínka', cls:'if'};
+    case 'while': return {label:n.condition || '(podmínka)', badge:'cyklus while', cls:'while'};
+    case 'repeat': return {label:n.condition || '(podmínka)', badge:'cyklus repeat', cls:'repeat'};
+    case 'fork': return {label:'paralelní rozvětvení', badge:'paralelní rozvětvení', cls:'fork'};
+    case 'split': return {label:'větvení', badge:'větvení', cls:'fork'};
+    case 'note': return {label:n.text ? n.text.split('\n')[0] : '(poznámka)', badge:'poznámka', cls:'note'};
     case 'arrow': {
       const parts = [];
       if(n.text) parts.push('„' + n.text + '"');
       if(n.style && n.style !== 'solid') parts.push(n.style);
       if(n.color) parts.push(n.color);
       const desc = parts.length ? parts.join(', ') : '(prázdná šipka)';
-      return {label: desc, badge:'→', cls:'note'};
+      return {label: desc, badge:'šipka', cls:'note'};
     }
-    case 'detach': return {label:'detach', badge:'det', cls:'note'};
+    case 'detach': return {label:'detach', badge:'detach', cls:'note'};
     case 'kill': return {label:'kill', badge:'kill', cls:'note'};
-    case 'break': return {label:'break', badge:'br', cls:'note'};
+    case 'break': return {label:'break', badge:'break', cls:'note'};
   }
   return {label:n.type, badge:'?', cls:''};
 }
@@ -4688,7 +4741,7 @@ function renderClassTree(d, root){
     const idx = m.packages.findIndex(x=>x.id===p.id);
     const path = ['packages', idx];
     const isSel = pathEqual(state.selectedPath, path);
-    li.appendChild(treeItem(p.name, 'pkg', 'package', isSel,
+    li.appendChild(treeItem(p.name, 'balíček', 'package', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
       [actionBtn('↑', 'Posunout balíček nahoru', ()=>moveModelItem(d, 'packages', idx, -1)),
        actionBtn('↓', 'Posunout balíček dolů', ()=>moveModelItem(d, 'packages', idx, 1)),
@@ -4705,8 +4758,11 @@ function renderClassTree(d, root){
     const path = ['classes', idx];
     const isSel = pathEqual(state.selectedPath, path);
     const eff = effective(c);
-    const badge = eff.stereotype || 'class';
-    li.appendChild(treeItem(sharedTreeLabel(c), badge, badge, isSel,
+    const CLASS_STEREO_LABEL = {class:'třída',interface:'rozhraní',abstract:'abstraktní třída',
+      enum:'výčet',struct:'struktura',annotation:'anotace',entity:'entita'};
+    const stereo = eff.stereotype || 'class';
+    const badge = CLASS_STEREO_LABEL[stereo] || stereo;
+    li.appendChild(treeItem(sharedTreeLabel(c), badge, stereo, isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
       [actionBtn('↑', 'Posunout třídu nahoru', ()=>moveModelItem(d, 'classes', idx, -1)),
        actionBtn('↓', 'Posunout třídu dolů', ()=>moveModelItem(d, 'classes', idx, 1)),
@@ -4732,7 +4788,7 @@ function renderClassTree(d, root){
     const fromName = from ? (effective(from).name || '(bez názvu)') : '?';
     const toName = to ? (effective(to).name || '(bez názvu)') : '?';
     const lab = fromName + ' — ' + r.type + ' → ' + toName + (r.label?' ('+r.label+')':'');
-    li.appendChild(treeItem(lab, 'rel', 'relation', isSel,
+    li.appendChild(treeItem(lab, 'vztah', 'relation', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
       [actionBtn('↑', 'Posunout vztah nahoru', ()=>moveModelItem(d, 'relationships', idx, -1)),
        actionBtn('↓', 'Posunout vztah dolů', ()=>moveModelItem(d, 'relationships', idx, 1)),
@@ -4760,7 +4816,9 @@ function renderSequenceTree(d, root){
     const baseName = eff.name || eff.alias || '(bez názvu)';
     const aliasShown = eff.alias && eff.alias !== eff.name ? ' [' + eff.alias + ']' : '';
     const label = (p.sharedRef ? '🔗 ' : '') + baseName + aliasShown;
-    li.appendChild(treeItem(label, eff.type, 'actor', isSel,
+    const SEQ_TYPE_LABEL = {actor:'aktér',participant:'účastník',boundary:'hranice',control:'řízení',
+      entity:'entita',database:'databáze',collections:'kolekce',queue:'fronta'};
+    li.appendChild(treeItem(label, SEQ_TYPE_LABEL[eff.type] || eff.type || 'účastník', 'actor', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
       [ actionBtn('↑', 'Posunout účastníka nahoru', ()=>moveParticipant(d, idx, -1)),
         actionBtn('↓', 'Posunout účastníka dolů', ()=>moveParticipant(d, idx, 1)),
@@ -4794,7 +4852,7 @@ function renderSequenceTree(d, root){
           const bpath = path.concat(['branches', bidx]);
           const bSel = pathEqual(state.selectedPath, bpath);
           const blab = (bidx===0 ? '' : 'else: ') + (b.label||'(bez popisku)');
-          bli.appendChild(treeItem(blab, 'br', 'branch', bSel,
+          bli.appendChild(treeItem(blab, 'větev', 'branch', bSel,
             ()=>{ state.selectedPath = bpath; renderApp(); },
             [actionBtn('×', 'Smazat větev', ()=>deleteSeqBranch(d, path, bidx))]));
           const subUl = el('ul');
@@ -4849,7 +4907,7 @@ function renderUseCaseTree(d, root){
     const aliasShown = eff.alias ? ' [' + eff.alias + ']' : '';
     const label = (a.sharedRef ? '🔗 ' : '') + baseName + aliasShown;
     li.appendChild(treeItem(label,
-      eff.type==='system'?'sys':'actor', 'actor', isSel,
+      eff.type==='system'?'externí systém':'aktér', 'actor', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
       [actionBtn('↑', 'Posunout aktéra nahoru', ()=>moveModelItem(d, 'actors', idx, -1)),
        actionBtn('↓', 'Posunout aktéra dolů', ()=>moveModelItem(d, 'actors', idx, 1)),
@@ -4870,7 +4928,7 @@ function renderUseCaseTree(d, root){
     const idx = m.systems.findIndex(x=>x.id===s.id);
     const path = ['systems', idx];
     const isSel = pathEqual(state.selectedPath, path);
-    li.appendChild(treeItem(s.name, 'sys', 'system', isSel,
+    li.appendChild(treeItem(s.name, 'systém', 'system', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
       [actionBtn('↑', 'Posunout systém nahoru', ()=>moveModelItem(d, 'systems', idx, -1)),
        actionBtn('↓', 'Posunout systém dolů', ()=>moveModelItem(d, 'systems', idx, 1)),
@@ -4889,7 +4947,7 @@ function renderUseCaseTree(d, root){
     const baseName = eff.name || '(bez názvu)';
     const aliasShown = eff.alias ? ' [' + eff.alias + ']' : '';
     const label = (u.sharedRef ? '🔗 ' : '') + baseName + aliasShown;
-    li.appendChild(treeItem(label, 'uc', 'usecase', isSel,
+    li.appendChild(treeItem(label, 'činnost', 'usecase', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
       [actionBtn('↑', 'Posunout use case nahoru', ()=>moveModelItem(d, 'useCases', idx, -1)),
        actionBtn('↓', 'Posunout use case dolů', ()=>moveModelItem(d, 'useCases', idx, 1)),
@@ -4916,7 +4974,7 @@ function renderUseCaseTree(d, root){
     const srcName = src ? (effective(src).name || '(bez názvu)') : '?';
     const tgtName = tgt ? (effective(tgt).name || '(bez názvu)') : '?';
     const lab = srcName + ' — ' + r.type + ' → ' + tgtName + (r.label?' ('+r.label+')':'');
-    li.appendChild(treeItem(lab, 'rel', 'relation', isSel,
+    li.appendChild(treeItem(lab, 'vztah', 'relation', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
       [actionBtn('↑', 'Posunout vztah nahoru', ()=>moveModelItem(d, 'relationships', idx, -1)),
        actionBtn('↓', 'Posunout vztah dolů', ()=>moveModelItem(d, 'relationships', idx, 1)),
@@ -4994,12 +5052,18 @@ function renderComponentTree(d, root){
   const eul = el('ul',{'aria-label':'Komponenty a rozhraní'});
   const compByGroup = {}; (m.components||[]).forEach(c => { const k=c.groupId||'__root__'; (compByGroup[k]=compByGroup[k]||[]).push(c); });
   const ifaceByGroup = {}; (m.interfaces||[]).forEach(i => { const k=i.groupId||'__root__'; (ifaceByGroup[k]=ifaceByGroup[k]||[]).push(i); });
+  const COMP_STEREO_LABEL = {component:'komponenta',database:'databáze',queue:'fronta',cloud:'cloud',
+    node:'uzel',folder:'složka',frame:'rámec',file:'soubor'};
   function renderComp(c, parentList){
     const li = el('li');
     const idx = m.components.findIndex(x=>x.id===c.id);
     const path = ['components', idx];
     const isSel = pathEqual(state.selectedPath, path);
-    li.appendChild(treeItem(c.name||'(bez názvu)', 'komp', 'component', isSel,
+    const eff = effective(c);
+    const baseName = eff.name || '(bez názvu)';
+    const label = (c.sharedRef ? '🔗 ' : '') + baseName;
+    const badge = COMP_STEREO_LABEL[eff.stereotype] || 'komponenta';
+    li.appendChild(treeItem(label, badge, 'component', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
       [actionBtn('↑', 'Posunout komponentu nahoru', ()=>moveModelItem(d, 'components', idx, -1)),
        actionBtn('↓', 'Posunout komponentu dolů', ()=>moveModelItem(d, 'components', idx, 1)),
@@ -5011,7 +5075,10 @@ function renderComponentTree(d, root){
     const idx = m.interfaces.findIndex(x=>x.id===i.id);
     const path = ['interfaces', idx];
     const isSel = pathEqual(state.selectedPath, path);
-    li.appendChild(treeItem(i.name||'(bez názvu)', 'rozhraní', 'usecase', isSel,
+    const eff = effective(i);
+    const baseName = eff.name || '(bez názvu)';
+    const label = (i.sharedRef ? '🔗 ' : '') + baseName;
+    li.appendChild(treeItem(label, 'rozhraní', 'usecase', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
       [actionBtn('↑', 'Posunout rozhraní nahoru', ()=>moveModelItem(d, 'interfaces', idx, -1)),
        actionBtn('↓', 'Posunout rozhraní dolů', ()=>moveModelItem(d, 'interfaces', idx, 1)),
@@ -5044,7 +5111,10 @@ function renderComponentTree(d, root){
   const rs = el('section');
   rs.appendChild(el('h4',null,'Vazby'));
   const rul = el('ul',{'aria-label':'Vazby'});
-  const nm = id => ((m.components||[]).find(x=>x.id===id)||(m.interfaces||[]).find(x=>x.id===id)||{}).name||'?';
+  const nm = id => {
+    const e = (m.components||[]).find(x=>x.id===id) || (m.interfaces||[]).find(x=>x.id===id);
+    return e ? (effective(e).name || '?') : '?';
+  };
   (m.relationships||[]).forEach((r, idx) => {
     const li = el('li');
     const path = ['relationships', idx];
@@ -6036,11 +6106,35 @@ function renderComponentDetail(d, root){
   if(path[0] === 'components'){
     const c = m.components[path[1]];
     if(!c){ root.appendChild(el('p',{class:'no-selection'},'Komponenta neexistuje.')); return; }
-    root.appendChild(el('h4',null,'Komponenta'));
-    root.appendChild(field('Název:', inputText(c.name||'', v=>{c.name=v;softTouch(d);}, 'coName')));
+    renderSharingSection('component', d, c, root, 'components');
+    const editTarget = c.sharedRef ? (findShared(c.sharedRef) || c) : c;
+    const shared = !!c.sharedRef && !!findShared(c.sharedRef);
+    root.appendChild(el('h4',null, shared ? 'Sdílená komponenta (definice pro celý projekt)' : 'Komponenta'));
+    root.appendChild(field('Název:',
+      inputText(editTarget.name||'', v=>{editTarget.name=v;state.project.modified=nowIso();softTouch(d);}, 'coName')));
     root.appendChild(field('Identifikátor (alias):',
-      inputText(c.alias||'', v=>{c.alias=sanitizeAliasInput(v);softTouch(d);}, 'coAlias'),
+      inputText(editTarget.alias||'', v=>{
+        const old = editTarget.alias;
+        const ne = sanitizeAliasInput(v);
+        editTarget.alias = ne;
+        if(shared && old && ne && old !== ne) renameSharedAlias(old, ne);
+        state.project.modified = nowIso();
+        softTouch(d);
+      }, 'coAlias'),
       'Krátký alias bez mezer a diakritiky.'));
+    root.appendChild(field('Stereotyp:',
+      selectField(editTarget.stereotype||'component', [
+        {value:'component',label:'komponenta (component)'},
+        {value:'database',label:'databáze (database)'},
+        {value:'queue',label:'fronta (queue)'},
+        {value:'cloud',label:'cloud (cloud)'},
+        {value:'node',label:'uzel (node)'},
+        {value:'folder',label:'složka (folder)'},
+        {value:'frame',label:'rámec (frame)'},
+        {value:'file',label:'soubor (file)'}
+      ], v=>{editTarget.stereotype=v;state.project.modified=nowIso();softTouch(d);}, 'coStereo')));
+    // Lokální pole (vždy na c)
+    if(shared) root.appendChild(el('h4', null, 'Lokální v tomto diagramu'));
     root.appendChild(field('Skupina:',
       selectField(c.groupId||'',
         [{value:'',label:'(žádná)'}].concat((m.groups||[]).map(g=>({value:g.id,label:g.name||'(bez názvu)'}))),
@@ -6049,11 +6143,23 @@ function renderComponentDetail(d, root){
   } else if(path[0] === 'interfaces'){
     const i = m.interfaces[path[1]];
     if(!i){ root.appendChild(el('p',{class:'no-selection'},'Rozhraní neexistuje.')); return; }
-    root.appendChild(el('h4',null,'Rozhraní'));
-    root.appendChild(field('Název:', inputText(i.name||'', v=>{i.name=v;softTouch(d);}, 'ifName')));
+    renderSharingSection('component', d, i, root, 'interfaces');
+    const editTarget = i.sharedRef ? (findShared(i.sharedRef) || i) : i;
+    const shared = !!i.sharedRef && !!findShared(i.sharedRef);
+    root.appendChild(el('h4',null, shared ? 'Sdílené rozhraní (definice pro celý projekt)' : 'Rozhraní'));
+    root.appendChild(field('Název:',
+      inputText(editTarget.name||'', v=>{editTarget.name=v;state.project.modified=nowIso();softTouch(d);}, 'ifName')));
     root.appendChild(field('Identifikátor (alias):',
-      inputText(i.alias||'', v=>{i.alias=sanitizeAliasInput(v);softTouch(d);}, 'ifAlias'),
+      inputText(editTarget.alias||'', v=>{
+        const old = editTarget.alias;
+        const ne = sanitizeAliasInput(v);
+        editTarget.alias = ne;
+        if(shared && old && ne && old !== ne) renameSharedAlias(old, ne);
+        state.project.modified = nowIso();
+        softTouch(d);
+      }, 'ifAlias'),
       'Krátký alias bez mezer a diakritiky.'));
+    if(shared) root.appendChild(el('h4', null, 'Lokální v tomto diagramu'));
     root.appendChild(field('Skupina:',
       selectField(i.groupId||'',
         [{value:'',label:'(žádná)'}].concat((m.groups||[]).map(g=>({value:g.id,label:g.name||'(bez názvu)'}))),
@@ -6542,7 +6648,7 @@ function renderTimingTree(d, root){
     const isSel = pathEqual(state.selectedPath, path);
     const baseName = p.name || p.alias || '(bez názvu)';
     const sigW = (TIMING_SIG_WORD[p.sigType] || p.sigType || 'concise').replace(/\s*\(.+/,'');
-    li.appendChild(treeItem(baseName + ' — ' + sigW, p.sigType||'concise', 'actor', isSel,
+    li.appendChild(treeItem(baseName + ' — ' + sigW, 'signál', 'actor', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
       [actionBtn('↑', 'Posunout účastníka nahoru', ()=>moveModelItem(d, 'participants', idx, -1)),
        actionBtn('↓', 'Posunout účastníka dolů', ()=>moveModelItem(d, 'participants', idx, 1)),
@@ -6607,7 +6713,7 @@ function renderTimingTree(d, root){
       const path = ['highlights', idx];
       const isSel = pathEqual(state.selectedPath, path);
       const label = h.from + ' – ' + h.to + (h.label ? ': ' + h.label : '');
-      li.appendChild(treeItem(label, 'highlight', 'state', isSel,
+      li.appendChild(treeItem(label, 'zvýraznění', 'state', isSel,
         ()=>{ state.selectedPath = path; renderApp(); },
         [actionBtn('×', 'Smazat highlight', ()=>deleteTimingHighlight(d, h.id))]));
       hul.appendChild(li);
@@ -7279,7 +7385,7 @@ async function addComponent(d){
   const existing = (d.model.components||[]).map(c=>c.alias).filter(Boolean)
     .concat((d.model.interfaces||[]).map(i=>i.alias).filter(Boolean));
   const alias = generateAlias(v, existing);
-  d.model.components.push({id:uid('co'),name:v,alias,groupId:null,color:''});
+  d.model.components.push({id:uid('co'),name:v,alias,stereotype:'component',groupId:null,color:'',note:''});
   state.selectedPath = ['components', d.model.components.length-1];
   touchDiagram(d); renderApp();
 }
