@@ -29,6 +29,8 @@
   --ph-spot-bg: #fff3cd;
   --ph-spot-bd: #d4a017;
   --ph-spot-fg: #5c4400;
+  --ph-date-bg: #e3f2fd;
+  --ph-date-bd: #1565c0;
   --instr-bg: #fff8e1;
   --instr-bd: #f59e0b;
   --instr-fg: #5d4400;
@@ -356,6 +358,26 @@ nav#app-nav #work-toolbar .sep {
 .ph-marker.ph-vol { background: var(--ph-vol-bg); border-color: var(--ph-vol-bd); }
 .ph-marker.ph-tbl { background: var(--ph-tbl-bg); border-color: var(--ph-tbl-bd); display: block; margin: 0.3em 0; padding: 0.3em 0.6em; }
 .ph-marker.ph-spot { background: var(--ph-spot-bg); border-color: var(--ph-spot-bd); border-left: 5px solid var(--ph-spot-bd); display: block; margin: 0.6em 0; padding: 0.5em 0.8em; color: var(--ph-spot-fg); font-weight: 500; }
+.ph-marker.ph-date { background: var(--ph-date-bg); border-color: var(--ph-date-bd); }
+
+/* Date input + format preview */
+.ph-form.ph-date {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4em;
+  vertical-align: baseline;
+}
+.ph-form.ph-date .date-input {
+  min-width: 9em;
+}
+.ph-form.ph-date .date-preview {
+  font-size: 0.88em;
+  color: var(--muted, #555);
+  font-style: italic;
+}
+.ph-form.ph-date .date-preview:not(:empty)::before {
+  content: '→ ';
+}
 
 /* Spot block — also used in result mode (rendered from blockquote) */
 .spot-block {
@@ -824,9 +846,10 @@ const TYPES = {
   volba: 'Volba',
   tabulka: 'Tabulka',
   spot: 'Spot',
+  datum: 'Datum',
 };
 
-const DEDUP_TYPES = ['Text', 'Textarea', 'Odrážky', 'Číslované'];
+const DEDUP_TYPES = ['Text', 'Textarea', 'Odrážky', 'Číslované', 'Datum'];
 const BLOCK_TYPES = ['Textarea', 'Odrážky', 'Číslované', 'Tabulka', 'Spot'];
 
 /* ============================================================
@@ -895,6 +918,7 @@ function typeClass(type) {
     'Volba': 'ph-vol',
     'Tabulka': 'ph-tbl',
     'Spot': 'ph-spot',
+    'Datum': 'ph-date',
   })[type] || '';
 }
 
@@ -917,6 +941,154 @@ function normalizeForDedup(content) {
     .toLocaleLowerCase('cs-CZ')
     .replace(/[\s\u00A0]+/g, ' ')
     .trim();
+}
+
+/* ============================================================
+ * DATUM: PARSING & PHP-STYLE FORMATTING (Czech locale)
+ * ============================================================ */
+
+const DEFAULT_DATE_FORMAT = 'j. n. Y';
+
+const CS_MONTHS_NOM = ['leden', 'únor', 'březen', 'duben', 'květen', 'červen',
+  'červenec', 'srpen', 'září', 'říjen', 'listopad', 'prosinec'];
+const CS_MONTHS_GEN = ['ledna', 'února', 'března', 'dubna', 'května', 'června',
+  'července', 'srpna', 'září', 'října', 'listopadu', 'prosince'];
+const CS_MONTHS_SHORT = ['led', 'úno', 'bře', 'dub', 'kvě', 'čvn',
+  'čvc', 'srp', 'zář', 'říj', 'lis', 'pro'];
+const CS_DAYS_FULL = ['neděle', 'pondělí', 'úterý', 'středa', 'čtvrtek', 'pátek', 'sobota'];
+const CS_DAYS_SHORT = ['ne', 'po', 'út', 'st', 'čt', 'pá', 'so'];
+
+function parseDateContent(content) {
+  // Split "Název | formát" into {name, format}. If no '|', format is DEFAULT_DATE_FORMAT.
+  const pipeIdx = content.indexOf('|');
+  if (pipeIdx < 0) {
+    return {name: content.trim(), format: DEFAULT_DATE_FORMAT};
+  }
+  return {
+    name: content.slice(0, pipeIdx).trim(),
+    format: content.slice(pipeIdx + 1).trim() || DEFAULT_DATE_FORMAT,
+  };
+}
+
+function parseISODate(s) {
+  // Accept 'YYYY-MM-DD' (the format <input type=date> produces). Returns Date in UTC midnight or null.
+  if (!s || typeof s !== 'string') return null;
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const Y = parseInt(m[1], 10), M = parseInt(m[2], 10), D = parseInt(m[3], 10);
+  if (M < 1 || M > 12 || D < 1 || D > 31) return null;
+  const d = new Date(Date.UTC(Y, M - 1, D));
+  if (isNaN(d.getTime())) return null;
+  // Sanity check: avoid 2026-02-31 silently becoming 2026-03-03
+  if (d.getUTCFullYear() !== Y || d.getUTCMonth() !== M - 1 || d.getUTCDate() !== D) return null;
+  return d;
+}
+
+function _pad(n, w) {
+  const s = String(Math.abs(n));
+  return (n < 0 ? '-' : '') + (s.length >= (w || 2) ? s : '0'.repeat((w || 2) - s.length) + s);
+}
+
+function _isLeapYear(y) {
+  return (y % 4 === 0 && y % 100 !== 0) || (y % 400 === 0);
+}
+
+function _isoWeekTarget(d) {
+  // Returns a Date representing the Thursday of the same ISO week as d.
+  const target = new Date(d.valueOf());
+  const dayNr = (target.getUTCDay() + 6) % 7; // 0=Mon … 6=Sun
+  target.setUTCDate(target.getUTCDate() - dayNr + 3);
+  return target;
+}
+
+function _isoWeek(d) {
+  const target = _isoWeekTarget(d);
+  const firstThursday = target.valueOf();
+  const jan1 = new Date(Date.UTC(target.getUTCFullYear(), 0, 1));
+  const jan1Day = jan1.getUTCDay();
+  if (jan1Day !== 4) {
+    jan1.setUTCMonth(0, 1 + ((4 - jan1Day) + 7) % 7);
+  }
+  return 1 + Math.round((firstThursday - jan1.valueOf()) / (7 * 86400000));
+}
+
+function _isoWeekYear(d) {
+  return _isoWeekTarget(d).getUTCFullYear();
+}
+
+function _englishOrdinal(day) {
+  const dm = day % 100;
+  if (dm >= 11 && dm <= 13) return 'th';
+  const dr = day % 10;
+  if (dr === 1) return 'st';
+  if (dr === 2) return 'nd';
+  if (dr === 3) return 'rd';
+  return 'th';
+}
+
+function formatDate(iso, fmt) {
+  // PHP-style date formatter for Czech locale (date only — no time/timezone tokens).
+  // Supported tokens (subset of PHP date() relevant for date-only input):
+  //   d  Day, 2 digits with leading zero (01-31)
+  //   D  Czech short day name (po, út, st, čt, pá, so, ne)
+  //   j  Day, no leading zero (1-31)
+  //   l  Czech full day name (pondělí, úterý, …)
+  //   N  ISO day of week (1=Mon … 7=Sun)
+  //   S  English ordinal suffix (st, nd, rd, th)
+  //   w  Day of week (0=Sun … 6=Sat)
+  //   z  Day of year (0-365)
+  //   W  ISO-8601 week number, 2 digits with leading zero
+  //   F  Czech full month name, nominative (leden, únor, …)
+  //   f  Czech full month name, genitive (ledna, února, …) — NON-STANDARD extension for Czech
+  //   m  Month, 2 digits with leading zero (01-12)
+  //   M  Czech short month name (led, úno, bře, …)
+  //   n  Month, no leading zero (1-12)
+  //   t  Number of days in the month
+  //   L  Leap year (1 or 0)
+  //   o  ISO-8601 week-numbering year
+  //   Y  4-digit year
+  //   y  2-digit year
+  // Use backslash to escape: '\\Y' → literal Y. '\\\\' → literal backslash.
+  const d = parseISODate(iso);
+  if (!d) return '';
+  if (!fmt) fmt = DEFAULT_DATE_FORMAT;
+  const Y = d.getUTCFullYear();
+  const m = d.getUTCMonth(); // 0-11
+  const day = d.getUTCDate();
+  const dow = d.getUTCDay(); // 0=Sun … 6=Sat
+  let out = '';
+  for (let i = 0; i < fmt.length; i++) {
+    const ch = fmt[i];
+    if (ch === '\\' && i + 1 < fmt.length) { out += fmt[++i]; continue; }
+    switch (ch) {
+      case 'd': out += _pad(day); break;
+      case 'D': out += CS_DAYS_SHORT[dow]; break;
+      case 'j': out += String(day); break;
+      case 'l': out += CS_DAYS_FULL[dow]; break;
+      case 'N': out += String(dow === 0 ? 7 : dow); break;
+      case 'S': out += _englishOrdinal(day); break;
+      case 'w': out += String(dow); break;
+      case 'z': {
+        const start = Date.UTC(Y, 0, 1);
+        const cur = Date.UTC(Y, m, day);
+        out += String(Math.round((cur - start) / 86400000));
+        break;
+      }
+      case 'W': out += _pad(_isoWeek(d)); break;
+      case 'F': out += CS_MONTHS_NOM[m]; break;
+      case 'f': out += CS_MONTHS_GEN[m]; break;
+      case 'm': out += _pad(m + 1); break;
+      case 'M': out += CS_MONTHS_SHORT[m]; break;
+      case 'n': out += String(m + 1); break;
+      case 't': out += String(new Date(Date.UTC(Y, m + 1, 0)).getUTCDate()); break;
+      case 'L': out += _isLeapYear(Y) ? '1' : '0'; break;
+      case 'o': out += String(_isoWeekYear(d)); break;
+      case 'Y': out += String(Y); break;
+      case 'y': out += _pad(Y % 100); break;
+      default: out += ch;
+    }
+  }
+  return out;
 }
 
 function migrateLegacyDedupKeys(valuesObj) {
@@ -957,11 +1129,22 @@ function parsePlaceholders(text) {
     if (!type) continue;
     const content = m[2].trim();
     const idx = placeholders.length;
-    const dedupKey = DEDUP_TYPES.indexOf(type) >= 0 ? (type + '::' + normalizeForDedup(content)) : null;
+    let displayContent = content;
+    let dateFormat = null;
+    if (type === 'Datum') {
+      const parsed = parseDateContent(content);
+      displayContent = parsed.name;
+      dateFormat = parsed.format;
+    }
+    // For Datum, dedup on name only (so [[[Datum: Termín | d.m.Y]]] and
+    // [[[Datum: Termín | F Y]]] share a value but render differently).
+    const dedupBasis = (type === 'Datum') ? displayContent : content;
+    const dedupKey = DEDUP_TYPES.indexOf(type) >= 0 ? (type + '::' + normalizeForDedup(dedupBasis)) : null;
     placeholders.push({
       idx: idx,
       type: type,
-      content: content,
+      content: displayContent,
+      dateFormat: dateFormat,
       raw: m[0],
       start: m.index,
       end: m.index + m[0].length,
@@ -1350,6 +1533,10 @@ function formatValueAsMarkdown(ph) {
   }
   if (ph.type === 'Volba') {
     return v == null || v === '' ? '' : String(v);
+  }
+  if (ph.type === 'Datum') {
+    if (v == null || v === '') return '';
+    return formatDate(String(v), ph.dateFormat || DEFAULT_DATE_FORMAT);
   }
   if (ph.type === 'Tabulka') {
     const rows = Array.isArray(v) ? v : [];
@@ -2003,13 +2190,17 @@ function buildRepeatFillElement(rep) {
 function buildPreviewElement(ph) {
   if (ph.type === 'Spot') return buildSpotElement(ph);
   const cls = 'ph-marker ' + typeClass(ph.type);
-  const aria = 'Šablona, typ ' + ph.type + ', obsah: ' + ph.content;
+  const aria = 'Šablona, typ ' + ph.type + ', obsah: ' + ph.content +
+    (ph.type === 'Datum' && ph.dateFormat ? ', formát ' + ph.dateFormat : '');
   const e = el('span', {
     class: cls,
     'aria-label': aria,
     role: 'note',
   });
-  e.textContent = '[[[' + ph.type + ': ' + ph.content + ']]]';
+  const inner = (ph.type === 'Datum' && ph.dateFormat)
+    ? ('[[[' + ph.type + ': ' + ph.content + ' | ' + ph.dateFormat + ']]]')
+    : ('[[[' + ph.type + ': ' + ph.content + ']]]');
+  e.textContent = inner;
   return e;
 }
 
@@ -2021,6 +2212,10 @@ function buildResultElement(ph) {
   if (v == null || v === '' || (Array.isArray(v) && v.length === 0)) {
     return el('span', {class: 'unfilled', role: 'note',
       text: '[NEVYPLNĚNO: ' + ph.type + ' — ' + ph.content + ']'});
+  }
+  if (ph.type === 'Datum') {
+    const formatted = formatDate(String(v), ph.dateFormat || DEFAULT_DATE_FORMAT);
+    return document.createTextNode(formatted);
   }
   return document.createTextNode(String(v));
 }
@@ -2038,6 +2233,7 @@ function buildFillElement(ph) {
   if (ph.type === 'Číslované') return buildItemsEditor(ph, 'number');
   if (ph.type === 'Tabulka') return buildTableSlot(ph);
   if (ph.type === 'Spot') return buildSpotElement(ph);
+  if (ph.type === 'Datum') return buildDateInput(ph);
   return el('span', {text: ph.raw});
 }
 
@@ -2093,11 +2289,15 @@ function buildMirrorElement(ph) {
   const cls = 'ph-mirror' + (isEmpty ? ' ph-empty' : '') + (ph.isBlock ? ' block' : '');
   const aria = 'Synchronizovaná hodnota: ' + ph.type + ' ' + ph.content;
   const scopeId = ph._scopeId || scopeIdFor(ph._valuesSrc);
+  const dataAttrs = {phMirror: ph.dedupKey || ('idx_' + ph.idx), phScope: scopeId};
+  if (ph.type === 'Datum' && ph.dateFormat) {
+    dataAttrs.dateFormat = ph.dateFormat;
+  }
   const e = el('span', {
     class: cls,
     'aria-label': aria,
     role: 'note',
-    data: {phMirror: ph.dedupKey || ('idx_' + ph.idx), phScope: scopeId},
+    data: dataAttrs,
   });
   e.textContent = display;
   return e;
@@ -2105,6 +2305,10 @@ function buildMirrorElement(ph) {
 
 function formatMirrorDisplay(ph, v) {
   if (v == null || v === '') return '(nevyplněno: ' + ph.content + ')';
+  if (ph.type === 'Datum') {
+    const formatted = formatDate(String(v), ph.dateFormat || DEFAULT_DATE_FORMAT);
+    return formatted === '' ? '(nevyplněno: ' + ph.content + ')' : formatted;
+  }
   if (Array.isArray(v)) {
     if (v.length === 0) return '(nevyplněno: ' + ph.content + ')';
     return v.filter(x => x).join(', ');
@@ -2123,8 +2327,16 @@ function refreshMirrors(ph) {
               '"][data-ph-scope="' + scopeId + '"]';
   const mirrors = $all(sel);
   for (const m of mirrors) {
-    m.textContent = formatMirrorDisplay(ph, v);
-    m.classList.toggle('ph-empty', isEmpty);
+    if (ph.type === 'Datum') {
+      // Each Datum mirror may have its own format stored in data-date-format.
+      const fmt = m.dataset.dateFormat || ph.dateFormat || DEFAULT_DATE_FORMAT;
+      const formatted = (v == null || v === '') ? '' : formatDate(String(v), fmt);
+      m.textContent = formatted === '' ? '(nevyplněno: ' + ph.content + ')' : formatted;
+      m.classList.toggle('ph-empty', formatted === '');
+    } else {
+      m.textContent = formatMirrorDisplay(ph, v);
+      m.classList.toggle('ph-empty', isEmpty);
+    }
   }
 }
 
@@ -2152,6 +2364,36 @@ function buildTextInput(ph) {
     updateMissingStatus();
   });
   const wrap = el('span', {class: 'ph-form ph-text'}, [inp]);
+  return wrap;
+}
+
+function buildDateInput(ph) {
+  // First occurrence (non-mirror) of a Datum placeholder — native <input type="date">,
+  // with a small preview line below showing the value formatted per ph.dateFormat.
+  const id = 'ph-' + ph.idx;
+  const cur = getValue(ph) || '';
+  const fmt = ph.dateFormat || DEFAULT_DATE_FORMAT;
+  const inp = el('input', {
+    type: 'date',
+    id: id,
+    class: 'inline-input date-input',
+    value: cur,
+    'aria-label': 'Datum: ' + ph.content + ' (formát zobrazení: ' + fmt + ')',
+  });
+  const preview = el('span', {
+    class: 'date-preview',
+    'aria-hidden': 'true',
+    text: cur ? formatDate(cur, fmt) : '',
+  });
+  function update() {
+    setValue(ph, inp.value);
+    preview.textContent = inp.value ? formatDate(inp.value, fmt) : '';
+    refreshMirrors(ph);
+    updateMissingStatus();
+  }
+  inp.addEventListener('input', update);
+  inp.addEventListener('change', update);
+  const wrap = el('span', {class: 'ph-form ph-date'}, [inp, preview]);
   return wrap;
 }
 
