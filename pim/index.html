@@ -327,6 +327,18 @@ body.theme-dark .section-edit-wrapper { background: #1f1f1f; border-color: #6aa8
 .section-edit-header { margin-bottom: 0.5em; }
 .table-edit-wrapper { padding: 0.7em; margin: 1em 0; background: #f8f8f8; border: 2px solid #0066cc; border-radius: 6px; }
 body.theme-dark .table-edit-wrapper { background: #1f1f1f; border-color: #6aa8e8; }
+.list-edit-wrapper { padding: 0.7em; margin: 1em 0; background: #f8f8f8; border: 2px solid #0066cc; border-radius: 6px; }
+body.theme-dark .list-edit-wrapper { background: #1f1f1f; border-color: #6aa8e8; }
+.le-item { display: flex; align-items: center; gap: 0.4em; padding: 0.3em 0; flex-wrap: wrap; }
+.le-item .le-marker { min-width: 1.5em; font-family: monospace; font-weight: 600; color: #555; }
+body.theme-dark .le-item .le-marker { color: #aaa; }
+.le-item .le-text { flex: 1; min-width: 12em; padding: 0.25em 0.4em; }
+.le-item .le-actions { display: flex; gap: 0.1em; flex-wrap: wrap; }
+.le-item .le-actions button { padding: 0.15em 0.4em; font-size: 0.95em; }
+.le-emoji-chip { font-size: 1.1em; padding: 0.1em 0.35em; background: #fff; border: 1px solid #ccc; border-radius: 3px; cursor: pointer; }
+body.theme-dark .le-emoji-chip { background: #2a2a2a; border-color: #555; }
+.le-emoji-add { font-size: 0.85em; padding: 0.1em 0.4em; color: #666; background: transparent; border: 1px dashed #888; border-radius: 3px; }
+body.theme-dark .le-emoji-add { color: #aaa; border-color: #666; }
 .diagram-toolbar { margin-bottom: 0.5em; flex-wrap: wrap; }
 .diagram-figure { margin: 0.5em 0; text-align: center; }
 .diagram-figure img { max-width: 100%; height: auto; background: #fff; padding: 0.5em; border: 1px solid #ddd; border-radius: 4px; }
@@ -15143,6 +15155,24 @@ function setupSectionEditMode(entity) {
       openTableEditor(entity, tIdx);
     };
   });
+
+  // Pod každý top-level seznam přidat tlačítko „Upravit seznam"
+  const lists = wrap.querySelectorAll('ul, ol');
+  const topLevelLists = Array.from(lists).filter(l => !l.parentElement.closest('ul, ol'));
+  topLevelLists.forEach((lst, lIdx) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'section-edit-btn list-edit-btn';
+    btn.setAttribute('aria-label', 'Upravit tento seznam v outliner editoru');
+    btn.title = 'Otevřít editor seznamu (víceúrovňový outliner)';
+    btn.textContent = 'Upravit seznam';
+    btn.dataset.listIdx = String(lIdx);
+    lst.parentNode.insertBefore(btn, lst.nextSibling);
+    btn.onclick = (ev) => {
+      ev.preventDefault();
+      openListEditor(entity, lIdx);
+    };
+  });
 }
 
 function openSectionEditor(entity, sectionIdx) {
@@ -15638,6 +15668,615 @@ function saveTableEditor() {
   }
   _tableEditorState = null;
   toast('Tabulka uložena.');
+  playSound('save-entity');
+  render();
+}
+
+// =============================================================================
+// EDITOR SEZNAMŮ (OUTLINER) — víceúrovňové odrážky a číslované seznamy
+// =============================================================================
+
+// Detekce list item řádku. Vrátí { marker, indent, text } nebo null.
+// indent = počet skupin po 2 mezerách (umožní i 4 mezery / tab jako jeden level).
+function _parseListItemLine(line) {
+  // Tab → 4 mezery
+  const expanded = line.replace(/\t/g, '    ');
+  const m = expanded.match(/^(\s*)([-*+]|\d+\.)\s+(.*)$/);
+  if (!m) return null;
+  const leadSpaces = m[1].length;
+  const indent = Math.floor(leadSpaces / 2);
+  return { marker: m[2], indent, text: m[3] };
+}
+
+// Najde N-tý seznam v body. Vrátí { startLine, endLine, items } nebo null.
+// items = [{ marker, indent, emojis: [...], text }]
+// Seznam končí prvním řádkem, který není list item ani prázdný řádek mezi položkami.
+function findMarkdownList(body, listIdx) {
+  if (!body) return null;
+  const lines = body.split('\n');
+  let inCode = false;
+  let count = -1;
+  let listStart = -1;
+  let listEnd = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const ln = lines[i];
+    if (/^```/.test(ln.trim())) { inCode = !inCode; continue; }
+    if (inCode) continue;
+    const parsed = _parseListItemLine(ln);
+    if (parsed && listStart < 0) {
+      count++;
+      if (count === listIdx) {
+        listStart = i;
+        // Najdi konec
+        let j = i + 1;
+        while (j < lines.length) {
+          if (/^```/.test(lines[j].trim())) break;
+          if (_parseListItemLine(lines[j])) { j++; continue; }
+          // prázdný řádek? podívej se na další — pokud je list item, pokračuj
+          if (lines[j].trim() === '') {
+            // Pokud následuje další list item, považujeme prázdný řádek za součást
+            if (j + 1 < lines.length && _parseListItemLine(lines[j + 1])) {
+              j += 2; continue;
+            }
+          }
+          break;
+        }
+        listEnd = j - 1;
+        // Trim trailing empty lines
+        while (listEnd > listStart && lines[listEnd].trim() === '') listEnd--;
+        break;
+      } else {
+        // Přeskoč
+        let j = i + 1;
+        while (j < lines.length) {
+          if (/^```/.test(lines[j].trim())) break;
+          if (_parseListItemLine(lines[j]) || lines[j].trim() === '') { j++; continue; }
+          break;
+        }
+        i = j - 1;
+      }
+    }
+  }
+  if (listStart < 0) return null;
+
+  // Vyextrahovat emoji prefixy z textu položek.
+  // Emoji = jakákoliv non-ASCII non-space sekvence na začátku oddělená mezerou.
+  const items = [];
+  for (let i = listStart; i <= listEnd; i++) {
+    const parsed = _parseListItemLine(lines[i]);
+    if (!parsed) continue;
+    const { emojis, text } = _splitEmojiPrefix(parsed.text);
+    items.push({ marker: parsed.marker, indent: parsed.indent, emojis, text });
+  }
+  return { startLine: listStart, endLine: listEnd, items };
+}
+
+// Rozdělí text na pole emoji prefixů a zbytek.
+// Detekuje sekvenci emoji oddělených mezerou na začátku.
+function _splitEmojiPrefix(text) {
+  // Emoji regex: zachytí standardní emoji (včetně variation selectors a ZWJ sekvencí)
+  // Pro jednoduchost: vše co není ASCII alfanumerika/interpunkce/mezera
+  const emojiRegex = /^(\p{Extended_Pictographic}(?:\uFE0F)?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F)?)*)\s*/u;
+  const emojis = [];
+  let rest = text;
+  while (true) {
+    const m = rest.match(emojiRegex);
+    if (!m) break;
+    emojis.push(m[1]);
+    rest = rest.slice(m[0].length);
+  }
+  return { emojis, text: rest };
+}
+
+// Konvertuje pole položek zpět do MD textu.
+function itemsToMarkdown(items, baseMarker) {
+  // baseMarker (pro číslované seznamy) zachová stejný marker;
+  // pro odrážky používáme original marker každé položky.
+  const out = [];
+  // Počítadlo pro číslované seznamy podle úrovně (pro pretty výstup)
+  const counters = {};
+  items.forEach(it => {
+    const indent = '  '.repeat(Math.max(0, it.indent));
+    let marker = it.marker;
+    // Pokud byl marker číslo (1., 2., ...) přečíslujeme podle pořadí v úrovni
+    if (/^\d+\./.test(marker)) {
+      counters[it.indent] = (counters[it.indent] || 0) + 1;
+      // Vyresetuj hlubší úrovně
+      Object.keys(counters).forEach(k => { if (+k > it.indent) delete counters[k]; });
+      marker = counters[it.indent] + '.';
+    } else {
+      // Bullet — reset počítadel pro číslovaný režim
+      Object.keys(counters).forEach(k => delete counters[k]);
+    }
+    const emojiPart = (it.emojis && it.emojis.length > 0) ? (it.emojis.join(' ') + ' ') : '';
+    out.push(indent + marker + ' ' + emojiPart + it.text);
+  });
+  return out.join('\n');
+}
+
+// === STAV LIST EDITORU ===
+let _listEditorState = null;
+
+function openListEditor(entity, listIdx) {
+  const parsed = findMarkdownList(entity.body || '', listIdx);
+  if (!parsed) { alertMsg('Seznam se nepodařilo najít ve zdroji.'); return; }
+  _listEditorState = {
+    entity,
+    listIdx,
+    startLine: parsed.startLine,
+    endLine: parsed.endLine,
+    items: parsed.items.map(it => ({ ...it, emojis: [...it.emojis] })),
+    // Pamatovat si fokus pozici po re-renderu
+    focusIdx: 0,
+    focusField: 'text', // 'text' | 'emoji'
+    cursorPos: null
+  };
+  const wrap = document.getElementById('body-rendered');
+  if (!wrap) { alertMsg('Stránka nemá renderované tělo.'); _listEditorState = null; return; }
+  const lists = wrap.querySelectorAll('ul, ol');
+  // Filtrovat: vynechej vnořené (chceme jen top-level)
+  const topLevelLists = Array.from(lists).filter(l => !l.parentElement.closest('ul, ol'));
+  const listEl = topLevelLists[listIdx];
+  if (!listEl) { alertMsg('Seznam v zobrazené stránce nenalezen.'); _listEditorState = null; return; }
+  // Schovej původní list + tlačítko za ním
+  listEl.style.display = 'none';
+  const followBtn = listEl.nextElementSibling;
+  if (followBtn && followBtn.classList && followBtn.classList.contains('list-edit-btn')) {
+    followBtn.style.display = 'none';
+  }
+  // Inline edit wrapper
+  const editDiv = document.createElement('div');
+  editDiv.className = 'list-edit-wrapper';
+  editDiv.id = 'list-edit-inline-' + listIdx;
+  editDiv.innerHTML =
+    '<div class="section-edit-header"><strong>Editor seznamu #' + (listIdx + 1) + '</strong> ' +
+      '<span class="meta">(' + parsed.items.length + ' položek)</span></div>' +
+    '<div id="list-editor-content"></div>' +
+    '<div class="btn-group" style="margin-top:0.8em;">' +
+      '<button type="button" id="le-add-end">Přidat položku na konec</button> ' +
+      '<button type="button" class="primary" id="le-save">Uložit seznam</button> ' +
+      '<button type="button" id="le-cancel">Zrušit</button>' +
+    '</div>';
+  listEl.parentNode.insertBefore(editDiv, listEl.nextSibling);
+  _listEditorState._inlineDiv = editDiv;
+  _listEditorState._origList = listEl;
+  _listEditorState._origBtn = (followBtn && followBtn.classList && followBtn.classList.contains('list-edit-btn')) ? followBtn : null;
+
+  renderListEditor();
+  document.getElementById('le-add-end').onclick = () => listEditorAdd(_listEditorState.items.length);
+  document.getElementById('le-save').onclick = saveListEditor;
+  document.getElementById('le-cancel').onclick = cancelListEditor;
+  setTimeout(() => {
+    const firstInp = editDiv.querySelector('input[data-le-text]');
+    if (firstInp) firstInp.focus();
+    if (typeof editDiv.scrollIntoView === 'function') {
+      editDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, 50);
+}
+
+function cancelListEditor() {
+  const st = _listEditorState;
+  if (!st) return;
+  if (st._inlineDiv) st._inlineDiv.remove();
+  if (st._origList) st._origList.style.display = '';
+  if (st._origBtn) st._origBtn.style.display = '';
+  _listEditorState = null;
+}
+
+function renderListEditor() {
+  const st = _listEditorState;
+  if (!st) return;
+  const content = document.getElementById('list-editor-content');
+  if (!content) return;
+  if (st.items.length === 0) {
+    content.innerHTML = '<p class="meta">Seznam je prázdný. Klikněte „Přidat položku na konec".</p>';
+    return;
+  }
+  // Spočítat zobrazené pořadové číslo pro číslované položky (přečíslování podle úrovně)
+  const counters = {};
+  const displayNumbers = [];
+  st.items.forEach(it => {
+    if (/^\d+\./.test(it.marker)) {
+      counters[it.indent] = (counters[it.indent] || 0) + 1;
+      Object.keys(counters).forEach(k => { if (+k > it.indent) delete counters[k]; });
+      displayNumbers.push(counters[it.indent] + '.');
+    } else {
+      Object.keys(counters).forEach(k => delete counters[k]);
+      displayNumbers.push('•');
+    }
+  });
+  let h = '<div class="list-editor-items">';
+  st.items.forEach((it, i) => {
+    const indentPx = it.indent * 24;
+    const emojiChips = (it.emojis || []).map((em, ei) =>
+      '<button type="button" class="le-emoji-chip" data-le-idx="' + i + '" data-le-emoji-idx="' + ei + '" title="Změnit nebo odebrat příznak">' +
+        escapeHtml(em) +
+      '</button>'
+    ).join('');
+    const markerLabel = displayNumbers[i];
+    const isEditing = st.editingIdx === i;
+    // Textová část — buď render nebo input
+    let textPart;
+    if (isEditing) {
+      textPart = '<input type="text" class="le-text" data-le-text="' + i + '" data-le-idx="' + i + '" ' +
+        'value="' + escapeHtml(it.text) + '" ' +
+        'aria-label="Text položky ' + (i + 1) + '">' +
+        '<button type="button" data-le-text-ok="' + i + '" class="primary" title="Potvrdit text">OK</button>';
+    } else {
+      // Render markdown (zachová odkazy, **bold**, *kurz*, criticmarkup atd.).
+      // Pro inline vykreslení odstraníme obalující <p>...</p> pokud je jediné.
+      let rendered;
+      if (typeof renderMarkdown === 'function' && it.text) {
+        rendered = renderMarkdown(it.text, { ctx: { depth: 1, includeStack: new Set() } });
+        // Strip vnější <p>...</p> pokud je celý výstup obalen v jednom <p>
+        const m = rendered.match(/^\s*<p>([\s\S]*)<\/p>\s*$/);
+        if (m && !/<p[\s>]/.test(m[1])) rendered = m[1];
+      } else {
+        rendered = escapeHtml(it.text || '');
+      }
+      const safe = it.text ? rendered : '<em class="meta">(prázdná položka)</em>';
+      textPart = '<span class="le-text-display" data-le-display="' + i + '">' + safe + '</span>' +
+        '<button type="button" data-le-text-edit="' + i + '" class="le-text-edit-btn" title="Upravit text položky" aria-label="Upravit text položky ' + (i + 1) + '">Upravit text</button>';
+    }
+    h += '<div class="le-item" data-le-row="' + i + '" style="margin-left:' + indentPx + 'px;">' +
+      '<span class="le-marker meta" title="Marker (úroveň ' + it.indent + ')">' + escapeHtml(markerLabel) + '</span> ' +
+      '<button type="button" class="le-emoji-add" data-le-idx="' + i + '" title="Přidat příznak (emoji)">＋ příznak</button> ' +
+      '<span class="le-emojis">' + emojiChips + '</span>' +
+      textPart +
+      '<span class="le-actions">' +
+        '<button type="button" data-le-up="' + i + '" title="Posunout nahoru (s podřízenými)" aria-label="Posunout nahoru s podřízenými">↑</button>' +
+        '<button type="button" data-le-down="' + i + '" title="Posunout dolů (s podřízenými)" aria-label="Posunout dolů s podřízenými">↓</button>' +
+        '<button type="button" data-le-outdent="' + i + '" title="Předsadit (méně odsadit, i s podřízenými)" aria-label="Předsadit">⇤</button>' +
+        '<button type="button" data-le-indent="' + i + '" title="Odsadit (víc odsadit, i s podřízenými)" aria-label="Odsadit">⇥</button>' +
+        '<button type="button" data-le-insert="' + i + '" title="Vložit novou položku za tuto" aria-label="Vložit za">＋</button>' +
+        '<button type="button" data-le-split="' + i + '" title="Rozdělit zde — od pozice kurzoru se udělá nová položka" aria-label="Rozdělit u kurzoru"' + (isEditing ? '' : ' disabled') + '>✂</button>' +
+        '<button type="button" data-le-merge="' + i + '" title="Sloučit s předchozí (přidá se za text předchozí)" aria-label="Sloučit s předchozí"' + (i === 0 ? ' disabled' : '') + '>⊕</button>' +
+        '<button type="button" data-le-del="' + i + '" class="danger" title="Smazat tuto položku (i s podřízenými)" aria-label="Smazat">✕</button>' +
+      '</span>' +
+    '</div>';
+  });
+  h += '</div>';
+  content.innerHTML = h;
+
+  // Attach handlery
+  content.querySelectorAll('input[data-le-text]').forEach(inp => {
+    inp.oninput = (ev) => {
+      const idx = +ev.target.dataset.leIdx;
+      st.items[idx].text = ev.target.value;
+    };
+    inp.onkeydown = (ev) => {
+      const idx = +ev.target.dataset.leIdx;
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        // Ukončit edit + vložit za + focus
+        st.editingIdx = null;
+        listEditorInsertAfter(idx);
+        st.editingIdx = idx + 1;
+        st.focusIdx = idx + 1; st.cursorPos = 0;
+        renderListEditor();
+      } else if (ev.key === 'Tab') {
+        ev.preventDefault();
+        if (ev.shiftKey) listEditorOutdent(idx);
+        else listEditorIndent(idx);
+      } else if (ev.key === 'Escape') {
+        ev.preventDefault();
+        st.editingIdx = null;
+        renderListEditor();
+      }
+    };
+    inp.onblur = (ev) => {
+      // Blur uloží a vrátí na render mode (po krátké pauze, aby OK tlačítko stihlo)
+      setTimeout(() => {
+        if (st && st.editingIdx != null && document.activeElement &&
+            !document.activeElement.closest('.le-item[data-le-row="' + st.editingIdx + '"]')) {
+          st.editingIdx = null;
+          renderListEditor();
+        }
+      }, 150);
+    };
+  });
+  content.querySelectorAll('button[data-le-text-edit]').forEach(b => {
+    b.onclick = () => {
+      const idx = +b.dataset.leTextEdit;
+      st.editingIdx = idx;
+      st.focusIdx = idx;
+      st.cursorPos = null;
+      renderListEditor();
+    };
+  });
+  content.querySelectorAll('button[data-le-text-ok]').forEach(b => {
+    b.onclick = () => {
+      st.editingIdx = null;
+      renderListEditor();
+    };
+  });
+  content.querySelectorAll('button[data-le-up]').forEach(b => {
+    b.onclick = () => listEditorMoveUp(+b.dataset.leUp);
+  });
+  content.querySelectorAll('button[data-le-down]').forEach(b => {
+    b.onclick = () => listEditorMoveDown(+b.dataset.leDown);
+  });
+  content.querySelectorAll('button[data-le-indent]').forEach(b => {
+    b.onclick = () => listEditorIndent(+b.dataset.leIndent);
+  });
+  content.querySelectorAll('button[data-le-outdent]').forEach(b => {
+    b.onclick = () => listEditorOutdent(+b.dataset.leOutdent);
+  });
+  content.querySelectorAll('button[data-le-insert]').forEach(b => {
+    b.onclick = () => listEditorInsertAfter(+b.dataset.leInsert);
+  });
+  content.querySelectorAll('button[data-le-split]').forEach(b => {
+    b.onclick = () => {
+      const idx = +b.dataset.leSplit;
+      const inp = content.querySelector('input[data-le-idx="' + idx + '"]');
+      const cursorPos = inp ? inp.selectionStart : null;
+      listEditorSplit(idx, cursorPos);
+    };
+  });
+  content.querySelectorAll('button[data-le-merge]').forEach(b => {
+    b.onclick = () => listEditorMerge(+b.dataset.leMerge);
+  });
+  content.querySelectorAll('button[data-le-del]').forEach(b => {
+    b.onclick = () => listEditorDelete(+b.dataset.leDel);
+  });
+  content.querySelectorAll('button.le-emoji-add').forEach(b => {
+    b.onclick = () => openEmojiPicker(+b.dataset.leIdx, null);
+  });
+  content.querySelectorAll('button.le-emoji-chip').forEach(b => {
+    b.onclick = () => openEmojiPicker(+b.dataset.leIdx, +b.dataset.leEmojiIdx);
+  });
+
+  // Restore focus
+  if (st.focusIdx != null) {
+    const target = content.querySelector('input[data-le-idx="' + st.focusIdx + '"]');
+    if (target) {
+      target.focus();
+      if (st.cursorPos != null) {
+        try { target.setSelectionRange(st.cursorPos, st.cursorPos); } catch (e) {}
+      }
+    } else {
+      // Pokud není input (text v render mode), zaměříme tlačítko Upravit text
+      const editBtn = content.querySelector('button[data-le-text-edit="' + st.focusIdx + '"]');
+      if (editBtn) editBtn.focus();
+    }
+  }
+}
+
+// Vrátí indexy položek, které tvoří substrom začínající na idx (idx + všichni přímí i nepřímí potomci).
+// Potomek je položka s indent > base.indent, dokud se nenarazí na položku s indent <= base.indent.
+function _listSubtreeIndexes(items, idx) {
+  if (idx < 0 || idx >= items.length) return [];
+  const base = items[idx].indent;
+  const out = [idx];
+  for (let j = idx + 1; j < items.length; j++) {
+    if (items[j].indent > base) out.push(j);
+    else break;
+  }
+  return out;
+}
+
+// === Operace nad seznamem ===
+// Pomocná funkce: vyřízne substrom (idx + potomci) ze st.items a vrátí ho.
+function _liftSubtree(items, idx) {
+  const sub = _listSubtreeIndexes(items, idx);
+  if (sub.length === 0) return { subtree: [], rest: items };
+  const subtree = sub.map(i => items[i]);
+  const rest = items.filter((_, i) => !sub.includes(i));
+  return { subtree, rest };
+}
+
+function listEditorMoveUp(idx) {
+  const st = _listEditorState; if (!st || idx <= 0) return;
+  // Najdi začátek substromu předchozí položky stejné nebo nižší úrovně
+  const base = st.items[idx].indent;
+  // Najít nejbližší předchozí položku, která NENÍ potomek (tedy má indent <= base)
+  // a začátek jejího substromu — to je výchozí pozice "předchozí blok".
+  let prevStart = idx - 1;
+  while (prevStart > 0 && st.items[prevStart].indent > base) prevStart--;
+  // Pokud prevStart má vyšší indent než base, jsme na začátku — nelze posunout výš
+  if (prevStart >= idx) return;
+  // Vyřízni aktuální substrom
+  const { subtree, rest } = _liftSubtree(st.items, idx);
+  // Vlož ho před prevStart (rest má teď index posunutý nahoru, ale prevStart je před idx, takže OK)
+  rest.splice(prevStart, 0, ...subtree);
+  st.items = rest;
+  st.focusIdx = prevStart;
+  st.cursorPos = null;
+  renderListEditor();
+}
+
+function listEditorMoveDown(idx) {
+  const st = _listEditorState; if (!st || idx >= st.items.length - 1) return;
+  // Najdi následující sourozenecký nebo nadřízený blok (první položka s indent <= base po substromu)
+  const base = st.items[idx].indent;
+  const mySub = _listSubtreeIndexes(st.items, idx);
+  const afterIdx = mySub[mySub.length - 1] + 1;
+  if (afterIdx >= st.items.length) return;
+  // afterIdx je první položka po našem substromu. Pokud má indent > base, je to vnoření — ale to se nestane,
+  // protože substrom by ji obsahoval. Tedy afterIdx má indent <= base.
+  // Velikost dalšího substromu:
+  const nextSub = _listSubtreeIndexes(st.items, afterIdx);
+  // Přesunout můj substrom za nextSub
+  const { subtree, rest } = _liftSubtree(st.items, idx);
+  // V `rest` má next blok nový index = afterIdx - subtree.length
+  const newAfterIdx = afterIdx - subtree.length;
+  // Vlož substrom za nextSub (= newAfterIdx + nextSub.length)
+  rest.splice(newAfterIdx + nextSub.length, 0, ...subtree);
+  st.items = rest;
+  st.focusIdx = newAfterIdx + nextSub.length;
+  st.cursorPos = null;
+  renderListEditor();
+}
+
+function listEditorIndent(idx) {
+  const st = _listEditorState; if (!st) return;
+  const it = st.items[idx]; if (!it) return;
+  // Max úroveň = úroveň předchozí + 1
+  const maxIndent = idx === 0 ? 0 : (st.items[idx - 1].indent + 1);
+  if (it.indent >= maxIndent) { toast('Nelze odsadit víc (maximum je o jeden krok hlouběji než předchozí položka).'); return; }
+  // Odsadit i celý substrom
+  const sub = _listSubtreeIndexes(st.items, idx);
+  sub.forEach(i => st.items[i].indent++);
+  st.focusIdx = idx;
+  renderListEditor();
+}
+
+function listEditorOutdent(idx) {
+  const st = _listEditorState; if (!st) return;
+  const it = st.items[idx]; if (!it) return;
+  if (it.indent <= 0) return;
+  const sub = _listSubtreeIndexes(st.items, idx);
+  sub.forEach(i => st.items[i].indent--);
+  st.focusIdx = idx;
+  renderListEditor();
+}
+
+function listEditorInsertAfter(idx) {
+  const st = _listEditorState; if (!st) return;
+  const ref = st.items[idx] || { marker: '-', indent: 0 };
+  // Vložit za poslední potomek (= konec substromu), ne hned za idx
+  const sub = _listSubtreeIndexes(st.items, idx);
+  const insertAt = sub.length > 0 ? (sub[sub.length - 1] + 1) : (idx + 1);
+  const newItem = { marker: ref.marker, indent: ref.indent, emojis: [], text: '' };
+  st.items.splice(insertAt, 0, newItem);
+  st.focusIdx = insertAt; st.cursorPos = 0;
+  st.editingIdx = insertAt;
+  renderListEditor();
+}
+function listEditorAdd(idx) { listEditorInsertAfter(idx - 1); }
+
+function listEditorDelete(idx) {
+  const st = _listEditorState; if (!st) return;
+  // Smazat substrom (celý blok i s potomky)
+  const sub = _listSubtreeIndexes(st.items, idx);
+  if (st.items.length - sub.length === 0) {
+    // Po smazání by zůstal prázdný seznam — vyprázdníme jen tu jednu položku
+    st.items[idx].text = '';
+    st.items[idx].emojis = [];
+    // Smaž potomky pokud nějací
+    if (sub.length > 1) {
+      st.items.splice(idx + 1, sub.length - 1);
+    }
+    st.focusIdx = 0; st.cursorPos = 0;
+    renderListEditor();
+    return;
+  }
+  st.items.splice(idx, sub.length);
+  st.focusIdx = Math.max(0, idx - 1); st.cursorPos = null;
+  renderListEditor();
+}
+
+function listEditorSplit(idx, cursorPos) {
+  const st = _listEditorState; if (!st) return;
+  const it = st.items[idx]; if (!it) return;
+  const pos = cursorPos != null ? cursorPos : it.text.length;
+  const before = it.text.slice(0, pos);
+  const after = it.text.slice(pos);
+  it.text = before;
+  const newItem = { marker: it.marker, indent: it.indent, emojis: [], text: after };
+  st.items.splice(idx + 1, 0, newItem);
+  st.focusIdx = idx + 1; st.cursorPos = 0;
+  st.editingIdx = idx + 1;
+  renderListEditor();
+}
+
+function listEditorMerge(idx) {
+  const st = _listEditorState; if (!st || idx === 0) return;
+  const prev = st.items[idx - 1];
+  const cur = st.items[idx];
+  // Sloučit emoji + text
+  const curEmojiStr = (cur.emojis && cur.emojis.length > 0) ? (' ' + cur.emojis.join(' ')) : '';
+  prev.text = prev.text + ' ' + curEmojiStr + (curEmojiStr ? ' ' : '') + cur.text;
+  prev.text = prev.text.replace(/\s+/g, ' ').trim();
+  st.items.splice(idx, 1);
+  st.focusIdx = idx - 1; st.cursorPos = null;
+  renderListEditor();
+}
+
+// === Emoji picker ===
+function openEmojiPicker(itemIdx, existingEmojiIdx) {
+  const st = _listEditorState; if (!st) return;
+  // Inline picker pod položkou
+  const content = document.getElementById('list-editor-content');
+  if (!content) return;
+  // Odstranit existující picker
+  content.querySelectorAll('.le-emoji-picker').forEach(p => p.remove());
+  const row = content.querySelector('.le-item[data-le-row="' + itemIdx + '"]');
+  if (!row) return;
+  const COMMON = ['❗', '⏳', '☑️', '❌', '⭐', '🔥', '❓', '✏️', '📌', '🎯', '💡', '⚠️', '✅', '🚧', '🆕'];
+  const picker = document.createElement('div');
+  picker.className = 'le-emoji-picker';
+  picker.style.cssText = 'margin:0.3em 0 0.3em 24px;padding:0.5em;background:#f5f5f5;border:1px solid #ccc;border-radius:4px;';
+  let h = '<div class="meta" style="margin-bottom:0.3em;">' +
+    (existingEmojiIdx != null ? 'Změnit příznak: ' : 'Přidat příznak: ') +
+    '</div>';
+  h += '<div style="display:flex;flex-wrap:wrap;gap:0.3em;margin-bottom:0.4em;">';
+  COMMON.forEach(em => {
+    h += '<button type="button" class="le-emoji-opt" data-em="' + escapeHtml(em) + '" style="font-size:1.2em;padding:0.2em 0.4em;">' + escapeHtml(em) + '</button>';
+  });
+  h += '</div>';
+  h += '<div style="display:flex;gap:0.4em;align-items:center;">';
+  h += '<label>Vlastní: <input type="text" class="le-emoji-custom" maxlength="8" style="width:6em;"></label>';
+  h += '<button type="button" class="le-emoji-custom-add primary">Použít</button>';
+  if (existingEmojiIdx != null) h += '<button type="button" class="le-emoji-remove danger">Odebrat tento příznak</button>';
+  h += '<button type="button" class="le-emoji-cancel">Zrušit</button>';
+  h += '</div>';
+  picker.innerHTML = h;
+  row.parentNode.insertBefore(picker, row.nextSibling);
+  function applyEmoji(em) {
+    if (!em) return;
+    if (existingEmojiIdx != null) {
+      st.items[itemIdx].emojis[existingEmojiIdx] = em;
+    } else {
+      st.items[itemIdx].emojis.push(em);
+    }
+    st.focusIdx = itemIdx;
+    renderListEditor();
+  }
+  picker.querySelectorAll('.le-emoji-opt').forEach(b => {
+    b.onclick = () => applyEmoji(b.dataset.em);
+  });
+  picker.querySelector('.le-emoji-custom-add').onclick = () => {
+    const v = picker.querySelector('.le-emoji-custom').value.trim();
+    if (v) applyEmoji(v);
+  };
+  const removeBtn = picker.querySelector('.le-emoji-remove');
+  if (removeBtn) {
+    removeBtn.onclick = () => {
+      st.items[itemIdx].emojis.splice(existingEmojiIdx, 1);
+      st.focusIdx = itemIdx;
+      renderListEditor();
+    };
+  }
+  picker.querySelector('.le-emoji-cancel').onclick = () => picker.remove();
+  // Focus custom input
+  setTimeout(() => { const ci = picker.querySelector('.le-emoji-custom'); if (ci) ci.focus(); }, 30);
+}
+
+// === Uložit ===
+function saveListEditor() {
+  const st = _listEditorState;
+  if (!st) return;
+  // Vyfiltrovat úplně prázdné položky (žádný text ani emoji)
+  const cleanItems = st.items.filter(it => (it.text || '').trim() !== '' || (it.emojis && it.emojis.length > 0));
+  if (cleanItems.length === 0) {
+    // Smazat celý seznam
+    const lines = (st.entity.body || '').split('\n');
+    const before = lines.slice(0, st.startLine);
+    const after = lines.slice(st.endLine + 1);
+    st.entity.body = [...before, ...after].join('\n');
+  } else {
+    const newMd = itemsToMarkdown(cleanItems);
+    const lines = (st.entity.body || '').split('\n');
+    const before = lines.slice(0, st.startLine);
+    const after = lines.slice(st.endLine + 1);
+    st.entity.body = [...before, ...newMd.split('\n'), ...after].join('\n');
+  }
+  st.entity.updated_at = nowIso();
+  save();
+  _listEditorState = null;
+  toast('Seznam uložen.');
   playSound('save-entity');
   render();
 }
