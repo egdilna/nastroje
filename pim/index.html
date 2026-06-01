@@ -1000,6 +1000,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
   <nav aria-label="Hlavní navigace">
     <ul id="main-nav">
       <li><button id="btn-sync" accesskey="s" title="Uložit na GitHub" hidden>☁ Sync</button></li>
+      <li><button id="btn-autosave-gh" title="Automatické ukládání na GitHub" hidden aria-pressed="false">⚪ Autosave</button></li>
       <li><button id="btn-new-entity" accesskey="n" title="Nová entita (Alt+Shift+N)">+ Nová entita</button></li>
       <li><button id="btn-tt-popover" title="Aktivní časomíry" aria-live="off">⏱ Časomíry</button></li>
       <li><button data-view="dashboard" accesskey="d" title="Nástěnka – přehled pracovních úkolů">🏠 Nástěnka</button></li>
@@ -1904,11 +1905,56 @@ function save() {
     localStorage.setItem(getProjectKey(), JSON.stringify(blob));
     setTimeout(() => { suppressStorageEvent = false; }, 100);
     debug('Uloženo pod klíčem ' + getProjectKey() + ': ' + JSON.stringify(blob).length + ' B');
+    // Autosave na GitHub: pokud je zapnutý, naplánuj upload za 5 s (debounce — sloučí rychle po sobě jdoucí změny).
+    scheduleAutosaveGh();
   } catch (e) {
     alertMsg('Chyba ukládání: ' + e.message);
   }
 }
 function saveDebounced() { clearTimeout(saveTimer); saveTimer = setTimeout(save, 300); }
+
+// === AUTOSAVE NA GITHUB ===
+// Po každém volání save() se zařadí debouncovaný upload, pokud je v Nastavení zapnut.
+let _autosaveGhTimer = null;
+function scheduleAutosaveGh() {
+  if (!state.settings || !state.settings.autosaveGh) return;
+  if (!GH || !GH.isConfigured || !GH.isConfigured()) return;
+  if (!GH.getToken || !GH.getToken()) return;
+  clearTimeout(_autosaveGhTimer);
+  _autosaveGhTimer = setTimeout(() => {
+    _autosaveGhTimer = null;
+    // Tichá kontrola – pokud už jiný upload probíhá, nevolat znovu (server-side rate limit).
+    try {
+      GH.upload();
+    } catch (e) {
+      // Tiše ignorovat – uživatel uvidí chybu z toastu uvnitř upload().
+      debug('Autosave GH chyba: ' + e.message);
+    }
+  }, 5000); // 5 sekund po posledním save
+}
+function toggleAutosaveGh() {
+  if (!state.settings) state.settings = {};
+  state.settings.autosaveGh = !state.settings.autosaveGh;
+  save();
+  updateAutosaveButton();
+  if (state.settings.autosaveGh) {
+    toast('Autosave na GitHub zapnut. Změny se nahrají automaticky 5 s po každém uložení.', 4000);
+  } else {
+    clearTimeout(_autosaveGhTimer);
+    _autosaveGhTimer = null;
+    toast('Autosave na GitHub vypnut.', 2000);
+  }
+}
+function updateAutosaveButton() {
+  const btn = document.getElementById('btn-autosave-gh');
+  if (!btn) return;
+  const on = state.settings && state.settings.autosaveGh;
+  btn.textContent = on ? '🟢 Autosave' : '⚪ Autosave';
+  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  btn.title = on
+    ? 'Automatické ukládání na GitHub je ZAPNUTO (5 s debounce). Klik = vypnout.'
+    : 'Automatické ukládání na GitHub je VYPNUTO. Klik = zapnout.';
+}
 
 function load() {
   try {
@@ -9513,6 +9559,7 @@ function renderSettings(main) {
     '<label for="gh-path">Cesta k souboru v repozitáři</label>' +
     '<input type="text" id="gh-path" value="' + escapeHtml(state.settings.github.path || '') + '" placeholder="pim.json nebo data/pim.json">' +
     '<label><input type="checkbox" id="gh-autoload"' + (state.settings.github.autoLoadOnStart ? ' checked' : '') + '> Při startu aplikace automaticky načíst z GitHubu (přepíše lokální data)</label>' +
+    '<label><input type="checkbox" id="gh-autosave"' + (state.settings.autosaveGh ? ' checked' : '') + '> Autosave: po každé změně automaticky nahrát na GitHub (5 s debounce po posledním uložení)</label>' +
     '<p class="meta">Všechny přílohy se ukládají do <code>' + escapeHtml(getRepoDirBase() ? getRepoDirBase() + '/' : '') + 'attachments/&lt;id&gt;/&lt;název&gt;</code> ve stejném repozitáři, bez ohledu na velikost. Limit GitHubu na soubor: 100 MB.</p>' +
     '<div class="btn-group" style="margin-top:0.5em;">' +
       '<button id="gh-save-btn" class="primary">Uložit nastavení</button>' +
@@ -9723,8 +9770,11 @@ function renderSettings(main) {
     state.settings.github.branch = document.getElementById('gh-branch').value.trim() || 'main';
     state.settings.github.path = document.getElementById('gh-path').value.trim();
     state.settings.github.autoLoadOnStart = document.getElementById('gh-autoload').checked;
+    const ghAutosave = document.getElementById('gh-autosave');
+    if (ghAutosave) state.settings.autosaveGh = ghAutosave.checked;
     save();
     GH.refreshUI();
+    if (typeof updateAutosaveButton === 'function') updateAutosaveButton();
     toast('Nastavení GitHubu uloženo.');
   };
   document.getElementById('gh-test').onclick = async () => {
@@ -19202,6 +19252,12 @@ const GH = {
         btn.setAttribute('aria-label', title);
       }
     }
+    // Autosave tlačítko – viditelné jen pokud je GitHub nakonfigurovaný
+    const aBtn = document.getElementById('btn-autosave-gh');
+    if (aBtn) {
+      aBtn.hidden = !this.isConfigured();
+      if (typeof updateAutosaveButton === 'function') updateAutosaveButton();
+    }
     // status v Nastavení
     const statusEl = document.getElementById('gh-status');
     if (statusEl) {
@@ -22047,6 +22103,8 @@ function createTemplateFromEntity(entity) {
 function setupSyncButton() {
   const btn = document.getElementById('btn-sync');
   if (btn) btn.onclick = () => GH.upload();
+  const aBtn = document.getElementById('btn-autosave-gh');
+  if (aBtn) aBtn.onclick = () => toggleAutosaveGh();
   GH.refreshUI();
   // Periodicky překreslit title (relativní čas „naposledy …“)
   if (!window._syncTitleInterval) {
