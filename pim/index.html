@@ -329,12 +329,19 @@ body.theme-dark .section-edit-wrapper { background: #1f1f1f; border-color: #6aa8
 body.theme-dark .table-edit-wrapper { background: #1f1f1f; border-color: #6aa8e8; }
 .list-edit-wrapper { padding: 0.7em; margin: 1em 0; background: #f8f8f8; border: 2px solid #0066cc; border-radius: 6px; }
 body.theme-dark .list-edit-wrapper { background: #1f1f1f; border-color: #6aa8e8; }
-.le-item { display: flex; align-items: center; gap: 0.4em; padding: 0.3em 0; flex-wrap: wrap; }
-.le-item .le-marker { min-width: 1.5em; font-family: monospace; font-weight: 600; color: #555; }
-body.theme-dark .le-item .le-marker { color: #aaa; }
-.le-item .le-text { flex: 1; min-width: 12em; padding: 0.25em 0.4em; }
-.le-item .le-actions { display: flex; gap: 0.1em; flex-wrap: wrap; }
-.le-item .le-actions button { padding: 0.15em 0.4em; font-size: 0.95em; }
+.le-item-row { display: flex; align-items: center; gap: 0.4em; padding: 0.3em 0; flex-wrap: wrap; }
+.le-li { margin: 0.1em 0; padding-left: 0.2em; }
+.le-nested { margin: 0.1em 0 0.1em 0.5em; padding-left: 1.2em; }
+.le-nested .le-nested { margin-left: 0; }
+ul.le-nested { list-style-type: disc; }
+ul.le-nested ul.le-nested { list-style-type: circle; }
+ul.le-nested ul.le-nested ul.le-nested { list-style-type: square; }
+ol.le-nested { list-style-type: decimal; }
+ol.le-nested ol.le-nested { list-style-type: lower-alpha; }
+ol.le-nested ol.le-nested ol.le-nested { list-style-type: lower-roman; }
+.le-item-row .le-text { flex: 1; min-width: 12em; padding: 0.25em 0.4em; }
+.le-item-row .le-actions { display: flex; gap: 0.1em; flex-wrap: wrap; }
+.le-item-row .le-actions button { padding: 0.15em 0.4em; font-size: 0.95em; }
 .le-emoji-chip { font-size: 1.1em; padding: 0.1em 0.35em; background: #fff; border: 1px solid #ccc; border-radius: 3px; cursor: pointer; }
 body.theme-dark .le-emoji-chip { background: #2a2a2a; border-color: #555; }
 .le-emoji-add { font-size: 0.85em; padding: 0.1em 0.4em; color: #666; background: transparent; border: 1px dashed #888; border-radius: 3px; }
@@ -10207,8 +10214,8 @@ function renderDetailRead(main, e) {
         '<button id="btn-create-related" title="Vytvořit novou entitu s vazbou na tuto">+ Související</button>' +
         '<button id="btn-add-comment-top" accesskey="c">+ Komentář</button>' +
         '<button id="btn-toggle-anno" aria-pressed="' + (state.annotationMode ? 'true' : 'false') + '" title="Zapnout/vypnout anotační režim (A)">' + (state.annotationMode ? '📝 Ukončit anotace' : '📝 Anotace') + '</button>' +
-        ((e.body && (/^#{1,6}\s+/m.test(e.body) || /^\s*\|[\s\-:|]+\|\s*$/m.test(e.body)))
-          ? '<button id="btn-toggle-sec-edit" aria-pressed="' + (state.sectionEditMode ? 'true' : 'false') + '" title="Zapnout/vypnout editaci sekcí a tabulek (D)">' + (state.sectionEditMode ? 'Ukončit editaci sekcí' : 'Editovat sekce') + '</button>'
+        ((e.body && (/^#{1,6}\s+/m.test(e.body) || /^\s*\|[\s\-:|]+\|\s*$/m.test(e.body) || /^\s*([-*+]|\d+\.)\s+\S/m.test(e.body)))
+          ? '<button id="btn-toggle-sec-edit" aria-pressed="' + (state.sectionEditMode ? 'true' : 'false') + '" title="Zapnout/vypnout editaci sekcí, tabulek a seznamů (D)">' + (state.sectionEditMode ? 'Ukončit editaci sekcí' : 'Editovat sekce') + '</button>'
           : '') +
         '<button id="btn-duplicate">Duplikovat</button>' +
         '<button id="btn-open-standalone" title="Otevřít tuto entitu v samostatném okně (lze používat současně s hlavní aplikací)">Samostatné okno</button>' +
@@ -15103,11 +15110,68 @@ function setupSectionEditMode(entity) {
   if (!wrap) return;
   const sections = extractSectionsFlat(entity.body || '');
 
+  // Pomocná funkce: vrátí pole sourozeneckých elementů mezi tímto nadpisem
+  // a dalším nadpisem stejné/vyšší úrovně (= obsah této sekce v rendered HTML).
+  function sectionContentEls(headingEl) {
+    const level = parseInt(headingEl.tagName.slice(1), 10);
+    const out = [];
+    let n = headingEl.nextElementSibling;
+    while (n) {
+      if (/^H[1-6]$/.test(n.tagName)) {
+        const lv = parseInt(n.tagName.slice(1), 10);
+        if (lv <= level) break;
+      }
+      out.push(n);
+      n = n.nextElementSibling;
+    }
+    return out;
+  }
+
   // Najít všechny nadpisy v rendered HTML — jejich pořadí odpovídá pořadí v `sections`
   const headings = wrap.querySelectorAll('h1, h2, h3, h4, h5, h6');
   headings.forEach((h, i) => {
     if (i >= sections.length) return;
     const sec = sections[i];
+    // Tlačítko pro sbalení / rozbalení obsahu této sekce (vizuálně + screen reader)
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'section-edit-btn section-collapse-btn';
+    toggle.setAttribute('aria-expanded', 'true');
+    toggle.setAttribute('aria-label', 'Sbalit sekci: ' + (sec.heading || '(bez nadpisu)'));
+    toggle.title = 'Skrýt obsah této sekce (toggle viditelnosti)';
+    toggle.textContent = '▾ Sbalit';
+    h.appendChild(document.createTextNode(' '));
+    h.appendChild(toggle);
+    toggle.onclick = (ev) => {
+      ev.preventDefault();
+      const contentEls = sectionContentEls(h);
+      const isCollapsed = toggle.getAttribute('aria-expanded') === 'false';
+      if (isCollapsed) {
+        // Rozbalit
+        contentEls.forEach(el => {
+          if (el.dataset._secEditCollapsed === '1') {
+            el.style.display = el.dataset._secEditPrevDisplay || '';
+            delete el.dataset._secEditCollapsed;
+            delete el.dataset._secEditPrevDisplay;
+          }
+        });
+        toggle.setAttribute('aria-expanded', 'true');
+        toggle.setAttribute('aria-label', 'Sbalit sekci: ' + (sec.heading || '(bez nadpisu)'));
+        toggle.title = 'Skrýt obsah této sekce (toggle viditelnosti)';
+        toggle.textContent = '▾ Sbalit';
+      } else {
+        // Sbalit
+        contentEls.forEach(el => {
+          el.dataset._secEditPrevDisplay = el.style.display;
+          el.dataset._secEditCollapsed = '1';
+          el.style.display = 'none';
+        });
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.setAttribute('aria-label', 'Rozbalit sekci: ' + (sec.heading || '(bez nadpisu)'));
+        toggle.title = 'Zobrazit obsah této sekce';
+        toggle.textContent = '▸ Rozbalit';
+      }
+    };
     // Banner s tlačítkem
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -15129,11 +15193,14 @@ function setupSectionEditMode(entity) {
   banner.className = 'section-edit-banner meta';
   const hasSections = sections.length > 0;
   const hasTables = wrap.querySelectorAll('table').length > 0;
+  const hasLists = Array.from(wrap.querySelectorAll('ul, ol')).some(l => !l.parentElement.closest('ul, ol'));
   let bannerText = '✏️ Režim editace';
-  if (hasSections && hasTables) bannerText += ' sekcí a tabulek';
-  else if (hasSections) bannerText += ' sekcí';
-  else if (hasTables) bannerText += ' tabulek';
-  bannerText += ': klikněte na tlačítko u sekce nebo tabulky pro úpravu. Pro ukončení znovu klikněte na tlačítko v záhlaví nebo stiskněte D.';
+  const parts = [];
+  if (hasSections) parts.push('sekcí');
+  if (hasTables) parts.push('tabulek');
+  if (hasLists) parts.push('seznamů');
+  if (parts.length > 0) bannerText += ' ' + parts.join(', ');
+  bannerText += ': klikněte na tlačítko u sekce, tabulky nebo seznamu pro úpravu. Pro ukončení znovu klikněte na tlačítko v záhlaví nebo stiskněte D.';
   banner.textContent = bannerText;
   wrap.parentNode.insertBefore(banner, wrap);
 
@@ -15886,17 +15953,16 @@ function renderListEditor() {
       displayNumbers.push('•');
     }
   });
-  let h = '<div class="list-editor-items">';
-  st.items.forEach((it, i) => {
-    const indentPx = it.indent * 24;
+
+  // Vykreslení obsahu jedné položky (bez obalového <li>)
+  function renderItemContent(i) {
+    const it = st.items[i];
     const emojiChips = (it.emojis || []).map((em, ei) =>
       '<button type="button" class="le-emoji-chip" data-le-idx="' + i + '" data-le-emoji-idx="' + ei + '" title="Změnit nebo odebrat příznak">' +
         escapeHtml(em) +
       '</button>'
     ).join('');
-    const markerLabel = displayNumbers[i];
     const isEditing = st.editingIdx === i;
-    // Textová část — buď render nebo input
     let textPart;
     if (isEditing) {
       textPart = '<input type="text" class="le-text" data-le-text="' + i + '" data-le-idx="' + i + '" ' +
@@ -15904,12 +15970,9 @@ function renderListEditor() {
         'aria-label="Text položky ' + (i + 1) + '">' +
         '<button type="button" data-le-text-ok="' + i + '" class="primary" title="Potvrdit text">OK</button>';
     } else {
-      // Render markdown (zachová odkazy, **bold**, *kurz*, criticmarkup atd.).
-      // Pro inline vykreslení odstraníme obalující <p>...</p> pokud je jediné.
       let rendered;
       if (typeof renderMarkdown === 'function' && it.text) {
         rendered = renderMarkdown(it.text, { ctx: { depth: 1, includeStack: new Set() } });
-        // Strip vnější <p>...</p> pokud je celý výstup obalen v jednom <p>
         const m = rendered.match(/^\s*<p>([\s\S]*)<\/p>\s*$/);
         if (m && !/<p[\s>]/.test(m[1])) rendered = m[1];
       } else {
@@ -15919,8 +15982,7 @@ function renderListEditor() {
       textPart = '<span class="le-text-display" data-le-display="' + i + '">' + safe + '</span>' +
         '<button type="button" data-le-text-edit="' + i + '" class="le-text-edit-btn" title="Upravit text položky" aria-label="Upravit text položky ' + (i + 1) + '">Upravit text</button>';
     }
-    h += '<div class="le-item" data-le-row="' + i + '" style="margin-left:' + indentPx + 'px;">' +
-      '<span class="le-marker meta" title="Marker (úroveň ' + it.indent + ')">' + escapeHtml(markerLabel) + '</span> ' +
+    return '<div class="le-item-row" data-le-row="' + i + '">' +
       '<button type="button" class="le-emoji-add" data-le-idx="' + i + '" title="Přidat příznak (emoji)">＋ příznak</button> ' +
       '<span class="le-emojis">' + emojiChips + '</span>' +
       textPart +
@@ -15935,8 +15997,48 @@ function renderListEditor() {
         '<button type="button" data-le-del="' + i + '" class="danger" title="Smazat tuto položku (i s podřízenými)" aria-label="Smazat">✕</button>' +
       '</span>' +
     '</div>';
-  });
-  h += '</div>';
+  }
+
+  // Sestavit skutečnou vnořenou strukturu <ul>/<ol>/<li>.
+  // Procházíme položky lineárně a podle indent rozhodneme open/close vnořené listy.
+  // Pro každou úroveň si pamatujeme typ marker (ol/ul) — určuje typ HTML elementu.
+  function listTagForItem(it) { return /^\d+\./.test(it.marker) ? 'ol' : 'ul'; }
+  let h = '';
+  const openTags = []; // stack typů ('ul'/'ol') — index = úroveň
+  for (let i = 0; i < st.items.length; i++) {
+    const it = st.items[i];
+    const targetLevel = it.indent;
+    // Zavřít hlubší úrovně
+    while (openTags.length > targetLevel + 1) {
+      const t = openTags.pop();
+      h += '</li></' + t + '>';
+    }
+    if (openTags.length === targetLevel + 1) {
+      // Stejná úroveň jako předchozí — zavřít předchozí <li> a otevřít nový
+      h += '</li>';
+    } else {
+      // Otevřít novou úroveň (nebo víc úrovní, pokud chybí předek — vložíme prázdné <li><ul>)
+      while (openTags.length <= targetLevel) {
+        const tag = listTagForItem(it);
+        // Při vkládání víc úrovní najednou (přeskočená úroveň) musíme předek mít otevřený <li>
+        if (openTags.length > 0) {
+          // Předchozí úroveň: před vnořeným <ul/ol> musí být otevřený <li>
+          // (předpokládáme, že předchozí <li> nebylo zavřeno)
+        }
+        h += '<' + tag + ' class="le-nested" data-le-level="' + openTags.length + '">';
+        openTags.push(tag);
+      }
+    }
+    const num = displayNumbers[i];
+    // Atributy pro <li>: value u <ol>, aby číslování respektovalo počítání
+    const liAttrs = ' class="le-li" data-le-row-li="' + i + '"';
+    h += '<li' + liAttrs + '>' + renderItemContent(i);
+  }
+  // Zavřít všechny zbývající otevřené úrovně
+  while (openTags.length > 0) {
+    const t = openTags.pop();
+    h += '</li></' + t + '>';
+  }
   content.innerHTML = h;
 
   // Attach handlery
@@ -16202,27 +16304,33 @@ function openEmojiPicker(itemIdx, existingEmojiIdx) {
   if (!content) return;
   // Odstranit existující picker
   content.querySelectorAll('.le-emoji-picker').forEach(p => p.remove());
-  const row = content.querySelector('.le-item[data-le-row="' + itemIdx + '"]');
+  const row = content.querySelector('.le-item-row[data-le-row="' + itemIdx + '"]');
   if (!row) return;
-  const COMMON = ['❗', '⏳', '☑️', '❌', '⭐', '🔥', '❓', '✏️', '📌', '🎯', '💡', '⚠️', '✅', '🚧', '🆕'];
+  // Najdeme i <li> kontejner, abychom picker vložili pod celý <li> (ne pod row uvnitř)
+  const li = row.closest('li.le-li') || row.parentNode;
+  // Příznaky bereme jen z projektu – žádné vymyšlené, žádné vlastní
+  const projectFlags = (typeof getFlagEmojis === 'function') ? getFlagEmojis() : [];
   const picker = document.createElement('div');
   picker.className = 'le-emoji-picker';
   picker.style.cssText = 'margin:0.3em 0 0.3em 24px;padding:0.5em;background:#f5f5f5;border:1px solid #ccc;border-radius:4px;';
   let h = '<div class="meta" style="margin-bottom:0.3em;">' +
     (existingEmojiIdx != null ? 'Změnit příznak: ' : 'Přidat příznak: ') +
     '</div>';
-  h += '<div style="display:flex;flex-wrap:wrap;gap:0.3em;margin-bottom:0.4em;">';
-  COMMON.forEach(em => {
-    h += '<button type="button" class="le-emoji-opt" data-em="' + escapeHtml(em) + '" style="font-size:1.2em;padding:0.2em 0.4em;">' + escapeHtml(em) + '</button>';
-  });
-  h += '</div>';
+  if (projectFlags.length === 0) {
+    h += '<div class="meta">Projekt nemá nakonfigurované žádné příznaky. Přidejte je v Nastavení → Příznaky.</div>';
+  } else {
+    h += '<div style="display:flex;flex-wrap:wrap;gap:0.3em;margin-bottom:0.4em;">';
+    projectFlags.forEach(em => {
+      h += '<button type="button" class="le-emoji-opt" data-em="' + escapeHtml(em) + '" style="font-size:1.2em;padding:0.2em 0.4em;">' + escapeHtml(em) + '</button>';
+    });
+    h += '</div>';
+  }
   h += '<div style="display:flex;gap:0.4em;align-items:center;">';
-  h += '<label>Vlastní: <input type="text" class="le-emoji-custom" maxlength="8" style="width:6em;"></label>';
-  h += '<button type="button" class="le-emoji-custom-add primary">Použít</button>';
   if (existingEmojiIdx != null) h += '<button type="button" class="le-emoji-remove danger">Odebrat tento příznak</button>';
   h += '<button type="button" class="le-emoji-cancel">Zrušit</button>';
   h += '</div>';
   picker.innerHTML = h;
+  // Vložit picker hned za řádek (uvnitř li), aby se neporušila <ul>/<ol> hierarchie
   row.parentNode.insertBefore(picker, row.nextSibling);
   function applyEmoji(em) {
     if (!em) return;
@@ -16237,10 +16345,6 @@ function openEmojiPicker(itemIdx, existingEmojiIdx) {
   picker.querySelectorAll('.le-emoji-opt').forEach(b => {
     b.onclick = () => applyEmoji(b.dataset.em);
   });
-  picker.querySelector('.le-emoji-custom-add').onclick = () => {
-    const v = picker.querySelector('.le-emoji-custom').value.trim();
-    if (v) applyEmoji(v);
-  };
   const removeBtn = picker.querySelector('.le-emoji-remove');
   if (removeBtn) {
     removeBtn.onclick = () => {
@@ -16250,8 +16354,11 @@ function openEmojiPicker(itemIdx, existingEmojiIdx) {
     };
   }
   picker.querySelector('.le-emoji-cancel').onclick = () => picker.remove();
-  // Focus custom input
-  setTimeout(() => { const ci = picker.querySelector('.le-emoji-custom'); if (ci) ci.focus(); }, 30);
+  // Focus na první příznak (pro klávesnici)
+  setTimeout(() => {
+    const first = picker.querySelector('.le-emoji-opt') || picker.querySelector('.le-emoji-cancel');
+    if (first) first.focus();
+  }, 30);
 }
 
 // === Uložit ===
@@ -18703,16 +18810,21 @@ function setupKeyboard() {
       render(); ev.preventDefault();
     }
     // D v detail read mode = zapnout/vypnout editaci sekcí a tabulek
-    // (vyžaduje aspoň jeden nadpis NEBO tabulku v těle)
+    // (vyžaduje aspoň jeden nadpis NEBO tabulku NEBO seznam v těle)
     else if ((ev.key === 'd') && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey
              && state.view === 'detail' && state.detailMode === 'read') {
       const _e = findEntity(state.detailId);
       const hasHeading = _e && _e.body && /^#{1,6}\s+/m.test(_e.body);
       const hasTable = _e && _e.body && /^\s*\|[\s\-:|]+\|\s*$/m.test(_e.body);
-      if (hasHeading || hasTable) {
+      const hasList = _e && _e.body && /^\s*([-*+]|\d+\.)\s+\S/m.test(_e.body);
+      if (hasHeading || hasTable || hasList) {
         state.sectionEditMode = !state.sectionEditMode;
         render();
-        const label = (hasHeading && hasTable) ? 'sekcí a tabulek' : (hasHeading ? 'sekcí' : 'tabulek');
+        const parts = [];
+        if (hasHeading) parts.push('sekcí');
+        if (hasTable) parts.push('tabulek');
+        if (hasList) parts.push('seznamů');
+        const label = parts.join(', ');
         toast(state.sectionEditMode ? ('Editace ' + label + ' zapnutá.') : ('Editace ' + label + ' ukončena.'));
         ev.preventDefault();
       }
