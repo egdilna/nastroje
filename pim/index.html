@@ -1917,20 +1917,27 @@ function saveDebounced() { clearTimeout(saveTimer); saveTimer = setTimeout(save,
 // Po každém volání save() se zařadí debouncovaný upload, pokud je v Nastavení zapnut.
 let _autosaveGhTimer = null;
 function scheduleAutosaveGh() {
+  // Guard: save() vyvolaný uvnitř upload() (kvůli aktualizaci ghMeta) nesmí znovu plánovat upload.
+  if (window._autosaveSkip) return;
   if (!state.settings || !state.settings.autosaveGh) return;
   if (!GH || !GH.isConfigured || !GH.isConfigured()) return;
   if (!GH.getToken || !GH.getToken()) return;
   clearTimeout(_autosaveGhTimer);
   _autosaveGhTimer = setTimeout(() => {
     _autosaveGhTimer = null;
-    // Tichá kontrola – pokud už jiný upload probíhá, nevolat znovu (server-side rate limit).
+    window._autosaveSkip = true;
     try {
-      GH.upload();
+      const p = GH.upload();
+      if (p && typeof p.finally === 'function') {
+        p.finally(() => { window._autosaveSkip = false; });
+      } else {
+        window._autosaveSkip = false;
+      }
     } catch (e) {
-      // Tiše ignorovat – uživatel uvidí chybu z toastu uvnitř upload().
+      window._autosaveSkip = false;
       debug('Autosave GH chyba: ' + e.message);
     }
-  }, 5000); // 5 sekund po posledním save
+  }, 15000);
 }
 function toggleAutosaveGh() {
   if (!state.settings) state.settings = {};
@@ -1938,7 +1945,7 @@ function toggleAutosaveGh() {
   save();
   updateAutosaveButton();
   if (state.settings.autosaveGh) {
-    toast('Autosave na GitHub zapnut. Změny se nahrají automaticky 5 s po každém uložení.', 4000);
+    toast('Autosave na GitHub zapnut. Změny se nahrají automaticky ~15 s po poslední úpravě.', 4000);
   } else {
     clearTimeout(_autosaveGhTimer);
     _autosaveGhTimer = null;
@@ -1952,7 +1959,7 @@ function updateAutosaveButton() {
   btn.textContent = on ? '🟢 Autosave' : '⚪ Autosave';
   btn.setAttribute('aria-pressed', on ? 'true' : 'false');
   btn.title = on
-    ? 'Automatické ukládání na GitHub je ZAPNUTO (5 s debounce). Klik = vypnout.'
+    ? 'Automatické ukládání na GitHub je ZAPNUTO (~15 s po poslední úpravě). Klik = vypnout.'
     : 'Automatické ukládání na GitHub je VYPNUTO. Klik = zapnout.';
 }
 
@@ -9559,7 +9566,7 @@ function renderSettings(main) {
     '<label for="gh-path">Cesta k souboru v repozitáři</label>' +
     '<input type="text" id="gh-path" value="' + escapeHtml(state.settings.github.path || '') + '" placeholder="pim.json nebo data/pim.json">' +
     '<label><input type="checkbox" id="gh-autoload"' + (state.settings.github.autoLoadOnStart ? ' checked' : '') + '> Při startu aplikace automaticky načíst z GitHubu (přepíše lokální data)</label>' +
-    '<label><input type="checkbox" id="gh-autosave"' + (state.settings.autosaveGh ? ' checked' : '') + '> Autosave: po každé změně automaticky nahrát na GitHub (5 s debounce po posledním uložení)</label>' +
+    '<label><input type="checkbox" id="gh-autosave"' + (state.settings.autosaveGh ? ' checked' : '') + '> Autosave: po každé změně automaticky nahrát na GitHub (~15 s po poslední úpravě)</label>' +
     '<p class="meta">Všechny přílohy se ukládají do <code>' + escapeHtml(getRepoDirBase() ? getRepoDirBase() + '/' : '') + 'attachments/&lt;id&gt;/&lt;název&gt;</code> ve stejném repozitáři, bez ohledu na velikost. Limit GitHubu na soubor: 100 MB.</p>' +
     '<div class="btn-group" style="margin-top:0.5em;">' +
       '<button id="gh-save-btn" class="primary">Uložit nastavení</button>' +
