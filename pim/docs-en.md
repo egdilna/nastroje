@@ -1,5 +1,6 @@
 # PIM — Personal Information Manager
 
+
 A web application for managing personal and professional information in a single HTML file. No installation, no server — everything runs in the browser and is stored locally. Optional GitHub synchronization.
 
 - **Online version**: <https://egdilna.github.io/nastroje/pim>
