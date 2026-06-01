@@ -363,6 +363,15 @@ hr{border:none;border-top:1px solid #ddd;margin:1em 0}
     <input type="text" id="setCaption" placeholder="Např. Obrázek 1: Tok zpracování">
     <div class="help">Krátký jednořádkový popisek pod celým diagramem. Také podléhá kaskádě projekt → diagram.</div>
   </div>
+  <fieldset id="setClassHideWrap" style="display:none;border:1px solid #ccc;padding:0.5em;margin:0.5em 0;">
+    <legend>Vizuální direktivy (pouze class diagram)</legend>
+    <div class="field"><label><input type="checkbox" id="setHideEmptyMembers"> Skrýt prázdné členy (hide empty members)</label></div>
+    <div class="field"><label><input type="checkbox" id="setHideEmptyAttributes"> Skrýt prázdné atributy (hide empty attributes)</label></div>
+    <div class="field"><label><input type="checkbox" id="setHideEmptyMethods"> Skrýt prázdné metody (hide empty methods)</label></div>
+    <div class="field"><label><input type="checkbox" id="setHideCircle"> Skrýt symbol kolečka u třídy (hide circle)</label></div>
+    <div class="field"><label><input type="checkbox" id="setHideStereotype"> Skrýt stereotypy (hide stereotype)</label></div>
+    <div class="help">Tyto direktivy se aplikují pouze v class diagramech a ovlivňují vykreslení. Pro ostatní typy se ignorují.</div>
+  </fieldset>
   <div class="dialog-actions">
     <button id="dlgSettingsCancel">Zrušit</button>
     <button id="dlgSettingsOk">Uložit</button>
@@ -500,10 +509,11 @@ const I18N = {
       timingFrame: 'Časový rámec', timingFrameTip: 'Přidat časový rámec',
       noteTip: 'Přidat poznámku',
       highlight: 'Highlight', highlightTip: 'Přidat zvýrazněný interval',
+      timingConstraint: 'Anotace času', timingConstraintTip: 'Přidat časovou anotaci mezi dvěma okamžiky (např. trvání)',
       timingSettings: 'Nastavení…', timingSettingsTip: 'Nastavení timing diagramu'
     },
     classStereoBtn: { class:'Class', interface:'Interface', abstract:'Abstract', enum:'Enum',
-      struct:'Struct', annotation:'Annotation', entity:'Entity' },
+      struct:'Struct', annotation:'Annotation', entity:'Entity', protocol:'Protocol' },
     seqParticipantBtn: { actor:'actor', participant:'participant', boundary:'boundary',
       control:'control', entity:'entity', database:'database', collections:'collections', queue:'queue' },
     activityNode: {
@@ -1048,10 +1058,11 @@ const I18N = {
       timingFrame: 'Time frame', timingFrameTip: 'Add a time frame',
       noteTip: 'Add a note',
       highlight: 'Highlight', highlightTip: 'Add highlighted interval',
+      timingConstraint: 'Time constraint', timingConstraintTip: 'Add a time annotation between two moments (e.g. duration)',
       timingSettings: 'Settings…', timingSettingsTip: 'Timing diagram settings'
     },
     classStereoBtn: { class:'Class', interface:'Interface', abstract:'Abstract', enum:'Enum',
-      struct:'Struct', annotation:'Annotation', entity:'Entity' },
+      struct:'Struct', annotation:'Annotation', entity:'Entity', protocol:'Protocol' },
     seqParticipantBtn: { actor:'actor', participant:'participant', boundary:'boundary',
       control:'control', entity:'entity', database:'database', collections:'collections', queue:'queue' },
     activityNode: {
@@ -1923,7 +1934,7 @@ function emptyModelFor(type){
     case 'gantt': return {projectStart: todayIso(), printScale:'daily', tasks:[], milestones:[], closedDays:[], holidays:[]};
     case 'timeline': return {events:[]};
     case 'ebnf': return {rules:[]};
-    case 'timing': return {participants:[], frames:[], notes:[], highlights:[], hideTimeAxis:false, dateFormat:''};
+    case 'timing': return {participants:[], frames:[], notes:[], highlights:[], constraints:[], hideTimeAxis:false, dateFormat:''};
   }
   return {};
 }
@@ -2417,6 +2428,26 @@ function describeActivity(model){
         case 'detach': sentences.push(isEn ? 'The flow detaches here.' : 'Tok se zde odpojuje.'); break;
         case 'kill': sentences.push(isEn ? 'The flow ends here (kill).' : 'Tok zde končí (kill).'); break;
         case 'break': sentences.push(isEn ? 'A break occurs here.' : 'Zde nastává přerušení (break).'); break;
+        case 'partition': {
+          // Partition seskupuje akce do pojmenovaného oddílu.
+          const nm = n.name || (isEn ? '(unnamed)' : '(bez názvu)');
+          paraBreak();
+          sentences.push(isEn
+            ? 'A partition labelled ' + Q(nm) + ' groups the following actions:'
+            : 'Oddíl označený ' + Q(nm) + ' seskupuje následující kroky:');
+          walk(n.children);
+          sentences.push(isEn ? 'This closes the partition.' : 'Tím oddíl končí.');
+          paraBreak();
+          break;
+        }
+        case 'connector': {
+          // Kruhový konektor — odkazové návěstí.
+          const lab = n.label || 'A';
+          sentences.push(isEn
+            ? 'A connector labelled ' + Q(lab) + ' references the same point elsewhere in the diagram.'
+            : 'Konektor s návěstím ' + Q(lab) + ' odkazuje na stejné místo jinde v diagramu.');
+          break;
+        }
       }
     });
   }
@@ -2604,6 +2635,25 @@ function describeSequenceBlocks(model){
       blocks.push({type:'para', text: 'Tato sekvence zatím nemá žádné účastníky.'});
     }
   }
+  // Boxy — vizuální seskupení účastníků. Zmíníme je hned po úvodu.
+  const boxes = (model && model.boxes) || [];
+  if(boxes.length){
+    if(isEn){
+      const txt = boxes.map(b => {
+        const members = participants.filter((p,i) => rawParticipants[i].boxId === b.id);
+        const nm = b.name ? '“' + b.name + '”' : '(unnamed)';
+        return nm + ' (' + members.length + ' ' + plEn(members.length, 'member', 'members') + ')';
+      });
+      blocks.push({type:'para', text: 'Participants are grouped into ' + plEn(boxes.length, 'box', 'boxes') + ': ' + joinAndEn(txt) + '.'});
+    } else {
+      const txt = boxes.map(b => {
+        const members = participants.filter((p,i) => rawParticipants[i].boxId === b.id);
+        const nm = b.name ? '„' + b.name + '"' : '(bez názvu)';
+        return nm + ' (' + members.length + ' ' + plCs(members.length, 'účastník', 'účastníky', 'účastníků') + ')';
+      });
+      blocks.push({type:'para', text: 'Účastníci jsou seskupeni do ' + plCs(boxes.length, 'boxu', 'boxů', 'boxů') + ': ' + joinAndCs(txt) + '.'});
+    }
+  }
 
   // Formátování jedné zprávy
   function messageLine(n){
@@ -2727,6 +2777,26 @@ function describeSequenceBlocks(model){
           else blocks.push({type:'para', text: txt});
           break;
         }
+        case 'create': {
+          // Lifecycle: vytvoření účastníka v daném bodě sekvence.
+          const nm = nameOf[n.participantId];
+          const txt = nm
+            ? (isEn ? ('Participant “' + nm + '” is created here.') : ('Účastník „' + nm + '" je v tomto bodě vytvořen.'))
+            : (isEn ? 'A new participant is created here.' : 'Zde se vytváří nový účastník.');
+          if(asBullets) blocks.push({type:'bullet', level, text: txt});
+          else blocks.push({type:'para', text: txt});
+          break;
+        }
+        case 'destroy': {
+          // Lifecycle: zánik účastníka.
+          const nm = nameOf[n.participantId];
+          const txt = nm
+            ? (isEn ? ('Participant “' + nm + '” is destroyed here.') : ('Účastník „' + nm + '" zde zaniká.'))
+            : (isEn ? 'A participant is destroyed here.' : 'Zde zaniká účastník.');
+          if(asBullets) blocks.push({type:'bullet', level, text: txt});
+          else blocks.push({type:'para', text: txt});
+          break;
+        }
         case 'autonumber': break;
       }
     });
@@ -2766,14 +2836,15 @@ const CLASS_STEREOTYPE_WORD = {
   enum:       {nom:'výčet',            akuz:'výčet',            gen:'výčtu',            instr:'výčtem',          decl:'Výčet'},
   struct:     {nom:'struktura',        akuz:'strukturu',        gen:'struktury',        instr:'strukturou',      decl:'Struktura'},
   annotation: {nom:'anotace',          akuz:'anotaci',          gen:'anotace',          instr:'anotací',         decl:'Anotace'},
-  entity:     {nom:'entita',           akuz:'entitu',           gen:'entity',           instr:'entitou',         decl:'Entita'}
+  entity:     {nom:'entita',           akuz:'entitu',           gen:'entity',           instr:'entitou',         decl:'Entita'},
+  protocol:   {nom:'protokol',         akuz:'protokol',         gen:'protokolu',        instr:'protokolem',      decl:'Protokol'}
 };
 function classWord(stereotype){
   return CLASS_STEREOTYPE_WORD[stereotype] || CLASS_STEREOTYPE_WORD.class;
 }
 const CLASS_STEREOTYPE_WORD_EN = {
   class:'class', interface:'interface', abstract:'abstract class', enum:'enum',
-  struct:'struct', annotation:'annotation', entity:'entity'
+  struct:'struct', annotation:'annotation', entity:'entity', protocol:'protocol'
 };
 function classWordEn(stereotype){ return CLASS_STEREOTYPE_WORD_EN[stereotype] || 'class'; }
 const PACKAGE_TYPE_WORD_EN = {
@@ -3064,6 +3135,45 @@ function describeClass(model){
   if(relSentences.length){
     paras.push((isEn ? 'As for the relationships: ' : 'Co se týče vztahů: ') + relSentences.join(' '));
   }
+  // Lollipop interfaces — zmíníme rozhraní vykreslená jako kroužky.
+  const classMap = {};
+  rawClasses.forEach((rc, i) => classMap[rc.id] = classes[i]);
+  const lollipops = classes.filter(c => c.stereotype === 'interface' && c.lollipop);
+  if(lollipops.length){
+    const names = lollipops.map(c => (isEn?'“':'„') + L.fn.nameOr(c.name) + (isEn?'”':'"'));
+    paras.push(isEn
+      ? 'The following ' + plEn(lollipops.length, 'interface', 'interfaces') + ' ' +
+        (lollipops.length===1?'is':'are') + ' rendered as a lollipop (circle): ' + joinAndEn(names) + '.'
+      : 'Následující ' + plCs(lollipops.length, 'rozhraní', 'rozhraní', 'rozhraní') + ' ' +
+        (lollipops.length===1?'je vykresleno':'jsou vykresleny') + ' jako kroužek (lollipop): ' + joinAndCs(names) + '.');
+  }
+  // URL odkazy — zmíníme třídy s odkazem.
+  const linked = classes.filter(c => c.url);
+  if(linked.length){
+    const names = linked.map(c => (isEn?'“':'„') + L.fn.nameOr(c.name) + (isEn?'”':'"'));
+    paras.push(isEn
+      ? plEn(linked.length, 'A clickable URL link', 'Clickable URL links') + ' ' + (linked.length===1?'is':'are') +
+        ' attached to: ' + joinAndEn(names) + '.'
+      : 'Klikatelný odkaz má ' + plCs(linked.length, 'třída', 'třídy', 'tříd') + ': ' + joinAndCs(names) + '.');
+  }
+  // Standalone notes.
+  const notes = (model && model.notes) || [];
+  if(notes.length){
+    const noteSentences = [];
+    notes.forEach(nt => {
+      const oneLine = (nt.text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean).join(' ');
+      if(!oneLine) return;
+      const target = nt.attachTo ? classMap[nt.attachTo] : null;
+      if(target){
+        noteSentences.push(isEn
+          ? 'A note attached to ' + (isEn?'“':'„') + L.fn.nameOr(target.name) + (isEn?'”':'"') + ': ' + oneLine
+          : 'Poznámka u ' + (isEn?'“':'„') + L.fn.nameOr(target.name) + (isEn?'”':'"') + ': ' + oneLine);
+      } else {
+        noteSentences.push(isEn ? 'A free note: ' + oneLine : 'Volná poznámka: ' + oneLine);
+      }
+    });
+    if(noteSentences.length) paras.push(noteSentences.join(' '));
+  }
   return paras.join('\n\n');
 }
 
@@ -3256,6 +3366,31 @@ function describeUseCase(model){
     }
   }
 
+  // Standalone notes — společný blok pro CS i EN.
+  const notes = (model && model.notes) || [];
+  if(notes.length){
+    const noteSentences = [];
+    notes.forEach(nt => {
+      const oneLine = (nt.text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean).join(' ');
+      if(!oneLine) return;
+      let target = null;
+      if(nt.attachTo){
+        target = actorById[nt.attachTo] || ucById[nt.attachTo];
+      }
+      const targetWord = (target && actorById[nt.attachTo]) ? (isEn ? 'actor' : 'aktérovi')
+                       : (target && ucById[nt.attachTo]) ? (isEn ? 'use case' : 'případu užití')
+                       : null;
+      if(target && targetWord){
+        noteSentences.push(isEn
+          ? 'A note attached to ' + targetWord + ' ' + Q(target.name||'') + ': ' + oneLine
+          : 'Poznámka u ' + targetWord + ' ' + Q(target.name||'') + ': ' + oneLine);
+      } else {
+        noteSentences.push(isEn ? 'A free note: ' + oneLine : 'Volná poznámka: ' + oneLine);
+      }
+    });
+    if(noteSentences.length) paras.push(noteSentences.join(' '));
+  }
+
   return paras.join('\n\n');
 }
 
@@ -3405,6 +3540,58 @@ function describeState(model){
       }
     });
     if(stereoSentences.length) paras.push(stereoSentences.join(' '));
+  }
+  // Entry / exit akce — nezávisí na jazyce výše, takže to řešíme jednou pro oba.
+  const entryExitSentences = [];
+  states.forEach(s => {
+    if(s.entryAction){
+      entryExitSentences.push(isEn
+        ? 'On entering “' + (s.name||'') + '”, the action is: ' + s.entryAction + '.'
+        : 'Při vstupu do „' + (s.name||'') + '" se provede: ' + s.entryAction + '.');
+    }
+    if(s.exitAction){
+      entryExitSentences.push(isEn
+        ? 'On leaving “' + (s.name||'') + '”, the action is: ' + s.exitAction + '.'
+        : 'Při opuštění „' + (s.name||'') + '" se provede: ' + s.exitAction + '.');
+    }
+  });
+  if(entryExitSentences.length) paras.push(entryExitSentences.join(' '));
+  // Concurrent regions: pokud má kompozitní stav děti označené `concurrent`,
+  // zmíníme je jako paralelní regiony.
+  const concurrentParents = {};
+  states.forEach(s => {
+    if(s.parentId && s.concurrent){
+      (concurrentParents[s.parentId] = concurrentParents[s.parentId] || []).push(s);
+    }
+  });
+  const concurrentSentences = [];
+  Object.keys(concurrentParents).forEach(pid => {
+    const parent = byId[pid];
+    if(!parent) return;
+    const kids = concurrentParents[pid];
+    const names = kids.map(k => (isEn?'“':'„') + (k.name||'') + (isEn?'”':'"'));
+    concurrentSentences.push(isEn
+      ? 'State “' + (parent.name||'') + '” has concurrent (orthogonal) regions: ' + joinAndEn(names) + '.'
+      : 'Stav „' + (parent.name||'') + '" má paralelní (ortogonální) regiony: ' + joinAndCs(names) + '.');
+  });
+  if(concurrentSentences.length) paras.push(concurrentSentences.join(' '));
+  // Samostatné poznámky.
+  const notes = (model && model.notes) || [];
+  if(notes.length){
+    const noteSentences = [];
+    notes.forEach(nt => {
+      const oneLine = (nt.text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean).join(' ');
+      if(!oneLine) return;
+      const target = nt.attachTo ? byId[nt.attachTo] : null;
+      if(target){
+        noteSentences.push(isEn
+          ? 'A note attached to “' + (target.name||'') + '”: ' + oneLine
+          : 'Poznámka u stavu „' + (target.name||'') + '": ' + oneLine);
+      } else {
+        noteSentences.push(isEn ? 'A free note: ' + oneLine : 'Volná poznámka: ' + oneLine);
+      }
+    });
+    if(noteSentences.length) paras.push(noteSentences.join(' '));
   }
   return paras.join('\n\n');
 }
@@ -3567,6 +3754,34 @@ function describeComponent(model){
   if(relSentences.length){
     paras.push((isEn ? 'As for the connections: ' : 'Co se týče propojení: ') + relSentences.join(' '));
   }
+  // Standalone notes — společně pro CS i EN.
+  const notes = (model && model.notes) || [];
+  if(notes.length){
+    const noteSentences = [];
+    notes.forEach(nt => {
+      const oneLine = (nt.text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean).join(' ');
+      if(!oneLine) return;
+      let targetName = null;
+      let targetKind = null;
+      if(nt.attachTo){
+        if(compById[nt.attachTo]){
+          targetName = compById[nt.attachTo].name || '';
+          targetKind = isEn ? 'component' : 'komponentě';
+        } else if(ifaceById[nt.attachTo]){
+          targetName = ifaceById[nt.attachTo].name || '';
+          targetKind = isEn ? 'interface' : 'rozhraní';
+        }
+      }
+      if(targetName !== null && targetKind){
+        noteSentences.push(isEn
+          ? 'A note attached to ' + targetKind + ' ' + Q(targetName) + ': ' + oneLine
+          : 'Poznámka u ' + targetKind + ' ' + Q(targetName) + ': ' + oneLine);
+      } else {
+        noteSentences.push(isEn ? 'A free note: ' + oneLine : 'Volná poznámka: ' + oneLine);
+      }
+    });
+    if(noteSentences.length) paras.push(noteSentences.join(' '));
+  }
 
   return paras.join('\n\n');
 }
@@ -3721,6 +3936,24 @@ function describeDeployment(model){
   });
   if(relSimple.length){
     paras.push((isEn ? 'As for the links: ' : 'Co se týče propojení: ') + relSimple.join(' '));
+  }
+  // Standalone notes.
+  const notes = (model && model.notes) || [];
+  if(notes.length){
+    const noteSentences = [];
+    notes.forEach(nt => {
+      const oneLine = (nt.text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean).join(' ');
+      if(!oneLine) return;
+      const target = nt.attachTo ? byId[nt.attachTo] : null;
+      if(target){
+        noteSentences.push(isEn
+          ? 'A note attached to “' + (target.name||'') + '”: ' + oneLine
+          : 'Poznámka u „' + (target.name||'') + '": ' + oneLine);
+      } else {
+        noteSentences.push(isEn ? 'A free note: ' + oneLine : 'Volná poznámka: ' + oneLine);
+      }
+    });
+    if(noteSentences.length) paras.push(noteSentences.join(' '));
   }
 
   return paras.join('\n\n');
@@ -4357,6 +4590,16 @@ function generatePuml(diagram){
   // PlantUML caption je jednořádkový, vícero řádků se nepodporuje (oficiálně).
   const caption = ds.caption || proj.caption;
   if(caption) out.push('caption ' + caption.replace(/\r?\n/g, ' '));
+  // Class diagram: volitelné vizuální direktivy „hide" pro skrytí prázdných
+  // částí třídy. Aplikují se pouze pokud uživatel zaškrtl příslušnou volbu
+  // v nastavení diagramu (`settings.hide*`). Mimo class typ se ignorují.
+  if(diagram.type === 'class'){
+    if(ds.hideEmptyMembers)    out.push('hide empty members');
+    if(ds.hideEmptyAttributes) out.push('hide empty attributes');
+    if(ds.hideEmptyMethods)    out.push('hide empty methods');
+    if(ds.hideCircle)          out.push('hide circle');
+    if(ds.hideStereotype)      out.push('hide stereotype');
+  }
   out.push('');
   switch(diagram.type){
     case 'activity': out.push(genActivity(diagram.model)); break;
@@ -4634,7 +4877,7 @@ function genClass(model){
   function emitClass(rawC, indent){
     const c = effective(rawC);
     const pad = '  '.repeat(indent);
-    const stMap = {class:'class',interface:'interface',abstract:'abstract class',enum:'enum',struct:'struct',annotation:'annotation',entity:'entity'};
+    const stMap = {class:'class',interface:'interface',abstract:'abstract class',enum:'enum',struct:'struct',annotation:'annotation',entity:'entity',protocol:'protocol'};
     const kw = stMap[c.stereotype] || 'class';
     const name = c.name || 'Untitled';
     const alias = c.alias || '';
@@ -5189,6 +5432,25 @@ function genNetwork(model){
 
   out.push('nwdiag {');
 
+  // Výchozí barvy (default_*_color) — nwdiag specifické direktivy pro vzhled.
+  // Aplikují se na všechny prvky daného typu, pokud nemají vlastní `color`.
+  // Hodnoty jsou „pojmenované barvy" nebo hex (např. „lightblue", „#FFEEDD").
+  if(model.defaultNodeColor){
+    out.push('  default_node_color = "' + model.defaultNodeColor.replace(/"/g,'') + '";');
+  }
+  if(model.defaultNetworkColor){
+    out.push('  default_network_color = "' + model.defaultNetworkColor.replace(/"/g,'') + '";');
+  }
+  if(model.defaultGroupColor){
+    out.push('  default_group_color = "' + model.defaultGroupColor.replace(/"/g,'') + '";');
+  }
+  if(model.defaultLineColor){
+    out.push('  default_linecolor = "' + model.defaultLineColor.replace(/"/g,'') + '";');
+  }
+  if(model.defaultTextColor){
+    out.push('  default_textcolor = "' + model.defaultTextColor.replace(/"/g,'') + '";');
+  }
+
   // Skupiny (před sítěmi, jako v dokumentaci)
   groups.forEach(g => {
     out.push('  group ' + (g.name ? sanitizeAliasInput(g.name) : '') + ' {');
@@ -5452,17 +5714,49 @@ function genTimeline(diagram){
   const out = [];
   out.push('@startchronology');
   const title = ds.title || proj.title;
-  if(title) out.push('title ' + title.replace(/\r?\n/g, ' '));
+  if(title){
+    if(title.indexOf('\n') >= 0){
+      out.push('title');
+      title.split(/\r?\n/).forEach(l => out.push(l));
+      out.push('end title');
+    } else {
+      out.push('title ' + title);
+    }
+  }
+  // Header / footer s kaskádou projekt → diagram.
   const header = ds.header || proj.header;
   if(header) out.push('header\n' + header + '\nendheader');
   const footer = ds.footer || proj.footer;
   if(footer) out.push('footer\n' + footer + '\nendfooter');
+  // Caption — krátký jednořádkový popisek pod diagramem (chronology podporuje).
+  const caption = ds.caption || proj.caption;
+  if(caption) out.push('caption ' + caption.replace(/\r?\n/g, ' '));
+  // Scale — chronology umí jednoduché velikostní omezení.
+  // Příklady: „scale max 1024 width", „scale max 800 height".
+  // Uživatel nastavuje přes model.scaleMax + model.scaleAxis.
+  if(model.scaleMax){
+    const px = parseInt(model.scaleMax, 10);
+    if(!isNaN(px) && px > 0){
+      const axis = model.scaleAxis === 'height' ? 'height' : 'width';
+      out.push('scale max ' + px + ' ' + axis);
+    }
+  }
+  // Skinparam (z diagramu) — užitečné pro lokální úpravy barvy.
+  const skinD = (ds.skinparam || '').trim();
+  if(skinD) skinD.split(/\r?\n/).forEach(line => { line=line.trim(); if(line) out.push('skinparam ' + line); });
 
-  // Události chronologicky (rendrují se v pořadí jak je vidíme; PlantUML si je seřadí podle data)
+  // Události chronologicky (rendrují se v pořadí jak je vidíme; PlantUML si je seřadí podle data).
+  // Pokud má událost popis (description), vygeneruje se s jednořádkovým „: text" sufixem.
   (model.events||[]).forEach(ev => {
     const label = (ev.label || 'Událost').replace(/\]/g,'');
     const date = ev.date || todayIso();
-    out.push('[' + label + '] happens on ' + date);
+    let line = '[' + label + '] happens on ' + date;
+    if(ev.description && ev.description.trim()){
+      // Víceřádkový popis spojíme do jedné řádky (chronology nepodporuje block syntax pro události).
+      const desc = ev.description.replace(/\r?\n+/g, ' ').trim();
+      line += ' : ' + desc;
+    }
+    out.push(line);
   });
 
   out.push('@endchronology');
@@ -5578,6 +5872,18 @@ function genTiming(model){
     let line = 'highlight ' + h.from + ' to ' + h.to;
     if(h.color) line += ' #' + h.color.replace(/^#/,'');
     if(h.label) line += ' : ' + h.label;
+    out.push(line);
+  });
+
+  // Constraints: anotace mezi dvěma časovými body. Syntax PlantUML:
+  // {time1} <-> {time2} : label  (typicky pro vyjádření trvání nebo intervalu)
+  // {time1} -> {time2} : label   (jednosměrná šipka)
+  (model.constraints||[]).forEach(c => {
+    if(c.from === undefined || c.to === undefined) return;
+    if(c.from === '' || c.to === '') return;
+    const arrow = c.direction === 'one-way' ? '->' : '<->';
+    let line = '{' + c.from + '} ' + arrow + ' {' + c.to + '}';
+    if(c.label) line += ' : ' + c.label;
     out.push(line);
   });
 
@@ -6563,7 +6869,7 @@ function renderModelToolbar(d){
       tb.appendChild(actionBtn(L.tb.swimlanes, L.tb.swimlanes, ()=>manageSwimlanes(d)));
       break;
     case 'class':
-      ['class','interface','abstract','enum','struct','annotation','entity'].forEach(s =>
+      ['class','interface','abstract','enum','struct','annotation','entity','protocol'].forEach(s =>
         tb.appendChild(el('button',{type:'button',onclick:()=>addClass(d,s)}, L.classStereoBtn[s] || s)));
       tb.appendChild(actionBtn(L.tb.relationship, L.tb.relationship, ()=>addRelationship(d)));
       tb.appendChild(actionBtn(L.tb.package, L.tb.package, ()=>addPackage(d)));
@@ -6628,6 +6934,10 @@ function renderModelToolbar(d){
       tb.appendChild(actionBtn(L.tb.network, L.tb.network, ()=>addNetwork(d)));
       tb.appendChild(actionBtn(L.tb.group, L.tb.group, ()=>addNwGroup(d)));
       tb.appendChild(actionBtn(L.tb.peerLink, L.tb.peerLink, ()=>addPeerLink(d)));
+      tb.appendChild(actionBtn(
+        getLang()==='en' ? 'Default colors…' : 'Výchozí barvy…',
+        getLang()==='en' ? 'Set default colors for nwdiag elements' : 'Nastavit výchozí barvy prvků nwdiag',
+        ()=>{state.selectedPath=null;renderApp();}));
       break;
     case 'gantt':
       tb.appendChild(actionBtn(L.tb.task, L.tb.taskTip, ()=>addGanttTask(d)));
@@ -6638,6 +6948,10 @@ function renderModelToolbar(d){
       break;
     case 'timeline':
       tb.appendChild(actionBtn(L.tb.event, L.tb.eventTip, ()=>addTimelineEvent(d)));
+      tb.appendChild(actionBtn(
+        getLang()==='en' ? 'Settings…' : 'Nastavení…',
+        getLang()==='en' ? 'Timeline scale settings' : 'Nastavení měřítka timeline',
+        ()=>{state.selectedPath=null;renderApp();}));
       break;
     case 'ebnf':
       tb.appendChild(actionBtn(L.tb.rule, L.tb.ruleTip, ()=>addEbnfRule(d)));
@@ -6647,6 +6961,10 @@ function renderModelToolbar(d){
       tb.appendChild(actionBtn(L.tb.timingFrame, L.tb.timingFrameTip, ()=>addTimingFrame(d)));
       tb.appendChild(actionBtn(L.tb.note, L.tb.noteTip, ()=>addTimingNote(d)));
       tb.appendChild(actionBtn(L.tb.highlight, L.tb.highlightTip, ()=>addTimingHighlight(d)));
+      tb.appendChild(actionBtn(
+        L.tb.timingConstraint || (getLang()==='en' ? 'Constraint' : 'Anotace času'),
+        L.tb.timingConstraintTip || (getLang()==='en' ? 'Add a time annotation' : 'Přidat časovou anotaci'),
+        ()=>addTimingConstraint(d)));
       tb.appendChild(actionBtn(L.tb.timingSettings, L.tb.timingSettingsTip, ()=>{state.selectedPath=null;renderApp();}));
       break;
   }
@@ -7829,7 +8147,8 @@ function renderClassForm(d, c, root, shared){
   root.appendChild(field(L.field.stereotype,
     selectField(c.stereotype||'class',
       [{value:'class',label:'class'},{value:'interface',label:'interface'},{value:'abstract',label:'abstract class'},
-       {value:'enum',label:'enum'},{value:'struct',label:'struct'},{value:'annotation',label:'annotation'},{value:'entity',label:'entity'}],
+       {value:'enum',label:'enum'},{value:'struct',label:'struct'},{value:'annotation',label:'annotation'},
+       {value:'entity',label:'entity'},{value:'protocol',label:'protocol'}],
       v=>{c.stereotype=v;state.project.modified=nowIso();softTouch(d);}, 'cfStereo')));
   root.appendChild(field(L.field.extraStereotype,
     inputText(c.stereotypeExtra||'', v=>{c.stereotypeExtra=v;state.project.modified=nowIso();softTouch(d);}, 'cfStereoX')));
@@ -8553,6 +8872,33 @@ function renderDeploymentDetail(d, root){
 // === DETAIL: NETWORK ==========================================
 function renderNetworkDetail(d, root){
   const path = state.selectedPath, m = d.model;
+  // Pokud není nic vybráno, ukážeme nastavení výchozích barev nwdiag.
+  if(!path){
+    root.appendChild(el('h4', null, getLang()==='en' ? 'Network diagram settings' : 'Nastavení síťového diagramu'));
+    root.appendChild(el('p', {class:'help'},
+      getLang()==='en'
+        ? 'Default colors used by nwdiag for elements without their own color. Leave empty to use built-in defaults.'
+        : 'Výchozí barvy, které nwdiag použije pro prvky bez vlastní barvy. Ponechte prázdné pro výchozí hodnoty nástroje.'));
+    [
+      ['defaultNodeColor',
+        getLang()==='en' ? 'Default node color:' : 'Výchozí barva uzlu:'],
+      ['defaultNetworkColor',
+        getLang()==='en' ? 'Default network color:' : 'Výchozí barva sítě:'],
+      ['defaultGroupColor',
+        getLang()==='en' ? 'Default group color:' : 'Výchozí barva skupiny:'],
+      ['defaultLineColor',
+        getLang()==='en' ? 'Default line color:' : 'Výchozí barva čar:'],
+      ['defaultTextColor',
+        getLang()==='en' ? 'Default text color:' : 'Výchozí barva textu:']
+    ].forEach(([key, label]) => {
+      root.appendChild(colorField(label, m[key] || '',
+        v => { m[key] = v; softTouch(d); }, 'net_' + key,
+        getLang()==='en'
+          ? 'Named color (e.g. "lightblue") or hex (#RRGGBB).'
+          : 'Pojmenovaná barva (např. „lightblue") nebo hex (#RRGGBB).'));
+    });
+    return;
+  }
   if(path[0] === 'networks' && path.length === 2){
     const net = m.networks[path[1]];
     if(!net){ root.appendChild(el('p',{class:'no-selection'},'Síť neexistuje.')); return; }
@@ -8880,7 +9226,35 @@ function renderTimelineTree(d, root){
 // === DETAIL: TIMELINE ========================================
 function renderTimelineDetail(d, root){
   const path = state.selectedPath, m = d.model;
-  if(!path || path[0] !== 'events') return;
+  // Pokud nic není vybráno, ukážeme nastavení (scale) na úrovni diagramu.
+  if(!path){
+    root.appendChild(el('h4', null, getLang()==='en' ? 'Timeline settings' : 'Nastavení timeline'));
+    root.appendChild(field(
+      getLang()==='en' ? 'Maximum size (px):' : 'Maximální velikost (px):',
+      inputText(String(m.scaleMax || ''), v => {
+        const n = parseInt(v, 10);
+        m.scaleMax = isNaN(n) || n <= 0 ? null : n;
+        softTouch(d);
+      }, 'tlScaleMax'),
+      getLang()==='en'
+        ? 'Optional upper bound for diagram size in pixels (uses PlantUML "scale max N width/height").'
+        : 'Volitelný horní limit velikosti diagramu v pixelech (využívá PlantUML „scale max N width/height").'));
+    root.appendChild(field(
+      getLang()==='en' ? 'Constrained axis:' : 'Omezovaná osa:',
+      selectField(m.scaleAxis || 'width', [
+        { value:'width',  label: getLang()==='en' ? 'width (default)' : 'šířka (výchozí)' },
+        { value:'height', label: getLang()==='en' ? 'height'          : 'výška' }
+      ], v => { m.scaleAxis = v; softTouch(d); }, 'tlScaleAxis'),
+      getLang()==='en'
+        ? 'Whether the maximum applies to width or height.'
+        : 'Zda se maximum aplikuje na šířku nebo výšku.'));
+    root.appendChild(el('p',{class:'help'},
+      getLang()==='en'
+        ? 'Tip: Title, header, footer and caption are configured in “Diagram settings”.'
+        : 'Tip: Titulek, hlavička, patička a popisek pod diagramem se nastavují v „Nastavení diagramu".'));
+    return;
+  }
+  if(path[0] !== 'events') return;
   const ev = m.events[path[1]];
   if(!ev){ root.appendChild(el('p',{class:'no-selection'},'Událost neexistuje.')); return; }
   root.appendChild(el('h4',null,'Událost'));
@@ -9101,6 +9475,28 @@ function renderTimingTree(d, root){
     hs.appendChild(hul);
     root.appendChild(hs);
   }
+
+  // Constraints — anotace času (např. trvání mezi dvěma okamžiky).
+  if((m.constraints||[]).length){
+    const cs = el('section');
+    cs.appendChild(el('h4', null, getLang()==='en' ? 'Time constraints' : 'Časové anotace (constraints)'));
+    const cul = el('ul', {'aria-label': getLang()==='en' ? 'Constraints' : 'Anotace'});
+    (m.constraints||[]).forEach((c, idx) => {
+      const li = el('li');
+      const path = ['constraints', idx];
+      const isSel = pathEqual(state.selectedPath, path);
+      const arrow = c.direction === 'one-way' ? '→' : '↔';
+      const label = '{' + c.from + '} ' + arrow + ' {' + c.to + '}' + (c.label ? ': ' + c.label : '');
+      li.appendChild(treeItem(label, L.badge.timingConstraint || 'cnst', 'state', isSel,
+        ()=>{ state.selectedPath = path; renderApp(); },
+        [actionBtn('×',
+          getLang()==='en' ? 'Delete constraint' : 'Smazat constraint',
+          ()=>deleteTimingConstraint(d, c.id))]));
+      cul.appendChild(li);
+    });
+    cs.appendChild(cul);
+    root.appendChild(cs);
+  }
 }
 
 // === DETAIL: TIMING ==========================================
@@ -9221,6 +9617,35 @@ function renderTimingDetail(d, root){
       inputText(h.color||'', v=>{h.color=v.replace(/^#/,'');softTouch(d);}, 'thCol')));
     root.appendChild(field(L.field.descOptional,
       inputText(h.label||'', v=>{h.label=v;softTouch(d);}, 'thLab')));
+  } else if(path[0] === 'constraints'){
+    const c = m.constraints[path[1]];
+    if(!c){ root.appendChild(el('p',{class:'no-selection'},
+      getLang()==='en' ? 'Constraint not found.' : 'Constraint neexistuje.')); return; }
+    root.appendChild(el('h4', null, getLang()==='en' ? 'Time constraint' : 'Časová anotace (constraint)'));
+    root.appendChild(field(
+      getLang()==='en' ? 'From time:' : 'Od času:',
+      inputText(String(c.from||''), v=>{c.from=v.trim();softTouch(d);}, 'tcFr'),
+      getLang()==='en'
+        ? 'A time value that appears in some frame (e.g. "0", "10", or a date when using date format).'
+        : 'Časová hodnota, která se vyskytuje v některém rámci (např. „0", „10" nebo datum při použití date format).'));
+    root.appendChild(field(
+      getLang()==='en' ? 'To time:' : 'Do času:',
+      inputText(String(c.to||''), v=>{c.to=v.trim();softTouch(d);}, 'tcTo')));
+    root.appendChild(field(
+      getLang()==='en' ? 'Direction:' : 'Směr:',
+      selectField(c.direction || 'two-way', [
+        { value:'two-way', label: getLang()==='en' ? 'bidirectional (↔)' : 'oboustranný (↔)' },
+        { value:'one-way', label: getLang()==='en' ? 'one-way (→)'      : 'jednosměrný (→)' }
+      ], v=>{c.direction=v;softTouch(d);}, 'tcDir'),
+      getLang()==='en'
+        ? 'Two-way is typical for "duration" / "interval"; one-way for "before/after" relations.'
+        : 'Oboustranný se hodí pro „trvání" / „interval", jednosměrný pro „před/po" relace.'));
+    root.appendChild(field(
+      getLang()==='en' ? 'Label (optional):' : 'Popisek (volitelný):',
+      inputText(c.label||'', v=>{c.label=v;softTouch(d);}, 'tcLab'),
+      getLang()==='en'
+        ? 'E.g. "10 tu", "5 ns", "setup time".'
+        : 'Např. „10 tu", „5 ns", „setup time".'));
   }
 }
 
@@ -9282,6 +9707,23 @@ async function deleteTimingHighlight(d, id){
   const ok = await dlgConfirm(L.dlg.deleteHighlight, 'Tato akce odstraní interval.');
   if(!ok) return;
   d.model.highlights = (d.model.highlights||[]).filter(h => h.id !== id);
+  state.selectedPath = null; touchDiagram(d); renderApp();
+}
+// Constraint anotace mezi dvěma časovými body — vyjadřuje trvání/interval mezi
+// dvěma momenty v timing diagramu. PlantUML formát: `{t1} <-> {t2} : popisek`.
+async function addTimingConstraint(d){
+  d.model.constraints = d.model.constraints || [];
+  d.model.constraints.push({id: uid('tc'), from:'0', to:'10', label:'', direction:'two-way'});
+  state.selectedPath = ['constraints', d.model.constraints.length-1];
+  touchDiagram(d); renderApp();
+}
+async function deleteTimingConstraint(d, id){
+  const ok = await dlgConfirm(
+    getLang()==='en' ? 'Delete constraint?' : 'Smazat constraint?',
+    getLang()==='en' ? 'This will remove the annotation.' : 'Tato akce odstraní anotaci.'
+  );
+  if(!ok) return;
+  d.model.constraints = (d.model.constraints||[]).filter(c => c.id !== id);
   state.selectedPath = null; touchDiagram(d); renderApp();
 }
 
@@ -11164,6 +11606,18 @@ function openDiagramSettings(){
   document.getElementById('setTitle').value = s.title || '';
   document.getElementById('setCaption').value = s.caption || '';
   document.getElementById('setTitleWrap').style.display = '';
+  // Class-only hide direktivy: zobrazí se jen pro class diagram.
+  const classWrap = document.getElementById('setClassHideWrap');
+  if(d.type === 'class'){
+    classWrap.style.display = '';
+    document.getElementById('setHideEmptyMembers').checked    = !!s.hideEmptyMembers;
+    document.getElementById('setHideEmptyAttributes').checked = !!s.hideEmptyAttributes;
+    document.getElementById('setHideEmptyMethods').checked    = !!s.hideEmptyMethods;
+    document.getElementById('setHideCircle').checked          = !!s.hideCircle;
+    document.getElementById('setHideStereotype').checked      = !!s.hideStereotype;
+  } else {
+    classWrap.style.display = 'none';
+  }
   document.getElementById('dlgSettings').showModal();
 }
 function saveSettings(){
@@ -11183,7 +11637,19 @@ function saveSettings(){
     state.project.modified = nowIso();
   } else if(target === 'diagram'){
     const d = getCurrentDiagram();
-    if(d){ d.settings = s; touchDiagram(d); }
+    if(d){
+      // Class-only direktivy: ukládáme jen pokud je diagram class (jinak by
+      // checkboxy mohly mít zastaralý stav z otevření jiného typu diagramu).
+      if(d.type === 'class'){
+        s.hideEmptyMembers    = document.getElementById('setHideEmptyMembers').checked;
+        s.hideEmptyAttributes = document.getElementById('setHideEmptyAttributes').checked;
+        s.hideEmptyMethods    = document.getElementById('setHideEmptyMethods').checked;
+        s.hideCircle          = document.getElementById('setHideCircle').checked;
+        s.hideStereotype      = document.getElementById('setHideStereotype').checked;
+      }
+      d.settings = s;
+      touchDiagram(d);
+    }
   }
   document.getElementById('dlgSettings').close();
   renderApp();
