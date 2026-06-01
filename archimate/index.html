@@ -11018,9 +11018,9 @@
         fetch(apiUrl, { headers: headers })
         .then(res => {
             if (!res.ok) {
-                if (res.status === 404) throw new Error(t('githubFileNotFound'));
-                if (res.status === 401) throw new Error(t('githubUnauthorized'));
-                throw new Error('HTTP ' + res.status);
+                const err = new Error(res.status === 404 ? t('githubFileNotFound') : res.status === 401 ? t('githubUnauthorized') : 'HTTP ' + res.status);
+                err.status = res.status;
+                throw err;
             }
             return res.json();
         })
@@ -11071,8 +11071,75 @@
             playLoadSound();
         })
         .catch(err => {
-            showGitHubStatus(t('githubLoadError') + ': ' + err.message, 'error');
+            // Pokud chyba a nemáme token (nebo 401/404), nabídnout zadání tokenu
+            if (!token || err.status === 401 || err.status === 404) {
+                showTokenPromptDialog();
+            } else {
+                showGitHubStatus(t('githubLoadError') + ': ' + err.message, 'error');
+            }
         });
+    }
+    
+    function showTokenPromptDialog() {
+        // Vytvoří jednoduchý modal dialog pro zadání API tokenu
+        const existingDialog = document.getElementById('token-prompt-dialog');
+        if (existingDialog) existingDialog.remove();
+        
+        const dialog = document.createElement('div');
+        dialog.id = 'token-prompt-dialog';
+        dialog.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;';
+        dialog.innerHTML = `
+            <div style="background:white;padding:24px;border-radius:8px;max-width:450px;width:90%;box-shadow:0 4px 20px rgba(0,0,0,0.3);">
+                <h3 style="margin:0 0 16px 0;">${t('githubTokenRequired')}</h3>
+                <p style="margin:0 0 16px 0;color:#666;">${currentLanguage === 'cs' ? 'Pro přístup k tomuto souboru je potřeba GitHub Personal Access Token (PAT) s oprávněním repo.' : 'A GitHub Personal Access Token (PAT) with repo scope is required to access this file.'}</p>
+                <input type="password" id="token-prompt-input" placeholder="ghp_..." style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;font-size:14px;box-sizing:border-box;">
+                <div style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end;">
+                    <button type="button" onclick="closeTokenPromptDialog()" style="padding:8px 16px;border:1px solid #ccc;background:#f5f5f5;border-radius:4px;cursor:pointer;">${t('cancel')}</button>
+                    <button type="button" onclick="submitTokenPromptDialog()" style="padding:8px 16px;border:none;background:#28a745;color:white;border-radius:4px;cursor:pointer;font-weight:bold;">${t('confirm')}</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(dialog);
+        
+        // Focus na input
+        setTimeout(() => {
+            const input = document.getElementById('token-prompt-input');
+            if (input) input.focus();
+        }, 100);
+        
+        // Enter pro potvrzení
+        dialog.querySelector('#token-prompt-input').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') submitTokenPromptDialog();
+            if (e.key === 'Escape') closeTokenPromptDialog();
+        });
+    }
+    
+    function closeTokenPromptDialog() {
+        const dialog = document.getElementById('token-prompt-dialog');
+        if (dialog) dialog.remove();
+        showGitHubStatus(t('githubLoadError'), 'error');
+    }
+    
+    function submitTokenPromptDialog() {
+        const input = document.getElementById('token-prompt-input');
+        const token = input ? input.value.trim() : '';
+        
+        if (!token) {
+            input.style.borderColor = 'red';
+            return;
+        }
+        
+        // Uložit token
+        localStorage.setItem('archimate-github-token', token);
+        const tokenEl = document.getElementById('github-token');
+        if (tokenEl) tokenEl.value = token;
+        
+        // Zavřít dialog
+        const dialog = document.getElementById('token-prompt-dialog');
+        if (dialog) dialog.remove();
+        
+        // Znovu načíst
+        loadFromGitHub();
     }
     
     function saveToGitHub() {
@@ -12301,14 +12368,16 @@
         const filterEl = document.getElementById('diagram-add-rel-filter');
         const filter = filterEl ? filterEl.value.toLowerCase() : '';
         
-        // Get relationships that can be added (both source and target on diagram, but rel not yet shown)
-        const diagramElementIds = new Set(diagram.elementIds);
+        // Get relationships already shown on diagram
         const existingRelIds = new Set(getDiagramRelationships(currentDiagramId).map(r => r.id));
+        const diagramElementIds = new Set(diagram.elementIds);
         
+        // Show ALL relationships that match filter, not just those with both elements on diagram
         const availableRels = relationships.filter(r => {
+            // Skip if already on diagram
             if (existingRelIds.has(r.id)) return false;
-            if (!diagramElementIds.has(r.sourceId) || !diagramElementIds.has(r.targetId)) return false;
             
+            // Apply text filter
             if (filter) {
                 const source = elements.find(e => e.id === r.sourceId);
                 const target = elements.find(e => e.id === r.targetId);
@@ -12316,8 +12385,13 @@
                     r.name || '',
                     r.type || '',
                     r.documentation || '',
+                    r.příznaky || '',
                     source ? source.name : '',
-                    target ? target.name : ''
+                    source ? (source.description || '') : '',
+                    source ? (source.příznaky || '') : '',
+                    target ? target.name : '',
+                    target ? (target.description || '') : '',
+                    target ? (target.příznaky || '') : ''
                 ].join(' ').toLowerCase();
                 return searchText.includes(filter);
             }
@@ -12332,13 +12406,19 @@
         container.innerHTML = availableRels.slice(0, 50).map(r => {
             const source = elements.find(e => e.id === r.sourceId);
             const target = elements.find(e => e.id === r.targetId);
+            const sourceOnDiagram = diagramElementIds.has(r.sourceId);
+            const targetOnDiagram = diagramElementIds.has(r.targetId);
+            // Indicate if elements will be added
+            const addNote = (!sourceOnDiagram || !targetOnDiagram) 
+                ? `<br><small style="color:#c90;">${currentLanguage === 'cs' ? '(přidá i prvky na diagram)' : '(will also add elements)'}</small>` 
+                : '';
             return `
                 <div style="padding: 8px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
                     <div style="flex: 1;">
                         <strong>${source ? escapeHtml(source.name) : r.sourceId}</strong>
                         <span style="color: #666;"> → ${escapeHtml(r.type)} → </span>
                         <strong>${target ? escapeHtml(target.name) : r.targetId}</strong>
-                        ${r.name ? `<br><small style="color:#888;">${escapeHtml(r.name)}</small>` : ''}
+                        ${r.name ? `<br><small style="color:#888;">${escapeHtml(r.name)}</small>` : ''}${addNote}
                     </div>
                     <button type="button" class="btn-primary" style="padding: 4px 8px; font-size: 12px;" onclick="addRelationshipToDiagram('${r.id}')">+ ${t('add')}</button>
                 </div>
