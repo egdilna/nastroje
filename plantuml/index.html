@@ -488,6 +488,17 @@ const I18N = {
     },
     tab: { diagram: 'Diagram', edit: 'Tvorba', output: 'Výstup' },
     compEndPrefix: { component: 'komponenta:', interface: 'rozhraní:' },
+    compRelTypeLabel: {
+      use: 'používá',
+      provide: 'poskytuje',
+      dependency: 'závisí na',
+      association: 'asociace',
+      realization: 'realizuje',
+      inheritance: 'dědí od',
+      composition: 'obsahuje',
+      aggregation: 'agreguje',
+      line: 'propojeno'
+    },
     tb: {
       // Activity
       action: 'Akce', sdlTask: 'SDL task', sdlInput: 'SDL input', sdlOutput: 'SDL output',
@@ -1058,6 +1069,17 @@ const I18N = {
     },
     tab: { diagram: 'Diagram', edit: 'Edit', output: 'Output' },
     compEndPrefix: { component: 'component:', interface: 'interface:' },
+    compRelTypeLabel: {
+      use: 'uses',
+      provide: 'provides',
+      dependency: 'depends on',
+      association: 'association',
+      realization: 'realizes',
+      inheritance: 'inherits from',
+      composition: 'contains',
+      aggregation: 'aggregates',
+      line: 'linked'
+    },
     tb: {
       action: 'Action', sdlTask: 'SDL task', sdlInput: 'SDL input', sdlOutput: 'SDL output',
       sdlProcedure: 'SDL procedure', sdlSave: 'SDL save', sdlLoad: 'SDL load',
@@ -2403,14 +2425,24 @@ function sharedForDiagram(diagramType, table){
   }
   if(diagramType === 'component'){
     if(table === 'interfaces') return state.project.sharedElements.filter(s => s.kind === 'comp_interface');
-    if(table === 'relationships') return state.project.sharedElements.filter(s => s.kind === 'comp_relationship');
-    // components: pouze komponenty (vyloučit rozhraní i vazby)
+    if(table === 'relationships'){
+      // Vazby: primárně podle kind, ale jako fallback bereme vše, co má
+      // strukturu sdílené vazby (sourceAlias + targetAlias). To pokrývá
+      // i prvky uložené staršími verzemi editoru, kde mohl být kind jiný.
+      return state.project.sharedElements.filter(s =>
+        s.kind === 'comp_relationship' ||
+        (s.sourceAlias && s.targetAlias));
+    }
+    // components: pouze komponenty (vyloučit rozhraní, vazby i prvky se sourceAlias)
     if(table === 'components') return state.project.sharedElements.filter(s =>
       typeof s.kind === 'string' && s.kind.startsWith('comp_') &&
-      s.kind !== 'comp_interface' && s.kind !== 'comp_relationship');
+      s.kind !== 'comp_interface' && s.kind !== 'comp_relationship' &&
+      !(s.sourceAlias && s.targetAlias));
     // bez table: komponenty + rozhraní (ne vazby — ty mají vlastní tlačítko)
     return state.project.sharedElements.filter(s =>
-      typeof s.kind === 'string' && s.kind.startsWith('comp_') && s.kind !== 'comp_relationship');
+      typeof s.kind === 'string' && s.kind.startsWith('comp_') &&
+      s.kind !== 'comp_relationship' &&
+      !(s.sourceAlias && s.targetAlias));
   }
   if(diagramType === 'deployment'){
     if(table === 'nodes') return state.project.sharedElements.filter(s =>
@@ -2428,6 +2460,19 @@ async function insertSharedAction(d, table){
   if(!cfg){
     status(L.status.sharedNotSupported, 'error'); return;
   }
+  // Pre-step: pokud byly vazby povýšené starší verzí editoru se špatným kind,
+  // normalizujeme je na 'comp_relationship'. Bezpečné — měníme jen prvky, které
+  // mají strukturu vazby (sourceAlias + targetAlias) a špatný kind.
+  if(d.type === 'component' && table === 'relationships' && state.project && state.project.sharedElements){
+    let fixed = 0;
+    state.project.sharedElements.forEach(s => {
+      if(s.sourceAlias && s.targetAlias && s.kind !== 'comp_relationship'){
+        s.kind = 'comp_relationship';
+        fixed++;
+      }
+    });
+    if(fixed) state.project.modified = nowIso();
+  }
   const list = sharedForDiagram(d.type, cfg.table);
   // odfiltrujeme prvky, které už v tomto diagramu jsou
   const presentAliases = new Set((d.model[cfg.table]||[]).map(e => e.sharedRef).filter(Boolean));
@@ -2438,13 +2483,28 @@ async function insertSharedAction(d, table){
     return;
   }
   const opts = available.map(s => {
-    // Pro vazby zobrazíme zdroj → cíl + popisek místo aliasu (přehlednější).
+    // Pro vazby zobrazíme zdroj → cíl + popisek. Aliasy konců přeložíme na
+    // čitelná jména pomocí sdíleného katalogu (případně lokálních prvků,
+    // pokud konce ještě nebyly povýšeny). Typ vazby ukážeme česky.
     if(s.kind === 'comp_relationship'){
-      const arrow = ' → ';
+      const nameOfAlias = (alias) => {
+        if(!alias) return '?';
+        const sh = findShared(alias);
+        if(sh && sh.name) return sh.name;
+        // Fallback: hledat v aktuálním diagramu lokální prvek s tímto aliasem
+        if(d.model){
+          const local = (d.model.components||[]).concat(d.model.interfaces||[])
+            .find(x => effective(x).alias === alias);
+          if(local && effective(local).name) return effective(local).name;
+        }
+        return alias;
+      };
+      // České názvy typů vazeb (mapuje na L.compRelTypeLabel, viz níže).
+      const typeLabel = (L.compRelTypeLabel && L.compRelTypeLabel[s.type]) || s.type || 'vazba';
       const label = s.label ? ': ' + s.label : '';
       return {
         value: s.alias,
-        label: (s.sourceAlias || '?') + arrow + (s.targetAlias || '?') + ' [' + (s.type || 'rel') + ']' + label
+        label: nameOfAlias(s.sourceAlias) + ' → ' + nameOfAlias(s.targetAlias) + ' [' + typeLabel + ']' + label
       };
     }
     return {
@@ -7671,10 +7731,16 @@ function renderModelToolbar(d){
       tb.appendChild(actionBtn(L.tb.group, L.tb.group, ()=>addCompGroup(d)));
       tb.appendChild(actionBtn(L.tb.vazba, L.tb.vazba, ()=>addCompRelationship(d)));
       tb.appendChild(actionBtn(L.tb.note, L.tb.note, ()=>addCompNote(d)));
-      tb.appendChild(actionBtn(L.btn.insertSharedComponent, L.btn.insertSharedComponent, ()=>insertSharedAction(d, 'components')));
-      tb.appendChild(actionBtn(L.btn.insertSharedInterface, L.btn.insertSharedInterface, ()=>insertSharedAction(d, 'interfaces')));
       tb.appendChild(actionBtn(
-        getLang()==='en' ? 'Insert: shared relationship' : 'Vložit: sdílená vazba',
+        getLang()==='en' ? '📦 Insert: shared component' : '📦 Vložit: sdílená komponenta',
+        getLang()==='en' ? 'Pick a component from the project shared catalog.' : 'Vybrat komponentu ze sdíleného katalogu projektu.',
+        ()=>insertSharedAction(d, 'components')));
+      tb.appendChild(actionBtn(
+        getLang()==='en' ? '🔌 Insert: shared interface' : '🔌 Vložit: sdílené rozhraní',
+        getLang()==='en' ? 'Pick an interface from the project shared catalog.' : 'Vybrat rozhraní ze sdíleného katalogu projektu.',
+        ()=>insertSharedAction(d, 'interfaces')));
+      tb.appendChild(actionBtn(
+        getLang()==='en' ? '↔ Insert: shared relationship' : '↔ Vložit: sdílená vazba',
         getLang()==='en' ? 'Pick a shared relationship; missing endpoints are auto-created.' : 'Vybrat sdílenou vazbu z katalogu; chybějící konce se automaticky doplní.',
         ()=>insertSharedAction(d, 'relationships')));
       break;
@@ -8413,8 +8479,11 @@ function renderComponentTree(d, root){
       const sh = findShared(ef.targetAlias);
       toName = (sh && sh.name) ? sh.name : ef.targetAlias;
     } else { toName = nm(r.targetId); }
+    // Typ vazby česky (use → „používá", composition → „obsahuje", …)
+    const effType = ef.type || r.type;
+    const typeLabel = (L.compRelTypeLabel && L.compRelTypeLabel[effType]) || effType || 'vazba';
     const lab = (r.sharedRef ? '🔗 ' : '') +
-      fromName + ' — ' + (ef.type || r.type) + ' → ' + toName +
+      fromName + ' — ' + typeLabel + ' → ' + toName +
       ((ef.label || r.label) ? ' (' + (ef.label || r.label) + ')' : '');
     li.appendChild(treeItem(lab, 'vazba', 'relation', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
