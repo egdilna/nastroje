@@ -8294,6 +8294,10 @@ function renderTools(main) {
         '<strong>🔬 Diagnostika aspektů</strong>' +
         '<span class="meta">Výpis všech aspektů, jejich klíčů, labelů a počtu entit</span>' +
       '</button>' +
+      '<button type="button" class="tool-card" id="tool-orphan-attrs">' +
+        '<strong>🧹 Osiřelé atributy</strong>' +
+        '<span class="meta">Najít atributy, které u entit zbyly po odebraných aspektech, a nabídnout jejich vymazání</span>' +
+      '</button>' +
     '</div>';
   main.querySelectorAll('button[data-tool]').forEach(b => {
     b.onclick = () => setView(b.dataset.tool);
@@ -8301,6 +8305,8 @@ function renderTools(main) {
   // Diagnostika aspektů
   const diagBtn = document.getElementById('tool-aspect-diag');
   if (diagBtn) diagBtn.onclick = () => showAspectDiagnostics();
+  const orphBtn = document.getElementById('tool-orphan-attrs');
+  if (orphBtn) orphBtn.onclick = () => showOrphanAttributesTool();
 }
 
 function showAspectDiagnostics() {
@@ -8343,6 +8349,170 @@ function showAspectDiagnostics() {
     lines.push('  (žádné vlastní aspekty)');
   }
   alertMsg(lines.join('\n'));
+}
+
+// === OSIŘELÉ ATRIBUTY: nástroj pro nalezení a smazání ===
+// Plonkové atributy: hodnoty v entity.attributes pod klíčem, který nepatří k žádnému aspektu
+// dané entity ani k GLOBAL_FIELDS. Custom atributy se NEzahrnují — uživatel je vědomě nastavil.
+// Pro identifikaci custom atributů použijeme heuristiku: pokud klíč NIKDY nepatřil k žádnému
+// známému aspektu (ani předtím), je to s největší pravděpodobností custom — ten necháme být.
+// Ale aspekty se mění a custom aspekty taky, takže nejjistější seznam "známých klíčů" je
+// průnik všech aspektů (vestavěných i custom) napříč entitami.
+function _getAllKnownAttributeKeys() {
+  const keys = new Set();
+  // Vestavěné aspekty
+  Object.keys(ASPECTS).forEach(a => {
+    (ASPECTS[a].fields || []).forEach(f => { if (f.key) keys.add(f.key); });
+  });
+  // Custom aspekty
+  ((db && db.customAspects) || []).forEach(ca => {
+    (ca.fields || []).forEach(f => { if (f.key) keys.add(f.key); });
+  });
+  // Globální
+  (typeof GLOBAL_FIELDS !== 'undefined' ? GLOBAL_FIELDS : []).forEach(f => {
+    if (f.key) keys.add(f.key);
+  });
+  return keys;
+}
+
+// Vrátí seznam záznamů { entity, key, value, valuePreview }
+// pro každý "osiřelý" atribut napříč databází.
+function _findAllOrphanAttributes() {
+  const allKnown = _getAllKnownAttributeKeys();
+  const out = [];
+  (db.entities || []).forEach(e => {
+    if (e.archived) return;
+    if (!e.attributes) return;
+    const validForThis = _fieldKeysForAspects(e.aspects || []);
+    Object.keys(e.attributes).forEach(k => {
+      if (validForThis.has(k)) return; // patří k aspektu této entity – OK
+      // Pokud klíč není ve `allKnown`, je to custom atribut → necháme být.
+      if (!allKnown.has(k)) return;
+      // Klíč je známý systému, ale nepatří k aspektům této entity → osiřelý.
+      const v = e.attributes[k];
+      if (v === null || v === undefined) return;
+      if (typeof v === 'string' && v.trim() === '') return;
+      if (Array.isArray(v) && v.length === 0) return;
+      // Formátovat preview hodnoty
+      let preview;
+      if (Array.isArray(v)) preview = '[' + v.length + ' položek]';
+      else if (typeof v === 'object') preview = '{objekt}';
+      else preview = String(v);
+      if (preview.length > 80) preview = preview.slice(0, 80) + '…';
+      out.push({ entity: e, key: k, value: v, valuePreview: preview });
+    });
+  });
+  return out;
+}
+
+function showOrphanAttributesTool() {
+  const main = document.getElementById('main');
+  if (!main) return;
+  const found = _findAllOrphanAttributes();
+  // Seskupit podle klíče atributu pro přehlednost
+  const byKey = {};
+  found.forEach(rec => {
+    if (!byKey[rec.key]) byKey[rec.key] = [];
+    byKey[rec.key].push(rec);
+  });
+  const keys = Object.keys(byKey).sort((a, b) => byKey[b].length - byKey[a].length);
+  let html = '<h1>🧹 Osiřelé atributy</h1>';
+  html += '<p>Atributy patří k aspektům (Task má <code>deadline</code>, Bookmark má <code>url</code>, ...). ' +
+    'Pokud aspekt z entity odeberete, atributy zůstanou jako „plonkové". Tady jsou všechny takové atributy v databázi.</p>';
+  html += '<p class="meta">Pozor: vlastní (custom) atributy, které jste si sami přidali, jsou ignorovány – nepovažujeme je za osiřelé.</p>';
+  if (found.length === 0) {
+    html += '<p style="background:#e8f5e8;padding:0.7em;border-radius:4px;">✓ Žádné osiřelé atributy nenalezeny.</p>';
+    main.innerHTML = html;
+    return;
+  }
+  html += '<p><strong>Celkem nalezeno:</strong> ' + found.length + ' osiřelých hodnot v ' +
+    (new Set(found.map(r => r.entity.id))).size + ' entitách (' + keys.length + ' různých klíčů).</p>';
+  html += '<div class="btn-group" style="margin:1em 0;">' +
+    '<button type="button" id="orph-delete-all" class="danger">Smazat všechny osiřelé hodnoty (' + found.length + ')</button>' +
+    '<button type="button" id="orph-refresh">Obnovit seznam</button>' +
+    '</div>';
+  html += '<div id="orphans-list">';
+  keys.forEach(k => {
+    const recs = byKey[k];
+    html += '<details open class="section-collapsible" style="margin:0.6em 0;padding:0.5em 0.8em;background:#fafafa;border:1px solid #ddd;border-radius:4px;">';
+    html += '<summary><strong><code>' + escapeHtml(k) + '</code></strong> – ' + recs.length + 'x' +
+      ' <button type="button" data-orph-del-key="' + escapeHtml(k) + '" class="danger" style="margin-left:0.5em;">Smazat všechny (' + recs.length + ')</button>' +
+      '</summary>';
+    html += '<table style="width:100%;margin-top:0.5em;"><thead><tr>' +
+      '<th scope="col">Entita</th>' +
+      '<th scope="col">Aktuální aspekty</th>' +
+      '<th scope="col">Hodnota</th>' +
+      '<th scope="col">Akce</th>' +
+      '</tr></thead><tbody>';
+    recs.forEach(rec => {
+      const asps = (rec.entity.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') || '<em class="meta">žádné</em>';
+      html += '<tr>' +
+        '<td><a href="#" data-entity="' + escapeHtml(rec.entity.id) + '">' + escapeHtml(getDisplayTitle(rec.entity)) + '</a></td>' +
+        '<td>' + asps + '</td>' +
+        '<td><code>' + escapeHtml(rec.valuePreview) + '</code></td>' +
+        '<td><button type="button" class="danger" data-orph-del-one="' + escapeHtml(rec.entity.id) + '|' + escapeHtml(k) + '">Smazat</button></td>' +
+        '</tr>';
+    });
+    html += '</tbody></table></details>';
+  });
+  html += '</div>';
+  main.innerHTML = html;
+
+  // Handlery
+  attachEntityRowHandlers(main);
+  main.querySelectorAll('button[data-orph-del-one]').forEach(b => {
+    b.onclick = () => {
+      const [eid, key] = b.dataset.orphDelOne.split('|');
+      const ent = findEntity(eid);
+      if (!ent || !ent.attributes) return;
+      const v = ent.attributes[key];
+      const preview = (typeof v === 'string' && v.length < 60) ? v : '(hodnota)';
+      confirmDialog('Opravdu smazat atribut „' + key + '" = „' + preview + '" z entity „' + getDisplayTitle(ent) + '"?', () => {
+        delete ent.attributes[key];
+        ent.updated_at = nowIso();
+        save();
+        toast('Atribut smazán.');
+        showOrphanAttributesTool();
+      });
+    };
+  });
+  main.querySelectorAll('button[data-orph-del-key]').forEach(b => {
+    b.onclick = () => {
+      const key = b.dataset.orphDelKey;
+      const recs = byKey[key] || [];
+      confirmDialog('Opravdu smazat všech ' + recs.length + ' osiřelých výskytů atributu „' + key + '"?', () => {
+        let n = 0;
+        recs.forEach(rec => {
+          if (rec.entity.attributes && Object.prototype.hasOwnProperty.call(rec.entity.attributes, key)) {
+            delete rec.entity.attributes[key];
+            rec.entity.updated_at = nowIso();
+            n++;
+          }
+        });
+        save();
+        toast('Smazáno ' + n + ' atributů.');
+        showOrphanAttributesTool();
+      });
+    };
+  });
+  const delAllBtn = document.getElementById('orph-delete-all');
+  if (delAllBtn) delAllBtn.onclick = () => {
+    confirmDialog('Opravdu smazat všech ' + found.length + ' osiřelých atributů napříč databází? Tato akce je nevratná (vzato z aktivních entit; verze entity zůstanou neporušené, pokud existují).', () => {
+      let n = 0;
+      found.forEach(rec => {
+        if (rec.entity.attributes && Object.prototype.hasOwnProperty.call(rec.entity.attributes, rec.key)) {
+          delete rec.entity.attributes[rec.key];
+          rec.entity.updated_at = nowIso();
+          n++;
+        }
+      });
+      save();
+      toast('Smazáno ' + n + ' osiřelých atributů.');
+      showOrphanAttributesTool();
+    });
+  };
+  const refreshBtn = document.getElementById('orph-refresh');
+  if (refreshBtn) refreshBtn.onclick = () => showOrphanAttributesTool();
 }
 
 // ==== POHLED: MOŽNÉ SOUVISLOSTI (on demand) ====
@@ -11958,6 +12128,16 @@ function renderDetailEdit(main, e) {
       const oldAspects = [...(e.aspects || [])];
       e.aspects = [...document.querySelectorAll('#d-aspects input[type="checkbox"]:checked')].map(x => x.value);
       e.updated_at = nowIso();
+      // Vyčistit atributy patřící k aspektům, které byly právě odebrány
+      // (jen ty klíče, které nezůstávají v žádném jiném ponechaném aspektu a nejsou globální).
+      const removedAspects = oldAspects.filter(a => !e.aspects.includes(a));
+      if (removedAspects.length > 0 && typeof _detectFreedAttributeKeys === 'function') {
+        const freed = _detectFreedAttributeKeys(e, removedAspects);
+        if (freed.length > 0) {
+          deleteAttributeKeys(e, freed);
+          toast('Odebráno ' + freed.length + ' ' + (freed.length === 1 ? 'atribut' : (freed.length < 5 ? 'atributy' : 'atributů')) + ' patřících k odebraným aspektům.', 3500);
+        }
+      }
       // Detekce: byl Task právě přidán?
       const taskNewlyAdded = e.aspects.includes('Task') && !oldAspects.includes('Task');
       if (taskNewlyAdded && e.title && (!e.attributes || !e.attributes.deadline)) {
@@ -19224,6 +19404,72 @@ function aspectLabelWithIcon(key) {
 function aspectFields(key) {
   const a = getAspect(key);
   return a ? (a.fields || []) : [];
+}
+
+// Vrátí množinu klíčů, které jsou používány alespoň jedním z aspektů v `aspects`,
+// plus globální klíče (priority, reminder_at).
+function _fieldKeysForAspects(aspects) {
+  const keys = new Set();
+  (aspects || []).forEach(a => {
+    aspectFields(a).forEach(f => { if (f.key) keys.add(f.key); });
+  });
+  (typeof GLOBAL_FIELDS !== 'undefined' ? GLOBAL_FIELDS : []).forEach(f => {
+    if (f.key) keys.add(f.key);
+  });
+  return keys;
+}
+
+// Najde klíče v entity.attributes, které nepatří k žádnému současnému aspektu entity ani nejsou globální,
+// a mají neprázdnou hodnotu. customKeysToKeep = seznam vlastních klíčů, které chceme zachovat (uživatelské custom attrs).
+function findOrphanAttributeKeys(entity, customKeysToKeep) {
+  if (!entity || !entity.attributes) return [];
+  const validKeys = _fieldKeysForAspects(entity.aspects || []);
+  const keep = new Set(customKeysToKeep || []);
+  const orphans = [];
+  Object.keys(entity.attributes).forEach(k => {
+    if (validKeys.has(k)) return;
+    if (keep.has(k)) return;
+    const v = entity.attributes[k];
+    if (v === null || v === undefined) return;
+    if (typeof v === 'string' && v.trim() === '') return;
+    if (Array.isArray(v) && v.length === 0) return;
+    orphans.push(k);
+  });
+  return orphans;
+}
+
+function deleteAttributeKeys(entity, keys) {
+  if (!entity || !entity.attributes || !keys || keys.length === 0) return 0;
+  let n = 0;
+  keys.forEach(k => {
+    if (Object.prototype.hasOwnProperty.call(entity.attributes, k)) {
+      delete entity.attributes[k];
+      n++;
+    }
+  });
+  return n;
+}
+
+// Zjistí klíče, jež se staly osiřelé po odebrání aspektů `removedAspects` (nejsou v žádném zbylém aspektu ani globální).
+function _detectFreedAttributeKeys(entity, removedAspects) {
+  if (!entity || !removedAspects || removedAspects.length === 0) return [];
+  const remainingAspects = (entity.aspects || []).filter(a => !removedAspects.includes(a));
+  const remainingKeys = _fieldKeysForAspects(remainingAspects);
+  const removedKeys = new Set();
+  removedAspects.forEach(a => {
+    aspectFields(a).forEach(f => { if (f.key) removedKeys.add(f.key); });
+  });
+  const freed = [];
+  removedKeys.forEach(k => {
+    if (!remainingKeys.has(k)) {
+      const v = entity.attributes ? entity.attributes[k] : undefined;
+      if (v === null || v === undefined) return;
+      if (typeof v === 'string' && v.trim() === '') return;
+      if (Array.isArray(v) && v.length === 0) return;
+      freed.push(k);
+    }
+  });
+  return freed;
 }
 
 // ==== CUSTOM ASPECTS CRUD ====
