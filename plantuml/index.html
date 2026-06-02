@@ -70,6 +70,21 @@ button:focus{outline:2px solid #f90;outline-offset:1px}
 .tree-filter button:hover{background:#eef;border-color:#1e3a5f}
 .tree-filter button:focus{outline:2px solid #f90;outline-offset:1px}
 .tree-filter button[aria-pressed="true"]{background:#1e3a5f;color:#fff;border-color:#1e3a5f;font-weight:bold}
+.ebnf-builder{border:1px solid #d0d4dc;border-radius:4px;padding:.5em;background:#fafbfc;margin:.5em 0}
+.ebnf-token-row{display:flex;flex-wrap:wrap;align-items:center;gap:.3em;margin:.2em 0;padding:.2em;background:#fff;border:1px solid #e0e4ea;border-radius:3px}
+.ebnf-token-row select{padding:.15em .3em;font-size:.95em}
+.ebnf-token-row input[type=text]{padding:.15em .3em;font-size:.95em;min-width:9em;flex:1 1 8em}
+.ebnf-token-row button{padding:.15em .35em;font-size:.9em;background:#fff;border:1px solid #888;border-radius:3px;cursor:pointer}
+.ebnf-token-row button:hover{background:#eef}
+.ebnf-token-row button:focus{outline:2px solid #f90;outline-offset:1px}
+.ebnf-token-row .ebnf-sep{font-weight:bold;color:#555;padding:0 .3em}
+.ebnf-token-children{border-left:2px solid #b0bec5;margin-left:.5em;padding-left:.4em}
+.ebnf-add-tail select{padding:.2em .4em;font-size:.95em}
+.ebnf-description{padding:.5em;background:#f0f7ff;border-left:3px solid #1e3a5f;border-radius:3px;margin:.3em 0;font-style:italic}
+.preview-dimensions{margin:.5em 0;font-size:.95em;color:#555;font-style:italic}
+.preview-description{margin-top:1em;padding-top:.8em;border-top:1px solid #d0d4dc}
+.preview-description h4{margin:0 0 .4em 0;font-size:1em;color:#1e3a5f}
+.preview-description p{margin:.4em 0;line-height:1.5}
 .crossref-section{margin-top:1em;padding-top:.6em;border-top:1px solid #d0d4dc}
 .crossref-section h4{margin:0 0 .4em 0;font-size:.95em;color:#333}
 .crossref-section ul{list-style:none;margin:0;padding:0}
@@ -2015,6 +2030,15 @@ const SHARED_KINDS = {
   'component.interfaces': { table: 'interfaces', stereotypeField: '',
     sharedFields: ['name','alias'],
     localFields: ['groupId'] },
+  // Component – vazby. Sdílí typ, popisek a aliasy konců (sourceAlias/targetAlias).
+  // Lokální zůstává barva čáry (každý diagram může vazbu zvýraznit jinak).
+  // POZOR: na rozdíl od ostatních sdílení tady „identita" prvku v diagramu
+  // používá sourceId/targetId (lokální), zatímco sdílená definice používá
+  // sourceAlias/targetAlias. Convertor při materializaci v diagramu projde
+  // aliasy v sharedElements / lokálních prvcích a najde si lokální id.
+  'component.relationships': { table: 'relationships', stereotypeField: '',
+    sharedFields: ['sourceAlias','targetAlias','type','label'],
+    localFields: ['color'] },
   // Deployment – uzly (sdílí název, alias, nodeType a stereotype;
   // lokální zůstává parentId a color, které popisují konkrétní umístění
   // v daném diagramu, ne identitu prvku).
@@ -2226,7 +2250,7 @@ function findSharedUsages(alias){
   if(!state.project) return usages;
   (state.project.diagrams || []).forEach(d => {
     const m = d.model || {};
-    ['classes','participants','actors','useCases','tasks','milestones','components','interfaces','nodes'].forEach(table => {
+    ['classes','participants','actors','useCases','tasks','milestones','components','interfaces','nodes','relationships'].forEach(table => {
       (m[table] || []).forEach(e => {
         if(e.sharedRef === alias) usages.push({diagramId:d.id, diagramName:d.name, table, elementId:e.id});
       });
@@ -2251,7 +2275,7 @@ function renameSharedAlias(oldAlias, newAlias){
   if(!state.project || oldAlias === newAlias) return;
   (state.project.diagrams || []).forEach(d => {
     const m = d.model || {};
-    ['classes','participants','actors','useCases','tasks','milestones','components','interfaces','nodes'].forEach(table => {
+    ['classes','participants','actors','useCases','tasks','milestones','components','interfaces','nodes','relationships'].forEach(table => {
       (m[table] || []).forEach(e => {
         if(e.sharedRef === oldAlias) e.sharedRef = newAlias;
       });
@@ -2262,13 +2286,35 @@ function renameSharedAlias(oldAlias, newAlias){
 // Povýší prvek na sdílený: vytvoří záznam v sharedElements a v prvku ponechá
 // jen lokální pole + sharedRef. Vrátí alias nového sdíleného záznamu.
 // `table` určuje konfiguraci (např. 'classes', 'participants', 'actors', 'useCases').
-function promoteToShared(diagramType, elem, table){
+// `d` (volitelné) je diagram — používá se pro speciální případy jako component
+// relationships, kde z lokálních id musíme spočítat sourceAlias/targetAlias.
+function promoteToShared(diagramType, elem, table, d){
   // Pokud table není zadáno, použijeme výchozí podle typu diagramu.
   const cfg = table ? sharedConfig(diagramType, table) : defaultSharedConfig(diagramType);
   if(!cfg) return null;
   state.project.sharedElements = state.project.sharedElements || [];
   const sh = {};
-  cfg.sharedFields.forEach(f => { if(elem[f] !== undefined) sh[f] = elem[f]; });
+  // Speciální případ: component.relationships používá sourceAlias/targetAlias,
+  // které musíme spočítat z lokálních sourceId/targetId přes alias prvku.
+  if(diagramType === 'component' && table === 'relationships' && d){
+    const all = (d.model.components||[]).concat(d.model.interfaces||[]);
+    const aliasOf = id => {
+      const x = all.find(y => y.id === id);
+      if(!x) return null;
+      const ef = effective(x);
+      return ef.alias || null;
+    };
+    sh.sourceAlias = aliasOf(elem.sourceId);
+    sh.targetAlias = aliasOf(elem.targetId);
+    if(!sh.sourceAlias || !sh.targetAlias){
+      // Není možné povýšit vazbu na sdílenou, pokud její konce nemají alias.
+      return null;
+    }
+    if(elem.type) sh.type = elem.type;
+    if(elem.label) sh.label = elem.label;
+  } else {
+    cfg.sharedFields.forEach(f => { if(elem[f] !== undefined) sh[f] = elem[f]; });
+  }
   // Kind určíme podle typu diagramu a tabulky.
   if(diagramType === 'class') sh.kind = elem.stereotype || 'class';
   else if(diagramType === 'sequence') sh.kind = 'participant';
@@ -2277,14 +2323,25 @@ function promoteToShared(diagramType, elem, table){
   else if(diagramType === 'gantt' && (table === 'milestones')) sh.kind = 'gantt_milestone';
   else if(diagramType === 'component' && (table === 'components')) sh.kind = 'comp_' + (elem.stereotype || 'component');
   else if(diagramType === 'component' && (table === 'interfaces')) sh.kind = 'comp_interface';
+  else if(diagramType === 'component' && (table === 'relationships')) sh.kind = 'comp_relationship';
   else if(diagramType === 'deployment' && (table === 'nodes')) sh.kind = 'deploy_' + (elem.nodeType || 'node');
   else sh.kind = 'actor';
-  // Základ aliasu: alias, případně name nebo label
-  sh.alias = uniqueSharedAlias(elem.alias || elem.name || elem.label);
+  // Základ aliasu: pro vazby vytvoříme deterministicky z konců + typu;
+  // pro ostatní z alias/name/label.
+  if(diagramType === 'component' && table === 'relationships'){
+    const base = 'rel_' + sh.sourceAlias + '_' + (sh.type || 'rel') + '_' + sh.targetAlias;
+    sh.alias = uniqueSharedAlias(base);
+  } else {
+    sh.alias = uniqueSharedAlias(elem.alias || elem.name || elem.label);
+  }
   state.project.sharedElements.push(sh);
   // smaž ze sdílených polí v lokálním prvku (zůstanou jen lokální + sharedRef)
   cfg.sharedFields.forEach(f => { if(f !== 'alias') delete elem[f]; });
-  elem.alias = sh.alias;
+  // Pro vazby NEpřepisujeme elem.alias (vazba nemá uživatelský alias na prvku),
+  // jen nastavíme sharedRef.
+  if(!(diagramType === 'component' && table === 'relationships')){
+    elem.alias = sh.alias;
+  }
   elem.sharedRef = sh.alias;
   return sh.alias;
 }
@@ -2307,7 +2364,7 @@ function unshareElement(diagramType, elem, mode, table){
     const alias = elem.sharedRef;
     (state.project.diagrams || []).forEach(d => {
       const m = d.model || {};
-      ['classes','participants','actors','useCases','tasks','milestones','components','interfaces','nodes'].forEach(tbl => {
+      ['classes','participants','actors','useCases','tasks','milestones','components','interfaces','nodes','relationships'].forEach(tbl => {
         (m[tbl] || []).forEach(e => {
           if(e.sharedRef === alias){
             cfg.sharedFields.forEach(f => { if(sh[f] !== undefined) e[f] = deepClone(sh[f]); });
@@ -2370,10 +2427,21 @@ async function insertSharedAction(d, table){
     else status(L.status.allSharedInDiagram, 'error');
     return;
   }
-  const opts = available.map(s => ({
-    value: s.alias,
-    label: (s.name || s.alias) + (s.kind && ['participant','actor','usecase'].indexOf(s.kind)<0 ? ' [' + s.kind + ']' : '')
-  }));
+  const opts = available.map(s => {
+    // Pro vazby zobrazíme zdroj → cíl + popisek místo aliasu (přehlednější).
+    if(s.kind === 'comp_relationship'){
+      const arrow = ' → ';
+      const label = s.label ? ': ' + s.label : '';
+      return {
+        value: s.alias,
+        label: (s.sourceAlias || '?') + arrow + (s.targetAlias || '?') + ' [' + (s.type || 'rel') + ']' + label
+      };
+    }
+    return {
+      value: s.alias,
+      label: (s.name || s.alias) + (s.kind && ['participant','actor','usecase'].indexOf(s.kind)<0 ? ' [' + s.kind + ']' : '')
+    };
+  });
   const choice = await dlgChoice(L.dlg.insertSharedTitle, 'Vyberte prvek ze sdíleného katalogu projektu:', opts, opts[0].value);
   if(!choice) return;
   const sh = findShared(choice.value);
@@ -2386,7 +2454,8 @@ async function insertSharedAction(d, table){
     : cfg.table === 'tasks' ? 'gt'
     : cfg.table === 'milestones' ? 'gm'
     : cfg.table === 'components' ? 'cp'
-    : cfg.table === 'interfaces' ? 'if' : 'x';
+    : cfg.table === 'interfaces' ? 'if'
+    : cfg.table === 'relationships' ? 'cr' : 'x';
   const newId = uid(idPrefix);
   const elem = { id: newId, sharedRef: sh.alias };
   // lokální pole default
@@ -2396,12 +2465,66 @@ async function insertSharedAction(d, table){
   if(cfg.table === 'milestones'){ elem.date = ''; elem.refTaskId = null; elem.refPoint = 'end'; elem.offset = 0; }
   if(cfg.table === 'components'){ elem.groupId = null; elem.color = ''; elem.note = ''; }
   if(cfg.table === 'interfaces'){ elem.groupId = null; }
+  if(cfg.table === 'relationships' && d.type === 'component'){
+    // Vazba: pokud chybí konce v diagramu (komponenta nebo rozhraní s tím
+    // sdíleným aliasem neexistuje), auto-vytvoříme je z aliasu — taktéž
+    // jako sharedRef, aby se přenesly všechny vlastnosti z katalogu.
+    elem.color = '';
+    const addedAliases = [];
+    function ensureEndpoint(alias){
+      if(!alias) return null;
+      const all = (d.model.components||[]).concat(d.model.interfaces||[]);
+      const existing = all.find(x => effective(x).alias === alias);
+      if(existing) return existing.id;
+      // Hledat ve sharedElements aby přidání bylo z plné definice (kind/name)
+      const sharedDef = findShared(alias);
+      if(!sharedDef){
+        // Cíl nebo zdroj neexistuje ani v projektu — nedokážeme dotvořit.
+        return null;
+      }
+      const isInterface = sharedDef.kind === 'comp_interface';
+      const newEndId = uid(isInterface ? 'if' : 'cp');
+      const newEnd = { id: newEndId, sharedRef: alias };
+      if(isInterface){
+        newEnd.groupId = null;
+        d.model.interfaces = d.model.interfaces || [];
+        d.model.interfaces.push(newEnd);
+      } else {
+        newEnd.groupId = null;
+        newEnd.color = '';
+        newEnd.note = '';
+        d.model.components = d.model.components || [];
+        d.model.components.push(newEnd);
+      }
+      addedAliases.push(alias);
+      return newEndId;
+    }
+    const srcId = ensureEndpoint(sh.sourceAlias);
+    const tgtId = ensureEndpoint(sh.targetAlias);
+    if(!srcId || !tgtId){
+      // Některý z konců nelze najít ani vytvořit — vazbu nedáme.
+      status(getLang()==='en'
+        ? 'Cannot insert: one of the endpoints is missing from project shared elements.'
+        : 'Nelze vložit: jeden z konců vazby chybí ve sdílených prvcích projektu.', 'error');
+      return;
+    }
+    elem.sourceId = srcId;
+    elem.targetId = tgtId;
+    if(addedAliases.length){
+      status(getLang()==='en'
+        ? 'Inserted shared relationship and auto-created missing endpoints: ' + addedAliases.join(', ')
+        : 'Vložena sdílená vazba a automaticky doplněny chybějící prvky: ' + addedAliases.join(', '), 'success');
+    }
+  }
   d.model[cfg.table] = d.model[cfg.table] || [];
   d.model[cfg.table].push(elem);
   state.selectedPath = [cfg.table, d.model[cfg.table].length - 1];
   touchDiagram(d);
   renderApp();
-  status(L.status.sharedInserted(sh.name || sh.alias), 'success');
+  // Status už máme nastavený výše pro auto-create case; pro ostatní nastavíme zde
+  if(cfg.table !== 'relationships' || !d.model.relationships) {
+    status(L.status.sharedInserted(sh.name || sh.alias), 'success');
+  }
 }
 
 // === TEXTOVÝ POPIS DIAGRAMU ===================================
@@ -3819,14 +3942,47 @@ function describeComponent(model){
   const compById = {}; rawComponents.forEach((rc,i) => compById[rc.id] = components[i]);
   const ifaceById = {}; rawInterfaces.forEach((ri,i) => ifaceById[ri.id] = interfaces[i]);
   const Q = (s) => isEn ? ('“' + s + '”') : ('„' + s + '"');
+  // Komponenty mohou mít různé stereotypy (database, queue, cloud, node, folder,
+  // frame, file, component). Pro češtinu potřebujeme všechny pády; pro angličtinu
+  // stačí jedno slovo.
+  // 1. pád (nom), 2. pád (gen po „na", „závisí na…"), 7. pád (instr po „s"),
+  // 4. pád (akuz po „obsahuje"), instr forma pro „propojen s".
+  // declCap: tvar pro start věty („Komponenta", „Databáze").
+  const COMP_DECL = {
+    component: {nom:'komponenta', akuz:'komponentu', gen:'komponentě', instr:'komponentou', decl:'Komponenta', en:'component'},
+    database:  {nom:'databáze',   akuz:'databázi',   gen:'databázi',   instr:'databází',    decl:'Databáze',  en:'database'},
+    queue:     {nom:'fronta',     akuz:'frontu',     gen:'frontě',     instr:'frontou',     decl:'Fronta',    en:'queue'},
+    cloud:     {nom:'cloud',      akuz:'cloud',      gen:'cloudu',     instr:'cloudem',     decl:'Cloud',     en:'cloud'},
+    node:      {nom:'uzel',       akuz:'uzel',       gen:'uzlu',       instr:'uzlem',       decl:'Uzel',      en:'node'},
+    folder:    {nom:'složka',     akuz:'složku',     gen:'složce',     instr:'složkou',     decl:'Složka',    en:'folder'},
+    frame:     {nom:'rámec',      akuz:'rámec',      gen:'rámci',      instr:'rámcem',      decl:'Rámec',     en:'frame'},
+    file:      {nom:'soubor',     akuz:'soubor',     gen:'souboru',    instr:'souborem',    decl:'Soubor',    en:'file'}
+  };
+  const IFACE_DECL = {
+    nom:'rozhraní', akuz:'rozhraní', gen:'rozhraní', instr:'rozhraním', decl:'Rozhraní', en:'interface'
+  };
+  function compWord(c){
+    // Stereotyp určuje slovo. Pokud je neznámý nebo prázdný, fallback na „komponenta".
+    return COMP_DECL[c && c.stereotype] || COMP_DECL.component;
+  }
+  // Vrátí info pro vazbu (zdroj/cíl): různé pády podle potřeby.
   const nameOfCs = id => {
-    if(compById[id]) return {kind:'komponenta', word:'komponentu', q:'„'+(compById[id].name||'')+'"'};
-    if(ifaceById[id]) return {kind:'rozhraní', word:'rozhraní', q:'„'+(ifaceById[id].name||'')+'"'};
+    if(compById[id]){
+      const c = compById[id]; const w = compWord(c);
+      return { isInterface:false, nom:w.nom, akuz:w.akuz, gen:w.gen, instr:w.instr, decl:w.decl, q:'„'+(c.name||'')+'"' };
+    }
+    if(ifaceById[id]){
+      const i = ifaceById[id];
+      return { isInterface:true, nom:IFACE_DECL.nom, akuz:IFACE_DECL.akuz, gen:IFACE_DECL.gen, instr:IFACE_DECL.instr, decl:IFACE_DECL.decl, q:'„'+(i.name||'')+'"' };
+    }
     return null;
   };
   const nameOfEn = id => {
-    if(compById[id]) return {kind:'component', q:'“'+(compById[id].name||'')+'”'};
-    if(ifaceById[id]) return {kind:'interface', q:'“'+(ifaceById[id].name||'')+'”'};
+    if(compById[id]){
+      const c = compById[id];
+      return { kind:(COMP_DECL[c.stereotype]||COMP_DECL.component).en, q:'“'+(c.name||'')+'”' };
+    }
+    if(ifaceById[id]) return { kind:'interface', q:'“'+(ifaceById[id].name||'')+'”' };
     return null;
   };
 
@@ -3842,9 +3998,43 @@ function describeComponent(model){
     introText += '.';
     paras.push(introText);
   } else {
+    // V CS rozdělíme komponenty podle stereotypu — uživatel uvidí např.
+    // „2 komponenty, 1 databázi, 1 frontu a 3 rozhraní".
     const introParts = [];
-    if(components.length) introParts.push(components.length + ' ' + plCs(components.length,'komponentu','komponenty','komponent'));
-    if(interfaces.length) introParts.push(interfaces.length + ' ' + plCs(interfaces.length,'rozhraní','rozhraní','rozhraní'));
+    const byStereo = {};
+    components.forEach(c => {
+      const st = c.stereotype || 'component';
+      (byStereo[st] = byStereo[st] || []).push(c);
+    });
+    Object.keys(byStereo).forEach(st => {
+      const w = COMP_DECL[st] || COMP_DECL.component;
+      const n = byStereo[st].length;
+      // Plurál — pro češtinu používáme akuzativ ve formě 1/2-4/5+
+      // (po „obsahuje" je akuzativ).
+      // Komponenta → komponentu/komponenty/komponent
+      // Databáze → databázi/databáze/databází
+      // Cloud → cloud/cloudy/cloudů
+      // Uzel → uzel/uzly/uzlů
+      // Fronta → frontu/fronty/front
+      // Složka → složku/složky/složek
+      // Rámec → rámec/rámce/rámců
+      // Soubor → soubor/soubory/souborů
+      const plMap = {
+        component: ['komponentu','komponenty','komponent'],
+        database:  ['databázi','databáze','databází'],
+        queue:     ['frontu','fronty','front'],
+        cloud:     ['cloud','cloudy','cloudů'],
+        node:      ['uzel','uzly','uzlů'],
+        folder:    ['složku','složky','složek'],
+        frame:     ['rámec','rámce','rámců'],
+        file:      ['soubor','soubory','souborů']
+      };
+      const pl = plMap[st] || plMap.component;
+      introParts.push(n + ' ' + plCs(n, pl[0], pl[1], pl[2]));
+    });
+    if(interfaces.length){
+      introParts.push(interfaces.length + ' ' + plCs(interfaces.length,'rozhraní','rozhraní','rozhraní'));
+    }
     if(!introParts.length) return 'Diagram zatím neobsahuje žádné prvky.';
     let introText = 'Diagram komponent obsahuje ' + joinAndCs(introParts);
     if(groups.length) introText += ', uspořádané do ' + groups.length + ' ' + plCs(groups.length,'skupiny','skupin','skupin');
@@ -3860,10 +4050,14 @@ function describeComponent(model){
   function listElems(comps, ifaces){
     const parts = [];
     if(isEn){
-      comps.forEach(c => parts.push('component ' + Q(c.name||'')));
+      comps.forEach(c => parts.push(((COMP_DECL[c.stereotype]||COMP_DECL.component).en) + ' ' + Q(c.name||'')));
       ifaces.forEach(i => parts.push('interface ' + Q(i.name||'')));
     } else {
-      comps.forEach(c => parts.push('komponentu ' + Q(c.name||'')));
+      // V CS používáme akuzativ („obsahuje komponentu / databázi / …")
+      comps.forEach(c => {
+        const w = compWord(c);
+        parts.push(w.akuz + ' ' + Q(c.name||''));
+      });
       ifaces.forEach(i => parts.push('rozhraní ' + Q(i.name||'')));
     }
     return parts;
@@ -3895,11 +4089,17 @@ function describeComponent(model){
     const sentences = [];
     if(isEn){
       if(groups.length) sentences.push('Outside any group:');
-      rootComps.forEach(c => sentences.push('There is a component ' + Q(c.name||'') + '.'));
+      rootComps.forEach(c => {
+        const w = COMP_DECL[c.stereotype] || COMP_DECL.component;
+        sentences.push('There is a ' + w.en + ' ' + Q(c.name||'') + '.');
+      });
       rootIfaces.forEach(i => sentences.push('There is an interface ' + Q(i.name||'') + '.'));
     } else {
       if(groups.length) sentences.push('Mimo skupiny:');
-      rootComps.forEach(c => sentences.push('Existuje komponenta ' + Q(c.name||'') + '.'));
+      rootComps.forEach(c => {
+        const w = compWord(c);
+        sentences.push('Existuje ' + w.nom + ' ' + Q(c.name||'') + '.');
+      });
       rootIfaces.forEach(i => sentences.push('Existuje rozhraní ' + Q(i.name||'') + '.'));
     }
     paras.push(sentences.join(' '));
@@ -3908,14 +4108,16 @@ function describeComponent(model){
   // VAZBY
   const relSentences = [];
   relationships.forEach(r => {
-    const labelSuffix = r.label ? ' (' + r.label + ')' : '';
+    // Pro sdílené vazby čteme typ a label z effective().
+    const ef = effective(r);
+    const labelSuffix = ef.label ? ' (' + ef.label + ')' : '';
     if(isEn){
       const from = nameOfEn(r.sourceId);
       const to = nameOfEn(r.targetId);
       if(!from || !to) return;
       const fromCap = from.kind.charAt(0).toUpperCase() + from.kind.slice(1);
       let sentence;
-      switch(r.type){
+      switch(ef.type){
         case 'provide':
           sentence = fromCap + ' ' + from.q + ' provides ' + to.kind + ' ' + to.q + labelSuffix + '.';
           break;
@@ -3925,8 +4127,24 @@ function describeComponent(model){
         case 'dependency':
           sentence = fromCap + ' ' + from.q + ' depends on ' + to.kind + ' ' + to.q + labelSuffix + '.';
           break;
+        case 'realization':
+          sentence = fromCap + ' ' + from.q + ' realizes ' + to.kind + ' ' + to.q + labelSuffix + '.';
+          break;
+        case 'inheritance':
+          sentence = fromCap + ' ' + from.q + ' inherits from ' + to.kind + ' ' + to.q + labelSuffix + '.';
+          break;
+        case 'composition':
+          sentence = fromCap + ' ' + from.q + ' is composed of ' + to.kind + ' ' + to.q + labelSuffix + '.';
+          break;
+        case 'aggregation':
+          sentence = fromCap + ' ' + from.q + ' aggregates ' + to.kind + ' ' + to.q + labelSuffix + '.';
+          break;
+        case 'line':
+          sentence = fromCap + ' ' + from.q + ' is linked to ' + to.kind + ' ' + to.q + labelSuffix + '.';
+          break;
+        case 'association':
         default:
-          sentence = fromCap + ' ' + from.q + ' is connected to ' + to.kind + ' ' + to.q + labelSuffix + '.';
+          sentence = fromCap + ' ' + from.q + ' is associated with ' + to.kind + ' ' + to.q + labelSuffix + '.';
           break;
       }
       relSentences.push(sentence);
@@ -3934,20 +4152,55 @@ function describeComponent(model){
       const from = nameOfCs(r.sourceId);
       const to = nameOfCs(r.targetId);
       if(!from || !to) return;
-      const fromCap = from.kind.charAt(0).toUpperCase() + from.kind.slice(1);
+      // 1. pád pro začátek věty: „Databáze", „Komponenta", „Rozhraní"
+      const fromCap = from.decl;
+      // Pomocný adjektivní suffix pro „propojen/-a/-o" podle rodu zdroje.
+      // Ženský (komponenta, databáze, fronta, složka) → -a, střední (rozhraní) → -o,
+      // mužský (cloud, uzel, rámec, soubor) → bez suffixu.
+      function adjSuffix(){
+        const fromName = from.nom;
+        if(fromName === 'rozhraní') return 'o';
+        if(['cloud','uzel','rámec','soubor'].indexOf(fromName) >= 0) return '';
+        return 'a';
+      }
       let sentence;
-      switch(r.type){
+      switch(ef.type){
         case 'provide':
-          sentence = fromCap + ' ' + from.q + ' poskytuje ' + to.word + ' ' + to.q + labelSuffix + '.';
+          // „poskytuje" + akuzativ („databázi", „rozhraní")
+          sentence = fromCap + ' ' + from.q + ' poskytuje ' + to.akuz + ' ' + to.q + labelSuffix + '.';
           break;
         case 'use':
-          sentence = fromCap + ' ' + from.q + ' používá ' + to.word + ' ' + to.q + labelSuffix + '.';
+          // „používá" + akuzativ
+          sentence = fromCap + ' ' + from.q + ' používá ' + to.akuz + ' ' + to.q + labelSuffix + '.';
           break;
         case 'dependency':
-          sentence = fromCap + ' ' + from.q + ' závisí na ' + (to.kind==='komponenta'?'komponentě':'rozhraní') + ' ' + to.q + labelSuffix + '.';
+          // „závisí na" + gen
+          sentence = fromCap + ' ' + from.q + ' závisí na ' + to.gen + ' ' + to.q + labelSuffix + '.';
           break;
+        case 'realization':
+          // „realizuje" + akuzativ (typicky cíl je rozhraní)
+          sentence = fromCap + ' ' + from.q + ' realizuje ' + to.akuz + ' ' + to.q + labelSuffix + '.';
+          break;
+        case 'inheritance':
+          // „dědí od" + gen
+          sentence = fromCap + ' ' + from.q + ' dědí od ' + to.gen + ' ' + to.q + labelSuffix + '.';
+          break;
+        case 'composition':
+          // „obsahuje" + akuzativ (kompozice — silná část-celek)
+          sentence = fromCap + ' ' + from.q + ' obsahuje ' + to.akuz + ' ' + to.q + labelSuffix + '.';
+          break;
+        case 'aggregation':
+          // „agreguje" + akuzativ (slabá část-celek)
+          sentence = fromCap + ' ' + from.q + ' agreguje ' + to.akuz + ' ' + to.q + labelSuffix + '.';
+          break;
+        case 'line':
+          // čára bez specifické sémantiky
+          sentence = fromCap + ' ' + from.q + ' je propojen' + adjSuffix() + ' čarou s ' + to.instr + ' ' + to.q + labelSuffix + '.';
+          break;
+        case 'association':
         default:
-          sentence = fromCap + ' ' + from.q + ' je propojen' + (from.kind==='komponenta'?'a':'o') + ' s ' + (to.kind==='komponenta'?'komponentou':'rozhraním') + ' ' + to.q + labelSuffix + '.';
+          // „je propojen/propojena/propojeno s" + instr
+          sentence = fromCap + ' ' + from.q + ' je propojen' + adjSuffix() + ' s ' + to.instr + ' ' + to.q + labelSuffix + '.';
           break;
       }
       relSentences.push(sentence);
@@ -3967,8 +4220,12 @@ function describeComponent(model){
       let targetKind = null;
       if(nt.attachTo){
         if(compById[nt.attachTo]){
-          targetName = compById[nt.attachTo].name || '';
-          targetKind = isEn ? 'component' : 'komponentě';
+          const c = compById[nt.attachTo];
+          targetName = c.name || '';
+          // V CS „Poznámka u {gen pád}": komponentě/databázi/cloudu/uzlu/složce/rámci/souboru
+          targetKind = isEn
+            ? (COMP_DECL[c.stereotype]||COMP_DECL.component).en
+            : compWord(c).gen;
         } else if(ifaceById[nt.attachTo]){
           targetName = ifaceById[nt.attachTo].name || '';
           targetKind = isEn ? 'interface' : 'rozhraní';
@@ -4544,6 +4801,120 @@ function describeEbnf(model){
   });
   paras.push(sentences.join(' '));
   return paras.join('\n\n');
+}
+
+// Vrátí čtivý popis jednoho EBNF pravidla v přirozeném jazyce.
+// Používá strukturovanou formu r.tokens (nebo ji naparsuje z r.expression).
+// Příklad: pro `digit, {digit}` vrátí
+//   „Pravidlo „number" tvoří digit následované žádným nebo více digit."
+function describeEbnfRule(rule){
+  if(!rule) return '';
+  const isEn = getLang() === 'en';
+  const name = rule.name || (isEn ? 'rule' : 'pravidlo');
+  const tokens = Array.isArray(rule.tokens) && rule.tokens.length
+    ? rule.tokens
+    : ebnfTextToTokens(rule.expression || '');
+  // Pokud je prázdné, řekneme to jednoduše.
+  if(!tokens.length){
+    return isEn
+      ? 'Rule “' + name + '” is empty.'
+      : 'Pravidlo „' + name + '" je prázdné.';
+  }
+  // Pomocné: popis jednoho tokenu.
+  // `gcase`: gramatický pád, ve kterém má token vystupovat. V češtině:
+  //   'nom' (1. pád) — výchozí, např. „pravidlo …", „doslovný text …", „skupina …"
+  //   'gen' (2. pád) — po slově „výskytů" („výskytů pravidla", „výskytů doslovného textu")
+  // V angličtině nemá pád morfologický vliv; vrátíme stejný tvar.
+  function describeToken(t, gcase){
+    gcase = gcase || 'nom';
+    switch(t.type){
+      case 'terminal':
+        if(isEn) return 'the literal text “' + (t.value || '') + '”';
+        if(gcase === 'gen') return 'doslovného textu „' + (t.value || '') + '"';
+        return 'doslovný text „' + (t.value || '') + '"';
+      case 'nonterminal':
+        if(isEn) return 'rule “' + (t.value || '?') + '”';
+        if(gcase === 'gen') return 'pravidla „' + (t.value || '?') + '"';
+        return 'pravidlo „' + (t.value || '?') + '"';
+      case 'group':
+        if(isEn) return 'a group (' + describeSeq(t.children || []) + ')';
+        if(gcase === 'gen') return 'skupiny (' + describeSeq(t.children || []) + ')';
+        return 'skupina (' + describeSeq(t.children || []) + ')';
+      case 'optional':
+        // „volitelně" je adverbium — vnitřek vždy v 1. pádě, sám tvar tokenu se nemění s pádem.
+        if(isEn) return 'optionally ' + describeSeq(t.children || []);
+        return 'volitelně ' + describeSeq(t.children || []);
+      case 'repeat':
+        // „žádný nebo více výskytů" + 2. pád. Vnořený popis dáme v genitivu —
+        // ale jen pro top-level token uvnitř, ne pro alt/concat strukturu hlouběji.
+        if(isEn) return 'zero or more occurrences of ' + describeSeq(t.children || []);
+        return 'žádný nebo více výskytů ' + describeSeq(t.children || [], 'gen');
+      case 'special':
+        if(isEn) return 'a special sequence (' + (t.value || '') + ')';
+        if(gcase === 'gen') return 'speciální sekvence (' + (t.value || '') + ')';
+        return 'speciální sekvence (' + (t.value || '') + ')';
+      case 'raw':
+        if(isEn) return 'raw text “' + (t.value || '') + '”';
+        if(gcase === 'gen') return 'surového textu „' + (t.value || '') + '"';
+        return 'surový text „' + (t.value || '') + '"';
+    }
+    return '';
+  }
+  // Sestaví popis sekvence tokenů — rozsekanou alt/concat operátory.
+  // Strategie: nejdřív rozdělíme tokeny na alt skupiny (oddělené `alt`),
+  // v každé skupině pak na concat sekvence.
+  // `gcase` — pád, ve kterém má sekvence vystupovat (pro vnořené případy
+  // jako „žádný nebo více výskytů …").
+  function describeSeq(toks, gcase){
+    if(!toks || !toks.length) return isEn ? '(empty)' : '(prázdné)';
+    // Rozdělit na alt skupiny
+    const altGroups = [];
+    let cur = [];
+    toks.forEach(t => {
+      if(t.type === 'alt'){ altGroups.push(cur); cur = []; }
+      else cur.push(t);
+    });
+    altGroups.push(cur);
+    const groupDescs = altGroups.map(g => {
+      // Uvnitř skupiny: oddělené concat
+      const concatParts = [];
+      let part = [];
+      g.forEach(t => {
+        if(t.type === 'concat'){ if(part.length) concatParts.push(part); part = []; }
+        else part.push(t);
+      });
+      if(part.length) concatParts.push(part);
+      // Každá concat-část = jeden token nebo víc (víc by neměl být, protože concat se odděluje)
+      const partDescs = concatParts.map(p => {
+        if(p.length === 1) return describeToken(p[0], gcase);
+        // Více tokenů bez explicitního concat — to je nelegální, ale pro robustnost popíšeme jako sekvenci
+        return p.map(t => describeToken(t, gcase)).join(' ' + (isEn ? 'and' : 'a') + ' ');
+      });
+      if(partDescs.length === 1) return partDescs[0];
+      if(partDescs.length === 2){
+        return partDescs[0] + ' ' + (isEn ? 'followed by' : 'následované') + ' ' + partDescs[1];
+      }
+      // Tři a více: spojíme čárkami a poslední „a"
+      const last = partDescs.pop();
+      return partDescs.join(', ') + ', ' + (isEn ? 'and then' : 'a poté') + ' ' + last;
+    });
+    if(groupDescs.length === 1) return groupDescs[0];
+    if(groupDescs.length === 2){
+      return groupDescs[0] + ' ' + (isEn ? 'or' : 'nebo') + ' ' + groupDescs[1];
+    }
+    const last = groupDescs.pop();
+    return groupDescs.join(', ') + ', ' + (isEn ? 'or' : 'nebo') + ' ' + last;
+  }
+  const body = describeSeq(tokens);
+  let out = isEn
+    ? 'Rule “' + name + '” consists of ' + body + '.'
+    : 'Pravidlo „' + name + '" tvoří ' + body + '.';
+  if(rule.comment){
+    out += isEn
+      ? ' Comment: ' + rule.comment + '.'
+      : ' Poznámka: ' + rule.comment + '.';
+  }
+  return out;
 }
 function countEbnfElements(model){
   return { rules:(model.rules||[]).length };
@@ -5516,21 +5887,46 @@ function genComponent(model){
   (ifaceByGroup['__root__']||[]).forEach(i => emitInterface(i, 0));
   if(components.length || interfaces.length) out.push('');
 
-  // Vazby
+  // Vazby — pokud je vazba sdílená, sourceId/targetId neexistují v sdíleném
+  // záznamu (tam jsou jen sourceAlias/targetAlias). Pro vykreslení potřebujeme
+  // lokální id v diagramu. Vyhledáme je přes aliasToId mapu.
+  const aliasToLocalId = {};
+  ([].concat(model.components||[], model.interfaces||[])).forEach(x => {
+    const ef = effective(x);
+    if(ef.alias) aliasToLocalId[ef.alias] = x.id;
+  });
   relationships.forEach(r => {
-    const from = aliasOf[r.sourceId];
-    const to = aliasOf[r.targetId];
-    if(!from || !to) return;
-    let arrow;
-    switch(r.type){
-      case 'provide': arrow = '-'; break;          // poskytuje rozhraní (čára)
-      case 'use': arrow = '..>'; break;            // používá/vyžaduje (přerušovaná šipka)
-      case 'dependency': arrow = '..>'; break;
-      default: arrow = '-->';
+    const ef = effective(r);
+    let sourceId = r.sourceId, targetId = r.targetId;
+    if(r.sharedRef){
+      // Vazba je sdílená — najdeme lokální id přes alias konců.
+      sourceId = aliasToLocalId[ef.sourceAlias] || null;
+      targetId = aliasToLocalId[ef.targetAlias] || null;
     }
+    const from = sourceId && aliasOf[sourceId];
+    const to = targetId && aliasOf[targetId];
+    if(!from || !to) return;
+    // Mapování typů vazeb na PlantUML šipky/čáry. Component diagram podporuje
+    // (kromě výchozí asociace) ještě UML vztahy z class diagramu — proto zde
+    // máme i kompozici, agregaci, dědičnost a realizaci. Source: PlantUML docs
+    // (https://plantuml.com/component-diagram a https://plantuml.com/commons).
+    let arrow;
+    switch(ef.type){
+      case 'provide':       arrow = '-';      break;  // poskytuje rozhraní (čára bez šipky)
+      case 'use':           arrow = '..>';    break;  // používá / vyžaduje (přerušovaná šipka)
+      case 'dependency':    arrow = '..>';    break;  // závislost — totožná šipka jako use
+      case 'realization':   arrow = '..|>';   break;  // realizace rozhraní (přeruš. dědičnost)
+      case 'inheritance':   arrow = '--|>';   break;  // dědičnost / extension
+      case 'composition':   arrow = '*--';    break;  // kompozice (silná část-celek)
+      case 'aggregation':   arrow = 'o--';    break;  // agregace (slabá část-celek)
+      case 'line':          arrow = '--';     break;  // čára bez šipky (volné spojení)
+      case 'association':   arrow = '-->';    break;  // asociace s plnou šipkou
+      default:              arrow = '-->';   // fallback (zachovává starou výchozí hodnotu)
+    }
+    // Barva čáry zůstává lokální (r.color), ne ze sdíleného záznamu.
     if(r.color) arrow = applyArrowColor(arrow, r.color);
     let line = from + ' ' + arrow + ' ' + to;
-    if(r.label) line += ' : ' + r.label;
+    if(ef.label) line += ' : ' + ef.label;
     out.push(line);
   });
   // Samostatné poznámky (volně plovoucí). attachTo = id komponenty nebo rozhraní.
@@ -6780,29 +7176,101 @@ async function renderPreviewInline(){
   if(!d){ clear(target); target.appendChild(el('p',{class:'muted'},'Žádný diagram není otevřen.')); return; }
   clear(target);
   target.appendChild(el('p',{class:'muted'},'Načítám…'));
+  const isEn = getLang() === 'en';
   try {
     const src = generatePuml(d);
-    const url = plantUmlUrl(src, 'svg');
-    const resp = await fetch(url);
-    if(!resp.ok){ throw new Error('HTTP ' + resp.status); }
-    const svgText = await resp.text();
+    // PNG raster s rozměry — pro inline náhled chceme obrázkový výstup,
+    // u kterého má smysl uvádět pixelové rozměry.
+    const pngUrl = plantUmlUrl(src, 'png');
     clear(target);
-    // Vložení SVG jako DOM elementu (parse přes DOMParser, ne innerHTML –
-    // držíme přístupnost a kontrolu).
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(svgText, 'image/svg+xml');
-    const svg = doc.documentElement;
-    if(svg && svg.tagName.toLowerCase() === 'svg'){
-      // Klon přes importNode, aby patřil našemu dokumentu.
-      target.appendChild(document.importNode(svg, true));
-    } else {
-      target.appendChild(el('p',{class:'warn'},'Server vrátil neočekávaný obsah.'));
-    }
+    const img = document.createElement('img');
+    img.src = pngUrl;
+    img.alt = (isEn ? 'PlantUML diagram preview: ' : 'Náhled diagramu PlantUML: ') + (d.name || 'Diagram');
+    img.style.maxWidth = '100%';
+    img.style.height = 'auto';
+    img.style.display = 'block';
+    target.appendChild(img);
+    // Pod obrázek doplníme rozměry — měříme přes naturalWidth/Height po načtení.
+    const dimsP = el('p', { class:'preview-dimensions', 'aria-live':'polite' }, isEn ? 'Loading…' : 'Načítám…');
+    target.appendChild(dimsP);
+    img.addEventListener('load', () => {
+      if(img.naturalWidth > 0 && img.naturalHeight > 0){
+        dimsP.textContent = (isEn ? 'Size: ' : 'Velikost: ') +
+          img.naturalWidth + ' × ' + img.naturalHeight + ' px';
+      } else {
+        dimsP.textContent = isEn ? '(unknown dimensions)' : '(neznámé rozměry)';
+      }
+    });
+    img.addEventListener('error', () => {
+      dimsP.textContent = isEn ? 'Failed to load image.' : 'Načtení obrázku selhalo.';
+      dimsP.classList.add('warn');
+    });
   } catch(e){
     clear(target);
     target.appendChild(el('p',{class:'warn'},'Náhled se nepodařilo načíst: ' + e.message));
     debug('renderPreviewInline', e.message);
   }
+}
+
+// Vrátí rozměry SVG (přečte width/height atributy, případně z viewBox).
+// Hodnoty jsou zaokrouhlené na celé pixely; pro non-pixel jednotky se pokusí
+// extrahovat číslo a vrátit jak je (uživatel uvidí jednotku).
+function readSvgDimensions(svgEl){
+  if(!svgEl) return null;
+  let w = svgEl.getAttribute('width');
+  let h = svgEl.getAttribute('height');
+  if(w && h){
+    // Pokud jsou bez jednotky nebo s 'px', převedeme na číslo.
+    const wn = parseFloat(w);
+    const hn = parseFloat(h);
+    if(!isNaN(wn) && !isNaN(hn)){
+      return { w: Math.round(wn), h: Math.round(hn) };
+    }
+    return { w: w, h: h };
+  }
+  // Fallback: viewBox = "x y w h"
+  const vb = svgEl.getAttribute('viewBox');
+  if(vb){
+    const parts = vb.trim().split(/\s+/);
+    if(parts.length === 4){
+      const wn = parseFloat(parts[2]);
+      const hn = parseFloat(parts[3]);
+      if(!isNaN(wn) && !isNaN(hn)){
+        return { w: Math.round(wn), h: Math.round(hn) };
+      }
+    }
+  }
+  return null;
+}
+
+// Vrátí textový popis aktivního diagramu — wraps describeXxx for the given type.
+// Pokud diagram nemá popis, vrátí prázdný řetězec.
+function describeDiagram(d){
+  if(!d || !d.model) return '';
+  switch(d.type){
+    case 'activity':   return describeActivity(d.model);
+    case 'class':      return describeClass(d.model);
+    case 'sequence':   {
+      // sequence vrací blocks → musíme převést na text
+      const blocks = describeSequenceBlocks(d.model);
+      if(typeof blocksToPlainText === 'function') return blocksToPlainText(blocks);
+      // fallback: jen text z blocks
+      if(Array.isArray(blocks)){
+        return blocks.map(b => (b && b.text) || '').filter(Boolean).join('\n\n');
+      }
+      return '';
+    }
+    case 'usecase':    return describeUseCase(d.model);
+    case 'state':      return describeState(d.model);
+    case 'component':  return describeComponent(d.model);
+    case 'deployment': return describeDeployment(d.model);
+    case 'network':    return describeNetwork(d.model);
+    case 'gantt':      return describeGantt(d.model);
+    case 'timeline':   return describeTimeline(d.model);
+    case 'ebnf':       return describeEbnf(d.model);
+    case 'timing':     return describeTiming(d.model);
+  }
+  return '';
 }
 
 function pathEqual(a, b){
@@ -7195,6 +7663,10 @@ function renderModelToolbar(d){
       tb.appendChild(actionBtn(L.tb.note, L.tb.note, ()=>addCompNote(d)));
       tb.appendChild(actionBtn(L.btn.insertSharedComponent, L.btn.insertSharedComponent, ()=>insertSharedAction(d, 'components')));
       tb.appendChild(actionBtn(L.btn.insertSharedInterface, L.btn.insertSharedInterface, ()=>insertSharedAction(d, 'interfaces')));
+      tb.appendChild(actionBtn(
+        getLang()==='en' ? 'Insert: shared relationship' : 'Vložit: sdílená vazba',
+        getLang()==='en' ? 'Pick a shared relationship; missing endpoints are auto-created.' : 'Vybrat sdílenou vazbu z katalogu; chybějící konce se automaticky doplní.',
+        ()=>insertSharedAction(d, 'relationships')));
       break;
     case 'deployment':
       // Klíčové typy přímo v toolbaru. Pro zbylé použijte „Další uzel…",
@@ -7496,8 +7968,7 @@ function renderClassTree(d, root){
       ()=>{ state.selectedPath = path; renderApp(); },
       [actionBtn('↑', 'Posunout vztah nahoru', ()=>moveModelItem(d, 'relationships', idx, -1)),
        actionBtn('↓', 'Posunout vztah dolů', ()=>moveModelItem(d, 'relationships', idx, 1)),
-       actionBtn('×', 'Smazat vztah', ()=>deleteRelationship(d, r.id))],
-      makeDoneInfo(d, r.id)));
+       actionBtn('×', 'Smazat vztah', ()=>deleteRelationship(d, r.id))]));
     rul.appendChild(li);
   });
   if(!(m.relationships||[]).length) rs.appendChild(el('p',{class:'empty'},'Žádné vztahy.'));
@@ -7769,8 +8240,7 @@ function renderUseCaseTree(d, root){
       ()=>{ state.selectedPath = path; renderApp(); },
       [actionBtn('↑', 'Posunout vztah nahoru', ()=>moveModelItem(d, 'relationships', idx, -1)),
        actionBtn('↓', 'Posunout vztah dolů', ()=>moveModelItem(d, 'relationships', idx, 1)),
-       actionBtn('×', 'Smazat vztah', ()=>deleteUcRelationship(d, r.id))],
-      makeDoneInfo(d, r.id)));
+       actionBtn('×', 'Smazat vztah', ()=>deleteUcRelationship(d, r.id))]));
     rul.appendChild(li);
   });
   if(!(m.relationships||[]).length) rs.appendChild(el('p',{class:'empty'},'Žádné vztahy.'));
@@ -7830,8 +8300,7 @@ function renderStateTree(d, root){
       ()=>{ state.selectedPath = path; renderApp(); },
       [actionBtn('↑', 'Posunout přechod nahoru', ()=>moveModelItem(d, 'transitions', idx, -1)),
        actionBtn('↓', 'Posunout přechod dolů', ()=>moveModelItem(d, 'transitions', idx, 1)),
-       actionBtn('×', 'Smazat přechod', ()=>deleteTransition(d, idx))],
-      makeDoneInfo(d, t.id)));
+       actionBtn('×', 'Smazat přechod', ()=>deleteTransition(d, idx))]));
     tul.appendChild(li);
   });
   if(!(m.transitions||[]).length) ts.appendChild(el('p',{class:'empty'},'Žádné přechody.'));
@@ -7922,13 +8391,26 @@ function renderComponentTree(d, root){
     const li = el('li');
     const path = ['relationships', idx];
     const isSel = pathEqual(state.selectedPath, path);
-    const lab = nm(r.sourceId) + ' — ' + r.type + ' → ' + nm(r.targetId) + (r.label?' ('+r.label+')':'');
+    const ef = effective(r);
+    // Pro sdílenou vazbu zobrazíme jména konců přes sdílené aliasy
+    // (aby uživatel viděl i vazby, jejichž konce ještě nejsou v diagramu).
+    let fromName, toName;
+    if(r.sharedRef && ef.sourceAlias){
+      const sh = findShared(ef.sourceAlias);
+      fromName = (sh && sh.name) ? sh.name : ef.sourceAlias;
+    } else { fromName = nm(r.sourceId); }
+    if(r.sharedRef && ef.targetAlias){
+      const sh = findShared(ef.targetAlias);
+      toName = (sh && sh.name) ? sh.name : ef.targetAlias;
+    } else { toName = nm(r.targetId); }
+    const lab = (r.sharedRef ? '🔗 ' : '') +
+      fromName + ' — ' + (ef.type || r.type) + ' → ' + toName +
+      ((ef.label || r.label) ? ' (' + (ef.label || r.label) + ')' : '');
     li.appendChild(treeItem(lab, 'vazba', 'relation', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
       [actionBtn('↑', 'Posunout vazbu nahoru', ()=>moveModelItem(d, 'relationships', idx, -1)),
        actionBtn('↓', 'Posunout vazbu dolů', ()=>moveModelItem(d, 'relationships', idx, 1)),
-       actionBtn('×', 'Smazat vazbu', ()=>deleteCompRelationship(d, r.id))],
-      makeDoneInfo(d, r.id)));
+       actionBtn('×', 'Smazat vazbu', ()=>deleteCompRelationship(d, r.id))]));
     rul.appendChild(li);
   });
   if(!(m.relationships||[]).length) rs.appendChild(el('p',{class:'empty'},'Žádné vazby.'));
@@ -7996,8 +8478,7 @@ function renderDeploymentTree(d, root){
       ()=>{ state.selectedPath = path; renderApp(); },
       [actionBtn('↑', 'Posunout propojení nahoru', ()=>moveModelItem(d, 'relationships', idx, -1)),
        actionBtn('↓', 'Posunout propojení dolů', ()=>moveModelItem(d, 'relationships', idx, 1)),
-       actionBtn('×', 'Smazat propojení', ()=>deleteDeployLink(d, r.id))],
-      makeDoneInfo(d, r.id)));
+       actionBtn('×', 'Smazat propojení', ()=>deleteDeployLink(d, r.id))]));
     rul.appendChild(li);
   });
   if(!(m.relationships||[]).length) rs.appendChild(el('p',{class:'empty'},'Žádná propojení.'));
@@ -8075,8 +8556,7 @@ function renderNetworkTree(d, root){
     const isSel = pathEqual(state.selectedPath, path);
     li.appendChild(treeItem((l.from||'?')+' — '+(l.to||'?'), 'propojení', 'relation', isSel,
       ()=>{ state.selectedPath = path; renderApp(); },
-      [actionBtn('×', 'Smazat propojení', ()=>deletePeerLink(d, idx))],
-      makeDoneInfo(d, l.id)));
+      [actionBtn('×', 'Smazat propojení', ()=>deletePeerLink(d, idx))]));
     pul.appendChild(li);
   });
   if(!(m.peerLinks||[]).length) ps.appendChild(el('p',{class:'empty'},'Žádná přímá propojení.'));
@@ -8560,7 +9040,7 @@ function renderSharingSection(diagramType, d, elem, root, table){
     isShared,
     async (checked) => {
       if(checked){
-        promoteToShared(diagramType, elem, cfg.table);
+        promoteToShared(diagramType, elem, cfg.table, d);
         touchDiagram(d); renderApp();
         status(L.status.sharedPromoted, 'success');
       } else {
@@ -9494,20 +9974,78 @@ function renderComponentDetail(d, root){
   } else if(path[0] === 'relationships'){
     const r = m.relationships[path[1]];
     if(!r){ root.appendChild(el('p',{class:'no-selection'},'Vazba neexistuje.')); return; }
-    root.appendChild(el('h4',null,'Vazba'));
-    const ends = (m.components||[]).map(c=>({value:c.id,label: L.compEndPrefix.component + ' ' + L.fn.nameOr(effective(c).name)}))
-      .concat((m.interfaces||[]).map(i=>({value:i.id,label: L.compEndPrefix.interface + ' ' + L.fn.nameOr(effective(i).name)})));
-    root.appendChild(field(L.field.source, selectField(r.sourceId||'', ends, v=>{r.sourceId=v;softTouch(d);}, 'crSrc')));
-    root.appendChild(field(L.field.target, selectField(r.targetId||'', ends, v=>{r.targetId=v;softTouch(d);}, 'crTgt')));
-    root.appendChild(field(L.field.vazbaType,
-      selectField(r.type||'use',
-        [{value:'use',label:'používá / vyžaduje (přerušovaná šipka)'},
-         {value:'provide',label:'poskytuje (plná čára)'},
-         {value:'dependency',label:'závislost'},
-         {value:'association',label:'asociace (plná šipka)'}],
-        v=>{r.type=v;softTouch(d);}, 'crType')));
-    root.appendChild(field('Popisek:', inputText(r.label||'', v=>{r.label=v;softTouch(d);}, 'crLabel')));
-    root.appendChild(colorField('Barva čáry:', r.color||'', v=>{r.color=v;softTouch(d);}, 'crColor', 'Volitelné.'));
+    // Sdílení vazby s ostatními diagramy
+    renderSharingSection('component', d, r, root, 'relationships');
+    const shared = !!r.sharedRef && !!findShared(r.sharedRef);
+    const editTarget = shared ? (findShared(r.sharedRef) || r) : r;
+    root.appendChild(el('h4',null, shared ? 'Sdílená vazba (definice pro celý projekt)' : 'Vazba'));
+    if(shared){
+      // U sdílené vazby editujeme aliasy konců (referují na sdílené prvky v projektu)
+      const allShared = (state.project.sharedElements||[]).filter(s =>
+        s.kind === 'comp_interface' || (s.kind && s.kind.indexOf('comp_') === 0 && s.kind !== 'comp_relationship'));
+      const aliasOpts = allShared.map(s => ({
+        value: s.alias,
+        label: (s.name || s.alias) + ' [' + (s.kind === 'comp_interface' ? 'rozhraní' : 'komponenta') + ']'
+      }));
+      // Dovolíme i aliasy lokálních prvků v tomto diagramu (které ale teprve mohou
+      // být povýšeny později) — pomohou uživateli, který má prvky jen lokálně.
+      const localAll = (m.components||[]).concat(m.interfaces||[]);
+      localAll.forEach(x => {
+        const ef = effective(x);
+        if(ef.alias && !aliasOpts.find(o => o.value === ef.alias)){
+          aliasOpts.push({ value: ef.alias, label: L.fn.nameOr(ef.name) + ' [lokální]' });
+        }
+      });
+      root.appendChild(field(
+        getLang()==='en' ? 'Source alias:' : 'Zdroj (alias):',
+        selectField(editTarget.sourceAlias||'',
+          [{value:'',label: L.fn.pickOne}].concat(aliasOpts),
+          v=>{editTarget.sourceAlias=v;state.project.modified=nowIso();softTouch(d);}, 'crSrcA'),
+        getLang()==='en'
+          ? 'Refers to a shared component/interface by alias. Selecting a missing alias does not auto-create the endpoint here — use "Insert: shared relationship" from the toolbar.'
+          : 'Odkazuje na sdílenou komponentu/rozhraní podle aliasu. Pokud cílový prvek v diagramu chybí, použijte z toolbaru „Vložit: sdílená vazba" — to chybějící konce automaticky doplní.'));
+      root.appendChild(field(
+        getLang()==='en' ? 'Target alias:' : 'Cíl (alias):',
+        selectField(editTarget.targetAlias||'',
+          [{value:'',label: L.fn.pickOne}].concat(aliasOpts),
+          v=>{editTarget.targetAlias=v;state.project.modified=nowIso();softTouch(d);}, 'crTgtA')));
+      root.appendChild(field(L.field.vazbaType,
+        selectField(editTarget.type||'use',
+          [{value:'use',         label:'používá / vyžaduje (..>) — přerušovaná šipka'},
+           {value:'provide',     label:'poskytuje (-) — čára bez šipky'},
+           {value:'dependency',  label:'závislost (..>) — přerušovaná šipka'},
+           {value:'association', label:'asociace (-->) — plná šipka'},
+           {value:'realization', label:'realizace rozhraní (..|>) — implementuje'},
+           {value:'inheritance', label:'dědičnost (--|>) — extension'},
+           {value:'composition', label:'kompozice (*--) — silná část-celek'},
+           {value:'aggregation', label:'agregace (o--) — slabá část-celek'},
+           {value:'line',        label:'čára (--) — bez šipky'}],
+          v=>{editTarget.type=v;state.project.modified=nowIso();softTouch(d);}, 'crType')));
+      root.appendChild(field('Popisek:',
+        inputText(editTarget.label||'',
+          v=>{editTarget.label=v;state.project.modified=nowIso();softTouch(d);}, 'crLabel')));
+      root.appendChild(el('h4', null, 'Lokální v tomto diagramu'));
+      root.appendChild(colorField('Barva čáry:', r.color||'', v=>{r.color=v;softTouch(d);}, 'crColor', 'Volitelné.'));
+    } else {
+      const ends = (m.components||[]).map(c=>({value:c.id,label: L.compEndPrefix.component + ' ' + L.fn.nameOr(effective(c).name)}))
+        .concat((m.interfaces||[]).map(i=>({value:i.id,label: L.compEndPrefix.interface + ' ' + L.fn.nameOr(effective(i).name)})));
+      root.appendChild(field(L.field.source, selectField(r.sourceId||'', ends, v=>{r.sourceId=v;softTouch(d);}, 'crSrc')));
+      root.appendChild(field(L.field.target, selectField(r.targetId||'', ends, v=>{r.targetId=v;softTouch(d);}, 'crTgt')));
+      root.appendChild(field(L.field.vazbaType,
+        selectField(r.type||'use',
+          [{value:'use',         label:'používá / vyžaduje (..>) — přerušovaná šipka'},
+           {value:'provide',     label:'poskytuje (-) — čára bez šipky'},
+           {value:'dependency',  label:'závislost (..>) — přerušovaná šipka'},
+           {value:'association', label:'asociace (-->) — plná šipka'},
+           {value:'realization', label:'realizace rozhraní (..|>) — implementuje'},
+           {value:'inheritance', label:'dědičnost (--|>) — extension'},
+           {value:'composition', label:'kompozice (*--) — silná část-celek'},
+           {value:'aggregation', label:'agregace (o--) — slabá část-celek'},
+           {value:'line',        label:'čára (--) — bez šipky'}],
+          v=>{r.type=v;softTouch(d);}, 'crType')));
+      root.appendChild(field('Popisek:', inputText(r.label||'', v=>{r.label=v;softTouch(d);}, 'crLabel')));
+      root.appendChild(colorField('Barva čáry:', r.color||'', v=>{r.color=v;softTouch(d);}, 'crColor', 'Volitelné.'));
+    }
   } else if(path[0] === 'notes'){
     const nt = (m.notes||[])[path[1]];
     if(!nt){ root.appendChild(el('p',{class:'no-selection'}, L.section.notesEmptyItem)); return; }
@@ -9804,7 +10342,7 @@ function renderGanttTree(d, root){
       [actionBtn('↑', 'Posunout milník nahoru', ()=>moveModelItem(d, 'milestones', idx, -1)),
        actionBtn('↓', 'Posunout milník dolů', ()=>moveModelItem(d, 'milestones', idx, 1)),
        actionBtn('×', 'Smazat milník', ()=>deleteGanttMilestone(d, mlst.id))],
-      makeDoneInfo(d, ml.id)));
+      makeDoneInfo(d, mlst.id)));
     mul.appendChild(li);
   });
   if(!(m.milestones||[]).length) ms.appendChild(el('p',{class:'empty'},'Žádné milníky.'));
@@ -10094,31 +10632,424 @@ function renderEbnfTree(d, root){
 }
 
 // === DETAIL: EBNF ============================================
+//
+// Detail pravidla obsahuje dvě komplementární UI:
+//
+//   1) Klikací stavebnice (token builder) — uživatel skládá pravou stranu
+//      pravidla z bloků: terminál ("text"), nonterminál (odkaz), alternativa,
+//      konkatenace, skupina, volitelná část, opakování, speciální sekvence.
+//      Každý token má vlastní řádek s tlačítky pro úpravu, smazání, vnoření.
+//      Po každé změně stavebnice se přepočítá textový výraz (r.expression).
+//
+//   2) Textový výraz (textarea) — alternativní pohled, fallback pro pokročilé
+//      uživatele. Když uživatel cokoli změní v textu, stavebnice se přerenderuje
+//      z výrazu (parser pokusem; pokud selže, ponechá výraz beze změny a
+//      stavebnice se zobrazí jako jediný „raw" token).
+//
+// Datový model pravidla:
+//   {
+//     id, name, comment,
+//     expression: 'digit, {digit}',     // textová forma — kanonická
+//     tokens?: [ { type, value, children?, alias? } ]  // strukturovaná forma — optimistická
+//   }
+//
+// Pokud `tokens` chybí, parsujeme z `expression`. Při uložení vždy aktualizujeme
+// obě formy. PlantUML čte jen `expression`.
+
+// Typy tokenů a jejich textová serializace.
+const EBNF_TOKEN_TYPES = [
+  { type:'terminal',    label:'Terminál',          short:'"…"',    en:'Terminal' },
+  { type:'nonterminal', label:'Pravidlo (odkaz)',  short:'odkaz',  en:'Nonterminal' },
+  { type:'group',       label:'Skupina ( … )',     short:'( )',    en:'Group' },
+  { type:'optional',    label:'Volitelně [ … ]',   short:'[ ]',    en:'Optional' },
+  { type:'repeat',      label:'Opakování { … }',   short:'{ }',    en:'Repeat (0+)' },
+  { type:'special',     label:'Speciální ? … ?',   short:'? ?',    en:'Special sequence' },
+  { type:'alt',         label:'Alternativa |',     short:'|',      en:'Alternative' },
+  { type:'concat',      label:'Konkatenace ,',     short:',',      en:'Concatenation' },
+  { type:'raw',         label:'Surový text',       short:'text',   en:'Raw text' }
+];
+
+function ebnfTokenLabel(t){
+  if(getLang() === 'en'){
+    const tt = EBNF_TOKEN_TYPES.find(x => x.type === t);
+    return tt ? tt.en : t;
+  }
+  const tt = EBNF_TOKEN_TYPES.find(x => x.type === t);
+  return tt ? tt.label : t;
+}
+
+// Serializuje strukturu tokenů zpět na text. Garantuje rozumný formát.
+// Mezery: před/za | a , vkládáme. Skupiny mají závorky bez vnitřních mezer.
+function ebnfTokensToText(tokens){
+  if(!tokens || !tokens.length) return '';
+  // Nejdřív rozdělíme na sekvence oddělené alt/concat operátory.
+  // Tokeny alt/concat jsou inline separátory — ostatní jsou „výrazy".
+  const parts = [];
+  tokens.forEach(t => {
+    switch(t.type){
+      case 'terminal':    parts.push('"' + (t.value||'').replace(/"/g, '\\"') + '"'); break;
+      case 'nonterminal': parts.push((t.value||'?').replace(/\s+/g, '_')); break;
+      case 'group':       parts.push('(' + ebnfTokensToText(t.children||[]) + ')'); break;
+      case 'optional':    parts.push('[' + ebnfTokensToText(t.children||[]) + ']'); break;
+      case 'repeat':      parts.push('{' + ebnfTokensToText(t.children||[]) + '}'); break;
+      case 'special':     parts.push('? ' + (t.value||'') + ' ?'); break;
+      case 'alt':         parts.push('|'); break;
+      case 'concat':      parts.push(','); break;
+      case 'raw':         parts.push((t.value||'').trim()); break;
+    }
+  });
+  // Spojíme s mezerami; , a | dostanou mezery kolem.
+  let s = '';
+  parts.forEach((p, i) => {
+    if(i > 0){
+      if(p === ',' || p === '|') s += ' ' + p + ' ';
+      else if(parts[i-1] === ',' || parts[i-1] === '|') s += '';  // mezera už je za předchozím
+      else s += ' ';
+    }
+    if(p === ',' || p === '|'){
+      if(i > 0 && (parts[i-1] === ',' || parts[i-1] === '|')) {} // nic — duplikát
+      s += '';
+    } else {
+      s += p;
+    }
+  });
+  // Cleanup: zdvojené mezery, mezery kolem | a ,
+  return s.replace(/\s+/g, ' ').replace(/\s*([|,])\s*/g, ' $1 ').trim();
+}
+
+// Velmi jednoduchý parser textového výrazu na tokeny.
+// Není 100% — používá se jen jako pomocný, primární zdroj je rule.tokens.
+// Pokud parser selže, vrátí jeden token typu 'raw' s celým textem.
+function ebnfTextToTokens(text){
+  if(!text) return [];
+  const src = text.trim().replace(/;\s*$/, '');
+  let i = 0;
+  function parseSeq(endChars){
+    const out = [];
+    while(i < src.length){
+      const c = src[i];
+      if(endChars && endChars.indexOf(c) >= 0) return out;
+      if(/\s/.test(c)){ i++; continue; }
+      if(c === '|'){ out.push({type:'alt'}); i++; continue; }
+      if(c === ','){ out.push({type:'concat'}); i++; continue; }
+      if(c === '('){ i++; const k = parseSeq(')'); i++; out.push({type:'group', children:k}); continue; }
+      if(c === '['){ i++; const k = parseSeq(']'); i++; out.push({type:'optional', children:k}); continue; }
+      if(c === '{'){ i++; const k = parseSeq('}'); i++; out.push({type:'repeat', children:k}); continue; }
+      if(c === '"' || c === "'"){
+        const q = c; i++;
+        let v = '';
+        while(i < src.length && src[i] !== q){ v += src[i]; i++; }
+        if(src[i] === q) i++;
+        out.push({type:'terminal', value:v});
+        continue;
+      }
+      if(c === '?'){
+        i++;
+        let v = '';
+        while(i < src.length && src[i] !== '?'){ v += src[i]; i++; }
+        if(src[i] === '?') i++;
+        out.push({type:'special', value:v.trim()});
+        continue;
+      }
+      // Identifikátor (nonterminál) — slovo z písmen/číslic/podtržítek/teček
+      const m = src.slice(i).match(/^[A-Za-zÀ-ž][A-Za-zÀ-ž0-9_.-]*/);
+      if(m){ out.push({type:'nonterminal', value:m[0]}); i += m[0].length; continue; }
+      // Něco neznámého — surový token
+      out.push({type:'raw', value:c}); i++;
+    }
+    return out;
+  }
+  try {
+    return parseSeq(null);
+  } catch(e){
+    return [{type:'raw', value:text}];
+  }
+}
+
+// Vrátí token tokens[idx] po průchodu cestou path (např. [2, 'children', 0]).
+function ebnfTokenAtPath(tokens, path){
+  let cur = tokens;
+  for(let i=0;i<path.length;i++){
+    if(typeof path[i] === 'number'){ cur = cur[path[i]]; if(!cur) return null; }
+    else { cur = cur[path[i]]; if(!cur) return null; }
+  }
+  return cur;
+}
+
 function renderEbnfDetail(d, root){
   const path = state.selectedPath, m = d.model;
   if(!path || path[0] !== 'rules') return;
   const r = m.rules[path[1]];
   if(!r){ root.appendChild(el('p',{class:'no-selection'},'Pravidlo neexistuje.')); return; }
-  root.appendChild(el('h4',null,'Pravidlo gramatiky'));
+  const isEn = getLang() === 'en';
+
+  root.appendChild(el('h4', null, isEn ? 'Grammar rule' : 'Pravidlo gramatiky'));
   root.appendChild(field(L.field.ruleName,
     inputText(r.name||'', v=>{r.name=v.replace(/\s+/g,'_');softTouch(d);}, 'eName'),
-    'Bez mezer. Vlevo od „=", např. „digit", „identifier".'));
-  root.appendChild(field(L.field.ruleExpression,
-    inputArea(r.expression||'', v=>{r.expression=v;softTouch(d);}, 'eExpr', 3),
-    'Pravá strana pravidla. Metaznaky: | (alternativa), , (zřetězení), [...] (volitelně), {...} (opakování), (...) (skupina), \"…\" nebo \'…\' (terminál), ? … ? (speciální). Středník na konci se doplní automaticky.'));
-  // Pomocné tlačítka pro vkládání metaznaků
-  const helpers = el('div', {style:'margin:.3em 0', role:'group', 'aria-label':'Vložit EBNF metaznak'});
-  const ins = (txt) => {
-    r.expression = (r.expression||'') + txt;
-    softTouch(d); renderApp();
-  };
-  [['| ', L.ebnfHelp.alt],[', ', L.ebnfHelp.concat],['[ ]', L.ebnfHelp.optional],['{ }', L.ebnfHelp.repeat],['( )', L.ebnfHelp.group],['" "', L.ebnfHelp.terminal],['? ?', L.ebnfHelp.special]].forEach(([t,n]) => {
-    helpers.appendChild(el('button', {type:'button', title: L.ebnfHelp.insertPrefix + n, onclick:()=>ins(t)}, t.trim()));
+    isEn
+      ? 'No spaces. Left side of "=", e.g. "digit", "identifier".'
+      : 'Bez mezer. Vlevo od „=", např. „digit", „identifier".'));
+
+  // Pokud `tokens` neexistuje, naparsujeme z expression. Při každé změně se obojí udrží v souladu.
+  if(!Array.isArray(r.tokens)){
+    r.tokens = ebnfTextToTokens(r.expression || '');
+  }
+
+  // Helper pro úpravu tokenu hluboko ve stromu — vrátí pole rodičovských tokenů
+  // (kde token žije) a index. Path: posloupnost indexů, mezi nimi 'children'.
+  // Pro tokens[0].children[1] → path = [0, 1] (uvnitř children skupiny).
+  // Reálně uchováváme path jako pole {parent, idx} kvůli snadnému splice.
+  function syncExpr(){
+    r.expression = ebnfTokensToText(r.tokens);
+    state.project.modified = nowIso();
+    softTouch(d);
+  }
+  function deleteToken(parent, idx){
+    parent.splice(idx, 1);
+    syncExpr();
+    renderApp();
+  }
+  function moveToken(parent, idx, dir){
+    const j = idx + dir;
+    if(j < 0 || j >= parent.length) return;
+    [parent[idx], parent[j]] = [parent[j], parent[idx]];
+    syncExpr();
+    renderApp();
+  }
+  function changeType(token, newType, parent, idx){
+    // Zachovat value pokud má smysl
+    if(newType === 'group' || newType === 'optional' || newType === 'repeat'){
+      if(!token.children){
+        // Pokud token předtím měl `value`, vytvoříme z něj jeden child terminal/nonterminal
+        if(token.value && token.type !== 'alt' && token.type !== 'concat'){
+          token.children = [{ type: token.type === 'terminal' ? 'terminal' : 'nonterminal', value: token.value }];
+        } else {
+          token.children = [];
+        }
+      }
+      delete token.value;
+    } else if(newType === 'alt' || newType === 'concat'){
+      delete token.value; delete token.children;
+    } else {
+      // terminal, nonterminal, special, raw
+      if(!token.value && token.children){
+        // Pokus extrahovat value z prvního dítěte
+        token.value = ebnfTokensToText(token.children);
+      }
+      delete token.children;
+    }
+    token.type = newType;
+    syncExpr();
+    renderApp();
+  }
+  function addTokenAfter(parent, idx, type){
+    const tok = { type };
+    if(type === 'group' || type === 'optional' || type === 'repeat'){ tok.children = []; }
+    else if(type !== 'alt' && type !== 'concat'){ tok.value = ''; }
+    parent.splice(idx+1, 0, tok);
+    syncExpr();
+    renderApp();
+  }
+  function appendToken(parent, type){
+    addTokenAfter(parent, parent.length - 1, type);
+  }
+
+  // === Renderování tokenu ===
+  function renderToken(token, parent, idx, container, depth){
+    const row = el('div', { class:'ebnf-token-row', style:'margin-left:' + (depth * 1.2) + 'em' });
+    // Type select
+    const sel = document.createElement('select');
+    sel.setAttribute('aria-label', isEn ? 'Token type' : 'Typ tokenu');
+    EBNF_TOKEN_TYPES.forEach(tt => {
+      const opt = document.createElement('option');
+      opt.value = tt.type;
+      opt.textContent = (isEn ? tt.en : tt.label);
+      if(token.type === tt.type) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener('change', () => changeType(token, sel.value, parent, idx));
+    row.appendChild(sel);
+    // Value input (terminal, nonterminal, special, raw)
+    if(token.type === 'terminal' || token.type === 'nonterminal' || token.type === 'special' || token.type === 'raw'){
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.value = token.value || '';
+      inp.placeholder = token.type === 'terminal' ? (isEn ? 'Terminal text' : 'Text terminálu')
+        : token.type === 'nonterminal' ? (isEn ? 'Rule name' : 'Název pravidla')
+        : token.type === 'special' ? (isEn ? 'Special sequence' : 'Speciální sekvence')
+        : (isEn ? 'Raw' : 'Surový text');
+      inp.setAttribute('aria-label', ebnfTokenLabel(token.type) + ': '
+        + (isEn ? 'value' : 'hodnota'));
+      // Datalist pro nonterminál — nabídne ostatní pravidla v diagramu
+      if(token.type === 'nonterminal'){
+        const dlid = 'ebnf-rules-' + (m.rules.indexOf(r));
+        let dl = document.getElementById(dlid);
+        if(!dl){
+          dl = document.createElement('datalist');
+          dl.id = dlid;
+          (m.rules||[]).forEach(rr => {
+            if(rr.id === r.id) return;
+            const o = document.createElement('option');
+            o.value = rr.name || '';
+            dl.appendChild(o);
+          });
+          row.appendChild(dl);
+        }
+        inp.setAttribute('list', dlid);
+      }
+      inp.addEventListener('input', () => {
+        token.value = inp.value;
+        // U nonterminál nahradíme mezery podtržítkem
+        if(token.type === 'nonterminal') token.value = token.value.replace(/\s+/g, '_');
+        syncExpr();
+      });
+      row.appendChild(inp);
+    } else if(token.type === 'alt' || token.type === 'concat'){
+      // Separátor — žádné textové pole, jen vizuální symbol
+      const lbl = document.createElement('span');
+      lbl.className = 'ebnf-sep';
+      lbl.textContent = token.type === 'alt' ? ' | ' : ' , ';
+      lbl.setAttribute('aria-hidden', 'true');
+      row.appendChild(lbl);
+    }
+    // Tlačítka: nahoru/dolů/smazat
+    row.appendChild(actionBtn('↑', isEn ? 'Move up' : 'Posunout nahoru',
+      () => moveToken(parent, idx, -1)));
+    row.appendChild(actionBtn('↓', isEn ? 'Move down' : 'Posunout dolů',
+      () => moveToken(parent, idx, 1)));
+    row.appendChild(actionBtn('×', isEn ? 'Delete token' : 'Smazat token',
+      () => deleteToken(parent, idx)));
+    // Tlačítka „přidat za" — rozbalovací menu by bylo lepší, ale jednoduchý select stačí
+    const addWrap = document.createElement('span');
+    addWrap.style.marginLeft = '0.4em';
+    const addSel = document.createElement('select');
+    addSel.setAttribute('aria-label', isEn ? 'Add new token after' : 'Přidat nový token za');
+    const ph = document.createElement('option');
+    ph.value = ''; ph.textContent = isEn ? '+ Add after…' : '+ Přidat za…';
+    addSel.appendChild(ph);
+    EBNF_TOKEN_TYPES.forEach(tt => {
+      const opt = document.createElement('option');
+      opt.value = tt.type;
+      opt.textContent = (isEn ? tt.en : tt.label) + ' (' + tt.short + ')';
+      addSel.appendChild(opt);
+    });
+    addSel.addEventListener('change', () => {
+      if(!addSel.value) return;
+      addTokenAfter(parent, idx, addSel.value);
+    });
+    addWrap.appendChild(addSel);
+    row.appendChild(addWrap);
+    container.appendChild(row);
+    // Pokud má token children, renderujeme je vnořeně
+    if(token.children){
+      const childWrap = el('div', { class:'ebnf-token-children' });
+      if(!token.children.length){
+        const empty = el('div', { style:'margin-left:' + ((depth+1) * 1.2) + 'em; font-style:italic; color:#777;' },
+          isEn ? '(empty — add a token below)' : '(prázdné — přidejte token níže)');
+        childWrap.appendChild(empty);
+        // Tlačítko pro přidání první položky do skupiny
+        const firstAdd = document.createElement('select');
+        firstAdd.style.marginLeft = ((depth+1) * 1.2) + 'em';
+        firstAdd.setAttribute('aria-label', isEn ? 'Add first token into group' : 'Přidat první token do skupiny');
+        const ph2 = document.createElement('option');
+        ph2.value = ''; ph2.textContent = isEn ? '+ Add inside…' : '+ Přidat dovnitř…';
+        firstAdd.appendChild(ph2);
+        EBNF_TOKEN_TYPES.forEach(tt => {
+          const opt = document.createElement('option');
+          opt.value = tt.type;
+          opt.textContent = (isEn ? tt.en : tt.label) + ' (' + tt.short + ')';
+          firstAdd.appendChild(opt);
+        });
+        firstAdd.addEventListener('change', () => {
+          if(!firstAdd.value) return;
+          const tok = { type: firstAdd.value };
+          if(['group','optional','repeat'].indexOf(tok.type) >= 0) tok.children = [];
+          else if(tok.type !== 'alt' && tok.type !== 'concat') tok.value = '';
+          token.children.push(tok);
+          syncExpr();
+          renderApp();
+        });
+        childWrap.appendChild(firstAdd);
+      } else {
+        token.children.forEach((ct, ci) => renderToken(ct, token.children, ci, childWrap, depth + 1));
+      }
+      container.appendChild(childWrap);
+    }
+  }
+
+  // === Stavebnice ===
+  root.appendChild(el('h4', null, isEn ? 'Builder (click-to-edit)' : 'Stavebnice (klikací editor)'));
+  root.appendChild(el('p', { class:'help' },
+    isEn
+      ? 'Compose the rule from blocks. Each row is a token; nested groups appear indented. Changes update the text expression below automatically.'
+      : 'Sestavte pravidlo z bloků. Každý řádek je jeden token; vnořené skupiny jsou odsazené. Změny se promítnou do textového výrazu níže automaticky.'));
+  const builder = el('div', { class:'ebnf-builder', role:'group', 'aria-label': isEn ? 'Rule builder' : 'Stavebnice pravidla' });
+  if(!r.tokens.length){
+    builder.appendChild(el('p', { class:'empty', style:'font-style:italic' },
+      isEn ? '(empty rule — add a token below)' : '(prázdné pravidlo — přidejte první token níže)'));
+  } else {
+    r.tokens.forEach((t, i) => renderToken(t, r.tokens, i, builder, 0));
+  }
+  // Tlačítko pro přidání na konec
+  const tail = el('div', { class:'ebnf-add-tail', style:'margin-top:.5em' });
+  const tailSel = document.createElement('select');
+  tailSel.setAttribute('aria-label', isEn ? 'Add new token at the end' : 'Přidat token na konec');
+  const tph = document.createElement('option');
+  tph.value = ''; tph.textContent = isEn ? '+ Add token at end…' : '+ Přidat token na konec…';
+  tailSel.appendChild(tph);
+  EBNF_TOKEN_TYPES.forEach(tt => {
+    const opt = document.createElement('option');
+    opt.value = tt.type;
+    opt.textContent = (isEn ? tt.en : tt.label) + ' (' + tt.short + ')';
+    tailSel.appendChild(opt);
   });
-  root.appendChild(helpers);
+  tailSel.addEventListener('change', () => {
+    if(!tailSel.value) return;
+    const tok = { type: tailSel.value };
+    if(['group','optional','repeat'].indexOf(tok.type) >= 0) tok.children = [];
+    else if(tok.type !== 'alt' && tok.type !== 'concat') tok.value = '';
+    r.tokens.push(tok);
+    syncExpr();
+    renderApp();
+  });
+  tail.appendChild(tailSel);
+  builder.appendChild(tail);
+  root.appendChild(builder);
+
+  // === Textový výraz (jen ke čtení / fallback pro pokročilé) ===
+  root.appendChild(el('h4', null, isEn ? 'Text expression' : 'Textový výraz'));
+  const exprBox = inputArea(r.expression || '', v => {
+    r.expression = v;
+    // Pokus o reparse — pokud uspěje, aktualizujeme tokens; jinak ponecháme tokens beze změny
+    // a uživatel uvidí výraz mimo synchronizaci až do dalšího pokliku v stavebnici.
+    try {
+      const reparsed = ebnfTextToTokens(v);
+      if(reparsed && reparsed.length){
+        r.tokens = reparsed;
+      }
+    } catch(e){ /* ignore */ }
+    state.project.modified = nowIso();
+    softTouch(d);
+  }, 'eExpr', 3);
+  root.appendChild(field('',  // bez label — heading výše stačí
+    exprBox,
+    isEn
+      ? 'Right-hand side as text. The builder above is the primary editor; this textarea is recomputed automatically. You can edit it manually — it will be re-parsed back into the builder.'
+      : 'Pravá strana pravidla jako text. Hlavní editor je stavebnice výše; toto pole se přepočítává automaticky. Můžete jej editovat ručně — výraz se zpětně naparsuje do stavebnice.'));
+
+  // Srozumitelný textový popis pravidla v přirozeném jazyce — generuje se ze
+  // strukturované formy tokenů a aktualizuje se při každé změně.
+  root.appendChild(el('h4', null, isEn ? 'What it means' : 'Význam pravidla'));
+  const desc = describeEbnfRule(r);
+  const descBox = el('p', { class:'ebnf-description', 'aria-live':'polite' }, desc);
+  root.appendChild(descBox);
+
+  // === Komentář ===
   root.appendChild(field(L.field.ruleComment,
     inputText(r.comment||'', v=>{r.comment=v;softTouch(d);}, 'eComm'),
-    'Volitelný popis pravidla, zobrazí se jako EBNF komentář (* ... *).'));
+    isEn
+      ? 'Optional rule description, emitted as EBNF comment (* ... *).'
+      : 'Volitelný popis pravidla, zobrazí se jako EBNF komentář (* ... *).'));
 }
 
 // === AKCE: GANTT =============================================
@@ -10262,7 +11193,7 @@ function renderTimingTree(d, root){
         L.badge.noteAct, 'state', isSel,
         ()=>{ state.selectedPath = path; renderApp(); },
         [actionBtn('×', 'Smazat poznámku', ()=>deleteTimingNote(d, n.id))],
-      makeDoneInfo(d, nt.id)));
+      makeDoneInfo(d, n.id)));
       nul.appendChild(li);
     });
     ns.appendChild(nul);
@@ -10306,8 +11237,7 @@ function renderTimingTree(d, root){
         ()=>{ state.selectedPath = path; renderApp(); },
         [actionBtn('×',
           getLang()==='en' ? 'Delete constraint' : 'Smazat constraint',
-          ()=>deleteTimingConstraint(d, c.id))],
-      makeDoneInfo(d, c.id)));
+          ()=>deleteTimingConstraint(d, c.id))]));
       cul.appendChild(li);
     });
     cs.appendChild(cul);
@@ -11726,7 +12656,66 @@ function previewAction(){
   const d = getCurrentDiagram();
   if(!d){ status(L.status.noDiagramForPreview, 'error'); return; }
   const src = generatePuml(d);
-  window.open(plantUmlUrl(src, 'svg'), '_blank');
+  // SVG URL — pro samostatný náhled v okně preferujeme vektor (ostrý zoom,
+  // lépe pro screen readery, lépe pro tisk).
+  const svgUrl = plantUmlUrl(src, 'svg');
+  const isEn = getLang() === 'en';
+  let descText = '';
+  try { descText = describeDiagram(d) || ''; } catch(e){ debug('describeDiagram', e.message); }
+  const w = window.open('', '_blank');
+  if(!w){ status(isEn ? 'Popup was blocked. Allow pop-ups for this site.' : 'Vyskakovací okno bylo zablokováno. Povolte vyskakovací okna pro tuto stránku.', 'error'); return; }
+  const esc = s => String(s || '').replace(/[<>&"']/g, m => ({
+    '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'
+  })[m]);
+  const safeName = esc(d.name || 'Diagram');
+  // Popis rozdělíme na odstavce (\n\n) a každý dáme do <p>.
+  const descHtml = descText
+    .split(/\n\n+/)
+    .map(p => p.trim())
+    .filter(Boolean)
+    .map(p => '<p>' + esc(p).replace(/\n/g, ' ') + '</p>')
+    .join('\n');
+  const labels = {
+    titlePrefix: isEn ? 'Preview' : 'Náhled',
+    descTitle: isEn ? 'Text description' : 'Textový popis diagramu',
+    noDesc: isEn ? '(no description available)' : '(popis není k dispozici)',
+    altText: 'PlantUML diagram: ' + safeName
+  };
+  const html = '<!DOCTYPE html>\n<html lang="' + (isEn?'en':'cs') + '">\n<head>\n' +
+    '<meta charset="utf-8">\n' +
+    '<title>' + labels.titlePrefix + ' — ' + safeName + '</title>\n' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">\n' +
+    '<style>\n' +
+    '*{box-sizing:border-box}\n' +
+    'html,body{margin:0;padding:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#111;background:#fff;line-height:1.5}\n' +
+    'header{background:#1e3a5f;color:#fff;padding:.7em 1em}\n' +
+    'header h1{margin:0;font-size:1.1em;font-weight:600}\n' +
+    'main{padding:1.5em;max-width:1200px;margin:0 auto}\n' +
+    'figure{margin:0 0 1em 0;text-align:center}\n' +
+    'object,img{max-width:100%;height:auto;display:inline-block;border:1px solid #d0d4dc;background:#fff}\n' +
+    '.desc-section{margin-top:2em;border-top:1px solid #d0d4dc;padding-top:1em}\n' +
+    '.desc-section h2{font-size:1.1em;color:#1e3a5f;margin-top:0}\n' +
+    '.desc-section p{margin:.6em 0}\n' +
+    '.empty-desc{font-style:italic;color:#777}\n' +
+    '</style>\n' +
+    '</head>\n<body>\n' +
+    '<header><h1>' + labels.titlePrefix + ': ' + safeName + '</h1></header>\n' +
+    '<main>\n' +
+    '<figure>\n' +
+    // <object> pro SVG zachová interaktivní/přístupnostní vlastnosti; <img> jako fallback.
+    '  <object type="image/svg+xml" data="' + esc(svgUrl) + '" aria-label="' + esc(labels.altText) + '">\n' +
+    '    <img src="' + esc(svgUrl) + '" alt="' + esc(labels.altText) + '">\n' +
+    '  </object>\n' +
+    '</figure>\n' +
+    '<section class="desc-section" aria-label="' + esc(labels.descTitle) + '">\n' +
+    '<h2>' + labels.descTitle + '</h2>\n' +
+    (descHtml || '<p class="empty-desc">' + labels.noDesc + '</p>') +
+    '</section>\n' +
+    '</main>\n' +
+    '</body>\n</html>';
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
 }
 
 // === PROMÍTACÍ OKNO ===========================================
