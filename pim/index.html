@@ -9772,6 +9772,10 @@ function renderSettings(main) {
       '<button id="gh-upload" class="primary">Nahrát na GitHub</button>' +
       '<button id="gh-verify-att">Ověřit přílohy na GitHubu</button>' +
     '</div>' +
+    '<div class="btn-group" style="margin-top:0.5em;">' +
+      '<button id="gh-hard-reload" class="danger" title="Smazat všechna lokální data (localStorage, IndexedDB) a načíst projekt znovu z GitHubu od nuly.">🧨 Tvrdé načtení z GitHubu</button>' +
+    '</div>' +
+    '<p class="meta" style="margin-top:0.3em;">Tvrdé načtení smaže veškeré lokální stopy projektu (localStorage, IndexedDB s přílohami) a načte čerstvě z GitHubu. Použijte při nesouhlasných verzích nebo když „Načíst z GitHubu" vrací starou verzi.</p>' +
     '<div id="gh-link-area" class="meta" style="margin-top:0.5em;"></div>' +
     '</section>' +
 
@@ -9987,6 +9991,19 @@ function renderSettings(main) {
     confirmDialog('Načíst data z GitHubu? Lokální data budou přepsána.', async () => {
       await GH.downloadAndLoad();
     });
+  };
+  const hardBtn = document.getElementById('gh-hard-reload');
+  if (hardBtn) hardBtn.onclick = async () => {
+    confirmDialog(
+      'TVRDÉ NAČTENÍ Z GITHUBU\n\n' +
+      'Tato akce:\n' +
+      '1) Smaže VŠECHNA lokální data projektu (localStorage, IndexedDB s přílohami).\n' +
+      '2) Načte projekt čerstvě z GitHubu.\n' +
+      '3) Provede tvrdý reload stránky.\n\n' +
+      'Použijte jen pokud máte podezření, že lokální verze nesouhlasí s GitHubem. ' +
+      'Jakékoliv neuložené změny budou ztraceny. Pokračovat?',
+      async () => { await ghHardReload(); }
+    );
   };
   document.getElementById('gh-upload').onclick = async () => { await GH.upload(); };
   document.getElementById('gh-verify-att').onclick = async () => { await GH.verifyAllAttachments(); };
@@ -19794,6 +19811,117 @@ function caRenderFields() {
 const GH_TOKEN_KEY = 'pim_gh_token';
 const GH_API = 'https://api.github.com';
 
+// === TVRDÉ NAČTENÍ Z GITHUBU ===
+// Smaže VŠECHNA lokální data projektu (localStorage + IndexedDB s přílohami) a načte čerstvě z GitHubu.
+// Po dokončení provede hard reload stránky (location.reload(true)/replace).
+async function ghHardReload() {
+  if (!GH.isConfigured()) {
+    alertMsg('GitHub není nakonfigurován.');
+    return false;
+  }
+  if (!GH.getToken()) {
+    alertMsg('Chybí GitHub token.');
+    return false;
+  }
+  toast('Tvrdé načtení: mažu lokální data…', 60000);
+  try {
+    // 1) Zachovat token a GH config (jinak bychom nemohli načíst)
+    const ghConfig = JSON.parse(JSON.stringify(state.settings.github || {}));
+    const ghToken = GH.getToken();
+    // 2) Stáhnout aktuální obsah z GitHubu DŘÍV NEŽ něco smažeme — kdyby selhalo, neoslepneme
+    debug('Hard reload: stahuji čerstvý obsah z GitHubu…');
+    const meta = await GH._getRemoteFile();
+    const text = await GH._fetchContent(meta);
+    const parsed = JSON.parse(text);
+    if (!parsed.entities) throw new Error('Stažený soubor neobsahuje entity.');
+
+    // 3) Smazat IndexedDB s přílohami (úplně, vč. všech projektů — jen jedna DB)
+    debug('Hard reload: mažu IndexedDB ' + FILE_DB_NAME + '…');
+    try {
+      await new Promise((resolve, reject) => {
+        const req = indexedDB.deleteDatabase(FILE_DB_NAME);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(new Error('IDB delete error'));
+        req.onblocked = () => { debug('IDB delete blocked – pokračujeme'); resolve(); };
+      });
+    } catch (e) {
+      debug('Hard reload: IDB delete chyba (pokračujeme): ' + e.message);
+    }
+
+    // 4) Smazat localStorage klíče pro aktuální projekt
+    //    - klíč db (getProjectKey)
+    //    - GH token NEZRUŠÍ (zůstává v 'pim_gh_token' – jinak by ho uživatel musel zadávat znovu)
+    const projKey = getProjectKey();
+    debug('Hard reload: mažu localStorage klíč ' + projKey + '…');
+    try { localStorage.removeItem(projKey); } catch (e) {}
+    // Smazat i další případné side-effecty (preferences, drafts atd.)
+    try {
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k) continue;
+        // Smazat pomocné klíče svázané s projektem (drafts, last view, atd.) – konzervativně
+        if (k.startsWith('pim_') && k !== 'pim_gh_token') {
+          // Specificky pro tento projekt? Nemůžeme to rozlišit spolehlivě – mažeme všechny pim_ kromě tokenu.
+          // To dává čistý start.
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+      debug('Hard reload: smazáno ' + keysToRemove.length + ' localStorage klíčů.');
+    } catch (e) {
+      debug('Hard reload: localStorage cleanup chyba: ' + e.message);
+    }
+
+    // 5) Nyní uložit čerstvá data — k tomu potřebujeme obnovit settings.github + token
+    //    (token už v localStorage je, jen GH config byl v settings které jsme smazali).
+    //    Sestavíme nový db blob a uložíme do localStorage pod projektovým klíčem.
+    if (!parsed.tags) parsed.tags = [];
+    if (!parsed.savedViews) parsed.savedViews = [];
+    if (!parsed.customTemplates) parsed.customTemplates = [];
+    if (!parsed.customAspects) parsed.customAspects = [];
+    if (!parsed.ghMeta) parsed.ghMeta = {};
+    if (!parsed.title) parsed.title = 'PIM – osobní znalostní báze';
+    if (parsed.description === undefined) parsed.description = '';
+    (parsed.entities || []).forEach(e => {
+      if (!e.comments) e.comments = [];
+      if (!e.attachments) e.attachments = [];
+    });
+    parsed.ghMeta.path = ghConfig.owner + '/' + ghConfig.repo + '/' + ghConfig.path;
+    parsed.ghMeta.sha = meta.sha;
+    parsed.ghMeta.lastSyncAt = nowIso();
+    parsed.ghMeta.branch = ghConfig.branch || 'main';
+
+    const blob = {
+      db: parsed,
+      settings: { github: ghConfig }
+    };
+    localStorage.setItem(projKey, JSON.stringify(blob));
+    debug('Hard reload: uloženo do localStorage pod klíčem ' + projKey + ' (' + JSON.stringify(blob).length + ' B).');
+
+    toast('✓ Tvrdé načtení dokončeno. Stránka se za chvíli načte znovu.', 4000);
+    playSound('load');
+
+    // 6) Hard reload stránky – obcházíme browser cache.
+    //    location.reload(true) je deprecated v moderních prohlížečích,
+    //    ale location.replace s cache-busterem na URL provede čistý fetch HTML.
+    setTimeout(() => {
+      try {
+        const u = new URL(location.href);
+        u.searchParams.set('_hr', Date.now().toString());
+        location.replace(u.toString());
+      } catch (e) {
+        location.reload();
+      }
+    }, 800);
+    return true;
+  } catch (err) {
+    toast('✗ Tvrdé načtení selhalo: ' + err.message, 6000);
+    alertMsg('Tvrdé načtení selhalo: ' + err.message + '\n\nLokální data nebyla smazána (kvůli chybě stažení).');
+    return false;
+  }
+}
+
 const GH = {
   _status: 'unknown',
   _lastError: null,
@@ -19836,8 +19964,15 @@ const GH = {
     const headers = { 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
     if (token) headers['Authorization'] = 'Bearer ' + token;
     if (body) headers['Content-Type'] = 'application/json';
-    const res = await fetch(GH_API + path, {
+    // GitHub Contents API občas vrací CDN-cached starou verzi krátce po commitu.
+    // Vynucujeme čerstvý fetch: cache: 'no-store' + cache-buster v query u GETů.
+    let url = GH_API + path;
+    if (method === 'GET') {
+      url += (path.includes('?') ? '&' : '?') + '_t=' + Date.now();
+    }
+    const res = await fetch(url, {
       method, headers,
+      cache: 'no-store',
       body: body ? JSON.stringify(body) : undefined
     });
     if (!res.ok) {
