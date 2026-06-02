@@ -2190,6 +2190,33 @@ function uuid() {
 }
 function nowIso() { return new Date().toISOString(); }
 
+// Otevře URL v samostatném okně (popup) bez panelů, co nejblíže fullscreenu.
+// Titulek okna se nepředepisuje — zůstává z <title> načtené stránky.
+function openUrlInPopup(url) {
+  if (!url) return;
+  const w = (typeof screen !== 'undefined' && screen.availWidth) ? Math.max(800, screen.availWidth - 40) : 1400;
+  const h = (typeof screen !== 'undefined' && screen.availHeight) ? Math.max(600, screen.availHeight - 80) : 900;
+  const features = [
+    'popup=yes',
+    'width=' + w,
+    'height=' + h,
+    'left=20',
+    'top=20',
+    'noopener=yes',
+    'noreferrer=yes',
+    'toolbar=no',
+    'location=no',
+    'menubar=no',
+    'status=no',
+    'scrollbars=yes',
+    'resizable=yes'
+  ].join(',');
+  const win = window.open(url, '_blank', features);
+  if (!win && typeof toast === 'function') {
+    toast('Otevření okna bylo blokováno prohlížečem. Povolte popupy pro tuto stránku.', 5000);
+  }
+}
+
 // Spočítá zaškrtnuté MD úkoly: - [x] / * [X]
 function countMarkdownDoneTasks(md) {
   if (!md) return 0;
@@ -10859,6 +10886,16 @@ function renderDetailRead(main, e) {
       playSound('save');
     };
   });
+  // Otevření URL v samostatném okně (popup bez panelů, blízko fullscreen).
+  // Titulek okna ponecháváme — z target stránky (HTML <title>), nepředepisujeme.
+  main.querySelectorAll('button.url-popup-btn').forEach(btn => {
+    btn.onclick = (ev) => {
+      ev.preventDefault();
+      const url = btn.dataset.urlPopup || '';
+      if (!url) return;
+      openUrlInPopup(url);
+    };
+  });
   // Secured aspect: tlačítko pro odemčení/zamčení
   const unlockBtn = document.getElementById('secured-unlock-btn');
   if (unlockBtn) {
@@ -11072,6 +11109,7 @@ function formatAttrValue(f, v, entityCtx) {
   if (f.type === 'url') {
     let html = '<span class="url-field">' +
       '<a href="' + escapeHtml(v) + '" target="_blank" rel="noopener">' + escapeHtml(v) + '</a>' +
+      ' <button type="button" class="url-popup-btn" data-url-popup="' + escapeHtml(v) + '" title="Otevřít URL v samostatném okně bez panelů (popup)" aria-label="Otevřít v okně">🪟 V okně</button>' +
       ' <button type="button" class="url-copy-btn" data-url-copy="' + escapeHtml(v) + '" title="Zkopírovat URL do schránky" aria-label="Zkopírovat URL">📋 URL</button>' +
       ' <button type="button" class="url-copy-md-btn" data-url-copy="' + escapeHtml(v) + '" data-title-copy="' + escapeHtml(entityCtx ? getDisplayTitle(entityCtx) : v) + '" title="Zkopírovat jako Markdown odkaz [Název](URL)" aria-label="Zkopírovat Markdown odkaz">📋 Markdown</button>' +
     '</span>';
@@ -13792,10 +13830,19 @@ function renderEventTasksSection(entity) {
       '<div class="event-tasks-add-card">' +
         '<h4>✓ Nový úkol</h4>' +
         (projects.length > 0
-          ? '<p class="meta">Schůzka je součástí ' + projects.length + ' projekt' + (projects.length === 1 ? 'u' : projects.length < 5 ? 'ů' : 'ů') + '. Nový úkol bude <strong>součástí ' + (projects.length === 1 ? 'tohoto projektu' : 'všech těchto projektů') + '</strong> a <strong>zmíněn na schůzce</strong>.</p>'
+          ? '<p class="meta">Schůzka je součástí ' + projects.length + ' projekt' + (projects.length === 1 ? 'u' : projects.length < 5 ? 'ů' : 'ů') + '. Vyberte, do kterých projektů má nový úkol patřit. Schůzka úkol vždy <strong>zmíní</strong> (vazba „mentions").</p>'
           : '<p class="meta">Schůzka není v žádném projektu. Nový úkol bude pouze <strong>zmíněn na schůzce</strong>.</p>') +
         '<label for="ev-new-task-title">Název úkolu</label>' +
         '<input type="text" id="ev-new-task-title" placeholder="Co se má udělat (s případným „zítra v 15:00")">' +
+        (projects.length > 0
+          ? '<fieldset class="ev-new-task-projects" style="margin:0.5em 0;padding:0.4em 0.6em;border:1px solid #ccc;border-radius:4px;">' +
+              '<legend style="padding:0 0.3em;font-size:0.9em;color:#555;">Součást projektů (partOf)</legend>' +
+              projects.map(p =>
+                '<label style="display:block;margin:0.2em 0;"><input type="checkbox" class="ev-new-task-proj" data-pid="' + escapeHtml(p.id) + '" checked> ' + escapeHtml(getDisplayTitle(p)) + '</label>'
+              ).join('') +
+              '<div class="meta" style="margin-top:0.3em;font-size:0.85em;">Defaultně všechny zaškrtnuté. Odškrtněte ty, do kterých úkol nepatří.</div>' +
+            '</fieldset>'
+          : '') +
         '<button type="button" class="primary" id="ev-add-new-task">+ Vytvořit úkol</button>' +
       '</div>' +
       (projectTasks.length > 0
@@ -14026,11 +14073,12 @@ function attachEventTasksHandlers(main, entity) {
     if (!titleEl) return;
     const raw = titleEl.value.trim();
     if (!raw) { alertMsg('Zadejte název úkolu.'); return; }
-    const projects = getEventProjects(entity);
-    // Úkol je součástí projektů schůzky (partOf) a schůzka ho zmiňuje (mentions).
+    // Projekty: bereme jen ty, které uživatel zaškrtl v UI.
+    // Pokud schůzka není v žádném projektu, fieldset chybí a vezme se prázdné pole.
+    const selectedPids = Array.from(document.querySelectorAll('input.ev-new-task-proj:checked')).map(c => c.dataset.pid);
     const result = createQuickTaskFromText({
       rawTitle: raw,
-      projectIds: projects.map(p => p.id),
+      projectIds: selectedPids,
       eventMentionIds: [entity.id]
     });
     if (result) {
