@@ -1030,7 +1030,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <li><button data-view="tags">Tagy</button></li>
       <li><button data-view="flags" id="nav-flags" hidden>🏳️‍🌈 Příznaky</button></li>
       <li><button data-view="timetracking" id="nav-timetracking" hidden>⏱ Sledování času</button></li>
-      <li><button data-view="topics" id="nav-topics" hidden style="display:none;">Témata</button></li>
+      <li><button data-view="topics" id="nav-topics" hidden>Témata</button></li>
       <li><button data-view="views">Pohledy</button></li>
       <li><button data-view="tools">Nástroje</button></li>
       <li><button data-view="settings">Nastavení</button></li>
@@ -8325,6 +8325,14 @@ function renderTools(main) {
         '<strong>🧹 Osiřelé atributy</strong>' +
         '<span class="meta">Najít atributy, které u entit zbyly po odebraných aspektech, a nabídnout jejich vymazání</span>' +
       '</button>' +
+      '<button type="button" class="tool-card" id="tool-migrate-topic-links">' +
+        '<strong>🌳 Doplnit vazby k tématům</strong>' +
+        '<span class="meta">Pro každou klíčovou entitu připnutou v Tématu doplnit chybějící vazbu „je součástí" (partOf)</span>' +
+      '</button>' +
+      '<button type="button" class="tool-card" id="tool-migrate-custom-aspects">' +
+        '<strong>🔄 Sloučit vlastní aspekty s vestavěnými</strong>' +
+        '<span class="meta">Pokud máte staré vlastní aspekty (např. „Téma"), které byly nahrazeny vestavěnými, převede entity na vestavěný a vlastní odebere</span>' +
+      '</button>' +
     '</div>';
   main.querySelectorAll('button[data-tool]').forEach(b => {
     b.onclick = () => setView(b.dataset.tool);
@@ -8334,6 +8342,10 @@ function renderTools(main) {
   if (diagBtn) diagBtn.onclick = () => showAspectDiagnostics();
   const orphBtn = document.getElementById('tool-orphan-attrs');
   if (orphBtn) orphBtn.onclick = () => showOrphanAttributesTool();
+  const migTopicBtn = document.getElementById('tool-migrate-topic-links');
+  if (migTopicBtn) migTopicBtn.onclick = () => migrateTopicPinnedToPartOf();
+  const migAspBtn = document.getElementById('tool-migrate-custom-aspects');
+  if (migAspBtn) migAspBtn.onclick = () => showMigrateCustomAspectsTool();
 }
 
 function showAspectDiagnostics() {
@@ -8540,6 +8552,211 @@ function showOrphanAttributesTool() {
   };
   const refreshBtn = document.getElementById('orph-refresh');
   if (refreshBtn) refreshBtn.onclick = () => showOrphanAttributesTool();
+}
+
+// === MIGRACE: doplnit chybějící vazby partOf pro topic_pinned ===
+// Projde všechny entity s aspektem Topic, projde jejich topic_pinned (klíčové entity),
+// a pro každou připnutou entitu zkontroluje, jestli má outgoing vazbu partOf na téma.
+// Pokud nemá, přidá ji. Idempotentní.
+function migrateTopicPinnedToPartOf() {
+  const topics = (db.entities || []).filter(e => !e.archived && (e.aspects || []).includes('Topic'));
+  if (topics.length === 0) {
+    alertMsg('V databázi nejsou žádná témata (entity s aspektem Topic).');
+    return;
+  }
+  // Spočítat plán: kolik vazeb chybí?
+  const plan = []; // [{entity, topic}]
+  topics.forEach(topic => {
+    const pinned = normalizeRelationValue(topic.attributes && topic.attributes.topic_pinned);
+    pinned.forEach(pid => {
+      const target = findEntity(pid);
+      if (!target || target.archived) return;
+      const already = (target.links || []).some(l => l.to === topic.id && l.type === 'partOf');
+      if (!already) plan.push({ entity: target, topic });
+    });
+  });
+  if (plan.length === 0) {
+    alertMsg('Všechny klíčové entity v tématech už mají vazbu „je součástí". Není co migrovat.');
+    return;
+  }
+  // Detaily v textu
+  const sample = plan.slice(0, 10).map(p =>
+    '  • ' + getDisplayTitle(p.entity) + ' → ' + getDisplayTitle(p.topic)
+  ).join('\n');
+  const more = plan.length > 10 ? '\n  … a dalších ' + (plan.length - 10) : '';
+  confirmDialog(
+    'Najít a doplnit chybějící vazby „je součástí" pro klíčové entity v ' + topics.length + ' tématech.\n\n' +
+    'Bude přidáno ' + plan.length + ' nových vazeb:\n' + sample + more + '\n\n' +
+    'Pokračovat?',
+    () => {
+      let added = 0;
+      plan.forEach(p => {
+        if (!p.entity.links) p.entity.links = [];
+        const already = p.entity.links.some(l => l.to === p.topic.id && l.type === 'partOf');
+        if (!already) {
+          p.entity.links.push({ to: p.topic.id, type: 'partOf' });
+          p.entity.updated_at = nowIso();
+          added++;
+        }
+      });
+      save();
+      toast('✓ Migrace dokončena: přidáno ' + added + ' vazeb.', 5000);
+      playSound('done');
+    }
+  );
+}
+
+// === MIGRACE VLASTNÍCH ASPEKTŮ NA VESTAVĚNÉ ===
+// Před vestavěnými aspekty (Topic, Presentation, Slide) si Michal udělal vlastní
+// se stejným významem (např. „Téma", „Prezentace", „Slide"). Teď chce, aby
+// entity přešly na vestavěný aspekt a custom aspekt zmizel.
+//
+// Postup: dialog s mappingem custom → vestavěný (default: pokus se trefit podle českého labelu).
+// Pro každý mapping projdeme entity s daným custom aspektem, vyměníme klíč v entity.aspects.
+// Po dokončení smažeme custom aspekty z db.customAspects.
+function showMigrateCustomAspectsTool() {
+  const main = document.getElementById('main');
+  if (!main) return;
+  const customs = (db.customAspects || []).slice();
+  if (customs.length === 0) {
+    alertMsg('V databázi nejsou žádné vlastní aspekty.');
+    return;
+  }
+  // Vestavěné cíle (nejčastější kandidáti pro migraci)
+  const targets = [
+    { key: 'Topic', label: 'Téma (Topic)', hint: 'téma|topic' },
+    { key: 'Presentation', label: 'Prezentace (Presentation)', hint: 'prezentac|presentation' },
+    { key: 'Slide', label: 'Slide (Slide)', hint: 'slide|stránka|slajd' }
+  ];
+  // Default mapping: pro každý cíl zkusíme najít custom aspekt, jehož label/key by mu odpovídal.
+  function guessCustomForTarget(tgt) {
+    const re = new RegExp(tgt.hint, 'i');
+    return customs.find(c => re.test(c.label || '') || re.test(c.key || ''));
+  }
+  // Spočítat kolik entit má daný custom aspekt
+  function countEntitiesWithAspect(key) {
+    return (db.entities || []).filter(e => !e.archived && (e.aspects || []).includes(key)).length;
+  }
+  let html = '<h1>🔄 Sloučit vlastní aspekty s vestavěnými</h1>';
+  html += '<p>Pro každý vestavěný cílový aspekt vyberte, který z vašich vlastních aspektů mu odpovídá. ' +
+    'Entity, které mají vybraný vlastní aspekt, dostanou místo něj vestavěný. ' +
+    'Po dokončení budou vybrané vlastní aspekty odstraněny z databáze.</p>';
+  html += '<p class="meta"><strong>Pozor:</strong> Pokud má vlastní aspekt vlastní pole (atributy), klíče atributů zůstanou ' +
+    'na entitách jako dřív. Pokud nesedí s vestavěnými poli, najdete je v nástroji „🧹 Osiřelé atributy" a můžete je smazat.</p>';
+  // Tabulka mapping
+  html += '<table style="width:100%;margin:1em 0;"><thead><tr>' +
+    '<th scope="col">Vestavěný cíl</th>' +
+    '<th scope="col">Vyberte vlastní aspekt</th>' +
+    '<th scope="col">Počet entit</th>' +
+    '</tr></thead><tbody>';
+  targets.forEach(tgt => {
+    const guess = guessCustomForTarget(tgt);
+    html += '<tr>' +
+      '<td><strong>' + escapeHtml(tgt.label) + '</strong></td>' +
+      '<td><select data-mig-target="' + escapeHtml(tgt.key) + '" id="mig-' + escapeHtml(tgt.key) + '">' +
+        '<option value="">— nepoužít —</option>' +
+        customs.map(c =>
+          '<option value="' + escapeHtml(c.key) + '"' + (guess && guess.key === c.key ? ' selected' : '') + '>' +
+            escapeHtml(c.label || c.key) + ' (klíč: ' + escapeHtml(c.key) + ', ' + countEntitiesWithAspect(c.key) + ' entit)' +
+          '</option>'
+        ).join('') +
+      '</select></td>' +
+      '<td id="mig-count-' + escapeHtml(tgt.key) + '">' + (guess ? countEntitiesWithAspect(guess.key) + ' entit' : '—') + '</td>' +
+      '</tr>';
+  });
+  html += '</tbody></table>';
+  html += '<div class="btn-group" style="margin:1em 0;">' +
+    '<button type="button" id="mig-run" class="primary">Provést migraci</button>' +
+    '<button type="button" id="mig-cancel">Zrušit</button>' +
+    '</div>';
+  html += '<h2>Náhled: všechny vlastní aspekty</h2>';
+  html += '<ul>' +
+    customs.map(c =>
+      '<li><strong>' + escapeHtml(c.label || c.key) + '</strong> <code>(klíč: ' + escapeHtml(c.key) + ')</code> — ' +
+        countEntitiesWithAspect(c.key) + ' entit, ' + ((c.fields || []).length) + ' polí' +
+      '</li>'
+    ).join('') +
+    '</ul>';
+  main.innerHTML = html;
+
+  // Live update počtu entit při změně selectu
+  main.querySelectorAll('select[data-mig-target]').forEach(sel => {
+    sel.onchange = () => {
+      const targetKey = sel.dataset.migTarget;
+      const customKey = sel.value;
+      const cell = document.getElementById('mig-count-' + targetKey);
+      if (cell) {
+        cell.textContent = customKey ? (countEntitiesWithAspect(customKey) + ' entit') : '—';
+      }
+    };
+  });
+  // Cancel
+  document.getElementById('mig-cancel').onclick = () => setView('tools');
+  // Run
+  document.getElementById('mig-run').onclick = () => {
+    // Sestavit mapping
+    const mapping = {}; // customKey → targetKey
+    targets.forEach(tgt => {
+      const sel = document.getElementById('mig-' + tgt.key);
+      if (sel && sel.value) {
+        if (mapping[sel.value]) {
+          alertMsg('Vlastní aspekt „' + sel.value + '" je vybraný pro víc cílů. Zvolte ho jen jednou.');
+          return;
+        }
+        mapping[sel.value] = tgt.key;
+      }
+    });
+    const customKeys = Object.keys(mapping);
+    if (customKeys.length === 0) {
+      alertMsg('Nevybrali jste žádný vlastní aspekt k migraci.');
+      return;
+    }
+    // Spočítat plán
+    let total = 0;
+    const summary = [];
+    customKeys.forEach(ck => {
+      const tk = mapping[ck];
+      const n = countEntitiesWithAspect(ck);
+      total += n;
+      summary.push('  • „' + ck + '" → „' + tk + '" (' + n + ' entit)');
+    });
+    confirmDialog(
+      'MIGRACE VLASTNÍCH ASPEKTŮ NA VESTAVĚNÉ\n\n' +
+      'Plán:\n' + summary.join('\n') + '\n\n' +
+      'Celkem se změní ' + total + ' entit. Po dokončení budou vybrané vlastní aspekty odstraněny.\n\n' +
+      'Atributy entit zůstanou na stejných klíčích. Pokud nesedí s poli vestavěného aspektu, ' +
+      'najdete je v nástroji „🧹 Osiřelé atributy".\n\n' +
+      'Pokračovat?',
+      () => {
+        let changed = 0;
+        (db.entities || []).forEach(e => {
+          if (e.archived) return;
+          if (!e.aspects) return;
+          let touched = false;
+          // Nahradit klíče v entity.aspects (s respektováním pořadí, bez duplikátů)
+          const newAspects = [];
+          e.aspects.forEach(ak => {
+            const newKey = mapping[ak] || ak;
+            if (!newAspects.includes(newKey)) newAspects.push(newKey);
+            if (newKey !== ak) touched = true;
+          });
+          if (touched) {
+            e.aspects = newAspects;
+            e.updated_at = nowIso();
+            changed++;
+          }
+        });
+        // Odebrat custom aspekty z db.customAspects
+        const removedCount = customKeys.length;
+        db.customAspects = (db.customAspects || []).filter(ca => !customKeys.includes(ca.key));
+        save();
+        toast('✓ Migrace dokončena: změněno ' + changed + ' entit, odebráno ' + removedCount + ' vlastních aspektů.', 6000);
+        playSound('done');
+        // Vrátit se do Nástrojů
+        setView('tools');
+      }
+    );
+  };
 }
 
 // ==== POHLED: MOŽNÉ SOUVISLOSTI (on demand) ====
@@ -12433,9 +12650,29 @@ function renderEditAttributes(e) {
             if (ids.length === 0) delete e.attributes[fieldKey];
             else e.attributes[fieldKey] = ids[0];
           }
+          // Speciální chování pro Topic.topic_pinned: nově přidané entity dostanou
+          // vazbu „partOf" na toto téma (entita je součástí tématu).
+          if (fieldKey === 'topic_pinned' && (e.aspects || []).includes('Topic')) {
+            const added = ids.filter(id => !currentIds.includes(id));
+            let linkCount = 0;
+            added.forEach(tid => {
+              const target = findEntity(tid);
+              if (!target) return;
+              if (!target.links) target.links = [];
+              const already = target.links.some(l => l.to === e.id && l.type === 'partOf');
+              if (!already) {
+                target.links.push({ to: e.id, type: 'partOf' });
+                target.updated_at = nowIso();
+                linkCount++;
+              }
+            });
+            if (linkCount > 0) {
+              toast('Přidáno ' + linkCount + ' vazb' + (linkCount === 1 ? 'a' : linkCount < 5 ? 'y' : '') + ' „je součástí" k tématu.', 3500);
+            }
+          }
           e.updated_at = nowIso(); save();
           renderEditAttributes(e);
-          toast('Relace „' + fieldDef.label + '“ aktualizována.');
+          toast('Relace „' + fieldDef.label + '" aktualizována.');
         }
       });
     };
