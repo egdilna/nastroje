@@ -4117,18 +4117,41 @@ function describeComponent(model){
   rawComponents.forEach(rc => { const k=rc.groupId||'__root__'; (compByGroup[k]=compByGroup[k]||[]).push(compById[rc.id]); });
   const ifaceByGroup = {};
   rawInterfaces.forEach(ri => { const k=ri.groupId||'__root__'; (ifaceByGroup[k]=ifaceByGroup[k]||[]).push(ifaceById[ri.id]); });
+  // Mapa poznámek k prvkům: pro každé id seznam textů poznámek. Volné poznámky
+  // (bez attachTo) se vypíšou samostatně níže.
+  const allNotes = (model && model.notes) || [];
+  const notesByElemId = {};
+  const freeNotes = [];
+  allNotes.forEach(nt => {
+    const oneLine = (nt.text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean).join(' ');
+    if(!oneLine) return;
+    if(nt.attachTo && (compById[nt.attachTo] || ifaceById[nt.attachTo])){
+      (notesByElemId[nt.attachTo] = notesByElemId[nt.attachTo] || []).push(oneLine);
+    } else {
+      freeNotes.push(oneLine);
+    }
+  });
+  // Vrátí suffix " (poznámka: text)" nebo " (poznámky: text1; text2)" nebo "".
+  function noteSuffix(elemId){
+    const arr = notesByElemId[elemId];
+    if(!arr || !arr.length) return '';
+    const label = isEn
+      ? (arr.length === 1 ? 'note' : 'notes')
+      : (arr.length === 1 ? 'poznámka' : 'poznámky');
+    return ' (' + label + ': ' + arr.join('; ') + ')';
+  }
   function listElems(comps, ifaces){
     const parts = [];
     if(isEn){
-      comps.forEach(c => parts.push(((COMP_DECL[c.stereotype]||COMP_DECL.component).en) + ' ' + Q(c.name||'')));
-      ifaces.forEach(i => parts.push('interface ' + Q(i.name||'')));
+      comps.forEach(c => parts.push(((COMP_DECL[c.stereotype]||COMP_DECL.component).en) + ' ' + Q(c.name||'') + noteSuffix(c.id)));
+      ifaces.forEach(i => parts.push('interface ' + Q(i.name||'') + noteSuffix(i.id)));
     } else {
       // V CS používáme akuzativ („obsahuje komponentu / databázi / …")
       comps.forEach(c => {
         const w = compWord(c);
-        parts.push(w.akuz + ' ' + Q(c.name||''));
+        parts.push(w.akuz + ' ' + Q(c.name||'') + noteSuffix(c.id));
       });
-      ifaces.forEach(i => parts.push('rozhraní ' + Q(i.name||'')));
+      ifaces.forEach(i => parts.push('rozhraní ' + Q(i.name||'') + noteSuffix(i.id)));
     }
     return parts;
   }
@@ -4161,16 +4184,16 @@ function describeComponent(model){
       if(groups.length) sentences.push('Outside any group:');
       rootComps.forEach(c => {
         const w = COMP_DECL[c.stereotype] || COMP_DECL.component;
-        sentences.push('There is a ' + w.en + ' ' + Q(c.name||'') + '.');
+        sentences.push('There is a ' + w.en + ' ' + Q(c.name||'') + noteSuffix(c.id) + '.');
       });
-      rootIfaces.forEach(i => sentences.push('There is an interface ' + Q(i.name||'') + '.'));
+      rootIfaces.forEach(i => sentences.push('There is an interface ' + Q(i.name||'') + noteSuffix(i.id) + '.'));
     } else {
       if(groups.length) sentences.push('Mimo skupiny:');
       rootComps.forEach(c => {
         const w = compWord(c);
-        sentences.push('Existuje ' + w.nom + ' ' + Q(c.name||'') + '.');
+        sentences.push('Existuje ' + w.nom + ' ' + Q(c.name||'') + noteSuffix(c.id) + '.');
       });
-      rootIfaces.forEach(i => sentences.push('Existuje rozhraní ' + Q(i.name||'') + '.'));
+      rootIfaces.forEach(i => sentences.push('Existuje rozhraní ' + Q(i.name||'') + noteSuffix(i.id) + '.'));
     }
     paras.push(sentences.join(' '));
   }
@@ -4279,37 +4302,11 @@ function describeComponent(model){
   if(relSentences.length){
     paras.push((isEn ? 'As for the connections: ' : 'Co se týče propojení: ') + relSentences.join(' '));
   }
-  // Standalone notes — společně pro CS i EN.
-  const notes = (model && model.notes) || [];
-  if(notes.length){
-    const noteSentences = [];
-    notes.forEach(nt => {
-      const oneLine = (nt.text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean).join(' ');
-      if(!oneLine) return;
-      let targetName = null;
-      let targetKind = null;
-      if(nt.attachTo){
-        if(compById[nt.attachTo]){
-          const c = compById[nt.attachTo];
-          targetName = c.name || '';
-          // V CS „Poznámka u {gen pád}": komponentě/databázi/cloudu/uzlu/složce/rámci/souboru
-          targetKind = isEn
-            ? (COMP_DECL[c.stereotype]||COMP_DECL.component).en
-            : compWord(c).gen;
-        } else if(ifaceById[nt.attachTo]){
-          targetName = ifaceById[nt.attachTo].name || '';
-          targetKind = isEn ? 'interface' : 'rozhraní';
-        }
-      }
-      if(targetName !== null && targetKind){
-        noteSentences.push(isEn
-          ? 'A note attached to ' + targetKind + ' ' + Q(targetName) + ': ' + oneLine
-          : 'Poznámka u ' + targetKind + ' ' + Q(targetName) + ': ' + oneLine);
-      } else {
-        noteSentences.push(isEn ? 'A free note: ' + oneLine : 'Volná poznámka: ' + oneLine);
-      }
-    });
-    if(noteSentences.length) paras.push(noteSentences.join(' '));
+  // Volné poznámky (bez přivázání k prvku) — poznámky přivázané k prvkům jsou
+  // už zahrnuty v závorkách u prvku samotného (viz noteSuffix výše).
+  if(freeNotes.length){
+    const sentences = freeNotes.map(n => isEn ? 'A free note: ' + n : 'Volná poznámka: ' + n);
+    paras.push(sentences.join(' '));
   }
 
   return paras.join('\n\n');
