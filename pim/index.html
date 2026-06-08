@@ -1288,6 +1288,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
     <label for="attr-type">Typ</label>
     <select id="attr-type">
       <option value="text">Text</option><option value="textarea">Delší text</option>
+      <option value="code">Zdrojový kód</option>
       <option value="number">Číslo</option><option value="date">Datum</option>
       <option value="datetime-local">Datum a čas</option><option value="tel">Telefon</option>
       <option value="email">E-mail</option><option value="url">URL</option>
@@ -24134,6 +24135,7 @@ body.viewer-mode .btn-group:has(#d-add-comment) { display: none !important; }
     <label for="attr-type">Typ</label>
     <select id="attr-type">
       <option value="text">Text</option><option value="textarea">Delší text</option>
+      <option value="code">Zdrojový kód</option>
       <option value="number">Číslo</option><option value="date">Datum</option>
       <option value="datetime-local">Datum a čas</option><option value="tel">Telefon</option>
       <option value="email">E-mail</option><option value="url">URL</option>
@@ -32035,8 +32037,15 @@ const DB_FIELD_TYPES = {
 // State pro řazení a filtry per entity (in-memory, neukládá se)
 const _dbState = {};
 function getDbState(entityId) {
-  if (!_dbState[entityId]) _dbState[entityId] = { sortKey: null, sortDir: 'asc', filters: {} };
-  return _dbState[entityId];
+  if (!_dbState[entityId]) _dbState[entityId] = { sortKey: null, sortDir: 'asc', filters: {}, bulkMode: false, selected: {} };
+  const s = _dbState[entityId];
+  if (s.bulkMode === undefined) s.bulkMode = false;
+  if (!s.selected) s.selected = {};
+  return s;
+}
+// Vrátí stabilní identifikátor záznamu (id, jinak fallback na index).
+function dbRecordKey(rec, idx) {
+  return (rec && rec.id != null) ? String(rec.id) : ('__idx_' + idx);
 }
 
 // === Render database section v read mode ===
@@ -32087,10 +32096,37 @@ function renderDatabaseSection(entity) {
       return String(va).localeCompare(String(vb), 'cs') * (sortDir === 'asc' ? 1 : -1);
     });
   }
+  // Hromadný výběr: vyčisti případné osiřelé klíče (záznamy, které už nejsou ve filtru/databázi)
+  const bulk = st.bulkMode;
+  const visibleKeys = new Set(sorted.map((rec) => dbRecordKey(rec, records.indexOf(rec))));
+  if (bulk) {
+    Object.keys(st.selected).forEach(k => { if (!visibleKeys.has(k)) delete st.selected[k]; });
+  }
+  const selCount = bulk ? sorted.filter(rec => st.selected[dbRecordKey(rec, records.indexOf(rec))]).length : 0;
+  const allSelected = bulk && sorted.length > 0 && selCount === sorted.length;
+
   // Hlavička
   h += '<p class="meta">' + filtered.length + ' / ' + records.length + ' záznamů</p>';
+  // Ovládací lišta hromadného výběru
+  h += '<div class="btn-group" style="margin-bottom:0.4em;">';
+  h += '<button id="db-bulk-toggle" aria-pressed="' + (bulk ? 'true' : 'false') + '">' +
+    (bulk ? '✓ Hromadný výběr zapnut' : 'Hromadný výběr') + '</button>';
+  h += '</div>';
+  if (bulk) {
+    h += '<div class="db-bulk-bar" role="group" aria-label="Hromadné operace" style="margin-bottom:0.4em;padding:0.5em;border:1px solid #ccc;border-radius:4px;">';
+    h += '<p class="meta" id="db-bulk-count" aria-live="polite" style="margin:0 0 0.4em 0;">Vybráno ' + selCount + ' z ' + sorted.length + ' záznamů</p>';
+    h += '<div class="btn-group" style="margin:0;">';
+    h += '<button id="db-bulk-change"' + (selCount === 0 ? ' disabled' : '') + '>Změnit pole u vybraných…</button>';
+    h += '<button id="db-bulk-delete" class="danger"' + (selCount === 0 ? ' disabled' : '') + '>Smazat vybrané</button>';
+    h += '</div>';
+    h += '</div>';
+  }
   h += '<table class="db-table"><caption class="sr-only">Databáze ' + escapeHtml(getDisplayTitle(entity)) + '</caption>';
   h += '<thead><tr>';
+  if (bulk) {
+    h += '<th scope="col" style="width:1%;white-space:nowrap;">' +
+      '<input type="checkbox" id="db-bulk-all" aria-label="Vybrat vše"' + (allSelected ? ' checked' : '') + '></th>';
+  }
   fields.forEach(f => {
     const isSorted = sortKey === f.key;
     const dir = isSorted ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
@@ -32099,6 +32135,7 @@ function renderDatabaseSection(entity) {
   h += '</tr>';
   // Filtr řádek
   h += '<tr class="db-filter-row">';
+  if (bulk) h += '<td></td>';
   fields.forEach(f => {
     const v = st.filters[f.key] || '';
     if (f.type === 'bool') {
@@ -32118,12 +32155,18 @@ function renderDatabaseSection(entity) {
   });
   h += '</tr>';
   h += '</thead><tbody>';
+  const colCount = fields.length + (bulk ? 1 : 0);
   if (sorted.length === 0) {
-    h += '<tr><td colspan="' + fields.length + '" class="meta">(žádný záznam)</td></tr>';
+    h += '<tr><td colspan="' + colCount + '" class="meta">(žádný záznam)</td></tr>';
   } else {
     sorted.forEach(rec => {
       const recIdx = records.indexOf(rec);
+      const rk = dbRecordKey(rec, recIdx);
       h += '<tr>';
+      if (bulk) {
+        const checked = st.selected[rk] ? ' checked' : '';
+        h += '<td style="width:1%;white-space:nowrap;"><input type="checkbox" data-db-rec-sel="' + escapeHtml(rk) + '" aria-label="Vybrat záznam"' + checked + '></td>';
+      }
       fields.forEach((f, fi) => {
         const v = rec[f.key];
         // První sloupec udělej klikatelný link na úpravu
@@ -32188,6 +32231,157 @@ function attachDatabaseReadHandlers(root, entity) {
   const addBtn = root.querySelector('#db-add-record-read');
   if (addBtn) addBtn.onclick = () => {
     openDatabaseRecordDialog(entity, -1, () => render());
+  };
+
+  // === Hromadný výběr ===
+  const bulkToggle = root.querySelector('#db-bulk-toggle');
+  if (bulkToggle) bulkToggle.onclick = () => {
+    st.bulkMode = !st.bulkMode;
+    if (!st.bulkMode) st.selected = {};
+    render();
+  };
+  const selectAll = root.querySelector('#db-bulk-all');
+  if (selectAll) selectAll.onchange = () => {
+    const want = selectAll.checked;
+    // Vyber/odznač jen aktuálně zobrazené (filtrované) záznamy.
+    root.querySelectorAll('input[data-db-rec-sel]').forEach(cb => {
+      const rk = cb.dataset.dbRecSel;
+      if (want) st.selected[rk] = true; else delete st.selected[rk];
+    });
+    render();
+  };
+  root.querySelectorAll('input[data-db-rec-sel]').forEach(cb => {
+    cb.onchange = () => {
+      const rk = cb.dataset.dbRecSel;
+      if (cb.checked) st.selected[rk] = true; else delete st.selected[rk];
+      render();
+    };
+  });
+  const bulkChange = root.querySelector('#db-bulk-change');
+  if (bulkChange) bulkChange.onclick = () => openDbBulkChangeDialog(entity);
+  const bulkDelete = root.querySelector('#db-bulk-delete');
+  if (bulkDelete) bulkDelete.onclick = () => doDbBulkDelete(entity);
+}
+
+// Vrátí pole záznamů aktuálně vybraných v hromadném výběru (podle stabilního klíče).
+function _dbSelectedRecords(entity) {
+  const st = getDbState(entity.id);
+  const records = getDbRecords(entity);
+  return records.filter((rec, idx) => st.selected[dbRecordKey(rec, idx)]);
+}
+
+// Smazání vybraných záznamů
+function doDbBulkDelete(entity) {
+  const st = getDbState(entity.id);
+  const records = getDbRecords(entity);
+  const selected = _dbSelectedRecords(entity);
+  if (selected.length === 0) return;
+  confirmDialog('Smazat ' + selected.length + ' vybraných záznamů? Tuto akci nelze vrátit zpět.', () => {
+    const selSet = new Set(selected);
+    const remaining = records.filter(rec => !selSet.has(rec));
+    setDbRecords(entity, remaining);
+    st.selected = {};
+    save();
+    render();
+    toast('Smazáno ' + selected.length + ' záznamů.');
+  });
+}
+
+// Dialog: změna jednoho pole u všech vybraných záznamů
+function openDbBulkChangeDialog(entity) {
+  const st = getDbState(entity.id);
+  const fields = getDbFields(entity);
+  const selected = _dbSelectedRecords(entity);
+  if (selected.length === 0) return;
+  if (fields.length === 0) { alertMsg('Databáze nemá žádná pole.'); return; }
+
+  const existing = document.getElementById('db-bulk-change-dialog');
+  if (existing) existing.remove();
+  const d = document.createElement('dialog');
+  d.id = 'db-bulk-change-dialog';
+  d.setAttribute('aria-labelledby', 'dbbc-title');
+
+  function fieldInputHtml(f) {
+    const id = 'dbbc-val';
+    if (f.type === 'number') {
+      return '<input type="number" step="any" id="' + id + '">';
+    } else if (f.type === 'date') {
+      return '<span class="date-with-clear"><input type="date" id="' + id + '">' +
+        ' <button type="button" id="dbbc-val-clear" aria-label="Odstranit datum" title="Odstranit datum">×</button></span>';
+    } else if (f.type === 'bool') {
+      return '<select id="' + id + '"><option value="">—</option><option value="true">Ano</option><option value="false">Ne</option></select>';
+    } else if (f.type === 'select') {
+      return '<select id="' + id + '"><option value="">—</option>' +
+        (f.options || []).map(o => '<option value="' + escapeHtml(o) + '">' + escapeHtml(o) + '</option>').join('') + '</select>';
+    }
+    return '<input type="text" id="' + id + '">';
+  }
+
+  function buildBody(selKey) {
+    const f = fields.find(ff => ff.key === selKey) || fields[0];
+    return '<div style="margin-bottom:0.5em;">' +
+      '<label for="dbbc-field">Pole</label>' +
+      '<select id="dbbc-field">' +
+        fields.map(ff => '<option value="' + escapeHtml(ff.key) + '"' + (ff.key === f.key ? ' selected' : '') + '>' + escapeHtml(ff.label) + '</option>').join('') +
+      '</select></div>' +
+      '<div style="margin-bottom:0.5em;"><label for="dbbc-val">Nová hodnota</label>' + fieldInputHtml(f) + '</div>' +
+      '<p class="meta">Prázdná hodnota pole u vybraných záznamů odstraní.</p>';
+  }
+
+  d.innerHTML =
+    '<h2 id="dbbc-title">Změnit pole u vybraných</h2>' +
+    '<p class="meta">Změna se použije na ' + selected.length + ' vybraných záznamů.</p>' +
+    '<div id="dbbc-body">' + buildBody(fields[0].key) + '</div>' +
+    '<div class="btn-group">' +
+      '<button type="button" id="dbbc-apply" class="primary">Použít</button>' +
+      '<button type="button" id="dbbc-cancel">Zrušit</button>' +
+    '</div>';
+  document.body.appendChild(d);
+
+  const body = d.querySelector('#dbbc-body');
+  function wireBody() {
+    const clr = body.querySelector('#dbbc-val-clear');
+    if (clr) clr.onclick = () => { const v = body.querySelector('#dbbc-val'); if (v) v.value = ''; };
+    const fieldSel = body.querySelector('#dbbc-field');
+    fieldSel.onchange = () => {
+      body.innerHTML = buildBody(fieldSel.value);
+      wireBody();
+      const fs = body.querySelector('#dbbc-field');
+      if (fs) fs.focus();
+    };
+  }
+  wireBody();
+
+  d.showModal();
+  setTimeout(() => { const fs = body.querySelector('#dbbc-field'); if (fs) fs.focus(); }, 50);
+
+  d.querySelector('#dbbc-cancel').onclick = () => { d.close(); d.remove(); };
+  d.querySelector('#dbbc-apply').onclick = () => {
+    const key = body.querySelector('#dbbc-field').value;
+    const f = fields.find(ff => ff.key === key);
+    if (!f) { d.close(); d.remove(); return; }
+    const valEl = body.querySelector('#dbbc-val');
+    let raw = valEl ? valEl.value : '';
+    const clearIt = (raw === '');
+    let v = raw;
+    if (!clearIt) {
+      if (f.type === 'number') v = Number(raw);
+      else if (f.type === 'bool') v = (raw === 'true');
+    }
+    const records = getDbRecords(entity);
+    const selSet = new Set(_dbSelectedRecords(entity));
+    let changed = 0;
+    records.forEach(rec => {
+      if (!selSet.has(rec)) return;
+      if (clearIt) delete rec[key];
+      else rec[key] = v;
+      changed++;
+    });
+    setDbRecords(entity, records);
+    save();
+    d.close(); d.remove();
+    render();
+    toast('Změněno pole „' + f.label + '" u ' + changed + ' záznamů.');
   };
 }
 
