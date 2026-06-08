@@ -32036,6 +32036,8 @@ const DB_FIELD_TYPES = {
 
 // State pro řazení a filtry per entity (in-memory, neukládá se)
 const _dbState = {};
+// Sentinel hodnota filtru „jen nevyplněné" – nemůže kolidovat s daty (není mezi options ani validním datem).
+const DB_FILTER_EMPTY = '\u241F__PIM_DB_EMPTY__\u241F';
 function getDbState(entityId) {
   if (!_dbState[entityId]) _dbState[entityId] = { sortKey: null, sortDir: 'asc', filters: {}, bulkMode: false, selected: {} };
   const s = _dbState[entityId];
@@ -32049,6 +32051,105 @@ function dbRecordKey(rec, idx) {
 }
 
 // === Render database section v read mode ===
+// Vrátí záznamy přesně tak, jak jsou aktuálně zobrazené v read mode tabulce
+// (po aplikaci filtrů a řazení dle getDbState). Sdílený zdroj pravdy pro tabulku i export.
+function getDbVisibleRecords(entity) {
+  const fields = getDbFields(entity);
+  const records = getDbRecords(entity);
+  const st = getDbState(entity.id);
+  // Aplikuj filtry
+  const filtered = records.filter(rec => {
+    for (const f of fields) {
+      const filt = st.filters[f.key];
+      if (filt === undefined || filt === '' || filt === null) continue;
+      const val = rec[f.key];
+      // Speciální filtr: jen prázdné (nevyplněné) hodnoty
+      if (filt === DB_FILTER_EMPTY) {
+        if (!(val === undefined || val === null || val === '')) return false;
+        continue;
+      }
+      if (f.type === 'bool' || f.type === 'select') {
+        if (String(val) !== String(filt)) return false;
+      } else {
+        if (val == null) return false;
+        if (!String(val).toLowerCase().includes(String(filt).toLowerCase())) return false;
+      }
+    }
+    return true;
+  });
+  // Aplikuj řazení
+  const sortKey = st.sortKey;
+  const sortDir = st.sortDir;
+  if (!sortKey) return filtered;
+  const sf = fields.find(f => f.key === sortKey);
+  return [...filtered].sort((a, b) => {
+    const va = a[sortKey], vb = b[sortKey];
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    if (sf && sf.type === 'number') return (Number(va) - Number(vb)) * (sortDir === 'asc' ? 1 : -1);
+    if (sf && sf.type === 'date') return (String(va).localeCompare(String(vb))) * (sortDir === 'asc' ? 1 : -1);
+    if (sf && sf.type === 'bool') return ((va ? 1 : 0) - (vb ? 1 : 0)) * (sortDir === 'asc' ? 1 : -1);
+    return String(va).localeCompare(String(vb), 'cs') * (sortDir === 'asc' ? 1 : -1);
+  });
+}
+
+// Naformátuje hodnotu buňky databáze pro XLSX (datum jako Date, číslo jako number, bool jako bool)
+function dbCellValueForXlsx(f, v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (f.type === 'bool') return !!v;
+  if (f.type === 'number') { const n = Number(v); return isNaN(n) ? v : n; }
+  if (f.type === 'date') {
+    const d = new Date(String(v));
+    return isNaN(d) ? String(v) : d;
+  }
+  return String(v);
+}
+
+// Export aktuálně zobrazených (filtrovaných + seřazených) řádků databáze do XLSX.
+async function exportDbVisibleToXlsx(entity) {
+  const fields = getDbFields(entity);
+  if (fields.length === 0) { alertMsg('Databáze nemá žádná pole k exportu.'); return; }
+  const rows = getDbVisibleRecords(entity);
+  if (rows.length === 0) { alertMsg('Není co exportovat – žádné zobrazené záznamy.'); return; }
+  try {
+    await loadSheetJs();
+  } catch (e) {
+    alertMsg(e.message);
+    return;
+  }
+  try {
+    const headers = fields.map(f => f.label);
+    const aoa = [headers, ...rows.map(rec => fields.map(f => dbCellValueForXlsx(f, rec[f.key])))];
+    const ws = XLSX.utils.aoa_to_sheet(aoa, { cellDates: true });
+    // Šířky sloupců podle typu
+    ws['!cols'] = fields.map(f => {
+      let w = (f.label || '').length + 2;
+      if (f.type === 'date') w = 14;
+      else if (f.type === 'bool') w = 8;
+      else if (f.type === 'number') w = 10;
+      else w = Math.min(60, Math.max(w, 20));
+      return { wch: w };
+    });
+    ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+    if (ws['!ref']) ws['!autofilter'] = { ref: ws['!ref'] };
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Databáze');
+
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    const base = (getDisplayTitle(entity) || 'databaze')
+      .replace(/[^\w\sěščřžýáíéúůďťňĚŠČŘŽÝÁÍÉÚŮĎŤŇ-]/g, '')
+      .replace(/\s+/g, '-').toLowerCase() || 'databaze';
+    const fname = base + '-' + dateStamp + '.xlsx';
+    XLSX.writeFile(wb, fname);
+    toast('✓ Excel export: ' + fname + ' (' + rows.length + ' řádků)');
+    playSound('save');
+  } catch (e) {
+    alertMsg('Excel export selhal: ' + e.message);
+    if (typeof debug === 'function') debug('DB XLSX error: ' + e.message);
+  }
+}
+
 function renderDatabaseSection(entity) {
   const fields = getDbFields(entity);
   const records = getDbRecords(entity);
@@ -32064,38 +32165,11 @@ function renderDatabaseSection(entity) {
     h += '</section>';
     return h;
   }
-  // Aplikuj filtry
-  const filtered = records.filter(rec => {
-    for (const f of fields) {
-      const filt = st.filters[f.key];
-      if (filt === undefined || filt === '' || filt === null) continue;
-      const val = rec[f.key];
-      if (f.type === 'bool' || f.type === 'select') {
-        if (String(val) !== String(filt)) return false;
-      } else {
-        if (val == null) return false;
-        if (!String(val).toLowerCase().includes(String(filt).toLowerCase())) return false;
-      }
-    }
-    return true;
-  });
-  // Aplikuj řazení
+  // Filtrace + řazení (sdílený zdroj pravdy s exportem)
+  const sorted = getDbVisibleRecords(entity);
+  const filtered = sorted; // počet odpovídá zobrazeným záznamům
   const sortKey = st.sortKey;
   const sortDir = st.sortDir;
-  let sorted = filtered;
-  if (sortKey) {
-    const sf = fields.find(f => f.key === sortKey);
-    sorted = [...filtered].sort((a, b) => {
-      const va = a[sortKey], vb = b[sortKey];
-      if (va == null && vb == null) return 0;
-      if (va == null) return 1;
-      if (vb == null) return -1;
-      if (sf && sf.type === 'number') return (Number(va) - Number(vb)) * (sortDir === 'asc' ? 1 : -1);
-      if (sf && sf.type === 'date') return (String(va).localeCompare(String(vb))) * (sortDir === 'asc' ? 1 : -1);
-      if (sf && sf.type === 'bool') return ((va ? 1 : 0) - (vb ? 1 : 0)) * (sortDir === 'asc' ? 1 : -1);
-      return String(va).localeCompare(String(vb), 'cs') * (sortDir === 'asc' ? 1 : -1);
-    });
-  }
   // Hromadný výběr: vyčisti případné osiřelé klíče (záznamy, které už nejsou ve filtru/databázi)
   const bulk = st.bulkMode;
   const visibleKeys = new Set(sorted.map((rec) => dbRecordKey(rec, records.indexOf(rec))));
@@ -32143,12 +32217,22 @@ function renderDatabaseSection(entity) {
         '<option value=""' + (v === '' ? ' selected' : '') + '>—</option>' +
         '<option value="true"' + (v === 'true' ? ' selected' : '') + '>Ano</option>' +
         '<option value="false"' + (v === 'false' ? ' selected' : '') + '>Ne</option>' +
+        '<option value="' + escapeHtml(DB_FILTER_EMPTY) + '"' + (v === DB_FILTER_EMPTY ? ' selected' : '') + '>(nevyplněno)</option>' +
         '</select></td>';
     } else if (f.type === 'select') {
       h += '<td><select data-db-filter="' + escapeHtml(f.key) + '">' +
         '<option value=""' + (v === '' ? ' selected' : '') + '>—</option>' +
         (f.options || []).map(o => '<option value="' + escapeHtml(o) + '"' + (v === o ? ' selected' : '') + '>' + escapeHtml(o) + '</option>').join('') +
+        '<option value="' + escapeHtml(DB_FILTER_EMPTY) + '"' + (v === DB_FILTER_EMPTY ? ' selected' : '') + '>(nevyplněno)</option>' +
         '</select></td>';
+    } else if (f.type === 'date') {
+      // Datum: textový filtr + přepínač na „jen nevyplněné"
+      const isEmpty = (v === DB_FILTER_EMPTY);
+      h += '<td><select data-db-filter-mode="' + escapeHtml(f.key) + '" aria-label="Režim filtru ' + escapeHtml(f.label) + '" style="font-size:0.85em;">' +
+        '<option value="text"' + (!isEmpty ? ' selected' : '') + '>Obsahuje…</option>' +
+        '<option value="empty"' + (isEmpty ? ' selected' : '') + '>(nevyplněno)</option>' +
+        '</select>' +
+        '<input type="search" data-db-filter="' + escapeHtml(f.key) + '" value="' + escapeHtml(isEmpty ? '' : v) + '" aria-label="Filtr ' + escapeHtml(f.label) + '"' + (isEmpty ? ' disabled' : '') + ' style="width:100%;font-size:0.85em;margin-top:0.2em;"></td>';
     } else {
       h += '<td><input type="search" data-db-filter="' + escapeHtml(f.key) + '" value="' + escapeHtml(v) + '" aria-label="Filtr ' + escapeHtml(f.label) + '" style="width:100%;font-size:0.85em;"></td>';
     }
@@ -32183,6 +32267,9 @@ function renderDatabaseSection(entity) {
   // Tlačítka pro přidání + reset filtrů
   h += '<div class="btn-group" style="margin-top:0.4em;">';
   h += '<button id="db-add-record-read" class="primary">+ Přidat záznam</button>';
+  if (sorted.length > 0) {
+    h += '<button id="db-export-xlsx">Export do Excelu (' + sorted.length + ')</button>';
+  }
   if (Object.values(st.filters).some(v => v && v !== '')) {
     h += '<button id="db-filter-reset">Reset filtrů</button>';
   }
@@ -32217,6 +32304,15 @@ function attachDatabaseReadHandlers(root, entity) {
     if (el.tagName === 'INPUT') el.oninput = handler;
     el.onchange = handler;
   });
+  // Přepínač režimu filtru u datumu: text vs. jen nevyplněné
+  root.querySelectorAll('[data-db-filter-mode]').forEach(sel => {
+    sel.onchange = () => {
+      const k = sel.dataset.dbFilterMode;
+      if (sel.value === 'empty') st.filters[k] = DB_FILTER_EMPTY;
+      else delete st.filters[k]; // zpět na textový režim bez aktivního filtru
+      render();
+    };
+  });
   const resetBtn = root.querySelector('#db-filter-reset');
   if (resetBtn) resetBtn.onclick = () => { st.filters = {}; render(); };
   // Klik na záznam → edit dialog
@@ -32232,6 +32328,10 @@ function attachDatabaseReadHandlers(root, entity) {
   if (addBtn) addBtn.onclick = () => {
     openDatabaseRecordDialog(entity, -1, () => render());
   };
+
+  // Export zobrazených řádků do Excelu
+  const exportBtn = root.querySelector('#db-export-xlsx');
+  if (exportBtn) exportBtn.onclick = () => exportDbVisibleToXlsx(entity);
 
   // === Hromadný výběr ===
   const bulkToggle = root.querySelector('#db-bulk-toggle');
