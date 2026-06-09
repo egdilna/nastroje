@@ -603,6 +603,12 @@ body.theme-dark .question-answers-section { background: #2a2511; border-left-col
 body.theme-dark .qa-list li { border-bottom-color: #444; }
 .qa-list li:last-child { border-bottom: none; }
 .qa-title { font-weight: 500; font-size: 1.05em; }
+/* Breadcrumb projektů nad názvem entity */
+.entity-projects-breadcrumb { font-size: 0.9em; margin: 0 0 0.2em 0; color: #555; }
+body.theme-dark .entity-projects-breadcrumb { color: #aaa; }
+.entity-projects-breadcrumb a { text-decoration: none; }
+.entity-projects-breadcrumb a:hover { text-decoration: underline; }
+.entity-projects-sep { color: #999; }
 /* Journal (Deník) section */
 .journal-list { margin: 0.4em 0; padding-left: 1.2em; }
 .journal-list > li { margin: 0.3em 0; }
@@ -3834,20 +3840,26 @@ function updateReferencesAfterRename(oldTitle, newTitle, renamedEntityId) {
   let affectedCount = 0;
   // Regex match pro: [[OldTitle]], [[OldTitle|alias]], {{include:OldTitle}}, {{include:OldTitle|alias}}
   const escOld = oldTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // wiki-link: [[OldTitle]] nebo [[OldTitle|alias]]
-  const reWiki = new RegExp('\\[\\[' + escOld + '(\\s*\\|[^\\]]*)?\\]\\]', 'g');
-  // include: {{include:OldTitle}} nebo {{include:OldTitle|alias}}
-  const reInc = new RegExp('\\{\\{include:' + escOld + '(\\s*\\|[^}]*)?\\}\\}', 'g');
+  // wiki-link: [[OldTitle]] nebo [[OldTitle|alias]] (tolerovat whitespace okolo názvu)
+  const reWiki = new RegExp('\\[\\[\\s*' + escOld + '\\s*(\\|[^\\]]*)?\\]\\]', 'g');
+  // include: {{include:OldTitle}} nebo {{include:OldTitle|alias}} (tolerovat whitespace za dvojtečkou i okolo názvu)
+  const reInc = new RegExp('\\{\\{include:\\s*' + escOld + '\\s*(\\|[^}]*)?\\}\\}', 'g');
+  // status: {{status:OldTitle}}
+  const reStatus = new RegExp('\\{\\{status:\\s*' + escOld + '\\s*\\}\\}', 'g');
+  // database: {{database:OldTitle}} nebo {{database:OldTitle?params}} – zachovat parametry za '?'
+  const reDb = new RegExp('\\{\\{database:\\s*' + escOld + '\\s*(\\?[^}]*)?\\}\\}', 'g');
 
   function replaceInText(text) {
     if (!text || typeof text !== 'string') return { text, changed: false };
-    if (!reWiki.test(text) && !reInc.test(text)) {
-      reWiki.lastIndex = 0; reInc.lastIndex = 0;
+    if (!reWiki.test(text) && !reInc.test(text) && !reStatus.test(text) && !reDb.test(text)) {
+      reWiki.lastIndex = 0; reInc.lastIndex = 0; reStatus.lastIndex = 0; reDb.lastIndex = 0;
       return { text, changed: false };
     }
-    reWiki.lastIndex = 0; reInc.lastIndex = 0;
+    reWiki.lastIndex = 0; reInc.lastIndex = 0; reStatus.lastIndex = 0; reDb.lastIndex = 0;
     let out = text.replace(reWiki, (m, aliasPart) => '[[' + newTitle + (aliasPart || '') + ']]');
     out = out.replace(reInc, (m, aliasPart) => '{{include:' + newTitle + (aliasPart || '') + '}}');
+    out = out.replace(reStatus, () => '{{status:' + newTitle + '}}');
+    out = out.replace(reDb, (m, queryPart) => '{{database:' + newTitle + (queryPart || '') + '}}');
     return { text: out, changed: out !== text };
   }
 
@@ -10617,6 +10629,31 @@ function renderDetail(main, id) {
   else renderDetailRead(main, e);
 }
 
+// Vrátí projekty, jejichž je entita součástí (přes partOf vazbu na entitu s aspektem Project).
+function getEntityParentProjects(entity) {
+  const out = [];
+  const seen = new Set();
+  (entity.links || []).forEach(l => {
+    if (l.type !== 'partOf' || !l.to) return;
+    if (seen.has(l.to)) return;
+    const target = findEntity(l.to);
+    if (target && !target.archived && (target.aspects || []).includes('Project')) {
+      seen.add(l.to);
+      out.push(target);
+    }
+  });
+  return out;
+}
+// Rychlý odkaz(y) na nadřazené projekty – zobrazí se těsně nad názvem entity ve view mode.
+function renderEntityProjectsBreadcrumb(entity) {
+  const projects = getEntityParentProjects(entity);
+  if (projects.length === 0) return '';
+  const links = projects.map(p =>
+    '<a href="#" class="wiki-link" data-entity="' + escapeHtml(p.id) + '">' + getDisplayTitleWithBadges(p) + '</a>'
+  ).join('<span class="entity-projects-sep"> · </span>');
+  return '<nav class="entity-projects-breadcrumb" aria-label="Projekty">📁 ' + links + '</nav>';
+}
+
 // ----- READ MODE -----
 function renderDetailRead(main, e) {
   // Při návratu do read modu resetovat trackery, aby další přechod do edit znovu nastavil
@@ -10850,7 +10887,8 @@ function renderDetailRead(main, e) {
   main.innerHTML =
     '<div class="btn-group"><button id="back-btn">← Zpět</button></div>' +
     '<div class="detail-header">' +
-      '<div><h1>' + escapeHtml(getDisplayTitle(e)) + '</h1>' +
+      '<div>' + renderEntityProjectsBreadcrumb(e) +
+        '<h1>' + escapeHtml(getDisplayTitle(e)) + '</h1>' +
         '<div>' + aspects + ' ' + tags + '</div>' +
         taskCheckboxHtml +
         (e.inbox ? '<div class="meta">📥 V Inboxu</div>' : '') +
@@ -11504,10 +11542,20 @@ function renderAttributesReadOnly(e) {
   if (Array.isArray(e.customFields)) {
     e.customFields.forEach(f => { if (!fieldMap.has(f.key)) fieldMap.set(f.key, { ...f, custom: true }); });
   }
-  const customKeys = Object.keys(e.attributes || {}).filter(k => !fieldMap.has(k) && k !== 'encoded' && k !== '_lastEncodedSource' && k !== 'tasks' && k !== 'tracker_history' && !k.startsWith('secured_'));
+  const isDiagram = (e.aspects || []).includes('Diagram');
+  // Klíče, které se v sekci Atributy NEzobrazují (mají vlastní sekci nebo jsou interní):
+  //  - tt_* (Sledování času – vlastní sekce)
+  //  - source u Diagramu (zobrazuje se v sekci Diagram)
+  const isHiddenAttrKey = (k) => {
+    if (k.startsWith('tt_')) return true;
+    if (isDiagram && k === 'source') return true;
+    return false;
+  };
+  const customKeys = Object.keys(e.attributes || {}).filter(k => !fieldMap.has(k) && k !== 'encoded' && k !== '_lastEncodedSource' && k !== 'tasks' && k !== 'tracker_history' && !k.startsWith('secured_') && !isHiddenAttrKey(k));
   let h = '';
   fieldMap.forEach((f, k) => {
     if (f.type === 'hidden') return;
+    if (isHiddenAttrKey(k)) return;
     // Composed pole se vyhodnocují automaticky – zobrazí se vždy, pokud má vzorec
     if (f.type === 'composed' || f.type === 'composed_md') {
       if (!f.template) return;
@@ -21380,6 +21428,7 @@ function buildEntityExportModel(entity, selection) {
   };
 
   const knownKeys = new Set();
+  const _expIsDiagram = (e.aspects || []).includes('Diagram');
   (e.aspects || []).forEach(ak => {
     const fields = aspectFields(ak);
     fields.forEach(f => knownKeys.add(f.key));
@@ -21387,6 +21436,10 @@ function buildEntityExportModel(entity, selection) {
     const aspectSel = sel.attributesByAspect ? sel.attributesByAspect[ak] : null;
     if (sel.attributesByAspect && !aspectSel) return; // aspekt vyloučen
     const filled = fields.filter(f => {
+      // source u Diagramu se nezobrazuje v atributech (má vlastní sekci Diagram)
+      if (_expIsDiagram && f.key === 'source') return false;
+      // tt_* interní pole time trackingu se nezobrazují
+      if (f.key && f.key.startsWith('tt_')) return false;
       // Composed pole: dosadit do hodnoty, vyloučit pokud výsledek prázdný
       if (f.type === 'composed' || f.type === 'composed_md') {
         if (!f.template) return false;
@@ -21430,6 +21483,7 @@ function buildEntityExportModel(entity, selection) {
 
   Object.entries(e.attributes || {}).forEach(([k, v]) => {
     if (knownKeys.has(k) && !customFieldByKey.has(k)) return;
+    if (k.startsWith('tt_')) return; // interní time tracking pole
     if (v === undefined || v === '' || v === null) return;
     if (!sel.customAttributes) return;
     if (customFieldByKey.has(k)) {
@@ -29047,6 +29101,30 @@ function renderDetail(main, id) {
   else renderDetailRead(main, e);
 }
 
+// Vrátí projekty, jejichž je entita součástí (partOf → Project).
+function getEntityParentProjects(entity) {
+  const out = [];
+  const seen = new Set();
+  (entity.links || []).forEach(l => {
+    if (l.type !== 'partOf' || !l.to) return;
+    if (seen.has(l.to)) return;
+    const target = findEntity(l.to);
+    if (target && !target.archived && (target.aspects || []).includes('Project')) {
+      seen.add(l.to);
+      out.push(target);
+    }
+  });
+  return out;
+}
+function renderEntityProjectsBreadcrumb(entity) {
+  const projects = getEntityParentProjects(entity);
+  if (projects.length === 0) return '';
+  const links = projects.map(p =>
+    '<a href="#" class="wiki-link" data-entity="' + escapeHtml(p.id) + '">' + getDisplayTitleWithBadges(p) + '</a>'
+  ).join('<span class="entity-projects-sep"> · </span>');
+  return '<nav class="entity-projects-breadcrumb" aria-label="Projekty">📁 ' + links + '</nav>';
+}
+
 // ----- READ MODE -----
 function renderDetailRead(main, e) {
   const aspects = (e.aspects || []).map(a => '<span class="aspect-badge">' + escapeHtml(aspectLabel(a)) + '</span>').join(' ');
@@ -29067,7 +29145,8 @@ function renderDetailRead(main, e) {
   main.innerHTML =
     '<div class="btn-group"><button id="back-btn">← Zpět</button></div>' +
     '<div class="detail-header">' +
-      '<div><h1>' + escapeHtml(getDisplayTitle(e)) + '</h1>' +
+      '<div>' + renderEntityProjectsBreadcrumb(e) +
+        '<h1>' + escapeHtml(getDisplayTitle(e)) + '</h1>' +
         '<div>' + aspects + ' ' + tags + '</div>' +
         (e.inbox ? '<div class="meta">📥 V Inboxu</div>' : '') +
         (e.archived ? '<div class="meta">🗄 Archivováno</div>' : '') +
@@ -29345,10 +29424,13 @@ function renderAttributesReadOnly(e) {
   if (Array.isArray(e.customFields)) {
     e.customFields.forEach(f => { if (!fieldMap.has(f.key)) fieldMap.set(f.key, { ...f, custom: true }); });
   }
-  const customKeys = Object.keys(e.attributes || {}).filter(k => !fieldMap.has(k));
+  const isDiagram = (e.aspects || []).includes('Diagram');
+  const isHiddenAttrKey = (k) => (k.startsWith('tt_') || (isDiagram && k === 'source'));
+  const customKeys = Object.keys(e.attributes || {}).filter(k => !fieldMap.has(k) && !isHiddenAttrKey(k));
   let h = '';
   fieldMap.forEach((f, k) => {
     if (f.type === 'hidden') return;
+    if (isHiddenAttrKey(k)) return;
     const v = e.attributes[k];
     if (v === undefined || v === null || v === '') return;
     // Pro relation field: prázdné pole = nic
