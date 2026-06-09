@@ -603,6 +603,20 @@ body.theme-dark .question-answers-section { background: #2a2511; border-left-col
 body.theme-dark .qa-list li { border-bottom-color: #444; }
 .qa-list li:last-child { border-bottom: none; }
 .qa-title { font-weight: 500; font-size: 1.05em; }
+/* Journal (Deník) section */
+.journal-list { margin: 0.4em 0; padding-left: 1.2em; }
+.journal-list > li { margin: 0.3em 0; }
+.journal-day-label { font-weight: 600; }
+.journal-entries { list-style: circle; margin: 0.2em 0 0.5em 0; padding-left: 1.3em; }
+.journal-entries > li { margin: 0.2em 0; }
+.journal-time { font-variant-numeric: tabular-nums; color: #555; margin-right: 0.4em; }
+body.theme-dark .journal-time { color: #aaa; }
+.journal-entry-text { display: inline; }
+.journal-edit-table { width: 100%; border-collapse: collapse; margin: 0.5em 0; }
+.journal-edit-table th, .journal-edit-table td { border: 1px solid #ccc; padding: 0.3em 0.5em; text-align: left; vertical-align: top; }
+body.theme-dark .journal-edit-table th, body.theme-dark .journal-edit-table td { border-color: #444; }
+.journal-edit-table thead { background: #f0f0f0; }
+body.theme-dark .journal-edit-table thead { background: #2a2a2a; }
 .qa-preview { margin-top: 0.3em; padding-left: 0.5em; font-size: 0.92em; line-height: 1.4; }
 /* Status chip {{status:...}} */
 .status-chip { display: inline-block; padding: 0.1em 0.6em; margin: 0.1em 0; background: #f3f8f5; border: 1px solid #6a9; border-radius: 12px; font-size: 0.95em; line-height: 1.5; }
@@ -1176,6 +1190,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <tr><td><code>[[Název entity]]</code></td><td>Wiki odkaz</td></tr>
       <tr><td><code>{{include:ID}}</code></td><td>Transkluze – vloží obsah jiné entity</td></tr>
       <tr><td><code>{{include:Název}}</code></td><td>Transkluze podle názvu</td></tr>
+      <tr><td><code>{{include:Deník}}</code> nebo <code>((deník))</code></td><td>Vloží deník: <code>{{include:}}</code> vloží deník jiné entity, <code>((deník))</code> vloží deník TÉTO entity na dané místo v obsahu. Vždy od nejstaršího po nejnovější.</td></tr>
       <tr><td><code>{{database:Název?columns=A, B&filter=stav=Hotovo, počet&gt;=10&sort=B desc}}</code></td><td>Tabulka databáze s volitelnými parametry. <code>columns</code> = labely sloupců oddělené čárkou; <code>filter</code> = podmínky oddělené čárkou (operátory <code>=</code> shoda, <code>*</code> obsahuje, <code>&lt; &gt; &lt;= &gt;= !=</code>, prázdná hodnota = nevyplněno); <code>sort</code> = label sloupce + asc/desc. Bez parametrů vloží vše.</td></tr>
       <tr><td><code>{{status:Název}}</code></td><td>Status chip – kompaktní souhrn entity (název + nejdůležitější info podle aspektů: stav úkolu, termín schůzky, URL záložky, % cíle, statistika projektu…) s odkazem na entitu. Funguje i v exportu/tisku.</td></tr>
       <tr><td><code>**tučně**</code> <code>*kurzíva*</code></td><td>Standardní markdown</td></tr>
@@ -1565,6 +1580,7 @@ const ASPECTS = {
       options: ['full','partial','tentative'],
       optionLabels: { full: 'Úplná odpověď', partial: 'Částečná odpověď', tentative: 'Předběžná odpověď' } }
   ]},
+  Journal: { label: 'Deník', fields: [] },
   Decision: { label: 'Rozhodnutí', fields: [
     { key: 'criteria', label: 'Kritéria', type: 'textarea' },
     { key: 'options', label: 'Varianty', type: 'textarea' },
@@ -2956,6 +2972,15 @@ function renderMarkdown(text, options = {}) {
     codeBlocks.push(c);
     return '\u0000CODEBLOCK' + (codeBlocks.length - 1) + '\u0000';
   });
+  // Placeholder ((deník)) / ((denik)) → vykreslený deník TÉTO entity (od nejstaršího).
+  // HTML uložíme do markeru, aby přežilo escapování v renderInline.
+  const journalBlocks = [];
+  if (ctx.entity && (ctx.entity.aspects || []).includes('Journal')) {
+    text = text.replace(/\(\(\s*(deník|denik)\s*\)\)/gi, () => {
+      journalBlocks.push(renderJournalListHtml(ctx.entity, 'asc', ctx));
+      return '\u0000JOURNALBLOCK' + (journalBlocks.length - 1) + '\u0000';
+    });
+  }
   // Pre-process placeholdery ((...)) – nahradit hodnotami atributů entity z ctx (mimo code blocks)
   if (ctx.entity) {
     text = text.replace(/\(\(([^()]+?)\)\)/g, (m, ref) => {
@@ -2973,6 +2998,9 @@ function renderMarkdown(text, options = {}) {
   }
   html = html.replace(/\u0000CODEBLOCK(\d+)\u0000/g, (m, i) => {
     return '<pre><code>' + escapeHtml(codeBlocks[Number(i)]) + '</code></pre>';
+  });
+  html = html.replace(/\u0000JOURNALBLOCK(\d+)\u0000/g, (m, i) => {
+    return journalBlocks[Number(i)] || '';
   });
   html = html.replace(/\u0000PRIVATEBLOCK(\d+)\u0000/g, (m, i) => {
     const inner = renderMarkdown(privateBlocks[Number(i)], options);
@@ -3480,6 +3508,8 @@ function resolveInclude(ref, alias, ctx) {
   let inner;
   if ((target.aspects || []).includes('Database')) {
     inner = '<p class="meta">Pro vložení databáze použijte <code>{{database:' + escapeHtml(getDisplayTitle(target)) + '}}</code> (volitelně s parametry columns/filter/sort).</p>';
+  } else if ((target.aspects || []).includes('Journal')) {
+    inner = renderJournalListHtml(target, 'asc', { depth: ctx.depth + 1, includeStack: new Set(ctx.includeStack) });
   } else if ((target.aspects || []).includes('Plan')) {
     // Plán → vykreslit jako tabulku úkolů (WBS). Úkoly jsou v attributes.tasks, ne v body.
     const planMd = renderPlanAsMarkdown(target);
@@ -4880,6 +4910,8 @@ function getEntityBadgePrefix(e) {
   if (has('Idea')) prefix += '🧠 ';
   // Poznámka / Note → 📝
   if (has('Note')) prefix += '📝 ';
+  // Deník / Journal → 📔
+  if (has('Journal')) prefix += '📔 ';
   // Téma / Topic → 🌳
   if (has('Topic')) prefix += '🌳 ';
   // Include / vkládací bloky → 🧩
@@ -10847,6 +10879,7 @@ function renderDetailRead(main, e) {
     renderQuestionAnswersSection(e) +
     renderEventAttendeesSection(e) +
     renderEventTasksSection(e) +
+    renderJournalSection(e) +
     (bodyHtml ? '<details open class="section-collapsible" id="section-body"><summary>Obsah</summary><h3>Obsah</h3>' +
       '<div class="btn-group" style="margin-bottom:0.5em;margin-top:0.5em;">' +
         '<button id="btn-copy-body-source" title="Zkopírovat zdroj (Markdown)">📋 Zkopírovat zdroj</button>' +
@@ -11219,6 +11252,7 @@ function renderDetailRead(main, e) {
   attachTimeTrackingHandlers(e);
   attachProjectTimeTrackingHandlers(e);
   attachQuestionAnswersHandlers(main, e);
+  attachJournalHandlers(main, e);
   attachEventAttendeesHandlers(main, e);
   attachEventTasksHandlers(main, e);
   if (state.sectionEditMode) setupSectionEditMode(e);
@@ -12393,6 +12427,7 @@ function renderDetailEdit(main, e) {
   attachTimeTrackingHandlers(e);
   attachProjectTimeTrackingHandlers(e);
   attachQuestionAnswersHandlers(main, e);
+  attachJournalHandlers(main, e);
   attachEventAttendeesHandlers(main, e);
   attachEventTasksHandlers(main, e);
 
@@ -19083,6 +19118,207 @@ function attachQuestionAnswersHandlers(main, entity) {
   if (createBtn) createBtn.onclick = () => openCreateAnswerDialog(entity);
 }
 
+// ===== DENÍK (aspekt Journal) =====
+const JOURNAL_DAYS = ['neděle','pondělí','úterý','středa','čtvrtek','pátek','sobota'];
+const JOURNAL_MONTHS = ['ledna','února','března','dubna','května','června','července','srpna','září','října','listopadu','prosince'];
+
+function journalFormatDate(dateStr) {
+  const d = new Date(dateStr);
+  if (isNaN(d)) return String(dateStr || '');
+  return JOURNAL_DAYS[d.getDay()] + ' ' + d.getDate() + '. ' + JOURNAL_MONTHS[d.getMonth()] + ' ' + d.getFullYear();
+}
+function journalFormatTime(dateStr) {
+  const d = new Date(dateStr);
+  if (isNaN(d)) return '';
+  return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+}
+function journalDateKey(dateStr) {
+  const d = new Date(dateStr);
+  if (isNaN(d)) return '';
+  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+}
+// Vrátí záznamy deníku (pole {id,date,text}). Tolerantní k chybějícím datům.
+function getJournalEntries(entity) {
+  const raw = entity && entity.attributes && entity.attributes.journal_entries;
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') { try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; } catch (e) { return []; } }
+  return [];
+}
+function setJournalEntries(entity, entries) {
+  if (!entity.attributes) entity.attributes = {};
+  entity.attributes.journal_entries = entries;
+}
+function getJournalSortDir(entity) {
+  return (entity && entity.attributes && entity.attributes.journal_sortDir === 'desc') ? 'desc' : 'asc';
+}
+function journalSorted(entries, dir) {
+  return entries.slice().sort((a, b) => {
+    const cmp = String(a.date || '').localeCompare(String(b.date || ''));
+    return dir === 'desc' ? -cmp : cmp;
+  });
+}
+// Vykreslí odrážkový seznam deníku seskupený po dnech. text projde markdownem.
+function renderJournalListHtml(entity, dir, ctx) {
+  const entries = journalSorted(getJournalEntries(entity), dir);
+  if (entries.length === 0) return '<p class="meta">Zatím žádné záznamy.</p>';
+  // Seskup po dnech (zachová pořadí dle dir)
+  const groups = [];
+  const byKey = {};
+  entries.forEach(e => {
+    const k = journalDateKey(e.date);
+    if (!byKey[k]) { byKey[k] = { key: k, sample: e.date, items: [] }; groups.push(byKey[k]); }
+    byKey[k].items.push(e);
+  });
+  const subCtx = { depth: ((ctx && ctx.depth) || 0) + 1, includeStack: new Set((ctx && ctx.includeStack) || []), entity };
+  let h = '<ul class="journal-list">';
+  groups.forEach(g => {
+    h += '<li><span class="journal-day-label">' + escapeHtml(journalFormatDate(g.sample)) + '</span>';
+    h += '<ul class="journal-entries">';
+    g.items.forEach(it => {
+      // text přes renderMarkdown (kvůli [[odkazům]], **bold** apod.), strip obalujícího <p>
+      let textHtml = renderMarkdown(it.text || '', { ctx: subCtx }).trim();
+      textHtml = textHtml.replace(/^<p>/, '').replace(/<\/p>$/, '');
+      h += '<li><span class="journal-time">' + escapeHtml(journalFormatTime(it.date)) + '</span>' +
+        '<span class="journal-entry-text">' + textHtml + '</span></li>';
+    });
+    h += '</ul></li>';
+  });
+  h += '</ul>';
+  return h;
+}
+
+// Sekce Deník v detailu (read mode) – sbalovací, s toolbarem.
+function renderJournalSection(entity) {
+  if (!entity || !(entity.aspects || []).includes('Journal')) return '';
+  const dir = getJournalSortDir(entity);
+  const count = getJournalEntries(entity).length;
+  const dirLabel = dir === 'asc' ? 'Nejstarší ▲' : 'Nejnovější ▼';
+  let h = '<details open class="section-collapsible journal-section" id="section-journal">' +
+    '<summary>Deník (' + count + ')</summary>' +
+    '<h3>📔 Deník (' + count + ')</h3>' +
+    '<div class="btn-group" style="margin:0.4em 0;">' +
+      '<button type="button" id="journal-add">+ Přidat záznam</button>' +
+      '<button type="button" id="journal-edit-toggle" aria-pressed="' + (state._journalEditMode ? 'true' : 'false') + '">' +
+        (state._journalEditMode ? 'Hotovo (zpět na výpis)' : 'Upravit záznamy') + '</button>' +
+      '<button type="button" id="journal-sortdir">' + dirLabel + '</button>' +
+    '</div>';
+  if (state._journalEditMode) {
+    h += renderJournalEditTable(entity);
+  } else {
+    h += renderJournalListHtml(entity, dir, { depth: 0, includeStack: new Set() });
+  }
+  h += '</details>';
+  return h;
+}
+
+// Editační tabulka záznamů (vždy od nejnovějšího).
+function renderJournalEditTable(entity) {
+  const entries = journalSorted(getJournalEntries(entity), 'desc');
+  let h = '<table class="journal-edit-table"><caption class="sr-only">Záznamy deníku k úpravě</caption>' +
+    '<thead><tr><th scope="col">Datum a čas</th><th scope="col">Text</th><th scope="col">Akce</th></tr></thead><tbody>';
+  if (entries.length === 0) {
+    h += '<tr><td colspan="3" class="meta">(žádné záznamy)</td></tr>';
+  } else {
+    entries.forEach(e => {
+      const preview = (e.text || '').replace(/\s+/g, ' ').trim();
+      h += '<tr>' +
+        '<td>' + escapeHtml(journalFormatDate(e.date)) + ' ' + escapeHtml(journalFormatTime(e.date)) + '</td>' +
+        '<td>' + escapeHtml(preview.length > 160 ? preview.slice(0, 158) + '…' : preview) + '</td>' +
+        '<td><div class="btn-group" style="margin:0;">' +
+          '<button type="button" data-journal-edit="' + escapeHtml(e.id) + '">Upravit</button>' +
+          '<button type="button" class="danger" data-journal-del="' + escapeHtml(e.id) + '">Smazat</button>' +
+        '</div></td>' +
+      '</tr>';
+    });
+  }
+  h += '</tbody></table>';
+  return h;
+}
+
+function attachJournalHandlers(main, entity) {
+  if (!entity || !(entity.aspects || []).includes('Journal')) return;
+  const addBtn = document.getElementById('journal-add');
+  if (addBtn) addBtn.onclick = () => openJournalEntryDialog(entity, null);
+  const editToggle = document.getElementById('journal-edit-toggle');
+  if (editToggle) editToggle.onclick = () => { state._journalEditMode = !state._journalEditMode; render(); };
+  const sortBtn = document.getElementById('journal-sortdir');
+  if (sortBtn) sortBtn.onclick = () => {
+    if (!entity.attributes) entity.attributes = {};
+    entity.attributes.journal_sortDir = (getJournalSortDir(entity) === 'asc') ? 'desc' : 'asc';
+    save();
+    render();
+  };
+  main.querySelectorAll('[data-journal-edit]').forEach(b => {
+    b.onclick = () => {
+      const id = b.dataset.journalEdit;
+      const entry = getJournalEntries(entity).find(x => x.id === id);
+      if (entry) openJournalEntryDialog(entity, entry);
+    };
+  });
+  main.querySelectorAll('[data-journal-del]').forEach(b => {
+    b.onclick = () => {
+      const id = b.dataset.journalDel;
+      confirmDialog('Smazat tento záznam deníku?', () => {
+        setJournalEntries(entity, getJournalEntries(entity).filter(x => x.id !== id));
+        save();
+        render();
+        toast('Záznam smazán.');
+      });
+    };
+  });
+}
+
+// Dialog pro přidání/úpravu záznamu deníku. entry === null → nový.
+function openJournalEntryDialog(entity, entry) {
+  const existing = document.getElementById('journal-entry-dialog');
+  if (existing) existing.remove();
+  const isNew = !entry;
+  // Předvyplněné datum: u nového aktuální čas, jinak hodnota záznamu, ve formátu pro datetime-local.
+  function toLocalInput(dateStr) {
+    const d = dateStr ? new Date(dateStr) : new Date();
+    if (isNaN(d)) return '';
+    const pad = n => ('0' + n).slice(-2);
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+  const d = document.createElement('dialog');
+  d.id = 'journal-entry-dialog';
+  d.setAttribute('aria-labelledby', 'je-title');
+  d.innerHTML =
+    '<h2 id="je-title">' + (isNew ? 'Nový záznam deníku' : 'Upravit záznam deníku') + '</h2>' +
+    '<div style="margin-bottom:0.5em;"><label for="je-date">Datum a čas</label>' +
+      '<input type="datetime-local" id="je-date" value="' + escapeHtml(toLocalInput(entry ? entry.date : null)) + '"></div>' +
+    '<div style="margin-bottom:0.5em;"><label for="je-text">Text</label>' +
+      '<textarea id="je-text" rows="5" style="width:100%;box-sizing:border-box;">' + escapeHtml(entry ? (entry.text || '') : '') + '</textarea></div>' +
+    '<div class="btn-group">' +
+      '<button type="button" id="je-save" class="primary">' + (isNew ? 'Přidat' : 'Uložit') + '</button>' +
+      '<button type="button" id="je-cancel">Zrušit</button>' +
+    '</div>';
+  document.body.appendChild(d);
+  d.showModal();
+  setTimeout(() => { const ta = d.querySelector('#je-text'); if (ta) ta.focus(); }, 50);
+  d.querySelector('#je-cancel').onclick = () => { d.close(); d.remove(); };
+  d.querySelector('#je-save').onclick = () => {
+    const dateVal = d.querySelector('#je-date').value;
+    const textVal = d.querySelector('#je-text').value;
+    if (!dateVal) { alertMsg('Zadejte datum a čas.'); return; }
+    // datetime-local → ISO. new Date(dateVal) bere lokální čas.
+    const iso = new Date(dateVal).toISOString();
+    const entries = getJournalEntries(entity).slice();
+    if (isNew) {
+      entries.push({ id: uuid(), date: iso, text: textVal });
+    } else {
+      const idx = entries.findIndex(x => x.id === entry.id);
+      if (idx >= 0) entries[idx] = Object.assign({}, entries[idx], { date: iso, text: textVal });
+    }
+    setJournalEntries(entity, entries);
+    save();
+    d.close(); d.remove();
+    render();
+    toast(isNew ? 'Záznam přidán.' : 'Záznam upraven.');
+  };
+}
+
+
 // Otevře dialog pro zadání názvu nové entity, která bude odpovídat na zadanou otázku.
 function openCreateAnswerDialog(questionEntity) {
   if (!questionEntity) return;
@@ -24230,6 +24466,7 @@ body.viewer-mode .btn-group:has(#d-add-comment) { display: none !important; }
       <tr><td><code>[[Název entity]]</code></td><td>Wiki odkaz</td></tr>
       <tr><td><code>{{include:ID}}</code></td><td>Transkluze – vloží obsah jiné entity</td></tr>
       <tr><td><code>{{include:Název}}</code></td><td>Transkluze podle názvu</td></tr>
+      <tr><td><code>{{include:Deník}}</code> nebo <code>((deník))</code></td><td>Vloží deník: <code>{{include:}}</code> vloží deník jiné entity, <code>((deník))</code> vloží deník TÉTO entity na dané místo v obsahu. Vždy od nejstaršího po nejnovější.</td></tr>
       <tr><td><code>{{database:Název?columns=A, B&filter=stav=Hotovo, počet&gt;=10&sort=B desc}}</code></td><td>Tabulka databáze s volitelnými parametry. <code>columns</code> = labely sloupců oddělené čárkou; <code>filter</code> = podmínky oddělené čárkou (operátory <code>=</code> shoda, <code>*</code> obsahuje, <code>&lt; &gt; &lt;= &gt;= !=</code>, prázdná hodnota = nevyplněno); <code>sort</code> = label sloupce + asc/desc. Bez parametrů vloží vše.</td></tr>
       <tr><td><code>{{status:Název}}</code></td><td>Status chip – kompaktní souhrn entity (název + nejdůležitější info podle aspektů: stav úkolu, termín schůzky, URL záložky, % cíle, statistika projektu…) s odkazem na entitu. Funguje i v exportu/tisku.</td></tr>
       <tr><td><code>**tučně**</code> <code>*kurzíva*</code></td><td>Standardní markdown</td></tr>
@@ -24593,6 +24830,7 @@ const ASPECTS = {
       options: ['full','partial','tentative'],
       optionLabels: { full: 'Úplná odpověď', partial: 'Částečná odpověď', tentative: 'Předběžná odpověď' } }
   ]},
+  Journal: { label: 'Deník', fields: [] },
   Decision: { label: 'Rozhodnutí', fields: [
     { key: 'criteria', label: 'Kritéria', type: 'textarea' },
     { key: 'options', label: 'Varianty', type: 'textarea' },
@@ -25360,6 +25598,14 @@ function renderMarkdown(text, options = {}) {
     codeBlocks.push(c);
     return '\\u0000CODEBLOCK' + (codeBlocks.length - 1) + '\\u0000';
   });
+  // Placeholder ((deník)) → vykreslený deník této entity (od nejstaršího)
+  const journalBlocks = [];
+  if (ctx.entity && (ctx.entity.aspects || []).includes('Journal')) {
+    text = text.replace(/\\(\\(\\s*(deník|denik)\\s*\\)\\)/gi, () => {
+      journalBlocks.push(renderJournalListHtml(ctx.entity, 'asc', ctx));
+      return '\\u0000JOURNALBLOCK' + (journalBlocks.length - 1) + '\\u0000';
+    });
+  }
   const blocks = text.split(/\\n{2,}/);
   let html = '';
   for (let block of blocks) {
@@ -25369,6 +25615,9 @@ function renderMarkdown(text, options = {}) {
   }
   html = html.replace(/\\u0000CODEBLOCK(\\d+)\\u0000/g, (m, i) => {
     return '<pre><code>' + escapeHtml(codeBlocks[Number(i)]) + '</code></pre>';
+  });
+  html = html.replace(/\\u0000JOURNALBLOCK(\\d+)\\u0000/g, (m, i) => {
+    return journalBlocks[Number(i)] || '';
   });
   // Footnoty
   if (ctx.footnotes && Object.keys(ctx.footnotes).length > 0 && !options.skipFootnotesRender) {
@@ -25584,6 +25833,8 @@ function resolveInclude(ref, alias, ctx) {
   let inner;
   if ((target.aspects || []).includes('Database')) {
     inner = '<p class="meta">Pro vložení databáze použijte <code>{{database:' + escapeHtml(getDisplayTitle(target)) + '}}</code> (volitelně s parametry columns/filter/sort).</p>';
+  } else if ((target.aspects || []).includes('Journal')) {
+    inner = renderJournalListHtml(target, 'asc', { depth: ctx.depth + 1, includeStack: new Set(ctx.includeStack) });
   } else if ((target.aspects || []).includes('Plan')) {
     // Plán → vykreslit jako tabulku úkolů (WBS). Úkoly jsou v attributes.tasks, ne v body.
     const planMd = renderPlanAsMarkdown(target);
@@ -25609,6 +25860,75 @@ function resolveInclude(ref, alias, ctx) {
 }
 
 // Vykreslí jednoduchou (nesortovanou) tabulku databáze pro include
+// === Deník (aspekt Journal) – viewer kopie (read-only) ===
+var JOURNAL_DAYS = ['neděle','pondělí','úterý','středa','čtvrtek','pátek','sobota'];
+var JOURNAL_MONTHS = ['ledna','února','března','dubna','května','června','července','srpna','září','října','listopadu','prosince'];
+function journalFormatDate(dateStr) {
+  var d = new Date(dateStr);
+  if (isNaN(d)) return String(dateStr || '');
+  return JOURNAL_DAYS[d.getDay()] + ' ' + d.getDate() + '. ' + JOURNAL_MONTHS[d.getMonth()] + ' ' + d.getFullYear();
+}
+function journalFormatTime(dateStr) {
+  var d = new Date(dateStr);
+  if (isNaN(d)) return '';
+  return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+}
+function journalDateKey(dateStr) {
+  var d = new Date(dateStr);
+  if (isNaN(d)) return '';
+  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+}
+function getJournalEntries(entity) {
+  var raw = entity && entity.attributes && entity.attributes.journal_entries;
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') { try { var p = JSON.parse(raw); return Array.isArray(p) ? p : []; } catch (e) { return []; } }
+  return [];
+}
+function getJournalSortDir(entity) {
+  return (entity && entity.attributes && entity.attributes.journal_sortDir === 'desc') ? 'desc' : 'asc';
+}
+function journalSorted(entries, dir) {
+  return entries.slice().sort(function(a, b) {
+    var cmp = String(a.date || '').localeCompare(String(b.date || ''));
+    return dir === 'desc' ? -cmp : cmp;
+  });
+}
+function renderJournalListHtml(entity, dir, ctx) {
+  var entries = journalSorted(getJournalEntries(entity), dir);
+  if (entries.length === 0) return '<p class="meta">Zatím žádné záznamy.</p>';
+  var groups = [], byKey = {};
+  entries.forEach(function(e) {
+    var k = journalDateKey(e.date);
+    if (!byKey[k]) { byKey[k] = { key: k, sample: e.date, items: [] }; groups.push(byKey[k]); }
+    byKey[k].items.push(e);
+  });
+  var subCtx = { depth: ((ctx && ctx.depth) || 0) + 1, includeStack: new Set((ctx && ctx.includeStack) || []), entity: entity };
+  var h = '<ul class="journal-list">';
+  groups.forEach(function(g) {
+    h += '<li><span class="journal-day-label">' + escapeHtml(journalFormatDate(g.sample)) + '</span>';
+    h += '<ul class="journal-entries">';
+    g.items.forEach(function(it) {
+      var textHtml = renderMarkdown(it.text || '', { ctx: subCtx }).trim();
+      textHtml = textHtml.replace(/^<p>/, '').replace(/<\\/p>$/, '');
+      h += '<li><span class="journal-time">' + escapeHtml(journalFormatTime(it.date)) + '</span>' +
+        '<span class="journal-entry-text">' + textHtml + '</span></li>';
+    });
+    h += '</ul></li>';
+  });
+  h += '</ul>';
+  return h;
+}
+function renderJournalSection(entity) {
+  if (!entity || !(entity.aspects || []).includes('Journal')) return '';
+  var dir = getJournalSortDir(entity);
+  var count = getJournalEntries(entity).length;
+  return '<details open class="section-collapsible journal-section" id="section-journal">' +
+    '<summary>Deník (' + count + ')</summary>' +
+    '<h3>📔 Deník (' + count + ')</h3>' +
+    renderJournalListHtml(entity, dir, { depth: 0, includeStack: new Set() }) +
+    '</details>';
+}
+
 // === Database include s parametry (viewer kopie) ===
 function getDbFields(entity) {
   const raw = entity && entity.attributes && entity.attributes.db_fields;
@@ -28720,6 +29040,7 @@ function renderDetailRead(main, e) {
     (attachmentsHtml ? '<details open class="section-collapsible"><summary>Přílohy (' + e.attachments.length + ')</summary><h3>Přílohy (' + e.attachments.length + ')</h3>' + attachmentsHtml + '</details>' : '') +
     projectDashHtml +
     databaseHtml +
+    renderJournalSection(e) +
     (refsHtml ? '<details class="section-collapsible"><summary>Odkazy</summary><h3>Odkazy</h3>' + refsHtml + '</details>' : '') +
     ((linksHtml || inverseHtml) ? '<details open class="section-collapsible"><summary>Vazby</summary><h3>Vazby</h3>' +
       (linksHtml ? '<p><strong>Odchozí vazby</strong></p>' + linksHtml : '') +
