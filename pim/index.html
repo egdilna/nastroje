@@ -1955,6 +1955,12 @@ function saveDebounced() { clearTimeout(saveTimer); saveTimer = setTimeout(save,
 // Po refreshi stránky je autosave vždy vypnutý.
 let _autosaveGhEnabled = false;
 let _autosaveGhTimer = null;
+// Interval autosave na GitHub v sekundách (z nastavení, default 15, min 1).
+function getAutosaveSeconds() {
+  const v = state && state.settings ? Number(state.settings.autosaveGhSeconds) : NaN;
+  if (!isFinite(v) || v < 1) return 15;
+  return Math.round(v);
+}
 function scheduleAutosaveGh() {
   // Guard: save() vyvolaný uvnitř upload() (kvůli aktualizaci ghMeta) nesmí znovu plánovat upload.
   if (window._autosaveSkip) return;
@@ -1979,13 +1985,13 @@ function scheduleAutosaveGh() {
       window._autosaveSkip = false;
       debug('Autosave GH chyba: ' + e.message);
     }
-  }, 15000);
+  }, getAutosaveSeconds() * 1000);
 }
 function toggleAutosaveGh() {
   _autosaveGhEnabled = !_autosaveGhEnabled;
   updateAutosaveButton();
   if (_autosaveGhEnabled) {
-    toast('Autosave na GitHub zapnut. Změny se nahrají automaticky ~15 s po poslední úpravě.', 4000);
+    toast('Autosave na GitHub zapnut. Změny se nahrají automaticky ~' + getAutosaveSeconds() + ' s po poslední úpravě.', 4000);
   } else {
     clearTimeout(_autosaveGhTimer);
     _autosaveGhTimer = null;
@@ -10206,6 +10212,9 @@ function renderSettings(main) {
         '</div>' +
       '</div>' +
       '<label><input type="checkbox" id="pref-debug"' + (state.settings.debugMode ? ' checked' : '') + '> Ladicí mód</label>' +
+      '<label for="pref-autosave-sec">Interval autosave na GitHub (sekundy)</label>' +
+      '<input type="number" id="pref-autosave-sec" min="1" step="1" value="' + escapeHtml(String(getAutosaveSeconds())) + '" style="max-width:8em;">' +
+      '<p class="meta" style="margin-top:0.2em;">Jak dlouho po poslední úpravě se změny automaticky nahrají na GitHub (když je autosave zapnutý). Výchozí 15 s.</p>' +
     '</section>' +
 
     '<section aria-labelledby="gh-h"><h3 id="gh-h">GitHub synchronizace</h3>' +
@@ -10424,6 +10433,15 @@ function renderSettings(main) {
     if (!ev.target.checked) {
       const d = document.getElementById('debug-log'); if (d) d.remove();
     } else debug('Debug zapnut.');
+  };
+  const autosaveSecInp = document.getElementById('pref-autosave-sec');
+  if (autosaveSecInp) autosaveSecInp.onchange = (ev) => {
+    let v = Math.round(Number(ev.target.value));
+    if (!isFinite(v) || v < 1) v = 15;
+    state.settings.autosaveGhSeconds = v;
+    ev.target.value = String(v);
+    save();
+    toast('Interval autosave nastaven na ' + v + ' s.');
   };
 
   // GitHub sekce
@@ -14810,31 +14828,57 @@ function computeReadingStats(entity, visited) {
   visited = visited || new Set();
   if (visited.has(entity.id)) return { words: 0, includedWords: 0, chars: 0 };
   visited.add(entity.id);
-  // Slova vlastního textu (bez includů – ty zpracujeme zvlášť)
-  const ownText = (entity.body || '').replace(/\{\{include:[^}]+\}\}/g, ' ');
+  // Vlastní text bez vkládacích maker – ty zpracujeme zvlášť (jinak by se počítaly jako text).
+  const ownText = (entity.body || '')
+    .replace(/\{\{include:[^}]+\}\}/g, ' ')
+    .replace(/\{\{database:[^}]+\}\}/g, ' ')
+    .replace(/\{\{status:[^}]+\}\}/g, ' ')
+    .replace(/\(\(\s*(?:deník|denik)\s*\)\)/gi, ' ');
   const ownStats = computeTextStats(ownText);
-  // Include rekurzivně
+  // Strukturovaný obsah TÉTO entity (tabulka databáze, záznamy deníku) – součást vlastního obsahu.
+  const structStats = computeTextStats(_structuredContentText(entity));
+  // Akumulace „vložených" statistik (z maker i z odkazovaných entit)
   let includedWords = 0;
   let includedSentences = 0;
   let includedLongWords = 0;
   let includedChars = 0;
+  function addSub(sub) {
+    includedWords += sub.words || 0;
+    includedSentences += sub._sentences || sub.sentences || 0;
+    includedLongWords += sub._longWords || sub.longWords || 0;
+    includedChars += sub.chars || 0;
+  }
+  // {{include:...}} – rekurzivně celá entita
   const includeRe = /\{\{include:([^}|]+)(?:\|[^}]*)?\}\}/g;
   let m;
   while ((m = includeRe.exec(entity.body || '')) !== null) {
     const ref = m[1].trim();
     const target = findEntityByIdOrTitle ? findEntityByIdOrTitle(ref) : null;
-    if (target && !visited.has(target.id)) {
-      const sub = computeReadingStats(target, visited);
-      includedWords += sub.words;
-      includedSentences += sub._sentences || 0;
-      includedLongWords += sub._longWords || 0;
-      includedChars += sub.chars || 0;
+    if (target && !visited.has(target.id)) addSub(computeReadingStats(target, visited));
+  }
+  // {{database:Název?...}} – text vyrenderované (filtrované) tabulky cílové databáze
+  const dbRe = /\{\{database:([^}]+)\}\}/g;
+  while ((m = dbRe.exec(entity.body || '')) !== null) {
+    const inner = m[1];
+    const qIdx = inner.indexOf('?');
+    const ref = (qIdx >= 0 ? inner.slice(0, qIdx) : inner).trim();
+    const query = qIdx >= 0 ? inner.slice(qIdx + 1) : '';
+    const target = findEntityByIdOrTitle ? findEntityByIdOrTitle(ref) : null;
+    if (target && (target.aspects || []).includes('Database')) {
+      addSub(computeTextStats(_databaseIncludeText(target, query)));
     }
   }
-  const totalWords = ownStats.words + includedWords;
-  const totalSentences = ownStats.sentences + includedSentences;
-  const totalLongWords = ownStats.longWords + includedLongWords;
-  const totalChars = (ownStats.chars || 0) + includedChars;
+  // {{status:Název}} – krátký chip (název + pár údajů), připočteme jeho text
+  const stRe = /\{\{status:([^}|]+)\}\}/g;
+  while ((m = stRe.exec(entity.body || '')) !== null) {
+    const ref = m[1].trim();
+    const target = findEntityByIdOrTitle ? findEntityByIdOrTitle(ref) : null;
+    if (target) addSub(computeTextStats(_statusChipText(target)));
+  }
+  const totalWords = ownStats.words + structStats.words + includedWords;
+  const totalSentences = ownStats.sentences + structStats.sentences + includedSentences;
+  const totalLongWords = ownStats.longWords + structStats.longWords + includedLongWords;
+  const totalChars = (ownStats.chars || 0) + (structStats.chars || 0) + includedChars;
   // Čas: typicky 200 slov/min při čtení
   const minutes = Math.max(1, Math.round(totalWords / 200));
   // Složitost: poměr dlouhých slov a délka vět
@@ -14851,10 +14895,52 @@ function computeReadingStats(entity, visited) {
     pages,
     minutes,
     complexity,
-    includedWords,
+    includedWords: includedWords + structStats.words,
     _sentences: totalSentences,
     _longWords: totalLongWords
   };
+}
+
+// Plain text strukturovaného obsahu entity (tabulka databáze, záznamy deníku) pro statistiky.
+function _structuredContentText(entity) {
+  let txt = '';
+  const aspects = entity.aspects || [];
+  if (aspects.includes('Database') && typeof getDbFields === 'function') {
+    txt += ' ' + _databaseIncludeText(entity, '');
+  }
+  if (aspects.includes('Journal') && typeof getJournalEntries === 'function') {
+    const entries = getJournalEntries(entity);
+    txt += ' ' + entries.map(e => (e.text || '')).join(' ');
+  }
+  return txt;
+}
+
+// Plain text tabulky databáze (labely vybraných sloupců + hodnoty filtrovaných řádků).
+function _databaseIncludeText(entity, query) {
+  try {
+    const allFields = getDbFields(entity);
+    const allRecords = getDbRecords(entity);
+    const parsed = (typeof parseDatabaseIncludeParams === 'function') ? parseDatabaseIncludeParams(query) : { columns: null, filters: [], sort: null };
+    const r = (typeof applyDatabaseIncludeParams === 'function')
+      ? applyDatabaseIncludeParams(allFields, allRecords, parsed)
+      : { fields: allFields, records: allRecords };
+    const headers = r.fields.map(f => f.label || '').join(' ');
+    const cells = r.records.map(rec => r.fields.map(f => {
+      const v = rec[f.key];
+      if (v === null || v === undefined || v === '') return '';
+      if (f.type === 'bool') return v ? 'Ano' : 'Ne';
+      return String(v);
+    }).join(' ')).join(' ');
+    return headers + ' ' + cells;
+  } catch (e) { return ''; }
+}
+
+// Plain text status chipu (název + textové části).
+function _statusChipText(entity) {
+  try {
+    const html = buildStatusChipHtml(entity);
+    return html.replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/gi, ' ');
+  } catch (e) { return getDisplayTitle(entity) || ''; }
 }
 
 function computeTextStats(text) {
