@@ -391,6 +391,18 @@ hr{border:none;border-top:1px solid #ddd;margin:1em 0}
     <input type="text" id="setCaption" placeholder="Např. Obrázek 1: Tok zpracování">
     <div class="help">Krátký jednořádkový popisek pod celým diagramem. Také podléhá kaskádě projekt → diagram.</div>
   </div>
+  <fieldset id="setLayoutDirectionWrap" style="display:none;border:1px solid #ccc;padding:0.5em;margin:0.5em 0;">
+    <legend>Směr layoutu diagramu</legend>
+    <div class="field">
+      <label for="setLayoutDirection">Uspořádání prvků:</label>
+      <select id="setLayoutDirection">
+        <option value="">Výchozí (PlantUML rozhodne)</option>
+        <option value="top-bottom">Shora dolů (top to bottom direction)</option>
+        <option value="left-right">Zleva doprava (left to right direction)</option>
+      </select>
+      <div class="help">Ovlivňuje výchozí směr, ve kterém se prvky vykreslí. Funguje pro diagramy s GraphViz layoutem (class, usecase, component, deployment, state, activity). Drobnější dolaďování layoutu lze pak řešit směrovými vazbami nebo skrytými vazbami v balíčcích/skupinách.</div>
+    </div>
+  </fieldset>
   <fieldset id="setClassHideWrap" style="display:none;border:1px solid #ccc;padding:0.5em;margin:0.5em 0;">
     <legend>Vizuální direktivy (pouze class diagram)</legend>
     <div class="field"><label><input type="checkbox" id="setHideEmptyMembers"> Skrýt prázdné členy (hide empty members)</label></div>
@@ -5240,6 +5252,14 @@ function generatePuml(diagram){
     if(ds.hideCircle)          out.push('hide circle');
     if(ds.hideStereotype)      out.push('hide stereotype');
   }
+  // Směr layoutu — funguje pro diagramy s GraphViz layoutem (class, usecase,
+  // component, deployment, state, activity). Sequence/timing/gantt/timeline/ebnf/
+  // network mají vlastní layout a direktivu ignorují, takže ji ani neemitujeme.
+  const layoutDir = ds.layoutDirection || '';
+  if(layoutDir && ['class','usecase','component','deployment','state','activity'].indexOf(diagram.type) >= 0){
+    if(layoutDir === 'left-right')      out.push('left to right direction');
+    else if(layoutDir === 'top-bottom') out.push('top to bottom direction');
+  }
   out.push('');
   switch(diagram.type){
     case 'activity': out.push(genActivity(diagram.model)); break;
@@ -5578,8 +5598,21 @@ function genClass(model){
     const aliasDecl = p.alias ? ' as ' + p.alias : '';
     const kw = (p.packageType && PACKAGE_TYPES.find(t=>t.value===p.packageType)) ? p.packageType : 'package';
     out.push(pad + kw + ' "' + (p.name || 'package').replace(/"/g,'\\"') + '"' + aliasDecl + ' {');
-    (classesByPkg[p.id] || []).forEach(c => emitClass(c, indent+1));
+    const pkgClasses = classesByPkg[p.id] || [];
+    pkgClasses.forEach(c => emitClass(c, indent+1));
     (childrenOf[p.id] || []).forEach(child => emitPkg(child, indent+1));
+    // Volitelné: vertical layout — skryté vazby mezi přímými dětmi balíčku
+    // (třídami i podbalíčky). Podbalíčky se referují přes svůj alias, pokud
+    // mají, jinak pomocí jména v uvozovkách (totéž jako u běžných vazeb).
+    if(p.verticalLayout){
+      const padChild = '  '.repeat(indent+1);
+      const kidRefs = []
+        .concat(pkgClasses.map(c => classRef(c)))
+        .concat((childrenOf[p.id]||[]).map(sp => sp.alias ? sp.alias : quoteIfNeeded(sp.name || 'package')));
+      for(let i=0;i<kidRefs.length-1;i++){
+        out.push(padChild + kidRefs[i] + ' -[hidden]- ' + kidRefs[i+1]);
+      }
+    }
     out.push(pad + '}');
   }
   (classesByPkg['__root__'] || []).forEach(c => emitClass(c, 0));
@@ -5793,7 +5826,14 @@ function genUseCase(model){
   systems.forEach(s => {
     const aliasDecl = s.alias ? ' as ' + s.alias : '';
     out.push('rectangle "' + (s.name||'System').replace(/"/g,'\\"') + '"' + aliasDecl + ' {');
-    (ucBy[s.id] || []).forEach(u => emitUC(u, 1));
+    const sysUCs = ucBy[s.id] || [];
+    sysUCs.forEach(u => emitUC(u, 1));
+    // Volitelné: vertical layout
+    if(s.verticalLayout && sysUCs.length >= 2){
+      for(let i=0;i<sysUCs.length-1;i++){
+        out.push('  ' + aliasU[sysUCs[i].id] + ' -[hidden]- ' + aliasU[sysUCs[i+1].id]);
+      }
+    }
     out.push('}');
   });
   if(useCases.length || systems.length) out.push('');
@@ -5946,8 +5986,20 @@ function genComponent(model){
   groups.forEach(g => {
     const kw = GROUP_KW[g.groupType] || 'package';
     out.push(kw + ' "' + (g.name||'Skupina').replace(/"/g,'\\"') + '" {');
-    (compByGroup[g.id]||[]).forEach(c => emitComponent(c, 1));
-    (ifaceByGroup[g.id]||[]).forEach(i => emitInterface(i, 1));
+    const groupComps = compByGroup[g.id]||[];
+    const groupIfaces = ifaceByGroup[g.id]||[];
+    groupComps.forEach(c => emitComponent(c, 1));
+    groupIfaces.forEach(i => emitInterface(i, 1));
+    // Volitelné: vertical layout — řetězec skrytých vazeb mezi přímými dětmi.
+    // Spojuje komponenty i rozhraní (společné pořadí podle deklarace).
+    if(g.verticalLayout){
+      const kids = [].concat(groupComps, groupIfaces);
+      if(kids.length >= 2){
+        for(let i=0;i<kids.length-1;i++){
+          out.push('  ' + aliasOf[kids[i].id] + ' -[hidden]- ' + aliasOf[kids[i+1].id]);
+        }
+      }
+    }
     out.push('}');
   });
   (compByGroup['__root__']||[]).forEach(c => emitComponent(c, 0));
@@ -6058,6 +6110,14 @@ function genDeployment(model){
     if(kids.length){
       out.push(pad + kw + ' "' + (eff.name||'Uzel').replace(/"/g,'\\"') + '" as ' + aliasOf[n.id] + stereo + color + ' {');
       kids.forEach(k => emitNode(k, indent+1));
+      // Volitelné: pokud uživatel zvolil „uspořádat svisle", přidáme mezi
+      // přímé děti skryté vazby. Tím donutíme GraphViz dát je pod sebe.
+      if(n.verticalLayout && kids.length >= 2){
+        const padChild = '  '.repeat(indent+1);
+        for(let i=0;i<kids.length-1;i++){
+          out.push(padChild + aliasOf[kids[i].id] + ' -[hidden]- ' + aliasOf[kids[i+1].id]);
+        }
+      }
       out.push(pad + '}');
     } else {
       out.push(pad + kw + ' "' + (eff.name||'Uzel').replace(/"/g,'\\"') + '" as ' + aliasOf[n.id] + stereo + color);
@@ -9364,6 +9424,19 @@ function renderPackageForm(d, p, root){
     selectField(p.parentId||'',
       [{value:'',label: L.fn.noneM}].concat(others.map(x=>({value:x.id,label:L.fn.nameOr(x.name)}))),
       v=>{p.parentId=v||null;softTouch(d);})));
+  // Vertikální uspořádání: doplní skryté vazby mezi přímými dětmi balíčku,
+  // čímž donutí GraphViz dát je pod sebe (jinak by často šly vedle sebe
+  // do „nudle"). Pro každé prostředí (cloud, package, node…) funguje stejně.
+  root.appendChild(checkboxField(
+    getLang()==='en'
+      ? 'Arrange contents vertically (use hidden links)'
+      : 'Uspořádat obsah svisle (skryté vazby)',
+    !!p.verticalLayout,
+    v=>{p.verticalLayout=v;softTouch(d);},
+    'verticalPkg',
+    getLang()==='en'
+      ? 'Adds `-[hidden]-` links between direct children so they stack vertically. Useful when GraphViz spreads them horizontally into a long row.'
+      : 'Přidá mezi přímé děti balíčku skryté vazby `-[hidden]-`, takže se zobrazí pod sebou. Užitečné, když GraphViz prvky rozloží na šířku do „nudle".'));
 }
 
 // --- SEQUENCE DETAIL ------------------------------------------
@@ -9680,6 +9753,17 @@ function renderUseCaseDetail(d, root){
     root.appendChild(field(L.field.alias,
       inputText(s.alias||'', v=>{s.alias=sanitizeAliasInput(v);softTouch(d);}),
       'Krátký alias bez mezer a diakritiky. V PlantUML se generuje jako "as ' + (s.alias||'<alias>') + '".'));
+    // Vertikální uspořádání use case uvnitř systému.
+    root.appendChild(checkboxField(
+      getLang()==='en'
+        ? 'Arrange contents vertically (use hidden links)'
+        : 'Uspořádat obsah svisle (skryté vazby)',
+      !!s.verticalLayout,
+      v=>{s.verticalLayout=v;softTouch(d);},
+      'verticalSys',
+      getLang()==='en'
+        ? 'Adds `-[hidden]-` links between use cases inside this system so they stack vertically.'
+        : 'Přidá mezi use cases v tomto systému skryté vazby `-[hidden]-`, takže se zobrazí pod sebou.'));
     // KŘÍŽOVÉ ODKAZY: use cases v systému
     const isEn = getLang() === 'en';
     const ucsIn = (m.useCases||[])
@@ -10020,6 +10104,17 @@ function renderComponentDetail(d, root){
     root.appendChild(field(L.field.name, inputText(g.name||'', v=>{g.name=v;softTouch(d);}, 'cgName')));
     root.appendChild(field(L.field.type,
       selectField(g.groupType||'package', COMP_GROUP_OPTIONS, v=>{g.groupType=v;softTouch(d);}, 'cgType')));
+    // Vertikální uspořádání: doplní skryté vazby mezi přímými dětmi skupiny.
+    root.appendChild(checkboxField(
+      getLang()==='en'
+        ? 'Arrange contents vertically (use hidden links)'
+        : 'Uspořádat obsah svisle (skryté vazby)',
+      !!g.verticalLayout,
+      v=>{g.verticalLayout=v;softTouch(d);},
+      'verticalGrp',
+      getLang()==='en'
+        ? 'Adds `-[hidden]-` links between direct children so they stack vertically. Useful when GraphViz spreads them horizontally into a long row.'
+        : 'Přidá mezi přímé děti skupiny skryté vazby `-[hidden]-`, takže se zobrazí pod sebou. Užitečné, když GraphViz prvky rozloží na šířku do „nudle".'));
     // KŘÍŽOVÉ ODKAZY: prvky uvnitř skupiny
     const isEn = getLang() === 'en';
     const compsIn = (m.components||[])
@@ -10187,6 +10282,18 @@ function renderDeploymentDetail(d, root){
         v=>{n.parentId=v||null;softTouch(d);}, 'dnParent'),
       'Pokud je prvek umístěn uvnitř jiného (např. artefakt v uzlu).'));
     root.appendChild(colorField('Barva:', n.color||'', v=>{n.color=v;softTouch(d);}, 'dnColor', 'Volitelné.'));
+    // Vertikální uspořádání: pokud uzel obsahuje vnořené uzly/artefakty, lze
+    // přidat skryté vazby mezi nimi, aby se uspořádaly pod sebou.
+    root.appendChild(checkboxField(
+      getLang()==='en'
+        ? 'Arrange contents vertically (use hidden links)'
+        : 'Uspořádat obsah svisle (skryté vazby)',
+      !!n.verticalLayout,
+      v=>{n.verticalLayout=v;softTouch(d);},
+      'verticalNode',
+      getLang()==='en'
+        ? 'Adds `-[hidden]-` links between direct children so they stack vertically. Only effective when this node contains other nodes/artifacts.'
+        : 'Přidá mezi přímé děti uzlu skryté vazby `-[hidden]-`, takže se zobrazí pod sebou. Účinné jen pokud uzel obsahuje jiné uzly nebo artefakty.'));
 
     // KŘÍŽOVÉ ODKAZY ----------------------------------------------------------
     const isEn = getLang() === 'en';
@@ -13487,6 +13594,14 @@ function openDiagramSettings(){
   document.getElementById('setTitle').value = s.title || '';
   document.getElementById('setCaption').value = s.caption || '';
   document.getElementById('setTitleWrap').style.display = '';
+  // Směr layoutu — pouze pro diagramy s GraphViz layoutem
+  const ldirWrap = document.getElementById('setLayoutDirectionWrap');
+  if(['class','usecase','component','deployment','state','activity'].indexOf(d.type) >= 0){
+    ldirWrap.style.display = '';
+    document.getElementById('setLayoutDirection').value = s.layoutDirection || '';
+  } else {
+    ldirWrap.style.display = 'none';
+  }
   // Class-only hide direktivy: zobrazí se jen pro class diagram.
   const classWrap = document.getElementById('setClassHideWrap');
   if(d.type === 'class'){
@@ -13519,6 +13634,10 @@ function saveSettings(){
   } else if(target === 'diagram'){
     const d = getCurrentDiagram();
     if(d){
+      // Směr layoutu — uložíme jen pro typy, kde má smysl (viz showSettings).
+      if(['class','usecase','component','deployment','state','activity'].indexOf(d.type) >= 0){
+        s.layoutDirection = document.getElementById('setLayoutDirection').value || '';
+      }
       // Class-only direktivy: ukládáme jen pokud je diagram class (jinak by
       // checkboxy mohly mít zastaralý stav z otevření jiného typu diagramu).
       if(d.type === 'class'){

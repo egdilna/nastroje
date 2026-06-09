@@ -3713,7 +3713,9 @@ function renderDatabaseInclude(entity, query) {
       fields.forEach(f => {
         const v = rec[f.key];
         let cell = '';
-        if (v != null && v !== '') {
+        if (f.type === 'composed') {
+          cell = evaluateDbComposed(f, rec, allFields);
+        } else if (v != null && v !== '') {
           if (f.type === 'bool') cell = v ? 'Ano' : 'Ne';
           else if (f.type === 'date') cell = fmtDate(v);
           else cell = String(v);
@@ -9692,6 +9694,10 @@ function renderTimeTrackingView(main) {
     });
   });
   allEntriesInRange.sort((a, b) => (b.entry.start || '').localeCompare(a.entry.start || ''));
+  // Rychlý filtr: skrýt záznamy, které už byly odeslány do Toggl
+  const hideSent = !!st.hideSentToggl;
+  const sentCount = allEntriesInRange.filter(x => x.entry.toggl_sent).length;
+  const displayedEntries = hideSent ? allEntriesInRange.filter(x => !x.entry.toggl_sent) : allEntriesInRange;
 
   let html = '<h1>⏱ Sledování času</h1>';
 
@@ -9778,7 +9784,7 @@ function renderTimeTrackingView(main) {
   if (allEntriesInRange.length > 0) {
     // Seskupit záznamy podle dne (YYYY-MM-DD), uvnitř dne seřadit nejnovější začátek první.
     const byDay = {};
-    allEntriesInRange.forEach(item => {
+    displayedEntries.forEach(item => {
       const d = new Date(item.entry.start);
       const dayKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
       if (!byDay[dayKey]) byDay[dayKey] = [];
@@ -9789,9 +9795,15 @@ function renderTimeTrackingView(main) {
     // Uvnitř každého dne seřadit záznamy podle začátku desc
     dayKeys.forEach(k => byDay[k].sort((a, b) => (b.entry.start || '').localeCompare(a.entry.start || '')));
 
+    const titleCount = hideSent ? (displayedEntries.length + ' z ' + allEntriesInRange.length) : String(allEntriesInRange.length);
     html += '<details class="tt-section" style="margin:1em 0;" open>' +
-      '<summary><h2 style="display:inline-block;margin:0;">Detailní záznamy (' + allEntriesInRange.length + ')</h2></summary>' +
-      '<p class="meta">Záznamy seskupené podle dne, nejnovější den nahoře. Pro editaci záznamu otevřete detail entity. Tlačítko 📤 Toggl odešle záznam do Toggl Track (jen pokud je integrace nastavena v Nastavení). Záznam, který už byl odeslán, je označen ✓ Toggl a znovu odeslat nelze.</p>';
+      '<summary><h2 style="display:inline-block;margin:0;">Detailní záznamy (' + titleCount + ')</h2></summary>' +
+      '<p class="meta">Záznamy seskupené podle dne, nejnovější den nahoře. Pro editaci záznamu otevřete detail entity. Tlačítko 📤 Toggl odešle záznam do Toggl Track (jen pokud je integrace nastavena v Nastavení). Záznam, který už byl odeslán, je označen ✓ Toggl a znovu odeslat nelze.</p>' +
+      '<div class="task-quick-toggle"><label><input type="checkbox" id="ttv-hide-sent"' + (hideSent ? ' checked' : '') + '> Skrýt záznamy už odeslané do Toggl' + (sentCount > 0 ? ' (' + sentCount + ')' : '') + '</label></div>';
+
+    if (displayedEntries.length === 0) {
+      html += '<p class="meta">Všechny záznamy v tomto období už byly odeslány do Toggl. Zrušte filtr pro jejich zobrazení.</p>';
+    }
 
     const togglConfigured = togglIsConfigured();
     dayKeys.forEach(dayKey => {
@@ -9847,6 +9859,9 @@ function renderTimeTrackingView(main) {
   const toInp = document.getElementById('ttv-to');
   if (fromInp) fromInp.onchange = () => { st.customFrom = fromInp.value; save(); render(); };
   if (toInp) toInp.onchange = () => { st.customTo = toInp.value; save(); render(); };
+  // Rychlý filtr: skrýt už odeslané do Toggl
+  const hideSentCb = document.getElementById('ttv-hide-sent');
+  if (hideSentCb) hideSentCb.onchange = () => { st.hideSentToggl = hideSentCb.checked; save(); render(); };
   // Stop aktivního
   main.querySelectorAll('button.ttv-stop').forEach(b => {
     b.onclick = () => {
@@ -26082,7 +26097,39 @@ function getDbRecords(entity) {
   if (typeof raw === 'string') { try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; } catch (e) { return []; } }
   return [];
 }
-function parseDatabaseIncludeParams(query) {
+function dbComposedRawValue(f, v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (f.type === 'bool') return v ? 'Ano' : 'Ne';
+  if (f.type === 'date') return fmtDate(v);
+  return String(v);
+}
+function evaluateDbComposedSafe(field, record, fields, stack) {
+  const tpl = (field && field.template) || '';
+  if (!tpl) return '';
+  const byLabel = {};
+  (fields || []).forEach(f => { if (f.label) byLabel[f.label.trim().toLowerCase()] = f; });
+  return tpl.replace(/\{\{([^{}]+)\}\}/g, (m, name) => {
+    const f = byLabel[String(name).trim().toLowerCase()];
+    if (!f || f.key === field.key || stack.has(f.key)) return m;
+    if (f.type === 'composed') {
+      const s2 = new Set(stack); s2.add(field.key);
+      return evaluateDbComposedSafe(f, record, fields, s2);
+    }
+    return dbComposedRawValue(f, record[f.key]);
+  });
+}
+function evaluateDbComposed(field, record, fields) {
+  const tpl = (field && field.template) || '';
+  if (!tpl) return '';
+  const byLabel = {};
+  (fields || []).forEach(f => { if (f.label) byLabel[f.label.trim().toLowerCase()] = f; });
+  return tpl.replace(/\{\{([^{}]+)\}\}/g, (m, name) => {
+    const f = byLabel[String(name).trim().toLowerCase()];
+    if (!f || f.key === field.key) return m;
+    if (f.type === 'composed') return evaluateDbComposedSafe(f, record, fields, new Set([field.key]));
+    return dbComposedRawValue(f, record[f.key]);
+  });
+}
   const out = { columns: null, filters: [], sort: null };
   if (!query) return out;
   query.split('&').forEach(part => {
@@ -26232,7 +26279,9 @@ function renderDatabaseInclude(entity, query) {
       fields.forEach(f => {
         const v = rec[f.key];
         let cell = '';
-        if (v != null && v !== '') {
+        if (f.type === 'composed') {
+          cell = evaluateDbComposed(f, rec, allFields);
+        } else if (v != null && v !== '') {
           if (f.type === 'bool') cell = v ? 'Ano' : 'Ne';
           else if (f.type === 'date') cell = fmtDate(v);
           else cell = String(v);
@@ -32866,8 +32915,53 @@ const DB_FIELD_TYPES = {
   number: 'Číslo',
   date: 'Datum',
   bool: 'Ano/Ne',
-  select: 'Výběr'
+  select: 'Výběr',
+  composed: 'Sloučený'
 };
+
+// Vyhodnotí šablonu „Sloučeného" pole nad jedním záznamem.
+// Placeholdery {{Label pole}} nahradí hodnotou daného sloupce. Vše ostatní (uvozovky,
+// složené/hranaté závorky, jakékoli znaky) zůstane doslova – výstup je čistý text.
+function evaluateDbComposed(field, record, fields) {
+  const tpl = (field && field.template) || '';
+  if (!tpl) return '';
+  const byLabel = {};
+  (fields || []).forEach(f => { if (f.label) byLabel[f.label.trim().toLowerCase()] = f; });
+  // Nahradit jen {{...}}, kde ... odpovídá labelu existujícího pole (kromě tohoto composed pole,
+  // aby nevznikla rekurze). Neznámý placeholder se ponechá beze změny.
+  return tpl.replace(/\{\{([^{}]+)\}\}/g, (m, name) => {
+    const f = byLabel[String(name).trim().toLowerCase()];
+    if (!f || f.key === field.key) return m;
+    if (f.type === 'composed') {
+      // jednoúrovňové vnoření jiného composed pole
+      return evaluateDbComposedSafe(f, record, fields, new Set([field.key]));
+    }
+    return dbComposedRawValue(f, record[f.key]);
+  });
+}
+// Bezpečné vyhodnocení s ochranou proti cyklům mezi composed poli.
+function evaluateDbComposedSafe(field, record, fields, stack) {
+  const tpl = (field && field.template) || '';
+  if (!tpl) return '';
+  const byLabel = {};
+  (fields || []).forEach(f => { if (f.label) byLabel[f.label.trim().toLowerCase()] = f; });
+  return tpl.replace(/\{\{([^{}]+)\}\}/g, (m, name) => {
+    const f = byLabel[String(name).trim().toLowerCase()];
+    if (!f || f.key === field.key || stack.has(f.key)) return m;
+    if (f.type === 'composed') {
+      const s2 = new Set(stack); s2.add(field.key);
+      return evaluateDbComposedSafe(f, record, fields, s2);
+    }
+    return dbComposedRawValue(f, record[f.key]);
+  });
+}
+// Surová textová hodnota pole pro vložení do composed (bez HTML escapování – to dělá až renderer).
+function dbComposedRawValue(f, v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (f.type === 'bool') return v ? 'Ano' : 'Ne';
+  if (f.type === 'date') return fmtDate(v);
+  return String(v);
+}
 
 // State pro řazení a filtry per entity (in-memory, neukládá se)
 const _dbState = {};
@@ -32892,12 +32986,14 @@ function getDbVisibleRecords(entity) {
   const fields = getDbFields(entity);
   const records = getDbRecords(entity);
   const st = getDbState(entity.id);
+  // Efektivní hodnota pole: composed se vyhodnotí ze šablony, ostatní vrátí uloženou hodnotu.
+  const effVal = (f, rec) => (f.type === 'composed') ? evaluateDbComposed(f, rec, fields) : rec[f.key];
   // Aplikuj filtry
   const filtered = records.filter(rec => {
     for (const f of fields) {
       const filt = st.filters[f.key];
       if (filt === undefined || filt === '' || filt === null) continue;
-      const val = rec[f.key];
+      const val = effVal(f, rec);
       // Speciální filtr: jen prázdné (nevyplněné) hodnoty
       if (filt === DB_FILTER_EMPTY) {
         if (!(val === undefined || val === null || val === '')) return false;
@@ -32906,7 +33002,7 @@ function getDbVisibleRecords(entity) {
       if (f.type === 'bool' || f.type === 'select') {
         if (String(val) !== String(filt)) return false;
       } else {
-        if (val == null) return false;
+        if (val == null || val === '') return false;
         if (!String(val).toLowerCase().includes(String(filt).toLowerCase())) return false;
       }
     }
@@ -32918,7 +33014,8 @@ function getDbVisibleRecords(entity) {
   if (!sortKey) return filtered;
   const sf = fields.find(f => f.key === sortKey);
   return [...filtered].sort((a, b) => {
-    const va = a[sortKey], vb = b[sortKey];
+    const va = sf ? effVal(sf, a) : a[sortKey];
+    const vb = sf ? effVal(sf, b) : b[sortKey];
     if (va == null && vb == null) return 0;
     if (va == null) return 1;
     if (vb == null) return -1;
@@ -32955,7 +33052,7 @@ async function exportDbVisibleToXlsx(entity) {
   }
   try {
     const headers = fields.map(f => f.label);
-    const aoa = [headers, ...rows.map(rec => fields.map(f => dbCellValueForXlsx(f, rec[f.key])))];
+    const aoa = [headers, ...rows.map(rec => fields.map(f => f.type === 'composed' ? evaluateDbComposed(f, rec, fields) : dbCellValueForXlsx(f, rec[f.key])))];
     const ws = XLSX.utils.aoa_to_sheet(aoa, { cellDates: true });
     // Šířky sloupců podle typu
     ws['!cols'] = fields.map(f => {
@@ -33090,9 +33187,9 @@ function renderDatabaseSection(entity) {
         const v = rec[f.key];
         // První sloupec udělej klikatelný link na úpravu
         if (fi === 0) {
-          h += '<td><a href="#" data-db-rec-edit="' + recIdx + '" title="Upravit záznam">' + dbFormatCellValue(f, v) + '</a></td>';
+          h += '<td><a href="#" data-db-rec-edit="' + recIdx + '" title="Upravit záznam">' + dbFormatCellValue(f, v, rec, fields) + '</a></td>';
         } else {
-          h += '<td>' + dbFormatCellValue(f, v) + '</td>';
+          h += '<td>' + dbFormatCellValue(f, v, rec, fields) + '</td>';
         }
       });
       h += '</tr>';
@@ -33113,7 +33210,12 @@ function renderDatabaseSection(entity) {
   return h;
 }
 
-function dbFormatCellValue(f, v) {
+function dbFormatCellValue(f, v, record, fields) {
+  if (f.type === 'composed') {
+    if (!record) return '';
+    const txt = evaluateDbComposed(f, record, fields || []);
+    return escapeHtml(txt);
+  }
   if (v === null || v === undefined || v === '') return '';
   if (f.type === 'bool') return v ? 'Ano' : 'Ne';
   if (f.type === 'date') return escapeHtml(fmtDate(v));
@@ -33342,13 +33444,16 @@ function renderDatabaseEditor(entity) {
         '</select></td>';
       h += '<td>' + (f.type === 'select'
         ? '<input type="text" data-dbf-options="' + i + '" value="' + escapeHtml((f.options || []).join(', ')) + '" placeholder="A, B, C" style="width:100%">'
-        : '<span class="meta">—</span>') + '</td>';
+        : (f.type === 'composed'
+          ? '<textarea data-dbf-template="' + i + '" rows="2" placeholder="Šablona, např.: {{Jméno}} ({{Věk}} let)" style="width:100%;font-family:inherit;">' + escapeHtml(f.template || '') + '</textarea>'
+          : '<span class="meta">—</span>')) + '</td>';
       h += '<td><button class="danger" data-dbf-del="' + i + '" title="Smazat sloupec">×</button></td>';
       h += '</tr>';
     });
     h += '</tbody></table>';
   }
   h += '<div class="btn-group" style="margin-top:0.4em;"><button id="db-add-field">+ Přidat sloupec</button></div>';
+  h += '<p class="meta" style="margin-top:0.3em;">Typ <strong>Sloučený</strong> vytvoří text ze šablony, kde <code>{{Název sloupce}}</code> nahradíš hodnotou jiného sloupce téhož záznamu. Vše ostatní (uvozovky, závorky, libovolné znaky) zůstane doslova. Sloučený sloupec se needituje v záznamu, počítá se automaticky.</p>';
   h += '</section>';
 
   h += '<section><h3>Databáze – záznamy (' + records.length + ')</h3>';
@@ -33363,7 +33468,7 @@ function renderDatabaseEditor(entity) {
     records.forEach((rec, ri) => {
       h += '<tr>';
       fields.forEach(f => {
-        h += '<td>' + dbFormatCellValue(f, rec[f.key]) + '</td>';
+        h += '<td>' + dbFormatCellValue(f, rec[f.key], rec, fields) + '</td>';
       });
       h += '<td><button data-dbr-edit="' + ri + '">Upravit</button> <button class="danger" data-dbr-del="' + ri + '">×</button></td>';
       h += '</tr>';
@@ -33404,9 +33509,19 @@ function attachDatabaseEditHandlers(root, entity) {
       const fields = getDbFields(entity);
       fields[i].type = sel.value;
       if (sel.value === 'select' && !fields[i].options) fields[i].options = [];
+      if (sel.value === 'composed' && fields[i].template === undefined) fields[i].template = '';
       setDbFields(entity, fields);
       save();
       refresh();
+    };
+  });
+  root.querySelectorAll('[data-dbf-template]').forEach(ta => {
+    ta.oninput = () => {
+      const i = Number(ta.dataset.dbfTemplate);
+      const fields = getDbFields(entity);
+      fields[i].template = ta.value;
+      setDbFields(entity, fields);
+      saveDebounced();
     };
   });
   root.querySelectorAll('[data-dbf-options]').forEach(inp => {
@@ -33518,6 +33633,10 @@ function openDatabaseRecordDialog(entity, recordIndex, onSave) {
         '<option value=""' + (!v ? ' selected' : '') + '>—</option>' +
         (f.options || []).map(o => '<option value="' + escapeHtml(o) + '"' + (v === o ? ' selected' : '') + '>' + escapeHtml(o) + '</option>').join('') +
         '</select>';
+    } else if (f.type === 'composed') {
+      // Sloučené pole se needituje – ukážeme živý náhled z aktuálních hodnot.
+      inp = '<div class="db-composed-preview meta" data-dbr-composed="' + escapeHtml(f.key) + '" style="padding:0.3em 0.4em;border:1px dashed #ccc;border-radius:3px;white-space:pre-wrap;">' +
+        escapeHtml(evaluateDbComposed(f, rec, fields)) + '</div>';
     }
     return '<div style="margin-bottom:0.5em;"><label for="' + id + '">' + escapeHtml(f.label) + '</label>' + inp + '</div>';
   }).join('');
@@ -33534,7 +33653,36 @@ function openDatabaseRecordDialog(entity, recordIndex, onSave) {
       const k = b.dataset.dbrClear;
       const inp = body.querySelector('input[data-dbr-key="' + k + '"]');
       if (inp) inp.value = '';
+      updateComposedPreviews();
     };
+  });
+
+  // Živý přepočet náhledů Sloučených polí podle aktuálně zadaných hodnot
+  function collectCurrentRecord() {
+    const cur = { ...rec };
+    body.querySelectorAll('[data-dbr-key]').forEach(el => {
+      const k = el.dataset.dbrKey;
+      const f = fields.find(ff => ff.key === k);
+      if (!f) return;
+      let v = el.value;
+      if (v === '') { delete cur[k]; return; }
+      if (f.type === 'number') v = Number(v);
+      if (f.type === 'bool') v = (v === 'true');
+      cur[k] = v;
+    });
+    return cur;
+  }
+  function updateComposedPreviews() {
+    const cur = collectCurrentRecord();
+    body.querySelectorAll('[data-dbr-composed]').forEach(div => {
+      const k = div.dataset.dbrComposed;
+      const f = fields.find(ff => ff.key === k);
+      if (f) div.textContent = evaluateDbComposed(f, cur, fields);
+    });
+  }
+  body.querySelectorAll('[data-dbr-key]').forEach(el => {
+    el.addEventListener('input', updateComposedPreviews);
+    el.addEventListener('change', updateComposedPreviews);
   });
 
   document.getElementById('db-rec-save').onclick = () => {
