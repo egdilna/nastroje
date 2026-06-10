@@ -720,7 +720,9 @@ const I18N = {
       // EBNF
       rule: 'pravidlo',
       // Network
-      network: 'síť', link: 'propojení'
+      network: 'síť', link: 'propojení',
+      // Mindmap / WBS
+      mmNode: 'uzel', wbsNode: 'položka'
     },
     // === POPISKY POLÍ ====
     field: {
@@ -1273,7 +1275,8 @@ const I18N = {
       event: 'event',
       signal: 'signal', frame: 'time frame', highlight: 'highlight',
       rule: 'rule',
-      network: 'network', link: 'link'
+      network: 'network', link: 'link',
+      mmNode: 'node', wbsNode: 'item'
     },
     field: {
       name: 'Name:', label: 'Label:', alias: 'Identifier (alias):',
@@ -1856,7 +1859,9 @@ const TYPES = [
   {value:'gantt', label:'Ganttův diagram (project)'},
   {value:'timeline', label:'Časová osa (chronology)'},
   {value:'timing', label:'Časový průběh (timing)'},
-  {value:'ebnf', label:'EBNF gramatika'}
+  {value:'ebnf', label:'EBNF gramatika'},
+  {value:'mindmap', label:'Myšlenková mapa (mindmap)'},
+  {value:'wbs', label:'WBS — rozpad práce (Work Breakdown Structure)'}
 ];
 
 // Paleta 40 barev v češtině. Hodnoty jsou CSS / PlantUML názvy barev,
@@ -2015,6 +2020,11 @@ function emptyModelFor(type){
     case 'timeline': return {events:[]};
     case 'ebnf': return {rules:[]};
     case 'timing': return {participants:[], frames:[], notes:[], highlights:[], constraints:[], hideTimeAxis:false, dateFormat:''};
+    // Mindmap a WBS jsou stromy uzlů. Kořenový uzel je první v `roots` (mindmap
+    // typicky má jeden kořen — radiální zobrazení; pro WBS taky obvykle jeden).
+    // Uzel: { id, text, side?(mindmap), opposite?(wbs), color, stereotype, boxless, children }.
+    case 'mindmap': return {roots: [{id: uid('mn'), text:'Kořen', side:'right', color:'', stereotype:'', boxless:false, children: []}]};
+    case 'wbs':     return {roots: [{id: uid('wb'), text:'Projekt', opposite:false,    color:'', stereotype:'', boxless:false, children: []}]};
   }
   return {};
 }
@@ -5174,6 +5184,11 @@ function describeDiagram(diagram){
     case 'timeline': return describeTimeline(diagram.model);
     case 'timing': return describeTiming(diagram.model);
     case 'ebnf': return describeEbnf(diagram.model);
+    case 'mindmap':
+    case 'wbs':
+      return getLang() === 'en'
+        ? 'A text description is not generated for mindmap and WBS diagrams.'
+        : 'Textový popis se pro myšlenkové mapy a WBS negeneruje.';
     default: return '(Textový popis zatím není pro tento typ diagramu dostupný.)';
   }
 }
@@ -5195,6 +5210,11 @@ function describeDiagramMarkdown(diagram){
     case 'timeline': return describeTimeline(diagram.model);
     case 'timing': return describeTiming(diagram.model);
     case 'ebnf': return describeEbnf(diagram.model);
+    case 'mindmap':
+    case 'wbs':
+      return getLang() === 'en'
+        ? 'A text description is not generated for mindmap and WBS diagrams.'
+        : 'Textový popis se pro myšlenkové mapy a WBS negeneruje.';
     default: return '(Textový popis zatím není pro tento typ diagramu dostupný.)';
   }
 }
@@ -5210,7 +5230,14 @@ function generatePuml(diagram){
   const proj = (state.project && state.project.settings) || {};
   const ds = diagram.settings || {};
   const out = [];
-  out.push('@startuml');
+  // Pro mindmap a wbs používáme vlastní start/end obal. Tyto diagramy podporují
+  // title, header, footer, caption, theme a (omezeně) skinparam — ostatní
+  // direktivy (hide circle, layout direction…) se buď neaplikují, nebo
+  // přímo lámou parser. Pro jistotu emitujeme jen společnou hlavičku.
+  const wrapKw = (diagram.type === 'mindmap') ? 'mindmap'
+               : (diagram.type === 'wbs')     ? 'wbs'
+               : 'uml';
+  out.push('@start' + wrapKw);
 
   // Title – kaskáda projekt → diagram (diagram má přednost).
   // Pokud obsahuje newline, použijeme blokovou variantu `title ... end title`.
@@ -5271,8 +5298,10 @@ function generatePuml(diagram){
     case 'deployment': out.push(genDeployment(diagram.model)); break;
     case 'network': out.push(genNetwork(diagram.model)); break;
     case 'timing': out.push(genTiming(diagram.model)); break;
+    case 'mindmap': out.push(genMindmap(diagram.model)); break;
+    case 'wbs': out.push(genWbs(diagram.model)); break;
   }
-  out.push('@enduml');
+  out.push('@end' + wrapKw);
   return out.join('\n');
 }
 
@@ -6523,6 +6552,87 @@ function genEbnf(diagram){
   });
 
   out.push('@endebnf');
+  return out.join('\n');
+}
+
+// === GENERÁTOR: MINDMAP a WBS ================================
+// Mindmap (@startmindmap…@endmindmap) a WBS (@startwbs…@endwbs) sdílí téměř
+// identickou syntaxi — strom uzlů, kde hloubka je značena počtem znaků na
+// začátku řádku. Liší se hlavně v rozložení (mindmap má radiální layout
+// s větvemi nalevo i napravo od kořene, WBS má hierarchický strom shora dolů)
+// a v sémantice umisťování:
+//   • Mindmap: `*` (level 1), `**`, `***`… ponechá rozhodnutí na PlantUML;
+//     `+`/`++` explicitně napravo, `-`/`--` explicitně nalevo. Lze mixovat.
+//   • WBS: `*` standardně, `-` přesune uzel na opačnou stranu od sourozenců.
+// Společné funkce:
+//   • Vícezdejovkový text: `:` na začátku, `;` na konci (samostatný řádek nebo
+//     na konci posledního řádku).
+//   • Barva uzlu: `[#hex]` nebo `[#name]` (např. `*[#FFAAAA] Text`).
+//   • Stereotyp: `<<stereotyp>>` (např. `*<<stereo>> Text`).
+//   • Bez rámečku: podtržítko za markerem (např. `*_ Text`).
+//
+// V editoru ukládáme tyto vlastnosti jako:
+//   { id, text, color, stereotype, boxless, children, side?, opposite? }
+// kde `side` ∈ {'auto','left','right'} jen pro mindmap a `opposite` (boolean)
+// jen pro WBS.
+
+function _mmEmitMarker(kind, node, level){
+  // kind = 'mindmap' nebo 'wbs'
+  let core;
+  if(kind === 'mindmap'){
+    if(node.side === 'left')       core = '-'.repeat(level);
+    else if(node.side === 'right') core = '+'.repeat(level);
+    else                            core = '*'.repeat(level);
+  } else {
+    // wbs: jen '*' nebo '-' (na druhou stranu)
+    core = node.opposite ? '-'.repeat(level) : '*'.repeat(level);
+  }
+  return core + (node.boxless ? '_' : '');
+}
+function _mmEmitDecoration(node){
+  // Vrátí stereotyp nebo barvu (v editoru priorita stereotyp > color, protože
+  // PlantUML neumí mít obě naráz na jednom uzlu).
+  if(node.stereotype){
+    const s = String(node.stereotype).replace(/[<>]/g,'').trim();
+    if(s) return '<<' + s + '>>';
+  }
+  if(node.color){
+    const c = String(node.color).trim();
+    if(c){
+      // Pokud začíná `#`, použijeme tak jak je; jinak (PlantUML názvy barev
+      // jako "LightBlue") jen zabalíme do hranatých závorek s prefixem `#`.
+      return '[' + (c[0] === '#' ? c : ('#' + c)) + ']';
+    }
+  }
+  return '';
+}
+function _mmEmitNode(out, kind, node, level){
+  if(!node) return;
+  const marker = _mmEmitMarker(kind, node, level);
+  const deco = _mmEmitDecoration(node);
+  const text = String(node.text || '');
+  const lines = text.split(/\r?\n/);
+  if(lines.length > 1){
+    // Víceřádkový text: `:` značí začátek bloku, `;` konec. PlantUML doc
+    // popisuje, že `;` může být buď samostatně, nebo na konci posledního
+    // řádku. Pro robustnost dáváme samostatný `;` (lépe se to parsuje).
+    out.push(marker + deco + ':' + lines[0]);
+    for(let i = 1; i < lines.length; i++) out.push(lines[i]);
+    out.push(';');
+  } else {
+    // Jednořádkový text: marker + dekorace + mezera + text.
+    out.push(marker + deco + ' ' + text);
+  }
+  (node.children || []).forEach(c => _mmEmitNode(out, kind, c, level + 1));
+}
+function genMindmap(model){
+  const out = [];
+  (model.roots || []).forEach(root => _mmEmitNode(out, 'mindmap', root, 1));
+  return out.join('\n');
+}
+function genWbs(model){
+  const out = [];
+  (model.roots || []).forEach(root => _mmEmitNode(out, 'wbs', root, 1));
   return out.join('\n');
 }
 
@@ -7842,6 +7952,36 @@ function renderModelToolbar(d){
     case 'ebnf':
       tb.appendChild(actionBtn(L.tb.rule, L.tb.ruleTip, ()=>addEbnfRule(d)));
       break;
+    case 'mindmap':
+    case 'wbs': {
+      const kind = d.type;
+      const isEn = getLang() === 'en';
+      tb.appendChild(actionBtn(
+        isEn ? '+ child' : '+ dítě',
+        isEn ? 'Add a child to the selected node' : 'Přidat dítě k vybranému uzlu',
+        () => _mmAddChild(d, kind)));
+      tb.appendChild(actionBtn(
+        isEn ? '+ sibling' : '+ sourozenec',
+        isEn ? 'Add a sibling next to the selected node' : 'Přidat sourozence vedle vybraného uzlu',
+        () => _mmAddSibling(d, kind)));
+      tb.appendChild(actionBtn(
+        '↑',
+        isEn ? 'Move up among siblings' : 'Posunout nahoru mezi sourozenci',
+        () => _mmMove(d, -1)));
+      tb.appendChild(actionBtn(
+        '↓',
+        isEn ? 'Move down among siblings' : 'Posunout dolů mezi sourozenci',
+        () => _mmMove(d, +1)));
+      tb.appendChild(actionBtn(
+        '→',
+        isEn ? 'Indent (make child of previous sibling)' : 'Odsadit (stane se dítětem předchozího sourozence)',
+        () => _mmIndent(d)));
+      tb.appendChild(actionBtn(
+        '←',
+        isEn ? 'Outdent (move out one level)' : 'Vrátit zpět (posunout o úroveň výš)',
+        () => _mmOutdent(d)));
+      break;
+    }
     case 'timing':
       tb.appendChild(actionBtn(L.tb.timingSignal, L.tb.timingSignalTip, ()=>addTimingParticipant(d)));
       tb.appendChild(actionBtn(L.tb.timingFrame, L.tb.timingFrameTip, ()=>addTimingFrame(d)));
@@ -7877,6 +8017,8 @@ function renderModelTree(d){
     case 'timeline': renderTimelineTree(d, root); break;
     case 'ebnf': renderEbnfTree(d, root); break;
     case 'timing': renderTimingTree(d, root); break;
+    case 'mindmap': renderMindmapTree(d, root); break;
+    case 'wbs': renderWbsTree(d, root); break;
   }
 }
 
@@ -8722,6 +8864,8 @@ function renderDetail(d){
     case 'timeline': renderTimelineDetail(d, root); break;
     case 'ebnf': renderEbnfDetail(d, root); break;
     case 'timing': renderTimingDetail(d, root); break;
+    case 'mindmap': renderMindmapDetail(d, root); break;
+    case 'wbs': renderWbsDetail(d, root); break;
   }
 }
 
@@ -11234,6 +11378,301 @@ function renderEbnfDetail(d, root){
       ? 'Optional rule description, emitted as EBNF comment (* ... *).'
       : 'Volitelný popis pravidla, zobrazí se jako EBNF komentář (* ... *).'));
 }
+
+// === MINDMAP / WBS — sdílené helpery ==========================
+// Datový model: model.roots = [ uzel, … ]  kde uzel = { id, text, color,
+// stereotype, boxless, children, side?(mindmap), opposite?(wbs) }.
+// V state.selectedPath používáme tvar ['roots', i0, i1, i2, …], což znamená:
+// kořen[i0].children[i1].children[i2]… Cesta jednoho uzlu na úrovni N má
+// délku N+1 (1 = kořen).
+//
+// Helpery: navigace mezi uzly, manipulace (insert/move/delete), iterace.
+
+function _mmGetNode(model, path){
+  if(!path || path[0] !== 'roots') return null;
+  let node = (model.roots || [])[path[1]];
+  for(let i = 2; i < path.length; i++){
+    if(!node) return null;
+    node = (node.children || [])[path[i]];
+  }
+  return node || null;
+}
+function _mmGetParentArray(model, path){
+  // Vrátí pole, ve kterém uzel cesty žije, a index v něm.
+  // Pro kořeny vrací (model.roots, path[1]); pro hlubší úrovně rodičovo
+  // .children + posledni index.
+  if(!path || path[0] !== 'roots') return null;
+  if(path.length === 2) return { arr: model.roots || [], idx: path[1] };
+  let node = (model.roots || [])[path[1]];
+  for(let i = 2; i < path.length - 1; i++){
+    if(!node) return null;
+    node = (node.children || [])[path[i]];
+  }
+  if(!node) return null;
+  return { arr: node.children = node.children || [], idx: path[path.length - 1] };
+}
+// Helper pro generování nového uzlu daného typu.
+function _mmNewNode(kind, text){
+  if(kind === 'mindmap'){
+    return { id: uid('mn'), text: text || 'Nový uzel', side: 'auto', color: '', stereotype: '', boxless: false, children: [] };
+  }
+  return { id: uid('wb'), text: text || 'Nový uzel', opposite: false, color: '', stereotype: '', boxless: false, children: [] };
+}
+// Iterátor přes všechny uzly + jejich cesty.
+function _mmEachNode(model, cb){
+  function walk(arr, prefix){
+    for(let i = 0; i < arr.length; i++){
+      const path = prefix.concat([i]);
+      cb(arr[i], path);
+      if(arr[i].children) walk(arr[i].children, path);
+    }
+  }
+  walk(model.roots || [], ['roots']);
+}
+
+// === MINDMAP / WBS — akce ====================================
+// Přidat sourozence pod stejným rodičem (za vybraným).
+function _mmAddSibling(d, kind){
+  const p = state.selectedPath;
+  if(!p || p[0] !== 'roots'){
+    // Pokud není nic vybráno, přidáme nový kořen.
+    d.model.roots = d.model.roots || [];
+    d.model.roots.push(_mmNewNode(kind));
+    state.selectedPath = ['roots', d.model.roots.length - 1];
+    touchDiagram(d); renderApp(); return;
+  }
+  const info = _mmGetParentArray(d.model, p);
+  if(!info) return;
+  const newNode = _mmNewNode(kind);
+  info.arr.splice(info.idx + 1, 0, newNode);
+  const np = p.slice(); np[np.length - 1] = info.idx + 1;
+  state.selectedPath = np;
+  touchDiagram(d); renderApp();
+}
+// Přidat dítě do vybraného uzlu.
+function _mmAddChild(d, kind){
+  const p = state.selectedPath;
+  if(!p || p[0] !== 'roots'){
+    // Pokud nic vybráno, chovat se jako addSibling (vytvoří kořen).
+    return _mmAddSibling(d, kind);
+  }
+  const node = _mmGetNode(d.model, p);
+  if(!node) return;
+  node.children = node.children || [];
+  const newNode = _mmNewNode(kind);
+  node.children.push(newNode);
+  state.selectedPath = p.concat([node.children.length - 1]);
+  touchDiagram(d); renderApp();
+}
+// Posun mezi sourozenci.
+function _mmMove(d, dir){
+  const p = state.selectedPath;
+  if(!p || p[0] !== 'roots' || p.length < 2) return;
+  const info = _mmGetParentArray(d.model, p);
+  if(!info) return;
+  const newIdx = info.idx + dir;
+  if(newIdx < 0 || newIdx >= info.arr.length) return;
+  const [node] = info.arr.splice(info.idx, 1);
+  info.arr.splice(newIdx, 0, node);
+  const np = p.slice(); np[np.length - 1] = newIdx;
+  state.selectedPath = np;
+  touchDiagram(d); renderApp();
+}
+// Odsadit uzel (in = stane se posledním dítětem předchozího sourozence;
+// out = stane se sourozencem rodiče).
+function _mmIndent(d){
+  const p = state.selectedPath;
+  if(!p || p[0] !== 'roots' || p.length < 2) return;
+  const info = _mmGetParentArray(d.model, p);
+  if(!info || info.idx === 0) return;  // nelze odsadit první sourozenec
+  const node = info.arr.splice(info.idx, 1)[0];
+  const prev = info.arr[info.idx - 1];
+  prev.children = prev.children || [];
+  prev.children.push(node);
+  const np = p.slice(0, -1).concat([info.idx - 1, prev.children.length - 1]);
+  state.selectedPath = np;
+  touchDiagram(d); renderApp();
+}
+function _mmOutdent(d){
+  const p = state.selectedPath;
+  if(!p || p[0] !== 'roots' || p.length <= 2) return;  // kořen nelze vyodsadit
+  // Vyjmout uzel z parent.children a vložit do grandparent.children za rodiče.
+  const parentPath = p.slice(0, -1);
+  const parentInfo = _mmGetParentArray(d.model, parentPath);
+  if(!parentInfo) return;
+  const node = parentInfo.arr[parentInfo.idx];
+  const idxInParent = p[p.length - 1];
+  const grandInfo = _mmGetParentArray(d.model, parentPath);
+  if(!grandInfo) return;
+  const grandArr = grandInfo.arr;
+  const grandIdx = grandInfo.idx;
+  // Vyjmout node z parent.children
+  const moved = node.children.splice(idxInParent, 1)[0];
+  // Vložit za rodiče v grandparent poli
+  grandArr.splice(grandIdx + 1, 0, moved);
+  const np = parentPath.slice(0, -1).concat([grandIdx + 1]);
+  state.selectedPath = np;
+  touchDiagram(d); renderApp();
+}
+// Smazat vybraný uzel (s konfirmací).
+async function _mmDelete(d){
+  const p = state.selectedPath;
+  if(!p || p[0] !== 'roots') return;
+  const node = _mmGetNode(d.model, p);
+  if(!node) return;
+  const isEn = getLang() === 'en';
+  const cnt = (function count(n){ let c = 1; (n.children||[]).forEach(ch => c += count(ch)); return c; })(node);
+  const msg = isEn
+    ? 'Delete node and all ' + (cnt - 1) + ' descendants?'
+    : 'Smazat uzel a všech ' + (cnt - 1) + ' potomků?';
+  const ok = await dlgConfirm(isEn ? 'Delete node' : 'Smazat uzel', msg);
+  if(!ok) return;
+  const info = _mmGetParentArray(d.model, p);
+  if(!info) return;
+  info.arr.splice(info.idx, 1);
+  state.selectedPath = null;
+  touchDiagram(d); renderApp();
+}
+
+// === MINDMAP / WBS — render stromu ===========================
+function _mmRenderTree(d, root, kind){
+  const ul = el('ul', { class:'tree' });
+  // Vykreslí jeden uzel jako <li> včetně vnořeného <ul> s dětmi. Rekurze
+  // jde přes `children`; cesta je sestavena jako ['roots', i0, i1, …].
+  function renderNodeAsLi(node, path){
+    if(!node) return null;
+    const isSel = state.selectedPath && state.selectedPath.length === path.length &&
+      state.selectedPath.every((v, i) => v === path[i]);
+    const li = el('li');
+    // Label: první řádek textu + indikátory (strana, boxless, barva, stereotyp).
+    // Detail editace zobrazí celé vlastnosti; v stromu chceme jen rychlé info.
+    const label = (node.text || '(bez textu)').split(/\r?\n/)[0];
+    const annotations = [];
+    if(kind === 'mindmap' && node.side && node.side !== 'auto'){
+      annotations.push(node.side === 'left' ? '←' : '→');
+    }
+    if(kind === 'wbs' && node.opposite) annotations.push('↕');
+    if(node.boxless) annotations.push('▢');
+    if(node.color) annotations.push('●');
+    if(node.stereotype) annotations.push('«' + node.stereotype + '»');
+    const fullLabel = label + (annotations.length ? '  ' + annotations.join(' ') : '');
+    li.appendChild(treeItem(
+      fullLabel,
+      kind === 'mindmap' ? L.badge.mmNode : L.badge.wbsNode,
+      'class',
+      isSel,
+      () => { state.selectedPath = path; renderApp(); },
+      [
+        actionBtn('+',
+          getLang()==='en' ? 'Add child' : 'Přidat dítě',
+          () => { state.selectedPath = path; _mmAddChild(d, kind); }),
+        actionBtn('×',
+          getLang()==='en' ? 'Delete' : 'Smazat',
+          () => { state.selectedPath = path; _mmDelete(d); })
+      ]));
+    if(node.children && node.children.length){
+      const cul = el('ul', { class:'tree' });
+      node.children.forEach((c, i) => {
+        const cli = renderNodeAsLi(c, path.concat([i]));
+        if(cli) cul.appendChild(cli);
+      });
+      li.appendChild(cul);
+    }
+    return li;
+  }
+  // Render top-level uzlů (typicky 1, ale model podporuje víc kořenů).
+  const roots = d.model.roots || [];
+  if(!roots.length){
+    root.appendChild(el('p', {class:'muted'},
+      getLang()==='en' ? 'No nodes. Use the toolbar to add one.' : 'Žádné uzly. Použijte panel nástrojů pro přidání.'));
+    return;
+  }
+  roots.forEach((r, i) => {
+    const li = renderNodeAsLi(r, ['roots', i]);
+    if(li) ul.appendChild(li);
+  });
+  root.appendChild(ul);
+}
+function renderMindmapTree(d, root){ _mmRenderTree(d, root, 'mindmap'); }
+function renderWbsTree(d, root){ _mmRenderTree(d, root, 'wbs'); }
+
+// === MINDMAP / WBS — render detailu ==========================
+function _mmRenderDetail(d, root, kind){
+  const path = state.selectedPath;
+  if(!path || path[0] !== 'roots'){
+    root.appendChild(el('p', { class:'no-selection' },
+      getLang()==='en' ? 'Select a node in the tree.' : 'Vyberte uzel ve stromu.'));
+    return;
+  }
+  const node = _mmGetNode(d.model, path);
+  if(!node){
+    root.appendChild(el('p', { class:'no-selection' },
+      getLang()==='en' ? 'Node does not exist.' : 'Uzel neexistuje.'));
+    return;
+  }
+  const isEn = getLang() === 'en';
+  root.appendChild(el('h4', null, isEn ? 'Node' : 'Uzel'));
+  // Text (víceřádkový)
+  root.appendChild(field(
+    isEn ? 'Text (Enter = new line):' : 'Text (Enter = nový řádek):',
+    inputArea(node.text || '', v => { node.text = v; softTouch(d); }, 'mmText', 3),
+    isEn
+      ? 'Multi-line text is emitted using PlantUML\'s `:text;` block.'
+      : 'Víceřádkový text se v PlantUML vygeneruje pomocí bloku „:text;"'));
+  // Side (mindmap) / Opposite (wbs)
+  if(kind === 'mindmap'){
+    root.appendChild(field(
+      isEn ? 'Side (relative to root):' : 'Strana (vůči kořeni):',
+      selectField(node.side || 'auto', [
+        { value:'auto',  label: isEn ? 'Auto (PlantUML decides)' : 'Auto (rozhodne PlantUML)' },
+        { value:'right', label: isEn ? 'Right (+)' : 'Vpravo (+)' },
+        { value:'left',  label: isEn ? 'Left (−)' : 'Vlevo (−)' }
+      ], v => { node.side = v; softTouch(d); }, 'mmSide'),
+      isEn
+        ? 'Default behaviour ("auto") uses asterisks `*`. Choosing a side forces `+` or `-` markers in PlantUML.'
+        : 'Výchozí chování („auto") použije hvězdičky `*`. Volba strany vynutí v PlantUML markery `+` nebo `-`.'));
+  } else {
+    // wbs: opposite
+    root.appendChild(field('',
+      checkboxField(
+        isEn ? 'Place on opposite side (uses `-` marker)' : 'Umístit na opačnou stranu (marker `-`)',
+        !!node.opposite,
+        v => { node.opposite = v; softTouch(d); }),
+      isEn
+        ? 'WBS marker `-` flips a node to the opposite side of its siblings, useful for symmetric tree layouts.'
+        : 'WBS marker `-` přesune uzel na opačnou stranu než jeho sourozenci. Užitečné pro symetrické stromy.'));
+  }
+  // Boxless
+  root.appendChild(field('',
+    checkboxField(
+      isEn ? 'No box around the node (boxless)' : 'Bez rámečku (boxless)',
+      !!node.boxless,
+      v => { node.boxless = v; softTouch(d); }),
+    isEn
+      ? 'Adds underscore `_` after the marker to remove the visual box.'
+      : 'Přidá za marker podtržítko `_` — zruší vykreslení rámečku okolo uzlu.'));
+  // Color
+  root.appendChild(colorField(
+    isEn ? 'Color:' : 'Barva:',
+    node.color || '',
+    v => { node.color = v; softTouch(d); },
+    'mmColor',
+    isEn
+      ? 'Renders as `[#color]` after the marker. Has lower priority than stereotype — if both are set, only the stereotype is emitted.'
+      : 'Vygeneruje se jako `[#barva]` za markerem. Má nižší prioritu než stereotyp — pokud jsou obě vyplněny, použije se stereotyp.'));
+  // Stereotype
+  root.appendChild(field(
+    isEn ? 'Stereotype (optional):' : 'Stereotyp (volitelný):',
+    inputText(node.stereotype || '', v => { node.stereotype = v; softTouch(d); }, 'mmStereo'),
+    isEn
+      ? 'Renders as `<<stereotype>>` after the marker (and overrides color).'
+      : 'Vygeneruje se jako `<<stereotyp>>` za markerem (přepisuje barvu)'));
+  // Cesta — informativně
+  root.appendChild(el('p', { class:'muted', style:'margin-top:.5em;font-size:.85em' },
+    (isEn ? 'Tree depth: ' : 'Hloubka ve stromu: ') + (path.length - 1)));
+}
+function renderMindmapDetail(d, root){ _mmRenderDetail(d, root, 'mindmap'); }
+function renderWbsDetail(d, root){ _mmRenderDetail(d, root, 'wbs'); }
 
 // === AKCE: GANTT =============================================
 async function addGanttTask(d){
