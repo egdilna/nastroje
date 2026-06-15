@@ -202,6 +202,17 @@ hr{border:none;border-top:1px solid #ddd;margin:1em 0}
       </div>
     </section>
 
+    <section id="statusSection" class="panel" aria-labelledby="statusHeading">
+      <h2 id="statusHeading">Stav diagramu</h2>
+      <div class="field">
+        <label for="diagramStatusSelect">Stav:</label>
+        <select id="diagramStatusSelect" aria-describedby="statusHelp">
+          <option value="">(bez stavu)</option>
+        </select>
+        <div id="statusHelp" class="help">Aktuální stav diagramu ve workflow. Zobrazí se v seznamu projektu za názvem v závorce a lze jej použít k filtrování.</div>
+      </div>
+    </section>
+
     <section id="versionsSection" class="panel" aria-labelledby="versionsHeading">
       <h2 id="versionsHeading" data-i18n="section.versions">Verze diagramu</h2>
       <div role="toolbar" data-i18n-aria="toolbarAria.versions" aria-label="Akce verzí">
@@ -471,6 +482,16 @@ hr{border:none;border-top:1px solid #ddd;margin:1em 0}
   <div class="dialog-actions">
     <button id="dlgSettingsCancel">Zrušit</button>
     <button id="dlgSettingsOk">Uložit</button>
+  </div>
+</dialog>
+
+<dialog id="dlgStereoEditor" aria-labelledby="dlgStereoTitle">
+  <h2 id="dlgStereoTitle">Editor stereotypů</h2>
+  <p class="help">Stereotypy jsou pojmenované vizuální styly. V detailu uzlu pak vyberete stereotyp ze seznamu, místo abyste museli ručně zadávat barvu a další vlastnosti.</p>
+  <div id="stereoList" role="list" aria-label="Seznam stereotypů"></div>
+  <div class="dialog-actions">
+    <button id="dlgStereoAdd" type="button">+ Přidat stereotyp</button>
+    <button id="dlgStereoClose" type="button">Zavřít</button>
   </div>
 </dialog>
 
@@ -776,7 +797,8 @@ const I18N = {
       // EBNF
       rule: 'pravidlo',
       // Network
-      network: 'síť', link: 'propojení'
+      network: 'síť', link: 'propojení',
+      mmNode: 'uzel', wbsNode: 'položka'
     },
     // === POPISKY POLÍ ====
     field: {
@@ -1329,7 +1351,8 @@ const I18N = {
       event: 'event',
       signal: 'signal', frame: 'time frame', highlight: 'highlight',
       rule: 'rule',
-      network: 'network', link: 'link'
+      network: 'network', link: 'link',
+      mmNode: 'node', wbsNode: 'item'
     },
     field: {
       name: 'Name:', label: 'Label:', alias: 'Identifier (alias):',
@@ -1912,8 +1935,30 @@ const TYPES = [
   {value:'gantt', label:'Ganttův diagram (project)'},
   {value:'timeline', label:'Časová osa (chronology)'},
   {value:'timing', label:'Časový průběh (timing)'},
-  {value:'ebnf', label:'EBNF gramatika'}
+  {value:'ebnf', label:'EBNF gramatika'},
+  {value:'mindmap', label:'Myšlenková mapa (mindmap)'},
+  {value:'wbs', label:'WBS — rozpad práce (Work Breakdown Structure)'}
 ];
+
+// Stavy diagramu — workflow uložení/schvalování. Hodnota se ukládá do d.status
+// jako kód (nezávislý na jazyku). Prázdná hodnota = bez stavu.
+const DIAGRAM_STATUSES = [
+  { value:'draft',      labelCs:'Rozpracovaný',  labelEn:'Draft' },
+  { value:'proposal',   labelCs:'Návrh',         labelEn:'Proposal' },
+  { value:'for_review', labelCs:'Ke schválení',  labelEn:'For review' },
+  { value:'approved',   labelCs:'Schválený',     labelEn:'Approved' },
+  { value:'editing',    labelCs:'Upravovaný',    labelEn:'Being edited' },
+  { value:'rejected',   labelCs:'Neschválený',   labelEn:'Rejected' },
+  { value:'updated',    labelCs:'Aktualizovaný', labelEn:'Updated' },
+  { value:'done',       labelCs:'Hotový',        labelEn:'Done' },
+  { value:'cancelled',  labelCs:'Zrušený',       labelEn:'Cancelled' }
+];
+function statusLabel(code){
+  if(!code) return '';
+  const s = DIAGRAM_STATUSES.find(x => x.value === code);
+  if(!s) return code;
+  return getLang() === 'en' ? s.labelEn : s.labelCs;
+}
 
 // Paleta 40 barev v češtině. Hodnoty jsou CSS / PlantUML názvy barev,
 // které PlantUML i prohlížeč zvládají bez konverze na hex.
@@ -2071,6 +2116,10 @@ function emptyModelFor(type){
     case 'timeline': return {events:[]};
     case 'ebnf': return {rules:[]};
     case 'timing': return {participants:[], frames:[], notes:[], highlights:[], constraints:[], hideTimeAxis:false, dateFormat:''};
+    // Mindmap a WBS jsou stromy uzlů. Kořenový uzel je první v `roots`. Uzel:
+    // { id, text, color, stereotype, boxless, children, side?(mindmap), opposite?(wbs) }.
+    case 'mindmap': return {roots: [{id: uid('mn'), text:'Kořen', side:'auto', color:'', stereotype:'', boxless:false, children: []}], stereotypes: []};
+    case 'wbs':     return {roots: [{id: uid('wb'), text:'Projekt', opposite:false, color:'', stereotype:'', boxless:false, children: []}], stereotypes: []};
   }
   return {};
 }
@@ -4938,6 +4987,32 @@ function describeEbnf(model){
   return paras.join('\n\n');
 }
 
+// Popis stromu mindmap/WBS jako víceúrovňový odrážkový seznam. Zachovává
+// jen hierarchii a text uzlů — anotace (strana, barva, boxless, stereotyp)
+// patří do vizuální podoby diagramu, ne do čtivého popisu.
+function _mmDescribeTree(model, kind){
+  const isEn = getLang() === 'en';
+  const roots = (model && model.roots) || [];
+  if(!roots.length){
+    return isEn
+      ? (kind === 'mindmap' ? 'The mind map has no nodes yet.' : 'The WBS has no items yet.')
+      : (kind === 'mindmap' ? 'Myšlenková mapa zatím neobsahuje žádné uzly.' : 'WBS zatím neobsahuje žádné položky.');
+  }
+  const lines = [];
+  function walk(node, level){
+    if(!node) return;
+    // Víceřádkový text shrneme na jeden řádek (mezery místo zlomů), aby
+    // odsazení odrážkového seznamu zůstalo konzistentní.
+    const text = (node.text || (isEn ? '(no text)' : '(bez textu)')).replace(/\r?\n/g, ' ');
+    lines.push('  '.repeat(level) + '- ' + text);
+    (node.children || []).forEach(c => walk(c, level + 1));
+  }
+  roots.forEach(r => walk(r, 0));
+  return lines.join('\n');
+}
+function describeMindmap(model){ return _mmDescribeTree(model, 'mindmap'); }
+function describeWbs(model){ return _mmDescribeTree(model, 'wbs'); }
+
 // Vrátí čtivý popis jednoho EBNF pravidla v přirozeném jazyce.
 // Používá strukturovanou formu r.tokens (nebo ji naparsuje z r.expression).
 // Příklad: pro `digit, {digit}` vrátí
@@ -5230,6 +5305,8 @@ function describeDiagram(diagram){
     case 'timeline': return describeTimeline(diagram.model);
     case 'timing': return describeTiming(diagram.model);
     case 'ebnf': return describeEbnf(diagram.model);
+    case 'mindmap': return describeMindmap(diagram.model);
+    case 'wbs': return describeWbs(diagram.model);
     default: return '(Textový popis zatím není pro tento typ diagramu dostupný.)';
   }
 }
@@ -5251,6 +5328,8 @@ function describeDiagramMarkdown(diagram){
     case 'timeline': return describeTimeline(diagram.model);
     case 'timing': return describeTiming(diagram.model);
     case 'ebnf': return describeEbnf(diagram.model);
+    case 'mindmap': return describeMindmap(diagram.model);
+    case 'wbs': return describeWbs(diagram.model);
     default: return '(Textový popis zatím není pro tento typ diagramu dostupný.)';
   }
 }
@@ -5266,7 +5345,13 @@ function generatePuml(diagram){
   const proj = (state.project && state.project.settings) || {};
   const ds = diagram.settings || {};
   const out = [];
-  out.push('@startuml');
+  // Pro mindmap a wbs používáme vlastní start/end obal (@startmindmap/@startwbs).
+  // Tyto diagramy podporují title, header, footer, caption, theme — společnou
+  // hlavičku tedy emitujeme, jen obal je jiný.
+  const wrapKw = (diagram.type === 'mindmap') ? 'mindmap'
+               : (diagram.type === 'wbs')     ? 'wbs'
+               : 'uml';
+  out.push('@start' + wrapKw);
 
   // Title – kaskáda projekt → diagram (diagram má přednost).
   // Pokud obsahuje newline, použijeme blokovou variantu `title ... end title`.
@@ -5327,8 +5412,10 @@ function generatePuml(diagram){
     case 'deployment': out.push(genDeployment(diagram.model)); break;
     case 'network': out.push(genNetwork(diagram.model)); break;
     case 'timing': out.push(genTiming(diagram.model)); break;
+    case 'mindmap': out.push(genMindmap(diagram.model)); break;
+    case 'wbs': out.push(genWbs(diagram.model)); break;
   }
-  out.push('@enduml');
+  out.push('@end' + wrapKw);
   return out.join('\n');
 }
 
@@ -6596,6 +6683,101 @@ function genEbnf(diagram){
 const TIMING_SIG_KEYWORDS = {
   robust:'robust', concise:'concise', binary:'binary', clock:'clock', analog:'analog', rectangle:'rectangle'
 };
+// === GENERÁTOR: MINDMAP a WBS ================================
+// Mindmap (@startmindmap…@endmindmap) a WBS (@startwbs…@endwbs) sdílí téměř
+// identickou syntaxi — strom uzlů, kde hloubka je značena počtem znaků na
+// začátku řádku. Liší se rozložením:
+//   • Mindmap: `*` (level 1), `**`, `***`… ponechá rozhodnutí na PlantUML;
+//     `+`/`++` vynutí pravou stranu, `-`/`--` vynutí levou stranu.
+//   • WBS: `*` standardně, `-` přesune uzel na opačnou stranu od sourozenců.
+// Společné funkce:
+//   • Vícezdejovkový text: `:` na začátku, `;` na konci.
+//   • Barva: `[#hex]` nebo `[#name]`.
+//   • Stereotyp: `<<stereotyp>>` (přepisuje barvu — PlantUML neumí obě naráz).
+//   • Bez rámečku: podtržítko `_` za markerem.
+
+function _mmEmitMarker(kind, node, level){
+  let core;
+  if(kind === 'mindmap'){
+    if(node.side === 'left')       core = '-'.repeat(level);
+    else if(node.side === 'right') core = '+'.repeat(level);
+    else                            core = '*'.repeat(level);
+  } else {
+    core = node.opposite ? '-'.repeat(level) : '*'.repeat(level);
+  }
+  return core + (node.boxless ? '_' : '');
+}
+function _mmEmitDecoration(node){
+  if(node.stereotype){
+    const s = String(node.stereotype).replace(/[<>]/g,'').trim();
+    if(s) return '<<' + s + '>>';
+  }
+  if(node.color){
+    const c = String(node.color).trim();
+    if(c) return '[' + (c[0] === '#' ? c : ('#' + c)) + ']';
+  }
+  return '';
+}
+function _mmEmitNode(out, kind, node, level){
+  if(!node) return;
+  const marker = _mmEmitMarker(kind, node, level);
+  const deco = _mmEmitDecoration(node);
+  const text = String(node.text || '');
+  const lines = text.split(/\r?\n/);
+  if(lines.length > 1){
+    // Víceřádkový text: `:` značí začátek bloku, `;` konec (na samostatném řádku).
+    out.push(marker + deco + ':' + lines[0]);
+    for(let i = 1; i < lines.length; i++) out.push(lines[i]);
+    out.push(';');
+  } else {
+    out.push(marker + deco + ' ' + text);
+  }
+  (node.children || []).forEach(c => _mmEmitNode(out, kind, c, level + 1));
+}
+function genMindmap(model){
+  const out = [];
+  _mmEmitStyleBlock(out, model);
+  (model.roots || []).forEach(root => _mmEmitNode(out, 'mindmap', root, 1));
+  return out.join('\n');
+}
+function genWbs(model){
+  const out = [];
+  _mmEmitStyleBlock(out, model);
+  (model.roots || []).forEach(root => _mmEmitNode(out, 'wbs', root, 1));
+  return out.join('\n');
+}
+
+// Vygeneruje PlantUML <style> blok s definicemi stereotypů. Pokud žádné
+// stereotypy nejsou definované, neemituje nic (čistý výstup).
+function _mmEmitStyleBlock(out, model){
+  const stereos = (model && model.stereotypes) || [];
+  if(!stereos.length) return;
+  out.push('<style>');
+  stereos.forEach(s => {
+    if(!s || !s.name) return;
+    // Sanitizace jména: jen písmena, číslice, podtržítko (PlantUML style selektor).
+    const cls = String(s.name).trim().replace(/[^A-Za-z0-9_]/g,'');
+    if(!cls) return;
+    out.push('  .' + cls + ' {');
+    const props = [];
+    if(s.backgroundColor) props.push('BackgroundColor ' + s.backgroundColor);
+    if(s.lineColor)       props.push('LineColor '       + s.lineColor);
+    if(s.lineThickness)   props.push('LineThickness '   + s.lineThickness);
+    if(s.lineStyle)       props.push('LineStyle '       + s.lineStyle);
+    if(s.fontColor)       props.push('FontColor '       + s.fontColor);
+    if(s.fontSize)        props.push('FontSize '        + s.fontSize);
+    if(s.fontStyle)       props.push('FontStyle '       + s.fontStyle);
+    if(s.fontName)        props.push('FontName '        + s.fontName);
+    if(s.roundCorner !== undefined && s.roundCorner !== '') props.push('RoundCorner ' + s.roundCorner);
+    if(s.shadowing)       props.push('Shadowing '       + (s.shadowing === true ? 'true' : s.shadowing));
+    props.forEach(p => out.push('    ' + p));
+    out.push('  }');
+  });
+  out.push('</style>');
+  out.push('');
+}
+
+// === GENERÁTOR: TIMING =======================================
 function genTiming(model){
   const out = [];
   const participants = model.participants || [];
@@ -6607,9 +6789,13 @@ function genTiming(model){
   if(model.dateFormat) out.push('use date format "' + model.dateFormat + '"');
 
   const aliasOf = {};
+  // Map sigType per participant — generator potřebuje znát typ pro správné
+  // mapování hodnot (binary signál akceptuje jen high/low/0/1/{up}/{down}).
+  const sigOf = {};
   participants.forEach((p, i) => {
     const a = (p.alias || ('S' + (i+1))).replace(/[^A-Za-z0-9_]/g,'') || ('S' + (i+1));
     aliasOf[p.id] = a;
+    sigOf[p.id] = p.sigType || 'concise';
     const kw = TIMING_SIG_KEYWORDS[p.sigType] || 'concise';
     const name = (p.name || '').replace(/"/g,'\\"');
     let line = kw + ' "' + name + '" as ' + a;
@@ -6629,27 +6815,54 @@ function genTiming(model){
 
   if(participants.length) out.push('');
 
-  // Stavy v jednotlivých časových rámcích
-  frames.forEach(f => {
+  // Pomocná: zmapuje uživatelem zadanou hodnotu na PlantUML-kompatibilní formu
+  // podle typu signálu. Pro binary akceptujeme běžné aliasy on/off/true/false
+  // a převedeme je na high/low. Pro ostatní typy vrátí hodnotu beze změny
+  // (jen escapuje uvozovky a obalí mezery do uvozovek).
+  function mapStateValue(rawValue, sigType){
+    const v = String(rawValue || '').trim();
+    if(sigType === 'binary'){
+      const lo = v.toLowerCase();
+      // Platné PlantUML hodnoty pro binary: high, low, 0, 1, {up}, {down}, {hidden}
+      // + aliasy z UX: on/off/true/false/1/0/active/inactive
+      if(['high','1','on','true','active'].indexOf(lo) >= 0) return 'high';
+      if(['low','0','off','false','inactive'].indexOf(lo) >= 0) return 'low';
+      // {up}, {down}, {hidden} a další braced tokeny necháme tak, jak jsou
+      if(/^\{[^}]+\}$/.test(v)) return v;
+      // Cokoli jiného: pošleme jak je (uživatel ví, co dělá), ale toto nemá
+      // šanci se vykreslit správně — UI by mělo varovat (viz renderTimingDetail).
+      return v;
+    }
+    // concise/robust: hodnota může mít mezeru → uvozovky; braced token nech tak
+    if(/^\{[^}]+\}$/.test(v)) return v;
+    const needsQuote = /[\s",]/.test(v);
+    return needsQuote ? '"' + v.replace(/"/g,'\\"') + '"' : v;
+  }
+
+  // Stavy v jednotlivých časových rámcích. Mezi rámce přidáváme prázdný řádek
+  // pro lepší čitelnost vygenerovaného PlantUML i pro robustnost parseru.
+  frames.forEach((f, idx) => {
+    if(idx > 0) out.push('');
     out.push('@' + f.time);
     (f.states || []).forEach(st => {
       const a = aliasOf[st.participantId];
       if(!a) return;
-      const val = String(st.value || '').replace(/"/g,'\\"');
-      // Pokud hodnota obsahuje mezeru nebo speciální znaky, dáme do uvozovek.
-      const needsQuote = /[\s",{}]/.test(val) && !/^\{.*\}$/.test(val);
-      const quoted = needsQuote ? '"' + val + '"' : val;
-      let line = a + ' is ' + quoted;
+      const sig = sigOf[st.participantId] || 'concise';
+      const mapped = mapStateValue(st.value, sig);
+      let line = a + ' is ' + mapped;
       if(st.color) line += ' #' + st.color.replace(/^#/,'');
       out.push(line);
     });
-    // Zprávy
+    // Zprávy — generujeme `from -> to : label` (label dáváme jen pokud existuje).
     (f.messages || []).forEach(msg => {
       const aFrom = aliasOf[msg.from];
       const aTo = aliasOf[msg.to];
       if(!aFrom || !aTo) return;
       const arrow = msg.atTimeOffset ? ('@+' + msg.atTimeOffset) : '';
-      out.push(aFrom + ' -> ' + aTo + arrow + ' : ' + (msg.label || ''));
+      let line = aFrom + ' -> ' + aTo + arrow;
+      const label = (msg.label || '').trim();
+      if(label) line += ' : ' + label;
+      out.push(line);
     });
   });
 
@@ -6659,7 +6872,9 @@ function genTiming(model){
     const a = aliasOf[n.participantId];
     if(!a) return;
     const pos = (n.position === 'bottom') ? 'bottom' : 'top';
-    out.push('note ' + pos + ' of ' + a + ' : ' + (n.text || ''));
+    const noteText = (n.text || '').trim();
+    if(!noteText) return;
+    out.push('note ' + pos + ' of ' + a + ' : ' + noteText);
   });
 
   // Highlighty
@@ -7460,6 +7675,8 @@ function describeDiagram(d){
     case 'timeline':   return describeTimeline(d.model);
     case 'ebnf':       return describeEbnf(d.model);
     case 'timing':     return describeTiming(d.model);
+    case 'mindmap':    return describeMindmap(d.model);
+    case 'wbs':        return describeWbs(d.model);
   }
   return '';
 }
@@ -7667,6 +7884,38 @@ function renderDiagramTree(){
   const root = document.getElementById('diagramTree');
   clear(root);
   if(!state.project){ root.appendChild(el('p',{class:'empty'},'Vytvořte nebo načtěte projekt.')); return; }
+  // Filtr podle stavu nad seznamem
+  const isEn = getLang() === 'en';
+  const filterWrap = el('div', { class:'status-filter',
+    style:'padding:.4em .5em;background:#f0f4f8;border:1px solid #d0d4dc;border-radius:4px;margin-bottom:.5em;display:flex;align-items:center;gap:.5em' });
+  const filterLabel = el('label', { for:'statusFilterSelect',
+    style:'font-weight:600;font-size:.9em' },
+    isEn ? 'Filter by status:' : 'Filtr podle stavu:');
+  filterWrap.appendChild(filterLabel);
+  const filterSelect = el('select', { id:'statusFilterSelect',
+    'aria-label': isEn ? 'Filter diagrams by status' : 'Filtrovat diagramy podle stavu',
+    style:'padding:.3em .5em;font-size:.9em' });
+  const filterOpts = [
+    { value:'',         label: isEn ? '(all)'         : '(vše)' },
+    { value:'__none__', label: isEn ? '(no status)'   : '(bez stavu)' }
+  ].concat(DIAGRAM_STATUSES.map(s => ({
+    value: s.value, label: isEn ? s.labelEn : s.labelCs
+  })));
+  filterOpts.forEach(o => {
+    const opt = el('option', { value: o.value }, o.label);
+    if((state.statusFilter || '') === o.value) opt.selected = true;
+    filterSelect.appendChild(opt);
+  });
+  filterSelect.addEventListener('change', () => {
+    state.statusFilter = filterSelect.value;
+    renderDiagramTree();
+  });
+  filterWrap.appendChild(filterSelect);
+  // Krátký souhrn — kolik diagramů aktuálně vidíme.
+  const summary = el('span', { class:'muted', style:'font-size:.85em;margin-left:auto;font-style:italic' });
+  filterWrap.appendChild(summary);
+  root.appendChild(filterWrap);
+
   const folders = state.project.folders;
   const diagrams = state.project.diagrams;
   const childrenOf = {};
@@ -7693,15 +7942,27 @@ function renderDiagramTree(){
     parentList.appendChild(li);
   }
   function renderDiagramItem(d, parentList){
+    // Filtrování dle stavu (state.statusFilter). Pokud filtr je nastaven a
+    // diagram má jiný stav, přeskočíme. Speciální hodnota '__none__' znamená
+    // „bez stavu".
+    const filter = state.statusFilter || '';
+    if(filter){
+      const ds = d.status || '';
+      if(filter === '__none__'){ if(ds) return; }
+      else if(filter !== ds) return;
+    }
     const li = el('li');
     const isSel = state.selectedDiagramId === d.id;
     const typeBadge = L.typeBadge[d.type] || d.type;
-    const item = treeItem(d.name, typeBadge, '', isSel,
+    // Název s případným stavem v závorce.
+    const sLabel = statusLabel(d.status);
+    const displayName = sLabel ? (d.name + ' (' + sLabel + ')') : d.name;
+    const item = treeItem(displayName, typeBadge, '', isSel,
       ()=>selectDiagram(d.id),
       []);
     const labelBtn = item.querySelector('a.label');
     if(labelBtn) labelBtn.setAttribute('aria-label',
-      typeBadge + ' ' + d.name + (isSel ? '' + L.fn.selected : ''));
+      typeBadge + ' ' + displayName + (isSel ? '' + L.fn.selected : ''));
     li.appendChild(item);
     parentList.appendChild(li);
   }
@@ -7712,6 +7973,18 @@ function renderDiagramTree(){
     root.appendChild(el('p',{class:'empty'},'Projekt zatím neobsahuje žádné diagramy.'));
     return;
   }
+  // Vypočítáme počet aktuálně zobrazených diagramů (po aplikaci filtru)
+  // pro souhrn v hlavičce filtru.
+  const filt = state.statusFilter || '';
+  let visibleCount = diagrams.length;
+  if(filt){
+    visibleCount = diagrams.filter(d => {
+      const ds = d.status || '';
+      return filt === '__none__' ? !ds : (filt === ds);
+    }).length;
+  }
+  summary.textContent = (isEn ? 'Showing ' : 'Zobrazeno ') + visibleCount +
+    (isEn ? ' of ' : ' z ') + diagrams.length;
   root.appendChild(ul);
 }
 
@@ -7730,6 +8003,7 @@ function renderCurrentDiagram(){
   renderModelToolbar(d);
   renderModelTree(d);
   renderDetail(d);
+  renderDiagramStatus(d);
   renderVersions(d);
   renderValidation(d);
   try { if(source) source.value = generatePuml(d); }
@@ -7906,6 +8180,36 @@ function renderModelToolbar(d){
     case 'ebnf':
       tb.appendChild(actionBtn(L.tb.rule, L.tb.ruleTip, ()=>addEbnfRule(d)));
       break;
+    case 'mindmap':
+    case 'wbs': {
+      const kind = d.type;
+      const isEn = getLang() === 'en';
+      tb.appendChild(actionBtn(
+        isEn ? '+ child' : '+ dítě',
+        isEn ? 'Add a child to the selected node' : 'Přidat dítě k vybranému uzlu',
+        () => _mmAddChild(d, kind)));
+      tb.appendChild(actionBtn(
+        isEn ? '+ sibling' : '+ sourozenec',
+        isEn ? 'Add a sibling next to the selected node' : 'Přidat sourozence vedle vybraného uzlu',
+        () => _mmAddSibling(d, kind)));
+      tb.appendChild(actionBtn('↑',
+        isEn ? 'Move up among siblings' : 'Posunout nahoru mezi sourozenci',
+        () => _mmMove(d, -1)));
+      tb.appendChild(actionBtn('↓',
+        isEn ? 'Move down among siblings' : 'Posunout dolů mezi sourozenci',
+        () => _mmMove(d, +1)));
+      tb.appendChild(actionBtn('→',
+        isEn ? 'Indent (make child of previous sibling)' : 'Odsadit (stane se dítětem předchozího sourozence)',
+        () => _mmIndent(d)));
+      tb.appendChild(actionBtn('←',
+        isEn ? 'Outdent (move out one level)' : 'Vrátit zpět (o úroveň výš)',
+        () => _mmOutdent(d)));
+      tb.appendChild(actionBtn(
+        isEn ? 'Stereotypes…' : 'Stereotypy…',
+        isEn ? 'Define visual styles for nodes (background, line, font…)' : 'Definovat vizuální styly uzlů (pozadí, čára, písmo…)',
+        () => openStereotypeEditor(d)));
+      break;
+    }
     case 'timing':
       tb.appendChild(actionBtn(L.tb.timingSignal, L.tb.timingSignalTip, ()=>addTimingParticipant(d)));
       tb.appendChild(actionBtn(L.tb.timingFrame, L.tb.timingFrameTip, ()=>addTimingFrame(d)));
@@ -7941,6 +8245,8 @@ function renderModelTree(d){
     case 'timeline': renderTimelineTree(d, root); break;
     case 'ebnf': renderEbnfTree(d, root); break;
     case 'timing': renderTimingTree(d, root); break;
+    case 'mindmap': renderMindmapTree(d, root); break;
+    case 'wbs': renderWbsTree(d, root); break;
   }
 }
 
@@ -8786,6 +9092,8 @@ function renderDetail(d){
     case 'timeline': renderTimelineDetail(d, root); break;
     case 'ebnf': renderEbnfDetail(d, root); break;
     case 'timing': renderTimingDetail(d, root); break;
+    case 'mindmap': renderMindmapDetail(d, root); break;
+    case 'wbs': renderWbsDetail(d, root); break;
   }
 }
 
@@ -11304,6 +11612,462 @@ function renderEbnfDetail(d, root){
       : 'Volitelný popis pravidla, zobrazí se jako EBNF komentář (* ... *).'));
 }
 
+// === MINDMAP / WBS — helpery pro práci se stromem ============
+// Datový model: model.roots = [uzel, …]; uzel = { id, text, color, stereotype,
+// boxless, children, side?(mindmap), opposite?(wbs) }. Cesta v state.selectedPath
+// má tvar ['roots', i0, i1, …] — index v poli kořenů, pak indexy v children.
+
+function _mmGetNode(model, path){
+  if(!path || path[0] !== 'roots') return null;
+  let node = (model.roots || [])[path[1]];
+  for(let i = 2; i < path.length; i++){
+    if(!node) return null;
+    node = (node.children || [])[path[i]];
+  }
+  return node || null;
+}
+function _mmGetParentArray(model, path){
+  if(!path || path[0] !== 'roots') return null;
+  if(path.length === 2) return { arr: model.roots || [], idx: path[1] };
+  let node = (model.roots || [])[path[1]];
+  for(let i = 2; i < path.length - 1; i++){
+    if(!node) return null;
+    node = (node.children || [])[path[i]];
+  }
+  if(!node) return null;
+  return { arr: node.children = node.children || [], idx: path[path.length - 1] };
+}
+function _mmNewNode(kind, text){
+  if(kind === 'mindmap'){
+    return { id: uid('mn'), text: text || 'Nový uzel', side: 'auto', color: '', stereotype: '', boxless: false, children: [] };
+  }
+  return { id: uid('wb'), text: text || 'Nový uzel', opposite: false, color: '', stereotype: '', boxless: false, children: [] };
+}
+function _mmAddSibling(d, kind){
+  const p = state.selectedPath;
+  if(!p || p[0] !== 'roots'){
+    d.model.roots = d.model.roots || [];
+    d.model.roots.push(_mmNewNode(kind));
+    state.selectedPath = ['roots', d.model.roots.length - 1];
+    touchDiagram(d); renderApp(); return;
+  }
+  const info = _mmGetParentArray(d.model, p);
+  if(!info) return;
+  info.arr.splice(info.idx + 1, 0, _mmNewNode(kind));
+  const np = p.slice(); np[np.length - 1] = info.idx + 1;
+  state.selectedPath = np;
+  touchDiagram(d); renderApp();
+}
+function _mmAddChild(d, kind){
+  const p = state.selectedPath;
+  if(!p || p[0] !== 'roots') return _mmAddSibling(d, kind);
+  const node = _mmGetNode(d.model, p);
+  if(!node) return;
+  node.children = node.children || [];
+  node.children.push(_mmNewNode(kind));
+  state.selectedPath = p.concat([node.children.length - 1]);
+  touchDiagram(d); renderApp();
+}
+function _mmMove(d, dir){
+  const p = state.selectedPath;
+  if(!p || p[0] !== 'roots' || p.length < 2) return;
+  const info = _mmGetParentArray(d.model, p);
+  if(!info) return;
+  const newIdx = info.idx + dir;
+  if(newIdx < 0 || newIdx >= info.arr.length) return;
+  const [node] = info.arr.splice(info.idx, 1);
+  info.arr.splice(newIdx, 0, node);
+  const np = p.slice(); np[np.length - 1] = newIdx;
+  state.selectedPath = np;
+  touchDiagram(d); renderApp();
+}
+function _mmIndent(d){
+  const p = state.selectedPath;
+  if(!p || p[0] !== 'roots' || p.length < 2) return;
+  const info = _mmGetParentArray(d.model, p);
+  if(!info || info.idx === 0) return;
+  const node = info.arr.splice(info.idx, 1)[0];
+  const prev = info.arr[info.idx - 1];
+  prev.children = prev.children || [];
+  prev.children.push(node);
+  const np = p.slice(0, -1).concat([info.idx - 1, prev.children.length - 1]);
+  state.selectedPath = np;
+  touchDiagram(d); renderApp();
+}
+function _mmOutdent(d){
+  const p = state.selectedPath;
+  if(!p || p[0] !== 'roots' || p.length <= 2) return;
+  const parentPath = p.slice(0, -1);
+  const parentNode = _mmGetNode(d.model, parentPath);
+  if(!parentNode) return;
+  const idxInParent = p[p.length - 1];
+  const grandInfo = _mmGetParentArray(d.model, parentPath);
+  if(!grandInfo) return;
+  const moved = parentNode.children.splice(idxInParent, 1)[0];
+  grandInfo.arr.splice(grandInfo.idx + 1, 0, moved);
+  state.selectedPath = parentPath.slice(0, -1).concat([grandInfo.idx + 1]);
+  touchDiagram(d); renderApp();
+}
+async function _mmDelete(d){
+  const p = state.selectedPath;
+  if(!p || p[0] !== 'roots') return;
+  const node = _mmGetNode(d.model, p);
+  if(!node) return;
+  const isEn = getLang() === 'en';
+  const cnt = (function count(n){ let c = 1; (n.children||[]).forEach(ch => c += count(ch)); return c; })(node);
+  const msg = isEn ? 'Delete node and all ' + (cnt - 1) + ' descendants?'
+                   : 'Smazat uzel a všech ' + (cnt - 1) + ' potomků?';
+  const ok = await dlgConfirm(isEn ? 'Delete node' : 'Smazat uzel', msg);
+  if(!ok) return;
+  const info = _mmGetParentArray(d.model, p);
+  if(!info) return;
+  info.arr.splice(info.idx, 1);
+  state.selectedPath = null;
+  touchDiagram(d); renderApp();
+}
+
+// === MINDMAP / WBS — render stromu ===========================
+function _mmRenderTree(d, root, kind){
+  const ul = el('ul', { class:'tree' });
+  function renderNodeAsLi(node, path){
+    if(!node) return null;
+    // Filter „hotovo/nehotovo" — pokud uzel nesplňuje filtr, přeskočíme ho
+    // (i jeho děti, protože strom v editoru ukazuje jen aktuálně relevantní).
+    if(!shouldShowInTree(d, node.id)) return null;
+    const isSel = state.selectedPath && state.selectedPath.length === path.length &&
+      state.selectedPath.every((v, i) => v === path[i]);
+    const li = el('li');
+    const label = (node.text || '(bez textu)').split(/\r?\n/)[0];
+    const annotations = [];
+    if(kind === 'mindmap' && node.side && node.side !== 'auto'){
+      annotations.push(node.side === 'left' ? '←' : '→');
+    }
+    if(kind === 'wbs' && node.opposite) annotations.push('↕');
+    if(node.boxless) annotations.push('▢');
+    if(node.color) annotations.push('●');
+    if(node.stereotype) annotations.push('«' + node.stereotype + '»');
+    const fullLabel = label + (annotations.length ? '  ' + annotations.join(' ') : '');
+    li.appendChild(treeItem(
+      fullLabel,
+      kind === 'mindmap' ? L.badge.mmNode : L.badge.wbsNode,
+      'class',
+      isSel,
+      () => { state.selectedPath = path; renderApp(); },
+      [
+        actionBtn('+',
+          getLang()==='en' ? 'Add child' : 'Přidat dítě',
+          () => { state.selectedPath = path; _mmAddChild(d, kind); }),
+        actionBtn('×',
+          getLang()==='en' ? 'Delete' : 'Smazat',
+          () => { state.selectedPath = path; _mmDelete(d); })
+      ],
+      makeDoneInfo(d, node.id)));
+    if(node.children && node.children.length){
+      const cul = el('ul', { class:'tree' });
+      node.children.forEach((c, i) => {
+        const cli = renderNodeAsLi(c, path.concat([i]));
+        if(cli) cul.appendChild(cli);
+      });
+      li.appendChild(cul);
+    }
+    return li;
+  }
+  const roots = d.model.roots || [];
+  if(!roots.length){
+    root.appendChild(el('p', {class:'muted'},
+      getLang()==='en' ? 'No nodes. Use the toolbar to add one.' : 'Žádné uzly. Použijte panel nástrojů pro přidání.'));
+    return;
+  }
+  roots.forEach((r, i) => {
+    const li = renderNodeAsLi(r, ['roots', i]);
+    if(li) ul.appendChild(li);
+  });
+  root.appendChild(ul);
+}
+function renderMindmapTree(d, root){ _mmRenderTree(d, root, 'mindmap'); }
+function renderWbsTree(d, root){ _mmRenderTree(d, root, 'wbs'); }
+
+// === MINDMAP / WBS — render detailu ==========================
+function _mmRenderDetail(d, root, kind){
+  const path = state.selectedPath;
+  if(!path || path[0] !== 'roots'){
+    root.appendChild(el('p', { class:'no-selection' },
+      getLang()==='en' ? 'Select a node in the tree.' : 'Vyberte uzel ve stromu.'));
+    return;
+  }
+  const node = _mmGetNode(d.model, path);
+  if(!node){
+    root.appendChild(el('p', { class:'no-selection' },
+      getLang()==='en' ? 'Node does not exist.' : 'Uzel neexistuje.'));
+    return;
+  }
+  const isEn = getLang() === 'en';
+  root.appendChild(el('h4', null, isEn ? 'Node' : 'Uzel'));
+  root.appendChild(field(
+    isEn ? 'Text (Enter = new line):' : 'Text (Enter = nový řádek):',
+    inputArea(node.text || '', v => { node.text = v; softTouch(d); }, 'mmText', 3),
+    isEn
+      ? 'Multi-line text is emitted using PlantUML\'s `:text;` block.'
+      : 'Víceřádkový text se v PlantUML vygeneruje pomocí bloku „:text;"'));
+  if(kind === 'mindmap'){
+    root.appendChild(field(
+      isEn ? 'Side (relative to root):' : 'Strana (vůči kořeni):',
+      selectField(node.side || 'auto', [
+        { value:'auto',  label: isEn ? 'Auto (PlantUML decides)' : 'Auto (rozhodne PlantUML)' },
+        { value:'right', label: isEn ? 'Right (+)' : 'Vpravo (+)' },
+        { value:'left',  label: isEn ? 'Left (−)' : 'Vlevo (−)' }
+      ], v => { node.side = v; softTouch(d); }, 'mmSide'),
+      isEn
+        ? 'Default ("auto") uses asterisks. Side forces `+` or `-` markers.'
+        : 'Výchozí („auto") použije hvězdičky. Volba strany vynutí markery `+` nebo `-`.'));
+  } else {
+    root.appendChild(field('',
+      checkboxField(
+        isEn ? 'Place on opposite side (uses `-` marker)' : 'Umístit na opačnou stranu (marker `-`)',
+        !!node.opposite,
+        v => { node.opposite = v; softTouch(d); }),
+      isEn
+        ? 'WBS marker `-` flips a node to the opposite side of its siblings.'
+        : 'WBS marker `-` přesune uzel na opačnou stranu než sourozenci.'));
+  }
+  root.appendChild(field('',
+    checkboxField(
+      isEn ? 'No box around the node (boxless)' : 'Bez rámečku (boxless)',
+      !!node.boxless,
+      v => { node.boxless = v; softTouch(d); }),
+    isEn
+      ? 'Adds underscore `_` after the marker to remove the visual box.'
+      : 'Přidá za marker podtržítko `_` — zruší vykreslení rámečku.'));
+  root.appendChild(colorField(
+    isEn ? 'Color:' : 'Barva:',
+    node.color || '',
+    v => { node.color = v; softTouch(d); },
+    'mmColor',
+    isEn
+      ? 'Renders as `[#color]`. Lower priority than stereotype — if both set, only stereotype is emitted.'
+      : 'Vygeneruje se jako `[#barva]`. Nižší priorita než stereotyp — pokud jsou obě vyplněny, použije se stereotyp.'));
+  // Stereotyp — select z definovaných stereotypů + možnost „bez stereotypu".
+  // Definice stereotypů (vizuál) se spravuje v dialogu „Stereotypy…" v toolbaru.
+  const stereos = (d.model && d.model.stereotypes) || [];
+  const stereoOptions = [
+    { value:'', label: isEn ? '(no stereotype)' : '(žádný)' }
+  ].concat(stereos.filter(s => s && s.name).map(s => ({
+    value: s.name, label: s.name + (s.description ? ' — ' + s.description : '')
+  })));
+  // Pokud má uzel stereotyp, který už není definován (např. přejmenován),
+  // přidáme ho jako extra volbu, ať uživatel vidí, co je nastaveno.
+  if(node.stereotype && !stereos.some(s => s && s.name === node.stereotype)){
+    stereoOptions.push({ value: node.stereotype, label: node.stereotype + (isEn ? ' (undefined)' : ' (nedefinovaný)') });
+  }
+  root.appendChild(field(
+    isEn ? 'Stereotype:' : 'Stereotyp:',
+    selectField(node.stereotype || '', stereoOptions, v => { node.stereotype = v; softTouch(d); }, 'mmStereo'),
+    stereos.length
+      ? (isEn
+          ? 'Choose a stereotype defined for this diagram. Manage definitions via the “Stereotypes…” button in the toolbar.'
+          : 'Vyberte stereotyp definovaný pro tento diagram. Definice se spravují přes tlačítko „Stereotypy…" v panelu nástrojů.')
+      : (isEn
+          ? 'No stereotypes defined yet. Use the “Stereotypes…” button in the toolbar to define one.'
+          : 'Zatím nejsou definované žádné stereotypy. Použijte tlačítko „Stereotypy…" v panelu nástrojů.')));
+  root.appendChild(el('p', { class:'muted', style:'margin-top:.5em;font-size:.85em' },
+    (isEn ? 'Tree depth: ' : 'Hloubka ve stromu: ') + (path.length - 1)));
+}
+function renderMindmapDetail(d, root){ _mmRenderDetail(d, root, 'mindmap'); }
+function renderWbsDetail(d, root){ _mmRenderDetail(d, root, 'wbs'); }
+
+// === MINDMAP / WBS — editor stereotypů =======================
+// Otevře modal dialog, ve kterém uživatel definuje pojmenované vizuální styly
+// (stereotypy). Každý stereotyp má jméno (PlantUML CSS class) + sadu vlastností
+// (background, čára, písmo, ...). Generátor pak vyemituje <style>...</style>
+// blok do PlantUML zdroje a v detailu uzlu se nabídne select.
+
+// Reference na aktuálně otevřený diagram (modal je sdílený).
+let _stereoEditorDiagram = null;
+
+function openStereotypeEditor(d){
+  if(!d) return;
+  _stereoEditorDiagram = d;
+  d.model = d.model || {};
+  d.model.stereotypes = d.model.stereotypes || [];
+  _renderStereotypeEditor();
+  document.getElementById('dlgStereoEditor').showModal();
+}
+
+function _renderStereotypeEditor(){
+  const isEn = getLang() === 'en';
+  const d = _stereoEditorDiagram;
+  if(!d) return;
+  const list = document.getElementById('stereoList');
+  clear(list);
+  const stereos = d.model.stereotypes || [];
+  if(!stereos.length){
+    list.appendChild(el('p', { class:'muted' },
+      isEn ? 'No stereotypes defined yet. Click “Add stereotype” to create one.'
+           : 'Zatím nejsou definované žádné stereotypy. Klikněte na „Přidat stereotyp".'));
+    return;
+  }
+  stereos.forEach((s, idx) => {
+    const item = el('div', { class:'stereo-item', role:'listitem',
+      style:'border:1px solid #ccc;border-radius:4px;padding:.7em;margin-bottom:.5em' });
+    // Hlavička — jméno + tlačítka odstranit/posunout
+    const head = el('div', { style:'display:flex;align-items:center;gap:.5em;margin-bottom:.5em' });
+    const headLabel = el('strong', null, '«' + (s.name || '?') + '»');
+    head.appendChild(headLabel);
+    const usageCount = _stereoCountUsage(d.model, s.name);
+    const usageInfo = el('span', { class:'muted', style:'font-size:.9em;margin-left:auto' },
+      usageCount > 0
+        ? (isEn ? 'Used on ' + usageCount + ' node(s)' : 'Použit na ' + usageCount + ' ' + czCount(usageCount, 'uzlu','uzlech','uzlech'))
+        : (isEn ? 'Not used' : 'Nepoužitý'));
+    head.appendChild(usageInfo);
+    const delBtn = el('button', { type:'button',
+      style:'background:#fcc;border:1px solid #c66;border-radius:3px;padding:.3em .7em;cursor:pointer' },
+      isEn ? 'Smazat' : 'Smazat');
+    delBtn.setAttribute('aria-label', (isEn ? 'Delete stereotype ' : 'Smazat stereotyp ') + (s.name || ''));
+    delBtn.addEventListener('click', async () => {
+      const ok = await dlgConfirm(
+        isEn ? 'Delete stereotype' : 'Smazat stereotyp',
+        usageCount > 0
+          ? (isEn
+              ? 'This stereotype is used on ' + usageCount + ' node(s). Delete anyway? Nodes using it will lose the visual style (the name remains as plain text reference).'
+              : 'Stereotyp je použit na ' + usageCount + ' ' + czCount(usageCount,'uzlu','uzlech','uzlech') + '. Smazat i přesto? Uzly o vizuální styl přijdou (jméno zůstane jako reference).')
+          : (isEn ? 'Delete this stereotype?' : 'Smazat tento stereotyp?'));
+      if(!ok) return;
+      d.model.stereotypes.splice(idx, 1);
+      touchDiagram(d); _renderStereotypeEditor();
+      // Re-render hlavního UI (detail uzlu se aktualizuje selectem).
+      try { softTouch(d); renderApp(); } catch(e){}
+    });
+    head.appendChild(delBtn);
+    item.appendChild(head);
+
+    // Form pro vlastnosti stereotypu
+    const refresh = () => {
+      headLabel.textContent = '«' + (s.name || '?') + '»';
+      softTouch(d);
+    };
+    item.appendChild(field(
+      isEn ? 'Name (used as CSS class):' : 'Jméno (CSS třída):',
+      inputText(s.name || '', v => {
+        const sanitized = v.trim().replace(/[^A-Za-z0-9_]/g, '');
+        s.name = sanitized;
+        refresh();
+      }, 'stereoName' + idx),
+      isEn
+        ? 'Only letters, digits, underscore. Used as the PlantUML <style> selector and as <<name>> in nodes.'
+        : 'Jen písmena, číslice, podtržítko. Použije se jako selektor v <style> a jako <<jméno>> u uzlů.'));
+    item.appendChild(field(
+      isEn ? 'Description (optional, only for editor):' : 'Popis (volitelný, jen pro editor):',
+      inputText(s.description || '', v => { s.description = v; refresh(); }, 'stereoDesc' + idx),
+      isEn ? 'Shown in the select dropdown next to the name.' : 'Zobrazí se v rozbalovacím seznamu vedle jména.'));
+
+    // Vizuální vlastnosti — barva pozadí, barva čáry, tloušťka, styl,
+    // barva textu, velikost, řez. Vše volitelné — prázdné se neemituje.
+    const visualsTitle = el('h4', { style:'margin:.6em 0 .3em 0;font-size:.95em' },
+      isEn ? 'Visual properties (PlantUML style)' : 'Vizuální vlastnosti (PlantUML style)');
+    item.appendChild(visualsTitle);
+
+    item.appendChild(colorField(
+      isEn ? 'Background color:' : 'Barva pozadí:',
+      s.backgroundColor || '',
+      v => { s.backgroundColor = v; refresh(); },
+      'stereoBg' + idx,
+      isEn ? 'PlantUML name or #hex. Empty = no override.' : 'Název PlantUML nebo #hex. Prázdné = neměnit.'));
+    item.appendChild(colorField(
+      isEn ? 'Line (border) color:' : 'Barva čáry (rámečku):',
+      s.lineColor || '',
+      v => { s.lineColor = v; refresh(); },
+      'stereoLine' + idx));
+    item.appendChild(field(
+      isEn ? 'Line thickness:' : 'Tloušťka čáry:',
+      selectField(String(s.lineThickness || ''), [
+        { value:'',  label: isEn ? '(default)' : '(výchozí)' },
+        { value:'1', label: '1' }, { value:'2', label: '2' }, { value:'3', label: '3' },
+        { value:'4', label: '4' }, { value:'5', label: '5' }
+      ], v => { s.lineThickness = v; refresh(); }, 'stereoLineT' + idx)));
+    item.appendChild(field(
+      isEn ? 'Line style:' : 'Styl čáry:',
+      selectField(s.lineStyle || '', [
+        { value:'',   label: isEn ? '(solid — default)' : '(plná — výchozí)' },
+        { value:'5',  label: isEn ? 'Short dashes' : 'Krátké pomlčky' },
+        { value:'10', label: isEn ? 'Long dashes'  : 'Dlouhé pomlčky' },
+        { value:'2',  label: isEn ? 'Dotted'       : 'Tečkovaná' }
+      ], v => { s.lineStyle = v; refresh(); }, 'stereoLineS' + idx)));
+    item.appendChild(colorField(
+      isEn ? 'Font (text) color:' : 'Barva písma:',
+      s.fontColor || '',
+      v => { s.fontColor = v; refresh(); },
+      'stereoFontC' + idx));
+    item.appendChild(field(
+      isEn ? 'Font size (pt):' : 'Velikost písma (pt):',
+      inputText(String(s.fontSize || ''),
+        v => { s.fontSize = v.trim().replace(/[^0-9]/g,''); refresh(); }, 'stereoFontSz' + idx),
+      isEn ? 'Number in points, e.g. 14. Empty = default.' : 'Číslo v bodech, např. 14. Prázdné = výchozí.'));
+    item.appendChild(field(
+      isEn ? 'Font style:' : 'Řez písma:',
+      selectField(s.fontStyle || '', [
+        { value:'',                  label: isEn ? '(normal)' : '(normální)' },
+        { value:'bold',              label: isEn ? 'Bold'        : 'Tučné' },
+        { value:'italic',            label: isEn ? 'Italic'      : 'Kurzíva' },
+        { value:'bold italic',       label: isEn ? 'Bold italic' : 'Tučná kurzíva' },
+        { value:'underline',         label: isEn ? 'Underline'   : 'Podtržené' }
+      ], v => { s.fontStyle = v; refresh(); }, 'stereoFontS' + idx)));
+    item.appendChild(field(
+      isEn ? 'Rounded corners (px):' : 'Zaoblené rohy (px):',
+      inputText(String(s.roundCorner || ''),
+        v => { s.roundCorner = v.trim().replace(/[^0-9]/g,''); refresh(); }, 'stereoRound' + idx),
+      isEn ? 'Number of pixels, e.g. 10 for medium-rounded corners. Empty = default.' : 'Počet pixelů, např. 10 pro středně zaoblené rohy. Prázdné = výchozí.'));
+    item.appendChild(field('',
+      checkboxField(
+        isEn ? 'Drop shadow' : 'Vrhat stín',
+        !!s.shadowing,
+        v => { s.shadowing = v; refresh(); }),
+      isEn ? 'Adds a soft shadow under the node box.' : 'Přidá pod rámeček uzlu měkký stín.'));
+
+    list.appendChild(item);
+  });
+}
+
+// Počet uzlů, které používají daný stereotyp (rekurzivně přes celý strom).
+function _stereoCountUsage(model, name){
+  if(!name) return 0;
+  let count = 0;
+  function walk(arr){
+    (arr || []).forEach(n => {
+      if(n && n.stereotype === name) count++;
+      if(n && n.children) walk(n.children);
+    });
+  }
+  walk(model.roots || []);
+  return count;
+}
+
+function _addNewStereotype(){
+  const d = _stereoEditorDiagram;
+  if(!d) return;
+  d.model.stereotypes = d.model.stereotypes || [];
+  // Vytvoříme nový stereotyp s rozumným defaultem a uniqním jménem.
+  let base = 'styl' + (d.model.stereotypes.length + 1);
+  while(d.model.stereotypes.some(s => s && s.name === base)){
+    base = 'styl' + (Math.floor(Math.random() * 9999));
+  }
+  d.model.stereotypes.push({
+    id: uid('st'),
+    name: base,
+    description: '',
+    backgroundColor: '',
+    lineColor: '',
+    lineThickness: '',
+    lineStyle: '',
+    fontColor: '',
+    fontSize: '',
+    fontStyle: '',
+    roundCorner: '',
+    shadowing: false
+  });
+  touchDiagram(d);
+  _renderStereotypeEditor();
+}
+
 // === AKCE: GANTT =============================================
 async function addGanttTask(d){
   const v = await dlgPrompt(L.dlg.newTask, 'Název úlohy:', '', '');
@@ -12540,6 +13304,40 @@ async function deleteDiagramAction(){
 }
 
 // === VERZE ====================================================
+function renderDiagramStatus(d){
+  const sel = document.getElementById('diagramStatusSelect');
+  if(!sel || !d) return;
+  const isEn = getLang() === 'en';
+  // Naplníme select hodnotami podle aktuálního jazyka
+  clear(sel);
+  const optNone = el('option', { value:'' }, isEn ? '(no status)' : '(bez stavu)');
+  sel.appendChild(optNone);
+  DIAGRAM_STATUSES.forEach(s => {
+    const opt = el('option', { value: s.value }, isEn ? s.labelEn : s.labelCs);
+    sel.appendChild(opt);
+  });
+  sel.value = d.status || '';
+  // I18n labelu nad selectem
+  const h = document.getElementById('statusHeading');
+  if(h) h.textContent = isEn ? 'Diagram status' : 'Stav diagramu';
+  const lab = document.querySelector('label[for="diagramStatusSelect"]');
+  if(lab) lab.textContent = isEn ? 'Status:' : 'Stav:';
+  const help = document.getElementById('statusHelp');
+  if(help) help.textContent = isEn
+    ? 'Current workflow state. Shown in the project list after the diagram name in parentheses, and usable for filtering.'
+    : 'Aktuální stav diagramu ve workflow. Zobrazí se v seznamu projektu za názvem v závorce a lze jej použít k filtrování.';
+  // Odpoutáme se od starého handleru (kdyby tu nějaký zbyl po předchozím renderu).
+  // Použijeme jednoduché přepsání onchange. Storage: ukládá se rovnou do d.status,
+  // pak se obnoví strom (kvůli zobrazení v závorce) i nadpis okna.
+  sel.onchange = () => {
+    d.status = sel.value || '';
+    touchDiagram(d);
+    // Lokální refresh — strom diagramů v project view + nadpis okna.
+    try { renderDiagramTree(); } catch(e){}
+    try { updateHeaderTitle(); } catch(e){}
+  };
+}
+
 function renderVersions(d){
   const list = document.getElementById('versionsList');
   clear(list);
@@ -12669,7 +13467,16 @@ function loadProjectJsonText(text, fileName){
     // jednoduchá normalizace
     obj.folders = obj.folders || [];
     obj.sharedElements = obj.sharedElements || [];
-    obj.diagrams.forEach(d => { d.versions = d.versions || []; d.settings = d.settings || {}; });
+    obj.diagrams.forEach(d => {
+      d.versions = d.versions || [];
+      d.settings = d.settings || {};
+      // Stav diagramu (workflow). Starší pupe ho nemají — default = bez stavu.
+      if(d.status === undefined) d.status = '';
+      // Mindmap/WBS: zajistit existenci pole stereotypes (starší pupe ho nemají).
+      if((d.type === 'mindmap' || d.type === 'wbs') && d.model){
+        d.model.stereotypes = d.model.stereotypes || [];
+      }
+    });
     obj.settings = obj.settings || {theme:'',skinparam:'',header:'',footer:''};
     // Migrace: starý atribut 'shape' u akcí v aktivitních diagramech → 'stereotype'
     migrateActivityShapesToStereotypes(obj);
@@ -14143,6 +14950,14 @@ function init(){
   document.getElementById('dlgSettingsOk').addEventListener('click', saveSettings);
   document.getElementById('dlgSettingsCancel').addEventListener('click', () => document.getElementById('dlgSettings').close());
   document.getElementById('dlgHelpClose').addEventListener('click', () => document.getElementById('dlgHelp').close());
+  // Stereotype editor dialog (mindmap/WBS)
+  document.getElementById('dlgStereoAdd').addEventListener('click', _addNewStereotype);
+  document.getElementById('dlgStereoClose').addEventListener('click', () => {
+    document.getElementById('dlgStereoEditor').close();
+    // Po zavření refresh hlavního UI, aby se select v detailu aktualizoval.
+    try { if(_stereoEditorDiagram) { softTouch(_stereoEditorDiagram); } renderApp(); } catch(e){}
+    _stereoEditorDiagram = null;
+  });
 
   // File input – soubor se dispatchne podle obsahu (JSON projekt vs PUML zdroj),
   // nikoliv podle přípony. Uživatel může nahrát .pup, .json, .puml, .txt nebo bez přípony.
