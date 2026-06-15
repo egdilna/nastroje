@@ -12933,6 +12933,7 @@ function previewAction(){
     noDesc: isEn ? '(no description available)' : '(popis není k dispozici)',
     altText: 'PlantUML diagram: ' + safeName
   };
+  const zoom = buildZoomToolbarHtml(isEn, 'preview');
   const html = '<!DOCTYPE html>\n<html lang="' + (isEn?'en':'cs') + '">\n<head>\n' +
     '<meta charset="utf-8">\n' +
     '<title>' + labels.titlePrefix + ' — ' + safeName + '</title>\n' +
@@ -12943,31 +12944,141 @@ function previewAction(){
     'header{background:#1e3a5f;color:#fff;padding:.7em 1em}\n' +
     'header h1{margin:0;font-size:1.1em;font-weight:600}\n' +
     'main{padding:1.5em;max-width:1200px;margin:0 auto}\n' +
-    'figure{margin:0 0 1em 0;text-align:center}\n' +
-    'object,img{max-width:100%;height:auto;display:inline-block;border:1px solid #d0d4dc;background:#fff}\n' +
+    '.zoom-scroll{overflow:auto;border:1px solid #d0d4dc;background:#fff;margin-bottom:1em;max-height:75vh}\n' +
+    '.zoom-inner{width:calc(var(--zoom, 1) * 100%);min-width:100%;padding:0}\n' +
+    '.zoom-inner img{width:100%;height:auto;display:block}\n' +
     '.desc-section{margin-top:2em;border-top:1px solid #d0d4dc;padding-top:1em}\n' +
     '.desc-section h2{font-size:1.1em;color:#1e3a5f;margin-top:0}\n' +
     '.desc-section p{margin:.6em 0}\n' +
     '.empty-desc{font-style:italic;color:#777}\n' +
+    zoom.css +
     '</style>\n' +
     '</head>\n<body>\n' +
     '<header><h1>' + labels.titlePrefix + ': ' + safeName + '</h1></header>\n' +
     '<main>\n' +
-    '<figure>\n' +
-    // <object> pro SVG zachová interaktivní/přístupnostní vlastnosti; <img> jako fallback.
-    '  <object type="image/svg+xml" data="' + esc(svgUrl) + '" aria-label="' + esc(labels.altText) + '">\n' +
-    '    <img src="' + esc(svgUrl) + '" alt="' + esc(labels.altText) + '">\n' +
-    '  </object>\n' +
-    '</figure>\n' +
+    zoom.html +
+    '<div class="zoom-scroll"><div class="zoom-inner">' +
+    '  <img id="diagram" alt="' + esc(labels.altText) + '" src="' + esc(svgUrl) + '">\n' +
+    '</div></div>\n' +
     '<section class="desc-section" aria-label="' + esc(labels.descTitle) + '">\n' +
     '<h2>' + labels.descTitle + '</h2>\n' +
     (descHtml || '<p class="empty-desc">' + labels.noDesc + '</p>') +
     '</section>\n' +
     '</main>\n' +
+    zoom.scriptTag +
     '</body>\n</html>';
   w.document.open();
   w.document.write(html);
   w.document.close();
+}
+
+// === ZOOM TOOLBAR ============================================
+// Sestaví HTML/CSS/JS zoom kontrolek, které se vkládají do náhledového
+// i promítacího okna. Klíč `storageKey` rozliší persistentní zoom mezi
+// kontexty ('preview' vs 'projection'), aby se hodnoty navzájem nepřepisovaly.
+function buildZoomToolbarHtml(isEn, storageKey){
+  const lbl = {
+    out:        isEn ? 'Zoom out' : 'Zmenšit',
+    in:         isEn ? 'Zoom in'  : 'Zvětšit',
+    fit:        isEn ? 'Fit width' : 'Přizpůsobit šířce',
+    reset:      isEn ? 'Reset (100%)' : 'Výchozí (100%)',
+    label:      isEn ? 'Zoom:' : 'Zvětšení:',
+    keyHint:    isEn
+      ? 'Keys: + zoom in, − zoom out, 0 reset to 100%, 1 fit width.'
+      : 'Klávesy: + zvětšit, − zmenšit, 0 výchozí 100%, 1 přizpůsobit šířce.'
+  };
+  // Preset hodnoty zoomu — pokrývají běžné kroky: 50, 75, 90, 100, 110, 125,
+  // 150, 175, 200, 250, 300, 400 procent. Hodnoty jsou v procentech (string),
+  // při uložení se převádějí na číslo / 100.
+  const presets = ['50','75','90','100','110','125','150','175','200','250','300','400'];
+  const optsHtml = presets.map(p =>
+    '<option value="' + p + '"' + (p === '100' ? ' selected' : '') + '>' + p + '%</option>'
+  ).join('');
+  const css =
+    '.zoom-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:.3em;padding:.5em;background:#f0f4f8;border:1px solid #d0d4dc;border-radius:4px;margin-bottom:.5em}\n' +
+    '.zoom-toolbar label{font-weight:600;margin-right:.2em}\n' +
+    '.zoom-toolbar button,.zoom-toolbar select{padding:.4em .8em;font-size:1em;background:#fff;border:1px solid #aab;border-radius:3px;cursor:pointer;color:#111}\n' +
+    '.zoom-toolbar button:hover,.zoom-toolbar select:hover{background:#e0eaf5}\n' +
+    '.zoom-toolbar button:focus,.zoom-toolbar select:focus{outline:2px solid #f90;outline-offset:1px}\n' +
+    '.zoom-toolbar .zoom-keyhint{margin-left:auto;font-size:.85em;color:#555;font-style:italic}\n';
+  const html =
+    '<div class="zoom-toolbar" role="toolbar" aria-label="' + (isEn ? 'Zoom controls' : 'Ovládání zvětšení') + '">' +
+    '<label for="zoomSelect">' + lbl.label + '</label>' +
+    '<button type="button" id="zoomOut" aria-label="' + lbl.out + '" title="' + lbl.out + ' (−)">−</button>' +
+    '<select id="zoomSelect" aria-label="' + lbl.label + '">' + optsHtml + '</select>' +
+    '<button type="button" id="zoomIn" aria-label="' + lbl.in + '" title="' + lbl.in + ' (+)">+</button>' +
+    '<button type="button" id="zoomFit" aria-label="' + lbl.fit + '" title="' + lbl.fit + ' (1)">' + lbl.fit + '</button>' +
+    '<button type="button" id="zoomReset" aria-label="' + lbl.reset + '" title="' + lbl.reset + ' (0)">100%</button>' +
+    '<span class="zoom-keyhint">' + lbl.keyHint + '</span>' +
+    '</div>\n';
+  // Klientský JS pro zoom: ovládání selectu/tlačítek + klávesy + persistence.
+  // Vykonává se v cílovém okně, NE v hostitelské stránce editoru.
+  const scriptBody =
+    '(function(){\n' +
+    '  var presets=[' + presets.map(p => "'" + p + "'").join(',') + '];\n' +
+    '  var KEY="zoom_" + ' + JSON.stringify(storageKey) + ';\n' +
+    '  var sel = document.getElementById("zoomSelect");\n' +
+    '  var docEl = document.documentElement;\n' +
+    '  function clampIdx(i){ return Math.max(0, Math.min(presets.length - 1, i)); }\n' +
+    '  function findIdx(val){ var i = presets.indexOf(String(val)); return i < 0 ? presets.indexOf("100") : i; }\n' +
+    '  function apply(val){\n' +
+    '    var n = parseFloat(val) / 100;\n' +
+    '    if(!isFinite(n) || n <= 0) n = 1;\n' +
+    '    docEl.style.setProperty("--zoom", String(n));\n' +
+    '    try { localStorage.setItem(KEY, String(val)); } catch(e){}\n' +
+    '  }\n' +
+    '  function setZoom(val){\n' +
+    '    var v = String(val);\n' +
+    '    if(presets.indexOf(v) < 0){\n' +
+    '      // Najít nejbližší preset.\n' +
+    '      var num = parseFloat(v);\n' +
+    '      var bestIdx = 0, bestDiff = Infinity;\n' +
+    '      presets.forEach(function(p, idx){\n' +
+    '        var diff = Math.abs(parseFloat(p) - num);\n' +
+    '        if(diff < bestDiff){ bestDiff = diff; bestIdx = idx; }\n' +
+    '      });\n' +
+    '      v = presets[bestIdx];\n' +
+    '    }\n' +
+    '    sel.value = v;\n' +
+    '    apply(v);\n' +
+    '  }\n' +
+    '  function fit(){\n' +
+    '    // „Přizpůsobit šířce" = nastavit zoom 100%, takže obrázek vyplní container,\n' +
+    '    // a parent .zoom-scroll je už `overflow:auto`.\n' +
+    '    setZoom("100");\n' +
+    '  }\n' +
+    '  // Tlačítka\n' +
+    '  document.getElementById("zoomOut").addEventListener("click", function(){\n' +
+    '    setZoom(presets[clampIdx(findIdx(sel.value) - 1)]);\n' +
+    '  });\n' +
+    '  document.getElementById("zoomIn").addEventListener("click", function(){\n' +
+    '    setZoom(presets[clampIdx(findIdx(sel.value) + 1)]);\n' +
+    '  });\n' +
+    '  document.getElementById("zoomReset").addEventListener("click", function(){ setZoom("100"); });\n' +
+    '  document.getElementById("zoomFit").addEventListener("click", fit);\n' +
+    '  sel.addEventListener("change", function(){ apply(sel.value); try{ localStorage.setItem(KEY, sel.value); }catch(e){} });\n' +
+    '  // Klávesnice\n' +
+    '  document.addEventListener("keydown", function(e){\n' +
+    '    // Ignorovat když je focus v inputu/textarea\n' +
+    '    var tag = (e.target && e.target.tagName) || "";\n' +
+    '    if(tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;\n' +
+    '    if(e.key === "+" || e.key === "=") { e.preventDefault(); document.getElementById("zoomIn").click(); }\n' +
+    '    else if(e.key === "-" || e.key === "_") { e.preventDefault(); document.getElementById("zoomOut").click(); }\n' +
+    '    else if(e.key === "0") { e.preventDefault(); setZoom("100"); }\n' +
+    '    else if(e.key === "1") { e.preventDefault(); fit(); }\n' +
+    '  });\n' +
+    '  // Persistence: načíst poslední zoom z localStorage\n' +
+    '  try {\n' +
+    '    var stored = localStorage.getItem(KEY);\n' +
+    '    if(stored && presets.indexOf(stored) >= 0) setZoom(stored);\n' +
+    '    else apply("100");\n' +
+    '  } catch(e){ apply("100"); }\n' +
+    '})();\n';
+  return {
+    css: css,
+    html: html,
+    scriptTag: '<script>\n' + scriptBody + '<\/script>\n'
+  };
 }
 
 // === PROMÍTACÍ OKNO ===========================================
@@ -12987,6 +13098,7 @@ function projectionWindowHtml(svgUrl, diagramName, tc, descText){
   const safeCaption = esc((tc && tc.caption) || '');
   // Popis: zachováme zlomy odstavců (\n\n → samostatné odstavce).
   const descHtml = (descText || '').split(/\n\n+/).map(p => '<p>' + esc(p.trim()).replace(/\n/g, ' ') + '</p>').filter(p => p !== '<p></p>').join('\n');
+  const zoom = buildZoomToolbarHtml(false, 'projection');
   return '<!DOCTYPE html>\n<html lang="cs">\n<head>\n' +
     '<meta charset="utf-8">\n' +
     '<title>Promítání — ' + safeName + '</title>\n' +
@@ -13000,18 +13112,21 @@ function projectionWindowHtml(svgUrl, diagramName, tc, descText){
     'header button{padding:.5em 1em;font-size:1em;background:#fff;color:#1e3a5f;border:1px solid #fff;border-radius:3px;cursor:pointer}\n' +
     'header button:hover{background:#cfe0f5}\n' +
     'header button:focus{outline:2px solid #f90;outline-offset:1px}\n' +
-    'main{flex:1;display:flex;flex-direction:column;align-items:center;padding:1em;overflow:auto;background:#fff;gap:1em}\n' +
-    'main img{max-width:100%;display:block}\n' +
-    '.caption-box{max-width:90%;text-align:center}\n' +
+    'main{flex:1;display:flex;flex-direction:column;align-items:stretch;padding:1em;overflow:auto;background:#fff;gap:1em}\n' +
+    '.zoom-scroll{flex:1;overflow:auto;border:1px solid #d0d4dc;background:#fff;min-height:200px}\n' +
+    '.zoom-inner{width:calc(var(--zoom, 1) * 100%);min-width:100%;padding:0}\n' +
+    '.zoom-inner img{width:100%;height:auto;display:block}\n' +
+    '.caption-box{max-width:90%;text-align:center;align-self:center}\n' +
     '.caption-box .title{font-size:1.2em;font-weight:bold;margin:0 0 .3em 0;color:#1e3a5f}\n' +
     '.caption-box .caption{font-size:1em;font-style:italic;margin:0;color:#444}\n' +
-    '.desc-box{max-width:90%;font-size:.95em;line-height:1.5;color:#222}\n' +
+    '.desc-box{max-width:90%;align-self:center;font-size:.95em;line-height:1.5;color:#222}\n' +
     '.desc-box p{margin:.5em 0}\n' +
     '.status{padding:.5em 1em;background:#222;color:#fff;font-size:.9em}\n' +
     '.status.error{background:#a00}\n' +
     ':fullscreen header{padding:1em 2em}\n' +
     ':fullscreen header h1{font-size:1.4em}\n' +
     ':fullscreen main{padding:2em}\n' +
+    zoom.css +
     '</style>\n' +
     '</head>\n<body>\n' +
     '<header>\n' +
@@ -13019,7 +13134,10 @@ function projectionWindowHtml(svgUrl, diagramName, tc, descText){
     '<button id="btnFullscreen" type="button" title="Přepnout celou obrazovku (F11 nebo toto tlačítko)">Celá obrazovka</button>\n' +
     '</header>\n' +
     '<main>\n' +
+    zoom.html +
+    '<div class="zoom-scroll"><div class="zoom-inner">' +
     '<img id="diagram" alt="PlantUML diagram: ' + safeName + '" src="' + svgUrl + '">\n' +
+    '</div></div>\n' +
     '<div class="caption-box" id="captionBox">\n' +
     '<p class="title" id="diagramTitle"' + (safeTitle ? '' : ' hidden') + '>' + safeTitle + '</p>\n' +
     '<p class="caption" id="diagramCaption"' + (safeCaption ? '' : ' hidden') + '>' + safeCaption + '</p>\n' +
@@ -13038,6 +13156,7 @@ function projectionWindowHtml(svgUrl, diagramName, tc, descText){
     '  }\n' +
     '});\n' +
     '<\/script>\n' +
+    zoom.scriptTag +
     '</body>\n</html>';
 }
 
