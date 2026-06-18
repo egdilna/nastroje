@@ -1187,7 +1187,7 @@
                 <button type="button" onclick="newModel()" accesskey="n" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;" title="Alt+N">
                     📄 <span data-i18n="newModel">Nový</span>
                 </button>
-                <input type="file" id="quick-open-file" accept=".ajx,.xml" style="display: none;" onchange="quickOpenFile(event)">
+                <input type="file" id="quick-open-file" style="display: none;" onchange="quickOpenFile(event)">
                 <button type="button" onclick="document.getElementById('quick-open-file').click()" accesskey="o" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;" title="Alt+O">
                     📂 <span data-i18n="openFile">Otevřít</span>
                 </button>
@@ -1886,6 +1886,7 @@
                             <button type="button" class="btn-secondary" onclick="downloadDiagramSVG()" data-i18n="downloadSvg">Stáhnout SVG</button>
                             <button type="button" class="btn-secondary" onclick="downloadDiagramPNG()" data-i18n="downloadPng">Stáhnout PNG</button>
                             <button type="button" class="btn-secondary" onclick="exportDiagramDOCX()" data-i18n="exportDocx">📄 Export DOCX</button>
+                            <button type="button" class="btn-secondary" onclick="exportDiagramMD()">📝 Export MD</button>
                         </div>
                         <div class="svg-container" id="diagram-svg-container" role="img" aria-label="Náhled diagramu">
                             <p style="padding: 20px; color: #666;" data-i18n="addElementsForPreview">Přidejte prvky na diagram pro zobrazení náhledu.</p>
@@ -2037,7 +2038,7 @@
                         <p data-i18n="or">nebo</p>
                         <div class="file-input-wrapper">
                             <button type="button" class="btn-primary" data-i18n="selectFile">Vyberte soubor</button>
-                            <input type="file" id="import-file" accept=".ajx,.xml" onchange="handleFileSelect(event)">
+                            <input type="file" id="import-file" onchange="handleFileSelect(event)">
                         </div>
                         <p style="margin-top: 10px; color: #666; font-size: 13px;" data-i18n="supportedFormats">Podporované formáty: AJX, ArchiMate XML</p>
                     </div>
@@ -2069,7 +2070,7 @@
                         </div>
                         <div class="form-group">
                             <label for="merge-file" data-i18n="fileToMerge">Soubor ke sloučení:</label>
-                            <input type="file" id="merge-file" accept=".ajx,.xml" style="padding: 6px;" onchange="loadMergePreview()">
+                            <input type="file" id="merge-file" style="padding: 6px;" onchange="loadMergePreview()">
                         </div>
                     </div>
                     
@@ -2122,7 +2123,7 @@
                         </div>
                         <div class="form-group">
                             <label for="csv-import-file" data-i18n="csvFile">CSV/TSV soubor:</label>
-                            <input type="file" id="csv-import-file" accept=".csv,.tsv,.txt" style="padding: 6px;" onchange="loadCsvImportPreview()">
+                            <input type="file" id="csv-import-file" style="padding: 6px;" onchange="loadCsvImportPreview()">
                         </div>
                     </div>
                     
@@ -7590,7 +7591,11 @@
             const verb = rel.name || (relInfo ? relInfo.verb : rel.type);
             const sourcePrefix = source.stereotype ? `«${source.stereotype}» ` : '';
             const targetPrefix = target.stereotype ? `«${target.stereotype}» ` : '';
-            return `${sourcePrefix}${source.name} ${verb} ${targetPrefix}${target.name}`;
+            let statement = `${sourcePrefix}${source.name} ${verb} ${targetPrefix}${target.name}`;
+            if (rel.description && rel.description.trim()) {
+                statement += `: ${rel.description.trim()}`;
+            }
+            return statement;
         }
         return '-';
     }
@@ -13603,7 +13608,7 @@
             return new TableRow({
                 children: [
                     new TableCell({ children: [new Paragraph(statement)] }),
-                    new TableCell({ children: [new Paragraph(r.documentation || '-')] })
+                    new TableCell({ children: [new Paragraph(r.description || '-')] })
                 ]
             });
         });
@@ -13684,6 +13689,63 @@
         const blob = await Packer.toBlob(doc);
         const filename = diagram.name.replace(/[^a-zA-Z0-9]/g, '_') + '.docx';
         await saveFileWithDialog(blob, filename, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', ['.docx']);
+        playSuccessSound();
+    }
+    
+    function exportDiagramMD() {
+        if (!currentDiagramId) {
+            alert(t('selectDiagramFirst') || 'Nejprve vyberte diagram');
+            return;
+        }
+        
+        const diagram = diagrams.find(d => d.id === currentDiagramId);
+        if (!diagram) return;
+        
+        // Get diagram relationships and elements
+        const diagramRels = getDiagramRelationships(currentDiagramId);
+        const diagramElements = diagram.elementIds.map(id => elements.find(e => e.id === id)).filter(Boolean);
+        
+        let md = '';
+        
+        // Model name
+        md += `# ${modelMetadata.name || 'ArchiMate Model'}\n\n`;
+        
+        // Diagram name and description
+        md += `## ${diagram.name}\n\n`;
+        if (diagram.documentation) {
+            md += `${diagram.documentation}\n\n`;
+        }
+        
+        // Relationships table
+        md += `### ${t('relationships')}\n\n`;
+        if (diagramRels.length > 0) {
+            md += `| Statement | ${t('description')} |\n`;
+            md += `|-----------|-------------|\n`;
+            for (const r of diagramRels) {
+                const statement = generateStatement(r);
+                const desc = r.description || '-';
+                md += `| ${statement.replace(/\|/g, '\\|')} | ${desc.replace(/\|/g, '\\|')} |\n`;
+            }
+        } else {
+            md += `${t('diagramNoRelationships')}\n`;
+        }
+        md += '\n';
+        
+        // Elements section
+        md += `### ${t('includedElements') || 'Zahrnuté prvky'}\n\n`;
+        for (const e of diagramElements) {
+            md += `**${e.name}**\n\n`;
+            if (e.documentation || e.description) {
+                md += `${e.documentation || e.description}\n\n`;
+            }
+            if (e.určuje) {
+                md += `*${t('určuje')}: ${e.určuje}*\n\n`;
+            }
+        }
+        
+        const blob = new Blob([md], { type: 'text/markdown' });
+        const filename = diagram.name.replace(/[^a-zA-Z0-9]/g, '_') + '.md';
+        saveFileWithDialog(blob, filename, 'text/markdown', ['.md']);
         playSuccessSound();
     }
     
