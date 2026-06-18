@@ -1703,10 +1703,18 @@
                 <div class="panel full-width">
                     <h2 data-i18n="diagramsList">Seznam diagramů</h2>
                     
+                    <div style="margin-bottom: 10px;">
+                        <button type="button" class="btn-secondary" onclick="selectAllDiagrams()">☑️ Vybrat vše</button>
+                        <button type="button" class="btn-secondary" onclick="exportSelectedDiagramsMD()">📝 Export MD <span id="selected-diagrams-count"></span></button>
+                        <button type="button" class="btn-secondary" onclick="copySelectedDiagramsMD()">📋 Kopírovat MD</button>
+                        <button type="button" class="btn-secondary" onclick="exportSelectedDiagramsDOCX()">📄 Export DOCX</button>
+                    </div>
+                    
                     <div id="diagrams-table-container">
                         <table id="diagrams-table" aria-label="Seznam diagramů">
                             <thead>
                                 <tr>
+                                    <th scope="col" style="width: 30px;"></th>
                                     <th scope="col" data-i18n="name">Název</th>
                                     <th scope="col" data-i18n="elementsInDiagram">Počet prvků</th>
                                     <th scope="col" data-i18n="relationshipsInDiagram">Počet vazeb</th>
@@ -1714,16 +1722,16 @@
                                 </tr>
                             </thead>
                             <tbody id="diagrams-tbody">
-                                <tr><td colspan="4" class="no-data" data-i18n="noDiagrams">Zatím nejsou žádné diagramy</td></tr>
+                                <tr><td colspan="5" class="no-data" data-i18n="noDiagrams">Zatím nejsou žádné diagramy</td></tr>
                             </tbody>
                         </table>
                         <details class="column-toggles">
                             <summary data-i18n="columns">Zobrazené sloupce</summary>
                             <div class="toggle-list">
-                                <label><input type="checkbox" checked onchange="toggleColumn('diagrams-table', 0, this.checked)"> <span data-i18n="name">Název</span></label>
-                                <label><input type="checkbox" checked onchange="toggleColumn('diagrams-table', 1, this.checked)"> <span data-i18n="elementsInDiagram">Počet prvků</span></label>
-                                <label><input type="checkbox" checked onchange="toggleColumn('diagrams-table', 2, this.checked)"> <span data-i18n="relationshipsInDiagram">Počet vazeb</span></label>
-                                <label><input type="checkbox" checked onchange="toggleColumn('diagrams-table', 3, this.checked)"> <span data-i18n="actions">Akce</span></label>
+                                <label><input type="checkbox" checked onchange="toggleColumn('diagrams-table', 1, this.checked)"> <span data-i18n="name">Název</span></label>
+                                <label><input type="checkbox" checked onchange="toggleColumn('diagrams-table', 2, this.checked)"> <span data-i18n="elementsInDiagram">Počet prvků</span></label>
+                                <label><input type="checkbox" checked onchange="toggleColumn('diagrams-table', 3, this.checked)"> <span data-i18n="relationshipsInDiagram">Počet vazeb</span></label>
+                                <label><input type="checkbox" checked onchange="toggleColumn('diagrams-table', 4, this.checked)"> <span data-i18n="actions">Akce</span></label>
                             </div>
                         </details>
                     </div>
@@ -1887,6 +1895,7 @@
                             <button type="button" class="btn-secondary" onclick="downloadDiagramPNG()" data-i18n="downloadPng">Stáhnout PNG</button>
                             <button type="button" class="btn-secondary" onclick="exportDiagramDOCX()" data-i18n="exportDocx">📄 Export DOCX</button>
                             <button type="button" class="btn-secondary" onclick="exportDiagramMD()">📝 Export MD</button>
+                            <button type="button" class="btn-secondary" onclick="copyDiagramMD()">📋 Kopírovat MD</button>
                         </div>
                         <div class="svg-container" id="diagram-svg-container" role="img" aria-label="Náhled diagramu">
                             <p style="padding: 20px; color: #666;" data-i18n="addElementsForPreview">Přidejte prvky na diagram pro zobrazení náhledu.</p>
@@ -9568,34 +9577,137 @@
                 }
             });
             
-            // Parse diagrams (views)
+            // Parse diagrams (views) with full visual data
             diagrams = [];
             const viewNodes = model.querySelectorAll('views > diagrams > view');
             viewNodes.forEach(view => {
                 const id = view.getAttribute('identifier') || 'diagram-' + Date.now();
+                const viewpoint = view.getAttribute('viewpoint') || '';
                 const nameNode = view.querySelector('name');
                 const name = nameNode ? nameNode.textContent : 'Importovaný diagram';
                 const docNode = view.querySelector('documentation');
                 const description = docNode ? docNode.textContent : '';
                 
-                // Get element IDs from nodes
+                // Get element IDs and parse nodes with positions
                 const elementIds = [];
-                const nodeNodes = view.querySelectorAll('node');
-                nodeNodes.forEach(node => {
-                    const elementRef = node.getAttribute('elementRef');
-                    if (elementRef && !elementIds.includes(elementRef)) {
-                        elementIds.push(elementRef);
+                const parsedNodes = [];
+                
+                // Recursive function to parse nodes (including nested)
+                function parseNodeRecursive(node, parentX = 0, parentY = 0) {
+                    const nodeId = node.getAttribute('identifier') || '';
+                    const elRef = node.getAttribute('elementRef') || '';
+                    
+                    let x = parseFloat(node.getAttribute('x')) || parseFloat(node.getAttribute('absX')) || 0;
+                    let y = parseFloat(node.getAttribute('y')) || parseFloat(node.getAttribute('absY')) || 0;
+                    const w = parseFloat(node.getAttribute('w')) || parseFloat(node.getAttribute('width')) || 120;
+                    const h = parseFloat(node.getAttribute('h')) || parseFloat(node.getAttribute('height')) || 55;
+                    
+                    // Add parent offset for nested nodes
+                    if (parentX || parentY) {
+                        x += parentX;
+                        y += parentY;
+                    }
+                    
+                    // Parse style if present
+                    let style = {};
+                    const styleEl = node.querySelector(':scope > style');
+                    if (styleEl) {
+                        const fillColorEl = styleEl.querySelector('fillColor');
+                        if (fillColorEl) {
+                            const r = fillColorEl.getAttribute('r');
+                            const g = fillColorEl.getAttribute('g');
+                            const b = fillColorEl.getAttribute('b');
+                            if (r && g && b) {
+                                style.fillColor = rgbToHex(parseInt(r), parseInt(g), parseInt(b));
+                            }
+                        }
+                        const lineColorEl = styleEl.querySelector('lineColor');
+                        if (lineColorEl) {
+                            const r = lineColorEl.getAttribute('r');
+                            const g = lineColorEl.getAttribute('g');
+                            const b = lineColorEl.getAttribute('b');
+                            if (r && g && b) {
+                                style.lineColor = rgbToHex(parseInt(r), parseInt(g), parseInt(b));
+                            }
+                        }
+                    }
+                    
+                    if (elRef && !elementIds.includes(elRef)) {
+                        elementIds.push(elRef);
+                    }
+                    
+                    if (nodeId && elRef) {
+                        parsedNodes.push({
+                            id: nodeId,
+                            elementRef: elRef,
+                            x: x,
+                            y: y,
+                            w: w,
+                            h: h,
+                            style: Object.keys(style).length > 0 ? style : undefined
+                        });
+                    }
+                    
+                    // Parse nested nodes
+                    const nestedNodes = node.querySelectorAll(':scope > node');
+                    nestedNodes.forEach(nestedNode => {
+                        parseNodeRecursive(nestedNode, x, y);
+                    });
+                }
+                
+                // Parse top-level nodes
+                const topNodeElements = view.querySelectorAll(':scope > node');
+                topNodeElements.forEach(node => {
+                    parseNodeRecursive(node);
+                });
+                
+                // Parse connections
+                const parsedConnections = [];
+                const connElements = view.querySelectorAll(':scope > connection');
+                connElements.forEach(conn => {
+                    const connId = conn.getAttribute('identifier') || '';
+                    const relRef = conn.getAttribute('relationshipRef') || '';
+                    const sourceNode = conn.getAttribute('source') || '';
+                    const targetNode = conn.getAttribute('target') || '';
+                    
+                    // Parse bendpoints
+                    const bendpoints = [];
+                    const bpElements = conn.querySelectorAll('bendpoint');
+                    bpElements.forEach(bp => {
+                        const bpX = parseFloat(bp.getAttribute('x')) || 0;
+                        const bpY = parseFloat(bp.getAttribute('y')) || 0;
+                        bendpoints.push({ x: bpX, y: bpY });
+                    });
+                    
+                    if (connId && relRef && sourceNode && targetNode) {
+                        parsedConnections.push({
+                            id: connId,
+                            relationshipRef: relRef,
+                            sourceNode: sourceNode,
+                            targetNode: targetNode,
+                            bendpoints: bendpoints.length > 0 ? bendpoints : undefined
+                        });
                     }
                 });
                 
                 if (elementIds.length > 0 || name) {
-                    diagrams.push({
+                    const diagramData = {
                         id: id,
                         name: name,
                         description: description,
                         layoutType: 'layered',
-                        elementIds: elementIds
-                    });
+                        elementIds: elementIds,
+                        viewpoint: viewpoint || undefined
+                    };
+                    
+                    if (parsedNodes.length > 0) {
+                        diagramData.nodes = parsedNodes;
+                    }
+                    if (parsedConnections.length > 0) {
+                        diagramData.connections = parsedConnections;
+                    }
+                    
+                    diagrams.push(diagramData);
                 }
             });
             
@@ -12586,7 +12698,7 @@
         const tbody = document.getElementById('diagrams-tbody');
         
         if (diagrams.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" class="no-data">' + t('noDiagrams') + '</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="no-data">' + t('noDiagrams') + '</td></tr>';
             return;
         }
         
@@ -12595,6 +12707,7 @@
             const descriptionHtml = d.description ? `<br><small style="color:#666;">${escapeHtml(d.description)}</small>` : '';
             return `
                 <tr>
+                    <td><input type="checkbox" class="diagram-select" value="${escapeHtml(d.id)}" onchange="updateSelectedDiagramsCount()"></td>
                     <td><a href="#" class="element-link" onclick="openDiagramEditor('${escapeHtml(d.id)}'); return false;">${escapeHtml(d.name)}</a>${descriptionHtml}</td>
                     <td>${d.elementIds.length}</td>
                     <td>${relCount}</td>
@@ -12606,6 +12719,27 @@
                 </tr>
             `;
         }).join('');
+        
+        updateSelectedDiagramsCount();
+    }
+    
+    function updateSelectedDiagramsCount() {
+        const selected = document.querySelectorAll('.diagram-select:checked').length;
+        const countEl = document.getElementById('selected-diagrams-count');
+        if (countEl) {
+            countEl.textContent = selected > 0 ? `(${selected})` : '';
+        }
+    }
+    
+    function getSelectedDiagramIds() {
+        return Array.from(document.querySelectorAll('.diagram-select:checked')).map(cb => cb.value);
+    }
+    
+    function selectAllDiagrams() {
+        const checkboxes = document.querySelectorAll('.diagram-select');
+        const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+        checkboxes.forEach(cb => cb.checked = !allChecked);
+        updateSelectedDiagramsCount();
     }
     
     function deleteDiagram(id) {
@@ -13773,30 +13907,37 @@
         // Get diagram elements
         const diagramElements = diagram.elementIds.map(id => elements.find(e => e.id === id)).filter(Boolean);
         
-        // Create relationship rows
+        // Create relationship rows - single column with statement (includes description)
         const relRows = diagramRels.map(r => {
             const statement = generateStatement(r);
             return new TableRow({
                 children: [
-                    new TableCell({ children: [new Paragraph(statement)] }),
-                    new TableCell({ children: [new Paragraph(r.description || '-')] })
+                    new TableCell({ children: [new Paragraph(statement)] })
                 ]
             });
         });
         
         // Create element paragraphs
-        const elementParagraphs = diagramElements.flatMap(e => [
-            new Paragraph({
-                children: [new TextRun({ text: e.name, bold: true })],
-            }),
-            new Paragraph({
-                children: [new TextRun({ text: e.documentation || e.description || '-' })]
-            }),
-            new Paragraph({
-                children: [new TextRun({ text: `${t('určuje')}: ${e.určuje || '-'}`, italics: true })]
-            }),
-            new Paragraph({ text: '' })
-        ]);
+        const elementParagraphs = diagramElements.flatMap(e => {
+            const paragraphs = [
+                new Paragraph({
+                    children: [new TextRun({ text: e.name, bold: true })],
+                }),
+                new Paragraph({
+                    children: [new TextRun({ text: e.documentation || e.description || '' })]
+                })
+            ];
+            
+            // Only add určuje if it has a value
+            if (e.určuje) {
+                paragraphs.push(new Paragraph({
+                    children: [new TextRun({ text: `${t('určuje')}: ${e.určuje}`, italics: true })]
+                }));
+            }
+            
+            paragraphs.push(new Paragraph({ text: '' }));
+            return paragraphs;
+        });
         
         // Read PNG as array buffer
         const pngArrayBuffer = await pngBlob.arrayBuffer();
@@ -13838,8 +13979,7 @@
                             rows: [
                                 new TableRow({
                                     children: [
-                                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Statement', bold: true })] })] }),
-                                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: t('description'), bold: true })] })] })
+                                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Statement', bold: true })] })] })
                                     ]
                                 }),
                                 ...relRows
@@ -13863,14 +14003,11 @@
         playSuccessSound();
     }
     
-    function exportDiagramMD() {
-        if (!currentDiagramId) {
-            alert(t('selectDiagramFirst') || 'Nejprve vyberte diagram');
-            return;
-        }
+    async function generateDiagramMD() {
+        if (!currentDiagramId) return null;
         
         const diagram = diagrams.find(d => d.id === currentDiagramId);
-        if (!diagram) return;
+        if (!diagram) return null;
         
         // Get diagram relationships and elements
         const diagramRels = getDiagramRelationships(currentDiagramId);
@@ -13881,21 +14018,34 @@
         // Model name
         md += `# ${modelMetadata.name || 'ArchiMate Model'}\n\n`;
         
-        // Diagram name and description
+        // Diagram name
         md += `## ${diagram.name}\n\n`;
-        if (diagram.documentation) {
-            md += `${diagram.documentation}\n\n`;
+        
+        // Embedded PNG diagram from editor
+        try {
+            const pngBlob = await getDiagramPNGBlob();
+            if (pngBlob) {
+                const base64 = await blobToBase64(pngBlob);
+                md += `![${diagram.name}](${base64})\n\n`;
+            }
+        } catch (e) {
+            // Fallback - no image
+            console.warn('Could not generate diagram PNG:', e);
         }
         
-        // Relationships table
+        // Diagram description (under image)
+        if (diagram.documentation || diagram.description) {
+            md += `${diagram.documentation || diagram.description}\n\n`;
+        }
+        
+        // Relationships table - single column with statement (includes description)
         md += `### ${t('relationships')}\n\n`;
         if (diagramRels.length > 0) {
-            md += `| Statement | ${t('description')} |\n`;
-            md += `|-----------|-------------|\n`;
+            md += `| Statement |\n`;
+            md += `|-----------|\n`;
             for (const r of diagramRels) {
                 const statement = generateStatement(r);
-                const desc = r.description || '-';
-                md += `| ${statement.replace(/\|/g, '\\|')} | ${desc.replace(/\|/g, '\\|')} |\n`;
+                md += `| ${statement.replace(/\|/g, '\\|')} |\n`;
             }
         } else {
             md += `${t('diagramNoRelationships')}\n`;
@@ -13914,9 +14064,284 @@
             }
         }
         
+        return md;
+    }
+    
+    function blobToBase64(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    }
+    
+    async function exportDiagramMD() {
+        if (!currentDiagramId) {
+            alert(t('selectDiagramFirst') || 'Nejprve vyberte diagram');
+            return;
+        }
+        
+        const diagram = diagrams.find(d => d.id === currentDiagramId);
+        if (!diagram) return;
+        
+        const md = await generateDiagramMD();
+        if (!md) return;
+        
         const blob = new Blob([md], { type: 'text/markdown' });
         const filename = diagram.name.replace(/[^a-zA-Z0-9]/g, '_') + '.md';
         saveFileWithDialog(blob, filename, 'text/markdown', ['.md']);
+        playSuccessSound();
+    }
+    
+    async function copyDiagramMD() {
+        if (!currentDiagramId) {
+            alert(t('selectDiagramFirst') || 'Nejprve vyberte diagram');
+            return;
+        }
+        
+        const md = await generateDiagramMD();
+        if (!md) return;
+        
+        navigator.clipboard.writeText(md).then(() => {
+            playSuccessSound();
+        }).catch(err => {
+            alert('Nepodařilo se zkopírovat do schránky');
+        });
+    }
+    
+    // Multi-diagram export functions
+    async function generateMultiDiagramMD(diagramIds) {
+        if (!diagramIds || diagramIds.length === 0) return null;
+        
+        let md = '';
+        
+        // Model name as H1
+        md += `# ${modelMetadata.name || 'ArchiMate Model'}\n\n`;
+        
+        for (const diagramId of diagramIds) {
+            const diagram = diagrams.find(d => d.id === diagramId);
+            if (!diagram) continue;
+            
+            const diagramRels = getDiagramRelationships(diagramId);
+            const diagramElements = diagram.elementIds.map(id => elements.find(e => e.id === id)).filter(Boolean);
+            
+            // Diagram name as H2
+            md += `## ${diagram.name}\n\n`;
+            
+            // Embedded PNG diagram
+            try {
+                // Temporarily set currentDiagramId for PNG generation
+                const prevDiagramId = currentDiagramId;
+                currentDiagramId = diagramId;
+                const pngBlob = await getDiagramPNGBlob();
+                currentDiagramId = prevDiagramId;
+                
+                if (pngBlob) {
+                    const base64 = await blobToBase64(pngBlob);
+                    md += `![${diagram.name}](${base64})\n\n`;
+                }
+            } catch (e) {
+                console.warn('Could not generate diagram PNG:', e);
+            }
+            
+            // Diagram description
+            if (diagram.documentation || diagram.description) {
+                md += `${diagram.documentation || diagram.description}\n\n`;
+            }
+            
+            // Relationships table as H3
+            md += `### ${t('relationships')}\n\n`;
+            if (diagramRels.length > 0) {
+                md += `| Statement |\n`;
+                md += `|-----------|\n`;
+                for (const r of diagramRels) {
+                    const statement = generateStatement(r);
+                    md += `| ${statement.replace(/\|/g, '\\|')} |\n`;
+                }
+            } else {
+                md += `${t('diagramNoRelationships')}\n`;
+            }
+            md += '\n';
+            
+            // Elements section as H3
+            md += `### ${t('includedElements') || 'Zahrnuté prvky'}\n\n`;
+            for (const e of diagramElements) {
+                md += `**${e.name}**\n\n`;
+                if (e.documentation || e.description) {
+                    md += `${e.documentation || e.description}\n\n`;
+                }
+                if (e.určuje) {
+                    md += `*${t('určuje')}: ${e.určuje}*\n\n`;
+                }
+            }
+            
+            md += '\n---\n\n';
+        }
+        
+        return md;
+    }
+    
+    async function exportSelectedDiagramsMD() {
+        const selectedIds = getSelectedDiagramIds();
+        if (selectedIds.length === 0) {
+            alert('Nejprve vyberte alespoň jeden diagram');
+            return;
+        }
+        
+        const md = await generateMultiDiagramMD(selectedIds);
+        if (!md) return;
+        
+        const blob = new Blob([md], { type: 'text/markdown' });
+        const filename = (modelMetadata.name || 'diagrams').replace(/[^a-zA-Z0-9]/g, '_') + '.md';
+        saveFileWithDialog(blob, filename, 'text/markdown', ['.md']);
+        playSuccessSound();
+    }
+    
+    async function copySelectedDiagramsMD() {
+        const selectedIds = getSelectedDiagramIds();
+        if (selectedIds.length === 0) {
+            alert('Nejprve vyberte alespoň jeden diagram');
+            return;
+        }
+        
+        const md = await generateMultiDiagramMD(selectedIds);
+        if (!md) return;
+        
+        navigator.clipboard.writeText(md).then(() => {
+            playSuccessSound();
+        }).catch(err => {
+            alert('Nepodařilo se zkopírovat do schránky');
+        });
+    }
+    
+    async function exportSelectedDiagramsDOCX() {
+        const selectedIds = getSelectedDiagramIds();
+        if (selectedIds.length === 0) {
+            alert('Nejprve vyberte alespoň jeden diagram');
+            return;
+        }
+        
+        await loadDocxLib();
+        
+        const { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, ImageRun } = window.docx;
+        
+        const children = [];
+        
+        // Model name as H1
+        children.push(new Paragraph({
+            text: modelMetadata.name || 'ArchiMate Model',
+            heading: HeadingLevel.HEADING_1
+        }));
+        
+        for (const diagramId of selectedIds) {
+            const diagram = diagrams.find(d => d.id === diagramId);
+            if (!diagram) continue;
+            
+            const diagramRels = getDiagramRelationships(diagramId);
+            const diagramElements = diagram.elementIds.map(id => elements.find(e => e.id === id)).filter(Boolean);
+            
+            // Diagram name as H2
+            children.push(new Paragraph({
+                text: diagram.name,
+                heading: HeadingLevel.HEADING_2
+            }));
+            
+            // Diagram image
+            try {
+                const prevDiagramId = currentDiagramId;
+                currentDiagramId = diagramId;
+                const pngBlob = await getDiagramPNGBlob();
+                currentDiagramId = prevDiagramId;
+                
+                if (pngBlob) {
+                    const pngArrayBuffer = await pngBlob.arrayBuffer();
+                    children.push(new Paragraph({
+                        children: [
+                            new ImageRun({
+                                data: pngArrayBuffer,
+                                transformation: { width: 600, height: 400 },
+                                type: 'png'
+                            })
+                        ]
+                    }));
+                }
+            } catch (e) {
+                console.warn('Could not generate diagram PNG:', e);
+            }
+            
+            // Diagram description
+            if (diagram.documentation || diagram.description) {
+                children.push(new Paragraph({ text: diagram.documentation || diagram.description }));
+            }
+            children.push(new Paragraph({ text: '' }));
+            
+            // Relationships section as H3
+            children.push(new Paragraph({
+                text: t('relationships'),
+                heading: HeadingLevel.HEADING_3
+            }));
+            
+            if (diagramRels.length > 0) {
+                const relRows = diagramRels.map(r => {
+                    const statement = generateStatement(r);
+                    return new TableRow({
+                        children: [
+                            new TableCell({ children: [new Paragraph(statement)] })
+                        ]
+                    });
+                });
+                
+                children.push(new Table({
+                    width: { size: 100, type: WidthType.PERCENTAGE },
+                    rows: [
+                        new TableRow({
+                            children: [
+                                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Statement', bold: true })] })] })
+                            ]
+                        }),
+                        ...relRows
+                    ]
+                }));
+            } else {
+                children.push(new Paragraph({ text: t('diagramNoRelationships') }));
+            }
+            
+            children.push(new Paragraph({ text: '' }));
+            
+            // Elements section as H3
+            children.push(new Paragraph({
+                text: t('includedElements') || 'Zahrnuté prvky',
+                heading: HeadingLevel.HEADING_3
+            }));
+            
+            for (const e of diagramElements) {
+                children.push(new Paragraph({
+                    children: [new TextRun({ text: e.name, bold: true })]
+                }));
+                if (e.documentation || e.description) {
+                    children.push(new Paragraph({
+                        children: [new TextRun({ text: e.documentation || e.description })]
+                    }));
+                }
+                if (e.určuje) {
+                    children.push(new Paragraph({
+                        children: [new TextRun({ text: `${t('určuje')}: ${e.určuje}`, italics: true })]
+                    }));
+                }
+                children.push(new Paragraph({ text: '' }));
+            }
+        }
+        
+        const doc = new Document({
+            sections: [{
+                children: children
+            }]
+        });
+        
+        const blob = await Packer.toBlob(doc);
+        const filename = (modelMetadata.name || 'diagrams').replace(/[^a-zA-Z0-9]/g, '_') + '.docx';
+        await saveFileWithDialog(blob, filename, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', ['.docx']);
         playSuccessSound();
     }
     
