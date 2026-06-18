@@ -7312,10 +7312,12 @@
         
         const popup = document.createElement('div');
         popup.className = 'rel-popup';
+        popup.setAttribute('role', 'dialog');
+        popup.setAttribute('aria-label', direction === 'from' ? t('relationsFrom') : t('relationsTo'));
         popup.innerHTML = `
             <div class="rel-popup-header">
                 <span>${direction === 'from' ? t('relationsFrom') : t('relationsTo')}: ${escapeHtml(element.name)}</span>
-                <button type="button" class="rel-popup-close" onclick="closeRelPopup()">×</button>
+                <button type="button" class="rel-popup-close" onclick="closeRelPopup()" aria-label="Zavřít">×</button>
             </div>
             ${rels.length > 0 ? `
                 <ul class="rel-popup-list">
@@ -7333,10 +7335,27 @@
         document.body.appendChild(popup);
         currentRelPopup = popup;
         
-        // Position popup near button
+        // Position popup near button - account for scroll
         const rect = event.target.getBoundingClientRect();
-        popup.style.left = Math.min(rect.left, window.innerWidth - popup.offsetWidth - 10) + 'px';
-        popup.style.top = (rect.bottom + 5) + 'px';
+        const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+        const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+        
+        let left = rect.left + scrollX;
+        let top = rect.bottom + scrollY + 5;
+        
+        // Ensure popup stays within viewport
+        const popupWidth = popup.offsetWidth || 300;
+        const popupHeight = popup.offsetHeight || 200;
+        
+        if (left + popupWidth > window.innerWidth + scrollX - 10) {
+            left = window.innerWidth + scrollX - popupWidth - 10;
+        }
+        if (left < scrollX + 10) {
+            left = scrollX + 10;
+        }
+        
+        popup.style.left = left + 'px';
+        popup.style.top = top + 'px';
         
         // Close on click outside
         setTimeout(() => {
@@ -8426,7 +8445,7 @@
             xml += `        <diagrams>\n`;
             
             diagrams.forEach(diagram => {
-                xml += `            <view identifier="${escapeXml(diagram.id)}" xsi:type="Diagram">\n`;
+                xml += `            <view identifier="${escapeXml(diagram.id)}" xsi:type="Diagram"${diagram.viewpoint ? ` viewpoint="${escapeXml(diagram.viewpoint)}"` : ''}>\n`;
                 xml += `                <name xml:lang="${escapeXml(dc.language || 'cs')}">${escapeXml(diagram.name)}</name>\n`;
                 if (diagram.description) {
                     xml += `                <documentation xml:lang="${escapeXml(dc.language || 'cs')}">${escapeXml(diagram.description)}</documentation>\n`;
@@ -10589,6 +10608,7 @@
         const viewNodes = model.querySelectorAll('views > diagrams > view');
         viewNodes.forEach(view => {
             const id = view.getAttribute('identifier') || '';
+            const viewpoint = view.getAttribute('viewpoint') || '';
             const viewNameNode = view.querySelector('name');
             const name = viewNameNode ? viewNameNode.textContent : '';
             const docNode = view.querySelector('documentation');
@@ -10596,19 +10616,28 @@
             
             const elementIds = [];
             const parsedNodes = [];
-            const nodeElements = view.querySelectorAll(':scope > node');
             
-            nodeElements.forEach(node => {
+            // Recursive function to parse nodes (including nested)
+            function parseNodeRecursive(node, parentX = 0, parentY = 0) {
                 const nodeId = node.getAttribute('identifier') || '';
                 const elRef = node.getAttribute('elementRef') || '';
-                const x = parseFloat(node.getAttribute('x')) || 0;
-                const y = parseFloat(node.getAttribute('y')) || 0;
-                const w = parseFloat(node.getAttribute('w')) || 120;
-                const h = parseFloat(node.getAttribute('h')) || 55;
+                const nodeType = node.getAttribute('xsi:type') || node.getAttribute('type') || '';
+                
+                // Support multiple position attribute names
+                let x = parseFloat(node.getAttribute('x')) || parseFloat(node.getAttribute('absX')) || 0;
+                let y = parseFloat(node.getAttribute('y')) || parseFloat(node.getAttribute('absY')) || 0;
+                const w = parseFloat(node.getAttribute('w')) || parseFloat(node.getAttribute('width')) || 120;
+                const h = parseFloat(node.getAttribute('h')) || parseFloat(node.getAttribute('height')) || 55;
+                
+                // Add parent offset for nested nodes (relative positioning)
+                if (parentX || parentY) {
+                    x += parentX;
+                    y += parentY;
+                }
                 
                 // Parse style if present
                 let style = {};
-                const styleEl = node.querySelector('style');
+                const styleEl = node.querySelector(':scope > style');
                 if (styleEl) {
                     const fillColorEl = styleEl.querySelector('fillColor');
                     if (fillColorEl) {
@@ -10630,6 +10659,7 @@
                     }
                 }
                 
+                // Only add if it references an element (not a container/group without element)
                 if (elRef && !elementIds.includes(elRef)) {
                     elementIds.push(elRef);
                 }
@@ -10645,6 +10675,18 @@
                         style: Object.keys(style).length > 0 ? style : undefined
                     });
                 }
+                
+                // Parse nested nodes recursively
+                const nestedNodes = node.querySelectorAll(':scope > node');
+                nestedNodes.forEach(nestedNode => {
+                    parseNodeRecursive(nestedNode, x, y);
+                });
+            }
+            
+            // Start parsing from direct children of view
+            const nodeElements = view.querySelectorAll(':scope > node');
+            nodeElements.forEach(node => {
+                parseNodeRecursive(node);
             });
             
             // Parse connections
@@ -10683,7 +10725,8 @@
                     name,
                     description,
                     elementIds,
-                    layoutType: 'layered'
+                    layoutType: 'layered',
+                    viewpoint: viewpoint || undefined
                 };
                 
                 // Only add nodes/connections if they exist
@@ -12723,6 +12766,24 @@
         
         if (!diagram.elementIds.includes(elementId)) {
             diagram.elementIds.push(elementId);
+            
+            // If diagram has visual data, add a new node
+            if (diagram.nodes && diagram.nodes.length > 0) {
+                // Find a free position (offset from last node)
+                const lastNode = diagram.nodes[diagram.nodes.length - 1];
+                const newX = (lastNode ? lastNode.x + 160 : 30);
+                const newY = (lastNode ? lastNode.y : 30);
+                
+                diagram.nodes.push({
+                    id: 'node-' + Date.now() + '-' + elementId,
+                    elementRef: elementId,
+                    x: newX,
+                    y: newY,
+                    w: 140,
+                    h: 55
+                });
+            }
+            
             saveToLocalStorage();
         }
         
@@ -12732,6 +12793,7 @@
         
         renderDiagramElements();
         renderDiagramRelationships();
+        renderDiagramPreview();
         renderDiagramsTable();
         
         // Also update main tables to reflect diagram membership
@@ -12745,11 +12807,28 @@
         if (!diagram) return;
         
         diagram.elementIds = diagram.elementIds.filter(id => id !== elementId);
+        
+        // If diagram has visual data, remove corresponding node and connections
+        if (diagram.nodes) {
+            const nodeToRemove = diagram.nodes.find(n => n.elementRef === elementId);
+            if (nodeToRemove) {
+                diagram.nodes = diagram.nodes.filter(n => n.elementRef !== elementId);
+                
+                // Remove connections that reference this node
+                if (diagram.connections) {
+                    diagram.connections = diagram.connections.filter(c => 
+                        c.sourceNode !== nodeToRemove.id && c.targetNode !== nodeToRemove.id
+                    );
+                }
+            }
+        }
+        
         saveToLocalStorage();
         
         updateDiagramAddElements();
         renderDiagramElements();
         renderDiagramRelationships();
+        renderDiagramPreview();
         renderDiagramsTable();
         
         // Also update main tables to reflect diagram membership
@@ -12934,12 +13013,75 @@
         const diagram = diagrams.find(d => d.id === currentDiagramId);
         if (!diagram) return;
         
+        // Track if we added new elements
+        let addedSource = false;
+        let addedTarget = false;
+        
         // Ensure both source and target are on diagram
         if (!diagram.elementIds.includes(rel.sourceId)) {
             diagram.elementIds.push(rel.sourceId);
+            addedSource = true;
         }
         if (!diagram.elementIds.includes(rel.targetId)) {
             diagram.elementIds.push(rel.targetId);
+            addedTarget = true;
+        }
+        
+        // If diagram has visual data, add nodes and connection
+        if (diagram.nodes && diagram.nodes.length > 0) {
+            // Find existing nodes or create new ones
+            let sourceNodeId = null;
+            let targetNodeId = null;
+            
+            const sourceNode = diagram.nodes.find(n => n.elementRef === rel.sourceId);
+            const targetNode = diagram.nodes.find(n => n.elementRef === rel.targetId);
+            
+            if (sourceNode) {
+                sourceNodeId = sourceNode.id;
+            } else {
+                // Add new node for source
+                const lastNode = diagram.nodes[diagram.nodes.length - 1];
+                sourceNodeId = 'node-' + Date.now() + '-' + rel.sourceId;
+                diagram.nodes.push({
+                    id: sourceNodeId,
+                    elementRef: rel.sourceId,
+                    x: lastNode ? lastNode.x + 160 : 30,
+                    y: lastNode ? lastNode.y : 30,
+                    w: 140,
+                    h: 55
+                });
+            }
+            
+            if (targetNode) {
+                targetNodeId = targetNode.id;
+            } else {
+                // Add new node for target
+                const lastNode = diagram.nodes[diagram.nodes.length - 1];
+                targetNodeId = 'node-' + Date.now() + '-' + rel.targetId;
+                diagram.nodes.push({
+                    id: targetNodeId,
+                    elementRef: rel.targetId,
+                    x: lastNode ? lastNode.x + 160 : 30,
+                    y: lastNode ? lastNode.y : 30,
+                    w: 140,
+                    h: 55
+                });
+            }
+            
+            // Add connection if not exists
+            if (!diagram.connections) {
+                diagram.connections = [];
+            }
+            
+            const existingConn = diagram.connections.find(c => c.relationshipRef === relId);
+            if (!existingConn) {
+                diagram.connections.push({
+                    id: 'conn-' + Date.now() + '-' + relId,
+                    relationshipRef: relId,
+                    sourceNode: sourceNodeId,
+                    targetNode: targetNodeId
+                });
+            }
         }
         
         renderDiagramRelationships();
