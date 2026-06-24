@@ -3804,6 +3804,15 @@ function nextNumericId() {
   return max + 1;
 }
 
+function quickEntityAspectOptions(selected) {
+  const aspectMap = (typeof getActiveAspects === 'function') ? getActiveAspects() : {};
+  let out = '';
+  Object.keys(aspectMap).forEach(ak => {
+    out += '<option value="' + escapeHtml(ak) + '"' + (ak === selected ? ' selected' : '') + '>' + escapeHtml(aspectMap[ak].label) + '</option>';
+  });
+  return out;
+}
+
 function newEntity(o = {}) {
   return Object.assign({
     id: uuid(), numericId: nextNumericId(),
@@ -11432,6 +11441,29 @@ function renderDetailRead(main, e) {
       if (ev.key === 'Enter') { ev.preventDefault(); doAdd(); }
     };
   }
+  // Obecné přidání entity (zvolený aspekt) do projektu
+  const quickEntInp = document.getElementById('proj-quick-ent-title');
+  const quickEntAsp = document.getElementById('proj-quick-ent-aspect');
+  const quickEntBtn = document.getElementById('proj-quick-ent-add');
+  if (quickEntInp && quickEntBtn && quickEntAsp) {
+    function doAddEnt() {
+      const title = quickEntInp.value.trim();
+      if (!title) { quickEntInp.focus(); return; }
+      const aspect = quickEntAsp.value || 'Note';
+      const attrs = (aspect === 'Task') ? { status: 'todo' } : {};
+      const newEnt = newEntity({ title: title, aspects: [aspect], attributes: attrs, links: [{ to: e.id, type: 'partOf' }] });
+      tryExtractMarkdownLinkFromTitle(newEnt);
+      addEntity(newEnt);
+      save();
+      quickEntInp.value = '';
+      render();
+      setTimeout(() => { const i2 = document.getElementById('proj-quick-ent-title'); if (i2) i2.focus(); }, 50);
+      toast('✓ Entita „' + newEnt.title + '" přidána do projektu', 3500);
+      playSound('save-entity');
+    }
+    quickEntBtn.onclick = doAddEnt;
+    quickEntInp.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doAddEnt(); } };
+  }
   // Kanban task toggle (v project dashboard)
   main.querySelectorAll('input[data-task-toggle]').forEach(cb => {
     cb.onclick = (ev) => ev.stopPropagation();
@@ -14567,6 +14599,26 @@ function renderEventTasksSection(entity) {
           : '') +
         '<button type="button" class="primary" id="ev-add-new-task">+ Vytvořit úkol</button>' +
       '</div>' +
+      '<div class="event-tasks-add-card">' +
+        '<h4>+ Nová entita (jiný aspekt)</h4>' +
+        (projects.length > 0
+          ? '<p class="meta">Schůzka je součástí ' + projects.length + ' projekt' + (projects.length === 1 ? 'u' : 'ů') + '. Vyberte, do kterých má entita patřit. Schůzka entitu vždy <strong>zmíní</strong>.</p>'
+          : '<p class="meta">Schůzka není v žádném projektu. Entita bude jen <strong>zmíněna na schůzce</strong>.</p>') +
+        '<label for="ev-new-ent-title">Název entity</label>' +
+        '<input type="text" id="ev-new-ent-title" placeholder="Název nové entity">' +
+        '<label for="ev-new-ent-aspect">Aspekt</label>' +
+        '<select id="ev-new-ent-aspect">' + quickEntityAspectOptions('Note') + '</select>' +
+        (projects.length > 0
+          ? '<fieldset class="ev-new-ent-projects" style="margin:0.5em 0;padding:0.4em 0.6em;border:1px solid #ccc;border-radius:4px;">' +
+              '<legend style="padding:0 0.3em;font-size:0.9em;color:#555;">Součást projektů (partOf)</legend>' +
+              projects.map(p =>
+                '<label style="display:block;margin:0.2em 0;"><input type="checkbox" class="ev-new-ent-proj" data-pid="' + escapeHtml(p.id) + '" checked> ' + escapeHtml(getDisplayTitle(p)) + '</label>'
+              ).join('') +
+              '<div class="meta" style="margin-top:0.3em;font-size:0.85em;">Defaultně všechny zaškrtnuté.</div>' +
+            '</fieldset>'
+          : '') +
+        '<button type="button" class="primary" id="ev-add-new-ent">+ Vytvořit entitu</button>' +
+      '</div>' +
       (projectTasks.length > 0
         ? '<div class="event-tasks-add-card">' +
             '<h4>📎 Existující úkoly z projektu</h4>' +
@@ -14811,6 +14863,34 @@ function attachEventTasksHandlers(main, entity) {
   if (addNewBtn) addNewBtn.onclick = doAddNewTask;
   if (titleEl) titleEl.onkeydown = (ev) => {
     if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); doAddNewTask(); }
+  };
+  // Nová obecná entita (zvolený aspekt) – zmíněna schůzkou + partOf na vybrané projekty
+  const addNewEntBtn = document.getElementById('ev-add-new-ent');
+  const entTitleEl = document.getElementById('ev-new-ent-title');
+  const entAspEl = document.getElementById('ev-new-ent-aspect');
+  function doAddNewEnt() {
+    if (!entTitleEl) return;
+    const raw = entTitleEl.value.trim();
+    if (!raw) { alertMsg('Zadejte název entity.'); return; }
+    const aspect = (entAspEl && entAspEl.value) || 'Note';
+    const selectedPids = Array.from(document.querySelectorAll('input.ev-new-ent-proj:checked')).map(c => c.dataset.pid);
+    const links = [{ to: entity.id, type: 'mentions' }];
+    selectedPids.forEach(pid => { if (pid) links.push({ to: pid, type: 'partOf' }); });
+    const attrs = (aspect === 'Task') ? { status: 'todo' } : {};
+    const newEnt = newEntity({ title: raw, aspects: [aspect], attributes: attrs, links: links });
+    tryExtractMarkdownLinkFromTitle(newEnt);
+    addEntity(newEnt);
+    save();
+    entTitleEl.value = '';
+    render();
+    let msg = '✓ Entita „' + newEnt.title + '" vytvořena';
+    if (selectedPids.length > 0) msg += ' (' + selectedPids.length + ' projekt' + (selectedPids.length === 1 ? '' : 'y') + ')';
+    toast(msg, 3500);
+    playSound('save-entity');
+  }
+  if (addNewEntBtn) addNewEntBtn.onclick = doAddNewEnt;
+  if (entTitleEl) entTitleEl.onkeydown = (ev) => {
+    if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); doAddNewEnt(); }
   };
   // Existující úkoly z projektu – picker s checkboxy a filtrem
   const pickExBtn = document.getElementById('ev-pick-existing-tasks');
@@ -15689,6 +15769,17 @@ function renderProjectDashboard(project) {
       '<button type="button" id="proj-quick-task-add" class="primary">Přidat úkol</button>' +
     '</div>' +
     '<p class="meta" style="margin:0.3em 0 0;">Vytvoří úkol a propojí ho s tímto projektem vazbou „je součástí". Detail projektu zůstane otevřený.</p>' +
+  '</div>';
+  // Obecné rychlé přidání entity (jiný aspekt než úkol)
+  h += '<div class="project-quick-task">' +
+    '<label for="proj-quick-ent-title" style="font-weight:600;">+ Nová entita do tohoto projektu</label>' +
+    '<div class="project-quick-task-row">' +
+      '<input type="text" id="proj-quick-ent-title" placeholder="Název entity">' +
+      '<label class="sr-only" for="proj-quick-ent-aspect">Aspekt</label>' +
+      '<select id="proj-quick-ent-aspect">' + quickEntityAspectOptions('Note') + '</select>' +
+      '<button type="button" id="proj-quick-ent-add" class="primary">Přidat entitu</button>' +
+    '</div>' +
+    '<p class="meta" style="margin:0.3em 0 0;">Vytvoří entitu zvoleného aspektu a propojí ji s tímto projektem vazbou „je součástí".</p>' +
   '</div>';
   if (totalT > 0) {
     h += '<h4>Úkoly (kanban)</h4><div class="kanban-cols">';
@@ -18534,6 +18625,23 @@ function openCustomAttrDialog(entity) {
 //   currentIds: string[],             // aktuálně vybraná ID
 //   onSelect: (ids: string[]) => void
 // }
+function pickerEntityExtraLabel(e) {
+  const parts = [];
+  const asp = e.aspects || [];
+  // Osoba: organizace, kde pracuje (vazby worksAt)
+  if (asp.includes('Person')) {
+    const orgs = (e.links || []).filter(l => l.type === 'worksAt').map(l => findEntity(l.to)).filter(Boolean);
+    if (orgs.length > 0) parts.push(orgs.map(o => getDisplayTitle(o)).join(', '));
+  }
+  // Úkol: stav
+  if (asp.includes('Task')) {
+    const stMap = { todo: 'K udělání', in_progress: 'Probíhá', waiting: 'Čeká', done: 'Hotovo', cancelled: 'Zrušeno' };
+    const stVal = e.attributes && e.attributes.status;
+    if (stVal) parts.push(stMap[stVal] || stVal);
+  }
+  return parts.join('; ');
+}
+
 function openRelationPicker(opts) {
   const d = document.getElementById('relation-picker');
   if (!d) return;
@@ -18622,6 +18730,7 @@ function openRelationPicker(opts) {
       return '<li role="option" id="rp-opt-' + i + '" tabindex="-1" data-id="' + escapeHtml(e.id) + '" data-idx="' + i + '"' +
         (checked ? ' aria-selected="true" class="checked"' : '') + '>' +
         indicator + escapeHtml(getDisplayTitle(e)) +
+        ((typeof pickerEntityExtraLabel === 'function' && pickerEntityExtraLabel(e)) ? ' <small class="meta">(' + escapeHtml(pickerEntityExtraLabel(e)) + ')</small>' : '') +
         (aspectsTxt ? ' <small class="meta">(' + escapeHtml(aspectsTxt) + ')</small>' : '') +
         '</li>';
     }).join('');
