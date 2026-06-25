@@ -1219,6 +1219,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <tr><td><kbd>c</kbd></td><td>V detailu: přidat komentář</td></tr>
       <tr><td><kbd>x</kbd></td><td>V pohledu „Vše"/uložený pohled: přepnout režim hromadného výběru</td></tr>
       <tr><td><kbd>z</kbd></td><td>V detailu entity s aspektem „Sledování času": spustit/zastavit timer</td></tr>
+      <tr><td><kbd>Shift</kbd>+<kbd>Z</kbd></td><td>V detailu: přidat aspekt „Sledování času" (pokud chybí) a spustit timer</td></tr>
       <tr><td><kbd>d</kbd></td><td>V detailu (read, pokud má nadpisy): přepnout režim editace sekcí</td></tr>
       <tr><td><kbd>a</kbd></td><td>V detailu (read): přepnout anotační režim</td></tr>
       <tr><td><kbd>Esc</kbd></td><td>Zavřít dialog / opustit edit / zpět</td></tr>
@@ -1320,9 +1321,10 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
     </fieldset>
     <label for="link-type">Typ vazby</label><select id="link-type"></select>
     <p class="meta" id="link-type-preview" aria-live="polite"></p>
-    <label for="link-search">Cílová entita (vyhledat)</label>
-    <input type="search" id="link-search" placeholder="Začněte psát…">
-    <div id="link-results" aria-label="Nalezené entity" style="max-height:200px;overflow-y:auto;margin-top:0.5em;border:1px solid #ccc;border-radius:4px;"></div>
+    <div style="margin:0.3em 0;">
+      <span id="link-target-label" class="meta">Cílová entita: zatím nevybrána</span>
+      <button type="button" id="link-pick-target" style="margin-left:0.5em;">Vybrat entitu…</button>
+    </div>
     <label for="link-note">Poznámka (volitelně)</label><input type="text" id="link-note">
     <div class="btn-group" style="margin-top:1em;">
       <button type="button" class="primary" id="link-save" disabled>Přidat vazbu</button>
@@ -7891,6 +7893,25 @@ function renderAll(main) {
     srl = document.getElementById('filter-relations'),
     scf = document.getElementById('filter-confidence');
   if (!state._allSort) state._allSort = { key: 'updated', dir: 'desc' };
+  // Obnova hodnot filtrů z state.filter (aby přežily re-render, např. při zapnutí režimu výběru)
+  (function restoreFilterUI() {
+    const fl = state.filter || {};
+    if (it) it.value = fl.text || '';
+    if (sa) sa.value = fl.aspect || '';
+    if (st) st.value = fl.tag || '';
+    if (stn) stn.value = fl.tagNot || '';
+    if (fa) fa.value = fl.attach || '';
+    if (sar) sar.value = (fl.archived === true ? 'archived' : (fl.archived === false ? 'active' : (fl.archived === null && fl._archivedSet ? 'all' : 'active')));
+    if (sib) sib.value = fl.inbox || '';
+    if (su) su.value = fl.updatedDays ? String(fl.updatedDays) : '';
+    if (sc) sc.value = fl.createdDays ? String(fl.createdDays) : '';
+    if (sts) sts.value = fl.taskStatus || '';
+    if (spr) spr.value = fl.priority || '';
+    if (sdl) sdl.value = fl.deadline || '';
+    if (sct) sct.value = fl.content || '';
+    if (srl) srl.value = fl.relations || '';
+    if (scf) scf.value = fl.confidence || '';
+  })();
 
   function applyAllFilters() {
     let r = db.entities;
@@ -8036,9 +8057,23 @@ function renderAll(main) {
   }
 
   function update() {
-    state.filter.text = it.value;
-    state.filter.aspect = sa.value;
-    state.filter.tag = st.value;
+    // Ulož všechny hodnoty filtrů do state.filter (jediný zdroj pravdy, přežije re-render i uložení pohledu)
+    state.filter.text = it.value || '';
+    state.filter.aspect = sa.value || '';
+    state.filter.tag = st.value || '';
+    state.filter.tagNot = (stn && stn.value) || '';
+    state.filter.attach = (fa && fa.value) || '';
+    state.filter.archived = (sar.value === 'archived' ? true : (sar.value === 'active' ? false : null));
+    state.filter._archivedSet = (sar.value === 'all');
+    state.filter.inbox = sib.value || '';
+    state.filter.updatedDays = su.value ? Number(su.value) : null;
+    state.filter.createdDays = sc.value ? Number(sc.value) : null;
+    state.filter.taskStatus = sts.value || '';
+    state.filter.priority = spr.value || '';
+    state.filter.deadline = sdl.value || '';
+    state.filter.content = sct.value || '';
+    state.filter.relations = srl.value || '';
+    state.filter.confidence = scf.value || '';
     let r = applyAllFilters();
     r = sortEntitiesBy(r, state._allSort);
     const out = document.getElementById('all-results');
@@ -11422,7 +11457,7 @@ function renderDetailRead(main, e) {
         newTask.attributes.deadline = parsed.deadline;
         newTask.title = parsed.cleanedTitle || newTask.title;
       }
-      addEntity(newTask);
+      db.entities.push(newTask);
       save();
       quickTaskInp.value = '';
       render();
@@ -11453,7 +11488,7 @@ function renderDetailRead(main, e) {
       const attrs = (aspect === 'Task') ? { status: 'todo' } : {};
       const newEnt = newEntity({ title: title, aspects: [aspect], attributes: attrs, links: [{ to: e.id, type: 'partOf' }] });
       tryExtractMarkdownLinkFromTitle(newEnt);
-      addEntity(newEnt);
+      db.entities.push(newEnt);
       save();
       quickEntInp.value = '';
       render();
@@ -14879,7 +14914,7 @@ function attachEventTasksHandlers(main, entity) {
     const attrs = (aspect === 'Task') ? { status: 'todo' } : {};
     const newEnt = newEntity({ title: raw, aspects: [aspect], attributes: attrs, links: links });
     tryExtractMarkdownLinkFromTitle(newEnt);
-    addEntity(newEnt);
+    db.entities.push(newEnt);
     save();
     entTitleEl.value = '';
     render();
@@ -18841,9 +18876,8 @@ function openLinkDialog(entity) {
   const ts = document.getElementById('link-type');
   ts.innerHTML = Object.entries(RELATION_TYPES).map(([k, v]) =>
     '<option value="' + k + '">' + escapeHtml(v.label) + '</option>').join('');
-  document.getElementById('link-search').value = '';
   document.getElementById('link-note').value = '';
-  document.getElementById('link-results').innerHTML = '';
+  { const _lbl = document.getElementById('link-target-label'); if (_lbl) { _lbl.textContent = 'Cílová entita: zatím nevybrána'; } }
   // Reset směru na odchozí
   document.querySelectorAll('input[name="link-direction"]').forEach(r => {
     r.checked = (r.value === 'outgoing');
@@ -18878,53 +18912,26 @@ function openLinkDialog(entity) {
   });
   updatePreview();
 
-  document.getElementById('link-search').oninput = (ev) => {
-    const raw = ev.target.value.trim().toLowerCase();
-    const out = document.getElementById('link-results');
-    if (!raw) { out.innerHTML = ''; return; }
-    // Rozdělit na slova
-    const words = raw.split(/\s+/).filter(w => w.length > 0);
-    function matches(e) {
-      const title = (getDisplayTitle(e) || '').toLowerCase();
-      const altTitle = (e.title || '').toLowerCase();
-      const tags = (e.tags || []).map(t => t.toLowerCase());
-      const aspects = (e.aspects || []).map(a => (aspectLabel(a) || '').toLowerCase());
-      // Každé slovo z dotazu musí najít shodu v alespoň jednom z polí
-      return words.every(w =>
-        title.includes(w) ||
-        altTitle.includes(w) ||
-        tags.some(t => t.includes(w)) ||
-        aspects.some(a => a.includes(w))
-      );
-    }
-    const r = db.entities
-      .filter(e => e.id !== entity.id && !e.archived)
-      .filter(matches)
-      .slice(0, 30);
-    if (r.length === 0) { out.innerHTML = '<p class="meta" style="padding:0.5em;">Žádné výsledky.</p>'; return; }
-    out.innerHTML = '<p class="meta sr-only" aria-live="polite">' + r.length + ' výsledků. Šipkou dolů ze vstupu se dostanete na první výsledek, mezi tlačítky pak Tab.</p>' +
-      r.map(e => '<button type="button" data-target="' + escapeHtml(e.id) + '" style="display:block;width:100%;text-align:left;padding:0.5em;border:none;border-bottom:1px solid #eee;background:transparent;color:inherit;">' +
-      escapeHtml(getDisplayTitle(e)) + ' <small class="meta">– ' + (e.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + '</small></button>').join('');
-    out.querySelectorAll('button[data-target]').forEach(b => {
-      b.onclick = () => {
-        selected = b.dataset.target;
+  const pickBtn = document.getElementById('link-pick-target');
+  if (pickBtn) pickBtn.onclick = () => {
+    openRelationPicker({
+      fieldLabel: 'Cílová entita vazby',
+      multiple: false,
+      excludeIds: [entity.id],
+      currentIds: selected ? [selected] : [],
+      onSelect: (ids) => {
+        const id = ids && ids.length ? ids[0] : null;
+        if (!id) return;
+        selected = id;
         const target = findEntity(selected);
-        selectedTitle = target ? getDisplayTitle(target) : b.textContent.trim().split(/\s+–/)[0].trim();
-        document.getElementById('link-search').value = selectedTitle;
-        out.innerHTML = '<p class="meta" style="padding:0.5em;">Vybráno.</p>';
+        selectedTitle = target ? getDisplayTitle(target) : '';
+        const lbl = document.getElementById('link-target-label');
+        if (lbl) lbl.textContent = 'Cílová entita: ' + (selectedTitle || '(vybrána)');
         document.getElementById('link-save').disabled = false;
         updatePreview();
         document.getElementById('link-save').focus();
-      };
+      }
     });
-  };
-  // Šipka dolů ze search inputu → focus první výsledek
-  document.getElementById('link-search').onkeydown = (ev) => {
-    if (ev.key === 'ArrowDown') {
-      const out = document.getElementById('link-results');
-      const firstBtn = out.querySelector('button[data-target]');
-      if (firstBtn) { ev.preventDefault(); firstBtn.focus(); }
-    }
   };
 
   document.getElementById('link-save').onclick = () => {
@@ -18963,7 +18970,7 @@ function openLinkDialog(entity) {
   };
   document.getElementById('link-cancel').onclick = () => d.close();
   d.showModal();
-  document.getElementById('link-search').focus();
+  { const _pb = document.getElementById('link-pick-target'); if (_pb) _pb.focus(); }
 }
 
 // Editace existující vazby — typ, poznámka, otočení směru.
@@ -20234,6 +20241,29 @@ function setupKeyboard() {
       if (e) { openCommentDialog(e); ev.preventDefault(); }
     }
     // z spustí/zastaví timer na entitě v detailu (s aspektem Sledování času)
+    else if ((ev.key === 'Z' || ev.key === 'z') && ev.shiftKey && !ev.ctrlKey && !ev.metaKey && !ev.altKey && state.view === 'detail') {
+      const e = findEntity(state.detailId);
+      if (e) {
+        if (!ttHasAspect(e)) {
+          if (!Array.isArray(e.aspects)) e.aspects = [];
+          e.aspects.push('TimeTracking');
+          e.updated_at = nowIso();
+          save();
+          toast('⏱ Přidán aspekt „Sledování času".');
+        }
+        if (ttIsCompletedTask(e)) {
+          render();
+          alertMsg('Úkol je hotový. Pro měření času změňte stav na „K udělání" nebo „Probíhá".');
+        } else if (ttIsRunning(e)) {
+          render();
+          toast('Timer už běží.');
+        } else {
+          if (ttStart(e)) toast('▶ Timer spuštěn.');
+          render();
+        }
+        ev.preventDefault();
+      }
+    }
     else if ((ev.key === 'z') && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey && state.view === 'detail') {
       const e = findEntity(state.detailId);
       if (e && ttHasAspect(e)) {
