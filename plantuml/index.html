@@ -2284,13 +2284,10 @@ function directChildIds(d, id){
       // package může obsahovat podbalíčky a třídy
       (m.packages||[]).forEach(p => { if(p.parentId === id) out.push(p.id); });
       (m.classes||[]).forEach(c => { if(c.packageId === id) out.push(c.id); });
-      // třída může obsahovat atributy/metody/values (mají id)
-      (m.classes||[]).forEach(c => {
-        if(c.id !== id) return;
-        (c.attributes||[]).forEach(a => a.id && out.push(a.id));
-        (c.methods||[]).forEach(mm => mm.id && out.push(mm.id));
-        (c.values||[]).forEach(v => v.id && out.push(v.id));
-      });
+      // POZN.: atributy/metody/values třídy se v stromu nezobrazují jako
+      // samostatné položky s vlastním zaškrtávátkem „hotovo". Proto je NEUVÁDÍME
+      // jako potomky — jinak by třída s atributy byla vždy považovaná za
+      // „má nehotové potomky" a nikdy by se neskryla ve filtru „nehotové".
       break;
     case 'state':
       (m.states||[]).forEach(s => { if(s.parentId === id) out.push(s.id); });
@@ -8342,33 +8339,48 @@ function renderTreeFilter(){
   wrap.className = 'tree-filter';
   wrap.setAttribute('role', 'group');
   wrap.setAttribute('aria-label', L.section.treeFilter || 'Filtr stromu');
+  // Label + select (uživatelsky přívětivější než přepínací tlačítka, hlavně
+  // při více filtrech a pro screen readery).
   const lab = document.createElement('label');
-  lab.textContent = (L.section.treeFilter || 'Filtr stromu') + ':';
+  const labelText = (L.section.treeFilter || 'Filtr stromu') + ':';
+  lab.textContent = labelText;
+  lab.setAttribute('for', 'treeFilterSelect');
   wrap.appendChild(lab);
-  const filters = [
+  const sel = document.createElement('select');
+  sel.id = 'treeFilterSelect';
+  sel.setAttribute('aria-label', labelText);
+  const options = [
     ['all',     L.section.treeFilterAll     || 'Vše'],
     ['done',    L.section.treeFilterDone    || 'Hotové'],
     ['pending', L.section.treeFilterPending || 'Nehotové']
   ];
-  filters.forEach(([key, label]) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = label;
-    const isActive = (state.treeFilter || 'all') === key;
-    b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-    b.setAttribute('aria-label', label + ' (' + (L.section.treeFilter || 'filtr') + ')');
-    b.addEventListener('click', () => {
-      state.treeFilter = key;
-      renderApp();
-    });
-    wrap.appendChild(b);
+  const current = state.treeFilter || 'all';
+  options.forEach(([key, label]) => {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = label;
+    if(key === current) opt.selected = true;
+    sel.appendChild(opt);
   });
-  const help = document.createElement('span');
-  help.className = 'help';
-  help.style.fontSize = '0.85em';
-  help.style.marginLeft = '0.5em';
-  help.textContent = L.section.treeFilterHelp || '';
-  wrap.appendChild(help);
+  sel.addEventListener('change', () => {
+    state.treeFilter = sel.value;
+    renderApp();
+  });
+  wrap.appendChild(sel);
+  // Vysvětlení proč může být ve filtru viditelný „špatně označený" prvek:
+  // hierarchický rodič se zobrazuje, pokud má potomka splňujícího filtr —
+  // jinak by se uživatel ke svému potomkovi nedostal.
+  if(current !== 'all'){
+    const help = document.createElement('span');
+    help.className = 'help';
+    help.style.fontSize = '0.85em';
+    help.style.marginLeft = '0.5em';
+    help.style.fontStyle = 'italic';
+    help.textContent = current === 'pending'
+      ? 'Pozn.: hotový prvek může být vidět, pokud má některého potomka nehotového.'
+      : 'Pozn.: nehotový prvek může být vidět, pokud má některého potomka hotového.';
+    wrap.appendChild(help);
+  }
   return wrap;
 }
 
@@ -9540,6 +9552,10 @@ function renderClassDetail(d, root){
     } else {
       renderClassForm(d, c, root);
     }
+    // Rychlý přesun na pozici — alternativa k tlačítkům ↑/↓ ve stromu.
+    const reorderClass = reorderSelectField(d, 'classes', path[1],
+      cls => L.fn.nameOr(effective(cls).name));
+    if(reorderClass) root.appendChild(reorderClass);
     // KŘÍŽOVÉ ODKAZY pro třídu --------------------------------------------
     const isEn = getLang() === 'en';
     const nameOfClass = id => {
@@ -9591,9 +9607,20 @@ function renderClassDetail(d, root){
   } else if(path[0] === 'relationships'){
     const r = m.relationships[path[1]];
     if(!r){ root.appendChild(el('p',{class:'no-selection'},'Vztah neexistuje.')); return; }
+    {
+      const __r = reorderSelectField(d, 'relationships', path[1], rel => {
+        const fromCls = (m.classes||[]).find(c => c.id === rel.sourceClassId);
+        const toCls = (m.classes||[]).find(c => c.id === rel.targetClassId);
+        const fn = fromCls ? L.fn.nameOr(effective(fromCls).name) : '?';
+        const tn = toCls ? L.fn.nameOr(effective(toCls).name) : '?';
+        return fn + ' → ' + tn + (rel.type ? ' (' + rel.type + ')' : '');
+      });
+      if(__r) root.appendChild(__r);
+    }
     renderRelationshipForm(d, r, root);
   } else if(path[0] === 'packages'){
     const p = m.packages[path[1]];
+    { const __r = autoReorderSelect(d, 'packages', path[1]); if(__r) root.appendChild(__r); }
     if(!p){ root.appendChild(el('p',{class:'no-selection'},'Balíček neexistuje.')); return; }
     renderPackageForm(d, p, root);
     // KŘÍŽOVÉ ODKAZY pro balíček: třídy uvnitř + vnořené balíčky
@@ -10135,6 +10162,7 @@ function renderUseCaseDetail(d, root){
   }
   if(path[0] === 'actors'){
     const a = m.actors[path[1]];
+    { const __r = autoReorderSelect(d, 'actors', path[1]); if(__r) root.appendChild(__r); }
     if(!a){ root.appendChild(el('p',{class:'no-selection'},'Aktér neexistuje.')); return; }
     renderSharingSection('usecase', d, a, root);
     const editTarget = a.sharedRef ? (findShared(a.sharedRef) || a) : a;
@@ -10173,6 +10201,7 @@ function renderUseCaseDetail(d, root){
     appendUcCrossrefs(a.id, true);
   } else if(path[0] === 'useCases'){
     const u = m.useCases[path[1]];
+    { const __r = autoReorderSelect(d, 'useCases', path[1]); if(__r) root.appendChild(__r); }
     if(!u){ root.appendChild(el('p',{class:'no-selection'},'Use case neexistuje.')); return; }
     renderSharingSection('usecase', d, u, root, 'useCases');
     const editTarget = u.sharedRef ? (findShared(u.sharedRef) || u) : u;
@@ -10215,6 +10244,7 @@ function renderUseCaseDetail(d, root){
     }
   } else if(path[0] === 'systems'){
     const s = m.systems[path[1]];
+    { const __r = autoReorderSelect(d, 'systems', path[1]); if(__r) root.appendChild(__r); }
     if(!s){ root.appendChild(el('p',{class:'no-selection'},'Systém neexistuje.')); return; }
     root.appendChild(el('h4',null,'Systém (rectangle)'));
     root.appendChild(field(L.field.name, inputText(s.name||'', v=>{s.name=v;softTouch(d);})));
@@ -10249,6 +10279,17 @@ function renderUseCaseDetail(d, root){
   } else if(path[0] === 'relationships'){
     const r = m.relationships[path[1]];
     if(!r){ root.appendChild(el('p',{class:'no-selection'},'Vztah neexistuje.')); return; }
+    {
+      const __r = reorderSelectField(d, 'relationships', path[1], rel => {
+        const findIn = (arr, id) => (arr||[]).find(x => x.id === id);
+        const sa = (rel.sourceType === 'actor' ? findIn(m.actors, rel.sourceId) : findIn(m.useCases, rel.sourceId));
+        const ta = (rel.targetType === 'actor' ? findIn(m.actors, rel.targetId) : findIn(m.useCases, rel.targetId));
+        const sn = sa ? L.fn.nameOr(effective(sa).name) : '?';
+        const tn = ta ? L.fn.nameOr(effective(ta).name) : '?';
+        return sn + ' → ' + tn;
+      });
+      if(__r) root.appendChild(__r);
+    }
     root.appendChild(el('h4',null,'Vztah'));
     const opts = (type) => (type === 'actor' ? m.actors : m.useCases).map(x=>({value:x.id,label:L.fn.nameOr(effective(x).name)}));
     root.appendChild(field(L.field.sourceTypeChoice,
@@ -10487,6 +10528,7 @@ function renderComponentDetail(d, root){
   }
   if(path[0] === 'components'){
     const c = m.components[path[1]];
+    { const __r = autoReorderSelect(d, 'components', path[1]); if(__r) root.appendChild(__r); }
     if(!c){ root.appendChild(el('p',{class:'no-selection'},'Komponenta neexistuje.')); return; }
     renderSharingSection('component', d, c, root, 'components');
     const editTarget = c.sharedRef ? (findShared(c.sharedRef) || c) : c;
@@ -10541,6 +10583,7 @@ function renderComponentDetail(d, root){
     }
   } else if(path[0] === 'interfaces'){
     const i = m.interfaces[path[1]];
+    { const __r = autoReorderSelect(d, 'interfaces', path[1]); if(__r) root.appendChild(__r); }
     if(!i){ root.appendChild(el('p',{class:'no-selection'},'Rozhraní neexistuje.')); return; }
     renderSharingSection('component', d, i, root, 'interfaces');
     const editTarget = i.sharedRef ? (findShared(i.sharedRef) || i) : i;
@@ -10613,6 +10656,13 @@ function renderComponentDetail(d, root){
   } else if(path[0] === 'relationships'){
     const r = m.relationships[path[1]];
     if(!r){ root.appendChild(el('p',{class:'no-selection'},'Vazba neexistuje.')); return; }
+    { const __r = reorderSelectField(d, 'relationships', path[1], rel => {
+        const find = id => (m.components||[]).find(c => c.id === id) || (m.interfaces||[]).find(i => i.id === id);
+        const s = find(rel.sourceId); const t = find(rel.targetId);
+        const sn = s ? L.fn.nameOr(effective(s).name) : '?';
+        const tn = t ? L.fn.nameOr(effective(t).name) : '?';
+        return sn + ' → ' + tn;
+      }); if(__r) root.appendChild(__r); }
     // Sdílení vazby s ostatními diagramy
     renderSharingSection('component', d, r, root, 'relationships');
     const shared = !!r.sharedRef && !!findShared(r.sharedRef);
@@ -10836,6 +10886,14 @@ function renderDeploymentDetail(d, root){
   } else if(path[0] === 'relationships'){
     const r = m.relationships[path[1]];
     if(!r){ root.appendChild(el('p',{class:'no-selection'},'Propojení neexistuje.')); return; }
+    { const __r = reorderSelectField(d, 'relationships', path[1], rel => {
+        const find = id => (m.nodes||[]).find(n => n.id === id);
+        const s = find(rel.sourceId); const t = find(rel.targetId);
+        const sn = s ? L.fn.nameOr(effective(s).name) : '?';
+        const tn = t ? L.fn.nameOr(effective(t).name) : '?';
+        return sn + ' → ' + tn;
+      }); if(__r) root.appendChild(__r); }
+
     root.appendChild(el('h4',null,'Propojení'));
     const ends = (m.nodes||[]).map(n=>({value:n.id,label:L.fn.nameOr(n.name)}));
     root.appendChild(field(L.field.from, selectField(r.sourceId||'', ends, v=>{r.sourceId=v;softTouch(d);}, 'drSrc')));
@@ -11043,6 +11101,7 @@ function renderGanttDetail(d, root){
   }
   if(path[0] === 'tasks'){
     const t = m.tasks[path[1]];
+    { const __r = autoReorderSelect(d, 'tasks', path[1]); if(__r) root.appendChild(__r); }
     if(!t){ root.appendChild(el('p',{class:'no-selection'},'Úloha neexistuje.')); return; }
     // Sekce sdílení
     renderSharingSection('gantt', d, t, root, 'tasks');
@@ -11134,6 +11193,7 @@ function renderGanttDetail(d, root){
     }
   } else if(path[0] === 'milestones'){
     const mlst = m.milestones[path[1]];
+    { const __r = autoReorderSelect(d, 'milestones', path[1]); if(__r) root.appendChild(__r); }
     if(!mlst){ root.appendChild(el('p',{class:'no-selection'},'Milník neexistuje.')); return; }
     renderSharingSection('gantt', d, mlst, root, 'milestones');
     const editTarget = mlst.sharedRef ? (findShared(mlst.sharedRef) || mlst) : mlst;
@@ -12857,6 +12917,65 @@ function moveModelItem(d, arrName, idx, dir){
   state.selectedPath = [arrName, j];
   touchDiagram(d);
   renderApp();
+}
+
+// Přesun položky v poli na konkrétní pozici (za jinou položku) — alternativa
+// k opakovanému klikání ↑/↓. `targetIdx` je index položky, ZA kterou má být
+// přesouvaná položka umístěna. Speciální hodnota -1 = úplně na začátek.
+function moveModelItemTo(d, arrName, fromIdx, targetIdx){
+  const arr = d.model[arrName];
+  if(!arr) return;
+  if(fromIdx < 0 || fromIdx >= arr.length) return;
+  // Vyjmout položku
+  const [item] = arr.splice(fromIdx, 1);
+  // Pokud byl target za fromIdx, snížíme jeho index o 1 (kvůli splice)
+  let insertAt;
+  if(targetIdx === -1){
+    insertAt = 0;
+  } else {
+    insertAt = targetIdx + 1;
+    if(targetIdx > fromIdx) insertAt -= 1;
+  }
+  if(insertAt < 0) insertAt = 0;
+  if(insertAt > arr.length) insertAt = arr.length;
+  arr.splice(insertAt, 0, item);
+  state.selectedPath = [arrName, insertAt];
+  touchDiagram(d);
+  renderApp();
+}
+
+// Vytvoří select „Přesunout za..." pro pole `arrName` v modelu diagramu.
+// `getLabel(item)` převede prvek na textový popis pro option.
+// `currentIdx` je aktuální pozice prvku (vyloučí se z nabídky).
+function reorderSelectField(d, arrName, currentIdx, getLabel){
+  const isEn = getLang() === 'en';
+  const arr = (d.model && d.model[arrName]) || [];
+  if(arr.length < 2) return null;
+  const opts = [{ value:'', label: isEn ? '(no change)' : '(beze změny)' }];
+  opts.push({ value:'__start__', label: isEn ? '— move to the start —' : '— přesunout na začátek —' });
+  arr.forEach((item, i) => {
+    if(i === currentIdx) return;
+    opts.push({ value: String(i), label: (isEn ? 'after: ' : 'za: ') + getLabel(item) });
+  });
+  const sel = selectField('', opts, v => {
+    if(!v) return;
+    const targetIdx = v === '__start__' ? -1 : parseInt(v, 10);
+    if(isNaN(targetIdx) && v !== '__start__') return;
+    moveModelItemTo(d, arrName, currentIdx, targetIdx);
+  });
+  return field(isEn ? 'Move:' : 'Přesunout:', sel,
+    isEn ? 'Place this item right after the chosen one. Faster than the ↑/↓ buttons in the list.'
+         : 'Umístí tuto položku hned za zvolenou. Rychlejší než opakované klikání na ↑/↓ v seznamu.');
+}
+
+// Wrapper, který si label vytáhne automaticky z polí item.name / item.label /
+// item.text — funguje pro většinu kolekcí (classes, packages, actors, tasks…).
+// Pro vztahy (kde label vznikne z from→to) se předává explicitní getLabel.
+function autoReorderSelect(d, arrName, currentIdx){
+  return reorderSelectField(d, arrName, currentIdx, item => {
+    const eff = (typeof effective === 'function') ? effective(item) : item;
+    return L.fn.nameOr(eff.name || eff.label || eff.text || item.alias || '?');
+  });
 }
 async function deleteParticipant(d, id){
   const ok = await dlgConfirm(L.dlg.deleteParticipant, 'Zprávy odkazující na něj zůstanou ale budou v chybě validace.');

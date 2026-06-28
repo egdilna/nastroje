@@ -2,26 +2,40 @@
 
 Tohle je mikroweb věnovaný informacím o našich (snad) užitečných nástrojích, které by se nejen egovernmenťákům mohly hodit.
 
+
+📈 Tenhle web je hotový přibližně z 40%
+
+
 ## Nástroje
 
-Teď jsou pro vás připravené tyhle nástroje: [ArchiMate editor], [Prohlížeč RPP], [Prohlížeč opendat], [Univerzální databázový nástroj a editor JSONDB databází], [Správce datových katalogů], [NoteBlok], [MarkDown editor], [OPML editor], [Editor spisového plánu], [Správce záložek], [NSESSS korpus]
+Všechny nástroje máte v seznamu vlevo.
 
-⚠️ Web a         informace k jednotlivým nástrojům (zejména dokumentace) se vytváří, když má zrovna někdo (nejvíc [Michal]) čas, takže pokud něco chybí, pardon, bude to.
+Osobně moje favority jsou: [ArchiMate editor](#archimate), [PIM information manager](#pim) a [PlantUML editor](#plantuml). Ale je jich tady už přes 20.
+
 
 ## Novinky k našim nástrojům
 
 ℹ️ Čistě teoreticky, na stránce nástroje je sekce s novinkami a změnami v daném nástroji... Teda aspoň doufám, že tam je...
 
-* 7. dubna 2026 Nový nástroj [Správce záložek] - Bookmark je komplexním správcem sady záložek (bookmarků). Data o záložkách v katalogu lze ukládat a načítat buď z lokálního JSON souboru, ale především z GitHubu a GIT repozitáře a to včetně privátních cest. První funkční betaverze publikována v nástrojích a to na adrese https://egdilna.github.io/nastroje/bookmark 
-* 6. dubna 2026: Pozor, většina našich nástrojů teď mimo jiných metod pro načítání a ukládání dat <mark>podporuje i plnou itegraci s GIT úložištěm, třeba GitHub přes API</mark>. Pro zápisy budete potřebovat vlastní GitHub API klíč, ale ten zůstane jen ve vašem prohlížeči a nikdy se neukládá ani k nám a ani do příslušného datového souboru.
-* 30. března 2026: Vydali jsme zatím v betaverzi nový a hodně žádaný nástroj a to [[Správce datových katalogů]]. Jak sám název napovídá, umí to spravovat datové katalogy, datové slovníky, konceptuální datové modely, číselníky apod. Bohužel jsem se zatím nedostal k tvorbě dokumentace.
-* 23. března 2026: Už je tady nástrojů fakt docela dost a tak je asi fakt na čase rozběhnout samotný web https://egdilna.github.io/nastroje tak uvidíme.
+28. 6. 2026: Tak konečně jsou tady funkční tabulky changelogů tedy historie změn a oprav pro jednotlivé nástroje, z toho mám radost. Červen byl i měsícem hodně nových funkcí a mám moc velkou radost i z rozvoje PlantUML editoru, který teď sám už taky vlastně denně používám.
+
+27. 6. 2026: Jaksi se stalo, že na tomhle mikrowebu se ne vždycky všechno ukazovalo. Velký pardon, je to způsobeno přechodem z původního nástroje na [PIM](#pim), kde taky jako jeden soubor spravuju tenhle web a include mají jinou syntaxi. Stane se, omlouvám se.
+
+2.6.2026: Web teď konečně funguje i na adrese https://nastroje.egdilna.cz a na této adrese fungují i jednotlivé nástroje.
+
+7.4.2026: Nový nástroj [Správce záložek] - Bookmark je komplexním správcem sady záložek (bookmarků). Data o záložkách v katalogu lze ukládat a načítat buď z lokálního JSON souboru, ale především z GitHubu a GIT repozitáře a to včetně privátních cest. První funkční betaverze publikována v nástrojích a to na adrese https://nastroje.egdilna.cz/bookmark 
+
+6.4.2026: Pozor, většina našich nástrojů teď mimo jiných metod pro načítání a ukládání dat <mark>podporuje i plnou itegraci s GIT úložištěm, třeba GitHub přes API</mark>. Pro zápisy budete potřebovat vlastní GitHub API klíč, ale ten zůstane jen ve vašem prohlížeči a nikdy se neukládá ani k nám a ani do příslušného datového souboru.
+
+30.3.2026: Vydali jsme zatím v betaverzi nový a hodně žádaný nástroj a to [[Správce datových katalogů]]. Jak sám název napovídá, umí to spravovat datové katalogy, datové slovníky, konceptuální datové modely, číselníky apod. Bohužel jsem se zatím nedostal k tvorbě dokumentace.
+
+23.3.2026: Už je tady nástrojů fakt docela dost a tak je asi fakt na čase rozběhnout samotný web https://egdilna.github.io/nastroje tak uvidíme.
 
 # ArchiMate
 
 ## Archimate editor
 
-⛓️ [Archimate editor](https://egdilna.github.io/nastroje/archimate) je webový komplexní nástroj pro tvorbu a správu architektury, především pro architektonické modely v jazyce ArchiMate, ale umí na jednom místě také spravovat ADR dokumenty, architektonické úkoly a poznámky. Má spoustu různých vychytávek, jako je generátor textových výstupů z architektury, slučování modelů s uživatelským výběrem a mnoho dalšího. Je stoprocentně přístupný, ale podporuje i grafické modelování. Online běží na https://egdilna.github-io/nastroje/archimate
+⛓️ [Archimate editor](https://nastroje.egdilna.cz/archimate) je webový komplexní nástroj pro tvorbu a správu architektury, především pro architektonické modely v jazyce ArchiMate, ale umí na jednom místě také spravovat ADR dokumenty, architektonické úkoly a poznámky. Má spoustu různých vychytávek, jako je generátor textových výstupů z architektury, slučování modelů s uživatelským výběrem a mnoho dalšího. Je stoprocentně přístupný, ale podporuje i grafické modelování. Online běží na https://egdilna.github-io/nastroje/archimate
 
 
 
@@ -49,15 +63,12 @@ Pokročilý editor architektury v jazyce ArchiMate, který může ale sloužit i
 
 ### Dokumentace a odkazy na repo
 
-* [Kompletní uživatelská příručka Archimate editoru](https://egdilna.github.io/nastroje/archimate/docs-cs
+* [Kompletní uživatelská příručka Archimate editoru](https://nastroje.egdilna.cz/archimate/docs-cs
 * Nástroj má vlastní repozitář na GitHubu na adrese https://github.com/michalradacz/archimate-editor
 
 ### Změny a novinky
 
-* 9. dubna 2026
-    * V tabulkovém editoru diagramu se nyní nemusejí přidávat jen prvky, ale lze přidávat i vazby (a prvky se samozŕejmě přidají také), což může urychlit tvorbu diagramu.
-    * U prvků se v různých zobrazeních nyní zobrazují dvě malá tlačítka "Z" a "DO", kterými si lze zobrazit rychlý popup se seznamem prvků s vazou na tento prvek, což zvýší přehled o vazbách bez nutnosti si filtrovat v celém samostatném zobrazení vazeb.
-    * Karta pro export a import a slučování už byla dost nepřehledná, takže teď je rozdělena na jednotlivé taby s jednotlivými funkcemi pro lepší přehlednost.
+{{database:Databáze historie změn mých nástrojů?columns=datum, typ, popis&filter=aplikace=archimate&sort=datum desc}}
 
 ### Použití
 
@@ -72,7 +83,7 @@ Nicméně na tomto nástroji jsou založeny online modely:
 
 ## Prohlížeč RPP
 
-⛓️ [Prohlížeč RPP](https://egdilna.github.io/nastroje/rpp) je univerzálním komplexním nástrojem pro prohlížení obsahu Registru práv a povinností bez nutnosti přihlašování do AIS působnostního a s propojenými daty, odkazovatelnými detaily a přehledy včetně exportu dat do CSV a XLSX. Online běží na adrese https://egdilna.github.io/nastroje/rpp a je k němu i jednoduchá [příručka](https://egdilna.github.io/nastroje/rpp/dokumentace)
+⛓️ [Prohlížeč RPP](https://nastroje.egdilna.cz/rpp) je univerzálním komplexním nástrojem pro prohlížení obsahu Registru práv a povinností bez nutnosti přihlašování do AIS působnostního a s propojenými daty, odkazovatelnými detaily a přehledy včetně exportu dat do CSV a XLSX. Online běží na adrese https://nastroje.egdilna.cz/rpp a je k němu i jednoduchá [příručka](https://nastroje.egdilna.cz/rpp/dokumentace)
 
 
 ### Hlavní funkce
@@ -89,18 +100,21 @@ Jednoduchý ale komplexní prohlížeč Registru práv a povinností
 
 ### Odkazy a dokumentace
 
-Existuje i [Uživatelská dokumentace](https://egdilna.github.io/nastroje/rpp/dokumentace)
+Existuje i [Uživatelská dokumentace](https://nastroje.egdilna.cz/rpp/dokumentace)
 
 * Prohlížeč RPP má svoje vlastní repository na GitHubu a to na adrese https://github.com/michalradacz/rpp-prohlizec
 * Přímý odkaz na složku na hlavním repository nástrojů je https://github.com/egdilna/nastroje/blob/main/rpp
+
+
+### Historie změn a oprav
+
+{{database:Databáze historie změn mých nástrojů?columns=datum, typ, popis&filter=aplikace=rpp&sort=datum desc}}
 
 # Opendata
 
 ## Prohlížeč opendat
 
-⛓️ [Prohlížeč otevřených dat](https://egdilna.github.io/nastroje/opendata) je univerzálním prohlížečem otevřených dat, který po zadání adresy schématu a datové sady umožňuje jednodiché procházení, hledání, filtrování, zobrazování a propojené detaily dat v datové sadě s možnosti procházejí soubisejících objektů a s možnosti exportu dat. Online běží na adrese https://egdilna.github.io/nastroje/opendata
-
-
+⛓️ [Nástroj prohlížeč opendat](https://nastroje.egdilna.cz/opendata)  je českým webovým jednoduchým prohlížečem otevřených dat. Nejen v ČR existuje povinnost publikace otevřených dat formou popsaných datových sad, které lze najít třeba v NKOD. A protože jde jen o surová data, je k jejich zpracování potřeba nástroj. Tenhle je jednoduchý, zadáte adresu schématu a sady a nástroj vám vše vykreslí, umožní filtrovat, hledat, exportovat procháze. Běží online na https://nastroje.egdilna.cz/opendata
 
 ### Hlavní funkce
 
@@ -124,14 +138,61 @@ Existuje i [Uživatelská dokumentace](https://egdilna.github.io/nastroje/rpp/do
 1. Funguje i export
 1. Pokud jde o dynamický entitní model, jsou u jednotlivých záznamů také odkaza na jejich detail s podrobným zobrazením i souvisejících entit, jsou-li v dané datové sadě
 
+### Historie změn
+
+{{database:Databáze historie změn mých nástrojů?columns=datum, typ, popis&filter=aplikace=opendata&sort=datum desc}}
+
+# PlantUML
+
+## PlantUML editor
+
+⛓️[Nástroj PlantUML editor](https://nastroje.egdilna.cz/plantuml) je webový plně přístupný speciální editor diagramů a kódu pro textový jazyk diagramů PlantUML. Online běží na https://nastroje.egdilna.cz/plantuml
+
+### Hlavní funkce
+
+PlantUML je dnes asi nejpoužívanější framework pro tzv. text diagramming, tedy tvorbu diagramů psaním jakéhosi zdrojového kódu. Tohle je český editor
+
+* Umožňuje editovat více než 10 základních PlantUML diagramů
+* Plná podpora projektu s více složkami a diagramy
+* Verzování diagramu s možností obnovy, sledování stavu diagramu
+* Editor plně přístupný a klikací
+* Vykreslováí, náhled, promítání, uložení, export a stažení diagramu
+* Tvorba MD či DOCX celkové dokumentace diagramu s jeho popisky
+* Generování hezkých čitelných textových popisů diagramu
+* Filtrování hotových a nehotových prvků
+* Sdílené objekty napříč celým projektem
+* Export a import diagramů a složek, přenos diagramů mezi projekty
+
+
+### Historie změn a oprav
+
+{{database:Databáze historie změn mých nástrojů?columns=datum, typ, popis&filter=aplikace=plantuml&sort=datum desc}}
+
+# PIM
+
+## PIM manažer informací
+
+
+Univerzální information a PIM manager specializovaný na produktivitu.
+
+### ✏️Hlavní funkce
+
+### Historie změn
+
+
+
+
+{{database:Databáze historie změn mých nástrojů?columns=datum, typ, popis&filter=aplikace=pim&sort=datum desc}}
+
+# DKM
+
+
+
 # JSONDB
 
 ## Univerzální databázový nástroj a editor JSONDB databází
 
-⛓️ [Editor JSONDB databází](https://egdilna.github.io/nastroje/jsondb) je univerzální nástroj pro správu databází. Komplexní webový editor vlastních strukturovaných databází ve formátu JSONDB. Jde o univerzální databázový nástroj pro vytváření a správu databází s pokročilými funkcemi. Jednosouborová čistě HTML a JavaScript aplikace, žádná instalace, žádné závislosti, funguje plně ve webovém prohlížeči. Využívá mezinárodní otevřený formát JSONDB se všemi rozšířeními. Online je na https://egdilna.github.io/nastroje/jsondb
-
-
-
+{{O nástroji JSONDB editor}}
 
 ### ✏️Hlavní funkce
 
@@ -139,8 +200,8 @@ Existuje i [Uživatelská dokumentace](https://egdilna.github.io/nastroje/rpp/do
 
 ### ✏️Dokumentace
 
-* [Kompletní uživatelská příručka](https://egdilna.github.io/nastroje/jsondb/docs-cs)
-* [Documentation in english version](https://egdilna.github.io/nastroje/docs-en
+* [Kompletní uživatelská příručka](https://nastroje.egdilna.cz/jsondb/docs-cs)
+* [Documentation in english version](https://nastroje.egdilna.cz/docs-en
 
 ### Repository a odkazy
 
@@ -150,9 +211,7 @@ Celý projekt je na GitHubu na https://github.io/michalradacz/database-editor
 
 ## Správce datových katalogů
 
-⛓️ [Správce datového katalogu](https://egdilna.github.io/nastroje/dkedit) je komplexní nástroj pro správu datových katalogů úřadu. Umožňuje spravovat všechny katalogy úřadu, včetně datových slovníků, konceptuálních datových katalogů, katalogů údajů do RPP, číselníků a jejich položek a dalších částí povinného datového katalogu úřadu. Vše je spravováno, verzováno, auditováno a samozřejmostí je pak import a export slovníků, číselníků i celých katalogů v závazných formátech JSON a JSONLD podle otevřených formálních norem a požadavků DIA. Online je na https://egdilna.github.io/nastroje/dkedit
-
-
+{{O nástroji Správce datového katalogu}}
 
 ### Hlavní funkce
 
@@ -175,13 +234,13 @@ Komplexní webový nástroj pro správu a úpravy a schvalování datových kata
 
 ### Dokumentace a návody
 
-K dispozici je [Kompletní uživatelská příručka Správce datových katalogů](https://egdilna.github.io/nastroje/dkedit/dokumentace)
+K dispozici je [Kompletní uživatelská příručka Správce datových katalogů](https://nastroje.egdilna.cz/dkedit/dokumentace)
 
 V případě zájmu natočíme stručné videonávody.
 
 ### Novinky a Historie změn
 
-* 31. března 2026: Když se mi nechce dělat dokumentace, je tu pořád umělá inteligence. A tak jsem s pomocí Claude nechal udělat aspoň první verzi [dokumentace](https://egdilna.github.io/nastroje/dkedit/dokumentace), tak snad to aspoň pomůže.
+* 31. března 2026: Když se mi nechce dělat dokumentace, je tu pořád umělá inteligence. A tak jsem s pomocí Claude nechal udělat aspoň první verzi [dokumentace](https://nastroje.egdilna.cz/dkedit/dokumentace), tak snad to aspoň pomůže.
 * 30. března 2026 Publikována první betaverze, kterou lze ale už reálně používat. Bohužel zatím chybí dokumentace.
 
 # ✏️NoteBlok
@@ -190,8 +249,7 @@ V případě zájmu natočíme stručné videonávody.
 
 ## Editor spisového plánu
 
-⛓️ [Editor spisového plánu](https://egdilna.github.io/nastroje/spisplanedit) je komplexní nástroj pro tvorbu, návrh, úpravu, změny, verzování projednávání import a export spisového plánu, který musí mít v elektronické podobě každý původce podle zákona 499/2004. Umožňuje nejen import a export v závazném XML formátu pro ESSL, ale i funkce správy jednotlivých verzí spisového plánu a to včetně přehledu změn v jeho verzích a podkladů pro projednání verze a změn věcných skupin.  Online běží na adrese https://egdilna.github.io/nastroje/spisplanedit a je k němu i jednoduchá [příručka](https://egdilna.github.io/nastroje/spisplanedit/dokumentace)
-
+{{O nástroji Editor spisového plánu}}
 
 ### Hlavní funkce
 
@@ -235,9 +293,7 @@ multisection
 
 ### Správce záložek
 
-⛓️ [Bookmark Správce záložek](https://egdilna.github.io/nastroje/bookmark) je jednoduchý, ale užitečný správce záložek (bookmarků) a odkazů. OD jechoduchého seznamu až po komplexní katalogy. Jako každ´jiný náš nástroj jde o webovou aplikaci a opensource. Kromě lokálních katalogů podporuje i plnou integraci s GitHubem včetně privátních katalogů. Online běží na https://egdilna.github.io/nastroje/bookmark
-
-
+{{O nástroji Bookmark}}
 
 #### Hlavní funkce
 
