@@ -3327,14 +3327,14 @@ function countSequenceElements(model){
 // === DIAGRAM TŘÍD — POPIS =====================================
 // Slovní označení stereotypu třídy. Dvojice: [1. pád pro „Existuje X", 2. pád pro „z třídy X"].
 const CLASS_STEREOTYPE_WORD = {
-  class:      {nom:'třída',            akuz:'třídu',            gen:'třídy',            instr:'třídou',          decl:'Třída'},
-  interface:  {nom:'rozhraní',         akuz:'rozhraní',         gen:'rozhraní',         instr:'rozhraním',       decl:'Rozhraní'},
-  abstract:   {nom:'abstraktní třída', akuz:'abstraktní třídu', gen:'abstraktní třídy', instr:'abstraktní třídou',decl:'Abstraktní třída'},
-  enum:       {nom:'výčet',            akuz:'výčet',            gen:'výčtu',            instr:'výčtem',          decl:'Výčet'},
-  struct:     {nom:'struktura',        akuz:'strukturu',        gen:'struktury',        instr:'strukturou',      decl:'Struktura'},
-  annotation: {nom:'anotace',          akuz:'anotaci',          gen:'anotace',          instr:'anotací',         decl:'Anotace'},
-  entity:     {nom:'entita',           akuz:'entitu',           gen:'entity',           instr:'entitou',         decl:'Entita'},
-  protocol:   {nom:'protokol',         akuz:'protokol',         gen:'protokolu',        instr:'protokolem',      decl:'Protokol'}
+  class:      {nom:'třída',            akuz:'třídu',            gen:'třídy',            instr:'třídou',          lok:'třídě',           decl:'Třída'},
+  interface:  {nom:'rozhraní',         akuz:'rozhraní',         gen:'rozhraní',         instr:'rozhraním',       lok:'rozhraní',        decl:'Rozhraní'},
+  abstract:   {nom:'abstraktní třída', akuz:'abstraktní třídu', gen:'abstraktní třídy', instr:'abstraktní třídou',lok:'abstraktní třídě',decl:'Abstraktní třída'},
+  enum:       {nom:'výčet',            akuz:'výčet',            gen:'výčtu',            instr:'výčtem',          lok:'výčtu',           decl:'Výčet'},
+  struct:     {nom:'struktura',        akuz:'strukturu',        gen:'struktury',        instr:'strukturou',      lok:'struktuře',       decl:'Struktura'},
+  annotation: {nom:'anotace',          akuz:'anotaci',          gen:'anotace',          instr:'anotací',         lok:'anotaci',         decl:'Anotace'},
+  entity:     {nom:'entita',           akuz:'entitu',           gen:'entity',           instr:'entitou',         lok:'entitě',          decl:'Entita'},
+  protocol:   {nom:'protokol',         akuz:'protokol',         gen:'protokolu',        instr:'protokolem',      lok:'protokolu',       decl:'Protokol'}
 };
 function classWord(stereotype){
   return CLASS_STEREOTYPE_WORD[stereotype] || CLASS_STEREOTYPE_WORD.class;
@@ -3377,6 +3377,64 @@ function cardinalityPhrase(card){
     case '':     return '';
     default:     return 'výskyty v počtu „' + card + '"';
   }
+}
+
+// Seskupí strukturované záznamy vztahů do vět tak, že vztahy stejného typu
+// ze stejného zdroje jsou v jedné větě s výčtem cílů.
+//
+// Vstup: records — pole objektů { fromKey, fromName, fromWord, verb, groupKey,
+//   targetCase?, item: { toName, toWord, label, card, showCard } }
+// Výstup: pole hotových vět (string[]).
+//
+// Stejný (fromKey + groupKey) se seskupí. Pořadí cílů: v pořadí, jak byly
+// zadané v modelu (stabilní).
+function _groupRelSentences(records, isEn){
+  if(!records || !records.length) return [];
+  // Mapa klíč → záznam skupiny (s items[])
+  const groups = [];
+  const groupIndex = {};
+  records.forEach(rec => {
+    const key = rec.fromKey + '|' + rec.groupKey;
+    let g = groupIndex[key];
+    if(!g){
+      g = {
+        fromName: rec.fromName,
+        fromWord: rec.fromWord,
+        verb: rec.verb,
+        groupKey: rec.groupKey,
+        targetCase: rec.targetCase || null,
+        items: []
+      };
+      groupIndex[key] = g;
+      groups.push(g);
+    }
+    g.items.push(rec.item);
+  });
+
+  // Spojovač položek: ", " mezi všemi kromě poslední, kde je „ a " / " and ".
+  const lastJoin = isEn ? ' and ' : ' a ';
+  const itemSep  = ', ';
+
+  function formatItem(item, g){
+    // Cíl: slovo (class/interface/atd.) + jméno + volitelné anotace v závorce.
+    const wordRaw = isEn ? item.toWord : (g.targetCase && item.toWord[g.targetCase]) || item.toWord.decl;
+    const anns = [];
+    if(item.label) anns.push(item.label);
+    if(item.showCard) anns.push((isEn ? 'contains ' : 'obsahuje ') + item.showCard);
+    const annText = anns.length ? ' (' + anns.join(', ') + ')' : '';
+    return wordRaw + ' ' + item.toName + annText;
+  }
+
+  return groups.map(g => {
+    // První písmeno fromWord (slova) velké
+    const fromBase = isEn ? g.fromWord : g.fromWord.decl;
+    const FromCap = fromBase.charAt(0).toUpperCase() + fromBase.slice(1);
+    const itemsTxt = g.items.length === 1
+      ? formatItem(g.items[0], g)
+      : g.items.slice(0, -1).map(it => formatItem(it, g)).join(itemSep)
+        + lastJoin + formatItem(g.items[g.items.length - 1], g);
+    return FromCap + ' ' + g.fromName + ' ' + g.verb + ' ' + itemsTxt + '.';
+  });
 }
 
 // Vrátí textový popis diagramu tříd (prostý souvislý text, odstavce \n\n).
@@ -3546,85 +3604,88 @@ function describeClass(model){
     elementParas.push(sentences.join(' '));
   }
 
-  // VAZBY
-  const relSentences = [];
+  // VAZBY — sběr strukturovaných záznamů místo přímo vět. Pak je seskupíme
+  // podle stejného zdroje a typu vztahu do jedné věty: „A se skládá z B (popis),
+  // C a D" místo tří samostatných.
+  const relRecords = [];
   relationships.forEach(r => {
     const from = byId[r.sourceClassId];
     const to = byId[r.targetClassId];
     if(!from || !to) return;
-    const fromQ = Q(from.name || '?');
-    const toQ = Q(to.name || '?');
-    const lbl = r.label ? '(' + r.label + ') ' : '';
-
     if(isEn){
       const fromW = classWordEn(from.stereotype);
       const toW = classWordEn(to.stereotype);
-      const FromCap = fromW.charAt(0).toUpperCase() + fromW.slice(1);
       const card = cardinalityPhraseEn(r.targetCardinality);
-      let sentence;
+      // Klíč skupiny = (zdroj, typ vztahu). Pokud association má kardinalitu,
+      // jde do jiné skupiny než association bez kardinality (jiná fráze).
+      let groupKey, verb;
       switch(r.type){
-        case 'inheritance':
-          sentence = FromCap + ' ' + fromQ + ' inherits from ' + lbl + toW + ' ' + toQ + '.';
-          break;
-        case 'realization':
-          sentence = FromCap + ' ' + fromQ + ' realizes ' + lbl + toW + ' ' + toQ + '.';
-          break;
-        case 'composition':
-          sentence = FromCap + ' ' + fromQ + ' is composed of ' + lbl + toW + ' ' + toQ +
-            (card ? ' (contains ' + card + ')' : '') + '.';
-          break;
-        case 'aggregation':
-          sentence = FromCap + ' ' + fromQ + ' aggregates ' + lbl + toW + ' ' + toQ +
-            (card ? ' (contains ' + card + ')' : '') + '.';
-          break;
-        case 'dependency':
-          sentence = FromCap + ' ' + fromQ + ' depends on ' + lbl + toW + ' ' + toQ + '.';
-          break;
+        case 'inheritance':  verb = 'inherits from'; groupKey = 'inh'; break;
+        case 'realization':  verb = 'realizes';     groupKey = 'real'; break;
+        case 'composition':  verb = 'is composed of'; groupKey = 'comp'; break;
+        case 'aggregation':  verb = 'aggregates';   groupKey = 'agg'; break;
+        case 'dependency':   verb = 'depends on';   groupKey = 'dep'; break;
         case 'association':
         default:
-          if(card){
-            sentence = FromCap + ' ' + fromQ + ' may have ' + card + ' ' + lbl + toW + ' ' + toQ + '.';
-          } else {
-            sentence = FromCap + ' ' + fromQ + ' is related to ' + lbl + toW + ' ' + toQ + '.';
-          }
+          if(card){ verb = 'may have'; groupKey = 'assoc_card'; }
+          else    { verb = 'is related to'; groupKey = 'assoc_plain'; }
           break;
       }
-      relSentences.push(sentence);
+      relRecords.push({
+        fromKey: r.sourceClassId,
+        fromName: Q(from.name || '?'),
+        fromWord: fromW,
+        verb: verb,
+        groupKey: groupKey,
+        // Položka cíle se skládá z jména, slova (class/interface/...) a volitelně
+        // anotací v závorce (popisek, kardinalita).
+        item: {
+          toName: Q(to.name || '?'),
+          toWord: toW,
+          label: r.label || '',
+          card: card,
+          // Pro composition/aggregation/association_card emitujeme kardinalitu
+          // v závorce — pro ostatní typy ne (jde o relaci, ne o počet).
+          showCard: (r.type === 'composition' || r.type === 'aggregation') ? card : (groupKey === 'assoc_card' ? '' : '')
+        }
+      });
     } else {
       const fromW = classWord(from.stereotype);
       const toW = classWord(to.stereotype);
       const card = cardinalityPhrase(r.targetCardinality);
-      let sentence;
+      // Pro češtinu pomáhá vědět, ve kterém pádu má cíl být.
+      let verb, groupKey, targetCase;
       switch(r.type){
-        case 'inheritance':
-          sentence = fromW.decl + ' ' + fromQ + ' dědí z ' + lbl + toW.gen + ' ' + toQ + '.';
-          break;
-        case 'realization':
-          sentence = fromW.decl + ' ' + fromQ + ' realizuje ' + lbl + toW.akuz + ' ' + toQ + '.';
-          break;
-        case 'composition':
-          sentence = fromW.decl + ' ' + fromQ + ' se skládá z ' + lbl + toW.gen + ' ' + toQ +
-            (card ? ' (obsahuje ' + card + ')' : '') + '.';
-          break;
-        case 'aggregation':
-          sentence = fromW.decl + ' ' + fromQ + ' agreguje ' + lbl + toW.akuz + ' ' + toQ +
-            (card ? ' (obsahuje ' + card + ')' : '') + '.';
-          break;
-        case 'dependency':
-          sentence = fromW.decl + ' ' + fromQ + ' závisí na ' + lbl + toW.gen + ' ' + toQ + '.';
-          break;
+        case 'inheritance':  verb = 'dědí z';          groupKey = 'inh';  targetCase = 'gen';  break;
+        case 'realization':  verb = 'realizuje';        groupKey = 'real'; targetCase = 'akuz'; break;
+        case 'composition':  verb = 'se skládá z';      groupKey = 'comp'; targetCase = 'gen';  break;
+        case 'aggregation':  verb = 'agreguje';        groupKey = 'agg';  targetCase = 'akuz'; break;
+        case 'dependency':   verb = 'závisí na';        groupKey = 'dep';  targetCase = 'lok';  break;
         case 'association':
         default:
-          if(card){
-            sentence = fromW.decl + ' ' + fromQ + ' může obsahovat ' + card + ' ' + lbl + toW.gen + ' ' + toQ + '.';
-          } else {
-            sentence = fromW.decl + ' ' + fromQ + ' je ve vztahu ' + lbl + 's ' + toW.instr + ' ' + toQ + '.';
-          }
+          if(card){ verb = 'může obsahovat'; groupKey = 'assoc_card'; targetCase = 'akuz'; }
+          else    { verb = 'je ve vztahu s'; groupKey = 'assoc_plain'; targetCase = 'instr'; }
           break;
       }
-      relSentences.push(sentence);
+      relRecords.push({
+        fromKey: r.sourceClassId,
+        fromName: Q(from.name || '?'),
+        fromWord: fromW,  // {decl, gen, akuz, instr, lok}
+        verb: verb,
+        groupKey: groupKey,
+        targetCase: targetCase,
+        item: {
+          toName: Q(to.name || '?'),
+          toWord: toW,
+          label: r.label || '',
+          card: card,
+          showCard: (r.type === 'composition' || r.type === 'aggregation') ? card : ''
+        }
+      });
     }
   });
+  const relSentences = _groupRelSentences(relRecords, isEn);
+
 
   const paras = [];
   paras.push(intro.join(' '));
@@ -3785,63 +3846,79 @@ function describeUseCase(model){
     });
   }
 
-  // VZTAHY
-  const relSentences = [];
+  // VZTAHY — strukturovaný sběr + seskupení do jedné věty pro stejný zdroj+typ.
+  const relRecords = [];
   relationships.forEach(r => {
     const fromName = nameOfSide(r.sourceType, r.sourceId);
     const toName = nameOfSide(r.targetType, r.targetId);
     if(fromName === '?' || toName === '?') return;
     const fromQ = Q(fromName);
     const toQ = Q(toName);
-    const labelSuffix = r.label ? ' (' + r.label + ')' : '';
-    let sentence;
+
+    // Slova pro use case ekvivalentní s class jsou jednoduchá — pevně dáme.
+    // CS: aktér (rod mužský), činnost (rod ženský), use case (neutrální)
+    // EN: 'actor' / 'use case'
+    function wordFor(type){
+      if(isEn){
+        const w = type === 'actor' ? 'actor' : 'use case';
+        return w; // string
+      }
+      // čeština má pády; ale tady chceme jen 1. pád/„Use case" pro výpis cíle.
+      // Pro výpis cíle v jednoduchém vztahu používáme akuzativ. Pro „aktér" je
+      // akuzativ „aktéra", „činnost" akuzativ „činnost".
+      if(type === 'actor'){
+        return { decl:'Aktér', nom:'aktér', akuz:'aktéra', gen:'aktéra', instr:'aktérem', lok:'aktérovi' };
+      }
+      return { decl:'Činnost', nom:'činnost', akuz:'činnost', gen:'činnosti', instr:'činností', lok:'činnosti' };
+    }
+    const fromWord = wordFor(r.sourceType);
+    const toWord = wordFor(r.targetType);
+
+    let verb, groupKey, targetCase;
     if(isEn){
       switch(r.type){
-        case 'include':
-          sentence = 'Use case ' + fromQ + ' always includes ' + toQ + labelSuffix + '.';
-          break;
-        case 'extend':
-          sentence = 'Use case ' + fromQ + ' may extend ' + toQ + ' under certain conditions' + labelSuffix + '.';
-          break;
-        case 'generalization':
-          sentence = fromQ + ' is a specialization of ' + toQ + labelSuffix + '.';
-          break;
+        case 'include':       verb = 'always includes';       groupKey = 'inc'; break;
+        case 'extend':        verb = 'may extend';            groupKey = 'ext'; break;
+        case 'generalization':verb = 'is a specialization of';groupKey = 'gen'; break;
         case 'association':
         default:
           if(r.sourceType === 'actor' && r.targetType !== 'actor'){
-            sentence = 'Actor ' + fromQ + ' uses the use case ' + toQ + labelSuffix + '.';
+            verb = 'uses'; groupKey = 'uses';
           } else if(r.sourceType !== 'actor' && r.targetType === 'actor'){
-            sentence = 'Use case ' + fromQ + ' involves actor ' + toQ + labelSuffix + '.';
+            verb = 'involves'; groupKey = 'invol';
           } else {
-            sentence = fromQ + ' is related to ' + toQ + labelSuffix + '.';
+            verb = 'is related to'; groupKey = 'rel';
           }
           break;
       }
     } else {
       switch(r.type){
-        case 'include':
-          sentence = 'Činnost ' + fromQ + ' vždy zahrnuje ' + toQ + labelSuffix + '.';
-          break;
-        case 'extend':
-          sentence = 'Činnost ' + fromQ + ' může za určitých okolností rozšířit ' + toQ + labelSuffix + '.';
-          break;
-        case 'generalization':
-          sentence = fromQ + ' je zvláštním případem ' + toQ + labelSuffix + '.';
-          break;
+        case 'include':       verb = 'vždy zahrnuje';                       groupKey = 'inc'; targetCase = 'akuz'; break;
+        case 'extend':        verb = 'může za určitých okolností rozšířit'; groupKey = 'ext'; targetCase = 'akuz'; break;
+        case 'generalization':verb = 'je zvláštním případem';               groupKey = 'gen'; targetCase = 'gen';  break;
         case 'association':
         default:
           if(r.sourceType === 'actor' && r.targetType !== 'actor'){
-            sentence = 'Aktér ' + fromQ + ' využívá činnost ' + toQ + labelSuffix + '.';
+            verb = 'využívá'; groupKey = 'uses'; targetCase = 'akuz';
           } else if(r.sourceType !== 'actor' && r.targetType === 'actor'){
-            sentence = 'Činnost ' + fromQ + ' se týká aktéra ' + toQ + labelSuffix + '.';
+            verb = 'se týká'; groupKey = 'invol'; targetCase = 'gen';
           } else {
-            sentence = fromQ + ' je ve vztahu s ' + toQ + labelSuffix + '.';
+            verb = 'je ve vztahu s'; groupKey = 'rel'; targetCase = 'instr';
           }
           break;
       }
     }
-    relSentences.push(sentence);
+    relRecords.push({
+      fromKey: r.sourceType + ':' + r.sourceId,
+      fromName: fromQ,
+      fromWord: fromWord,
+      verb: verb,
+      groupKey: groupKey,
+      targetCase: targetCase || null,
+      item: { toName: toQ, toWord: toWord, label: r.label || '', card: '', showCard: '' }
+    });
   });
+  const relSentences = _groupRelSentences(relRecords, isEn);
   if(relSentences.length){
     paras.push((isEn ? 'As for relationships: ' : 'Co se týče vztahů: ') + relSentences.join(' '));
   }
@@ -4315,107 +4392,81 @@ function describeComponent(model){
     paras.push(sentences.join(' '));
   }
 
-  // VAZBY
-  const relSentences = [];
+  // VAZBY — strukturovaný sběr a seskupení (viz _groupRelSentences). Stejný
+  // zdroj a typ vztahu se sloučí do jedné věty s výčtem cílů.
+  const relRecords = [];
+  // Helper pro adjektivní suffix podle rodu zdroje (česky).
+  function adjSuffixFor(fromNom){
+    if(fromNom === 'rozhraní') return 'o';
+    if(['cloud','uzel','rámec','soubor'].indexOf(fromNom) >= 0) return '';
+    return 'a';
+  }
   relationships.forEach(r => {
-    // Pro sdílené vazby čteme typ a label z effective().
     const ef = effective(r);
-    const labelSuffix = ef.label ? ' (' + ef.label + ')' : '';
     if(isEn){
       const from = nameOfEn(r.sourceId);
       const to = nameOfEn(r.targetId);
       if(!from || !to) return;
-      const fromCap = from.kind.charAt(0).toUpperCase() + from.kind.slice(1);
-      let sentence;
+      // Pro EN sloužíme jednoduchými strukturami {decl:..., akuz/gen/instr:string}
+      // — překlad pádů není relevantní, vždy se použije základní tvar.
+      let verb, groupKey;
       switch(ef.type){
-        case 'provide':
-          sentence = fromCap + ' ' + from.q + ' provides ' + to.kind + ' ' + to.q + labelSuffix + '.';
-          break;
-        case 'use':
-          sentence = fromCap + ' ' + from.q + ' uses ' + to.kind + ' ' + to.q + labelSuffix + '.';
-          break;
-        case 'dependency':
-          sentence = fromCap + ' ' + from.q + ' depends on ' + to.kind + ' ' + to.q + labelSuffix + '.';
-          break;
-        case 'realization':
-          sentence = fromCap + ' ' + from.q + ' realizes ' + to.kind + ' ' + to.q + labelSuffix + '.';
-          break;
-        case 'inheritance':
-          sentence = fromCap + ' ' + from.q + ' inherits from ' + to.kind + ' ' + to.q + labelSuffix + '.';
-          break;
-        case 'composition':
-          sentence = fromCap + ' ' + from.q + ' is composed of ' + to.kind + ' ' + to.q + labelSuffix + '.';
-          break;
-        case 'aggregation':
-          sentence = fromCap + ' ' + from.q + ' aggregates ' + to.kind + ' ' + to.q + labelSuffix + '.';
-          break;
-        case 'line':
-          sentence = fromCap + ' ' + from.q + ' is linked to ' + to.kind + ' ' + to.q + labelSuffix + '.';
-          break;
+        case 'provide':     verb = 'provides';        groupKey = 'provide'; break;
+        case 'use':         verb = 'uses';           groupKey = 'use'; break;
+        case 'dependency':  verb = 'depends on';     groupKey = 'dep'; break;
+        case 'realization': verb = 'realizes';        groupKey = 'real'; break;
+        case 'inheritance': verb = 'inherits from';   groupKey = 'inh'; break;
+        case 'composition': verb = 'is composed of';  groupKey = 'comp'; break;
+        case 'aggregation': verb = 'aggregates';     groupKey = 'agg'; break;
+        case 'line':        verb = 'is linked to';   groupKey = 'line'; break;
         case 'association':
-        default:
-          sentence = fromCap + ' ' + from.q + ' is associated with ' + to.kind + ' ' + to.q + labelSuffix + '.';
-          break;
+        default:            verb = 'is associated with'; groupKey = 'assoc'; break;
       }
-      relSentences.push(sentence);
+      relRecords.push({
+        fromKey: r.sourceId,
+        fromName: from.q,
+        fromWord: from.kind,
+        verb: verb,
+        groupKey: groupKey,
+        item: { toName: to.q, toWord: to.kind, label: ef.label || '', card: '', showCard: '' }
+      });
     } else {
       const from = nameOfCs(r.sourceId);
       const to = nameOfCs(r.targetId);
       if(!from || !to) return;
-      // 1. pád pro začátek věty: „Databáze", „Komponenta", „Rozhraní"
-      const fromCap = from.decl;
-      // Pomocný adjektivní suffix pro „propojen/-a/-o" podle rodu zdroje.
-      // Ženský (komponenta, databáze, fronta, složka) → -a, střední (rozhraní) → -o,
-      // mužský (cloud, uzel, rámec, soubor) → bez suffixu.
-      function adjSuffix(){
-        const fromName = from.nom;
-        if(fromName === 'rozhraní') return 'o';
-        if(['cloud','uzel','rámec','soubor'].indexOf(fromName) >= 0) return '';
-        return 'a';
-      }
-      let sentence;
+      let verb, groupKey, targetCase;
       switch(ef.type){
-        case 'provide':
-          // „poskytuje" + akuzativ („databázi", „rozhraní")
-          sentence = fromCap + ' ' + from.q + ' poskytuje ' + to.akuz + ' ' + to.q + labelSuffix + '.';
-          break;
-        case 'use':
-          // „používá" + akuzativ
-          sentence = fromCap + ' ' + from.q + ' používá ' + to.akuz + ' ' + to.q + labelSuffix + '.';
-          break;
-        case 'dependency':
-          // „závisí na" + gen
-          sentence = fromCap + ' ' + from.q + ' závisí na ' + to.gen + ' ' + to.q + labelSuffix + '.';
-          break;
-        case 'realization':
-          // „realizuje" + akuzativ (typicky cíl je rozhraní)
-          sentence = fromCap + ' ' + from.q + ' realizuje ' + to.akuz + ' ' + to.q + labelSuffix + '.';
-          break;
-        case 'inheritance':
-          // „dědí od" + gen
-          sentence = fromCap + ' ' + from.q + ' dědí od ' + to.gen + ' ' + to.q + labelSuffix + '.';
-          break;
-        case 'composition':
-          // „obsahuje" + akuzativ (kompozice — silná část-celek)
-          sentence = fromCap + ' ' + from.q + ' obsahuje ' + to.akuz + ' ' + to.q + labelSuffix + '.';
-          break;
-        case 'aggregation':
-          // „agreguje" + akuzativ (slabá část-celek)
-          sentence = fromCap + ' ' + from.q + ' agreguje ' + to.akuz + ' ' + to.q + labelSuffix + '.';
-          break;
+        case 'provide':     verb = 'poskytuje';     groupKey = 'provide'; targetCase = 'akuz'; break;
+        case 'use':         verb = 'používá';       groupKey = 'use';     targetCase = 'akuz'; break;
+        case 'dependency':  verb = 'závisí na';      groupKey = 'dep';     targetCase = 'gen';  break;
+        case 'realization': verb = 'realizuje';      groupKey = 'real';    targetCase = 'akuz'; break;
+        case 'inheritance': verb = 'dědí od';        groupKey = 'inh';     targetCase = 'gen';  break;
+        case 'composition': verb = 'obsahuje';      groupKey = 'comp';    targetCase = 'akuz'; break;
+        case 'aggregation': verb = 'agreguje';      groupKey = 'agg';     targetCase = 'akuz'; break;
         case 'line':
-          // čára bez specifické sémantiky
-          sentence = fromCap + ' ' + from.q + ' je propojen' + adjSuffix() + ' čarou s ' + to.instr + ' ' + to.q + labelSuffix + '.';
-          break;
+          verb = 'je propojen' + adjSuffixFor(from.nom) + ' čarou s';
+          groupKey = 'line'; targetCase = 'instr'; break;
         case 'association':
         default:
-          // „je propojen/propojena/propojeno s" + instr
-          sentence = fromCap + ' ' + from.q + ' je propojen' + adjSuffix() + ' s ' + to.instr + ' ' + to.q + labelSuffix + '.';
-          break;
+          verb = 'je propojen' + adjSuffixFor(from.nom) + ' s';
+          groupKey = 'assoc'; targetCase = 'instr'; break;
       }
-      relSentences.push(sentence);
+      // Pro češtinu předáme objekt s pády — _groupRelSentences potřebuje
+      // .decl pro velké začáteční písmeno a {nom,akuz,gen,instr,lok} pro cíl.
+      const fromWord = { decl: from.decl, nom: from.nom, akuz: from.akuz, gen: from.gen, instr: from.instr, lok: from.lok || from.gen };
+      const toWord = { decl: to.decl, nom: to.nom, akuz: to.akuz, gen: to.gen, instr: to.instr, lok: to.lok || to.gen };
+      relRecords.push({
+        fromKey: r.sourceId,
+        fromName: from.q,
+        fromWord: fromWord,
+        verb: verb,
+        groupKey: groupKey,
+        targetCase: targetCase,
+        item: { toName: to.q, toWord: toWord, label: ef.label || '', card: '', showCard: '' }
+      });
     }
   });
+  const relSentences = _groupRelSentences(relRecords, isEn);
   if(relSentences.length){
     paras.push((isEn ? 'As for the connections: ' : 'Co se týče propojení: ') + relSentences.join(' '));
   }
