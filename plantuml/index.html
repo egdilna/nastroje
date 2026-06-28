@@ -407,7 +407,7 @@ hr{border:none;border-top:1px solid #ddd;margin:1em 0}
     <div class="field">
       <label for="setGanttStart">Datum začátku projektu (YYYY-MM-DD):</label>
       <input type="text" id="setGanttStart" placeholder="2025-09-01">
-      <div class="help">Datum, od kterého se počítají termíny úloh. Generuje se v PlantUML jako „Project starts YYYY-MM-DD".</div>
+      <div class="help">Datum, od kterého se počítají termíny úloh. Generuje se v PlantUML jako „Project starts YYYY-MM-DD". <strong>Pokud necháte prázdné, osa bude číslovaná (Den 1, Den 2, …)</strong> — vhodné pro obecné procesy bez kalendáře (např. „do 15 dnů od podání žádosti").</div>
     </div>
     <div class="field">
       <label for="setGanttScale">Měřítko časové osy:</label>
@@ -2112,7 +2112,7 @@ function emptyModelFor(type){
     // Gantt: closedDays je pole názvů dnů („Saturday", „Sunday", …),
     // holidays je pole konkrétních dat (YYYY-MM-DD) která jsou volna.
     // Úlohy mohou mít vlastní `completion` (0-100). Přidáno jako rozšíření.
-    case 'gantt': return {projectStart: todayIso(), printScale:'daily', tasks:[], milestones:[], closedDays:[], holidays:[]};
+    case 'gantt': return {projectStart: '', printScale:'daily', tasks:[], milestones:[], closedDays:[], holidays:[]};
     case 'timeline': return {events:[]};
     case 'ebnf': return {rules:[]};
     case 'timing': return {participants:[], frames:[], notes:[], highlights:[], constraints:[], hideTimeAxis:false, dateFormat:''};
@@ -4802,6 +4802,35 @@ function countNetworkElements(model){
 const SCALE_WORD = {daily:'denní', weekly:'týdenní', monthly:'měsíční'};
 const SCALE_WORD_EN = {daily:'daily', weekly:'weekly', monthly:'monthly'};
 function fmtDateCz(iso){ return L.fn.dateCz(iso); }
+
+// Naformátuje termín úlohy v Gantt detailu — buď jako konkrétní data (pokud
+// projekt má anchor přes „Datum začátku projektu"), nebo jako relativní
+// „Den N" / „Day N" (anchorless režim — odpovídá tomu, co vykreslí PlantUML).
+function formatGanttTerm(startIso, endIso, model){
+  const isEn = getLang() === 'en';
+  const projStart = ((model && model.projectStart) || '').trim();
+  if(projStart){
+    const startStr = fmtDateCz(startIso);
+    const endStr = endIso ? fmtDateCz(endIso) : '';
+    if(isEn) return 'starts ' + startStr + (endStr ? ', ends ' + endStr : '');
+    return 'začíná ' + startStr + (endStr ? ', končí ' + endStr : '');
+  }
+  // Anchorless: solveGanttDates používá interně dnešek jako kotvu — rozdíl
+  // mezi taskovým start a touto kotvou je Day N (1-based).
+  const anchor = todayIso();
+  function dayNum(iso){
+    if(!iso) return null;
+    const d1 = new Date(iso + 'T00:00:00Z').getTime();
+    const d0 = new Date(anchor + 'T00:00:00Z').getTime();
+    return Math.floor((d1 - d0) / 86400000) + 1;
+  }
+  const sn = dayNum(startIso);
+  const en = dayNum(endIso);
+  const dayLbl = isEn ? 'Day ' : 'Den ';
+  if(isEn) return 'starts ' + dayLbl + sn + (en != null ? ', ends ' + dayLbl + en : '');
+  return 'začíná ' + dayLbl + sn + (en != null ? ', končí ' + dayLbl + en : '');
+}
+
 function describeGantt(model){
   const tasks = model.tasks || [];
   const milestones = model.milestones || [];
@@ -6533,17 +6562,22 @@ function genGantt(diagram){
   const caption = ds.caption || proj.caption;
   if(caption) out.push('caption ' + caption.replace(/\r?\n/g, ' '));
 
-  // Začátek projektu (ISO)
-  out.push('Project starts ' + (model.projectStart || todayIso()));
+  // Začátek projektu — pokud uživatel vyplnil datum, vykreslí se osa s kalendářem.
+  // Pokud je prázdné, PlantUML vykreslí osu jako Day 1, Day 2, … (anchorless,
+  // čistě relativní pořadí — vhodné pro obecné procesy „do X dnů od něčeho").
+  const projStart = (model.projectStart || '').trim();
+  if(projStart){
+    out.push('Project starts ' + projStart);
+  }
   // Měřítko: daily / weekly / monthly / quarterly / yearly. PlantUML uvádí
   // direktivu „printscale X" pro všechny varianty kromě „daily" (default).
   if(model.printScale && model.printScale !== 'daily'){
     out.push('printscale ' + model.printScale);
   }
-  // Zvýraznění dnešního dne — svislá čára na časové ose. PlantUML syntax:
-  // „today is YYYY-MM-DD and is colored in <color>". Pokud uživatel nezadá
-  // barvu, použijeme „salmon" (PlantUML default appearance pro „today" marker).
-  if(model.markToday){
+  // Zvýraznění dnešního dne — má smysl jen v kalendářním režimu. V anchorless
+  // režimu (bez Project starts) ho neemitujeme, protože PlantUML by čáru
+  // umístil mimo zobrazenou Day 1+ osu.
+  if(model.markToday && projStart){
     const tColor = (model.todayColor || '').trim() || 'salmon';
     out.push('today is ' + todayIso() + ' and is colored in ' + tColor);
   }
@@ -11081,8 +11115,9 @@ function renderGanttDetail(d, root){
       const solved = solveGanttDates(m);
       const sol = (solved.tasks||[]).find(x => x.id === t.id);
       if(sol && sol.startDate){
-        taskResolved.textContent = 'Vyřešený termín: začíná ' + fmtDateCz(sol.startDate) +
-          (sol.endDate ? ', končí ' + fmtDateCz(sol.endDate) : '') + '.';
+        const isEn = getLang() === 'en';
+        const prefix = isEn ? 'Resolved term: ' : 'Vyřešený termín: ';
+        taskResolved.textContent = prefix + formatGanttTerm(sol.startDate, sol.endDate, m) + '.';
       } else {
         taskResolved.textContent = '';
       }
@@ -11148,7 +11183,23 @@ function renderGanttDetail(d, root){
       const solved = solveGanttDates(m);
       const sol = (solved.milestones||[]).find(x => x.id === mlst.id);
       if(sol && sol.date){
-        milestoneResolved.textContent = 'Vyřešený termín: ' + fmtDateCz(sol.date) + '.';
+        const isEn = getLang() === 'en';
+        const prefix = isEn ? 'Resolved date: ' : 'Vyřešený termín: ';
+        // Milník nemá end — jen jeden datum. formatGanttTerm umí i tak (předáme
+        // null jako endIso) — vrátí jen „začíná …", což u milníku zní divně.
+        // Ošetříme to vlastní formulací.
+        const projStart = (m.projectStart || '').trim();
+        if(projStart){
+          milestoneResolved.textContent = prefix + fmtDateCz(sol.date) + '.';
+        } else {
+          // Anchorless: Den N
+          const anchor = todayIso();
+          const d1 = new Date(sol.date + 'T00:00:00Z').getTime();
+          const d0 = new Date(anchor + 'T00:00:00Z').getTime();
+          const n = Math.floor((d1 - d0) / 86400000) + 1;
+          const lbl = isEn ? 'Day ' : 'Den ';
+          milestoneResolved.textContent = prefix + lbl + n + '.';
+        }
       } else {
         milestoneResolved.textContent = '';
       }
