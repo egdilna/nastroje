@@ -5742,7 +5742,7 @@ function migrateTagsToLowerCase() {
 function searchEntities(query, filters = {}) {
   let r = db.entities;
   if (filters.aspect) r = r.filter(e => e.aspects && e.aspects.includes(filters.aspect));
-  if (filters.tag) r = r.filter(e => e.tags && e.tags.includes(filters.tag));
+  if (filters.tag) { const _ft = String(filters.tag).toLowerCase(); r = r.filter(e => (e.tags || []).some(t => String(t).toLowerCase() === _ft)); }
   if (filters.inbox === true) r = r.filter(e => e.inbox);
   if (filters.archived === false) r = r.filter(e => !e.archived);
   else if (filters.archived === true) r = r.filter(e => e.archived);
@@ -5805,8 +5805,8 @@ function findSavedView(id) { return db.savedViews.find(v => v.id === id); }
 function applySavedView(v) {
   let r = searchEntities(v.filters.text || '', v.filters || {});
   const f = v.filters || {};
-  // Nemá tag (vylučující filtr) – searchEntities ho neřeší
-  if (f.tagNot) r = r.filter(e => !(e.tags || []).includes(f.tagNot));
+  // Nemá tag (vylučující filtr) – searchEntities ho neřeší. Porovnání bez ohledu na velikost písmen.
+  if (f.tagNot) { const tn = String(f.tagNot).toLowerCase(); r = r.filter(e => !(e.tags || []).some(t => String(t).toLowerCase() === tn)); }
   // Přílohy
   if (f.attach === 'yes') r = r.filter(e => e.attachments && e.attachments.length > 0);
   else if (f.attach === 'no') r = r.filter(e => !e.attachments || e.attachments.length === 0);
@@ -6545,7 +6545,137 @@ function entityRowHtml(e) {
     '<div>' + aspects + ' ' + tags + '</div>' +
     '<div class="meta">Změněno ' + escapeHtml(fmtRelative(e.updated_at)) + '</div></div>';
 }
+
+// ===== KLÁVESOVÁ NAVIGACE V TABULCE ENTIT =====
+// Šipky nahoru/dolů = pohyb po řádcích; e=editace, o=nový panel, l=štítky, r=připomenutí, a=aspekty.
+function attachEntityTableKeyboard(root) {
+  const rows = Array.from(root.querySelectorAll('tr[data-row-entity]'));
+  if (rows.length === 0) return;
+  rows.forEach(tr => { if (!tr.hasAttribute('tabindex')) tr.setAttribute('tabindex', '0'); });
+  function focusRow(idx) {
+    if (idx < 0) idx = 0;
+    if (idx >= rows.length) idx = rows.length - 1;
+    rows[idx].focus();
+  }
+  rows.forEach((tr, i) => {
+    tr.onkeydown = (ev) => {
+      // nezasahuj, pokud je fokus ve formulářovém prvku uvnitř řádku
+      const tag = (ev.target.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+      const id = tr.dataset.rowEntity;
+      const stop = () => { ev.preventDefault(); ev.stopPropagation(); };
+      if (ev.key === 'ArrowDown') { stop(); focusRow(i + 1); }
+      else if (ev.key === 'ArrowUp') { stop(); focusRow(i - 1); }
+      else if (ev.key === 'e' || ev.key === 'E') { stop(); setView('detail', { detailId: id, detailMode: 'edit' }); }
+      else if (ev.key === 'o' || ev.key === 'O') { stop(); addPanel(); setView('detail', { detailId: id, detailMode: 'read' }); }
+      else if (ev.key === 'l' || ev.key === 'L') { stop(); openQuickTagEditor(id); }
+      else if (ev.key === 'r' || ev.key === 'R') { stop(); openQuickReminderEditor(id); }
+      else if (ev.key === 'a' || ev.key === 'A') { stop(); openQuickAspectEditor(id); }
+      else if (ev.key === 'Enter') { stop(); setView('detail', { detailId: id, detailMode: 'read' }); }
+    };
+  });
+}
+
+// Rychlý editor štítků (klávesa l)
+function openQuickTagEditor(entityId) {
+  const e = findEntity(entityId);
+  if (!e) return;
+  const existing = document.getElementById('quick-tag-dialog');
+  if (existing) existing.remove();
+  const d = document.createElement('dialog');
+  d.id = 'quick-tag-dialog';
+  d.setAttribute('aria-labelledby', 'qte-title');
+  const allTags = getAllTags();
+  d.innerHTML =
+    '<h2 id="qte-title">Štítky: ' + escapeHtml(getDisplayTitle(e)) + '</h2>' +
+    '<label for="qte-input">Štítky (oddělené čárkou)</label>' +
+    '<input type="text" id="qte-input" value="' + escapeHtml((e.tags || []).join(', ')) + '" style="width:100%;">' +
+    (allTags.length ? '<p class="meta">Existující: ' + allTags.map(t => escapeHtml(t)).join(', ') + '</p>' : '') +
+    '<div class="btn-group" style="margin-top:0.6em;"><button type="button" class="primary" id="qte-save">Uložit</button><button type="button" id="qte-cancel">Zrušit</button></div>';
+  document.body.appendChild(d);
+  d.querySelector('#qte-save').onclick = () => {
+    const raw = d.querySelector('#qte-input').value;
+    const tags = raw.split(',').map(t => normalizeTag(t)).filter(Boolean);
+    const seen = new Set(); const norm = [];
+    tags.forEach(t => { if (!seen.has(t)) { seen.add(t); norm.push(t); } });
+    e.tags = norm;
+    e.updated_at = nowIso(); save(); d.close(); d.remove(); render();
+    toast('Štítky uloženy.');
+  };
+  d.querySelector('#qte-cancel').onclick = () => { d.close(); d.remove(); };
+  d.addEventListener('close', () => d.remove());
+  d.showModal();
+  setTimeout(() => { const inp = d.querySelector('#qte-input'); if (inp) inp.focus(); }, 50);
+}
+
+// Rychlý editor připomenutí (klávesa r)
+function openQuickReminderEditor(entityId) {
+  const e = findEntity(entityId);
+  if (!e) return;
+  const existing = document.getElementById('quick-reminder-dialog');
+  if (existing) existing.remove();
+  if (!e.attributes) e.attributes = {};
+  const d = document.createElement('dialog');
+  d.id = 'quick-reminder-dialog';
+  d.setAttribute('aria-labelledby', 'qre-title');
+  const cur = e.attributes.reminder_at ? String(e.attributes.reminder_at).slice(0, 10) : '';
+  d.innerHTML =
+    '<h2 id="qre-title">Připomenutí: ' + escapeHtml(getDisplayTitle(e)) + '</h2>' +
+    '<label for="qre-input">Datum připomenutí</label>' +
+    '<input type="date" id="qre-input" value="' + escapeHtml(cur) + '">' +
+    '<div class="btn-group" style="margin-top:0.6em;"><button type="button" class="primary" id="qre-save">Uložit</button><button type="button" id="qre-clear">Vymazat</button><button type="button" id="qre-cancel">Zrušit</button></div>';
+  document.body.appendChild(d);
+  d.querySelector('#qre-save').onclick = () => {
+    const val = d.querySelector('#qre-input').value;
+    if (val) e.attributes.reminder_at = val;
+    e.updated_at = nowIso(); save(); d.close(); d.remove(); render();
+    toast('Připomenutí uloženo.');
+  };
+  d.querySelector('#qre-clear').onclick = () => {
+    delete e.attributes.reminder_at;
+    e.updated_at = nowIso(); save(); d.close(); d.remove(); render();
+    toast('Připomenutí vymazáno.');
+  };
+  d.querySelector('#qre-cancel').onclick = () => { d.close(); d.remove(); };
+  d.addEventListener('close', () => d.remove());
+  d.showModal();
+  setTimeout(() => { const inp = d.querySelector('#qre-input'); if (inp) inp.focus(); }, 50);
+}
+
+// Rychlý editor aspektů (klávesa a)
+function openQuickAspectEditor(entityId) {
+  const e = findEntity(entityId);
+  if (!e) return;
+  const existing = document.getElementById('quick-aspect-dialog');
+  if (existing) existing.remove();
+  const d = document.createElement('dialog');
+  d.id = 'quick-aspect-dialog';
+  d.setAttribute('aria-labelledby', 'qae-title');
+  const aspectMap = getActiveAspects();
+  const current = new Set(e.aspects || []);
+  let boxes = '';
+  Object.keys(aspectMap).forEach(ak => {
+    boxes += '<label style="display:block;margin:0.2em 0;"><input type="checkbox" class="qae-asp" value="' + escapeHtml(ak) + '"' + (current.has(ak) ? ' checked' : '') + '> ' + escapeHtml(aspectMap[ak].label) + '</label>';
+  });
+  d.innerHTML =
+    '<h2 id="qae-title">Aspekty: ' + escapeHtml(getDisplayTitle(e)) + '</h2>' +
+    '<div class="qae-list" role="group" aria-label="Aspekty">' + boxes + '</div>' +
+    '<div class="btn-group" style="margin-top:0.6em;"><button type="button" class="primary" id="qae-save">Uložit</button><button type="button" id="qae-cancel">Zrušit</button></div>';
+  document.body.appendChild(d);
+  d.querySelector('#qae-save').onclick = () => {
+    const sel = Array.from(d.querySelectorAll('input.qae-asp:checked')).map(c => c.value);
+    e.aspects = sel;
+    e.updated_at = nowIso(); save(); d.close(); d.remove(); render();
+    toast('Aspekty uloženy.');
+  };
+  d.querySelector('#qae-cancel').onclick = () => { d.close(); d.remove(); };
+  d.addEventListener('close', () => d.remove());
+  d.showModal();
+  setTimeout(() => { const f = d.querySelector('input.qae-asp'); if (f) f.focus(); }, 50);
+}
+
 function attachEntityRowHandlers(root) {
+  if (typeof attachEntityTableKeyboard === 'function') attachEntityTableKeyboard(root);
   root.querySelectorAll('a[data-entity]').forEach(a => {
     a.onclick = (ev) => { ev.preventDefault(); setView('detail', { detailId: a.dataset.entity, detailMode: 'read' }); };
   });
