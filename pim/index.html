@@ -3756,6 +3756,42 @@ function normalizeBoolFilter(v) {
 }
 
 // Vykreslí tabulku databáze pro include s volitelnými parametry (columns/filter/sort).
+
+// Markdown verze {{database:...}} respektující parametry (?columns=...&filter=...&sort=...).
+function renderDatabaseIncludeAsMarkdown(entity, query) {
+  const allFields = (typeof getDbFields === 'function') ? getDbFields(entity) : [];
+  const allRecords = (typeof getDbRecords === 'function') ? getDbRecords(entity) : [];
+  if (allFields.length === 0) return '*[Databáze bez polí]*';
+  const parsed = parseDatabaseIncludeParams(query);
+  const applied = applyDatabaseIncludeParams(allFields, allRecords, parsed);
+  const fields = applied.fields;
+  const records = applied.records;
+  if (fields.length === 0) return '*[Žádné platné sloupce k zobrazení]*';
+  function cellText(f, rec) {
+    let cell = '';
+    const v = rec[f.key];
+    if (f.type === 'composed') cell = evaluateDbComposed(f, rec, allFields);
+    else if (v != null && v !== '') {
+      if (f.type === 'bool') cell = v ? 'Ano' : 'Ne';
+      else if (f.type === 'date') cell = fmtDate(v);
+      else cell = String(v);
+    }
+    // ošetři pipe znak v buňce (Markdown tabulka)
+    return String(cell).replace(/\|/g, '\\|').replace(/\n/g, ' ');
+  }
+  const lines = [];
+  lines.push('| ' + fields.map(f => String(f.label).replace(/\|/g, '\\|')).join(' | ') + ' |');
+  lines.push('| ' + fields.map(() => '---').join(' | ') + ' |');
+  if (records.length === 0) {
+    lines.push('| ' + fields.map((f, i) => i === 0 ? '(žádný záznam)' : '').join(' | ') + ' |');
+  } else {
+    records.forEach(rec => {
+      lines.push('| ' + fields.map(f => cellText(f, rec)).join(' | ') + ' |');
+    });
+  }
+  return lines.join('\n');
+}
+
 function renderDatabaseInclude(entity, query) {
   const allFields = (typeof getDbFields === 'function') ? getDbFields(entity) : [];
   const allRecords = (typeof getDbRecords === 'function') ? getDbRecords(entity) : [];
@@ -22019,16 +22055,18 @@ function expandMarkdownIncludes(text, opts) {
       if (!target) return '*[⚠ Entita „' + refTrim + '" nenalezena]*';
       return buildStatusChipPlain(target);
     });
-    // Nahradit {{database:...}} Markdown tabulkou (pro kopírování zdroje, export, tisk)
+    // Nahradit {{database:...}} Markdown tabulkou (respektuje ?columns/filter/sort)
     work = work.replace(/\{\{database:([^}]+)\}\}/g, (m, inner) => {
       const qIdx = inner.indexOf('?');
       const ref = (qIdx >= 0 ? inner.slice(0, qIdx) : inner).trim();
+      const query = qIdx >= 0 ? inner.slice(qIdx + 1) : '';
       if (!ref) return '*[⚠ Chybí název databáze]*';
       let target = null;
       if (ref.startsWith('id:')) target = findEntity(ref.slice(3));
       else target = findEntity(ref) || findEntityByTitle(ref);
       if (!target) return '*[⚠ Entita „' + ref + '" nenalezena]*';
-      if (typeof renderDatabaseAsMarkdown === 'function') return '\n' + renderDatabaseAsMarkdown(target) + '\n';
+      if (!(target.aspects || []).includes('Database')) return '*[⚠ „' + ref + '" není databáze]*';
+      if (typeof renderDatabaseIncludeAsMarkdown === 'function') return '\n' + renderDatabaseIncludeAsMarkdown(target, query) + '\n';
       return '*[Databáze]*';
     });
     // Regex: {{include:Název}} nebo {{include:Název|alias}} nebo {{include:id:abc}}
