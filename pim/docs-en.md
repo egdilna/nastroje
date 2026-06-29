@@ -5,6 +5,7 @@ A web application for managing personal and professional information in a single
 
 - **Online version**: <https://egdilna.github.io/nastroje/pim>
 - **Source code (open source)**: <https://github.com/egdilna/nastroje/blob/main/pim>
+- **Changelog (version history)**: <https://nastroje.egdilna.cz/#pim>
 - **Download and offline use**: download `pim.html` and open it in a modern browser (Chrome, Firefox, Safari, Edge). The app runs without an internet connection (except for some external services such as the PlantUML server or the Czech spell checker).
 
 ## Core concept
@@ -73,6 +74,7 @@ An aspect is a "role" of an entity. You can assign any number:
 | **Plan** | WBS task table with deadlines, predecessors, statuses, entity linking |
 | **Tracker** | Value, unit, target, change history |
 | **Diagram** | PlantUML source + preview, copy actions |
+| **Structured document** | Outline editor with custom styles, numbering (arabic/letters/roman, multi-level), H1–H6 headings, collapsible sections and Markdown blocks; export to MD and DOCX (tracked changes from CriticMarkup) |
 | **Presentation / Slide** | Slide-by-slide mode with timer (T/R keys, MM:SS / H:MM:SS) |
 | **Goal, Question, Decision, Idea** | Specific fields |
 | **Note, Document, Reference, Bookmark** | URL (with 📋 URL / 📋 Markdown buttons), author, date |
@@ -119,6 +121,8 @@ The entity body uses markdown with extensions:
 - **Private blocks**: `~~~private … ~~~` — visible only in-app, not in export/include
 - **Footnotes**: `[^1]` + `[^1]: text`
 - **Placeholders**: `((Attribute))` — see above
+- **Automatic counters**: `((#))` = level 1, `((##))` = level 2, etc.; `((#.##))` prints a multi-level number (e.g. `1.2`) — the deepest level increments, higher ones are read-only, deeper ones reset when a higher one increments. `((#name))` = a named running counter for the whole entity (each name runs independently)
+- **Insert structured document**: `((document))` inserts the content of this entity's "Structured document" aspect at that point in the body (as Markdown)
 - **Inline select**: `(!a/b/|c!)` — see above
 - **Quick annotation**: `(>text)` — when saving edit mode, it gets converted to a regular annotation on the line where it was, and disappears from the body
 
@@ -193,6 +197,11 @@ Links:
 
 A meeting can be in **multiple projects at once** — the task becomes part of all of them.
 
+### ➕ New entity (other aspect)
+Next to the new task you can directly create an entity of **any aspect** (note, document, person…): enter a title, pick an aspect and optionally tick which of the meeting's projects the entity should belong to. The entity gets a `mentions` link from the meeting and `partOf` links to the chosen projects — no manual creating and linking.
+
+The same is available in the **project detail**: below the quick task there is a "+ New entity in this project" field (title + aspect choice) that creates an entity with a `partOf` link to the project.
+
 ### 📎 Existing task from project
 A select with all tasks from the meeting's projects that aren't yet linked. Adds a `mentions` link from the meeting → task (the task stays part of its project, just is now mentioned at this meeting).
 
@@ -237,7 +246,9 @@ In the **All** view, under "Filters", is a collapsible **Advanced attribute filt
    - `is empty`, `is not empty`, `is checked`, `is unchecked`
 3. **Value** — adaptive by type (text, number, date, select with options, checkbox)
 
-Filters combine with **AND** logic. They're saved in Saved Views.
+Filters combine with **AND** logic.
+
+**Saved views** keep the complete filter — aspect, tags (including "doesn't have tag"), task status, priority, deadline and advanced attribute filters. The filter survives toggling selection mode. Tag comparison is case-insensitive.
 
 ## Keyboard shortcuts
 
@@ -269,6 +280,8 @@ Filters combine with **AND** logic. They're saved in Saved Views.
 | `c` | Add a comment |
 | `d` | (read, if it has headings) Toggle section-edit mode |
 | `a` | (read) Toggle annotation mode |
+| `z` | (entity with "Time tracking" aspect) Start/stop timer |
+| `Shift+Z` | Add "Time tracking" aspect (if missing) and start the timer right away |
 | `Esc` | Back to read mode (saves quick annotations and changes) |
 
 ### Navigation
@@ -277,6 +290,12 @@ Filters combine with **AND** logic. They're saved in Saved Views.
 |---|---|
 | Arrows ↑↓ in quick search results | Step through results |
 | Arrows ↑↓ in entity table | Move between rows |
+| `e` on a table row | Edit entity directly |
+| `o` on a table row | Open in a new panel |
+| `l` on a table row | Quick-edit tags |
+| `r` on a table row | Edit reminder date |
+| `a` on a table row | Edit aspects |
+| `Enter` on a table row | Open entity |
 | Arrows ↑↓ in search results | Step through results |
 
 ## Links between entities
@@ -296,6 +315,8 @@ Links are typed references between entities. Defined types:
 | `attendedBy` | was attendee of |
 
 **Links show in both directions**: on the entity you see your outgoing links in Links section and incoming in Inverse Links.
+
+**Unified entity picker**: when adding a link (and elsewhere where an entity is selected — meeting attendees and tasks, etc.) a single shared dialog is used, with search and an **aspect filter**. For people, the organization they work at is shown in parentheses; for tasks, their status — to make selection easier.
 
 ## URL attributes — copy buttons
 
@@ -331,9 +352,11 @@ Below each section is a quick-add action for a new project child.
 
 ## Print / Export / Copy
 
+The **📋 Copy source** and **✨ Copy formatted** buttons (below the entity body), as well as export and print, render the `{{include:…}}`, `{{database:…}}`, `{{status:…}}` directives, placeholders and counters — so the clipboard/export never gets a raw directive, but its result.
+
 From the entity detail, the **🖨 Export / print…** button opens a dialog with checkboxes for each section and a format choice:
 
-- **MD** — markdown (with include expansion, placeholder evaluation, inline-select simplification to `(!c!)`)
+- **MD** — markdown (with expansion of include as well as `{{database:…}}` to a table and `{{status:…}}` to a text summary, placeholder and counter `((#))` evaluation, inline-select simplification to `(!c!)`)
 - **HTML** — for printing directly from the browser (Ctrl+P)
 - **DOCX** — for Word, Outlook, email clients
 - **PDF** — via system print

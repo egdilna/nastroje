@@ -5,6 +5,7 @@ Webová aplikace pro správu osobních a profesních informací v jediném HTML 
 - **Online verze**: <https://egdilna.github.io/nastroje/pim>
 - **Zdrojový kód (open source)**: <https://github.com/egdilna/nastroje/blob/main/pim>
 - **Stažení a offline použití**: stáhněte soubor `pim.html`, otevřete v moderním prohlížeči (Chrome, Firefox, Safari, Edge). Aplikace běží i bez připojení k internetu (kromě některých externích služeb jako PlantUML server nebo Korektor).
+- **Changelog (historie změn)**: <https://nastroje.egdilna.cz/#pim>
 
 ## Hlavní koncept
 
@@ -72,6 +73,7 @@ Aspekt je „role" entity. Můžete jich přiřadit libovolný počet:
 | **Plán** | WBS tabulka úkolů s termíny, předchůdci, stavy, propojením s entitami |
 | **Tracker** | Hodnota, jednotka, cíl, historie změn |
 | **Diagram** | PlantUML zdroj + náhled, kopírovací akce |
+| **Strukturovaný dokument** | Outline editor s vlastními styly, číslováním (arabsky/písmena/římsky, víceúrovňové), nadpisy H1–H6, sbalitelnými sekcemi a Markdown bloky; export do MD i DOCX (revize z CriticMarkup) |
 | **Prezentace / Slide** | Slide-by-slide režim s timer (T/R klávesy, MM:SS / H:MM:SS) |
 | **Cíl, Otázka, Rozhodnutí, Nápad** | Specifická pole |
 | **Poznámka, Dokument, Zdroj, Záložka** | URL (s tlačítky 📋 URL / 📋 Markdown), autor, datum |
@@ -118,6 +120,8 @@ Tělo entity je v markdownu s rozšířeními:
 - **Private bloky**: `~~~private … ~~~` — viditelné jen v aplikaci, ne v exportu/include
 - **Footnotes**: `[^1]` + `[^1]: text`
 - **Placeholdery**: `((Atribut))` — viz výše
+- **Automatické čítače**: `((#))` = úroveň 1, `((##))` = úroveň 2 atd.; `((#.##))` vypíše víceúrovňové číslo (např. `1.2`) — poslední úroveň se zvyšuje, vyšší se jen čtou, hlubší se při zvýšení vynulují. `((#jméno))` = pojmenovaný průběžný čítač pro celou entitu (každé jméno běží nezávisle)
+- **Vložení strukturovaného dokumentu**: `((dokument))` vloží na dané místo v těle obsah aspektu „Strukturovaný dokument" této entity (jako Markdown)
 - **Inline-select**: `(!a/b/|c!)` — viz výše
 - **Quick anotace**: `(>text)` — při uložení edit modu se převede na klasickou anotaci k řádku, kde se nacházel, a z těla zmizí
 
@@ -192,6 +196,11 @@ Vazby:
 
 Schůzka může být ve **více projektech současně** — úkol bude součástí všech.
 
+### ➕ Nová entita (jiný aspekt)
+Vedle nového úkolu lze rovnou založit entitu **libovolného aspektu** (poznámka, dokument, osoba…): zadáte název, vyberete aspekt a volitelně zaškrtnete, do kterých projektů schůzky má entita patřit. Entita dostane vazbu `mentions` ze schůzky a `partOf` na vybrané projekty — bez ručního vytváření a vázání.
+
+Totéž je k dispozici i v **detailu projektu**: pod rychlým úkolem je pole „+ Nová entita do tohoto projektu" (název + výběr aspektu), které založí entitu s vazbou `partOf` na projekt.
+
 ### 📎 Existující úkol z projektu
 Select se všemi úkoly z projektů schůzky, které ještě nejsou propojené. Přidá schůzce vazbu `mentions` → úkol (úkol zůstává součástí svého projektu, jen je teď zmíněn na této schůzce).
 
@@ -236,7 +245,9 @@ V kartě **Vše** je v sekci „Filtry" rozbalovací podsekce **Pokročilé filt
    - `je prázdné`, `není prázdné`, `je zaškrtnuto`, `není zaškrtnuto`
 3. **Hodnota** — adaptivní podle typu (text, číslo, datum, select s options, checkbox)
 
-Filtry se kombinují logikou **AND**. Ukládají se v Saved Views.
+Filtry se kombinují logikou **AND**.
+
+**Uložené pohledy** uchovají kompletní filtr — aspekt, tagy (včetně „nemá tag"), stav úkolu, prioritu, termín i pokročilé filtry atributů. Filtr přežije i zapnutí režimu výběru. Porovnání tagů nerozlišuje velikost písmen.
 
 ## Klávesové zkratky
 
@@ -268,6 +279,8 @@ Filtry se kombinují logikou **AND**. Ukládají se v Saved Views.
 | `c` | Přidat komentář |
 | `d` | (read, pokud má nadpisy) Přepnout režim editace sekcí |
 | `a` | (read) Přepnout anotační režim |
+| `z` | (u entity s aspektem „Sledování času") Spustit/zastavit timer |
+| `Shift+Z` | Přidat aspekt „Sledování času" (pokud chybí) a rovnou spustit timer |
 | `Esc` | Zpět na read mode (uloží quick anotace a změny) |
 
 ### Navigace
@@ -276,6 +289,12 @@ Filtry se kombinují logikou **AND**. Ukládají se v Saved Views.
 |---|---|
 | Šipky ↑↓ v rychlých výsledcích hledání | Skákání mezi výsledky |
 | Šipky ↑↓ v tabulce entit | Pohyb mezi řádky |
+| `e` na řádku tabulky | Přímá editace entity |
+| `o` na řádku tabulky | Otevřít v novém panelu |
+| `l` na řádku tabulky | Rychlá úprava štítků |
+| `r` na řádku tabulky | Úprava data připomenutí |
+| `a` na řádku tabulky | Úprava aspektů |
+| `Enter` na řádku tabulky | Otevřít entitu |
 | Šipky ↑↓ v search results | Skákání mezi výsledky |
 
 ## Vazby mezi entitami
@@ -295,6 +314,8 @@ Vazby jsou typované odkazy mezi entitami. Definované typy:
 | `attendedBy` (zúčastnil se) | byl účastníkem |
 
 **Vazby se zobrazují v obou směrech**: u entity vidíte své outgoing vazby v sekci Vazby a incoming v Inverzních vazbách.
+
+**Sjednocený výběr entity**: při přidávání vazby (i jinde, kde se vybírá entita — účastníci a úkoly schůzky apod.) se používá jeden společný dialog s hledáním a **filtrem podle aspektu**. U osob se v závorce zobrazuje organizace, kde pracují, u úkolů jejich stav — pro snazší orientaci ve výběru.
 
 ## URL atributy — kopírovací tlačítka
 
@@ -330,9 +351,11 @@ Pod každou sekcí je rychlá akce pro přidání nového dítěte projektu.
 
 ## Tisk / Export / Kopírování
 
+Tlačítka **📋 Zkopírovat zdroj** a **✨ Zkopírovat formátované** (pod tělem entity) i export a tisk vykreslují direktivy `{{include:…}}`, `{{database:…}}`, `{{status:…}}`, placeholdery a čítače — do schránky/exportu se tedy nedostane surová direktiva, ale její výsledek.
+
 Z detailu entity tlačítko **🖨 Export / tisk…** otevírá dialog s checkboxy pro každou sekci a výběrem formátu:
 
-- **MD** — markdown (s expandováním include, vyhodnocením placeholderů, zjednodušením inline-selectů na `(!c!)`)
+- **MD** — markdown (s expandováním include i `{{database:…}}` na tabulku a `{{status:…}}` na textový souhrn, vyhodnocením placeholderů a čítačů `((#))`, zjednodušením inline-selectů na `(!c!)`)
 - **HTML** — pro tisk přímo z prohlížeče (Ctrl+P)
 - **DOCX** — pro Word, Outlook, e-mailové klienty
 - **PDF** — přes systémový tisk
