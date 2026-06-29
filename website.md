@@ -14,11 +14,13 @@ Osobně moje favority jsou: [ArchiMate editor](#archimate), [PIM information man
 
 ## Novinky k našim nástrojům
 
-ℹ️ Čistě teoreticky, na stránce nástroje je sekce s novinkami a změnami v daném nástroji... Teda aspoň doufám, že tam je...
+
 
 28.6.2026: Tak konečně jsou tady funkční tabulky changelogů tedy historie změn a oprav pro jednotlivé nástroje, z toho mám radost. Červen byl i měsícem hodně nových funkcí a mám moc velkou radost i z rozvoje PlantUML editoru, který teď sám už taky vlastně denně používám.
 
+
 27.6.2026: Jaksi se stalo, že na tomhle mikrowebu se ne vždycky všechno ukazovalo. Velký pardon, je to způsobeno přechodem z původního nástroje na PIM, kde taky jako jeden soubor spravuju tenhle web a include mají jinou syntaxi. Stane se, omlouvám se.
+
 
 2.6.2026: Web teď konečně funguje i na adrese https://nastroje.egdilna.cz a na této adrese fungují i jednotlivé nástroje.
 
@@ -29,7 +31,6 @@ Osobně moje favority jsou: [ArchiMate editor](#archimate), [PIM information man
 30.3.2026: Vydali jsme zatím v betaverzi nový a hodně žádaný nástroj a to [[Správce datových katalogů]]. Jak sám název napovídá, umí to spravovat datové katalogy, datové slovníky, konceptuální datové modely, číselníky apod. Bohužel jsem se zatím nedostal k tvorbě dokumentace.
 
 23.3.2026: Už je tady nástrojů fakt docela dost a tak je asi fakt na čase rozběhnout samotný web https://egdilna.github.io/nastroje tak uvidíme.
-
 # ArchiMate
 
 
