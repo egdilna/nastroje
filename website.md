@@ -5,7 +5,6 @@ Tohle je mikroweb věnovaný informacím o našich (snad) užitečných nástroj
 
 📈 Tenhle web je hotový přibližně z 40%
 
-
 ## Nástroje
 
 Všechny nástroje máte v seznamu vlevo.
@@ -106,6 +105,7 @@ Pokročilý editor architektury v jazyce ArchiMate, který může ale sloužit i
 | PlantUML | 2026-06-28 | Vylepšení | U gantt diagramů se teď může nechat pole začátku projektu prázdné a tedy nebudou vykreslena absolutní data |
 | PlantUML | 2026-06-28 | Oprava | Opraven problém, kdy se někdy nesprávně nevyfiltrovaly jen hotové či nehotové prvky v seznamu prvků diagramu v levé části |
 | PIM | 2026-06-28 | Oprava | Někdy se při složitých dotazech do databáze přes database placeholder nepromítla tabulka správně do zkopírovaného obsahu entity, opraveno. |
+| DKM | 2026-06-29 | Vylepšení | Nyní v editaci typu entity či v editaci aspektu u každého atributu je zaškrtávací pole, které udává, zda bude daný atribut vidět hned ve výpisu entit. Takže teď kvůli nejdůležitějším hodnotám nemusíte každou entitu otevírat. |
 
 
 ### Použití
@@ -142,7 +142,6 @@ Existuje i [Uživatelská dokumentace](https://nastroje.egdilna.cz/rpp/dokumenta
 
 * Prohlížeč RPP má svoje vlastní repository na GitHubu a to na adrese https://github.com/michalradacz/rpp-prohlizec
 * Přímý odkaz na složku na hlavním repository nástrojů je https://github.com/egdilna/nastroje/blob/main/rpp
-
 
 ### Historie změn a oprav
 
@@ -185,6 +184,7 @@ Existuje i [Uživatelská dokumentace](https://nastroje.egdilna.cz/rpp/dokumenta
 | PlantUML | 2026-06-28 | Vylepšení | U gantt diagramů se teď může nechat pole začátku projektu prázdné a tedy nebudou vykreslena absolutní data |
 | PlantUML | 2026-06-28 | Oprava | Opraven problém, kdy se někdy nesprávně nevyfiltrovaly jen hotové či nehotové prvky v seznamu prvků diagramu v levé části |
 | PIM | 2026-06-28 | Oprava | Někdy se při složitých dotazech do databáze přes database placeholder nepromítla tabulka správně do zkopírovaného obsahu entity, opraveno. |
+| DKM | 2026-06-29 | Vylepšení | Nyní v editaci typu entity či v editaci aspektu u každého atributu je zaškrtávací pole, které udává, zda bude daný atribut vidět hned ve výpisu entit. Takže teď kvůli nejdůležitějším hodnotám nemusíte každou entitu otevírat. |
 
 
 # Opendata
@@ -256,6 +256,7 @@ Existuje i [Uživatelská dokumentace](https://nastroje.egdilna.cz/rpp/dokumenta
 | PlantUML | 2026-06-28 | Vylepšení | U gantt diagramů se teď může nechat pole začátku projektu prázdné a tedy nebudou vykreslena absolutní data |
 | PlantUML | 2026-06-28 | Oprava | Opraven problém, kdy se někdy nesprávně nevyfiltrovaly jen hotové či nehotové prvky v seznamu prvků diagramu v levé části |
 | PIM | 2026-06-28 | Oprava | Někdy se při složitých dotazech do databáze přes database placeholder nepromítla tabulka správně do zkopírovaného obsahu entity, opraveno. |
+| DKM | 2026-06-29 | Vylepšení | Nyní v editaci typu entity či v editaci aspektu u každého atributu je zaškrtávací pole, které udává, zda bude daný atribut vidět hned ve výpisu entit. Takže teď kvůli nejdůležitějším hodnotám nemusíte každou entitu otevírat. |
 
 
 # PlantUML
@@ -278,7 +279,6 @@ PlantUML je dnes asi nejpoužívanější framework pro tzv. text diagramming, t
 * Filtrování hotových a nehotových prvků
 * Sdílené objekty napříč celým projektem
 * Export a import diagramů a složek, přenos diagramů mezi projekty
-
 
 ### Historie změn a oprav
 
@@ -321,12 +321,12 @@ PlantUML je dnes asi nejpoužívanější framework pro tzv. text diagramming, t
 | PlantUML | 2026-06-28 | Vylepšení | U gantt diagramů se teď může nechat pole začátku projektu prázdné a tedy nebudou vykreslena absolutní data |
 | PlantUML | 2026-06-28 | Oprava | Opraven problém, kdy se někdy nesprávně nevyfiltrovaly jen hotové či nehotové prvky v seznamu prvků diagramu v levé části |
 | PIM | 2026-06-28 | Oprava | Někdy se při složitých dotazech do databáze přes database placeholder nepromítla tabulka správně do zkopírovaného obsahu entity, opraveno. |
+| DKM | 2026-06-29 | Vylepšení | Nyní v editaci typu entity či v editaci aspektu u každého atributu je zaškrtávací pole, které udává, zda bude daný atribut vidět hned ve výpisu entit. Takže teď kvůli nejdůležitějším hodnotám nemusíte každou entitu otevírat. |
 
 
 # PIM
 
 ## PIM manažer informací
-
 
 Univerzální information a PIM manager specializovaný na produktivitu.
 
@@ -335,6 +335,75 @@ Univerzální information a PIM manager specializovaný na produktivitu.
 ### Historie změn
 
 
+| Aplikace | Datum | Typ | Popis |
+| --- | --- | --- | --- |
+| DKM | 2026-06-08 | Funkce | Zcela nová komplexní funkce a to přenos entit mezi jednotlivými projekty. V Nastavení / Projekt je k dispozici export balíčku (.dkmpackage) a import, který je realizovánm detailním průvodcem, takže se při migraci i mezi různými datovýmio modely nic neztratí. |
+| PIM | 2026-06-08 | Funkce | Nyní se databáze includují do jiných entit přes nový příkaz picluide database místo include, podporuje celou řadu parametrů jako jsou vybrané sloupce filtrování, apod. Ostatně i tento výpis je tvořen filtrovaným exportem databáze změn aplikací |
+| MD2web | 2026-06-08 | Funkce | External markdown content files location. For example for publishing on services like sublimated.com or tinydot.com. You can now put workpath parameter to website.json config file to fetch website.md and sidebar.md from another URL other than local directory. Usefull for multidir sets. |
+| ArchiMate | 2026-04-06 | Funkce | Nová integrace s GitHubem: Modely ve formátu AJX (soubor i datové objekty) lze nyní mít na repozitáři přes GIT a to zejména na GitHubu. Načítání a ukládání přímo do repozitáře |
+| NoteBlok | 2026-04-05 | Vylepšení | V levém postranním panelu pro navigaci přibyly sekce pro všechny virtuální poznámky a sekce pro historie (posledních 20 změněných poznámek). Jednotlivé sekce lze nyní sbalit, aby byl levý panel stále přehledný. |
+| NoteBlok | 2026-04-04 | Vylepšení | Při výběru poznámek třeba do virtuální složky, je nad výběrem nyní editační pole pro rychlé filtrování názvů, čímž se dost usnadní výběr. |
+| NoteBlok | 2026-04-03 | Vylepšení | Změněn vzhled aplikace, takže teď už je aplikace ve světlé motivu a vypadá daleko lépe. Aplikace automaticky přepíná na světlí tmavý motiv podle nastavení operačního systému. |
+| NoteBlok | 2026-04-03 | Vylepšení | Změněn vzhled aplikace, takže teď už je aplikace ve světlé motivu a vypadá daleko lépe. Aplikace automaticky přepíná na světlí tmavý motiv podle nastavení operačního systému. |
+| NoteBlok | 2026-04-03 | Funkce | Nový typ poznámky Virtuální složka: Do virtuální složky můžete výběrem přidat libovolné poznámky a vidíte je jako klasickou složku. Jde tak o další možnost seskupování poznámek, které spolu souvisí nehledě na to, kde jsou v hierarchii složek. U poznámky se také kromě klasických složek objevuje i to, v jakých virtuálních složkách se nachází. |
+| Bookmark | 2026-04-06 | Funkce | Nový nástroj Bookmark je komplexním správcem sady záložek (bookmarků). Data o záložkách v katalogu lze ukládat a načítat buď z lokálního JSON souboru, ale především z GitHubu a GIT repozitáře a to včetně privátních cest. První funkční betaverze publikována v nástrojích a to na adrese https://egdilna.github.io/nastroje/bookmark |
+| Bookmark | 2026-04-07 | Funkce | Několik užitečných drobností: U odkazu je nyní tlačítko pro kopii URL a nebo markdown odkazu do schránky a u dsložky je možnost připravit její export do hezkého přehledného markdown. A taky nová možnost přesunout záložku i do složky v jiné skupině. |
+| ArchiMate | 2026-04-09 | Vylepšení | V tabulkovém editoru diagramu se nyní nemusejí přidávat jen prvky, ale lze přidávat i vazby (a prvky se samozŕejmě přidají také), což může urychlit tvorbu diagramu. Dále U prvků se v různých zobrazeních nyní zobrazují dvě malá tlačítka "Z" a "DO", kterými si lze zobrazit rychlý popup se seznamem prvků s vazou na tento prvek, což zvýší přehled o vazbách bez nutnosti si filtrovat v celém samostatném zobrazení vazeb. Karta pro export a import a slučování už byla dost nepřehledná, takže teď je rozdělena na jednotlivé taby s jednotlivými funkcemi pro lepší přehlednost. |
+| Bookmark | 2026-04-10 | Oprava | Špatně se vykresloval někdy dialog pro export a import záložek, teď už by se měl vykreslit pořádně. |
+| NoteBlok | 2026-04-10 | Funkce | Nový typ poznámky Diagram: Umožňuje tvorbu a vykreslování a includování diagramů v PlantUML formátu, včetné jejich náhledu a exportů. Nový typ poznámky Deník: Možnost journal záznamů s datumem a časem s automatickým řazením a možností správy jednotlivých záznamů, také lze samozřejmě includovat do jiných záznamů. |
+| ArchiMate | 2026-04-13 | Vylepšení | Teď se nově v titulku okna prohlížeče objevuje i právě otevřený model, protože řada z vás má otevřených více modelů najednou a je v tom chaos. A taky to znamená, že jde mít otevřených více modelů ve stejné instanci browseru. |
+| ArchiMate | 2026-04-12 | Funkce | Dokumentace k diagramu: Nyní u diagramu můžete vygenerovat DOCX dokument s jeho dokumentací, včetně popisu diagramu a přehledu a popisů vazeb i prvků na něm, samozřejmě i s tím diagramem. Prý je to velice užitečné, tak proč to nepřidat. Zatím ale jde jen pro jeden diagram. |
+| Bookmark | 2026-04-13 | Funkce | Při zapnuté správě je nyní možnost pro určitou složku nebo tag vygenerovat přímý URL odkaz pro jeho zobrazení, což může být užitečné při sdílení knihovny, že se rovnou otevře daná složka či tag. |
+| OpenData | 2026-04-18 | Vylepšení | Nyní načítá datové sady ve formátech JSON, JSONLD, JSONTABLE a CSV, TSV. |
+| OpenData | 2026-04-19 | Funkce | Po načtení lze vytvořit statický URL odkaz, kterým se rovnou načtou data připravené datové sady. Tímhle se z toho stává opravdu univerzální prohlížeč, kterým lze rovnou přes odkaz zobrazit jakoukoliv datovou sadu otevřených dat. |
+| ArchiMate | 2026-04-20 | Oprava | Oprava, kdy někdy nefungoval CSV import po exportu do DOCX. |
+| DMS storage | 2026-04-30 | Vylepšení | Motivy: Aplikace teď pro jednotlivá storage nabízí více jak 20 různých designových motivů. Nastavuje se ve vlastnostech úložiště. |
+| Audio editor | 2026-05-02 | Vylepšení | Lepší handling M4A. A trochu srozumitelnější a ergonomičtější klávesové zkratky. A hlavně přidáno okno se zkratkami. |
+| DMS storage | 2026-05-03 | Funkce | Tagy pro lepší organizaci a komentáře u souborů. |
+| PIM | 2026-06-02 | Funkce | Poměrně výrazná nová verze se spoustou funkcí. Time tracking pro jakoukoliv entitu, sledování času napříč projektem, detaily projektu vylepšeny, zcela přepracováno rozhraní pro události... |
+| PIM | 2026-04-09 | Vylepšení | Zpřehlednění detailu u diagramu a databáze a zpřehlednění time tracker pohledů. |
+| PlantUML | 2026-04-09 | Vylepšení | Možnost u packages srovnat prvky i vertikálně a více možností layoutu vykreslování, aby výstupem nebyly nevzhledné široké nudle. |
+| PlantUML | 2026-04-09 | Funkce | Nové typy diagramů a to mindmap a WBS |
+| Kurzor | 2026-06-09 | Funkce | Řada novinek: Možnost v editoru přepnout do režimu prohlížeče, což se hodí pro kontrolu kurzu a také pro promítání rovnou z editoru bez nutnosti exportu do offline prohlížeče. Upraven workflow editace objektů, kdy výchozí je režim náhledu a režim editace je na tlačítku. Doplněno číslování uvnitř sekce. Nová část aplikace s osobními autorskými poznámkami, co se musí dodelat a opravit a tak, možnost označovat jako hotové, poznámky se nikam neexportují a jsou jen pro autory. A několik drobných oprav. |
+| PIM | 2026-06-12 | Oprava | Důležitá oprava generování offline prohlížeče, teď už vše v offline režimu v samostatném prohlížeči funguje jak má. |
+| PIM | 2026-06-13 | Vylepšení | V procházení struktury okolí entity se nyní u každé entity s komentářem ukazuje tlačítko, díky kterému si můžete komentáře zobrazit. |
+| Kurzor | 2026-06-25 | Funkce | Nově KURZor editor umí kromě exportu kurzu a tvorby offline html prohlížeče také vygenerovat obsah kurzu i s odkazey do DOCX dokumentu. Vhodné pro šíŕení kurzu jako dokument pro studenty. Obsahuje vše co má obsahovat exportovaný kurz. |
+| Kurzor | 2026-06-23 | Funkce | Chtěli jste to, tak tady to máte. Nová možnost do kurzu rovnou přidávat obrázky. V horní liště je nově správa obrázků, odkaz na obrázek v markdown obsahu objektu kurzu je standardní a řídí se podle názvu souboru. Obrázky se exportují, ukazují se v assets v LMS exportech, jsou součástí offline prohlížeče, jsou zkratka všude. Ve správě obrázků je pak možnost přepsat obrázek novou verzí i pokud se soubor importovaný jako nová verze jmenuje jinak a to bez ztráty odkazů (nový název se prostě ignoruje). Díky za skvělý námět. |
+| PIM | 2026-06-25 | Oprava | Opravena chyba, kdy se někdy po pokročilém filtrování a uložení pohledu s více pokročilými filtry do pohledu neuložily filtry, ale jen aspekty. Pardon. |
+| PlantUML | 2026-06-28 | Vylepšení | U gantt diagramů se teď může nechat pole začátku projektu prázdné a tedy nebudou vykreslena absolutní data |
+| PlantUML | 2026-06-28 | Oprava | Opraven problém, kdy se někdy nesprávně nevyfiltrovaly jen hotové či nehotové prvky v seznamu prvků diagramu v levé části |
+| PIM | 2026-06-28 | Oprava | Někdy se při složitých dotazech do databáze přes database placeholder nepromítla tabulka správně do zkopírovaného obsahu entity, opraveno. |
+| DKM | 2026-06-29 | Vylepšení | Nyní v editaci typu entity či v editaci aspektu u každého atributu je zaškrtávací pole, které udává, zda bude daný atribut vidět hned ve výpisu entit. Takže teď kvůli nejdůležitějším hodnotám nemusíte každou entitu otevírat. |
+
+
+# DKM
+
+## Datový správce a konceptuální modeller
+
+- [ ] dodělat [[O nástroji DKM]]
+
+
+
+*[⚠ Entita „O nástroji DKM" nenalezena]*
+
+### Hlavní funkce
+
+**Dynamický správce znalostí — flexibilní znalostní báze.**
+
+Webová aplikace pro správu znalostí s entitním modelem a aspekty. Podporuje import z CSV s automatickým rozpoznáním sloupců (název, typ, aspekty, archiv, inbox, atributy), hromadné operace nad výběrem entit a vícejazyčné rozhraní.
+* Možno využít jak pro modelování dynamických datových modelů, tak i pro samotné datové aplikace nad DDM
+* Dynamické modely založené nad entitami, prvky, typy, aspekty, atributy a volnými uživatelsky definovatelnými vazbami
+* Všechny operace správy dat a obsahu, včetně možnosti hromadných operací nad daty
+* Pokročilý export do různých formátů včetně přenosu s chytrými funkcemi mezi jednotlivými projekty
+* Rozšiřitelnost pomocí datových vrstev a obsahových pluginů
+* Podporuje ukládání do GIT jako soubor či jako data objects.
+
+
+### Dokumentace
+
+K dispozici je kompletní [[uživatelská příručka v češtině]](https://nastroje.egdilna.cz/dkm/docs-cs.md) a také [user guide in english](https://nastroje.egdilna.cz/dkm/docs-en.md)
+
+### ✏️Historie změn a oprav
 
 
 
@@ -376,10 +445,7 @@ Univerzální information a PIM manager specializovaný na produktivitu.
 | PlantUML | 2026-06-28 | Vylepšení | U gantt diagramů se teď může nechat pole začátku projektu prázdné a tedy nebudou vykreslena absolutní data |
 | PlantUML | 2026-06-28 | Oprava | Opraven problém, kdy se někdy nesprávně nevyfiltrovaly jen hotové či nehotové prvky v seznamu prvků diagramu v levé části |
 | PIM | 2026-06-28 | Oprava | Někdy se při složitých dotazech do databáze přes database placeholder nepromítla tabulka správně do zkopírovaného obsahu entity, opraveno. |
-
-
-# DKM
-
+| DKM | 2026-06-29 | Vylepšení | Nyní v editaci typu entity či v editaci aspektu u každého atributu je zaškrtávací pole, které udává, zda bude daný atribut vidět hned ve výpisu entit. Takže teď kvůli nejdůležitějším hodnotám nemusíte každou entitu otevírat. |
 
 
 # JSONDB
@@ -401,13 +467,55 @@ Univerzální information a PIM manager specializovaný na produktivitu.
 
 Celý projekt je na GitHubu na https://github.io/michalradacz/database-editor
 
-# DKedit
+# ✏️NoteBlok
 
-## Správce datových katalogů
+# Editory
+
+multisection
+
+## ✏️MarkDown
+
+## ✏️OPML
+
+## ✏️JSON
+
+## ✏️SpisPlanEdit
+
+### Editor spisového plánu
+
+{{O nástroji Editor spisového plánu}}
+
+#### Hlavní funkce
+
+Co to umí?
+
+* Správa projektu (projekt je nad původcem, kde se pak budou spravovat všechny verze SP)
+* Správa verzí SP s jejich stavem, sledováním změn, sledováním projednání apod.
+* Správa věcných skupin, jejich podrobností dle NSESSS/XSD a metadat o plánu a o věcné skupině, hierarchie věcných skupin
+* Skládaný složený znak s automatickým generováním z rodičů a hlídáním duplicit
+* Kromě stávajících metadat už tam rovnou mám i bezpečnostní kategorii (podle NZKB, bude v budoucích metadatech věcné skupiny)
+* Rozlišení (text i barva) věcné skupiny v hierarchii a věcné skupiny nejnižší úrovně
+* Výpis podřízených skartačních režimů, lhůt apod.
+* Věcné skupiny pro typové spisy a součásti ve správné hierarchii
+* Kromě komentáře do oficiálního SP také autorské interní poznámky jk jakékoliv věcné skupině, které se mohou i nemusí objevit v sestavě pro projednávání, ale nejsou pak součástí XML
+* Export XML a import XML SP
+* Přehledná a barevná sestava pro tisk se zobrazením navrhovaných změn v nové verzi SP - třeba jako podklad pro projednání novelizace SP
+* Generování JSON podle budoucí otevřené formální normy pro SP jako otevřená data (2027)
+
+#### ✏️Odkazy a dokumentace
+
+ℹ️ Dokumentace          se vytváří...
+
+- [ ] vážně pohnout s dokumentací k editoru spisového plánu
+- [ ] pak až bude hotová dokumentace tak sem odkaz
+
+## DKedit
+
+### Správce datových katalogů
 
 {{O nástroji Správce datového katalogu}}
 
-### Hlavní funkce
+#### Hlavní funkce
 
 Komplexní webový nástroj pro správu a úpravy a schvalování datových katalogů úřadu, datových slovníků, datových schémat a číselníků
 
@@ -426,58 +534,72 @@ Komplexní webový nástroj pro správu a úpravy a schvalování datových kata
 * Univerzální autorské poznámky sloužící jen interně pro projekt
 * Ukládá projekt do jediného JSON souboru, ukládání a správa v browser storage v prohlížeči
 
-### Dokumentace a návody
+#### Dokumentace a návody
 
 K dispozici je [Kompletní uživatelská příručka Správce datových katalogů](https://nastroje.egdilna.cz/dkedit/dokumentace)
 
 V případě zájmu natočíme stručné videonávody.
 
-### Novinky a Historie změn
+#### ✏️Historie změn a oprav
 
-* 31. března 2026: Když se mi nechce dělat dokumentace, je tu pořád umělá inteligence. A tak jsem s pomocí Claude nechal udělat aspoň první verzi [dokumentace](https://nastroje.egdilna.cz/dkedit/dokumentace), tak snad to aspoň pomůže.
-* 30. března 2026 Publikována první betaverze, kterou lze ale už reálně používat. Bohužel zatím chybí dokumentace.
 
-# ✏️NoteBlok
 
-# ✏️SpisPlanEdit
+| Aplikace | Datum | Typ | Popis |
+| --- | --- | --- | --- |
+| DKM | 2026-06-08 | Funkce | Zcela nová komplexní funkce a to přenos entit mezi jednotlivými projekty. V Nastavení / Projekt je k dispozici export balíčku (.dkmpackage) a import, který je realizovánm detailním průvodcem, takže se při migraci i mezi různými datovýmio modely nic neztratí. |
+| PIM | 2026-06-08 | Funkce | Nyní se databáze includují do jiných entit přes nový příkaz picluide database místo include, podporuje celou řadu parametrů jako jsou vybrané sloupce filtrování, apod. Ostatně i tento výpis je tvořen filtrovaným exportem databáze změn aplikací |
+| MD2web | 2026-06-08 | Funkce | External markdown content files location. For example for publishing on services like sublimated.com or tinydot.com. You can now put workpath parameter to website.json config file to fetch website.md and sidebar.md from another URL other than local directory. Usefull for multidir sets. |
+| ArchiMate | 2026-04-06 | Funkce | Nová integrace s GitHubem: Modely ve formátu AJX (soubor i datové objekty) lze nyní mít na repozitáři přes GIT a to zejména na GitHubu. Načítání a ukládání přímo do repozitáře |
+| NoteBlok | 2026-04-05 | Vylepšení | V levém postranním panelu pro navigaci přibyly sekce pro všechny virtuální poznámky a sekce pro historie (posledních 20 změněných poznámek). Jednotlivé sekce lze nyní sbalit, aby byl levý panel stále přehledný. |
+| NoteBlok | 2026-04-04 | Vylepšení | Při výběru poznámek třeba do virtuální složky, je nad výběrem nyní editační pole pro rychlé filtrování názvů, čímž se dost usnadní výběr. |
+| NoteBlok | 2026-04-03 | Vylepšení | Změněn vzhled aplikace, takže teď už je aplikace ve světlé motivu a vypadá daleko lépe. Aplikace automaticky přepíná na světlí tmavý motiv podle nastavení operačního systému. |
+| NoteBlok | 2026-04-03 | Vylepšení | Změněn vzhled aplikace, takže teď už je aplikace ve světlé motivu a vypadá daleko lépe. Aplikace automaticky přepíná na světlí tmavý motiv podle nastavení operačního systému. |
+| NoteBlok | 2026-04-03 | Funkce | Nový typ poznámky Virtuální složka: Do virtuální složky můžete výběrem přidat libovolné poznámky a vidíte je jako klasickou složku. Jde tak o další možnost seskupování poznámek, které spolu souvisí nehledě na to, kde jsou v hierarchii složek. U poznámky se také kromě klasických složek objevuje i to, v jakých virtuálních složkách se nachází. |
+| Bookmark | 2026-04-06 | Funkce | Nový nástroj Bookmark je komplexním správcem sady záložek (bookmarků). Data o záložkách v katalogu lze ukládat a načítat buď z lokálního JSON souboru, ale především z GitHubu a GIT repozitáře a to včetně privátních cest. První funkční betaverze publikována v nástrojích a to na adrese https://egdilna.github.io/nastroje/bookmark |
+| Bookmark | 2026-04-07 | Funkce | Několik užitečných drobností: U odkazu je nyní tlačítko pro kopii URL a nebo markdown odkazu do schránky a u dsložky je možnost připravit její export do hezkého přehledného markdown. A taky nová možnost přesunout záložku i do složky v jiné skupině. |
+| ArchiMate | 2026-04-09 | Vylepšení | V tabulkovém editoru diagramu se nyní nemusejí přidávat jen prvky, ale lze přidávat i vazby (a prvky se samozŕejmě přidají také), což může urychlit tvorbu diagramu. Dále U prvků se v různých zobrazeních nyní zobrazují dvě malá tlačítka "Z" a "DO", kterými si lze zobrazit rychlý popup se seznamem prvků s vazou na tento prvek, což zvýší přehled o vazbách bez nutnosti si filtrovat v celém samostatném zobrazení vazeb. Karta pro export a import a slučování už byla dost nepřehledná, takže teď je rozdělena na jednotlivé taby s jednotlivými funkcemi pro lepší přehlednost. |
+| Bookmark | 2026-04-10 | Oprava | Špatně se vykresloval někdy dialog pro export a import záložek, teď už by se měl vykreslit pořádně. |
+| NoteBlok | 2026-04-10 | Funkce | Nový typ poznámky Diagram: Umožňuje tvorbu a vykreslování a includování diagramů v PlantUML formátu, včetné jejich náhledu a exportů. Nový typ poznámky Deník: Možnost journal záznamů s datumem a časem s automatickým řazením a možností správy jednotlivých záznamů, také lze samozřejmě includovat do jiných záznamů. |
+| ArchiMate | 2026-04-13 | Vylepšení | Teď se nově v titulku okna prohlížeče objevuje i právě otevřený model, protože řada z vás má otevřených více modelů najednou a je v tom chaos. A taky to znamená, že jde mít otevřených více modelů ve stejné instanci browseru. |
+| ArchiMate | 2026-04-12 | Funkce | Dokumentace k diagramu: Nyní u diagramu můžete vygenerovat DOCX dokument s jeho dokumentací, včetně popisu diagramu a přehledu a popisů vazeb i prvků na něm, samozřejmě i s tím diagramem. Prý je to velice užitečné, tak proč to nepřidat. Zatím ale jde jen pro jeden diagram. |
+| Bookmark | 2026-04-13 | Funkce | Při zapnuté správě je nyní možnost pro určitou složku nebo tag vygenerovat přímý URL odkaz pro jeho zobrazení, což může být užitečné při sdílení knihovny, že se rovnou otevře daná složka či tag. |
+| OpenData | 2026-04-18 | Vylepšení | Nyní načítá datové sady ve formátech JSON, JSONLD, JSONTABLE a CSV, TSV. |
+| OpenData | 2026-04-19 | Funkce | Po načtení lze vytvořit statický URL odkaz, kterým se rovnou načtou data připravené datové sady. Tímhle se z toho stává opravdu univerzální prohlížeč, kterým lze rovnou přes odkaz zobrazit jakoukoliv datovou sadu otevřených dat. |
+| ArchiMate | 2026-04-20 | Oprava | Oprava, kdy někdy nefungoval CSV import po exportu do DOCX. |
+| DMS storage | 2026-04-30 | Vylepšení | Motivy: Aplikace teď pro jednotlivá storage nabízí více jak 20 různých designových motivů. Nastavuje se ve vlastnostech úložiště. |
+| Audio editor | 2026-05-02 | Vylepšení | Lepší handling M4A. A trochu srozumitelnější a ergonomičtější klávesové zkratky. A hlavně přidáno okno se zkratkami. |
+| DMS storage | 2026-05-03 | Funkce | Tagy pro lepší organizaci a komentáře u souborů. |
+| PIM | 2026-06-02 | Funkce | Poměrně výrazná nová verze se spoustou funkcí. Time tracking pro jakoukoliv entitu, sledování času napříč projektem, detaily projektu vylepšeny, zcela přepracováno rozhraní pro události... |
+| PIM | 2026-04-09 | Vylepšení | Zpřehlednění detailu u diagramu a databáze a zpřehlednění time tracker pohledů. |
+| PlantUML | 2026-04-09 | Vylepšení | Možnost u packages srovnat prvky i vertikálně a více možností layoutu vykreslování, aby výstupem nebyly nevzhledné široké nudle. |
+| PlantUML | 2026-04-09 | Funkce | Nové typy diagramů a to mindmap a WBS |
+| Kurzor | 2026-06-09 | Funkce | Řada novinek: Možnost v editoru přepnout do režimu prohlížeče, což se hodí pro kontrolu kurzu a také pro promítání rovnou z editoru bez nutnosti exportu do offline prohlížeče. Upraven workflow editace objektů, kdy výchozí je režim náhledu a režim editace je na tlačítku. Doplněno číslování uvnitř sekce. Nová část aplikace s osobními autorskými poznámkami, co se musí dodelat a opravit a tak, možnost označovat jako hotové, poznámky se nikam neexportují a jsou jen pro autory. A několik drobných oprav. |
+| PIM | 2026-06-12 | Oprava | Důležitá oprava generování offline prohlížeče, teď už vše v offline režimu v samostatném prohlížeči funguje jak má. |
+| PIM | 2026-06-13 | Vylepšení | V procházení struktury okolí entity se nyní u každé entity s komentářem ukazuje tlačítko, díky kterému si můžete komentáře zobrazit. |
+| Kurzor | 2026-06-25 | Funkce | Nově KURZor editor umí kromě exportu kurzu a tvorby offline html prohlížeče také vygenerovat obsah kurzu i s odkazey do DOCX dokumentu. Vhodné pro šíŕení kurzu jako dokument pro studenty. Obsahuje vše co má obsahovat exportovaný kurz. |
+| Kurzor | 2026-06-23 | Funkce | Chtěli jste to, tak tady to máte. Nová možnost do kurzu rovnou přidávat obrázky. V horní liště je nově správa obrázků, odkaz na obrázek v markdown obsahu objektu kurzu je standardní a řídí se podle názvu souboru. Obrázky se exportují, ukazují se v assets v LMS exportech, jsou součástí offline prohlížeče, jsou zkratka všude. Ve správě obrázků je pak možnost přepsat obrázek novou verzí i pokud se soubor importovaný jako nová verze jmenuje jinak a to bez ztráty odkazů (nový název se prostě ignoruje). Díky za skvělý námět. |
+| PIM | 2026-06-25 | Oprava | Opravena chyba, kdy se někdy po pokročilém filtrování a uložení pohledu s více pokročilými filtry do pohledu neuložily filtry, ale jen aspekty. Pardon. |
+| PlantUML | 2026-06-28 | Vylepšení | U gantt diagramů se teď může nechat pole začátku projektu prázdné a tedy nebudou vykreslena absolutní data |
+| PlantUML | 2026-06-28 | Oprava | Opraven problém, kdy se někdy nesprávně nevyfiltrovaly jen hotové či nehotové prvky v seznamu prvků diagramu v levé části |
+| PIM | 2026-06-28 | Oprava | Někdy se při složitých dotazech do databáze přes database placeholder nepromítla tabulka správně do zkopírovaného obsahu entity, opraveno. |
+| DKM | 2026-06-29 | Vylepšení | Nyní v editaci typu entity či v editaci aspektu u každého atributu je zaškrtávací pole, které udává, zda bude daný atribut vidět hned ve výpisu entit. Takže teď kvůli nejdůležitějším hodnotám nemusíte každou entitu otevírat. |
 
-## Editor spisového plánu
 
-{{O nástroji Editor spisového plánu}}
+## AED
 
-### Hlavní funkce
+### Audio editor
 
-Co to umí?
+#### Hlavní funkce
 
-* Správa projektu (projekt je nad původcem, kde se pak budou spravovat všechny verze SP)
-* Správa verzí SP s jejich stavem, sledováním změn, sledováním projednání apod.
-* Správa věcných skupin, jejich podrobností dle NSESSS/XSD a metadat o plánu a o věcné skupině, hierarchie věcných skupin
-* Skládaný složený znak s automatickým generováním z rodičů a hlídáním duplicit
-* Kromě stávajících metadat už tam rovnou mám i bezpečnostní kategorii (podle NZKB, bude v budoucích metadatech věcné skupiny)
-* Rozlišení (text i barva) věcné skupiny v hierarchii a věcné skupiny nejnižší úrovně
-* Výpis podřízených skartačních režimů, lhůt apod.
-* Věcné skupiny pro typové spisy a součásti ve správné hierarchii
-* Kromě komentáře do oficiálního SP také autorské interní poznámky jk jakékoliv věcné skupině, které se mohou i nemusí objevit v sestavě pro projednávání, ale nejsou pak součástí XML
-* Export XML a import XML SP
-* Přehledná a barevná sestava pro tisk se zobrazením navrhovaných změn v nové verzi SP - třeba jako podklad pro projednání novelizace SP
-* Generování JSON podle budoucí otevřené formální normy pro SP jako otevřená data (2027)
+**Jednostopý webový audio editor.**
 
-### ✏️Odkazy a dokumentace
+Webová aplikace pro střih a zpracování zvukových stop. Umožňuje práci s jednou audio stopou — nahrávání, stříhání, exportování. Plně lokalizovaná do češtiny a angličtiny, s důrazem na přístupnost (klávesové zkratky, čtečky obrazovky).
 
-ℹ️ Dokumentace          se vytváří...
+- Nový projekt, otevírání a ukládání projektů
+- Export hotového výsledku
+- Vícejazyčné rozhraní (CS/EN)
 
-- [ ] vážně pohnout s dokumentací k editoru spisového plánu
-- [ ] pak až bude hotová dokumentace tak sem odkaz
-
-# Editory
-
-multisection
-
-## ✏️MarkDown
-
-## ✏️OPML
-
-## ✏️JSON
+#### ✏️Historie změn a oprav
 
 # Ostatní
 
@@ -500,6 +622,51 @@ Správce záložek, bookmarků a odkazů
 * Tagy
 * Uživatelské poznámky k záložce (více poznámek k jedné záložce)
 * Export přehledu celé složky do Markdown
+
+#### ✏️Historie změn a oprav
+
+
+
+| Aplikace | Datum | Typ | Popis |
+| --- | --- | --- | --- |
+| DKM | 2026-06-08 | Funkce | Zcela nová komplexní funkce a to přenos entit mezi jednotlivými projekty. V Nastavení / Projekt je k dispozici export balíčku (.dkmpackage) a import, který je realizovánm detailním průvodcem, takže se při migraci i mezi různými datovýmio modely nic neztratí. |
+| PIM | 2026-06-08 | Funkce | Nyní se databáze includují do jiných entit přes nový příkaz picluide database místo include, podporuje celou řadu parametrů jako jsou vybrané sloupce filtrování, apod. Ostatně i tento výpis je tvořen filtrovaným exportem databáze změn aplikací |
+| MD2web | 2026-06-08 | Funkce | External markdown content files location. For example for publishing on services like sublimated.com or tinydot.com. You can now put workpath parameter to website.json config file to fetch website.md and sidebar.md from another URL other than local directory. Usefull for multidir sets. |
+| ArchiMate | 2026-04-06 | Funkce | Nová integrace s GitHubem: Modely ve formátu AJX (soubor i datové objekty) lze nyní mít na repozitáři přes GIT a to zejména na GitHubu. Načítání a ukládání přímo do repozitáře |
+| NoteBlok | 2026-04-05 | Vylepšení | V levém postranním panelu pro navigaci přibyly sekce pro všechny virtuální poznámky a sekce pro historie (posledních 20 změněných poznámek). Jednotlivé sekce lze nyní sbalit, aby byl levý panel stále přehledný. |
+| NoteBlok | 2026-04-04 | Vylepšení | Při výběru poznámek třeba do virtuální složky, je nad výběrem nyní editační pole pro rychlé filtrování názvů, čímž se dost usnadní výběr. |
+| NoteBlok | 2026-04-03 | Vylepšení | Změněn vzhled aplikace, takže teď už je aplikace ve světlé motivu a vypadá daleko lépe. Aplikace automaticky přepíná na světlí tmavý motiv podle nastavení operačního systému. |
+| NoteBlok | 2026-04-03 | Vylepšení | Změněn vzhled aplikace, takže teď už je aplikace ve světlé motivu a vypadá daleko lépe. Aplikace automaticky přepíná na světlí tmavý motiv podle nastavení operačního systému. |
+| NoteBlok | 2026-04-03 | Funkce | Nový typ poznámky Virtuální složka: Do virtuální složky můžete výběrem přidat libovolné poznámky a vidíte je jako klasickou složku. Jde tak o další možnost seskupování poznámek, které spolu souvisí nehledě na to, kde jsou v hierarchii složek. U poznámky se také kromě klasických složek objevuje i to, v jakých virtuálních složkách se nachází. |
+| Bookmark | 2026-04-06 | Funkce | Nový nástroj Bookmark je komplexním správcem sady záložek (bookmarků). Data o záložkách v katalogu lze ukládat a načítat buď z lokálního JSON souboru, ale především z GitHubu a GIT repozitáře a to včetně privátních cest. První funkční betaverze publikována v nástrojích a to na adrese https://egdilna.github.io/nastroje/bookmark |
+| Bookmark | 2026-04-07 | Funkce | Několik užitečných drobností: U odkazu je nyní tlačítko pro kopii URL a nebo markdown odkazu do schránky a u dsložky je možnost připravit její export do hezkého přehledného markdown. A taky nová možnost přesunout záložku i do složky v jiné skupině. |
+| ArchiMate | 2026-04-09 | Vylepšení | V tabulkovém editoru diagramu se nyní nemusejí přidávat jen prvky, ale lze přidávat i vazby (a prvky se samozŕejmě přidají také), což může urychlit tvorbu diagramu. Dále U prvků se v různých zobrazeních nyní zobrazují dvě malá tlačítka "Z" a "DO", kterými si lze zobrazit rychlý popup se seznamem prvků s vazou na tento prvek, což zvýší přehled o vazbách bez nutnosti si filtrovat v celém samostatném zobrazení vazeb. Karta pro export a import a slučování už byla dost nepřehledná, takže teď je rozdělena na jednotlivé taby s jednotlivými funkcemi pro lepší přehlednost. |
+| Bookmark | 2026-04-10 | Oprava | Špatně se vykresloval někdy dialog pro export a import záložek, teď už by se měl vykreslit pořádně. |
+| NoteBlok | 2026-04-10 | Funkce | Nový typ poznámky Diagram: Umožňuje tvorbu a vykreslování a includování diagramů v PlantUML formátu, včetné jejich náhledu a exportů. Nový typ poznámky Deník: Možnost journal záznamů s datumem a časem s automatickým řazením a možností správy jednotlivých záznamů, také lze samozřejmě includovat do jiných záznamů. |
+| ArchiMate | 2026-04-13 | Vylepšení | Teď se nově v titulku okna prohlížeče objevuje i právě otevřený model, protože řada z vás má otevřených více modelů najednou a je v tom chaos. A taky to znamená, že jde mít otevřených více modelů ve stejné instanci browseru. |
+| ArchiMate | 2026-04-12 | Funkce | Dokumentace k diagramu: Nyní u diagramu můžete vygenerovat DOCX dokument s jeho dokumentací, včetně popisu diagramu a přehledu a popisů vazeb i prvků na něm, samozřejmě i s tím diagramem. Prý je to velice užitečné, tak proč to nepřidat. Zatím ale jde jen pro jeden diagram. |
+| Bookmark | 2026-04-13 | Funkce | Při zapnuté správě je nyní možnost pro určitou složku nebo tag vygenerovat přímý URL odkaz pro jeho zobrazení, což může být užitečné při sdílení knihovny, že se rovnou otevře daná složka či tag. |
+| OpenData | 2026-04-18 | Vylepšení | Nyní načítá datové sady ve formátech JSON, JSONLD, JSONTABLE a CSV, TSV. |
+| OpenData | 2026-04-19 | Funkce | Po načtení lze vytvořit statický URL odkaz, kterým se rovnou načtou data připravené datové sady. Tímhle se z toho stává opravdu univerzální prohlížeč, kterým lze rovnou přes odkaz zobrazit jakoukoliv datovou sadu otevřených dat. |
+| ArchiMate | 2026-04-20 | Oprava | Oprava, kdy někdy nefungoval CSV import po exportu do DOCX. |
+| DMS storage | 2026-04-30 | Vylepšení | Motivy: Aplikace teď pro jednotlivá storage nabízí více jak 20 různých designových motivů. Nastavuje se ve vlastnostech úložiště. |
+| Audio editor | 2026-05-02 | Vylepšení | Lepší handling M4A. A trochu srozumitelnější a ergonomičtější klávesové zkratky. A hlavně přidáno okno se zkratkami. |
+| DMS storage | 2026-05-03 | Funkce | Tagy pro lepší organizaci a komentáře u souborů. |
+| PIM | 2026-06-02 | Funkce | Poměrně výrazná nová verze se spoustou funkcí. Time tracking pro jakoukoliv entitu, sledování času napříč projektem, detaily projektu vylepšeny, zcela přepracováno rozhraní pro události... |
+| PIM | 2026-04-09 | Vylepšení | Zpřehlednění detailu u diagramu a databáze a zpřehlednění time tracker pohledů. |
+| PlantUML | 2026-04-09 | Vylepšení | Možnost u packages srovnat prvky i vertikálně a více možností layoutu vykreslování, aby výstupem nebyly nevzhledné široké nudle. |
+| PlantUML | 2026-04-09 | Funkce | Nové typy diagramů a to mindmap a WBS |
+| Kurzor | 2026-06-09 | Funkce | Řada novinek: Možnost v editoru přepnout do režimu prohlížeče, což se hodí pro kontrolu kurzu a také pro promítání rovnou z editoru bez nutnosti exportu do offline prohlížeče. Upraven workflow editace objektů, kdy výchozí je režim náhledu a režim editace je na tlačítku. Doplněno číslování uvnitř sekce. Nová část aplikace s osobními autorskými poznámkami, co se musí dodelat a opravit a tak, možnost označovat jako hotové, poznámky se nikam neexportují a jsou jen pro autory. A několik drobných oprav. |
+| PIM | 2026-06-12 | Oprava | Důležitá oprava generování offline prohlížeče, teď už vše v offline režimu v samostatném prohlížeči funguje jak má. |
+| PIM | 2026-06-13 | Vylepšení | V procházení struktury okolí entity se nyní u každé entity s komentářem ukazuje tlačítko, díky kterému si můžete komentáře zobrazit. |
+| Kurzor | 2026-06-25 | Funkce | Nově KURZor editor umí kromě exportu kurzu a tvorby offline html prohlížeče také vygenerovat obsah kurzu i s odkazey do DOCX dokumentu. Vhodné pro šíŕení kurzu jako dokument pro studenty. Obsahuje vše co má obsahovat exportovaný kurz. |
+| Kurzor | 2026-06-23 | Funkce | Chtěli jste to, tak tady to máte. Nová možnost do kurzu rovnou přidávat obrázky. V horní liště je nově správa obrázků, odkaz na obrázek v markdown obsahu objektu kurzu je standardní a řídí se podle názvu souboru. Obrázky se exportují, ukazují se v assets v LMS exportech, jsou součástí offline prohlížeče, jsou zkratka všude. Ve správě obrázků je pak možnost přepsat obrázek novou verzí i pokud se soubor importovaný jako nová verze jmenuje jinak a to bez ztráty odkazů (nový název se prostě ignoruje). Díky za skvělý námět. |
+| PIM | 2026-06-25 | Oprava | Opravena chyba, kdy se někdy po pokročilém filtrování a uložení pohledu s více pokročilými filtry do pohledu neuložily filtry, ale jen aspekty. Pardon. |
+| PlantUML | 2026-06-28 | Vylepšení | U gantt diagramů se teď může nechat pole začátku projektu prázdné a tedy nebudou vykreslena absolutní data |
+| PlantUML | 2026-06-28 | Oprava | Opraven problém, kdy se někdy nesprávně nevyfiltrovaly jen hotové či nehotové prvky v seznamu prvků diagramu v levé části |
+| PIM | 2026-06-28 | Oprava | Někdy se při složitých dotazech do databáze přes database placeholder nepromítla tabulka správně do zkopírovaného obsahu entity, opraveno. |
+| DKM | 2026-06-29 | Vylepšení | Nyní v editaci typu entity či v editaci aspektu u každého atributu je zaškrtávací pole, které udává, zda bude daný atribut vidět hned ve výpisu entit. Takže teď kvůli nejdůležitějším hodnotám nemusíte každou entitu otevírat. |
+
 
 #### Příklady využívání
 
