@@ -1,5 +1,6 @@
 # Homepage
 
+
 Tohle je mikroweb věnovaný informacím o našich (snad) užitečných nástrojích, které by se nejen egovernmenťákům mohly hodit.
 
 
@@ -30,6 +31,7 @@ Osobně moje favority jsou: [ArchiMate editor](#archimate), [PIM information man
 23.3.2026: Už je tady nástrojů fakt docela dost a tak je asi fakt na čase rozběhnout samotný web https://egdilna.github.io/nastroje tak uvidíme.
 
 # ArchiMate
+
 
 ## Archimate editor
 
@@ -87,6 +89,7 @@ Nicméně na tomto nástroji jsou založeny online modely:
 
 # RPP
 
+
 ## Prohlížeč RPP
 
 ⛓️ [Prohlížeč RPP](https://nastroje.egdilna.cz/rpp) je univerzálním komplexním nástrojem pro prohlížení obsahu Registru práv a povinností bez nutnosti přihlašování do AIS působnostního a s propojenými daty, odkazovatelnými detaily a přehledy včetně exportu dat do CSV a XLSX. Online běží na adrese https://nastroje.egdilna.cz/rpp a je k němu i jednoduchá [příručka](https://nastroje.egdilna.cz/rpp/dokumentace)
@@ -118,8 +121,8 @@ Existuje i [Uživatelská dokumentace](https://nastroje.egdilna.cz/rpp/dokumenta
 | --- | --- | --- |
 | (žádný záznam) |  |  |
 
-
 # Opendata
+
 
 ## Prohlížeč opendat
 
@@ -155,8 +158,8 @@ Existuje i [Uživatelská dokumentace](https://nastroje.egdilna.cz/rpp/dokumenta
 | 19. 4. 2026 | Funkce | Po načtení lze vytvořit statický URL odkaz, kterým se rovnou načtou data připravené datové sady. Tímhle se z toho stává opravdu univerzální prohlížeč, kterým lze rovnou přes odkaz zobrazit jakoukoliv datovou sadu otevřených dat. |
 | 18. 4. 2026 | Vylepšení | Nyní načítá datové sady ve formátech JSON, JSONLD, JSONTABLE a CSV, TSV. |
 
-
 # PlantUML
+
 
 ## PlantUML editor
 
@@ -187,8 +190,8 @@ PlantUML je dnes asi nejpoužívanější framework pro tzv. text diagramming, t
 | 9. 4. 2026 | Vylepšení | Možnost u packages srovnat prvky i vertikálně a více možností layoutu vykreslování, aby výstupem nebyly nevzhledné široké nudle. |
 | 9. 4. 2026 | Funkce | Nové typy diagramů a to mindmap a WBS |
 
-
 # PIM
+
 
 ## PIM manažer informací
 
@@ -209,8 +212,8 @@ Univerzální information a PIM manager specializovaný na produktivitu.
 | 2. 6. 2026 | Funkce | Poměrně výrazná nová verze se spoustou funkcí. Time tracking pro jakoukoliv entitu, sledování času napříč projektem, detaily projektu vylepšeny, zcela přepracováno rozhraní pro události... |
 | 9. 4. 2026 | Vylepšení | Zpřehlednění detailu u diagramu a databáze a zpřehlednění time tracker pohledů. |
 
-
 # DKM
+
 
 ## Datový správce a konceptuální modeller
 
@@ -246,8 +249,8 @@ K dispozici je kompletní [[uživatelská příručka v češtině]](https://nas
 | 29. 6. 2026 | Vylepšení | Nyní v editaci typu entity či v editaci aspektu u každého atributu je zaškrtávací pole, které udává, zda bude daný atribut vidět hned ve výpisu entit. Takže teď kvůli nejdůležitějším hodnotám nemusíte každou entitu otevírat. |
 | 8. 6. 2026 | Funkce | Zcela nová komplexní funkce a to přenos entit mezi jednotlivými projekty. V Nastavení / Projekt je k dispozici export balíčku (.dkmpackage) a import, který je realizovánm detailním průvodcem, takže se při migraci i mezi různými datovýmio modely nic neztratí. |
 
-
 # JSONDB
+
 
 ## Univerzální databázový nástroj a editor JSONDB databází
 
@@ -268,17 +271,26 @@ Celý projekt je na GitHubu na https://github.io/michalradacz/database-editor
 
 # ✏️NoteBlok
 
+
+
 # Editory
 
 multisection
 
 ## ✏️MarkDown
 
+
+
 ## ✏️OPML
+
+
 
 ## ✏️JSON
 
+
+
 ## ✏️SpisPlanEdit
+
 
 ### Editor spisového plánu
 
@@ -309,6 +321,7 @@ Co to umí?
 - [ ] pak až bude hotová dokumentace tak sem odkaz
 
 ## DKedit
+
 
 ### Správce datových katalogů
 
@@ -347,8 +360,8 @@ V případě zájmu natočíme stručné videonávody.
 | --- | --- | --- |
 | (žádný záznam) |  |  |
 
-
 ## AED
+
 
 ### Audio editor
 
@@ -369,6 +382,7 @@ Webová aplikace pro střih a zpracování zvukových stop. Umožňuje práci s 
 multisection
 
 ## Bookmark
+
 
 ### Správce záložek
 
@@ -401,11 +415,14 @@ Katalog veřejných odkazů EGdílny na drese https://shm.to/egodkazy
 
 ## ✏️NSESSS korpus
 
+
+
 # Více
 
 multisection
 
 ## ✏️Co tohle je
+
 
 Tohle jsou malé (původně) a snad užitečné nástroje, které mohou pomoci - někdy doslova každému a někdy jen určité skupině uživatelů. Většinou se jedná o dost univerzální kousky k obecnému použití. Třeba [Markdown editor] může použít opravdu každý, kdo rád (nebo právě nerad) pracuje s MD a nebo třeba [NoteBlok] jako naprosto všestranný nástroj na poznámky a dokumentaci. Ale třeba [Editor spisového plánu] použijí jen odborníci na spisovou službu a nebo [Prohlížeč RPP] jen ti, co potřebují pracovat s Registrem práv a povinností.
 
@@ -416,6 +433,7 @@ A protože se to prostě může hodit, tak to tady máte.
 Většinou se jedná o nástroje, které já sám - tedy [Michal] potřebuju, chci a nebo vím, že chtít budu. No a když už to dělám, tak ať to slouží i ostatním, ne?
 
 ## Kdo to dělá
+
 
 ### EGdílna
 
