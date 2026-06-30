@@ -2347,6 +2347,9 @@ function buildMdSelectionActions(targetId, fieldKey, fieldLabel, excludeMd) {
   return '<div class="md-selection-actions" id="' + targetId + '-sel-actions" hidden role="toolbar" aria-label="Akce nad označeným textem">' +
     '<span class="meta">Z označeného textu:</span>' +
     '<button type="button" data-md-sel-act="extract" data-md-sel-target="' + escapeHtml(targetId) + '" title="Výběr přesunout do nové entity (jako její obsah) a vložit místo něj Wiki odkaz nebo Include">📤 Do nové entity…</button>' +
+    '<button type="button" data-md-sel-act="cm-ins" data-md-sel-target="' + escapeHtml(targetId) + '" title="Označit jako vložení (CriticMarkup) – {++text++}">➕ Critic vložení</button>' +
+    '<button type="button" data-md-sel-act="cm-del" data-md-sel-target="' + escapeHtml(targetId) + '" title="Označit jako odstranění (CriticMarkup) – {--text--}">➖ Critic odstranění</button>' +
+    '<button type="button" data-md-sel-act="cm-sub" data-md-sel-target="' + escapeHtml(targetId) + '" title="Označit jako náhradu (CriticMarkup) – {~~staré~>nové~~}; kurzor zůstane na místě nového textu">🔄 Critic náhrada</button>' +
     '</div>';
 }
 
@@ -18508,11 +18511,37 @@ function attachMdSelectionTracking() {
       if (start === end) { toast('Nejprve označte text.'); return; }
       const selected = ta.value.slice(start, end);
       if (!selected.trim()) { toast('Označený text je prázdný.'); return; }
+      if (act === 'cm-ins' || act === 'cm-del' || act === 'cm-sub') {
+        mdWrapCritic(ta, act, start, end, selected);
+        return;
+      }
       const e = findEntity(state.detailId);
       if (!e) return;
       if (act === 'extract') doMdExtract(ta, e, start, end, selected);
     };
   });
+}
+
+function mdWrapCritic(ta, act, start, end, selected) {
+  let replacement, caretPos;
+  if (act === 'cm-ins') {
+    replacement = '{++' + selected + '++}';
+    caretPos = start + replacement.length; // kurzor za celou značku
+  } else if (act === 'cm-del') {
+    replacement = '{--' + selected + '--}';
+    caretPos = start + replacement.length;
+  } else { // cm-sub: náhrada – kurzor na místo nového textu (za ~>)
+    const prefix = '{~~' + selected + '~>';
+    replacement = prefix + '~~}';
+    caretPos = start + prefix.length; // kurzor hned za ~> (kam se píše nový text)
+  }
+  ta.value = ta.value.slice(0, start) + replacement + ta.value.slice(end);
+  ta.dispatchEvent(new Event('input', { bubbles: true }));
+  ta.focus();
+  try { ta.setSelectionRange(caretPos, caretPos); } catch (e) {}
+  // schovat toolbar (výběr zrušen)
+  const div = document.getElementById(ta.id + '-sel-actions');
+  if (div) div.hidden = true;
 }
 
 function doMdExtract(ta, parentEntity, start, end, selected) {
@@ -22568,6 +22597,8 @@ function parseInlineForDocx(text) {
     }
     m = text.slice(i).match(/^\{\+\+([^}]+)\+\+\}/);
     if (m) { pushPlain(m[1], { revInsert: true }); i += m[0].length; continue; }
+    m = text.slice(i).match(/^\{~~([\s\S]+?)~>([\s\S]+?)~~\}/);
+    if (m) { pushPlain(m[1], { revDelete: true }); pushPlain(m[2], { revInsert: true }); i += m[0].length; continue; }
     m = text.slice(i).match(/^\{--([^}]+)--\}/);
     if (m) { pushPlain(m[1], { revDelete: true }); i += m[0].length; continue; }
     m = text.slice(i).match(/^\{==([^}]+)==\}/);
