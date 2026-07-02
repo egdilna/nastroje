@@ -13,6 +13,10 @@ Osobně moje favority jsou: [ArchiMate editor](#archimate), [PIM information man
 
 ## Novinky k našim nástrojům
 
+2.7.2026: U těch nástrojů, kde to dává smysl (opml, markdown, jsondb a nově plantuml, dkm apod,) lze teď projekty nejen ukládat a načítat ze souborů, ale i přes schránku. Malé ale hrozně užitečné vylepšení.
+
+
+
 1.7.2026: Jejej, jaksi jsem sem nedal informaci o nástroji TIN editor, přesto že nástroj samotný existuje. Pardon, napraveno, je v sekci Editory.
 
 
@@ -183,6 +187,7 @@ PlantUML je dnes asi nejpoužívanější framework pro tzv. text diagramming, t
 
 | Datum | Typ | Popis |
 | --- | --- | --- |
+| 2. 7. 2026 | Funkce | Nová možnost pracovat s daty projektu přes schránku. Nová tlačítka pro načtení ze schránky (CTRL+SHIFT+O) a uložit do schránky (CTRL+SHIFT+S). |
 | 28. 6. 2026 | Vylepšení | U gantt diagramů se teď může nechat pole začátku projektu prázdné a tedy nebudou vykreslena absolutní data |
 | 28. 6. 2026 | Oprava | Opraven problém, kdy se někdy nesprávně nevyfiltrovaly jen hotové či nehotové prvky v seznamu prvků diagramu v levé části |
 | 9. 4. 2026 | Vylepšení | Možnost u packages srovnat prvky i vertikálně a více možností layoutu vykreslování, aby výstupem nebyly nevzhledné široké nudle. |
@@ -202,6 +207,7 @@ Univerzální information a PIM manager specializovaný na produktivitu.
 
 | Datum | Typ | Popis |
 | --- | --- | --- |
+| 2. 7. 2026 | Funkce | Nová možnost uchovávt a pracovat s datovými objekty, nově atributy typu object, přístup buď přes rozhraní a nebo tlačítka zkopírovqt a vložit přes schránku a uložit a nahradit přes soubor. |
 | 30. 6. 2026 | Oprava | Opravena chyba v exportu do DOCX a PDF, kdy se někdy nevykreslovaly správně revize přes critic markup, pokud šlo o přímé nahrazení textu. DOCX nic takového neumí, takže teď je to odstraněný a za ním hned vložený text. |
 | 28. 6. 2026 | Oprava | Někdy se při složitých dotazech do databáze přes database placeholder nepromítla tabulka správně do zkopírovaného obsahu entity, opraveno. |
 | 25. 6. 2026 | Oprava | Opravena chyba, kdy se někdy po pokročilém filtrování a uložení pohledu s více pokročilými filtry do pohledu neuložily filtry, ale jen aspekty. Pardon. |
@@ -245,9 +251,33 @@ K dispozici je kompletní [[uživatelská příručka v češtině]](https://nas
 
 | Datum | Typ | Popis |
 | --- | --- | --- |
+| 2. 7. 2026 | Funkce | Nová možnost pracovat s daty projektu přes schránku. Nová tlačítka pro načtení ze schránky (CTRL+SHIFT+O) a uložit do schránky (CTRL+SHIFT+S). |
 | 29. 6. 2026 | Vylepšení | Nyní v editaci typu entity či v editaci aspektu u každého atributu je zaškrtávací pole, které udává, zda bude daný atribut vidět hned ve výpisu entit. Takže teď kvůli nejdůležitějším hodnotám nemusíte každou entitu otevírat. |
 | 8. 6. 2026 | Funkce | Zcela nová komplexní funkce a to přenos entit mezi jednotlivými projekty. V Nastavení / Projekt je k dispozici export balíčku (.dkmpackage) a import, který je realizovánm detailním průvodcem, takže se při migraci i mezi různými datovýmio modely nic neztratí. |
 
+
+# ✏️MDT
+
+## Šablonář MDT
+
+
+⛓️ [Nástroj Šablonář MDT](https://nastroje.egdilna.cz/mdt) je jednoduchý, univerzální a čistě webový nástroj pro tvorbu a vyplňování jakýchkoliv šablon čehokoliv, od jednoduchých formulářů až po rozsáhlé šablony strukturovaných dokumentů. Umožňuje nejen trovbu, ale především uživatelské vyplňování, ukládání rozpracovaných vyplnění a export i do DOCX s metadaty. Online běží na https://nastroje.egdilna.cz/mdt
+
+- [ ] přejmenovat ten include jako jsou ostatní a tedy o nástroji
+
+### ✏️Hlavní funkce
+
+### ✏️Dokumentace
+
+### ✏️Historie změn a oprav
+
+#### ✏️Příklady použití
+
+Principem nástroje je, že si každý může vytvořit šablonu a každý si pak může přes jednoduchý URL parametr otevřít rovnou danou šablonu.
+
+Ukázat funkce se dá skvěle na pŕíkladech, jako je 
+
+- Interaktivní šablona sebehodnocení souladu AIS s požadavky GP https://nastroje.egdilna.cz/mdt?template=https://raw.githubusercontent.com/egdilna/sablony/main/dokumentace_is/mdt-sablona-sebehodnoceni-ais-soulad-gp.mdt
 
 # JSONDB
 
