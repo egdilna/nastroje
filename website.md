@@ -1,6 +1,5 @@
 # Homepage
 
-
 Tohle je mikroweb věnovaný informacím o našich (snad) užitečných nástrojích, které by se nejen egovernmenťákům mohly hodit.
 
 
@@ -14,13 +13,12 @@ Osobně moje favority jsou: [ArchiMate editor](#archimate), [PIM information man
 
 ## Novinky k našim nástrojům
 
+1.7.2026: Jejej, jaksi jsem sem nedal informaci o nástroji TIN editor, přesto že nástroj samotný existuje. Pardon, napraveno, je v sekci Editory.
 
 
 28.6.2026: Tak konečně jsou tady funkční tabulky changelogů tedy historie změn a oprav pro jednotlivé nástroje, z toho mám radost. Červen byl i měsícem hodně nových funkcí a mám moc velkou radost i z rozvoje PlantUML editoru, který teď sám už taky vlastně denně používám.
 
-
 27.6.2026: Jaksi se stalo, že na tomhle mikrowebu se ne vždycky všechno ukazovalo. Velký pardon, je to způsobeno přechodem z původního nástroje na PIM, kde taky jako jeden soubor spravuju tenhle web a include mají jinou syntaxi. Stane se, omlouvám se.
-
 
 2.6.2026: Web teď konečně funguje i na adrese https://nastroje.egdilna.cz a na této adrese fungují i jednotlivé nástroje.
 
@@ -33,7 +31,6 @@ Osobně moje favority jsou: [ArchiMate editor](#archimate), [PIM information man
 23.3.2026: Už je tady nástrojů fakt docela dost a tak je asi fakt na čase rozběhnout samotný web https://egdilna.github.io/nastroje tak uvidíme.
 
 # ArchiMate
-
 
 ## Archimate editor
 
@@ -91,7 +88,6 @@ Nicméně na tomto nástroji jsou založeny online modely:
 
 # RPP
 
-
 ## Prohlížeč RPP
 
 ⛓️ [Prohlížeč RPP](https://nastroje.egdilna.cz/rpp) je univerzálním komplexním nástrojem pro prohlížení obsahu Registru práv a povinností bez nutnosti přihlašování do AIS působnostního a s propojenými daty, odkazovatelnými detaily a přehledy včetně exportu dat do CSV a XLSX. Online běží na adrese https://nastroje.egdilna.cz/rpp a je k němu i jednoduchá [příručka](https://nastroje.egdilna.cz/rpp/dokumentace)
@@ -123,8 +119,8 @@ Existuje i [Uživatelská dokumentace](https://nastroje.egdilna.cz/rpp/dokumenta
 | --- | --- | --- |
 | (žádný záznam) |  |  |
 
-# Opendata
 
+# Opendata
 
 ## Prohlížeč opendat
 
@@ -160,8 +156,8 @@ Existuje i [Uživatelská dokumentace](https://nastroje.egdilna.cz/rpp/dokumenta
 | 19. 4. 2026 | Funkce | Po načtení lze vytvořit statický URL odkaz, kterým se rovnou načtou data připravené datové sady. Tímhle se z toho stává opravdu univerzální prohlížeč, kterým lze rovnou přes odkaz zobrazit jakoukoliv datovou sadu otevřených dat. |
 | 18. 4. 2026 | Vylepšení | Nyní načítá datové sady ve formátech JSON, JSONLD, JSONTABLE a CSV, TSV. |
 
-# PlantUML
 
+# PlantUML
 
 ## PlantUML editor
 
@@ -192,8 +188,8 @@ PlantUML je dnes asi nejpoužívanější framework pro tzv. text diagramming, t
 | 9. 4. 2026 | Vylepšení | Možnost u packages srovnat prvky i vertikálně a více možností layoutu vykreslování, aby výstupem nebyly nevzhledné široké nudle. |
 | 9. 4. 2026 | Funkce | Nové typy diagramů a to mindmap a WBS |
 
-# PIM
 
+# PIM
 
 ## PIM manažer informací
 
@@ -206,6 +202,7 @@ Univerzální information a PIM manager specializovaný na produktivitu.
 
 | Datum | Typ | Popis |
 | --- | --- | --- |
+| 30. 6. 2026 | Oprava | Opravena chyba v exportu do DOCX a PDF, kdy se někdy nevykreslovaly správně revize přes critic markup, pokud šlo o přímé nahrazení textu. DOCX nic takového neumí, takže teď je to odstraněný a za ním hned vložený text. |
 | 28. 6. 2026 | Oprava | Někdy se při složitých dotazech do databáze přes database placeholder nepromítla tabulka správně do zkopírovaného obsahu entity, opraveno. |
 | 25. 6. 2026 | Oprava | Opravena chyba, kdy se někdy po pokročilém filtrování a uložení pohledu s více pokročilými filtry do pohledu neuložily filtry, ale jen aspekty. Pardon. |
 | 13. 6. 2026 | Vylepšení | V procházení struktury okolí entity se nyní u každé entity s komentářem ukazuje tlačítko, díky kterému si můžete komentáře zobrazit. |
@@ -214,8 +211,8 @@ Univerzální information a PIM manager specializovaný na produktivitu.
 | 2. 6. 2026 | Funkce | Poměrně výrazná nová verze se spoustou funkcí. Time tracking pro jakoukoliv entitu, sledování času napříč projektem, detaily projektu vylepšeny, zcela přepracováno rozhraní pro události... |
 | 9. 4. 2026 | Vylepšení | Zpřehlednění detailu u diagramu a databáze a zpřehlednění time tracker pohledů. |
 
-# DKM
 
+# DKM
 
 ## Datový správce a konceptuální modeller
 
@@ -251,8 +248,8 @@ K dispozici je kompletní [[uživatelská příručka v češtině]](https://nas
 | 29. 6. 2026 | Vylepšení | Nyní v editaci typu entity či v editaci aspektu u každého atributu je zaškrtávací pole, které udává, zda bude daný atribut vidět hned ve výpisu entit. Takže teď kvůli nejdůležitějším hodnotám nemusíte každou entitu otevírat. |
 | 8. 6. 2026 | Funkce | Zcela nová komplexní funkce a to přenos entit mezi jednotlivými projekty. V Nastavení / Projekt je k dispozici export balíčku (.dkmpackage) a import, který je realizovánm detailním průvodcem, takže se při migraci i mezi různými datovýmio modely nic neztratí. |
 
-# JSONDB
 
+# JSONDB
 
 ## Univerzální databázový nástroj a editor JSONDB databází
 
@@ -273,26 +270,32 @@ Celý projekt je na GitHubu na https://github.io/michalradacz/database-editor
 
 # ✏️NoteBlok
 
-
-
 # Editory
 
 multisection
 
+## TIN editor
+
+### Editor TIN instrukcí pro AI
+
+⛓️ [TIN editor](https://nastroje.egdilna.cz/tineditor) je jednoduchý, ale účinný webový editor a tvůrce souboru instrukcí pro AI ve formátu standardu TIN (Target instruction notation) s pokročilými funkcemi editace všech prvků instrukcí. Online běží na https://nastroje.egdilna.cz/tineditor
+
+#### Popis a účel
+
+TIN (Target instruction notation) je standard pro vytváření pokročilých instrukcí pro umělou inteligenci. S pomocí TIN standardu lze vytvořit precizně fungujícího agenta AI a velice snadno ovlivit, co a jak dělá a nedělá.
+
+
+#### Dokumentace
+
+Existuje [TIN specs description](https://nastroje.egdilna.cz/tineditor/tin-spec.md) a její [neoficiální český překlad](https://nastroje.egdilna.cz/tineditor/tin-spec-cs.md)
+
 ## ✏️MarkDown
-
-
 
 ## ✏️OPML
 
-
-
 ## ✏️JSON
 
-
-
 ## ✏️SpisPlanEdit
-
 
 ### Editor spisového plánu
 
@@ -323,7 +326,6 @@ Co to umí?
 - [ ] pak až bude hotová dokumentace tak sem odkaz
 
 ## DKedit
-
 
 ### Správce datových katalogů
 
@@ -362,8 +364,8 @@ V případě zájmu natočíme stručné videonávody.
 | --- | --- | --- |
 | (žádný záznam) |  |  |
 
-## AED
 
+## AED
 
 ### Audio editor
 
@@ -384,7 +386,6 @@ Webová aplikace pro střih a zpracování zvukových stop. Umožňuje práci s 
 multisection
 
 ## Bookmark
-
 
 ### Správce záložek
 
@@ -417,14 +418,11 @@ Katalog veřejných odkazů EGdílny na drese https://shm.to/egodkazy
 
 ## ✏️NSESSS korpus
 
-
-
 # Více
 
 multisection
 
 ## ✏️Co tohle je
-
 
 Tohle jsou malé (původně) a snad užitečné nástroje, které mohou pomoci - někdy doslova každému a někdy jen určité skupině uživatelů. Většinou se jedná o dost univerzální kousky k obecnému použití. Třeba [Markdown editor] může použít opravdu každý, kdo rád (nebo právě nerad) pracuje s MD a nebo třeba [NoteBlok] jako naprosto všestranný nástroj na poznámky a dokumentaci. Ale třeba [Editor spisového plánu] použijí jen odborníci na spisovou službu a nebo [Prohlížeč RPP] jen ti, co potřebují pracovat s Registrem práv a povinností.
 
@@ -435,7 +433,6 @@ A protože se to prostě může hodit, tak to tady máte.
 Většinou se jedná o nástroje, které já sám - tedy [Michal] potřebuju, chci a nebo vím, že chtít budu. No a když už to dělám, tak ať to slouží i ostatním, ne?
 
 ## Kdo to dělá
-
 
 ### EGdílna
 

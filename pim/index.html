@@ -116,6 +116,11 @@ body.theme-dark .calendar-row { border-bottom-color: #333; }
 .attr-row > * { flex: 1 1 auto; }
 .attr-row .attr-actions { flex: 0 0 auto; }
 .attr-row label { margin: 0; }
+.entity-objects { margin: 1em 0; }
+.entity-objects .obj-row { border: 1px solid #ddd; border-radius: 4px; padding: 0.6em 0.8em; margin: 0.4em 0; }
+.entity-objects .obj-head { margin-bottom: 0.4em; }
+.entity-objects .obj-actions { flex-wrap: wrap; gap: 0.3em; }
+body.theme-dark .entity-objects .obj-row { border-color: #444; }
 .date-with-clear { display: inline-flex; align-items: center; gap: 0.3em; }
 .date-with-clear input { flex: 1; }
 .date-with-clear button { padding: 0.2em 0.5em; font-size: 0.95em; line-height: 1; }
@@ -1822,6 +1827,25 @@ const GLOBAL_FIELDS = [
     global: true },
   { key: 'reminder_at', label: 'Připomenutí (datum)', type: 'date', global: true }
 ];
+
+// Interní datové klíče v attributes, které mají vlastní vykreslení nebo jsou strojová data.
+// NIKDY se nezobrazují jako surový atribut v detailu ani v exportech.
+// Skryté objekty (obj_*) sem patří také – jsou přístupné jen přes svá tlačítka.
+const INTERNAL_ATTR_PREFIXES = ['tt_', 'journal_', 'tracker_', 'secured_', 'topic_', 'obj_'];
+const INTERNAL_ATTR_KEYS = new Set([
+  'doc_blocks', 'doc_styles', 'db_fields', 'db_records', 'db_description',
+  'tasks', 'encoded', '_lastEncodedSource', 'source'
+]);
+function isInternalAttrKey(key, entity) {
+  if (!key) return false;
+  if (INTERNAL_ATTR_KEYS.has(key)) {
+    // 'source' je interní jen u aspektu Diagram (jinde může být legitimní custom pole)
+    if (key === 'source') return !!(entity && (entity.aspects || []).includes('Diagram'));
+    return true;
+  }
+  for (const p of INTERNAL_ATTR_PREFIXES) if (key.startsWith(p)) return true;
+  return false;
+}
 
 const RELATION_TYPES = {
   partOf: { label: 'je součástí', inverse: 'contains', inverseLabel: 'obsahuje' },
@@ -10331,6 +10355,7 @@ function renderTrashView(main) {
       if (t.attributes && Object.keys(t.attributes).length > 0) {
         lines.push('Atributy:');
         Object.entries(t.attributes).forEach(([k, v]) => {
+          if (isInternalAttrKey(k, t)) return;
           const val = typeof v === 'string' ? v : JSON.stringify(v);
           lines.push('  ' + k + ': ' + (val.length > 100 ? val.slice(0, 100) + '…' : val));
         });
@@ -11317,6 +11342,7 @@ function renderDetailRead(main, e) {
       '</div>' +
     '</div>' +
     (attrsHtml ? '<dl class="read-attrs">' + attrsHtml + '</dl>' : '') +
+    renderObjectsReadOnly(e) +
     diagramHtml +
     planHtml +
     trackerHtml +
@@ -11453,6 +11479,7 @@ function renderDetailRead(main, e) {
     '</dl></details>';
 
   document.getElementById('back-btn').onclick = goBack;
+  attachObjectsReadHandlers(e, main);
   { const _b = document.getElementById('btn-edit'); if (_b) _b.onclick = () => { state.detailMode = 'edit'; render(); }; }
   const ttBtn = document.getElementById('btn-tt-toggle');
   if (ttBtn) ttBtn.onclick = () => {
@@ -11959,15 +11986,9 @@ function renderAttributesReadOnly(e) {
     e.customFields.forEach(f => { if (!fieldMap.has(f.key)) fieldMap.set(f.key, { ...f, custom: true }); });
   }
   const isDiagram = (e.aspects || []).includes('Diagram');
-  // Klíče, které se v sekci Atributy NEzobrazují (mají vlastní sekci nebo jsou interní):
-  //  - tt_* (Sledování času – vlastní sekce)
-  //  - source u Diagramu (zobrazuje se v sekci Diagram)
-  const isHiddenAttrKey = (k) => {
-    if (k.startsWith('tt_')) return true;
-    if (isDiagram && k === 'source') return true;
-    return false;
-  };
-  const customKeys = Object.keys(e.attributes || {}).filter(k => !fieldMap.has(k) && k !== 'encoded' && k !== '_lastEncodedSource' && k !== 'tasks' && k !== 'tracker_history' && !k.startsWith('secured_') && !isHiddenAttrKey(k));
+  // Klíče, které se v sekci Atributy NEzobrazují (mají vlastní sekci nebo jsou interní data).
+  const isHiddenAttrKey = (k) => isInternalAttrKey(k, e);
+  const customKeys = Object.keys(e.attributes || {}).filter(k => !fieldMap.has(k) && !isHiddenAttrKey(k));
   let h = '';
   fieldMap.forEach((f, k) => {
     if (f.type === 'hidden') return;
@@ -12542,7 +12563,10 @@ function renderDetailEdit(main, e) {
     '</section>' +
 
     '<section><h3>Atributy</h3><div id="d-attrs"></div>' +
-      '<div class="btn-group"><button id="add-custom-attr">+ Přidat vlastní atribut</button></div>' +
+      '<div class="btn-group"><button id="add-custom-attr">+ Přidat vlastní atribut</button><button id="add-hidden-obj">+ Přidat objekt</button></div>' +
+    '</section>' +
+
+    '<section><h3>Objekty</h3><div id="d-objects"></div>' +
     '</section>' +
 
     ((e.aspects || []).includes('Tracker')
@@ -13170,6 +13194,7 @@ function renderDetailEdit(main, e) {
   });
 
   document.getElementById('add-custom-attr').onclick = () => openCustomAttrDialog(e);
+  attachObjectsEditHandlers(e);
   document.getElementById('add-link').onclick = () => openLinkDialog(e);
   document.getElementById('d-add-comment').onclick = () => openCommentDialog(e);
 
@@ -18788,7 +18813,208 @@ function doQuickSave(thenOpen) {
   }
 }
 
+
+// ===== SKRYTÉ OBJEKTY (hidden objects) =====
+// Datově: attributes['obj_'+uuid] = { name, content }. Nikdy se nevykreslují v těle/exportu.
+// Přístupné jen přes tlačítka v detailu (kopírovat/vložit schránka, uložit/načíst soubor).
+function getHiddenObjects(entity) {
+  if (!entity || !entity.attributes) return [];
+  return Object.keys(entity.attributes)
+    .filter(k => k.startsWith('obj_'))
+    .map(k => ({ key: k, obj: entity.attributes[k] }))
+    .filter(x => x.obj && typeof x.obj === 'object');
+}
+function hiddenObjSizeKb(content) {
+  const bytes = new TextEncoder().encode(String(content || '')).length;
+  return bytes < 1024 ? (bytes + ' B') : ((bytes / 1024).toFixed(1) + ' kB');
+}
+function clipboardReadSupported() {
+  return !!(navigator.clipboard && typeof navigator.clipboard.readText === 'function');
+}
+
+// Render seznamu objektů v EDITACI (jen název, velikost, přejmenovat, smazat)
+function renderObjectsEdit(entity) {
+  const objs = getHiddenObjects(entity);
+  if (objs.length === 0) return '<p class="meta">Zatím žádné objekty. Objekt je pojmenovaný skrytý blok textu (např. data.json), který se nikde nevykresluje ani neexportuje.</p>';
+  return objs.map(({ key, obj }) =>
+    '<div class="attr-row" data-obj-key="' + escapeHtml(key) + '">' +
+    '<span><strong>' + escapeHtml(obj.name || '(bez názvu)') + '</strong> <span class="meta">' + hiddenObjSizeKb(obj.content) + '</span></span>' +
+    '<span class="attr-actions">' +
+    '<button type="button" data-obj-rename="' + escapeHtml(key) + '">Přejmenovat</button>' +
+    '<button type="button" class="danger" data-obj-delete="' + escapeHtml(key) + '">Smazat</button>' +
+    '</span></div>'
+  ).join('');
+}
+
+function attachObjectsEditHandlers(entity) {
+  const cont = document.getElementById('d-objects');
+  if (!cont) return;
+  cont.innerHTML = renderObjectsEdit(entity);
+  cont.querySelectorAll('[data-obj-rename]').forEach(b => {
+    b.onclick = () => {
+      const key = b.dataset.objRename;
+      const obj = entity.attributes[key];
+      promptDialog('Název objektu (včetně přípony, např. data.json):', obj.name || '', (val) => {
+        if (val == null) return;
+        const name = String(val).trim();
+        if (!name) { alertMsg('Název nesmí být prázdný.'); return; }
+        obj.name = name;
+        entity.updated_at = nowIso(); save();
+        attachObjectsEditHandlers(entity);
+        toast('Objekt přejmenován.');
+      });
+    };
+  });
+  cont.querySelectorAll('[data-obj-delete]').forEach(b => {
+    b.onclick = () => {
+      const key = b.dataset.objDelete;
+      const obj = entity.attributes[key];
+      confirmDialog('Smazat objekt „' + (obj.name || '') + '"? Data budou ztracena.', () => {
+        delete entity.attributes[key];
+        entity.updated_at = nowIso(); save();
+        attachObjectsEditHandlers(entity);
+        toast('Objekt smazán.');
+      });
+    };
+  });
+  const addBtn = document.getElementById('add-hidden-obj');
+  if (addBtn) addBtn.onclick = () => {
+    promptDialog('Název nového objektu (včetně přípony, např. data.json):', '', (val) => {
+      if (val == null) return;
+      const name = String(val).trim();
+      if (!name) { alertMsg('Zadejte název objektu.'); return; }
+      if (!entity.attributes) entity.attributes = {};
+      const key = 'obj_' + uuid();
+      entity.attributes[key] = { name, content: '' };
+      entity.updated_at = nowIso(); save();
+      attachObjectsEditHandlers(entity);
+      toast('Objekt „' + name + '" vytvořen. Vložte obsah ve zobrazení entity.');
+    });
+  };
+}
+
+// Render objektů ve ZOBRAZENÍ entity (read) – s tlačítky pro schránku a soubor
+function renderObjectsReadOnly(entity) {
+  const objs = getHiddenObjects(entity);
+  if (objs.length === 0) return '';
+  const canRead = clipboardReadSupported();
+  let h = '<section class="entity-objects"><h3>Objekty</h3>';
+  objs.forEach(({ key, obj }) => {
+    h += '<div class="obj-row" data-obj-key="' + escapeHtml(key) + '">' +
+      '<div class="obj-head"><strong>' + escapeHtml(obj.name || '(bez názvu)') + '</strong> ' +
+      '<span class="meta">' + hiddenObjSizeKb(obj.content) + '</span></div>' +
+      '<div class="btn-group obj-actions">' +
+      '<button type="button" data-obj-copy="' + escapeHtml(key) + '">Kopírovat do schránky</button>' +
+      (canRead ? '<button type="button" data-obj-paste="' + escapeHtml(key) + '">Vložit ze schránky</button>' : '') +
+      '<button type="button" data-obj-save="' + escapeHtml(key) + '">Uložit jako soubor</button>' +
+      '<button type="button" data-obj-load="' + escapeHtml(key) + '">Načíst novou verzi</button>' +
+      '</div></div>';
+  });
+  h += '</section>';
+  return h;
+}
+
+function attachObjectsReadHandlers(entity, root) {
+  const scope = root || document;
+  scope.querySelectorAll('[data-obj-copy]').forEach(b => {
+    b.onclick = async () => {
+      const obj = entity.attributes[b.dataset.objCopy];
+      if (!obj) return;
+      try {
+        await navigator.clipboard.writeText(String(obj.content || ''));
+        toast('Zkopírováno do schránky.');
+      } catch (err) {
+        // fallback: textarea + ruční kopírování
+        objFallbackCopy(obj);
+      }
+    };
+  });
+  scope.querySelectorAll('[data-obj-paste]').forEach(b => {
+    b.onclick = async () => {
+      const key = b.dataset.objPaste;
+      const obj = entity.attributes[key];
+      if (!obj) return;
+      try {
+        const text = await navigator.clipboard.readText();
+        obj.content = String(text || '');
+        entity.updated_at = nowIso(); save(); render();
+        toast('Nová verze vložena ze schránky.');
+      } catch (err) {
+        objFallbackPaste(entity, key);
+      }
+    };
+  });
+  scope.querySelectorAll('[data-obj-save]').forEach(b => {
+    b.onclick = () => {
+      const obj = entity.attributes[b.dataset.objSave];
+      if (!obj) return;
+      const blob = new Blob([String(obj.content || '')], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = obj.name || 'objekt.txt';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast('Soubor uložen.');
+    };
+  });
+  scope.querySelectorAll('[data-obj-load]').forEach(b => {
+    b.onclick = () => {
+      const key = b.dataset.objLoad;
+      const obj = entity.attributes[key];
+      if (!obj) return;
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.onchange = () => {
+        const file = inp.files && inp.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          obj.content = String(reader.result || '');
+          entity.updated_at = nowIso(); save(); render();
+          toast('Nová verze načtena ze souboru.');
+        };
+        reader.readAsText(file);
+      };
+      inp.click();
+    };
+  });
+}
+
+// Fallback: kopírování přes textareu (starý prohlížeč / file://)
+function objFallbackCopy(obj) {
+  const ta = document.createElement('textarea');
+  ta.value = String(obj.content || '');
+  ta.style.position = 'absolute'; ta.style.left = '-9999px';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); toast('Zkopírováno do schránky.'); }
+  catch (e) { alertMsg('Zkopírování selhalo. Obsah je vybraný, zkopírujte ho ručně (Cmd+C).'); }
+  document.body.removeChild(ta);
+}
+// Fallback: vložení přes textareu, když clipboard.readText není povolen
+function objFallbackPaste(entity, key) {
+  const existing = document.getElementById('obj-paste-fallback');
+  if (existing) existing.remove();
+  const d = document.createElement('dialog');
+  d.id = 'obj-paste-fallback';
+  d.innerHTML =
+    '<h2>Vložit novou verzi</h2>' +
+    '<p class="meta">Vložte obsah do pole (Cmd+V) a potvrďte.</p>' +
+    '<textarea id="obj-paste-ta" style="width:100%;min-height:12em;"></textarea>' +
+    '<div class="btn-group" style="margin-top:0.6em;"><button type="button" class="primary" id="obj-paste-ok">Uložit</button><button type="button" id="obj-paste-cancel">Zrušit</button></div>';
+  document.body.appendChild(d);
+  d.querySelector('#obj-paste-ok').onclick = () => {
+    const obj = entity.attributes[key];
+    if (obj) { obj.content = d.querySelector('#obj-paste-ta').value; entity.updated_at = nowIso(); save(); render(); toast('Nová verze uložena.'); }
+    d.close(); d.remove();
+  };
+  d.querySelector('#obj-paste-cancel').onclick = () => { d.close(); d.remove(); };
+  d.addEventListener('close', () => d.remove());
+  d.showModal();
+  setTimeout(() => { const ta = d.querySelector('#obj-paste-ta'); if (ta) ta.focus(); }, 50);
+}
+
 function openCustomAttrDialog(entity) {
+
   const d = document.getElementById('dialog-attr');
   document.getElementById('attr-key').value = '';
   document.getElementById('attr-type').value = 'text';
@@ -22265,7 +22491,7 @@ function buildEntityExportModel(entity, selection) {
 
   Object.entries(e.attributes || {}).forEach(([k, v]) => {
     if (knownKeys.has(k) && !customFieldByKey.has(k)) return;
-    if (k.startsWith('tt_')) return; // interní time tracking pole
+    if (isInternalAttrKey(k, e)) return; // interní data / skryté objekty – nikdy do exportu
     if (v === undefined || v === '' || v === null) return;
     if (!sel.customAttributes) return;
     if (customFieldByKey.has(k)) {

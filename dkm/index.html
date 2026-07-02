@@ -186,6 +186,8 @@ dialog.dlg::backdrop{background:rgba(0,0,0,.4)}
 <span id="ind" class="unsaved" hidden></span>
 <button class="btn btn-sm" id="b-load" type="button" accesskey="l"></button>
 <button class="btn btn-sm" id="b-save" type="button" accesskey="s"></button>
+<button class="btn btn-sm" id="b-clip-in" type="button"></button>
+<button class="btn btn-sm" id="b-clip-out" type="button"></button>
 <button class="btn btn-sm" id="b-exp" type="button"></button>
 <button class="btn btn-sm" id="b-imp" type="button"></button>
 <button class="btn btn-sm" id="b-set" type="button"></button>
@@ -205,6 +207,12 @@ dialog.dlg::backdrop{background:rgba(0,0,0,.4)}
 const I18N={cs:{
 appName:'DKM',appSubtitle:'Dynamický správce znalostí',languageLabel:'EN',
 btnLoad:'Načíst',btnSave:'Uložit',btnExport:'Export',btnImport:'Import TSV',btnSettings:'Nastavení',
+clipLoad:'Načíst projekt ze schránky',clipSave:'Vložit projekt do schránky',
+clipSaveDone:'Projekt zkopírován do schránky ({n})',
+clipSaveFallback:'Prohlížeč nedovolil přímý přístup do schránky. Označ text v poli a zkopíruj ho ručně (Ctrl+C).',
+clipLoadFallback:'Prohlížeč nedovolil přímý přístup do schránky. Vlož JSON projektu do pole ručně (Ctrl+V) a klikni na Načíst.',
+clipLoadFallbackPh:'Sem vlož JSON projektu (Ctrl+V)…',
+clipLoadBtn:'Načíst',clipLoadEmpty:'Nejdřív vlož JSON projektu.',clipLoadDone:'Projekt načten ze schránky',
 save:'Uložit',cancel:'Zrušit',delete:'Smazat',edit:'Upravit',add:'Přidat',create:'Vytvořit',close:'Zavřít',back:'Zpět',confirm:'Potvrdit',yes:'Ano',no:'Ne',
 name:'Název',title:'Titulek',type:'Typ',icon:'Ikona',required:'Povinné',none:'Žádné',any:'Jakýkoliv',
 moveUp:'Posunout nahoru',moveDown:'Posunout dolů',duplicate:'Duplikovat',
@@ -398,6 +406,12 @@ ghShowToken:'Ukázat',ghHideToken:'Skrýt'
 },en:{
 appName:'DKM',appSubtitle:'Dynamic Knowledge Manager',languageLabel:'CS',
 btnLoad:'Load',btnSave:'Save',btnExport:'Export',btnImport:'Import TSV',btnSettings:'Settings',
+clipLoad:'Load project from clipboard',clipSave:'Copy project to clipboard',
+clipSaveDone:'Project copied to clipboard ({n})',
+clipSaveFallback:'Browser did not allow direct clipboard access. Select the text in the field and copy it manually (Ctrl+C).',
+clipLoadFallback:'Browser did not allow direct clipboard access. Paste the project JSON into the field manually (Ctrl+V) and click Load.',
+clipLoadFallbackPh:'Paste project JSON here (Ctrl+V)…',
+clipLoadBtn:'Load',clipLoadEmpty:'Paste project JSON first.',clipLoadDone:'Project loaded from clipboard',
 save:'Save',cancel:'Cancel',delete:'Delete',edit:'Edit',add:'Add',create:'Create',close:'Close',back:'Back',confirm:'Confirm',yes:'Yes',no:'No',
 name:'Name',title:'Title',type:'Type',icon:'Icon',required:'Required',none:'None',any:'Any',
 moveUp:'Move up',moveDown:'Move down',duplicate:'Duplicate',
@@ -761,6 +775,67 @@ return true;
 function mergeEmpty(d){const b=emptyData();return{version:d.version||1,projectName:typeof d.projectName==='string'?d.projectName:'',projectDescription:typeof d.projectDescription==='string'?d.projectDescription:'',ghPath:typeof d.ghPath==='string'?d.ghPath:'',settings:Object.assign({},b.settings,d.settings||{}),entityTypes:Array.isArray(d.entityTypes)?d.entityTypes:[],aspects:Array.isArray(d.aspects)?d.aspects:[],relationTypes:Array.isArray(d.relationTypes)?d.relationTypes:[],selectLists:Array.isArray(d.selectLists)?d.selectLists:[],entities:Array.isArray(d.entities)?d.entities:[]}}
 function saveFile(){const data=JSON.stringify(state.data,null,2);const b=new Blob([data],{type:'application/json'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=(state.data.projectName?state.data.projectName.replace(/[^\w\u00C0-\u017F-]+/g,'_'):'dkm')+'-'+new Date().toISOString().slice(0,10)+'.dkmdata';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(u);setDirty(false);toast(t('saved'))}
 function smartSave(){if(state.data.ghPath&&parseGhPath(state.data.ghPath)&&ghToken())return saveToGitHub();return saveFile()}
+/* CLIPBOARD IO */
+function copyProjectToClipboard(){
+const json=JSON.stringify(state.data,null,2);
+if(navigator.clipboard&&navigator.clipboard.writeText){
+navigator.clipboard.writeText(json).then(
+()=>toast(t('clipSaveDone',{n:formatBytes(json.length)})),
+err=>{dbg('Clipboard write failed: '+err.message);openClipFallbackShow(json)}
+);
+}else{
+openClipFallbackShow(json);
+}
+}
+function openClipFallbackShow(json){
+const body=document.createElement('div');
+const p=document.createElement('p');p.style.marginTop='0';p.textContent=t('clipSaveFallback');body.appendChild(p);
+const ta=document.createElement('textarea');ta.value=json;ta.rows=12;ta.style.width='100%';ta.style.fontFamily='monospace';ta.style.fontSize='.8rem';ta.readOnly=true;body.appendChild(ta);
+setTimeout(()=>{ta.focus();ta.select()},50);
+showDialog(t('clipSave'),body,[
+{label:t('close'),primary:true,action:closeDialog}
+]);
+}
+function loadProjectFromClipboard(){
+if(navigator.clipboard&&navigator.clipboard.readText){
+navigator.clipboard.readText().then(
+text=>tryLoadProjectFromText(text,true),
+err=>{dbg('Clipboard read failed: '+err.message);openClipFallbackPaste()}
+);
+}else{
+openClipFallbackPaste();
+}
+}
+function openClipFallbackPaste(){
+const body=document.createElement('div');
+const p=document.createElement('p');p.style.marginTop='0';p.textContent=t('clipLoadFallback');body.appendChild(p);
+const ta=document.createElement('textarea');ta.id='clp-ta';ta.rows=12;ta.style.width='100%';ta.style.fontFamily='monospace';ta.style.fontSize='.8rem';ta.placeholder=t('clipLoadFallbackPh');body.appendChild(ta);
+setTimeout(()=>ta.focus(),50);
+showDialog(t('clipLoad'),body,[
+{label:t('cancel'),action:closeDialog},
+{label:t('clipLoadBtn'),primary:true,action:()=>{const val=document.getElementById('clp-ta').value.trim();if(!val){toast(t('clipLoadEmpty'));return}tryLoadProjectFromText(val,false)}}
+]);
+}
+function tryLoadProjectFromText(text,silent){
+let p;
+try{p=JSON.parse(text)}catch(err){toast(t('errLoadInvalid'));dbg('Clipboard load parse: '+err.message,true);if(!silent)return;openClipFallbackPaste();return}
+if(!p||typeof p!=='object'||!Array.isArray(p.entities)){toast(t('errLoadInvalid'));if(!silent)return;openClipFallbackPaste();return}
+try{
+const merged=mergeEmpty(p);
+const id=uid('p');
+const projects=listProjects();
+projects.push({id:id,name:merged.projectName||'',description:merged.projectDescription||'',ghPath:merged.ghPath||'',updatedAt:new Date().toISOString()});
+saveProjectsList(projects);
+writeProjectData(id,merged);
+state.activeProjectId=id;setActiveProjectId(id);
+state.data=merged;state.dirty=false;state.ghSha=null;
+state.view={name:'list',tab:'inbox',entityId:null,settingsTab:'project',settingsItemId:null,edit:null,typeId:null};
+location.hash='';render();closeDialog();
+toast(t('clipLoadDone')+' – '+(merged.projectName||t('projectCreated')));
+}catch(err){toast(t('errLoadInvalid'));dbg('Clipboard load apply: '+err.message,true)}
+}
+function formatBytes(n){if(n<1024)return n+' B';if(n<1024*1024)return (n/1024).toFixed(1)+' kB';return (n/1024/1024).toFixed(2)+' MB'}
+
 function loadFile(file){const r=new FileReader();r.onload=ev=>{try{const p=JSON.parse(ev.target.result);if(!p||typeof p!=='object'||!Array.isArray(p.entities)){toast(t('errLoadInvalid'));return}
 const merged=mergeEmpty(p);
 const id=uid('p');
@@ -1257,6 +1332,14 @@ const h1n=document.getElementById('h1n');if(h1n)h1n.textContent=pn||t('appName')
 document.getElementById('sub').textContent=pd||t('appSubtitle');
 document.getElementById('b-load').textContent=t('btnLoad');
 document.getElementById('b-load').title=t('btnLoad')+' ('+t('keyAlt')+'+L)';
+const clipIn=document.getElementById('b-clip-in');
+clipIn.textContent='📋⬇';
+clipIn.title=t('clipLoad')+' (Ctrl+Shift+O)';
+clipIn.setAttribute('aria-label',t('clipLoad'));
+const clipOut=document.getElementById('b-clip-out');
+clipOut.textContent='📋⬆';
+clipOut.title=t('clipSave')+' (Ctrl+Shift+S)';
+clipOut.setAttribute('aria-label',t('clipSave'));
 const sb=document.getElementById('b-save');
 const ghMode=state.data.ghPath&&parseGhPath(state.data.ghPath)&&ghToken();
 sb.textContent=(ghMode?'⬆ ':'')+t('btnSave');
@@ -3866,6 +3949,8 @@ ghAutoLoadFromUrl();
 }
 function setupEvents(){
 document.getElementById('b-load').addEventListener('click',()=>{document.getElementById('fin').click()});
+document.getElementById('b-clip-in').addEventListener('click',loadProjectFromClipboard);
+document.getElementById('b-clip-out').addEventListener('click',copyProjectToClipboard);
 document.getElementById('fin').addEventListener('change',ev=>{const f=ev.target.files&&ev.target.files[0];if(!f)return;loadFile(f);ev.target.value=''});
 document.getElementById('b-save').addEventListener('click',smartSave);
 document.getElementById('b-exp').addEventListener('click',exportXLSX);
@@ -3880,7 +3965,9 @@ const isInput=tg&&(tg.tagName==='INPUT'||tg.tagName==='TEXTAREA'||tg.tagName==='
 const dlg=document.getElementById('dlg');
 const dlgOpen=dlg&&(dlg.hasAttribute('open')||dlg.open);
 /* Ctrl/Cmd shortcuts work everywhere */
-if((ev.ctrlKey||ev.metaKey)&&!ev.altKey&&ev.key==='s'){ev.preventDefault();smartSave();return}
+if((ev.ctrlKey||ev.metaKey)&&ev.shiftKey&&!ev.altKey&&(ev.key==='O'||ev.key==='o')){ev.preventDefault();loadProjectFromClipboard();return}
+if((ev.ctrlKey||ev.metaKey)&&ev.shiftKey&&!ev.altKey&&(ev.key==='S'||ev.key==='s')){ev.preventDefault();copyProjectToClipboard();return}
+if((ev.ctrlKey||ev.metaKey)&&!ev.altKey&&!ev.shiftKey&&ev.key==='s'){ev.preventDefault();smartSave();return}
 if((ev.ctrlKey||ev.metaKey)&&!ev.altKey&&ev.key==='k'){ev.preventDefault();focusSearch();return}
 /* Escape works everywhere */
 if(ev.key==='Escape'){if(dlgOpen){closeDialog();return}if(state.bulk.active&&state.view.name==='list'){state.bulk.active=false;state.bulk.selected.clear();state.bulk.actionId='';render();return}if(state.view.name==='detail'||state.view.name==='edit'||state.view.name==='new'||state.view.name==='settings'){if(history.length>1)history.back();else navigateTo({name:'list',tab:'inbox'})}return}
