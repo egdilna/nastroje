@@ -1,6 +1,5 @@
 # Homepage
 
-
 Tohle je mikroweb věnovaný informacím o našich (snad) užitečných nástrojích, které by se nejen egovernmenťákům mohly hodit.
 
 
@@ -13,6 +12,9 @@ Všechny nástroje máte v seznamu vlevo.
 Osobně moje favority jsou: [ArchiMate editor](#archimate), [PIM information manager](#pim) a [PlantUML editor](#plantuml). Ale je jich tady už přes 20.
 
 ## Novinky k našim nástrojům
+
+5.7.2026: Teď celý tenhle web spravuju a pushuju přes funkce nástroje PIM, ale to vás asi nezajímá. Co by vás ale zajímat mohlo je nový nástroj Outliner (jak název napovídá je to outliner editor) a dnes jsem vydal novou fakt nabušenou verzi DKM manažeru dat.
+
 
 2.7.2026: U těch nástrojů, kde to dává smysl (opml, markdown, jsondb a nově plantuml, dkm apod,) lze teď projekty nejen ukládat a načítat ze souborů, ale i přes schránku. Malé ale hrozně užitečné vylepšení.
 
@@ -223,11 +225,11 @@ Univerzální information a PIM manager specializovaný na produktivitu.
 
 ## Datový správce a konceptuální modeller
 
-- [ ] dodělat [[O nástroji DKM]]
+- [x] dodělat [[O nástroji DKM]]
 
 
 
-*[⚠ Entita „O nástroji DKM" nenalezena]*
+⛓️ [Nástroji DKM](https://nastroje.egdilna.cz/dkm) je euvěřitelně univerzální databázová aplikace, kde si můžete s pomocí dynamického datového modelu vytvářet vlastní databázové aplikace bez nutnosti instalace a serveru apod. Online běží na https://nastroje.egdilna.cz/dkm
 
 ### Hlavní funkce
 
@@ -246,12 +248,14 @@ Webová aplikace pro správu znalostí s entitním modelem a aspekty. Podporuje 
 
 K dispozici je kompletní [[uživatelská příručka v češtině]](https://nastroje.egdilna.cz/dkm/docs-cs.md) a také [user guide in english](https://nastroje.egdilna.cz/dkm/docs-en.md)
 
-### ✏️Historie změn a oprav
+### Historie změn a oprav
 
 
 
 | Datum | Typ | Popis |
 | --- | --- | --- |
+| 3. 7. 2026 | Funkce | Konečně máme pokročilé a dynamické filtry. Nově jsou v pohledech možnosti přidávat a měnit pokročilé filtry, které jsou chytré jak podle typu atributu, tak i podle jejich kombinací (to si musíte vyzkoušet). A navíc se dá vymazlený filtr uložit jako nový pohled, což přináší ohromné možnosti filtrace a hledání přes celý projekt. |
+| 3. 7. 2026 | Funkce | Další dnešní novinka a to je export a tisk entity jako dokumentu. Můźete si vybrat, co chcete, aby tam bylo a nebylo a export je buď do Markdown, do HTML a nebo do DOCX. |
 | 2. 7. 2026 | Funkce | Nová možnost pracovat s daty projektu přes schránku. Nová tlačítka pro načtení ze schránky (CTRL+SHIFT+O) a uložit do schránky (CTRL+SHIFT+S). |
 | 29. 6. 2026 | Vylepšení | Nyní v editaci typu entity či v editaci aspektu u každého atributu je zaškrtávací pole, které udává, zda bude daný atribut vidět hned ve výpisu entit. Takže teď kvůli nejdůležitějším hodnotám nemusíte každou entitu otevírat. |
 | 8. 6. 2026 | Funkce | Zcela nová komplexní funkce a to přenos entit mezi jednotlivými projekty. V Nastavení / Projekt je k dispozici export balíčku (.dkmpackage) a import, který je realizovánm detailním průvodcem, takže se při migraci i mezi různými datovýmio modely nic neztratí. |
@@ -393,7 +397,7 @@ V případě zájmu natočíme stručné videonávody.
 
 | Datum | Typ | Popis |
 | --- | --- | --- |
-| (žádný záznam) |  |  |
+| 5. 7. 2026 | Funkce | Velká nová verze se spoustou funkcí a oprav (viz dokumentace). Třeba: Tlačítko Zpět už nezajíždí do editace a vedle něj přibylo rozbalovátko s historií navštívených entit a pohledů v rámci session. Sekce Odkazuje sem nyní zahrnuje i odkazy z atributů typu relace a z wiki-linků. Přibyla rychlá paleta příkazů Ctrl+P s fuzzy vyhledáváním nad entitami, pohledy a akcemi. V textových atributech fungují wiki-linky ve formátu [[Název entity]]. Po kliknutí na indikátor neuložených změn se otevře diff proti poslednímu uložení. Bulk režim umí sloučit vybrané entity do jedné cílové s přesměrováním všech vazeb. Přidán PlantUML export vazeb s výběrem stylu (class, component, use case). Seznam entit lze přepnout do zobrazení Kanban podle vybraného select atributu nebo Časové osy podle date atributu. K entitám lze přidávat komentáře s autorem z uživatelského nastavení a existuje samostatný pohled na komentáře napříč projektem. Nový typ přílohy Objekt drží pojmenovaný textový obsah s tlačítky pro kopírování, vkládání, uložení jako soubor a načtení nové verze. V aplikaci je nyní víc panelů (Ctrl+T pro nový, Ctrl+W pro zavření) s nezávislou prací na různých entitách. Detail entity jde otevřít v samostatném okně prohlížeče s automatickou synchronizací dat mezi okny přes BroadcastChannel. |
 
 
 ## AED
@@ -440,7 +444,7 @@ Správce záložek, bookmarků a odkazů
 
 | Datum | Typ | Popis |
 | --- | --- | --- |
-| (žádný záznam) |  |  |
+| 5. 7. 2026 | Funkce | Velká nová verze se spoustou funkcí a oprav (viz dokumentace). Třeba: Tlačítko Zpět už nezajíždí do editace a vedle něj přibylo rozbalovátko s historií navštívených entit a pohledů v rámci session. Sekce Odkazuje sem nyní zahrnuje i odkazy z atributů typu relace a z wiki-linků. Přibyla rychlá paleta příkazů Ctrl+P s fuzzy vyhledáváním nad entitami, pohledy a akcemi. V textových atributech fungují wiki-linky ve formátu [[Název entity]]. Po kliknutí na indikátor neuložených změn se otevře diff proti poslednímu uložení. Bulk režim umí sloučit vybrané entity do jedné cílové s přesměrováním všech vazeb. Přidán PlantUML export vazeb s výběrem stylu (class, component, use case). Seznam entit lze přepnout do zobrazení Kanban podle vybraného select atributu nebo Časové osy podle date atributu. K entitám lze přidávat komentáře s autorem z uživatelského nastavení a existuje samostatný pohled na komentáře napříč projektem. Nový typ přílohy Objekt drží pojmenovaný textový obsah s tlačítky pro kopírování, vkládání, uložení jako soubor a načtení nové verze. V aplikaci je nyní víc panelů (Ctrl+T pro nový, Ctrl+W pro zavření) s nezávislou prací na různých entitách. Detail entity jde otevřít v samostatném okně prohlížeče s automatickou synchronizací dat mezi okny přes BroadcastChannel. |
 
 
 #### Příklady využívání
