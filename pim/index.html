@@ -11355,6 +11355,7 @@ function renderDetailRead(main, e) {
     (bodyHtml ? '<details open class="section-collapsible" id="section-body"><summary>Obsah</summary><h3>Obsah</h3>' +
       '<div class="btn-group" style="margin-bottom:0.5em;margin-top:0.5em;">' +
         '<button id="btn-copy-body-source" title="Zkopírovat zdroj (Markdown)">📋 Zkopírovat zdroj</button>' +
+        (getEntityGhPath(e) ? '<button id="btn-gh-push" title="Uložit obsah do GitHubu na cestu ' + escapeHtml(getEntityGhPath(e)) + '">☁ Uložit na GitHub</button>' : '') +
         '<button id="btn-copy-body-formatted" title="Zkopírovat formátovaný (vložitelný do Wordu, Outlooku, Gmailu…)">✨ Zkopírovat formátované</button>' +
       '</div>' +
       bodyTaskCounter +
@@ -11538,6 +11539,8 @@ function renderDetailRead(main, e) {
   // Tlačítka „Zkopírovat zdroj/formátované" pro tělo (jen pokud má tělo)
   const copySrcBtn = document.getElementById('btn-copy-body-source');
   if (copySrcBtn) copySrcBtn.onclick = () => confirmIfUnfinishedTasks(e, () => copyBodySource(e));
+  const ghPushBtn = document.getElementById('btn-gh-push');
+  if (ghPushBtn) ghPushBtn.onclick = () => pushEntityToGithub(e);
   const copyFmtBtn = document.getElementById('btn-copy-body-formatted');
   if (copyFmtBtn) copyFmtBtn.onclick = () => confirmIfUnfinishedTasks(e, () => copyBodyFormatted(e));
   const lb = document.getElementById('leave-inbox');
@@ -22397,6 +22400,63 @@ function renderPlanAsMarkdown(entity) {
 }
 
 // Vrací strukturovaný export model entity – formát-nezávislý.
+
+// ===== PUSH OBSAHU ENTITY NA GITHUB (atribut ghpath) =====
+// ghpath = "owner/repo/cesta/soubor.ext" (první dva segmenty = owner a repo, zbytek = cesta).
+// Zapisuje rozexpandované tělo entity do větve main. Používá stejný GH token jako sync.
+function getEntityGhPath(entity) {
+  const p = entity && entity.attributes && entity.attributes.ghpath;
+  return (typeof p === 'string' && p.trim()) ? p.trim() : null;
+}
+function parseGhPath(raw) {
+  const parts = String(raw).split('/').filter(Boolean);
+  if (parts.length < 3) return null; // potřebujeme owner + repo + aspoň 1 segment cesty
+  return { owner: parts[0], repo: parts[1], path: parts.slice(2).join('/') };
+}
+async function pushEntityToGithub(entity) {
+  const raw = getEntityGhPath(entity);
+  if (!raw) { alertMsg('Entita nemá atribut ghpath.'); return; }
+  const parsed = parseGhPath(raw);
+  if (!parsed) { alertMsg('Neplatný ghpath. Očekává se owner/repo/cesta, např. egdilna/uilab/website.md'); return; }
+  if (!GH.getToken()) { alertMsg('Chybí GitHub token. Nastavte ho v nastavení GitHubu.'); return; }
+
+  // Obsah = rozexpandované tělo (direktivy, čítače, placeholdery) – stejně jako export.
+  const content = expandMarkdownIncludes(entity.body || '', { markIncluded: false, entity: entity });
+  const branch = 'main';
+  const apiBase = '/repos/' + encodeURIComponent(parsed.owner) + '/' + encodeURIComponent(parsed.repo) +
+                  '/contents/' + parsed.path.split('/').map(encodeURIComponent).join('/');
+
+  toast('Odesílám na GitHub…', 60000);
+  try {
+    // 1) Zjistit SHA existujícího souboru (pokud existuje) – nutné pro update
+    let sha = null;
+    try {
+      const meta = await GH._api('GET', apiBase + '?ref=' + encodeURIComponent(branch));
+      if (meta && meta.sha) sha = meta.sha;
+    } catch (e) {
+      if (e.status !== 404) throw e; // 404 = soubor ještě neexistuje (vytvoříme nový)
+    }
+    // 2) Obsah → base64 (UTF-8 bezpečně)
+    const bytes = new TextEncoder().encode(content);
+    let bin = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    const b64 = btoa(bin);
+    // 3) PUT
+    const body = {
+      message: 'PIM: ' + (getDisplayTitle(entity) || 'entita') + ' → ' + parsed.path,
+      content: b64,
+      branch: branch
+    };
+    if (sha) body.sha = sha;
+    await GH._api('PUT', apiBase, body);
+    toast('Uloženo na GitHub: ' + parsed.owner + '/' + parsed.repo + '/' + parsed.path + (sha ? ' (aktualizováno)' : ' (vytvořeno)'), 5000);
+    playSound('save');
+  } catch (err) {
+    alertMsg('Odeslání na GitHub selhalo: ' + (err.message || err));
+  }
+}
+
 function buildEntityExportModel(entity, selection) {
   const e = entity;
   // Pokud selection není zadán, vše true (zpětně kompatibilní)
