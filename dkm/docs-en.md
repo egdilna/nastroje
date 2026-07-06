@@ -1,207 +1,243 @@
 # DKM — Dynamic Knowledge Manager
 
-User Guide
+User guide
 
 - **Online tool:** <https://nastroje.egdilna.cz/dkm>
-- **EGdílna tools index:** <https://nastroje.egdilna.cz/#dkm>
+- **EGdílna tools directory:** <https://nastroje.egdilna.cz/#dkm>
 - **Source code:** <https://github.com/egdilna/nastroje> (folder `dkm`)
 
 ---
 
-## Table of Contents
+## Contents
 
-1. [What DKM is and what it's good for](#1-what-dkm-is-and-what-its-good-for)
+1. [What DKM is and what it's for](#1-what-dkm-is-and-what-its-for)
 2. [Getting started in five minutes](#2-getting-started-in-five-minutes)
 3. [Key concepts](#3-key-concepts)
-4. [User interface tour](#4-user-interface-tour)
+4. [Interface orientation](#4-interface-orientation)
 5. [Working with entities](#5-working-with-entities)
 6. [Entity types](#6-entity-types)
 7. [Attributes](#7-attributes)
 8. [Aspects](#8-aspects)
-9. [Relations](#9-relations)
-10. [Search, filters, sorting](#10-search-filters-sorting)
-11. [Bulk operations](#11-bulk-operations)
-12. [Inbox and Archive](#12-inbox-and-archive)
-13. [Markdown and CriticMarkup](#13-markdown-and-criticmarkup)
-14. [Multiple projects](#14-multiple-projects)
-15. [Storage: local and GitHub](#15-storage-local-and-github)
-16. [Import and export](#16-import-and-export)
-17. [Static viewer](#17-static-viewer)
-18. [Transferring parts between projects (packages)](#18-transferring-parts-between-projects-packages)
-19. [Settings](#19-settings)
-20. [Keyboard shortcuts](#20-keyboard-shortcuts)
-21. [Accessibility](#21-accessibility)
-22. [Tips and tricks](#22-tips-and-tricks)
-23. [Frequent issues](#23-frequent-issues)
-24. [Technical background](#24-technical-background)
+9. [Relations and backlinks](#9-relations-and-backlinks)
+10. [Search and basic filters](#10-search-and-basic-filters)
+11. [Advanced filters and saved views](#11-advanced-filters-and-saved-views)
+12. [Display modes: list, Kanban, timeline](#12-display-modes-list-kanban-timeline)
+13. [Bulk operations](#13-bulk-operations)
+14. [Inbox and archive](#14-inbox-and-archive)
+15. [Markdown, CriticMarkup, wiki-links](#15-markdown-criticmarkup-wiki-links)
+16. [Comments](#16-comments)
+17. [Objects](#17-objects)
+18. [Panels](#18-panels)
+19. [Command palette (Ctrl+P)](#19-command-palette-ctrlp)
+20. [Standalone windows](#20-standalone-windows)
+21. [Data storage](#21-data-storage)
+22. [Diff since last save](#22-diff-since-last-save)
+23. [Export and print entity](#23-export-and-print-entity)
+24. [Export to XLSX, TSV, PlantUML](#24-export-to-xlsx-tsv-plantuml)
+25. [Static viewer](#25-static-viewer)
+26. [Moving parts between projects (packages)](#26-moving-parts-between-projects-packages)
+27. [Settings](#27-settings)
+28. [Keyboard shortcuts](#28-keyboard-shortcuts)
+29. [Accessibility](#29-accessibility)
+30. [Tips and tricks](#30-tips-and-tricks)
+31. [Common problems](#31-common-problems)
+32. [Technical background](#32-technical-background)
 
 ---
 
-## 1. What DKM is and what it's good for
+## 1. What DKM is and what it's for
 
-**DKM (Dynamic Knowledge Manager)** is a tool for managing structured knowledge — things, people, documents, requirements, contracts, anything that can be described by attributes and linked by relations. Instead of filling out forms in a rigid database, you define your own **entity types** and **relations** the way that makes sense to you, and gradually populate them with content.
+**DKM (Dynamic Knowledge Manager)** is a tool for managing structured knowledge — things, people, documents, requirements, contracts, anything that can be described by attributes and connected by relations. Instead of filling forms in a rigid database, you define **entity types** and **relations** that make sense to you, and gradually add content.
 
-DKM is useful for:
+DKM works well for:
 
-- **Personal information manager** — contacts, projects, tasks, books, movies, knowledge graph of personal stuff
-- **Software data model** — entities, their attributes, relations between tables, audit
-- **Legislation and requirements** — paragraphs, obligations, references, supporting documentation
+- **Personal information manager** — contacts, projects, tasks, books, films, personal knowledge graph
+- **Software system data model** — entities, their attributes, relations between tables, audit
+- **Legislative norms and requirements** — paragraphs, obligations, dependencies, supporting documentation
 - **Lightweight CRM** — clients, projects, contracts, people on the other side
-- **Library catalog, card files** — anything that was traditionally in index card boxes
+- **Library catalog, card file** — anything traditionally stored in card boxes
 - **Wiki with typed pages** — when plain Markdown isn't enough
 
-The tool is **a single HTML file** running in a browser. No server, no installation, no account. Your data is yours and lives in the browser, or optionally in a GitHub repository under your control.
+The tool is **a single HTML file** running in the browser. No server, no installation, no account. Data is yours and lives in the browser or in a GitHub repository under your control.
 
 ---
 
 ## 2. Getting started in five minutes
 
 1. Open the tool at <https://nastroje.egdilna.cz/dkm> or download `dkm.html` from GitHub and open locally.
-2. On first open DKM welcomes you with an empty project. Click **Settings** in the header.
-3. Go to **Entity types** and click **+ Add entity type**. Fill in the name (e.g. „Person") and an icon (say 👤).
-4. Click that type in the list and add attributes (e.g. „Email" of type URL, „Phone" of type text, „Description" of type textarea).
-5. Return to the main view via the **Esc** key or by clicking the logo at the top.
-6. Click **+ New entity** in the All tab and create your first entity of type Person.
-7. After saving, you'll see the entity in the list. Click it to open the detail.
+2. On first open, DKM greets you with an empty project. Click **Settings** in the header.
+3. In **Project** enter a name and description.
+4. In **Types** create at least one entity type (e.g. "Person"). Add an attribute, e.g. "Email" (text).
+5. Back in the main view, click **+ New entity** and fill in something concrete.
+6. **Save** the project — DKM downloads a `.dkmdata` file. Store it somewhere findable.
+7. Next time you open DKM, click **Load** and pick your file. The project will be where you left it.
 
-That's it. The rest of this guide is about turning this into a genuinely useful system.
+DKM lives only in the current browser tab. Refresh (F5) survives, closing the tab does not — save regularly to file or to GitHub.
 
 ---
 
 ## 3. Key concepts
 
-DKM rests on six terms. Let's go through them with concrete examples.
+DKM rests on a few concepts. Let's go through them with concrete examples.
 
 ### 3.1 Entity
 
-An **entity** is one specific thing you want to remember — *John Smith*, *Contract 2026/001*, *iPhone 14 Pro*, *Meeting with the director June 4, 2026*. Each entity has a **name** and usually a **type**.
+An **entity** is one specific thing you're keeping track of — *Paul Newman*, *Contract 2026/001*, *iPhone 14 Pro*, *Meeting with director on June 4, 2026*. Each entity has a **name** and usually a **type**.
 
 ### 3.2 Entity type
 
-The **type** determines an entity's structure — what attributes it has. A type has a **name** (e.g. „Person", „Contract", „Asset") and optionally an **icon** (emoji that helps differentiate types at a glance).
+A **type** defines the structure of an entity — what attributes it has. A type has a **name** (e.g. "Person", "Contract", "Device") and optionally an **icon** (emoji that helps distinguish types at a glance).
 
-The key point: a type doesn't dictate content, only the template for attributes. Entities of the same type don't have to fill in all attributes.
+Key point: type doesn't dictate content, just a template of attributes. Entities of the same type don't have to fill in all attributes.
 
 ### 3.3 Attribute
 
-An **attribute** is a property of an entity. It's defined at the type level (and aspect level, see below) — all entities of the same type share the same attributes.
+An **attribute** is a property of an entity. Defined at type level (and aspect level, see below) — all entities of the same type share the same attributes.
 
 Attribute data types:
 
-- **text** — short single-line string
-- **textarea** — multi-line text with Markdown and CriticMarkup support
+- **text** — short string, one line
+- **textarea** — multiline text with Markdown, CriticMarkup and wiki-link support
 - **date** — date
-- **url** — link (rendered as clickable)
-- **select** — choice from a predefined list of values
+- **url** — link (rendered clickable)
+- **select** — pick from a predefined list of values
 - **yesno** — yes/no
 - **number** — number
-- **relation** — pointer to another entity (optionally constrained to a specific type)
+- **relation** — link to another entity (optionally restricted to a specific type, single or multi-value)
 
 For each attribute you can set:
 
-- **Required** — DKM won't save the entity without it being filled
-- **Show in list** — the value appears directly in the entity card in lists
+- **Required** — DKM won't save an entity without a value
+- **Show in list** — value appears directly in the entity card in lists
 
 ### 3.4 Aspect
 
-An **aspect** is something like a tag with an extension. An aspect adds **further attributes** to an entity, **independent of its type**.
+An **aspect** is like a tag with an extension. An aspect adds **more attributes** to an entity, **independently of its type**.
 
-Example: you have types „Person", „Contract", „Asset". You define an aspect „Approval" with two attributes: *Approver* (relation to Person) and *Approved on* (date). The aspect „Approval" can then be assigned to any entity — a person, a contract, an asset — and each will have access to those two additional attributes.
+Example: you have types "Person", "Contract", "Device". You define an aspect "Approval" with two attributes: *Approved by* (relation to Person) and *When* (date). The "Approval" aspect can be attached to any entity — person, contract, device — and each will gain those two extra attributes.
 
 Aspects are also used as:
 
-- **Filter** in lists (the „Aspect: Approval" tab shows all entities with that aspect)
-- **Semantic tag** (entity „is VIP", „is archived legacy logic", „passed audit")
-- **State modifier** with attributes about that state
+- **Filter** in lists (a tab "Aspect: Approval" shows all entities with that aspect)
+- **Semantic tag** (entity "is VIP", "is archived logic", "passed audit")
+- **State modifier** with attributes describing that state
 
-An entity can have any number of aspects at the same time.
+An entity can carry any number of aspects simultaneously.
 
 ### 3.5 Relation
 
-A **relation** connects two entities. A relation has its own **type** with a name (e.g. „collaborates with") and usually an **inverse name** (e.g. „collaborates with" for symmetric, or „is supervisor of / is subordinate of" for asymmetric).
+A **relation** connects two entities. A relation has its own **type** with a name (e.g. "collaborates with") and usually an **inverse name** (e.g. "collaborates with" for symmetric, or "supervises / reports to" for asymmetric).
 
-A relation has a **scope** (validity range):
+A relation has a **scope**:
 
 - **universal** — works between entities of any types
-- **from / to / specific** — restricts which entity types the relation may connect
+- **from / to / specific** — restricts between which types the relation can form
 
-Relations are unidirectional in data, but DKM displays both sides: in an entity you see its **Relations** (outgoing) and **Referenced by** (incoming), so it appears as a bidirectional connection.
+Relations are one-way in data, but DKM shows both sides: at an entity you see its **relations** (where they go) and **linked from** (who points to it). "Linked from" also counts attributes of type relation and wiki-links in textareas — a link is formed even without formally creating a relation (see chapter 9).
 
 ### 3.6 Custom attribute
 
-Sometimes you need to record something on a **single specific entity** that doesn't belong to its type or aspect. A custom attribute is an ad hoc attribute that applies only to that entity. It has the same data types as a standard attribute but isn't shared with anything else.
+Sometimes you need to note something on **one specific entity** that doesn't belong to type or aspect. A custom attribute is an ad hoc attribute valid only for that entity. Same data types as a standard attribute, but not shared with anything else.
 
-Example: type „Person" has no attribute „Favorite coffee". John, however, loves espresso. You add him a custom attribute „Coffee: espresso" just for John.
+Example: type "Person" doesn't have "Favorite coffee" attribute. But Paul loves espresso. Add him a custom attribute "Coffee: espresso" just for him.
+
+### 3.7 Comments
+
+Any number of comments can be attached to each entity. Each comment has an author (from user settings), date and Markdown content. Details in chapter 16.
+
+### 3.8 Objects
+
+An object is a **named text storage** attached to an entity — e.g. `data.json`, `outline.mroutline`. It's never rendered as entity content, but has buttons for clipboard copy, save-as-file and load-new-version. Objects are never exported to print / DOCX / PDF. Details in chapter 17.
 
 ---
 
-## 4. User interface tour
+## 4. Interface orientation
 
-DKM has three main views: **List** (default), **Entity detail**, **Entity editor**. Plus **Settings**.
+DKM has main views: **List** (default), **Entity detail**, **Entity editor**, **Settings**, **All comments**.
 
 ### 4.1 Header
 
-Always at the top. Contains:
+Always on top. Contains:
 
-- **Logo / project name** — clicking returns to the main list
-- **Load** — opens a `.dkmdata` file as a new project
-- **Save** — saves the current project (locally or to GitHub, see [Storage](#15-storage-local-and-github))
-- **Export** — XLSX export of the current view (filtered entities)
-- **Import TSV** — imports entities from a table (Excel TSV / CSV / clipboard paste)
-- **Settings** — project, types, aspects, relations, lists, language
-- **Unsaved changes indicator** (dot if the project is dirty)
+- **Logo / project name**
+- **Load** (Alt+L) — opens a `.dkmdata` file as the current project
+- **Save** (Ctrl+S) — saves the current project (to disk or GitHub, per configuration)
+- **📋⬇ Load from clipboard** (Ctrl+Shift+O) — replaces the project with data from clipboard (with confirmation)
+- **📋⬆ Copy to clipboard** (Ctrl+Shift+S) — copies the whole project as JSON to clipboard
+- **Export** — XLSX export of currently filtered entities
+- **Import TSV** — loads entities from TSV / CSV / pasted clipboard
+- **Settings** — project, types, aspects, relations, lists, views, general
+- **● Unsaved changes** — clicking opens diff against last save
 
 ### 4.2 Toolbar above the list
 
-- **Tabs**: Inbox, All, individual entity types, individual aspects, Archive. Click to switch to the view showing only entities of that category. (What appears in tabs is controlled by **Settings → Types / Aspects → Show as tab**.)
-- **Search** — full-text across name and text attributes
-- **Filter** — type, aspect, last-update date
-- **Sort** — by update date / name / created date
-- **+ New entity** — creates an entity (opens a type picker dialog or the editor)
-- **☑ Select** — turns on bulk action mode (see [Bulk operations](#11-bulk-operations))
+- **Tabs**: Inbox, All, individual entity types, individual aspects, pinned saved views, Archive.
+- **Search** — fulltext across name and text attributes
+- **Filter** — type, aspect, update date
+- **Sort** — by update date / name / creation date
+- **⚙ Advanced filters (N)** — panel to filter by any attribute (see chapter 11)
+- **📋 / 📊 / 📅** — display mode switcher: list / Kanban / timeline (see chapter 12)
+- **+ New entity**
+- **☑ Select** — enable bulk actions
 
-### 4.3 Entity card
+### 4.3 Entity card in list
 
-In the list each entity displays as a card with:
-
-- **Type icon** + **entity name** in the heading (e.g. 👤 *John Smith*)
-- **Badges** with the type name, optionally 📥 Inbox, 📦 Archive, and aspects (◎ *VIP*)
-- **Snippet** — short excerpt from the first textarea attribute
-- **Attribute values marked „Show in list"** — if any are enabled
+- **Type icon** + **entity name** (e.g. 👤 *Paul Newman*)
+- **Badge** with type name, 📥 Inbox, 📦 Archive, and aspects (◎ *VIP*)
+- **Snippet** — brief excerpt from the first textarea attribute
+- **Values of "Show in list" attributes** — if any are enabled
 - **Update date** and relation count
 
-Clicking the card opens the detail.
+Clicking a card opens the detail.
 
 ### 4.4 Entity detail
 
-- **Heading** — name with type icon, type badge, aspect badges
-- **Actions**: Edit, Duplicate, Change type, Archive, Delete
-- **Attributes** — all filled attributes (from type, aspects, custom)
-- **Relations** — entities the relations lead to from this entity, grouped by relation type
-- **Referenced by** — entities that have a relation pointing to this one
-- **Structural view** — 🌳 hierarchical tree following relations (uncovers the network of dependencies)
+- **← Back** (Alt+B) — returns to previously shown page. Never returns into editing — skips edit states.
+- **▾ Navigation history** — dropdown next to Back with recently visited entities and views in this session. For entities you see type icon, name and type.
+- **Heading** — type icon + entity name + type badge, aspect badges, status badges
+- **Actions**: Edit (E), Duplicate, Change type, 🖨 Export / print, 🪟 Standalone window, Archive, Delete
+- **Attributes** — filled attributes (type, aspects, custom)
+- **Relations** — entities relations point to, grouped by relation type
+- **Linked from** — entities that reference this one (classic relations, attribute-relations, wiki-links). Groups have different labels:
+  - `relation name ←` (classic relations)
+  - `Type / AttrName ←` (attribute-of-type-relation references)
+  - `◎ Aspect / AttrName ←` (aspect attribute references)
+  - `[[AttrName]] (Context) ←` (wiki-links)
+- **Objects** — section with entity's objects (see chapter 17)
+- **Comments** — section with comments and new-comment form (see chapter 16)
+- **Structural view** — 🌳 hierarchical tree by relations
+- **Metadata** — ID, created, updated
 
 ### 4.5 Entity editor
 
 - **Name** — required
 - **Type** — changeable via Change type
-- **Inbox** — checkbox „in Inbox"
-- **Type attributes** — fields per data type (text input, textarea with preview, date, select, etc.)
-- **Aspects** — section „Aspects" with checkboxes. Checking adds the aspect and immediately shows its attributes in the form.
-- **Custom attributes** — section where you can add ad hoc attributes to this entity
-- **Relations** — section with current relations, button + Add relation
-- **Save / Cancel** in the footer (keyboard **U** also saves)
+- **Inbox** — checkbox "in Inbox"
+- **Type attributes** — fields per data type
+- **Aspects** — section with checkboxes. Checking adds an aspect and immediately shows its attributes.
+- **Custom attributes** — section with + Add custom attribute and + Add object
+- **Relations** — current relations, + Add relation
+- **Save / Cancel** at the bottom (U key also saves)
 
 ### 4.6 Settings
 
 Left panel with sections:
 
-- **Project** — name, description, GitHub path, static viewer, package import, project list
-- **Types** — list of entity types, click to switch to type editor (attributes, icon, name)
-- **Aspects** — analogous to types but for aspects
-- **Relations** — relation types, their names, scope, allowed types
+- **Project** — name, description, GitHub path, static viewer, package transfer, project storage
+- **Types** — list of entity types, attributes, icons
+- **Aspects** — analogous to types
+- **Relations** — relation types, names, scope, allowed types
 - **Lists** — select lists with value enumerations
-- **Language** — Czech / English
+- **Saved views** — management of saved filters
+- **Tabs** — which types and aspects show in the toolbar
+- **GitHub** — token, synchronization
+- **General** — language, user name for comments, autosave, debug
+- **Statistics** — counts of entities, attributes, relations
+- **Help** — documentation links
+
+### 4.7 Panels
+
+Above main content appears a **panel bar** when you have multiple panels open. Each panel is an independent working context with its own view, filters, opened entity. Details in chapter 18.
 
 ---
 
@@ -209,635 +245,1046 @@ Left panel with sections:
 
 ### 5.1 Creating an entity
 
-Three ways:
+Several ways:
 
-**A) Button + New entity** in the tab of a given type creates an entity directly of that type. The editor opens.
+- **+ New entity** in the header or toolbar
+- **Quick add** from Inbox view — the "New entity" field at the top of Inbox, type text and press Enter → creates an entity without type in Inbox
+- **Duplicate** in detail — creates a copy of current entity (name suffixed with "(copy)")
+- Via **Command palette (Ctrl+P)** → action "New entity"
 
-**B) Button + New entity** in the All tab or in an aspect opens a chooser dialog — pick a type, or „📥 Add to Inbox" (entity without a type, you'll classify it later).
+Entities created via quick add are in Inbox without a type. In Detail click **Change type** to assign.
 
-**C) Quick-add** in the Inbox tab: enter name and short description, the Enter key creates an entity in the Inbox.
+### 5.2 Editing an entity
 
-### 5.2 Editing
+Click **Edit** (or E key). The form shows:
 
-Click the entity in the list, then **Edit**. Keyboard shortcut **E** in the detail opens the editor.
+- Basic fields (Name, Type, In Inbox)
+- Type attributes
+- Aspects (checkboxes — checking immediately adds a section of attributes)
+- Custom attributes
+- Objects
+- Relations
 
-Changes are saved only when you click **Save** (shortcut **U**). If you leave the editor (Esc or Cancel), changes are discarded.
+Save via Save button or U key.
 
 ### 5.3 Duplicating
 
-In the detail **Duplicate** creates a copy of the entity (including type, attributes, custom attributes, relations, and aspects). The name gets the „(copy)" suffix and the editor opens for fine-tuning.
+In Detail, **⎘ Duplicate** button. Creates a copy with all attributes, aspects and custom attributes. Relations are not copied (create them manually). Comments and objects are not copied either.
 
-### 5.4 Change type
+### 5.4 Changing type
 
-In the detail **Change type** shows the type picker. If you change the type, attributes with the same name and a compatible data type in the new type keep their values. Other attributes lose their values.
+When you create an entity in Inbox without a type, assign it later via **Change type** in detail. DKM preserves all attribute values with matching IDs. The rest you fill in manually.
 
-### 5.5 Archive
+### 5.5 Archive and delete
 
-**Archive** moves the entity to the Archive tab. It disappears from normal lists, but data, relations, and aspects are preserved. You can restore it from the Archive.
+- **Archive** — entity disappears from all lists (except Archive tab), but stays in data. Relations to it still work.
+- **Restore** — brings entity back from archive.
+- **Delete** — permanently removes the entity and its relations.
 
-### 5.6 Deletion
+### 5.6 Navigation history
 
-**Delete** requires confirmation and is irreversible (except via backups). After deletion, relations from other entities pointing to the deleted one are automatically removed.
+In detail / in settings there is a **← Back** button (Alt+B) and next to it a **▾** dropdown with recently visited entities / views. History is session-only — disappears when tab closes. Back never returns into editing (skips it).
 
 ---
 
 ## 6. Entity types
 
-### 6.1 Defining a type
+Defined in **Settings → Types**. Each type has:
 
-In **Settings → Types → + Add entity type**. The type editor opens:
+- **Name** (e.g. "Person")
+- **Icon** — emoji shown at entities of this type
+- **Set of attributes** — any count, each with its own data type
 
-- **Icon** — emoji or short string displayed as a prefix in cards (e.g. 👤, 📄, 🛡)
-- **Name** — human-readable (e.g. „Person", „Contract", „Asset")
-- **Attributes** — the list that determines entity structure. Order can be changed with the arrow buttons.
+### 6.1 Creating a type
 
-### 6.2 Attributes within a type
+Click **+ New type**. Enter name, optionally an icon. Type editor opens.
 
-For each attribute:
+### 6.2 Type editor
 
-- **Name** — what the attribute is called (e.g. „Email", „Date of birth")
-- **Type** — data type (see [3.3](#33-attribute))
-- **Required** — checkbox, enforces a value when saving the entity
-- **Show in list** — checkbox, value appears in cards
-- For **select**, the connected **List** (defined in Settings → Lists) is set
-- For **relation**, the **Target type** (constraint) and **multi** (multiple targets) is set
+- Rename / change icon
+- Add / remove attributes, rename, move (up / down)
+- **Required** toggle per attribute
+- **Show in list** toggle (value shows in entity card)
 
-### 6.3 Tab for the type
+### 6.3 Deleting a type
 
-In Settings → Types each type has **„Show as tab"** — if you check it, a separate tab appears in the main toolbar for entities of this type.
+You can delete a type only when no entity uses it. Otherwise DKM warns you.
 
-### 6.4 Deleting a type
+### 6.4 Show type as a tab
 
-Deleting a type doesn't delete entities — they just lose their type (they remain as entities without a type, in the Inbox, visible in the All tab). Relations and aspects are preserved. Type deletion is confirmed by a dialog.
+In **Settings → Tabs** you check which types should appear in the main toolbar as tabs (e.g. only the most frequent). Others are accessible via advanced filtering or command palette.
 
 ---
 
 ## 7. Attributes
 
-### 7.1 Data types
+### 7.1 Standard attribute (at type level)
 
-| Type | Use | Input |
-|---|---|---|
-| text | short string | single-line field |
-| textarea | long text, description | multi-line, supports Markdown and CriticMarkup |
-| date | date | datepicker |
-| url | link | URL, rendered as clickable |
-| select | pick from a list | dropdown |
-| yesno | yes/no | checkbox |
-| number | number | numeric input |
-| relation | pointer to entity | entity picker, optionally constrained by type |
+Added in type editor. Enter:
 
-### 7.2 „Required" attribute
+- **Name** (e.g. "Email")
+- **Data type** (see 3.3)
+- **Required** (checkbox)
+- **Show in list** (checkbox)
+- Optionally: **Value list** (for select), **Target type** (for relation)
 
-When saving an entity DKM checks required attributes. If any are empty, focus jumps to the first empty one and saving fails.
+### 7.2 Aspect attribute
 
-### 7.3 „Show in list" attribute
+Defined in aspect editor. Same rules. An aspect can bring attributes of any type (including relation).
 
-Practical for key properties you need to see without opening the detail. The card shows them as `Name: Value`. Works for all data types including Markdown (rendered), URL (clickable), relation (link to target entity).
+### 7.3 Custom attribute
 
-### 7.4 Custom attributes
+In entity editor click **+ Add custom attribute**. Enter name, pick data type, fill value. Custom attribute is per-entity only.
 
-An ad hoc attribute added to a single entity only, in the editor's Custom attributes section. It has a name, data type, and value. Useful when you don't want to change the whole type for one exception.
+### 7.4 Attribute of type relation
+
+Special attribute type — value is target entity's ID. You can configure:
+
+- **Target type** — only entities of this type are offered
+- **Multi-value** — array of IDs instead of one
+
+This attribute is **automatically counted in "Linked from"** at the target entity, even without a formal relation.
 
 ---
 
 ## 8. Aspects
 
-### 8.1 Defining an aspect
+An aspect is like a type, but for supplementary sets of attributes. Defined in **Settings → Aspects**.
 
-In **Settings → Aspects → + Add aspect**. You define:
+Differences from type:
 
-- **Name** — e.g. „VIP", „Approved", „Under audit"
-- **Attributes** — list of attributes that get added to an entity as soon as it gets this aspect
+- Aspect has no icon (just ◎ as common symbol)
+- An entity can carry multiple aspects at once (only one type)
+- An aspect can be added / removed at any time — attributes remain in the data even after removing the aspect, but aren't shown
 
-### 8.2 Assigning an aspect
+### 8.1 When to use aspect vs. type
 
-In the entity editor there's an **Aspects** section with checkboxes. Checking adds the aspect — aspect attributes appear immediately in the form below the type attributes. Unchecking removes the aspect (DKM confirms whether you want to, and clears the aspect attribute values).
-
-### 8.3 Aspect as a filter
-
-Just like with types, in Settings → Aspects each aspect has „Show as tab". If you check it, a tab appears in the toolbar and you see all entities with that aspect.
-
-### 8.4 Aspect vs. type attribute — when which
-
-- **Type** = what the entity **is** (Person, Contract). Strict template.
-- **Aspect** = what **state** or **additional property** the entity has (VIP, approved, under audit). Optional and combinable.
-
-An aspect holds data about a state (who, when, how). When the state changes, you simply remove the aspect and the aspect attributes disappear.
+- **Type** = base classification, what kind of thing it is (Person, Contract)
+- **Aspect** = supplementary property that comes and goes independently (VIP, In approval, Archive-candidate)
 
 ---
 
-## 9. Relations
+## 9. Relations and backlinks
 
-### 9.1 Defining a relation type
+### 9.1 Relation type definition
 
-In **Settings → Relations → + Add relation type**:
+In **Settings → Relations** you create a relation type:
 
-- **Name** — how the relation reads in the creation direction (e.g. „is supervisor of")
-- **Inverse name** — how it reads backwards (e.g. „is subordinate of"); for a symmetric relation, set them to the same
-- **Scope**:
-  - **universal** — between any types
-  - **from** — restricts only the source type
-  - **to** — restricts only the target type
-  - **specific** — restricts both (e.g. Contract → Person)
-- **From types / To types** — lists of types (depend on scope)
+- **Name** (e.g. "collaborates with")
+- **Inverse name** (e.g. "collaborates with" or "supervises / reports to")
+- **Scope**: universal, from-to, specific
+- **Allowed source / target types**
 
-### 9.2 Adding a relation to an entity
+### 9.2 Creating a relation
 
-In the detail or editor of an entity, the **↔ Add relation** button (shortcut **R** in detail):
+In entity detail → **+ Add relation** → dialog:
 
-1. Pick a relation type from the dropdown
-2. Pick the target entity (with type and text filter)
-3. Click **+ Add / ✓ Select** adds the relation
+- Relation type
+- Target entity (autocomplete or picker)
 
-In the editor, existing relations are shown in the Relations section. The × button removes them.
+The relation appears immediately in the Relations section.
 
-### 9.3 Relations in detail
+### 9.3 Backlinks ("Linked from")
 
-In the detail, relations are grouped by type:
+The **Linked from** section at an entity **automatically includes three kinds of links**:
 
-- **Relations**: list of where relations lead **from** this entity
-- **Referenced by**: relations that lead **to** this entity from others (backlinks)
+1. **Classic relations** — other entities that have a relation pointing here (group labeled by inverse name)
+2. **Attribute-of-type-relation** — other entities that have an attribute referencing here (group labeled `Type / AttrName ←` or `◎ Aspect / AttrName ←`)
+3. **Wiki-links** — other entities whose textareas contain `[[This entity name]]` (group labeled `[[AttrName]] (Context) ←`)
 
-Click a relation to open the target entity's detail.
+Each group contains links to source entities with type icons.
 
-### 9.4 Structural view
+This means you can **build a link network naturally** without formally creating relations — just use a relation-type attribute or write a wiki-link in text.
 
-In the detail **🌳 Structural view** expands a hierarchical tree: this entity, its relations, relations of those, etc. — up to depth 3 or until the tree ends. Cyclic dependencies are detected and labeled.
+### 9.4 System filter by relations
 
-### 9.5 Attribute of type „relation"
+In advanced filters (chapter 11) you can filter entities by:
 
-Alternative to standalone relations: an attribute of data type „relation" holds a pointer (or list of pointers) to other entities directly in the entity's data, not as a standalone relation. Useful for key structural relationships (for example „Contract has a client — always one person"). A standalone relation is more universal (many relations, various types), an attribute of type relation is stricter (exact count, always the same position).
+- **Relation count / backlink count**
+- **Has relation of type X**
+- **Linked from entity X**
+
+All this counts attribute-relations and wiki-links, consistently across the app.
 
 ---
 
-## 10. Search, filters, sorting
+## 10. Search and basic filters
 
-### 10.1 Full-text search
+### 10.1 Fulltext
 
-In the toolbar, the **Search** field. Searches in:
+The **Search** field in the toolbar searches through:
 
 - Entity name
-- Text attributes (text, textarea, url, select)
-- Custom attributes
+- Text and textarea attributes
+- Custom attributes of type text and textarea
 
-Search is case-insensitive, substring-based. Key **F** or **/** focuses the search.
+Returns entities containing the query string.
 
-### 10.2 Filters
+### 10.2 Type filter
 
-- **Type filter** — only entities of the given type (if you're not in a type tab)
-- **Aspect filter** — only entities with the given aspect (if you're not in an aspect tab)
-- **Date filter** — when last updated (today, week, month, year)
+Dropdown in toolbar — narrows list to one selected type.
 
-### 10.3 Sorting
+### 10.3 Aspect filter
 
-- **Last updated** (default, descending)
-- **Name** (ascending)
-- **Created** (descending)
+Dropdown — narrows list to entities carrying the aspect.
 
----
+### 10.4 Update date filter
 
-## 11. Bulk operations
+Dropdown with four choices: today, last 7 days, last 30 days, older than a month.
 
-### 11.1 Activating the mode
+### 10.5 Sort
 
-In the list view toolbar, the **☑ Select** button (key **V**). After activation:
+By update date (default), name, creation date.
 
-- A checkbox appears on the left of each entity card
-- Clicking the card toggles the checkbox (doesn't navigate to detail)
-- Selected cards have a colored highlight
-- The toolbar expands with a **bulk action panel**
-
-To turn off selection: the **☐ Cancel selection** button, key **V**, key **Esc**.
-
-### 11.2 Action panel
-
-Contains:
-
-- **Selected count**
-- **Select all visible** — selects all entities matching the current filter
-- **Deselect all**
-- **Action** — dropdown with the list
-- **Run** — executes the selected action
-
-### 11.3 Available actions
-
-1. **⇄ Change type** — changes the type of selected entities. Attributes with the same name and a compatible data type in the new type keep their values.
-2. **+ Add aspect** — picks an aspect from the dropdown (with a „missing in N entities" counter) and adds it where missing.
-3. **− Remove aspect** — removes an aspect from entities that have it. Also clears aspect attribute values.
-4. **✎ Set attribute** — the dropdown unions attributes across selected (from types and aspects, labeled „TypeName / AttrName (N×)"). After picking an attribute you enter the new value. Applies only to entities that have the attribute.
-5. **⌫ Clear attribute** — same but without a value (clears).
-6. **↔ Add relation** — relation type + target entity. Adds a relation from each selected entity to the target. Skips self, duplicates, and entities to which the relation doesn't fit by scope.
-7. **📦 Export selection to package** — see [Transferring parts between projects](#18-transferring-parts-between-projects-packages).
-8. **📥 Move to Inbox** — `inInbox=true`
-9. **📤 Remove from Inbox** — `inInbox=false`
-10. **📦 Archive** — with a confirmation dialog
-11. **♻ Restore from archive** — visible only in the Archive tab
-12. **🗑 Delete** — with strong confirmation, irreversible
-
-### 11.4 Behavior after an action
-
-After completion the selection is **cleared**, but selection mode **stays active**. You can immediately select a different set and run another action. Or, if you keep the same selection, the chain „add aspect" then „set attribute of the aspect" works fluidly (you redo the selection after each action).
+For more complex filtering → chapter 11.
 
 ---
 
-## 12. Inbox and Archive
+## 11. Advanced filters and saved views
 
-### 12.1 Inbox
+### 11.1 Advanced filters panel
 
-The **📥 Inbox** tab holds entities without a type, or entities you've put there manually (e.g. „quick note, I'll sort it later"). The Inbox is a buffer for unclassified items.
+The **⚙ Advanced filters (N)** button in the toolbar (Ctrl+F). Opens a panel where you add rules. Each rule has:
 
-**Quick-add** in the Inbox: enter name + short description, **Enter** creates an entity in the Inbox.
+- **Attribute** — dropdown with all attributes: system properties, type attributes, aspect attributes
+- **Operator** — dropdown based on data type
+- **Value** — input field matching the data type
 
-In the detail of an Inbox entity you see the **Convert to type** button — pick a type and the entity gets assigned, leaves the Inbox.
+Rules are combined with **AND** — all must be true.
 
-### 12.2 Archive
+### 11.2 System properties
 
-The **📦 Archive** tab holds entities you no longer actively need but want to preserve. Archived entities:
+- **Name** — text operators
+- **Entity type** — equals / notEquals / in / notIn / empty
+- **Aspects** — hasAspect / hasNoAspect / hasAllAspects / hasAnyOfAspects / hasNoAspects
+- **In Inbox** / **Archived** — yes/no
+- **Created** / **Updated** — date operators
+- **Relation count** — number operators
+- **Backlink count** — number operators (counts attribute-relations and wiki-links too)
+- **Has relation of type**
 
-- Are not in lists (All, by type, by aspect, search)
-- Are not in entity selectors when creating relations
-- Stay in data and relations (entity A in archive, but a relation from B points to it — the relation in B stays)
-- Can be restored with a single click
+### 11.3 Operators by data type
 
-The Archive serves more as „inactive" than as a trash bin. For permanent deletion use Delete.
+**Text / URL:** contains, notContains, equals, notEquals, startsWith, endsWith, regex, empty, notEmpty
 
----
+**Select:** equals, notEquals, in, notIn, empty, notEmpty
 
-## 13. Markdown and CriticMarkup
+**Number:** equals, notEquals, greaterThan, greaterOrEqual, lessThan, lessOrEqual, between, empty, notEmpty
 
-In attributes of data type **textarea** you can use Markdown and CriticMarkup. In the detail the text is rendered, in the editor it's source.
+**Date:** equals, before, after, between, isToday, isYesterday, isTomorrow, isThisWeek, isThisMonth, isThisYear, isPast, isFuture, inLastDays N, inNextDays N, olderThanDays N, newerThanDays N, empty, notEmpty
 
-### 13.1 Markdown — what works
+**Yes/No:** isTrue, isFalse, empty
 
-| Syntax | Result |
-|---|---|
-| `**bold**` | **bold** |
-| `*italic*` | *italic* |
-| `` `code` `` | `code` |
-| `~~strikethrough~~` | ~~strikethrough~~ |
-| `[link](https://...)` | [link](https://...) |
-| `# Heading` | Large heading |
-| `## Subheading` | Smaller heading |
-| `- item` | bullet list |
-| `1. number` | numbered list |
-| `> quote` | quote |
-| ` ``` block ``` ` | code block |
+**Relation attribute:** hasAnyTarget, hasNoTarget, targetIs (specific entity), targetIsType, targetHasAspect
 
-### 13.2 CriticMarkup
+### 11.4 Active filter summary
 
-For marking editorial changes in text:
+When you close the panel and rules are active, a strip appears above the list: `Filter: Person / Email contains "firma" · aspects has aspect VIP  [Clear]`. Click Clear to discard all advanced rules.
 
-| Syntax | Meaning |
-|---|---|
-| `{++added++}` | new text (rendered green, underlined) |
-| `{--deleted--}` | deleted text (rendered red, strikethrough) |
-| `{~~original~>new~~}` | replacement (original strikethrough, new bold) |
-| `{==highlight==}` | yellow highlight |
-| `{>>comment<<}` | margin comment |
+### 11.5 Saved views
 
-CriticMarkup renders as proper HTML (`<ins>`, `<del>`, `<mark>`) and exports (XLSX) preserve it as readable text.
+The **⭐ Save as view** button in the filter panel. Dialog: name, icon (emoji), checkbox **Pin as tab**.
 
----
+A saved view stores: search, type / aspect / date filter, advanced rules (attrFilters), sort, active tab, and display mode (list / Kanban / timeline) with its parameters.
 
-## 14. Multiple projects
+**Pinned view** appears as a tab in the main toolbar (e.g. `🔥 Urgent`). Click to apply the filter.
 
-DKM supports any number of projects side by side in one browser.
+### 11.6 View management
 
-### 14.1 Project list
+**Settings → Saved views**: edit name / icon, toggle pinning, **Overwrite with current** (saves current filter into the view), Delete. Preview of view content.
 
-In **Settings → Project → All projects** you see the list of all projects stored locally. Each project has buttons:
+Views are stored in project data (`state.data.savedViews`), travel with the project.
 
-- **Switch** — opens the project in this tab (replaces the current one)
-- **In new tab** — opens the project in a new browser tab (parallel work)
-- **×** — deletes the project (with confirmation)
+### 11.7 Invalid rules
 
-### 14.2 New project
-
-The **+ New project** button creates an empty project and opens it.
-
-### 14.3 URL parameter `?p={id}`
-
-Each project has its id (e.g. `p_abc123`). When you add `?p=p_abc123` to the URL, that specific project opens. This allows multiple projects in different browser tabs simultaneously, each with its own data.
+When you delete an attribute referenced by a rule, the rule is marked red as `⚠ Invalid` in the panel. When applied, it returns an empty result — signal to delete or remap it.
 
 ---
 
-## 15. Storage: local and GitHub
+## 12. Display modes: list, Kanban, timeline
 
-### 15.1 Local (browser localStorage)
+In the list view toolbar there are three switches **📋 List · 📊 Kanban · 📅 Timeline**.
 
-DKM stores data in browser localStorage under the keys:
+### 12.1 List (📋)
 
-- `dkm-projects-v1` — list of projects with metadata
-- `dkm-pdata-{id}` — data of a specific project
-- `dkm-active-project` — id of the currently open one
+Default. Entity cards below each other. Sorting, filters and views work normally.
 
-**Autosave** is on by default (Settings → Language → Autosave). On change the project saves locally after a short delay.
+### 12.2 Kanban (📊)
 
-Manually **Save** (key **S**) saves immediately.
+Above the board a **Columns by** selector. Offers select / yesno attributes plus the system property "Entity type". Columns are values of the attribute (+ a "no value" column for entities without a value).
 
-### 15.2 GitHub
+Card has icon, name, snippet and a **Move to dropdown** — screen reader-compatible alternative to drag-and-drop. Changing column = editing attribute value, entity is re-saved.
 
-DKM can save a project to a GitHub repository as a `.dkmdata` file. Configuration:
+### 12.3 Timeline (📅)
 
-1. In GitHub generate a **Personal Access Token** with `repo` scope (Fine-grained or Classic). Keep the token secure.
-2. In DKM in the header you'll see a lock icon — click and paste the token. The token is stored per-device in localStorage (`dkm-gh-token`). It is **not** part of project data.
-3. In Settings → Project fill in **GitHub path** in the format `username/repository/path/file.dkmdata`. Example: `egdilna/data/dkm/my-project.dkmdata`.
-4. Click **Save** (S). DKM reads the current file content from GitHub (for SHA), writes the new content, and commits.
+**Timeline by** selector — all date attributes (type, aspect) plus system Created / Updated.
 
-**Loading from GitHub** happens automatically: if the project has a GitHub path, on open DKM downloads the latest version and compares with local.
+**⇧ Ascending / ⇩ Descending** button.
 
-### 15.3 Conflicts
+Entities grouped by year and month with date before the name. Entities without a date in a separate **No date** section.
 
-If you save locally something that has changed on GitHub in the meantime, DKM notifies you and offers options (keep local, take from GitHub, or open a diff). Conflicts are rare in practice but happen when working from multiple devices.
+### 12.4 Display mode in saved views
 
-### 15.4 No server, no telemetry
-
-DKM **sends data nowhere** except GitHub (where you yourself send it with the token). No telemetry, no cloud, no accounts.
+When you save a view, display mode and its parameters are saved too. Clicking a pinned view tab returns you to the same display. Changeable via **Overwrite with current** in Settings → Saved views.
 
 ---
 
-## 16. Import and export
+## 13. Bulk operations
 
-### 16.1 Load `.dkmdata`
+Click **☑ Select** in toolbar (V key). Entity cards get a checkbox. Pick which entities to process.
 
-The **Load** button in the header (key **L**) opens a file dialog. A `.dkmdata` file is a project JSON — DKM opens it as a new project next to existing ones.
+Bulk toolbar shows count selected + action dropdown:
 
-### 16.2 Save `.dkmdata` manually
+- **📥 To Inbox** — move to Inbox
+- **📤 From Inbox** — remove from Inbox
+- **📦 Archive / Restore**
+- **🗑 Delete**
+- **🏷 Assign type**
+- **◎ Add aspect / Remove aspect**
+- **↔ Add relation** — bulk-adds relation to all
+- **⇢ Merge entities** — merges selected into one target (see 13.1)
+- **🎨 PlantUML diagram** — generates PlantUML from selected (see chapter 24)
+- **📦 Export package** — bundles selected into a `.dkmpkg` (see chapter 26)
 
-Aside from automatic saving, a project can be **exported** as a `.dkmdata` file for backup or transfer. In Settings → Project → **Download project backup**. The file contains everything: data, types, aspects, relations, lists, settings.
+### 13.1 Merging entities
 
-### 16.3 XLSX export
+Select 2+ entities, action **⇢ Merge entities**. Dialog:
 
-The **Export** button in the header. Generates an XLSX (Excel) table of the current filtered entities. Columns:
+- **Target entity** (others merge into it)
+- **Conflict strategy**: Keep target / Overwrite from source / Concat both
+- **Preview** — how many relations move, attributes, backlinks
 
-- ID, Name, Type, Inbox, Archive, Aspects
-- Type attributes (`TypeName / AttrName`)
-- Aspect attributes (`AspectName / AttrName`)
-- Custom attributes (`* name`)
-- Relations (as string `type → target; type → target`)
-- Created, Updated
+Clicking **Merge**:
 
-Markdown/textarea values have Excel's wrap text enabled. Dates are real dates (not text). Numbers are numbers. The first row is bold with autofilter and freeze.
+- Transfers attributes per strategy
+- Unions aspects and custom attributes
+- Moves outgoing relations (deduplicated)
+- Redirects **all incoming relations** from other entities to the target (classic and attribute-relations)
+- Deletes source entities
+- Jumps to the target
 
-DKM lazy-loads the SheetJS library from a CDN on first click.
-
-### 16.4 TSV import
-
-The **Import TSV** button in the header. Dialog with two tabs:
-
-- **File** — pick `.tsv`, `.txt`, `.csv`
-- **Paste from clipboard** — paste a table from Excel / Google Sheets
-
-DKM detects the delimiter (TAB, semicolon, comma). The first row is the header. Column mapping:
-
-- **Name** (also „Title", „Jméno") — required column
-- **Type** — maps the entity type by name
-- **Aspects** — semicolon-separated aspect names
-- **Inbox**, **Archive** — 1/0/yes/no/x
-- Other columns are matched to attributes by name. Format `Type / Attribute` refines mapping for cases where the same attribute name exists in multiple types.
-
-Unknown columns are ignored. Entities with the same name and type are updated (not duplicated). After import you see a toast „Import: added X, updated Y, skipped Z".
+Ideal for duplicates ("two Paul Newmans", "same table under different names").
 
 ---
 
-## 17. Static viewer
+## 14. Inbox and archive
 
-In **Settings → Project → Static viewer** there's the **⬇ Download HTML viewer** button. Generates a standalone HTML file with data embedded inside. The file:
+### 14.1 Inbox
 
-- Works offline and without a server
-- Opens in any browser
-- **Read-only** — no editing, only browsing
-- Has everything: tabs, search, filters, detail, attributes, aspects, relations, backlinks, Markdown
-- Can be shared (email, upload to server, on a USB drive)
-- Size = project JSON size + ~35 KB UI code
+**Inbox** is a tab for entities you create quickly without thinking (e.g. an idea for later) or without knowing the type. A new entity can be in Inbox — "In Inbox" checkbox in the editor.
 
-Use case: you deliver someone the result of your work so they can look through it without installing DKM, without GitHub access, without anything — they just open the HTML.
+At the top of Inbox is the **Quick add** field — type text, press Enter, entity without type appears in Inbox. Optionally a large textarea for a longer note.
 
----
+Goal: gradually process Inbox entities — assign type (Change type in detail), fill attributes, move out of Inbox (uncheck checkbox).
 
-## 18. Transferring parts between projects (packages)
+### 14.2 Archive
 
-When you have multiple projects and want to transfer parts between them (types, entities, relations), use **`.dkmpkg` packages**.
+**Archive** = entity vanishes from all normal views (except Archive tab). Data remains, relations work. Good for completed items you don't want to see daily but not delete.
 
-### 18.1 Export to a package
-
-In bulk operations the action **📦 Export selection to package**:
-
-- **What to include** option: only selected / + 1st-level neighbors / + entire connected component
-- Optional **package description**
-- The downloaded `.dkmpkg` contains the used part of the model (types, aspects, relation types, lists) + entities themselves
-
-### 18.2 Importing a package
-
-In **Settings → Project → Import package (.dkmpkg)**. The wizard has 8 steps:
-
-1. **Summary** — what the package contains, choice of **Easy** mode (automatic mapping) or **Detailed** (step by step)
-2. **Type mapping** (Detailed) — for each type from the package: Create new / Use existing / Skip. With existing, attribute mapping expands.
-3. **Aspect mapping** (Detailed) — same.
-4. **Relation mapping** (Detailed) — same.
-5. **List mapping** (Detailed) — Create new / Merge with existing / Skip.
-6. **Entity ID conflicts** (Detailed) — for entities with the same ID: Import as new / Overwrite / Skip.
-7. **Preview** — what will be added / overwritten / dropped, possible warnings.
-8. **Done** — resulting log.
-
-Before import there's an option to download a **backup of the target project** (`.dkmdata` with date in the name). Recommended to keep on.
-
-### 18.3 Safety
-
-- Custom entity attributes transfer 1:1 (they're per-entity)
-- An attribute that can't be matched in the target type imports as a new attribute
-- Relations within the package are kept, relations going out are dropped with a counter
-- Values of attributes of type „relation" are remapped to new entity IDs
-- Datatype compatibility: text ⇔ textarea ⇔ url, other types only with themselves
+Archive tab appears only when something is in it.
 
 ---
 
-## 19. Settings
+## 15. Markdown, CriticMarkup, wiki-links
 
-### 19.1 Project
+### 15.1 Markdown in textarea attributes
 
-- Project **name** and **description**
-- **GitHub path** (per-project)
-- **All projects** — list, switching, new project, deletion
-- **Static viewer** — generating offline HTML
-- **Transfer between projects** — package import
-- **Download project backup** — XLSX, .dkmdata
+Supported features:
 
-### 19.2 Types
+- **# Headings** (# through ####)
+- **Paragraphs** separated by blank line
+- **`inline code`** and ``` ``` ``` blocks
+- **`*italic*`, `**bold**`, `~~strikethrough~~`**
+- **Setext headings** (=== / ---)
+- **Lists** `- ` and `1. `
+- **Links** `[text](url)`
+- **Images** `![alt](url)`
+- **Blockquote** `>`
+- **Tables** GFM style
 
-- List of types
-- Type editor: icon, name, attributes
-- For each type: show as tab
+Renders below the editor as preview and in Detail as final content.
 
-### 19.3 Aspects
+### 15.2 CriticMarkup
 
-Same as types but without an icon.
+For marking text changes (useful in approval workflows):
 
-### 19.4 Relations
+- `{++ added text ++}` — inserted
+- `{-- deleted text --}` — deleted
+- `{~~ old ~> new ~~}` — replacement
+- `{== highlighted ==}` — highlight
+- `{>> comment <<}` — sidenote
 
-Relation types: name, inverse name, scope, type restrictions.
+In display renders in colors (added green, deleted red, etc.). In DOCX export becomes tracked changes.
 
-### 19.5 Lists
+### 15.3 Wiki-links
 
-Select lists: name + value enumeration. Used in attributes of type select.
+Inside a textarea (or custom text) you can write `[[Entity name]]`. If an entity with that name exists, the wiki-link renders as a clickable link. If it doesn't, it shows red with a tooltip "No entity with this name exists".
 
-### 19.6 Language and general
+**The strongest effect is the backward action**: the target entity's **Linked from** section automatically sees all source entities linking here via wiki-link. You don't need to formally create a relation.
 
-- **Language** — Czech / English, switches UI immediately
-- **Autosave** — on / off
-- **Debug output** — turns on a diagnostic panel on the page (no browser console — everything outputs into DKM)
+Example: in a note on one entity you write "Follow-up on [[Regulation 409/2025]]." When you open that regulation, you see this link in the Linked from section, group `[[Note]] (Person) ←`.
+
+Match is case-insensitive on full entity name.
 
 ---
 
-## 20. Keyboard shortcuts
+## 16. Comments
 
-Outside input fields and dialogs:
+### 16.1 On an entity
 
-| Key | Action |
-|---|---|
-| **S** | Save (smart routing — local or GitHub) |
-| **L** | Load file |
-| **I** | Inbox tab |
-| **Q** | Quick add in Inbox |
-| **N** | New entity |
-| **A** | All tab |
-| **E** | Edit (in detail) |
-| **R** | Add relation (in detail) |
-| **U** | Save changes (in editor) |
-| **V** | Toggle bulk select |
-| **F** or **/** | Focus search |
-| **Esc** | Back / close dialog / cancel selection |
-| **Alt+L** | (alias for L on macOS / various keyboards) |
-| **Alt+S** | (alias for S) |
-| **Alt+U** | (alias for U) |
-| **Alt+R** | (alias for R) |
+In entity detail, the **💬 Comments** section. Form on top:
 
-In dialogs:
+- Textarea (Markdown)
+- Author is automatically taken from **Settings → General → Your name for comments**
+- **Add comment** button (or Ctrl+Enter in textarea)
 
-- **Enter** — primary action
+Comment list: each has author, date, Markdown content, "edited" label if edited, **✎ Edit** (inline editing) and **× Delete** buttons. Sorted newest-first.
+
+**Key `c` in detail** focuses the comment input.
+
+### 16.2 All comments view
+
+Access via Command palette (Ctrl+P → "All comments") or URL `#comments`.
+
+- Search field — searches content, author, entity name
+- Sorted newest-first across all entities
+- Each row has a link to the entity (with type icon), author, date, and Markdown preview of the comment
+
+Great for quickly browsing discussions across the project.
+
+---
+
+## 17. Objects
+
+### 17.1 What an object is
+
+An **object** is a named text storage attached to an entity — e.g. `data.json`, `outline.mroutline`, `graph.puml`. An object is just text — DKM **never renders it**, just holds it. It never appears in print outputs (MD, DOCX, PDF, formatted copy).
+
+Purpose: safely store machine data (outputs from external tools) right at the entity, without cluttering the detail.
+
+### 17.2 Adding an object
+
+In entity editor next to **+ Add custom attribute** is **+ Add object**. Enter a name with extension. An empty object is created.
+
+### 17.3 Working with an object
+
+In detail, the **📦 Objects** section. Each object shows:
+
+- Icon 📦 + name in monospace
+- Size (B / kB / MB)
+- Buttons:
+  - **📋⬆ Copy to clipboard**
+  - **📋⬇ Paste from clipboard** (only when browser supports `readText`)
+  - **💾 Save as file** — downloads with exact name
+  - **📥 Load new version** — file input, replaces content with chosen file
+- In header: **✎ Rename** and **× Delete**
+
+Content overwriting (Paste / Load new version) **does not ask for confirmation** — behaves as in PIM.
+
+### 17.4 When to use object vs. textarea attribute
+
+- **Textarea attribute** = structured text you want to see in detail, export, print
+- **Object** = machine data, JSON, XML, tool output that you want at the entity but not in detail or exports
+
+Objects are part of project data (saved to file, GitHub, package).
+
+---
+
+## 18. Panels
+
+### 18.1 What a panel is
+
+A **panel** is an independent working context within one browser tab. Each panel has its own view (entity detail, list, settings), filters, position in navigation history.
+
+You can have simultaneously:
+
+- Panel 1 with the list "All"
+- Panel 2 with detail of a specific entity
+- Panel 3 with the saved view "Urgent"
+
+You switch between them with one click, each panel keeps its state.
+
+### 18.2 Panel bar
+
+Appears above main content when you have more than 1 panel. Each panel = a tab with an icon (per content), label and × to close. On the right a **＋** button for a new panel.
+
+Tab label updates automatically:
+
+- Entity detail → type icon + name
+- Editor → `✎ Name`
+- New entity → `＋ New entity`
+- List → icon + tab name
+- Saved view → icon + view name
+- Settings → `⚙ Settings`
+- All comments → `💬 All comments`
+
+### 18.3 Keyboard shortcuts
+
+- **Ctrl+T** — new panel (opens in Inbox)
+- **Ctrl+W** — close active panel (can't close the last one)
+- Click on tab — switch
+- **× on tab** — close specific
+
+### 18.4 When to use panels
+
+- **Comparing two entities** — one in each panel, switch between them
+- **Working on entity + context** — main panel with project list, second with the entity being edited
+- **Quick reference** — third panel with Statistics or Settings, no need to leave work
+
+Panels are **in-memory only** — disappear when the browser tab closes.
+
+---
+
+## 19. Command palette (Ctrl+P)
+
+### 19.1 Opening
+
+Press **Ctrl+P** (Cmd+P on Mac) → a modal with a text field.
+
+### 19.2 What you can find
+
+- **Entities** (top 60 or fuzzy match) — click opens detail
+- **Saved views**
+- **Aspects** (click → aspect tab)
+- **Entity types** (click → type tab)
+- **Actions**: New entity, Settings, Save, Load, Advanced filters, Clipboard IO, PlantUML export, New panel, All comments, Inbox / All / Archive
+
+### 19.3 Fuzzy match
+
+Type keywords. Condition: each word must be a substring in label or sublabel (case-insensitive). Bonuses: exact match, startsWith. Shorter label wins ties.
+
+Empty query offers recently visited entities from navigation history.
+
+### 19.4 Keyboard control
+
+- **↑↓** — move in list
+- **Home / End** — first / last
+- **Enter** — run action
 - **Esc** — close
 
----
-
-## 21. Accessibility
-
-DKM is designed to work with screen readers (VoiceOver, NVDA, JAWS):
-
-- All buttons have `aria-label`
-- Entity cards use `role="listitem"` in `role="list"`
-- The entity detail has structured sections with headings
-- No `position: sticky` or `fixed` that confuse screen readers
-- `aria-live` only for short action confirmations, never for long re-rendered areas
-- Tab sequences respect DOM order
-- States `aria-current`, `aria-selected`, `aria-pressed` are set
-- Visual states (focus, hover, selected) always have a text or aria counterpart
-
-Keyboard shortcuts enable full operation without a mouse.
+Screen reader-compatible (ARIA combobox + listbox + aria-activedescendant).
 
 ---
 
-## 22. Tips and tricks
+## 20. Standalone windows
 
-### 22.1 Start simple
+### 20.1 What it's for
 
-When you're unsure of the structure, start with one type and one aspect. You can add new types / aspects / relations at any time later. Better minimal structure that you actually use than perfect unused one.
+Sometimes you want to separate work on a single entity into a **standalone browser window** — for side-by-side with the main window, dedicated focus, parallel editing.
 
-### 22.2 Aspect instead of another type
+### 20.2 Opening
 
-When you're thinking „this is type Person but should behave a bit differently" — add an aspect to Person instead of creating a new type. Aspects combine, types don't.
+In entity detail, click the **🪟 Standalone window** button. A new DKM instance opens in a separate browser window.
 
-### 22.3 „Show in list" for key attributes
+### 20.3 Standalone mode
 
-For a type, mark a couple of key attributes with `showInList`. While scrolling the list you see the essence without opening the detail.
+The standalone window has **minimized chrome**: hidden tab bar, panel bar, quick-add form, Export / Import buttons. Save, Load, Settings and entity controls remain. App title is shrunk.
 
-### 22.4 GitHub as backup + sync
+### 20.4 Data handoff and live sync
 
-Even if you work from one device, GitHub functions as an automatic backup. On localStorage loss simply load the file from GitHub.
+Current data is passed to the new window via localStorage handoff (short-lived, one-shot). The new window loads it and clears the handoff key.
 
-### 22.5 Structural view for complex relationships
+Between open windows a **live sync via BroadcastChannel** works:
 
-🌳 in the detail uncovers the hierarchy. Useful for the audit „who all depends on this entity" or „what does this entity control".
+- When you edit data in one window, others auto-update
+- When another window is in editing mode, a banner shows "Data changed in another window" with a **Load current** button — prevents overwriting the in-progress edit
 
-### 22.6 Static viewer for sharing
+You can have **any number of standalone windows** open at once.
 
-When you need to show the result to someone who doesn't have DKM installed, generate a static HTML. Works on a USB stick, on the web, in an email.
+### 20.5 Limitations
 
-### 22.7 TSV import for bulk data ingest
-
-An existing Excel table of people, contracts, anything with types in one column and attributes in others — Import TSV gets it into DKM in seconds.
-
-### 22.8 Bulk actions after import
-
-After a TSV import you typically want to add an aspect „Imported 2026-06" to all imported entities or set some attribute. ☑ Select → Select all visible → Action.
-
-### 22.9 Pattern search
-
-Search looks for substrings. If you want to find all entities with an attribute starting with „DOKUM_", type „DOKUM_" in the search box — it finds everything in names and text attributes.
-
-### 22.10 Custom attribute as a note
-
-When an attribute is needed for one entity only (specific note, exceptional status), add a custom attribute instead of changing the type.
+- Popup blocker: browser must allow popups for DKM
+- Data must be loaded in the main window before opening
 
 ---
 
-## 23. Frequent issues
+## 21. Data storage
 
-### 23.1 „File is not a valid DKM JSON"
+### 21.1 Where data lives
 
-The file must be JSON with an `entities` field as an array. If you're loading a `.dkmpkg` through Load, use Settings → Project → Import package instead. If the file is actually DKM data and this error appears, check the debug panel (Settings → Debug output), the reason is there.
+**The project exists only in the current browser tab.** Refresh (F5) won't lose it (data is in sessionStorage), closing the tab will.
 
-### 23.2 Changes don't save
+**One project per tab** — if you want multiple projects open at once, open the app in multiple tabs. Each tab is independent.
 
-Check that autosave is on (Settings). If you use GitHub, make sure you have the token entered (lock icon in header) and a valid path. Manually save with key S.
+### 21.2 Save to file
 
-### 23.3 GitHub returns 401 / 403
+Click **Save** (Ctrl+S). Without a GitHub path set, a `.dkmdata` file is downloaded with the whole project.
 
-- 401: token missing or invalid — check the token in the lock icon
-- 403: token doesn't have rights to the repository — generate a new token with `repo` scope
+Everything goes to the file: types, aspects, relations, lists, saved views, entities (with attributes, aspects, relations, custom attributes, objects, comments).
 
-### 23.4 After package import entities don't have attributes
+### 21.3 Load from file
 
-In Easy mode attributes map automatically by name and data type. If names don't match, use Detailed mode and map attributes manually.
+Click **Load** (Alt+L) → file picker → `.dkmdata` or `.json`.
 
-### 23.5 I tick an aspect but I don't see the attributes
+If the current project has unsaved changes, DKM asks "Unsaved changes will be lost. Continue?".
 
-Aspect attributes appear **in the editor** (after checking the box in the Aspects section). In the detail you see only those aspect attributes that have values filled. To see empty ones, open Edit.
+### 21.4 GitHub sync
 
-### 23.6 Slow scrolling in lists with thousands of entities
+In **Settings → GitHub** enter a **token** (personal access token) and in **Settings → Project** the file path on GitHub as `owner/repo/branch/path/file.dkmdata`.
 
-DKM renders all entities at once (no virtual scrolling). For projects with more than 5,000 entities:
+Then **Save** (Ctrl+S) saves directly to GitHub.
 
-- Hide tabs for types you don't use daily (Settings → Types → Show as tab)
-- Use filter or search to narrow the list
-- For a type with many entities, consider splitting into multiple projects
+**Load from GitHub** — button in Settings → Project.
 
-### 23.7 localStorage is full
+### 21.5 URL parameter for autoload
 
-Browsers have a limit (typically 5–10 MB per origin). When DKM reports it can't save:
+`?id={base64ghPath}` in the URL → DKM auto-loads the project from GitHub on startup. Handy for sharing a link or pinning to browser bookmarks.
 
-- Delete unused projects
-- Move large project to GitHub (path in Settings → Project) — only working copy stays local
+### 21.6 Copy to clipboard
 
-### 23.8 After deleting a type, relations disappeared
+**📋⬆ Copy to clipboard** in header (Ctrl+Shift+S). Copies the whole project as JSON. Useful for quick transfer to another tab or another app.
 
-Deleting a relation type yes — removes all relations of this type from entities. Deleting an entity type no (entities stay without a type).
+### 21.7 Load from clipboard
 
----
+**📋⬇ Load from clipboard** (Ctrl+Shift+O). Reads project from clipboard, replaces current (with confirmation if unsaved changes). When the browser denies direct access, a textarea dialog opens for manual paste.
 
-## 24. Technical background
+### 21.8 Autosave
 
-DKM is **a single HTML file** with vanilla JavaScript. No build tools, no dependencies (except SheetJS, lazy-loaded from a CDN for XLSX export).
+**Settings → General → Autosave** — every change auto-saves to sessionStorage (current tab). Refresh survives, tab close doesn't.
 
-- **Size**: ~300 KB HTML + JS + CSS + i18n
-- **Browsers**: Chrome 100+, Firefox 100+, Safari 15+, Edge 100+
-- **Mobile**: works on mobile but the UI is primarily designed for desktop
-- **Data format**: JSON with entities, types, aspects, relations, lists
+This does NOT include file or GitHub saves — save manually via Ctrl+S regularly.
 
-Source code: <https://github.com/egdilna/nastroje> in the `dkm` folder.
+### 21.9 Start empty project
 
-The application was created within EGdílna, a project for public administration tools. No telemetry, no server, no accounts.
+**Settings → Project → 📄 Start empty project**. Discards current project (with confirmation if unsaved changes) and starts fresh.
 
 ---
 
-*Questions, suggestions, bugs? GitHub issues in the repository above.*
+## 22. Diff since last save
+
+### 22.1 What it is
+
+After every successful save or load DKM takes a **snapshot** of the data. Then it compares the current state to that snapshot to show clearly **what changed since the last save**.
+
+### 22.2 Opening
+
+Click the **● Unsaved changes** indicator in the header (visible when the project is "dirty").
+
+### 22.3 What you see
+
+Color-coded three sections:
+
+- 🟢 **Added** — new entities since baseline
+- 🟡 **Modified** — entities with per-field change list (Email, Date, Aspects, etc., before → after)
+- 🔴 **Deleted** — entities that disappeared
+
+Click on entities → closes dialog and jumps to detail.
+
+### 22.4 When to use
+
+- **Before saving** — check no edit is accidental
+- **Before pushing to GitHub** — overview of "commit" changes
+- **After an hour of work** — what you did today
+- **Recovery** — if unsure what the last changes did, open diff to orient yourself
+
+---
+
+## 23. Export and print entity
+
+In entity detail the **🖨 Export / print** button. Opens a dialog with section checkboxes:
+
+### 23.1 Optional sections
+
+- **Header** — name, type icon, type badge, aspect badges, status badges
+- **Type attributes** — individual (checkbox), All / None buttons
+- **Aspect attributes** — separate section per aspect
+- **Custom attributes**
+- **Relations** — outgoing, linked from
+- **Metadata** — Entity type, Created, Updated, ID
+
+### 23.2 Output formats
+
+- **📋 Copy MD** — raw Markdown to clipboard
+- **✨ Copy formatted** — via ClipboardItem with HTML + plain text. Pasting into Word, Outlook, Gmail keeps headings, bold, italic, lists.
+- **📥 Download MD** — file `EntityName.md`
+- **📄 Download DOCX** — Word file via docx.js (lazy-loaded from CDN), Calibri font, heading hierarchy, bullet lists for relations
+- **🖨 Print / PDF** — new window with rendered HTML + auto `window.print()`. Through browser you print on paper or save as PDF.
+
+### 23.3 Rules
+
+- Empty values are skipped (even if attribute is checked)
+- Archived relation targets are excluded
+- Entity's objects are **never exported** (not to MD, DOCX, PDF, formatted copy)
+- Textarea attributes render as Markdown in HTML / DOCX (bold, lists, CriticMarkup)
+
+---
+
+## 24. Export to XLSX, TSV, PlantUML
+
+### 24.1 XLSX
+
+**Export** button in header. Creates an `.xlsx` with currently filtered entities. Columns: name, type, type attributes, main data. Useful for sharing outside DKM.
+
+### 24.2 TSV import
+
+**Import TSV** button. Loads a table from Excel / TSV / clipboard paste. You can map columns to attributes and create entities in bulk.
+
+### 24.3 PlantUML export of relations
+
+Accessible via:
+
+- **Command palette (Ctrl+P)** → "PlantUML export" action
+- **Bulk action** → "🎨 PlantUML diagram" (in selection mode)
+
+Dialog:
+
+- **Scope**: current list, selection (bulk mode), all, type, aspect
+- **Style**: Class diagram (classes with attributes), Component, Use case
+- **Options**: include attributes as class fields, include attribute-based relations (dashed lines), include external targets outside scope (gray)
+- **Live preview** of PlantUML code
+
+Output:
+
+- **📋 Copy** — to clipboard
+- **📥 Download .puml** — file for external PlantUML tool
+
+Name escaping, ID aliasing to E0/E1/…, stereotypes by type (`<<Person>>`), attribute-relations as dashed `..>`.
+
+Ideal for data model documentation, ER diagrams, architecture.
+
+---
+
+## 25. Static viewer
+
+DKM can generate a **static HTML viewer** of project data — a single file you open for read-only access to all entities.
+
+### 25.1 Generating
+
+**Settings → Project → Static viewer**. Click → downloads a file with embedded project data.
+
+The static viewer has:
+
+- Entity list
+- Entity detail
+- Search
+- Basic filters
+- Read-only mode (no edits)
+
+Useful for:
+
+- **Sharing data** with someone without DKM
+- **Archive snapshot** of project state at a given date
+- **Publishing** on the web (e.g. GitHub Pages)
+
+### 25.2 Default entity
+
+In the generation dialog you can select the entity on which the viewer opens.
+
+---
+
+## 26. Moving parts between projects (packages)
+
+### 26.1 Package format
+
+`.dkmpkg` is a JSON containing **a selection of entities + their data model** (only types, aspects, lists and relation types the selected entities need). Enables moving a slice of one project to another without extra.
+
+### 26.2 Package export
+
+In bulk mode select entities, action **📦 Export package**. Wizard:
+
+1. **Scope**: only selected / selected + neighbors (via relations) / whole component (graph neighborhood)
+2. **Model**: types, aspects, lists and relations to transfer
+3. **Preview**: overview of what will be in the package
+
+Downloads a `.dkmpkg`.
+
+### 26.3 Package import
+
+**Settings → Project → Move between projects → Import package**. Upload `.dkmpkg`. Wizard:
+
+- Content summary
+- Conflict check (existing types, attributes)
+- Automap: attribute matching by name + type
+- Change preview
+- Backup before import (checkbox on by default — downloads current project as `.dkmdata` before import)
+
+Clicking Import performs a two-pass:
+
+1. Entities are created with new IDs
+2. Relations and relation attributes are remapped to new IDs
+
+---
+
+## 27. Settings
+
+### 27.1 Project
+
+- Name, description
+- GitHub path
+- Static viewer (generation)
+- Package transfer (import)
+- Project storage (info about session storage + Start empty project)
+
+### 27.2 Types
+
+List of types, click to open editor with attributes, icon, name.
+
+### 27.3 Aspects
+
+Analogous for aspects.
+
+### 27.4 Relations
+
+Relation type definitions: name, inverse name, scope, allowed source / target types.
+
+### 27.5 Lists
+
+Select lists with value enumerations. Used in attributes of type select.
+
+### 27.6 Saved views
+
+Manage all saved views: rename, change icon, toggle pin, overwrite with current filter, delete.
+
+### 27.7 Tabs
+
+Which types and aspects appear as tabs in the main toolbar.
+
+### 27.8 GitHub
+
+Personal access token for GitHub API. Stored in the browser's localStorage (per origin).
+
+### 27.9 General
+
+- **Language** (Čeština / English)
+- **Your name for comments** — used as author of new comments, saved with project data
+- **Autosave** — automatic saving to sessionStorage (per tab)
+- **Debug** — enables a bottom panel with debug logs
+
+### 27.10 Statistics
+
+Counts overview: entities, types, attributes, aspects, relations, comments.
+
+### 27.11 Help
+
+Links to online documentation and repository.
+
+---
+
+## 28. Keyboard shortcuts
+
+### Global
+
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+S | Save (file / GitHub) |
+| Ctrl+F | Open advanced filters |
+| Ctrl+Shift+F | Close advanced filters and clear |
+| Ctrl+P | Command palette |
+| Ctrl+T | New panel |
+| Ctrl+W | Close active panel |
+| Ctrl+Shift+O | Load project from clipboard |
+| Ctrl+Shift+S | Copy project to clipboard |
+| Ctrl+K | Focus search |
+| Esc | Close dialog / exit mode |
+
+### Navigation
+
+| Shortcut | Action |
+|----------|--------|
+| Alt+B | Back (in detail, editor, settings) |
+| Alt+L | Load |
+| i | Go to Inbox |
+| a | Go to All |
+| n | New entity (with type picker) |
+
+### List
+
+| Shortcut | Action |
+|----------|--------|
+| f | Focus search |
+| / | Focus search |
+| v | Toggle selection mode |
+
+### Detail
+
+| Shortcut | Action |
+|----------|--------|
+| e | Edit |
+| r | Add relation |
+| c | Focus comment input |
+
+### Editor
+
+| Shortcut | Action |
+|----------|--------|
+| u | Save edit |
+| Esc | Cancel edit |
+
+### Comments
+
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+Enter in textarea | Submit comment |
+
+---
+
+## 29. Accessibility
+
+DKM is designed to work with screen readers.
+
+- **Semantic headings**: page's main heading (H1) is always the content name (entity, view, settings section), never the application
+- **No treeview** (`role=tree/treeitem`) — hierarchies are nested `<ul>/<li>`
+- **No position: sticky / fixed** on large areas
+- **ARIA labels** on non-obvious interactive elements
+- **Keyboard navigation** (see chapter 28)
+- **Screen reader announcements** minimized — only brief action confirmations (Saved, Added), not re-render of fields
+
+### 29.1 Command palette
+
+Screen reader-compatible: ARIA combobox, listbox, aria-activedescendant, aria-selected on active item.
+
+### 29.2 Kanban
+
+Cards aren't drag-and-drop (inaccessible to screen readers). Instead a **Move to dropdown** per card.
+
+---
+
+## 30. Tips and tricks
+
+### 30.1 Quick workflow
+
+1. Open the app daily with `?id={ghPath}` (bookmark) — project auto-loads from GitHub
+2. Ctrl+P → type few letters of entity name → Enter — you're in the detail
+3. Key `e` — edit
+4. Key `u` — save edit
+5. Ctrl+S → push to GitHub
+
+### 30.2 Using panels
+
+- Panel 1 = project list (context)
+- Panel 2 = detail of in-progress entity
+- Panel 3 = detail of entity being compared
+
+Ctrl+T for new, click on tab to switch.
+
+### 30.3 Wiki-links instead of formal relations
+
+If you don't want to bother creating a formal relation, just write `[[Entity name]]` in a textarea. In the Linked from section, the link automatically appears.
+
+### 30.4 Kanban for approval workflow
+
+Create an aspect "Approval" with attribute "Status" (select: New / In progress / Approved / Rejected). Assign the aspect to entities. Switch list to Kanban by "Status". Move cards via dropdown = change status. Save as pinned view 🔥 Approvals and have it in the toolbar with one click.
+
+### 30.5 PlantUML model documentation
+
+For external data model documentation:
+
+1. Select entities (or use an aspect)
+2. Ctrl+P → "PlantUML export"
+3. Class diagram + include attributes
+4. Download .puml
+5. Paste into PlantUML editor → image
+
+### 30.6 Diff before save
+
+Before pressing Ctrl+S:
+
+1. Click ● Unsaved changes indicator
+2. Review the diff
+3. Verify the changes are what you intended
+
+### 30.7 Duplicate merge
+
+When you find two entities that are actually the same thing:
+
+1. Key V — bulk mode
+2. Check both
+3. Action ⇢ Merge entities
+4. Pick target, conflict strategy
+5. Merge — all relations and attributes redirect automatically
+
+### 30.8 Quick project switching
+
+- In main window open project A
+- **Ctrl+Shift+S** — copy to clipboard
+- New tab → **Ctrl+Shift+O** → project A opens in the second tab too
+- In second tab load project B from file
+
+You have both projects at once, each in a different tab.
+
+---
+
+## 31. Common problems
+
+### 31.1 "I don't see my entities"
+
+- Check toolbar filters — you may have an active filter hiding everything. Click Clear filters.
+- Check the Archive tab — they may be archived
+- Check advanced filters (⚙ Advanced filters) — you may have an invalid rule
+
+### 31.2 "I closed the tab and the project is gone"
+
+The project lives only in sessionStorage. For persistent storage:
+
+- Ctrl+S — save to file
+- Set a GitHub path and Ctrl+S — save to GitHub
+- Bookmark the URL `?id={base64ghPath}` for fast autoload
+
+### 31.3 "Browser did not allow clipboard access"
+
+- Try again, focus may have been the issue
+- Or use the dialog fallback (DKM shows it automatically)
+
+### 31.4 "PlantUML export doesn't look good"
+
+- Check scope — you may have too many entities
+- Try a different style (Component / Use case are simpler)
+- Turn off attributes when there are many
+
+### 31.5 "Diff is empty but I have unsaved changes"
+
+- Baseline is set only on save or load. If you haven't saved yet, diff has nothing to compare.
+- Save → from that moment changes are tracked against that point.
+
+### 31.6 "Standalone window won't open"
+
+- Browser is blocking popups — allow popups for DKM
+- Check the browser notification panel (usually right of the address bar)
+
+---
+
+## 32. Technical background
+
+### 32.1 Data structure
+
+The project is one JSON document (see `dkmdata.json`):
+
+```
+{
+  version, projectName, projectDescription, ghPath,
+  settings: { visibleTypeTabs, visibleAspectTabs, userName },
+  entityTypes: [{ id, name, icon, attributes: [{ id, name, type, required, showInList, ... }] }],
+  aspects: [{ id, name, attributes: [...] }],
+  relationTypes: [{ id, name, inverseName, scope, fromTypes, toTypes }],
+  selectLists: [{ id, name, options }],
+  savedViews: [{ id, name, icon, pinned, filter, sort, tab, displayMode, ... }],
+  entities: [{
+    id, name, typeId, inInbox, archived,
+    attributes: { attrId: value },
+    customAttributes: [{ id, name, type, value }],
+    aspects: [aspectId],
+    relations: [{ id, relationTypeId, targetId }],
+    objects: [{ id, name, content }],
+    comments: [{ id, content, author, createdAt, editedAt? }],
+    createdAt, updatedAt
+  }]
+}
+```
+
+### 32.2 Browser storage
+
+- **sessionStorage['dkm-session-data']** — current project, per tab. Refresh survives, tab close doesn't.
+- **localStorage** — preferences (language, autosave, debug, GitHub token). Never holds project data.
+- **BroadcastChannel 'dkm-sync'** — live sync between open windows.
+
+### 32.3 GitHub API
+
+DKM uses Contents API for reading + Git Data API (blobs) for writing large files. The token is stored in `localStorage['dkm-github-token']` (per origin).
+
+### 32.4 Rendering
+
+Vanilla JavaScript, no framework. Templates as direct DOM manipulation. Full re-render on every state change (fast even for thousands of entities).
+
+### 32.5 Testing
+
+Regression tests via jsdom (see `smoke_*.js` in the repository). Cover: advanced filters, saved views, export, backlinks, navigation history, clipboard, sessionStorage, load/save, wiki-links, diff, merge, PlantUML, mode switchers, comments, objects, panels, standalone window.
