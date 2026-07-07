@@ -116,6 +116,31 @@ body.theme-dark .calendar-row { border-bottom-color: #333; }
 .attr-row > * { flex: 1 1 auto; }
 .attr-row .attr-actions { flex: 0 0 auto; }
 .attr-row label { margin: 0; }
+.task-section { margin: 0.5em 0; border: 1px solid #ddd; border-radius: 5px; padding: 0.3em 0.6em; }
+.task-section > summary { font-weight: 600; cursor: pointer; padding: 0.3em 0; }
+.task-overdue { border-color: #d33; }
+.task-overdue > summary { color: #d33; }
+.task-filters { flex-wrap: wrap; gap: 0.6em; margin: 0.6em 0; padding: 0.5em; background: #fafafa; border: 1px solid #eee; border-radius: 4px; }
+.task-filters label { font-weight: normal; }
+.task-row-meta { margin-left: 1.8em; }
+.task-row-actions { margin-left: 1.8em; margin-top: 0.3em; gap: 0.3em; flex-wrap: wrap; }
+.task-project { color: #0066cc; text-decoration: none; font-size: 0.9em; }
+.task-deadline { font-size: 0.85em; padding: 0.05em 0.4em; border-radius: 3px; }
+.dl-overdue { background: #fde0e0; color: #b00; font-weight: 600; }
+.dl-today { background: #fff0d0; color: #a60; font-weight: 600; }
+.dl-soon { background: #fff8e0; color: #870; }
+.dl-week { background: #eef4ff; color: #368; }
+.dl-later { color: #888; }
+.task-priority { font-size: 0.8em; padding: 0.05em 0.4em; border-radius: 3px; font-weight: 600; }
+.pri-urgent { background: #fde0e0; color: #b00; }
+.pri-high { background: #ffe8d0; color: #a50; }
+.pri-low { background: #eee; color: #777; }
+.task-row.is-overdue { border-left: 3px solid #d33; padding-left: 0.5em; }
+.task-status-sel { font-size: 0.85em; }
+body.theme-dark .task-section { border-color: #444; }
+body.theme-dark .task-filters { background: #222; border-color: #444; }
+body.theme-dark .dl-overdue { background: #4a1a1a; color: #f88; }
+body.theme-dark .dl-today { background: #40340f; color: #fc6; }
 .entity-objects { margin: 1em 0; }
 .entity-objects .obj-row { border: 1px solid #ddd; border-radius: 4px; padding: 0.6em 0.8em; margin: 0.4em 0; }
 .entity-objects .obj-head { margin-bottom: 0.4em; }
@@ -8371,28 +8396,113 @@ function renderAll(main) {
 }
 
 // ==== VIEW: ÚKOLY ====
+function taskDeadlineInfo(iso) {
+  // Vrátí { cls, label, order } podle naléhavosti termínu (order: menší = urgentnější)
+  if (!iso) return null;
+  const dk = localDayKey(iso);
+  if (!dk) return null;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayKey = localDayKey(today.toISOString());
+  const target = new Date(dk + 'T00:00:00');
+  const diffDays = Math.round((target - today) / 86400000);
+  if (diffDays < 0) return { cls:'dl-overdue', label:'Po termínu (' + Math.abs(diffDays) + ' ' + (Math.abs(diffDays)===1?'den':(Math.abs(diffDays)<5?'dny':'dní')) + ')', order:0 };
+  if (diffDays === 0) return { cls:'dl-today', label:'Dnes', order:1 };
+  if (diffDays === 1) return { cls:'dl-soon', label:'Zítra', order:2 };
+  if (diffDays <= 7) return { cls:'dl-week', label:'Tento týden', order:3 };
+  return { cls:'dl-later', label:fmtDate(iso), order:4 };
+}
+function taskProjectLabel(e) {
+  // Najdi projekt, jehož je úkol součástí (partOf na entitu s aspektem Project)
+  const link = (e.links || []).find(l => l.type === 'partOf' && (() => { const t = findEntity(l.to); return t && (t.aspects||[]).includes('Project'); })());
+  if (!link) return '';
+  const proj = findEntity(link.to);
+  if (!proj) return '';
+  return '<a href="#" class="task-project" data-entity="' + escapeHtml(proj.id) + '" title="Projekt">📁 ' + escapeHtml(getDisplayTitle(proj)) + '</a>';
+}
+const PRIORITY_CS = { urgent:'Naléhavá', high:'Vysoká', normal:'Normální', low:'Nízká' };
+const PRIORITY_CLS = { urgent:'pri-urgent', high:'pri-high', normal:'pri-normal', low:'pri-low' };
+
 function renderTasks(main) {
-  const tasks = db.entities.filter(e => e.aspects && e.aspects.includes('Task') && !e.archived);
+  const allTasks = db.entities.filter(e => e.aspects && e.aspects.includes('Task') && !e.archived);
+
+  // Filtr (state.taskFilter)
+  if (!state.taskFilter) state.taskFilter = { hideDone:false, onlyDeadline:false, priorityMin:'' };
+  const tf = state.taskFilter;
+  let tasks = allTasks.slice();
+  if (tf.hideDone) tasks = tasks.filter(t => t.attributes.status !== 'done' && t.attributes.status !== 'cancelled');
+  if (tf.onlyDeadline) tasks = tasks.filter(t => !!t.attributes.deadline);
+  if (tf.priorityMin) {
+    const po = { urgent:0, high:1, normal:2, low:3 };
+    const max = po[tf.priorityMin];
+    tasks = tasks.filter(t => (po[t.attributes.priority] ?? 2) <= max);
+  }
+
+  // Sekce PO TERMÍNU (napříč stavy, nehotové, termín v minulosti)
+  const overdue = tasks.filter(t => {
+    if (t.attributes.status === 'done' || t.attributes.status === 'cancelled') return false;
+    const info = taskDeadlineInfo(t.attributes.deadline);
+    return info && info.order === 0;
+  });
+  const overdueIds = new Set(overdue.map(t => t.id));
+
   const groups = {
     todo: { label: 'K udělání', items: [] }, in_progress: { label: 'Probíhá', items: [] },
     waiting: { label: 'Čeká', items: [] }, done: { label: 'Hotovo', items: [] },
     cancelled: { label: 'Zrušené', items: [] }, none: { label: 'Bez stavu', items: [] }
   };
   tasks.forEach(t => { const s = t.attributes.status || 'none'; (groups[s] || groups.none).items.push(t); });
+
   const po = { urgent:0, high:1, normal:2, low:3 };
-  Object.values(groups).forEach(g => g.items.sort((a,b) => {
+  const sortFn = (a,b) => {
     const pa = po[a.attributes.priority] ?? 2, pb = po[b.attributes.priority] ?? 2;
     if (pa !== pb) return pa - pb;
-    const da = a.attributes.deadline || '9999', dbq = b.attributes.deadline || '9999';
-    return da.localeCompare(dbq);
-  }));
-  const html = Object.entries(groups).filter(([k,g]) => g.items.length > 0).map(([k,g]) =>
-    '<section aria-labelledby="group-' + k + '" class="day-group"><h3 id="group-' + k + '">' +
-    escapeHtml(g.label) + ' (' + g.items.length + ')</h3>' + g.items.map(taskRowHtml).join('') + '</section>'
+    const ia = taskDeadlineInfo(a.attributes.deadline), ib = taskDeadlineInfo(b.attributes.deadline);
+    const oa = ia ? ia.order : 5, ob = ib ? ib.order : 5;
+    if (oa !== ob) return oa - ob;
+    return (a.attributes.deadline||'9999').localeCompare(b.attributes.deadline||'9999');
+  };
+  Object.values(groups).forEach(g => g.items.sort(sortFn));
+  overdue.sort(sortFn);
+
+  // Stav sbalení – zapamatovaný v state.taskSectionOpen
+  if (!state.taskSectionOpen) state.taskSectionOpen = { todo:true, in_progress:true, waiting:false, done:false, cancelled:false, none:true, overdue:true };
+  const isOpen = (k) => state.taskSectionOpen[k] !== false;
+
+  let html = '';
+
+  // Filtr panel
+  html += '<div class="task-filters btn-group" role="group" aria-label="Filtry úkolů">' +
+    '<label><input type="checkbox" id="tf-hide-done"' + (tf.hideDone?' checked':'') + '> Skrýt hotové/zrušené</label>' +
+    '<label><input type="checkbox" id="tf-only-deadline"' + (tf.onlyDeadline?' checked':'') + '> Jen s termínem</label>' +
+    '<label>Min. priorita: <select id="tf-priority-min">' +
+    ['','urgent','high','normal','low'].map(p => '<option value="' + p + '"' + (tf.priorityMin===p?' selected':'') + '>' + (p ? PRIORITY_CS[p] : '(vše)') + '</option>').join('') +
+    '</select></label></div>';
+
+  // Sekce Po termínu (navrch, jen když nějaké jsou)
+  if (overdue.length > 0) {
+    html += '<details class="task-section task-overdue"' + (isOpen('overdue')?' open':'') + ' data-task-section="overdue">' +
+      '<summary>⚠ Po termínu (' + overdue.length + ')</summary>' +
+      overdue.map(taskRowHtml).join('') + '</details>';
+  }
+
+  // Stavové sekce
+  html += Object.entries(groups).filter(([k,g]) => g.items.length > 0).map(([k,g]) =>
+    '<details class="task-section task-section-' + k + '"' + (isOpen(k)?' open':'') + ' data-task-section="' + k + '">' +
+    '<summary>' + escapeHtml(g.label) + ' (' + g.items.length + ')</summary>' +
+    g.items.map(t => taskRowHtml(t, overdueIds.has(t.id))).join('') + '</details>'
   ).join('');
-  main.innerHTML = '<h1>Úkoly</h1><p>Celkem ' + tasks.length + ' úkolů.</p>' +
+
+  main.innerHTML = '<h1>Úkoly</h1><p class="meta">Celkem ' + allTasks.length + ' úkolů' + (tasks.length !== allTasks.length ? ', zobrazeno ' + tasks.length : '') + '.</p>' +
     (html || '<div class="empty">Žádné úkoly. Vytvořte stiskem „Nová entita“ a aspektem „Úkol“.</div>');
+
   attachEntityRowHandlers(main);
+
+  // Zapamatovat sbalení
+  main.querySelectorAll('details[data-task-section]').forEach(d => {
+    d.addEventListener('toggle', () => { state.taskSectionOpen[d.dataset.taskSection] = d.open; });
+  });
+
+  // Checkbox hotovo
   main.querySelectorAll('input[type="checkbox"][data-task-id]').forEach(c => {
     c.onchange = () => {
       const e = findEntity(c.dataset.taskId); if (!e) return;
@@ -8401,22 +8511,80 @@ function renderTasks(main) {
       toast(c.checked ? 'Úkol hotov.' : 'Úkol odznačen.');
     };
   });
-}
-function taskRowHtml(e) {
-  const done = e.attributes.status === 'done';
-  const dl = e.attributes.deadline ? '<span class="meta">' + escapeHtml(fmtDateTime(e.attributes.deadline)) + '</span>' : '';
-  const pr = e.attributes.priority && e.attributes.priority !== 'normal' ? '<span class="meta">[' + escapeHtml(e.attributes.priority) + ']</span>' : '';
-  const tags = (e.tags || []).slice(0,3).map(t => '<a href="#" class="tag" data-tag="' + escapeHtml(t) + '">' + escapeHtml(t) + '</a>').join(' ');
-  return '<div class="entity-row">' +
-    '<label style="font-weight:normal;display:flex;gap:0.5em;align-items:start;">' +
-    '<input type="checkbox" data-task-id="' + escapeHtml(e.id) + '"' + (done ? ' checked' : '') +
-    ' aria-label="Hotovo: ' + escapeHtml(getDisplayTitle(e)) + '">' +
-    '<span style="' + (done ? 'text-decoration:line-through;color:#888;' : '') + '">' +
-    '<h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h5> ' + pr + ' ' + dl +
-    '</span></label><div>' + tags + '</div></div>';
+
+  // Rychlá změna stavu (select)
+  main.querySelectorAll('select[data-task-status]').forEach(sel => {
+    sel.onchange = () => {
+      const e = findEntity(sel.dataset.taskStatus); if (!e) return;
+      setTaskStatus(e, sel.value);
+      e.updated_at = nowIso(); saveDebounced(); render();
+      toast('Stav změněn.');
+    };
+  });
+
+  // Rychlý posun termínu
+  main.querySelectorAll('button[data-task-reschedule]').forEach(b => {
+    b.onclick = (ev) => { ev.preventDefault(); ev.stopPropagation();
+      const e = findEntity(b.dataset.taskReschedule); if (!e) return;
+      openQuickReminderEditorForDeadline(e);
+    };
+  });
+
+  // Filtr handlery
+  const hd = document.getElementById('tf-hide-done');
+  if (hd) hd.onchange = () => { tf.hideDone = hd.checked; render(); };
+  const od = document.getElementById('tf-only-deadline');
+  if (od) od.onchange = () => { tf.onlyDeadline = od.checked; render(); };
+  const pm = document.getElementById('tf-priority-min');
+  if (pm) pm.onchange = () => { tf.priorityMin = pm.value; render(); };
 }
 
-// ==== VIEW: KALENDÁŘ ====
+// Rychlý editor termínu (deadline) – reuse dialogu
+function openQuickReminderEditorForDeadline(e) {
+  if (!e.attributes) e.attributes = {};
+  const existing = document.getElementById('quick-deadline-dialog');
+  if (existing) existing.remove();
+  const d = document.createElement('dialog');
+  d.id = 'quick-deadline-dialog';
+  d.setAttribute('aria-labelledby','qdl-title');
+  const cur = e.attributes.deadline ? String(e.attributes.deadline).slice(0,10) : '';
+  d.innerHTML = '<h2 id="qdl-title">Termín: ' + escapeHtml(getDisplayTitle(e)) + '</h2>' +
+    '<label for="qdl-input">Termín (datum)</label><input type="date" id="qdl-input" value="' + escapeHtml(cur) + '">' +
+    '<div class="btn-group" style="margin-top:0.6em;"><button type="button" class="primary" id="qdl-save">Uložit</button><button type="button" id="qdl-clear">Vymazat</button><button type="button" id="qdl-cancel">Zrušit</button></div>';
+  document.body.appendChild(d);
+  d.querySelector('#qdl-save').onclick = () => { const v = d.querySelector('#qdl-input').value; if (v) e.attributes.deadline = v; e.updated_at = nowIso(); save(); d.close(); d.remove(); render(); toast('Termín uložen.'); };
+  d.querySelector('#qdl-clear').onclick = () => { delete e.attributes.deadline; e.updated_at = nowIso(); save(); d.close(); d.remove(); render(); toast('Termín vymazán.'); };
+  d.querySelector('#qdl-cancel').onclick = () => { d.close(); d.remove(); };
+  d.addEventListener('close', () => d.remove());
+  d.showModal();
+  setTimeout(() => { const i = d.querySelector('#qdl-input'); if (i) i.focus(); }, 50);
+}
+
+function taskRowHtml(e, isOverdue) {
+  const done = e.attributes.status === 'done';
+  const cancelled = e.attributes.status === 'cancelled';
+  const info = taskDeadlineInfo(e.attributes.deadline);
+  const dl = info ? '<span class="task-deadline ' + info.cls + '">⏰ ' + escapeHtml(info.label) + '</span>' : '';
+  const priKey = e.attributes.priority;
+  const pr = (priKey && priKey !== 'normal') ? '<span class="task-priority ' + (PRIORITY_CLS[priKey]||'') + '">' + escapeHtml(PRIORITY_CS[priKey]||priKey) + '</span>' : '';
+  const proj = taskProjectLabel(e);
+  const tags = (e.tags || []).slice(0,3).map(t => '<a href="#" class="tag" data-tag="' + escapeHtml(t) + '">' + escapeHtml(t) + '</a>').join(' ');
+  const statusSel = '<select data-task-status="' + escapeHtml(e.id) + '" aria-label="Změnit stav" class="task-status-sel">' +
+    [['todo','K udělání'],['in_progress','Probíhá'],['waiting','Čeká'],['done','Hotovo'],['cancelled','Zrušené']].map(([v,l]) =>
+      '<option value="' + v + '"' + ((e.attributes.status||'todo')===v?' selected':'') + '>' + l + '</option>').join('') + '</select>';
+  const strike = (done || cancelled) ? 'text-decoration:line-through;color:#888;' : '';
+  return '<div class="entity-row task-row' + (isOverdue ? ' is-overdue' : '') + '">' +
+    '<label style="font-weight:normal;display:flex;gap:0.5em;align-items:start;">' +
+    '<input type="checkbox" data-task-id="' + escapeHtml(e.id) + '"' + (done ? ' checked' : '') + ' aria-label="Hotovo: ' + escapeHtml(getDisplayTitle(e)) + '">' +
+    '<span style="' + strike + '">' +
+    '<h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h5> ' +
+    pr + ' ' + dl + '</span></label>' +
+    '<div class="task-row-meta">' + proj + ' ' + tags + '</div>' +
+    '<div class="task-row-actions btn-group">' + statusSel +
+    '<button type="button" data-task-reschedule="' + escapeHtml(e.id) + '" title="Změnit termín">⏰ Termín</button>' +
+    '</div></div>';
+}
+
 function renderCalendar(main) {
   const items = [];
   db.entities.forEach(e => {
