@@ -268,6 +268,15 @@
   }
   .big-sample-btn:hover { filter: brightness(1.05); }
   .big-sample-btn:disabled { opacity: 0.6; cursor: default; }
+  .bulk-bar {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    padding: 8px 10px; margin: 0 0 8px; border-radius: 8px;
+    background: var(--panel-bg); border: 1px solid var(--accent);
+  }
+  .bulk-count { font-weight: 600; margin-right: 4px; }
+  .bulk-check { width: 18px; height: 18px; margin-right: 4px; flex: 0 0 auto; cursor: pointer; }
+  li.outline-item.bulk-selected > .trow { background: var(--row-selected); outline: 1px solid var(--accent); }
+  #btn-select-mode.active { background: var(--accent); color: var(--accent-fg); }
   /* vertical indentation guide lines (for sighted users) */
   .outline-list .outline-list { position: relative; }
   .outline-list .outline-list::before {
@@ -415,6 +424,7 @@
     <div class="group">
       <button type="button" id="btn-add-root">Přidat řádek na konec</button>
       <button type="button" id="btn-clear-focus" disabled>Zrušit hoist</button>
+      <button type="button" id="btn-select-mode" aria-pressed="false">Režim výběru</button>
     </div>
     <div class="group">
       <label class="visually-hidden" for="quick-filter">Rychlý filtr</label>
@@ -487,6 +497,14 @@
   <main class="outline-area" id="outline-main">
     <h2 class="visually-hidden">Osnova</h2>
     <nav id="breadcrumb" class="breadcrumb" aria-label="Cesta k zaměřené větvi" style="display:none"></nav>
+    <div id="bulk-bar" class="bulk-bar" role="region" aria-label="Hromadné operace" style="display:none">
+      <span id="bulk-count" class="bulk-count"></span>
+      <button type="button" id="bulk-move">Přesunout do…</button>
+      <button type="button" id="bulk-column">Změnit sloupec…</button>
+      <button type="button" id="bulk-type">Změnit typ…</button>
+      <button type="button" id="bulk-delete" class="danger">Smazat</button>
+      <button type="button" id="bulk-clear">Zrušit výběr</button>
+    </div>
     <table class="outline" id="outline-table">
       <thead><tr id="outline-head"></tr></thead>
     </table>
@@ -652,6 +670,45 @@
   </div>
 </dialog>
 
+<dialog id="dlg-bulk-move" aria-label="Přesunout vybrané řádky">
+  <h2 style="margin-top:0">Přesunout do…</h2>
+  <p class="hint">Vyber cílový řádek. Vybrané řádky se do něj přesunou jako potomci, i s vlastní hierarchií.</p>
+  <div class="field">
+    <label for="bulk-move-filter">Hledat cíl</label>
+    <input type="text" id="bulk-move-filter" placeholder="Filtrovat podle názvu…">
+  </div>
+  <ul class="flat" id="bulk-move-list" aria-label="Cílové řádky" style="max-height:300px; overflow:auto"></ul>
+  <div class="dialog-actions">
+    <button type="button" data-close>Zrušit</button>
+  </div>
+</dialog>
+
+<dialog id="dlg-bulk-column" aria-label="Změnit hodnotu sloupce">
+  <h2 style="margin-top:0">Změnit hodnotu sloupce</h2>
+  <div class="field">
+    <label for="bulk-col-select">Sloupec</label>
+    <select id="bulk-col-select"></select>
+  </div>
+  <div class="field" id="bulk-col-value-wrap"></div>
+  <div class="dialog-actions">
+    <button type="button" data-close>Zrušit</button>
+    <button type="button" id="btn-bulk-col-clear">Vyprázdnit hodnotu</button>
+    <button type="button" id="btn-bulk-col-apply">Nastavit hodnotu</button>
+  </div>
+</dialog>
+
+<dialog id="dlg-bulk-type" aria-label="Změnit typ řádku">
+  <h2 style="margin-top:0">Změnit typ řádku</h2>
+  <div class="field">
+    <label for="bulk-type-select">Typ</label>
+    <select id="bulk-type-select"></select>
+  </div>
+  <div class="dialog-actions">
+    <button type="button" data-close>Zrušit</button>
+    <button type="button" id="btn-bulk-type-apply">Nastavit typ</button>
+  </div>
+</dialog>
+
 <input type="file" id="file-input" class="visually-hidden" aria-hidden="true">
 
 <script>
@@ -762,6 +819,8 @@ function rowTypeMeta(id) { return ROW_TYPES.find(t => t.id === id) || ROW_TYPES[
 let doc = newDoc();
 let selectedId = null;
 let focusRootId = null; // section focus
+let selectionMode = false;          // bulk-selection mode on/off
+const bulkSelected = new Set();     // ids of rows checked for bulk ops
 let searchTerm = "";    // quick filter
 let statusFilter = "all"; // all | done | undone
 
@@ -1471,6 +1530,23 @@ function buildRowContent(r, depth) {
   const topicCell = document.createElement("div");
   topicCell.className = "topic-cell";
 
+  // selection checkbox (bulk mode) — affects only this row, not descendants
+  if (selectionMode) {
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.className = "bulk-check";
+    cb.checked = bulkSelected.has(r.id);
+    cb.setAttribute("aria-label", "Vybrat řádek: " + (plainTopic(dr) || "prázdný") + " (jen tento řádek)");
+    cb.addEventListener("click", (e) => e.stopPropagation());
+    cb.addEventListener("change", () => {
+      if (cb.checked) bulkSelected.add(r.id); else bulkSelected.delete(r.id);
+      refreshBulkBar();
+      const li = document.getElementById("trow-" + r.id) && document.getElementById("trow-" + r.id).closest("li.outline-item");
+      if (li) li.classList.toggle("bulk-selected", cb.checked);
+    });
+    topicCell.appendChild(cb);
+  }
+
   const disc = document.createElement("button");
   disc.type = "button";
   disc.className = "disclosure" + (r.children.length ? "" : " leaf");
@@ -2138,6 +2214,238 @@ function refreshSections() {
 function refreshFocusButtons() {
   document.getElementById("btn-clear-focus").disabled = !focusRootId;
 }
+
+/* ---------- Bulk selection mode ---------- */
+function toggleSelectionMode(on) {
+  selectionMode = (on == null) ? !selectionMode : !!on;
+  const btn = document.getElementById("btn-select-mode");
+  btn.setAttribute("aria-pressed", selectionMode ? "true" : "false");
+  btn.classList.toggle("active", selectionMode);
+  if (!selectionMode) bulkSelected.clear();
+  render();
+  refreshBulkBar();
+  announce(selectionMode ? "Režim výběru zapnut" : "Režim výběru vypnut");
+}
+function refreshBulkBar() {
+  const bar = document.getElementById("bulk-bar");
+  const n = bulkSelected.size;
+  if (!selectionMode || n === 0) { bar.style.display = "none"; return; }
+  bar.style.display = "";
+  document.getElementById("bulk-count").textContent =
+    "Vybráno " + n + " " + (n === 1 ? "řádek" : (n < 5 ? "řádky" : "řádků"));
+}
+function clearBulkSelection() {
+  bulkSelected.clear();
+  document.querySelectorAll("li.outline-item.bulk-selected").forEach(li => li.classList.remove("bulk-selected"));
+  document.querySelectorAll(".bulk-check").forEach(cb => { cb.checked = false; });
+  refreshBulkBar();
+  announce("Výběr zrušen");
+}
+// Selected rows as {row} objects, skipping any that no longer exist.
+function bulkRows() {
+  const out = [];
+  bulkSelected.forEach(id => { const f = findRow(id); if (f) out.push(f.row); });
+  return out;
+}
+// Guard: is targetId inside the subtree of any selected row (prevents moving a
+// row into its own descendant)?
+function isInsideSelected(targetId) {
+  for (const r of bulkRows()) {
+    let inside = false;
+    walk([r], (x) => { if (x.id === targetId) inside = true; });
+    if (inside) return true;
+  }
+  return false;
+}
+function bulkDelete() {
+  const rows = bulkRows();
+  if (!rows.length) return;
+  if (!confirm("Smazat " + rows.length + " vybraných řádků i s jejich potomky?")) return;
+  // delete deepest-first by id set; deleteRow handles removal from parent
+  rows.forEach(r => { const f = findRow(r.id); if (f) { const idx = f.index; f.siblings.splice(idx, 1); } });
+  bulkSelected.clear();
+  if (selectedId && !findRow(selectedId)) selectedId = null;
+  render(); refreshBulkBar();
+  announce(rows.length + " řádků smazáno");
+}
+function bulkSetType(typeId) {
+  const rows = bulkRows();
+  rows.forEach(r => { r.rowType = typeId; });
+  render(); refreshBulkBar();
+  announce("Typ nastaven u " + rows.length + " řádků");
+}
+// Move all selected rows (each with its own subtree) under targetId (as children).
+function bulkMoveInto(targetId) {
+  if (isInsideSelected(targetId)) { announce("Nelze přesunout dovnitř vybraného řádku"); return; }
+  const target = findRow(targetId);
+  if (!target) return;
+  const rows = bulkRows();
+  // detach each from its current parent (collect first to keep refs stable)
+  rows.forEach(r => { const f = findRow(r.id); if (f) f.siblings.splice(f.index, 1); });
+  // append to target children in original document order
+  rows.forEach(r => { target.row.children.push(r); });
+  target.row.collapsed = false;
+  render(); refreshBulkBar();
+  announce(rows.length + " řádků přesunuto do " + (plainTopic(target.row) || "cíle"));
+}
+
+/* ---- Bulk: move dialog ---- */
+function openBulkMove() {
+  if (!bulkSelected.size) return;
+  const dlg = document.getElementById("dlg-bulk-move");
+  document.getElementById("bulk-move-filter").value = "";
+  renderBulkMoveList("");
+  dlg.showModal();
+  document.getElementById("bulk-move-filter").focus();
+}
+function renderBulkMoveList(filter) {
+  const ul = document.getElementById("bulk-move-list");
+  ul.innerHTML = "";
+  const lc = (filter || "").toLowerCase();
+  // "root" target: move to top level
+  const rootLi = document.createElement("li");
+  const rootBtn = document.createElement("button");
+  rootBtn.type = "button"; rootBtn.className = "section-link";
+  rootBtn.textContent = "▸ Nejvyšší úroveň (kořen dokumentu)";
+  rootBtn.addEventListener("click", () => { bulkMoveToRoot(); document.getElementById("dlg-bulk-move").close(); });
+  rootLi.appendChild(rootBtn); ul.appendChild(rootLi);
+  walk(doc.rows, (r, p, i, depth) => {
+    if (bulkSelected.has(r.id)) return;          // can't move into a selected row
+    if (isInsideSelected(r.id)) return;          // nor into a descendant of one
+    const t = plainTopic(r) || "(prázdné)";
+    if (lc && !t.toLowerCase().includes(lc)) return;
+    const li = document.createElement("li");
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "section-link";
+    b.style.paddingLeft = (6 + (depth - 1) * 14) + "px";
+    b.textContent = (doc.numbering.enabled && numberingMap[r.id] ? numberingMap[r.id] + " " : "") + t;
+    b.addEventListener("click", () => { bulkMoveInto(r.id); document.getElementById("dlg-bulk-move").close(); });
+    li.appendChild(b); ul.appendChild(li);
+  });
+}
+function bulkMoveToRoot() {
+  const rows = bulkRows();
+  rows.forEach(r => { const f = findRow(r.id); if (f) f.siblings.splice(f.index, 1); });
+  rows.forEach(r => doc.rows.push(r));
+  render(); refreshBulkBar();
+  announce(rows.length + " řádků přesunuto na nejvyšší úroveň");
+}
+
+/* ---- Bulk: column value dialog ---- */
+function bulkEditableColumns() {
+  // all real columns except topic; status included (checkbox)
+  return doc.columns.filter(c => !c.isTopic);
+}
+function openBulkColumn() {
+  if (!bulkSelected.size) return;
+  const sel = document.getElementById("bulk-col-select");
+  sel.innerHTML = "";
+  bulkEditableColumns().forEach(c => { const o = document.createElement("option"); o.value = c.id; o.textContent = c.title + " (" + colTypeLabel(c) + ")"; sel.appendChild(o); });
+  sel.onchange = renderBulkColumnValue;
+  renderBulkColumnValue();
+  document.getElementById("dlg-bulk-column").showModal();
+  sel.focus();
+}
+function colTypeLabel(c) {
+  if (c.isStatus) return "stav";
+  return ({ markdown: "text", number: "číslo", date: "datum", duration: "trvání", checkbox: "ano/ne", popup: "výběr" })[c.type] || c.type;
+}
+function currentBulkColumn() {
+  const id = document.getElementById("bulk-col-select").value;
+  return doc.columns.find(c => c.id === id) || null;
+}
+function renderBulkColumnValue() {
+  const wrap = document.getElementById("bulk-col-value-wrap");
+  wrap.innerHTML = "";
+  const col = currentBulkColumn();
+  if (!col) return;
+  const label = document.createElement("label");
+  label.setAttribute("for", "bulk-col-value");
+  label.textContent = "Nová hodnota";
+  wrap.appendChild(label);
+  const type = col.isStatus ? "checkbox" : col.type;
+  if (type === "checkbox") {
+    const cb = document.createElement("input"); cb.type = "checkbox"; cb.id = "bulk-col-value";
+    wrap.appendChild(cb);
+  } else if (type === "popup") {
+    const s = document.createElement("select"); s.id = "bulk-col-value";
+    (col.popupValues || []).forEach(v => { const o = document.createElement("option"); o.value = v; o.textContent = v; s.appendChild(o); });
+    wrap.appendChild(s);
+  } else if (type === "date") {
+    // mode: set specific date OR shift by +/- days
+    const modeWrap = document.createElement("div"); modeWrap.className = "row-inline"; modeWrap.style.marginBottom = "6px";
+    modeWrap.innerHTML = "<label class='row-inline'><input type='radio' name='bulk-date-mode' value='set' checked> Konkrétní datum</label>" +
+                         "<label class='row-inline'><input type='radio' name='bulk-date-mode' value='shift'> Posun o dny</label>";
+    wrap.appendChild(modeWrap);
+    const setInput = document.createElement("input"); setInput.type = "date"; setInput.id = "bulk-col-value";
+    wrap.appendChild(setInput);
+    const shiftInput = document.createElement("input"); shiftInput.type = "number"; shiftInput.id = "bulk-col-shift";
+    shiftInput.placeholder = "např. 7 nebo -3"; shiftInput.style.display = "none";
+    wrap.appendChild(shiftInput);
+    modeWrap.addEventListener("change", () => {
+      const mode = wrap.querySelector("input[name=bulk-date-mode]:checked").value;
+      setInput.style.display = mode === "set" ? "" : "none";
+      shiftInput.style.display = mode === "shift" ? "" : "none";
+    });
+  } else if (type === "number") {
+    const inp = document.createElement("input"); inp.type = "number"; inp.id = "bulk-col-value"; wrap.appendChild(inp);
+  } else {
+    const inp = document.createElement("input"); inp.type = "text"; inp.id = "bulk-col-value";
+    if (type === "duration") inp.placeholder = "např. 1d 4h";
+    wrap.appendChild(inp);
+  }
+}
+function applyBulkColumn(clear) {
+  const col = currentBulkColumn();
+  if (!col) return;
+  const rows = bulkRows();
+  const type = col.isStatus ? "checkbox" : col.type;
+  if (clear) {
+    rows.forEach(r => setCellValue(r, col, col.isStatus ? 0 : ""));
+    finishBulkColumn(rows.length, "vyprázdněna");
+    return;
+  }
+  if (type === "date") {
+    const mode = document.querySelector("input[name=bulk-date-mode]:checked");
+    if (mode && mode.value === "shift") {
+      const delta = parseInt(document.getElementById("bulk-col-shift").value, 10);
+      if (isNaN(delta)) { announce("Zadej počet dnů"); return; }
+      rows.forEach(r => {
+        const cur = cellValue(r, col);
+        const d = dateValueToLocal(cur);
+        if (d) { d.setDate(d.getDate() + delta); setCellValue(r, col, isoToDateInput(d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"))); }
+      });
+      finishBulkColumn(rows.length, "posunuta o " + delta + " dnů");
+      return;
+    }
+    const val = document.getElementById("bulk-col-value").value || "";
+    rows.forEach(r => setCellValue(r, col, val));
+    finishBulkColumn(rows.length, "nastavena");
+    return;
+  }
+  let val;
+  const el = document.getElementById("bulk-col-value");
+  if (type === "checkbox") val = el.checked ? 1 : 0;
+  else val = el.value;
+  rows.forEach(r => setCellValue(r, col, val));
+  finishBulkColumn(rows.length, "nastavena");
+}
+function finishBulkColumn(n, verb) {
+  document.getElementById("dlg-bulk-column").close();
+  render(); refreshBulkBar();
+  announce("Hodnota " + verb + " u " + n + " řádků");
+}
+
+/* ---- Bulk: type dialog ---- */
+function openBulkType() {
+  if (!bulkSelected.size) return;
+  const sel = document.getElementById("bulk-type-select");
+  sel.innerHTML = "";
+  ROW_TYPES.forEach(t => { const o = document.createElement("option"); o.value = t.id; o.textContent = t.label; sel.appendChild(o); });
+  document.getElementById("dlg-bulk-type").showModal();
+  sel.focus();
+}
+
 // Chain of ancestor rows from root down to (and including) the given id.
 function ancestorsOf(id) {
   const path = [];
@@ -2778,6 +3086,27 @@ function subtreeVisible(r) {
 }
 function filtersActive() { return !!searchTerm || statusFilter !== "all" || activeConditions.length > 0; }
 
+// Rows to feed into exporters. Exports honor the CURRENT VIEW: active filters
+// and hoist (focus). Returns a pruned shallow-structured copy so exporters can
+// recurse normally. Save/clipboard are unaffected (they serialize doc directly).
+function exportSourceRows() {
+  let roots = doc.rows;
+  if (focusRootId && findRow(focusRootId)) roots = findRow(focusRootId).row.children;
+  if (!filtersActive()) return roots;
+  // prune: keep a row if its subtree is visible; recurse into children likewise
+  function prune(rows) {
+    const out = [];
+    for (const r of rows) {
+      if (!subtreeVisible(r)) continue;
+      const copy = Object.assign({}, r);
+      copy.children = prune(r.children);
+      out.push(copy);
+    }
+    return out;
+  }
+  return prune(roots);
+}
+
 // Apply current filters to the already-rendered DOM (no re-render).
 function applyFilterVisibility() {
   if (!filtersActive()) {
@@ -3145,7 +3474,7 @@ function exportHTML(dynamic, accepted) {
       body += "</div>\n";
     }
   }
-  rec(doc.rows, 1);
+  const __er = exportSourceRows(); rec(__er, 1);
   const title = escapeHtml(doc.meta.title || "Outliner dokument");
   return `<!DOCTYPE html>
 <html lang="${escapeHtml(doc.meta.language || "cs")}">
@@ -3233,7 +3562,7 @@ function exportMarkdown() {
       if (blockTag) out += "</" + blockTag + ">\n\n";
     }
   }
-  rec(doc.rows, 1);
+  const __er = exportSourceRows(); rec(__er, 1);
   return out;
 }
 
@@ -3255,7 +3584,7 @@ function exportOPML() {
     return out;
   }
   return '<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0">\n<head><title>' +
-    esc(doc.meta.title || "Outliner") + "</title></head>\n<body>\n" + rec(doc.rows, "  ") + "</body>\n</opml>";
+    esc(doc.meta.title || "Outliner") + "</title></head>\n<body>\n" + rec(exportSourceRows(), "  ") + "</body>\n</opml>";
 }
 
 /* ---------- CSV export ---------- */
@@ -3263,7 +3592,7 @@ function exportCSV() {
   const cols = doc.columns;
   function q(s) { s = String(s == null ? "" : s); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
   let out = ["Úroveň"].concat(cols.map(c => q(c.title))).join(",") + "\n";
-  walk(doc.rows, (r, p, i, depth) => {
+  walk(exportSourceRows(), (r, p, i, depth) => {
     const cells = cols.map(c => {
       if (c.isTopic) return q(plainTopic(r));
       const v = cellValue(r, c);
@@ -3279,7 +3608,7 @@ function exportCSV() {
 /* ---------- Plain text export ---------- */
 function exportTXT() {
   let out = "";
-  walk(doc.rows, (r, p, i, depth) => {
+  walk(exportSourceRows(), (r, p, i, depth) => {
     out += "\t".repeat(depth - 1) + plainTopic(r) + "\n";
     if (r.note) out += "\t".repeat(depth) + nodesToPlain(parseInline(r.note), "accepted") + "\n";
   });
@@ -3547,7 +3876,7 @@ function exportDOCX(accepted) {
       rec(r.children, depth + 1);
     }
   }
-  rec(doc.rows, 1);
+  const __er = exportSourceRows(); rec(__er, 1);
 
   // relationships
   let relXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -3756,6 +4085,16 @@ document.getElementById("btn-clip-load-text").addEventListener("click", () => {
 document.getElementById("btn-add-root").addEventListener("click", () => addSibling(doc.rows.length ? doc.rows[doc.rows.length - 1].id : null));
 document.getElementById("btn-save-row").addEventListener("click", saveRowEditor);
 document.getElementById("btn-clear-focus").addEventListener("click", clearFocus);
+document.getElementById("btn-select-mode").addEventListener("click", () => toggleSelectionMode());
+document.getElementById("bulk-clear").addEventListener("click", clearBulkSelection);
+document.getElementById("bulk-delete").addEventListener("click", bulkDelete);
+document.getElementById("bulk-move").addEventListener("click", openBulkMove);
+document.getElementById("bulk-column").addEventListener("click", openBulkColumn);
+document.getElementById("bulk-type").addEventListener("click", openBulkType);
+document.getElementById("bulk-move-filter").addEventListener("input", (e) => renderBulkMoveList(e.target.value));
+document.getElementById("btn-bulk-col-apply").addEventListener("click", () => applyBulkColumn(false));
+document.getElementById("btn-bulk-col-clear").addEventListener("click", () => applyBulkColumn(true));
+document.getElementById("btn-bulk-type-apply").addEventListener("click", () => { bulkSetType(document.getElementById("bulk-type-select").value); document.getElementById("dlg-bulk-type").close(); });
 document.getElementById("btn-find").addEventListener("click", () => { document.getElementById("dlg-find").showModal(); document.getElementById("find-text").focus(); });
 document.getElementById("btn-theme").addEventListener("click", () => {
   const cur = document.documentElement.getAttribute("data-theme");
@@ -3923,6 +4262,10 @@ function buildHelp() {
 <p>V panelu „Číslování řádků" nastavíš formát pro <strong>každou z šesti úrovní</strong> (arabské, římské, písmena), předponu a příponu (např. „§ ", „odst. ", „písm. ", „)"), hierarchický režim (1.2.3) a oddělovač. U kterékoli úrovně lze zaškrtnout, že se <strong>nečísluje</strong> — taková úroveň se z čísla úplně vynechá (potomci pokračují, např. 1 → 1.1, ne 1.0.1). Předvolby pokrývají úřední styl, klasickou osnovu i desetinné číslování.</p>
 <h3>Sekce (postranní panel)</h3>
 <p>Panel Sekce ukazuje obsah dokumentu jako <strong>vnořený seznam odkazů</strong> — kliknutím skočíš na daný řádek. Zobrazují se jen řádky, jejichž úroveň je namapovaná na HTML nadpis (h1–h6) v panelu „Styly a úrovně"; úrovně mapované na odstavec či položku seznamu se v sekcích nevypisují (ale jejich nadpisové potomky se zařadí na správné místo hierarchie).</p>
+<h3>Režim výběru a hromadné operace</h3>
+<p>Tlačítko „Režim výběru" v liště zobrazí u každého řádku zaškrtávátko. Výběr se týká <strong>jen daného řádku</strong>, ne jeho potomků — pokud chceš i potomky, zaškrtni je ručně. Po výběru se nahoře objeví lišta hromadných operací: <strong>Přesunout do…</strong> (vybere se cíl, řádky se do něj přesunou jako potomci i s vlastní hierarchií; lze i na nejvyšší úroveň), <strong>Změnit sloupec…</strong> (podle typu sloupce; u data buď konkrétní datum, nebo <strong>posun o ± dnů</strong> přepočítaný pro každý řádek zvlášť, a také <strong>vyprázdnění hodnoty</strong>), <strong>Změnit typ…</strong> (sémantický typ řádku) a <strong>Smazat</strong>.</p>
+<h3>Export podle aktuálního zobrazení</h3>
+<p>Když je osnova filtrovaná (rychlým filtrem, stavem, pokročilými podmínkami) nebo zaměřená hoistem, <strong>export</strong> (DOCX, HTML, Markdown, OPML, CSV, text) zahrne jen to, co je právě vidět. Naopak <strong>uložení do .outline</strong> a <strong>vložení do schránky</strong> vždy uloží celý dokument bez ohledu na filtr.</p>
 <h3>Hoist a drobečková navigace</h3>
 <p>Klávesou <kbd>h</kbd> (nebo přes nabídku akcí) zaměříš pohled jen na vybranou větev. Nad osnovou se objeví <strong>drobečková cesta</strong> „Celý dokument › … › větev"; kliknutím na kterýkoli článek přeskočíš na danou úroveň, kliknutím na „Celý dokument" hoist zrušíš. Cesta se oznamuje i odečítači.</p>
 <h3>Wiki-odkazy a štítky</h3>
