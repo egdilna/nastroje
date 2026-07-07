@@ -22643,11 +22643,22 @@ function buildEntityExportModel(entity, selection) {
     relatedComments: true,
     meta: true
   };
+  // Diagram (aspekt Diagram): jeho obrázek není v body, je v attributes.encoded.
+  // Do exportu ho přidáme jako Markdown obrázek → projde všemi cestami (MD/HTML/tisk/DOCX jako PNG).
+  let bodyExpanded = sel.body ? expandMarkdownIncludes(e.body || '', { markIncluded: false, entity: e }) : '';
+  if (sel.body && (e.aspects || []).includes('Diagram')) {
+    const enc = e.attributes && e.attributes.encoded;
+    const dName = (e.attributes && e.attributes.diagram_name) || getDisplayTitle(e) || 'Diagram';
+    if (enc) {
+      const imgMd = '![' + String(dName).replace(/[\]\[]/g, '') + '](' + pumlPngUrl(enc) + ')';
+      bodyExpanded = imgMd + (bodyExpanded ? '\n\n' + bodyExpanded : '');
+    }
+  }
   const model = {
     title: getDisplayTitle(e),
     aspects: sel.headerAspectsTags ? (e.aspects || []).map(k => ({ key: k, label: aspectLabel(k) })) : [],
     tags: sel.headerAspectsTags ? (e.tags || []) : [],
-    body: sel.body ? expandMarkdownIncludes(e.body || '', { markIncluded: false, entity: e }) : '',
+    body: bodyExpanded,
     meta: sel.meta ? {
       confidence: e.confidence,
       confidenceLabel: e.confidence ? (CONFIDENCE_LEVELS[e.confidence] || e.confidence) : null,
@@ -23760,6 +23771,13 @@ async function copyEntityAsFormatted(entity, selection) {
 
 async function downloadEntityAsDocx(entity, selection) {
   try {
+    // Pokud je entita Diagram a nemá encoded (ale má source), dopočítat před exportem.
+    if (entity && (entity.aspects || []).includes('Diagram')) {
+      const src = entity.attributes && entity.attributes.source;
+      if (src && !(entity.attributes && entity.attributes.encoded)) {
+        try { entity.attributes.encoded = await pumlEncodeAsync(src); } catch (e) { /* zůstane bez diagramu */ }
+      }
+    }
     const model = buildEntityExportModel(entity, selection);
     // Předsbírat obrázky z těla i z textarea atributů (PlantUML diagramy apod.)
     let imgSourceText = model.body || '';
