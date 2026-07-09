@@ -3432,7 +3432,7 @@ function buildStatusChipHtml(entity) {
     badges.push('👤');
     const orgs = (entity.links || []).filter(l => l.type === 'worksAt').map(l => findEntity(l.to)).filter(Boolean);
     if (orgs.length > 0) {
-      parts.push('🏢 ' + orgs.map(o => '<a href="#" data-entity="' + escapeHtml(o.id) + '">' + getDisplayTitleWithBadges(o) + '</a>').join(', '));
+      parts.push('🏢 Pracuje v: ' + orgs.map(o => '<a href="#" data-entity="' + escapeHtml(o.id) + '">' + getDisplayTitleWithBadges(o) + '</a>').join(', '));
     }
     if (a.email) parts.push('✉ <a href="mailto:' + escapeHtml(a.email) + '">' + escapeHtml(a.email) + '</a>');
   }
@@ -3568,7 +3568,7 @@ function buildStatusChipPlain(entity) {
   if (aspects.includes('Person')) {
     badges.push('👤');
     const orgs = (entity.links || []).filter(l => l.type === 'worksAt').map(l => findEntity(l.to)).filter(Boolean);
-    if (orgs.length > 0) parts.push('🏢 ' + orgs.map(o => getDisplayTitle(o)).join(', '));
+    if (orgs.length > 0) parts.push('🏢 Pracuje v: ' + orgs.map(o => getDisplayTitle(o)).join(', '));
     if (a.email) parts.push('✉ ' + a.email);
   }
 
@@ -10861,6 +10861,12 @@ function renderSettings(main) {
       '<p class="meta" style="margin-top:0.2em;">Když je zapnuto, autosave na GitHub je po načtení aktivní automaticky (lze ho pak ručně vypnout tlačítkem). Načtení dat při startu tím není ovlivněno.</p>' +
     '</section>' +
 
+    '<section aria-labelledby="pgroups-h"><h3 id="pgroups-h">Skupiny dashboardu projektu</h3>' +
+      '<p class="meta">Určuje, jak se na detailu projektu seskupují podřízené entity. Cíle a Úkoly (kanban) jsou vždy nahoře a nedají se měnit. Aspekty, které nejsou v žádné skupině, se zobrazí ve vlastní skupině podle názvu aspektu.</p>' +
+      '<div id="pgroups-container"></div>' +
+      '<div class="btn-group" style="margin-top:0.6em;"><button type="button" id="pgroups-add">+ Přidat skupinu</button><button type="button" id="pgroups-reset">Obnovit výchozí</button></div>' +
+    '</section>' +
+
     '<section aria-labelledby="gh-h"><h3 id="gh-h">GitHub synchronizace</h3>' +
     '<p>Načte/uloží JSON s celou bází na GitHub. Token se ukládá pouze ve vašem prohlížeči (localStorage), nikam neodchází.</p>' +
     '<div id="gh-status" class="meta" aria-live="polite"></div>' +
@@ -11163,6 +11169,70 @@ function renderSettings(main) {
   };
   // Toggl integrace
   if (typeof attachTogglSettingsHandlers === 'function') attachTogglSettingsHandlers();
+  // Skupiny dashboardu projektu
+  if (typeof attachProjectGroupsSettings === 'function') attachProjectGroupsSettings();
+}
+
+function attachProjectGroupsSettings() {
+  const cont = document.getElementById('pgroups-container');
+  if (!cont) return;
+  renderPgroupsList();
+  function renderPgroupsList() {
+    const groups = getProjectGroups();
+    const allAspects = getAllAspectKeys().filter(k => !['Goal', 'Task', 'Project'].includes(k));
+    let h = '<ol style="list-style:none;padding-left:0;">';
+    groups.forEach((g, i) => {
+      const inThis = new Set(g.aspects || []);
+      h += '<li class="pgroup-row" style="border:1px solid #ddd;border-radius:5px;padding:0.6em;margin:0.4em 0;">' +
+        '<div style="display:flex;gap:0.4em;align-items:center;flex-wrap:wrap;">' +
+        '<input type="text" value="' + escapeHtml(g.label) + '" data-pg-label="' + i + '" aria-label="Nazev skupiny" style="flex:1 1 auto;min-width:8em;">' +
+        '<button type="button" data-pg-up="' + i + '"' + (i === 0 ? ' disabled' : '') + ' aria-label="Posunout nahoru">▲</button>' +
+        '<button type="button" data-pg-down="' + i + '"' + (i === groups.length - 1 ? ' disabled' : '') + ' aria-label="Posunout dolu">▼</button>' +
+        '<button type="button" class="danger" data-pg-del="' + i + '" aria-label="Smazat skupinu">Smazat</button>' +
+        '</div>' +
+        '<details style="margin-top:0.4em;"><summary>Aspekty ve skupine (' + (g.aspects || []).length + ')</summary>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:0.3em 1em;margin-top:0.3em;">' +
+        allAspects.map(ak => '<label style="font-weight:normal;"><input type="checkbox" data-pg-aspect="' + i + '" value="' + escapeHtml(ak) + '"' + (inThis.has(ak) ? ' checked' : '') + '> ' + escapeHtml(aspectLabel(ak)) + '</label>').join('') +
+        '</div></details>' +
+        '</li>';
+    });
+    h += '</ol>';
+    cont.innerHTML = h;
+    cont.querySelectorAll('[data-pg-label]').forEach(inp => {
+      inp.onchange = () => { const gs = getProjectGroups(); gs[Number(inp.dataset.pgLabel)].label = inp.value; saveProjectGroups(gs); };
+    });
+    cont.querySelectorAll('[data-pg-up]').forEach(b => {
+      b.onclick = () => { const gs = getProjectGroups(); const i = Number(b.dataset.pgUp); if (i > 0) { const t=gs[i-1]; gs[i-1]=gs[i]; gs[i]=t; saveProjectGroups(gs); renderPgroupsList(); } };
+    });
+    cont.querySelectorAll('[data-pg-down]').forEach(b => {
+      b.onclick = () => { const gs = getProjectGroups(); const i = Number(b.dataset.pgDown); if (i < gs.length - 1) { const t=gs[i+1]; gs[i+1]=gs[i]; gs[i]=t; saveProjectGroups(gs); renderPgroupsList(); } };
+    });
+    cont.querySelectorAll('[data-pg-del]').forEach(b => {
+      b.onclick = () => { const gs = getProjectGroups(); gs.splice(Number(b.dataset.pgDel), 1); saveProjectGroups(gs); renderPgroupsList(); toast('Skupina smazana.'); };
+    });
+    cont.querySelectorAll('[data-pg-aspect]').forEach(chk => {
+      chk.onchange = () => {
+        const gs = getProjectGroups(); const gi = Number(chk.dataset.pgAspect); const ak = chk.value;
+        gs[gi].aspects = gs[gi].aspects || [];
+        if (chk.checked) { if (!gs[gi].aspects.includes(ak)) gs[gi].aspects.push(ak); }
+        else { gs[gi].aspects = gs[gi].aspects.filter(a => a !== ak); }
+        saveProjectGroups(gs);
+      };
+    });
+  }
+  const addBtn = document.getElementById('pgroups-add');
+  if (addBtn) addBtn.onclick = () => {
+    const gs = getProjectGroups();
+    gs.push({ id: 'g' + uuid().slice(0, 6), label: 'Nova skupina', aspects: [], renderer: 'generic' });
+    saveProjectGroups(gs); renderPgroupsList();
+  };
+  const resetBtn = document.getElementById('pgroups-reset');
+  if (resetBtn) resetBtn.onclick = () => {
+    confirmDialog('Obnovit vychozi skupiny? Vase upravy se ztrati.', () => {
+      db.projectGroups = DEFAULT_PROJECT_GROUPS.map(g => Object.assign({}, g, { aspects: g.aspects.slice() }));
+      save(); renderPgroupsList(); toast('Obnoveno.');
+    });
+  };
 }
 function applyTheme() {
   document.body.classList.remove('theme-light','theme-dark');
@@ -16111,24 +16181,48 @@ function openInStandaloneBtnHtml(entityId) {
   return ' <button type="button" class="open-in-standalone-btn" data-open-standalone="' + escapeHtml(entityId) + '" title="Otevřít v samostatném okně" aria-label="Otevřít v samostatném okně">🪟</button>';
 }
 
+// ===== KONFIGUROVATELNÉ SKUPINY DASHBOARDU PROJEKTU =====
+// db.projectGroups = [{ id, label, aspects:[...], renderer }]
+// renderer určuje způsob vykreslení: 'questions'|'events'|'docs'|'notes'|'people'|'generic'
+// Cíle a Úkoly (kanban) jsou speciální a NEjsou v konfiguraci (vždy nahoře).
+const DEFAULT_PROJECT_GROUPS = [
+  { id: 'qd', label: 'Otázky a rozhodnutí', aspects: ['Question', 'Decision'], renderer: 'questions' },
+  { id: 'events', label: 'Události', aspects: ['Event'], renderer: 'events' },
+  { id: 'docs', label: 'Dokumenty a zdroje', aspects: ['Document', 'Reference', 'Bookmark'], renderer: 'docs' },
+  { id: 'notes', label: 'Poznámky', aspects: ['Note', 'Audio', 'Idea'], renderer: 'notes' },
+  { id: 'people', label: 'Lidé a organizace', aspects: ['Person', 'Organization'], renderer: 'people' }
+];
+function getProjectGroups() {
+  if (!Array.isArray(db.projectGroups) || db.projectGroups.length === 0) {
+    return DEFAULT_PROJECT_GROUPS.map(g => Object.assign({}, g, { aspects: g.aspects.slice() }));
+  }
+  return db.projectGroups;
+}
+function saveProjectGroups(groups) {
+  db.projectGroups = groups;
+  save();
+}
+function getAllAspectKeys() {
+  const keys = Object.keys(ASPECTS || {});
+  (db.customAspects || []).forEach(ca => { if (ca && ca.key && !keys.includes(ca.key)) keys.push(ca.key); });
+  return keys;
+}
+
+
 function renderProjectDashboard(project) {
   const children = db.entities.filter(e =>
     !e.archived && e.links && e.links.some(l => l.to === project.id && l.type === 'partOf'));
   if (children.length === 0) {
     return '<section class="project-dashboard"><h3>Dashboard projektu</h3>' +
-      '<p class="meta">Žádné podřízené entity. Připojte úkoly nebo dokumenty vazbou „je součástí“.</p></section>';
+      '<p class="meta">Žádné podřízené entity. Připojte úkoly nebo dokumenty vazbou „je součástí".</p></section>';
   }
   const has = (e, ...aspects) => e.aspects && aspects.some(a => e.aspects.includes(a));
 
-  // Skupiny v požadovaném pořadí
+  // === Speciální skupiny (napevno nahoře) ===
   const goals = children.filter(e => has(e, 'Goal'));
   const tasks = children.filter(e => has(e, 'Task'));
-  const events = children.filter(e => has(e, 'Event'));
-  const questionsDecisions = children.filter(e => has(e, 'Question', 'Decision'));
-  const docsResources = children.filter(e => has(e, 'Document', 'Reference', 'Bookmark'));
-  const notesEtc = children.filter(e => has(e, 'Note', 'Audio', 'Idea'));
 
-  // Lidé a organizace – z přímých vazeb projektu i podřízených
+  // Lidé a organizace – z přímých vazeb projektu i podřízených (do skupiny s rendererem 'people')
   const peopleOrgsSet = new Set();
   children.concat([project]).forEach(e => {
     (e.links || []).forEach(l => {
@@ -16141,11 +16235,38 @@ function renderProjectDashboard(project) {
       if ((e.links || []).some(l => l.to === project.id || children.some(c => c.id === l.to))) peopleOrgsSet.add(e.id);
     }
   });
-  const peopleOrgs = [...peopleOrgsSet].map(findEntity).filter(Boolean);
+  const extraPeopleOrgs = [...peopleOrgsSet].map(findEntity).filter(Boolean);
 
-  // Ostatní = vše co neslepuje žádnou skupinu (Person/Organization se zobrazí v Lidé a organizace, ne v Ostatní)
-  const grouped = new Set([...goals, ...tasks, ...events, ...questionsDecisions, ...docsResources, ...notesEtc].map(e => e.id));
-  const others = children.filter(e => !grouped.has(e.id) && !has(e, 'Person', 'Organization'));
+  // === Konfigurovatelné skupiny ===
+  const groups = getProjectGroups();
+  // Kandidáti na zařazení: děti mimo Goal a Task (ty mají speciální sekce).
+  const groupable = children.filter(e => !has(e, 'Goal') && !has(e, 'Task'));
+  const assigned = new Set(); // entity, které spadly aspoň do jedné skupiny (pro určení osiřelých)
+  // Pro každou skupinu posbírej VŠECHNY entity, které do ní patří některým aspektem.
+  // Entita s víc aspekty v různých skupinách se zobrazí ve všech těchto skupinách (duplicity záměrné).
+  const groupBuckets = groups.map(g => {
+    const items = groupable.filter(e => (e.aspects || []).some(a => (g.aspects || []).includes(a)));
+    items.forEach(e => assigned.add(e.id));
+    return { group: g, items };
+  });
+  // Lidé/organizace zjištění z vazeb (extraPeopleOrgs) přidat do skupiny s rendererem 'people'
+  // (bez duplikátu v rámci téže skupiny).
+  const peopleGroupIdx = groups.findIndex(g => g.renderer === 'people');
+  if (peopleGroupIdx >= 0) {
+    const inPeople = new Set(groupBuckets[peopleGroupIdx].items.map(e => e.id));
+    extraPeopleOrgs.forEach(p => {
+      if (!inPeople.has(p.id)) { groupBuckets[peopleGroupIdx].items.push(p); inPeople.add(p.id); assigned.add(p.id); }
+    });
+  }
+  // Entity, které nespadly do žádné skupiny → vlastní skupiny podle aspektu (nikdy "Ostatní" koš).
+  const orphans = groupable.filter(e => !assigned.has(e.id));
+  const autoGroups = {};
+  orphans.forEach(e => {
+    // vezmi první aspekt entity jako klíč skupiny
+    const ak = (e.aspects || [])[0] || 'other';
+    if (!autoGroups[ak]) autoGroups[ak] = [];
+    autoGroups[ak].push(e);
+  });
 
   // Statistiky úkolů
   const totalT = tasks.length;
@@ -16160,21 +16281,7 @@ function renderProjectDashboard(project) {
   };
   tasks.forEach(t => { const s = t.attributes.status || 'todo'; if (kanban[s]) kanban[s].items.push(t); });
 
-  function listSection(title, items, showAspects) {
-    if (items.length === 0) return '';
-    let h = '<h4>' + escapeHtml(title) + ' (' + items.length + ')</h4><ul style="list-style:none;padding-left:0;">';
-    items.forEach(it => {
-      const aspectsTxt = showAspects
-        ? ' <span class="meta">(' + (it.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + ')</span>'
-        : '';
-      const updTxt = ' <span class="meta">' + escapeHtml(fmtRelative(it.updated_at)) + '</span>';
-      h += '<li><a href="#" data-entity="' + escapeHtml(it.id) + '">' + getDisplayTitleWithBadges(it) + '</a>' + openInPanelBtnHtml(it.id) + aspectsTxt + updTxt + '</li>';
-    });
-    h += '</ul>';
-    return h;
-  }
-
-  // Helpery pro popis dat a obsahu
+  // Helpery
   function relDay(iso) {
     if (!iso) return '';
     const d = new Date(iso);
@@ -16195,121 +16302,37 @@ function renderProjectDashboard(project) {
     if (!plain) return '';
     return plain.length > max ? plain.slice(0, max) + '…' : plain;
   }
+  const aspectTxtOf = (it) => ' <span class="meta">(' + (it.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + ')</span>';
 
-  let h = '<section class="project-dashboard"><h3>Dashboard projektu</h3>';
-
-  // === Cíle (s cílovým datem a ručně zadaným postupem) ===
-  if (goals.length > 0) {
-    h += '<h4>Cíle (' + goals.length + ')</h4><ul style="list-style:none;padding-left:0;">';
-    goals.forEach(g => {
-      const attrs = g.attributes || {};
-      const targetDate = attrs.target_date;
-      // progress je ručně zadané číslo 0-100
-      const progressRaw = attrs.progress;
-      const progress = (progressRaw !== undefined && progressRaw !== null && progressRaw !== '')
-        ? Math.max(0, Math.min(100, Number(progressRaw))) : null;
-      h += '<li class="dash-goal-item">' +
-        '<a href="#" data-entity="' + escapeHtml(g.id) + '">' + getDisplayTitleWithBadges(g) + '</a>' +
-        openInPanelBtnHtml(g.id);
-      if (targetDate) h += ' <span class="meta">🎯 ' + escapeHtml(relDay(targetDate)) + '</span>';
-      if (progress !== null && !isNaN(progress)) {
-        h += '<div class="dash-goal-progress">' +
-          '<div class="progress-bar progress-bar-sm"><div class="progress-bar-fill" style="width:' + progress + '%"></div>' +
-          '<div class="progress-bar-label">' + progress + '%</div></div>' +
-        '</div>';
-      }
-      h += '</li>';
-    });
-    h += '</ul>';
-  }
-
-  // Pokrok úkolů + Kanban
-  h += '<div style="margin:0.75em 0;">' +
-    '<div class="meta">Postup: ' + doneT + ' z ' + totalT + ' úkolů (' + pct + '%)</div>' +
-    '<div class="progress-bar"><div class="progress-bar-fill" style="width:' + pct + '%"></div>' +
-    '<div class="progress-bar-label">' + pct + '%</div></div></div>';
-
-  // Rychlé přidání úkolu do projektu
-  h += '<div class="project-quick-task">' +
-    '<label for="proj-quick-task-title" style="font-weight:600;">+ Nový úkol do tohoto projektu</label>' +
-    '<div class="project-quick-task-row">' +
-      '<input type="text" id="proj-quick-task-title" placeholder="Název úkolu (lze: zítra, pondělí, 15.6., odkaz [text](url))">' +
-      '<button type="button" id="proj-quick-task-add" class="primary">Přidat úkol</button>' +
-    '</div>' +
-    '<p class="meta" style="margin:0.3em 0 0;">Vytvoří úkol a propojí ho s tímto projektem vazbou „je součástí". Detail projektu zůstane otevřený.</p>' +
-  '</div>';
-  // Obecné rychlé přidání entity (jiný aspekt než úkol)
-  h += '<div class="project-quick-task">' +
-    '<label for="proj-quick-ent-title" style="font-weight:600;">+ Nová entita do tohoto projektu</label>' +
-    '<div class="project-quick-task-row">' +
-      '<input type="text" id="proj-quick-ent-title" placeholder="Název entity">' +
-      '<label class="sr-only" for="proj-quick-ent-aspect">Aspekt</label>' +
-      '<select id="proj-quick-ent-aspect">' + quickEntityAspectOptions('Note') + '</select>' +
-      '<button type="button" id="proj-quick-ent-add" class="primary">Přidat entitu</button>' +
-    '</div>' +
-    '<p class="meta" style="margin:0.3em 0 0;">Vytvoří entitu zvoleného aspektu a propojí ji s tímto projektem vazbou „je součástí".</p>' +
-  '</div>';
-  if (totalT > 0) {
-    h += '<h4>Úkoly (kanban)</h4><div class="kanban-cols">';
-    Object.entries(kanban).forEach(([k, col]) => {
-      h += '<div class="kanban-col"><h4>' + escapeHtml(col.label) + ' (' + col.items.length + ')</h4>';
-      col.items.forEach(t => {
-        const isDone = t.attributes && t.attributes.status === 'done';
-        h += '<div class="kanban-card">' +
-          '<label class="kanban-task-toggle" title="' + (isDone ? 'Vrátit jako k vyřešení' : 'Označit jako hotové') + '">' +
-            '<input type="checkbox" data-task-toggle="' + escapeHtml(t.id) + '"' + (isDone ? ' checked' : '') + '> ' +
-          '</label>' +
-          '<a href="#" data-entity="' + escapeHtml(t.id) + '">' + getDisplayTitleWithBadges(t) + '</a>' +
-          openInPanelBtnHtml(t.id);
-        if (t.attributes.deadline) h += '<div class="meta">' + escapeHtml(fmtDate(t.attributes.deadline)) + '</div>';
-        h += '</div>';
-      });
-      h += '</div>';
-    });
-    h += '</div>';
-  }
-
-  // === Otázky a rozhodnutí — s odpovědí a stavem ===
-  if (questionsDecisions.length > 0) {
-    h += '<h4>Otázky a rozhodnutí (' + questionsDecisions.length + ')</h4><ul style="list-style:none;padding-left:0;">';
-    questionsDecisions.forEach(it => {
+  // === Renderery jednotlivých skupin (podle typu) ===
+  function renderGroupQuestions(label, items) {
+    if (items.length === 0) return '';
+    let h = '<h4>' + escapeHtml(label) + ' (' + items.length + ')</h4><ul style="list-style:none;padding-left:0;">';
+    items.forEach(it => {
       const isQ = has(it, 'Question');
-      const aspectTxt = ' <span class="meta">(' + (it.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + ')</span>';
       let extras = '';
       if (isQ) {
-        // Otázka má odpovědi? Odpověď má vazbu answers → tato otázka.
         const answers = getQuestionAnswers(it);
-        if (answers.length === 0) {
-          extras = ' <span class="meta">❓ nezodpovězená</span>';
-        } else {
-          const links = answers.map(a =>
-            '<a href="#" data-entity="' + escapeHtml(a.id) + '">' + getDisplayTitleWithBadges(a) + '</a>'
-          ).join(', ');
-          extras = ' <span class="meta">💡 ' + answers.length + ' ' +
-            (answers.length === 1 ? 'odpověď' : (answers.length < 5 ? 'odpovědi' : 'odpovědí')) +
-            ': ' + links + '</span>';
+        if (answers.length === 0) extras = ' <span class="meta">❓ nezodpovězená</span>';
+        else {
+          const links = answers.map(a => '<a href="#" data-entity="' + escapeHtml(a.id) + '">' + getDisplayTitleWithBadges(a) + '</a>').join(', ');
+          extras = ' <span class="meta">💡 ' + answers.length + ' ' + (answers.length === 1 ? 'odpověď' : (answers.length < 5 ? 'odpovědi' : 'odpovědí')) + ': ' + links + '</span>';
         }
       } else {
-        // Rozhodnutí: datum + stav
         const decDate = (it.attributes || {}).decided_at || (it.attributes || {}).deadline;
         if (decDate) extras += ' <span class="meta">' + escapeHtml(relDay(decDate)) + '</span>';
         const decStatus = (it.attributes || {}).status;
         if (decStatus) extras += ' <span class="meta">stav: ' + escapeHtml(decStatus) + '</span>';
       }
-      h += '<li><a href="#" data-entity="' + escapeHtml(it.id) + '">' + getDisplayTitleWithBadges(it) + '</a>' + openInPanelBtnHtml(it.id) + aspectTxt + extras + '</li>';
+      h += '<li><a href="#" data-entity="' + escapeHtml(it.id) + '">' + getDisplayTitleWithBadges(it) + '</a>' + openInPanelBtnHtml(it.id) + aspectTxtOf(it) + extras + '</li>';
     });
-    h += '</ul>';
+    return h + '</ul>';
   }
-
-  // === Události — chronologicky + "za N dnů / dnes / před N dny" ===
-  if (events.length > 0) {
-    const sortedEvents = [...events].sort((a, b) => {
-      const sa = (a.attributes && a.attributes.start) || '';
-      const sb = (b.attributes && b.attributes.start) || '';
-      return sa.localeCompare(sb);
-    });
-    h += '<h4>Události (' + sortedEvents.length + ')</h4><ul style="list-style:none;padding-left:0;">';
-    sortedEvents.forEach(ev => {
+  function renderGroupEvents(label, items) {
+    if (items.length === 0) return '';
+    const sorted = [...items].sort((a, b) => ((a.attributes && a.attributes.start) || '').localeCompare((b.attributes && b.attributes.start) || ''));
+    let h = '<h4>' + escapeHtml(label) + ' (' + sorted.length + ')</h4><ul style="list-style:none;padding-left:0;">';
+    sorted.forEach(ev => {
       const attrs = ev.attributes || {};
       let when = '';
       if (attrs.start) {
@@ -16320,63 +16343,150 @@ function renderProjectDashboard(project) {
       const where = attrs.location ? ' <span class="meta">📍 ' + escapeHtml(attrs.location) + '</span>' : '';
       h += '<li><a href="#" data-entity="' + escapeHtml(ev.id) + '">' + getDisplayTitleWithBadges(ev) + '</a>' + openInPanelBtnHtml(ev.id) + when + where + '</li>';
     });
-    h += '</ul>';
+    return h + '</ul>';
   }
-
-  // === Dokumenty a zdroje — URL, autor, datum ===
-  if (docsResources.length > 0) {
-    h += '<h4>Dokumenty a zdroje (' + docsResources.length + ')</h4><ul style="list-style:none;padding-left:0;">';
-    docsResources.forEach(it => {
-      const aspectTxt = ' <span class="meta">(' + (it.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + ')</span>';
+  function renderGroupDocs(label, items) {
+    if (items.length === 0) return '';
+    let h = '<h4>' + escapeHtml(label) + ' (' + items.length + ')</h4><ul style="list-style:none;padding-left:0;">';
+    items.forEach(it => {
       const attrs = it.attributes || {};
       let meta = '';
       if (attrs.url) meta += ' <a href="' + escapeHtml(attrs.url) + '" class="meta" target="_blank" rel="noopener">🔗 ' + escapeHtml(shortUrlLabel(attrs.url)) + '</a>';
       if (attrs.author) meta += ' <span class="meta">👤 ' + escapeHtml(attrs.author) + '</span>';
       if (attrs.date) meta += ' <span class="meta">📅 ' + escapeHtml(fmtDate(attrs.date)) + '</span>';
-      h += '<li><a href="#" data-entity="' + escapeHtml(it.id) + '">' + getDisplayTitleWithBadges(it) + '</a>' + openInPanelBtnHtml(it.id) + aspectTxt + meta + '</li>';
+      h += '<li><a href="#" data-entity="' + escapeHtml(it.id) + '">' + getDisplayTitleWithBadges(it) + '</a>' + openInPanelBtnHtml(it.id) + aspectTxtOf(it) + meta + '</li>';
     });
-    h += '</ul>';
+    return h + '</ul>';
   }
-
-  // === Poznámky/Nápady/Audio — náhled obsahu ===
-  if (notesEtc.length > 0) {
-    h += '<h4>Poznámky (' + notesEtc.length + ')</h4><ul style="list-style:none;padding-left:0;">';
-    notesEtc.forEach(it => {
-      const aspectTxt = ' <span class="meta">(' + (it.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + ')</span>';
+  function renderGroupNotes(label, items) {
+    if (items.length === 0) return '';
+    let h = '<h4>' + escapeHtml(label) + ' (' + items.length + ')</h4><ul style="list-style:none;padding-left:0;">';
+    items.forEach(it => {
       const snippet = bodySnippet(it.body, 80);
       const updTxt = ' <span class="meta">' + escapeHtml(fmtRelative(it.updated_at)) + '</span>';
-      h += '<li><a href="#" data-entity="' + escapeHtml(it.id) + '">' + getDisplayTitleWithBadges(it) + '</a>' + openInPanelBtnHtml(it.id) + aspectTxt + updTxt;
+      h += '<li><a href="#" data-entity="' + escapeHtml(it.id) + '">' + getDisplayTitleWithBadges(it) + '</a>' + openInPanelBtnHtml(it.id) + aspectTxtOf(it) + updTxt;
       if (snippet) h += '<div class="meta dash-snippet">' + escapeHtml(snippet) + '</div>';
       h += '</li>';
     });
-    h += '</ul>';
+    return h + '</ul>';
   }
-
-  // === Lidé a organizace — kontakt (e-mail, telefon, role) ===
-  if (peopleOrgs.length > 0) {
-    h += '<h4>Lidé a organizace (' + peopleOrgs.length + ')</h4><ul style="list-style:none;padding-left:0;">';
-    peopleOrgs.forEach(p => {
-      const aspectsTxt = ' <span class="meta">(' + (p.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + ')</span>';
+  function renderGroupPeople(label, items) {
+    if (items.length === 0) return '';
+    let h = '<h4>' + escapeHtml(label) + ' (' + items.length + ')</h4><ul style="list-style:none;padding-left:0;">';
+    items.forEach(p => {
       const attrs = p.attributes || {};
       let contact = '';
       if (attrs.email) contact += ' <a href="mailto:' + escapeHtml(attrs.email) + '" class="meta">📧 ' + escapeHtml(attrs.email) + '</a>';
       if (attrs.phone) contact += ' <a href="tel:' + escapeHtml(attrs.phone) + '" class="meta">📞 ' + escapeHtml(attrs.phone) + '</a>';
       if (attrs.role) contact += ' <span class="meta">🎭 ' + escapeHtml(attrs.role) + '</span>';
-      h += '<li><a href="#" data-entity="' + escapeHtml(p.id) + '">' + getDisplayTitleWithBadges(p) + '</a>' + openInPanelBtnHtml(p.id) + aspectsTxt + contact + '</li>';
+      h += '<li><a href="#" data-entity="' + escapeHtml(p.id) + '">' + getDisplayTitleWithBadges(p) + '</a>' + openInPanelBtnHtml(p.id) + aspectTxtOf(p) + contact + '</li>';
+    });
+    return h + '</ul>';
+  }
+  function renderGroupGeneric(label, items) {
+    if (items.length === 0) return '';
+    let h = '<h4>' + escapeHtml(label) + ' (' + items.length + ')</h4><ul style="list-style:none;padding-left:0;">';
+    items.forEach(it => {
+      const updTxt = ' <span class="meta">' + escapeHtml(fmtRelative(it.updated_at)) + '</span>';
+      h += '<li><a href="#" data-entity="' + escapeHtml(it.id) + '">' + getDisplayTitleWithBadges(it) + '</a>' + openInPanelBtnHtml(it.id) + aspectTxtOf(it) + updTxt + '</li>';
+    });
+    return h + '</ul>';
+  }
+  function renderGroupByType(renderer, label, items) {
+    switch (renderer) {
+      case 'questions': return renderGroupQuestions(label, items);
+      case 'events': return renderGroupEvents(label, items);
+      case 'docs': return renderGroupDocs(label, items);
+      case 'notes': return renderGroupNotes(label, items);
+      case 'people': return renderGroupPeople(label, items);
+      default: return renderGroupGeneric(label, items);
+    }
+  }
+
+  let h = '<section class="project-dashboard"><h3>Dashboard projektu</h3>';
+
+  // === Cíle (speciální) ===
+  if (goals.length > 0) {
+    h += '<h4>Cíle (' + goals.length + ')</h4><ul style="list-style:none;padding-left:0;">';
+    goals.forEach(g => {
+      const attrs = g.attributes || {};
+      const targetDate = attrs.target_date;
+      const progressRaw = attrs.progress;
+      const progress = (progressRaw !== undefined && progressRaw !== null && progressRaw !== '')
+        ? Math.max(0, Math.min(100, Number(progressRaw))) : null;
+      h += '<li class="dash-goal-item">' +
+        '<a href="#" data-entity="' + escapeHtml(g.id) + '">' + getDisplayTitleWithBadges(g) + '</a>' + openInPanelBtnHtml(g.id);
+      if (targetDate) h += ' <span class="meta">🎯 ' + escapeHtml(relDay(targetDate)) + '</span>';
+      if (progress !== null && !isNaN(progress)) {
+        h += '<div class="dash-goal-progress"><div class="progress-bar progress-bar-sm"><div class="progress-bar-fill" style="width:' + progress + '%"></div>' +
+          '<div class="progress-bar-label">' + progress + '%</div></div></div>';
+      }
+      h += '</li>';
     });
     h += '</ul>';
   }
 
-  // Ostatní entity, které nezapadly nikam
-  if (others.length > 0) {
-    h += listSection('Ostatní', others, true);
+  // Pokrok úkolů
+  h += '<div style="margin:0.75em 0;">' +
+    '<div class="meta">Postup: ' + doneT + ' z ' + totalT + ' úkolů (' + pct + '%)</div>' +
+    '<div class="progress-bar"><div class="progress-bar-fill" style="width:' + pct + '%"></div>' +
+    '<div class="progress-bar-label">' + pct + '%</div></div></div>';
+
+  // Rychlé přidání úkolu
+  h += '<div class="project-quick-task">' +
+    '<label for="proj-quick-task-title" style="font-weight:600;">+ Nový úkol do tohoto projektu</label>' +
+    '<div class="project-quick-task-row">' +
+      '<input type="text" id="proj-quick-task-title" placeholder="Název úkolu (lze: zítra, pondělí, 15.6., odkaz [text](url))">' +
+      '<button type="button" id="proj-quick-task-add" class="primary">Přidat úkol</button>' +
+    '</div>' +
+    '<p class="meta" style="margin:0.3em 0 0;">Vytvoří úkol a propojí ho s tímto projektem vazbou „je součástí". Detail projektu zůstane otevřený.</p>' +
+  '</div>';
+  // Obecné rychlé přidání entity
+  h += '<div class="project-quick-task">' +
+    '<label for="proj-quick-ent-title" style="font-weight:600;">+ Nová entita do tohoto projektu</label>' +
+    '<div class="project-quick-task-row">' +
+      '<input type="text" id="proj-quick-ent-title" placeholder="Název entity">' +
+      '<label class="sr-only" for="proj-quick-ent-aspect">Aspekt</label>' +
+      '<select id="proj-quick-ent-aspect">' + quickEntityAspectOptions('Note') + '</select>' +
+      '<button type="button" id="proj-quick-ent-add" class="primary">Přidat entitu</button>' +
+    '</div>' +
+    '<p class="meta" style="margin:0.3em 0 0;">Vytvoří entitu zvoleného aspektu a propojí ji s tímto projektem vazbou „je součástí".</p>' +
+  '</div>';
+
+  // Úkoly (kanban) – speciální
+  if (totalT > 0) {
+    h += '<h4>Úkoly (kanban)</h4><div class="kanban-cols">';
+    Object.entries(kanban).forEach(([k, col]) => {
+      h += '<div class="kanban-col"><h4>' + escapeHtml(col.label) + ' (' + col.items.length + ')</h4>';
+      col.items.forEach(t => {
+        const isDone = t.attributes && t.attributes.status === 'done';
+        h += '<div class="kanban-card">' +
+          '<label class="kanban-task-toggle" title="' + (isDone ? 'Vrátit jako k vyřešení' : 'Označit jako hotové') + '">' +
+            '<input type="checkbox" data-task-toggle="' + escapeHtml(t.id) + '"' + (isDone ? ' checked' : '') + '> ' +
+          '</label>' +
+          '<a href="#" data-entity="' + escapeHtml(t.id) + '">' + getDisplayTitleWithBadges(t) + '</a>' + openInPanelBtnHtml(t.id);
+        if (t.attributes.deadline) h += '<div class="meta">' + escapeHtml(fmtDate(t.attributes.deadline)) + '</div>';
+        h += '</div>';
+      });
+      h += '</div>';
+    });
+    h += '</div>';
   }
+
+  // === Konfigurovatelné skupiny (v pořadí) ===
+  groupBuckets.forEach(b => { h += renderGroupByType(b.group.renderer, b.group.label, b.items); });
+
+  // === Automatické skupiny pro aspekty bez zařazení (vlastní aspekty) ===
+  Object.keys(autoGroups).forEach(ak => {
+    h += renderGroupGeneric(aspectLabel(ak), autoGroups[ak]);
+  });
 
   h += '</section>';
   return h;
 }
 
-// ==== VIEW: OUTLINE ====
+
+
 function renderOutline(main, rootId) {
   const root = findEntity(rootId);
   if (!root) {
