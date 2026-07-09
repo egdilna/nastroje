@@ -3389,7 +3389,8 @@ function buildStatusChipHtml(entity) {
     } else if (answers.length === 1) {
       parts.push('💡 zodpovězeno: <a href="#" data-entity="' + escapeHtml(answers[0].id) + '">' + getDisplayTitleWithBadges(answers[0]) + '</a>');
     } else {
-      parts.push('💡 ' + answers.length + ' odpovědí');
+      parts.push('💡 ' + answers.length + ' odpovědí: ' +
+        answers.map(ans => '<a href="#" data-entity="' + escapeHtml(ans.id) + '">' + getDisplayTitleWithBadges(ans) + '</a>').join(', '));
     }
   }
 
@@ -3468,6 +3469,28 @@ function buildStatusChipHtml(entity) {
     if (a.decided_at) parts.push('📅 ' + escapeHtml(fmtDate(a.decided_at)));
   }
 
+  if (aspects.includes('Plan')) {
+    badges.push('📋');
+    const ptasks = (typeof planGetTasks === 'function') ? planGetTasks(entity) : (a.tasks || []);
+    if (ptasks.length > 0) {
+      const total = ptasks.length;
+      const done = ptasks.filter(t => t.status === 'Splněno').length;
+      const cancelled = ptasks.filter(t => t.status === 'Zrušeno').length;
+      const inProgress = ptasks.filter(t => t.status === 'Probíhá').length;
+      const blocked = ptasks.filter(t => t.status === 'Blokováno').length;
+      const denom = (total - cancelled) || 1;
+      const pct = Math.round(done / denom * 100);
+      let s = '📋 ' + done + '/' + total + ' splněno (' + pct + ' %)';
+      const extra = [];
+      if (inProgress > 0) extra.push(inProgress + '× probíhá');
+      if (blocked > 0) extra.push(blocked + '× blokováno');
+      if (extra.length > 0) s += ', ' + extra.join(', ');
+      parts.push(s);
+    } else {
+      parts.push('<span class="meta">prázdný plán</span>');
+    }
+  }
+
   if (parts.length === 0) {
     const aspLabels = aspects.map(ak => aspectLabel(ak)).filter(Boolean);
     if (aspLabels.length > 0) parts.push('<span class="meta">' + escapeHtml(aspLabels.join(', ')) + '</span>');
@@ -3514,7 +3537,7 @@ function buildStatusChipPlain(entity) {
       (e.links || []).some(l => l.to === entity.id && l.type === 'answers'));
     if (answers.length === 0) parts.push('nezodpovězeno');
     else if (answers.length === 1) parts.push('zodpovězeno: ' + getDisplayTitle(answers[0]));
-    else parts.push(answers.length + ' odpovědí');
+    else parts.push(answers.length + ' odpovědí: ' + answers.map(ans => getDisplayTitle(ans)).join(', '));
   }
 
   if (aspects.includes('Bookmark') && a.url) {
@@ -3573,6 +3596,21 @@ function buildStatusChipPlain(entity) {
   if (aspects.includes('Decision') && a.decided_at) {
     badges.push('📌');
     parts.push('📅 ' + fmtDate(a.decided_at));
+  }
+
+  if (aspects.includes('Plan')) {
+    badges.push('📋');
+    const ptasks = (typeof planGetTasks === 'function') ? planGetTasks(entity) : (a.tasks || []);
+    if (ptasks.length > 0) {
+      const total = ptasks.length;
+      const done = ptasks.filter(t => t.status === 'Splněno').length;
+      const cancelled = ptasks.filter(t => t.status === 'Zrušeno').length;
+      const denom = (total - cancelled) || 1;
+      const pct = Math.round(done / denom * 100);
+      parts.push('📋 ' + done + '/' + total + ' splněno (' + pct + ' %)');
+    } else {
+      parts.push('prázdný plán');
+    }
   }
 
   if (parts.length === 0) {
@@ -5700,9 +5738,27 @@ function stripMarkdownToPlain(line) {
 function removeEmojiFromString(s, emoji, atIdx) {
   if (atIdx == null) atIdx = s.indexOf(emoji);
   if (atIdx < 0) return s;
-  const emLen = emoji.length;
+  // Zarovnat atIdx na začátek code pointu (kdyby ukazoval doprostřed surrogate pairu).
+  if (atIdx > 0) {
+    const code = s.charCodeAt(atIdx);
+    if (code >= 0xDC00 && code <= 0xDFFF) atIdx -= 1; // low surrogate → posun na high
+  }
+  // Zjistit skutečnou délku emoji "clusteru" v textu od atIdx:
+  // base emoji + volitelný Variation Selector (U+FE0F) + ZWJ sekvence + skin tone modifikátory.
+  let end = atIdx + emoji.length;
+  // Pokud emoji v seznamu bylo bez VS16, ale v textu VS16 následuje, spolkni ho.
+  while (end < s.length) {
+    const c = s.charCodeAt(end);
+    if (c === 0xFE0F || c === 0x200D) { end += 1; continue; } // VS16 nebo ZWJ
+    if (c >= 0xD800 && c <= 0xDBFF) {
+      // high surrogate – další emoji v ZWJ sekvenci (jen pokud předchozí byl ZWJ)
+      if (s.charCodeAt(end - 1) === 0x200D) { end += 2; continue; }
+    }
+    break;
+  }
+  // Pokud emoji v seznamu mělo VS16 navíc oproti textu, oříznout by mohlo přesáhnout – ošetřeno slice.
   const before = s.slice(0, atIdx);
-  const after = s.slice(atIdx + emLen);
+  const after = s.slice(end);
   let trimAfter = 0;
   if (/^[\s\u00A0]/.test(after)) trimAfter = 1;
   let trimBefore = 0;
