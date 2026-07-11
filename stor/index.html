@@ -1063,6 +1063,39 @@ a.version-time {
   border-radius: var(--radius);
 }
 
+/* Empty app setup — inline formulář pro první spuštění bez URL */
+.empty-app-setup {
+  max-width: 600px;
+  margin: 24px auto;
+}
+.empty-app-setup h2 {
+  margin: 0 0 8px;
+  font-size: 1.4rem;
+}
+.empty-app-setup > p {
+  color: var(--text-muted);
+  margin: 0 0 20px;
+}
+.empty-app-section {
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.empty-app-section h3 {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+}
+.empty-app-section .field {
+  margin-bottom: 10px;
+}
+.empty-app-section .hint {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 4px 0 8px;
+}
+
 /* Dialog */
 dialog {
   border: 1px solid var(--border-strong);
@@ -1760,35 +1793,25 @@ function base64ToBlob(b64, mime) {
 }
 
 //=============================================================================
-// CONFIG (localStorage) — device-global credentials, multi-storage navigation
+// CONFIG (localStorage) — pouze per-device credentials
 //=============================================================================
-// Struktura v localStorage (v3):
+// Struktura v localStorage:
 // {
-//   apiKey: "ghp_...",                    // GLOBÁLNÍ — jeden GitHub PAT pro celé zařízení
-//   deviceName: "...",                    // GLOBÁLNÍ — jméno tohoto zařízení (zobrazuje se u verzí)
-//   branch: "main",                       // GLOBÁLNÍ default větev
-//   knownRepos: [                         // historie navštívených úložišť (jen pro UX nawigaci)
-//     {
-//       repoPath: "owner/repo/path",
-//       storageId: "...",                 // pamatováno po loadu (zobrazuje se v seznamu)
-//       storageName: "...",
-//       lastVisited: "ISO datum",
-//       branch: "..."                     // OPTIONAL override globální větve
-//     },
-//     ...
-//   ],
-//   lastRepoPath: "owner/repo/path"       // co bylo naposled aktivní (kam se vrátit při dalším otevření)
+//   apiKey: "ghp_...",     // GLOBÁLNÍ — jeden GitHub PAT pro celé zařízení
+//   deviceName: "...",     // GLOBÁLNÍ — jméno tohoto zařízení (u verzí)
+//   branch: "main"         // GLOBÁLNÍ default větev
 // }
 //
-// Klíčový princip: API klíč je vlastnost ZAŘÍZENÍ, ne úložiště. Když dostanu URL na nové
-// úložiště (i v iframe), přirozeně se použije globální klíč — funguje to okamžitě
-// bez nutnosti znovu zadávat credentials.
+// repoPath se NEUKLÁDÁ. Přichází z URL (přes ?detail= parametr), nebo ho uživatel
+// zadá ručně v Nastavení pro danou session. Není žádný seznam navštívených úložišť —
+// pro víc úložišť má uživatel víc URL (bookmarks, tab, iframe).
+// Migrace: pole knownRepos a lastRepoPath ze starších verzí se ignorují a mažou.
 //
-// state.config v paměti je zploštělý ({apiKey, deviceName, repoPath, branch}) — load/save převádí.
+// state.config v paměti je zploštělý ({apiKey, deviceName, repoPath, branch}) —
+// repoPath tam žije jen pro aktuální session, do localStorage nejde.
 
 function loadFullConfig() {
-  // Vrátí celý config v3. Provádí migraci z v2 a v1, pokud jsou k dispozici.
-  let cfg = { apiKey: "", deviceName: "", branch: COMMIT_BRANCH_DEFAULT, knownRepos: [], lastRepoPath: "" };
+  let cfg = { apiKey: "", deviceName: "", branch: COMMIT_BRANCH_DEFAULT };
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) {
@@ -1797,31 +1820,26 @@ function loadFullConfig() {
         cfg.apiKey = parsed.apiKey || "";
         cfg.deviceName = parsed.deviceName || "";
         cfg.branch = parsed.branch || COMMIT_BRANCH_DEFAULT;
-        cfg.knownRepos = Array.isArray(parsed.knownRepos) ? parsed.knownRepos : [];
-        cfg.lastRepoPath = parsed.lastRepoPath || "";
+        // Detekce zbytků z předchozích verzí — pokud mají knownRepos nebo lastRepoPath,
+        // uložíme čistý config (bez nich) a vyčistíme.
+        if (parsed.knownRepos || parsed.lastRepoPath) {
+          saveFullConfig(cfg);
+          debug("Konfigurace vyčištěna — odstraněn seznam zapamatovaných úložišť.", "ok");
+        }
       }
       return cfg;
     }
-    // Migrace v2 → v3: vezmi nejnovější apiKey a branch jako globální, repos[] zploštit do knownRepos[].
+    // Migrace v2 → nová struktura: vezmi nejnovější apiKey jako globální. Zbytek zahoď.
     const rawV2 = localStorage.getItem(LS_KEY_V2);
     if (rawV2) {
       const v2 = JSON.parse(rawV2) || {};
       cfg.deviceName = v2.deviceName || "";
-      cfg.lastRepoPath = v2.lastRepoPath || "";
       let bestApiKey = "";
       let bestBranch = COMMIT_BRANCH_DEFAULT;
       let bestVisited = "";
       const repos = v2.repos || {};
       for (const rp in repos) {
         const e = repos[rp];
-        cfg.knownRepos.push({
-          repoPath: rp,
-          storageId: e.storageId || "",
-          storageName: e.storageName || "",
-          lastVisited: e.lastVisited || "",
-          branch: e.branch && e.branch !== COMMIT_BRANCH_DEFAULT ? e.branch : undefined,
-        });
-        // Vezmi globální apiKey z entry s nejnovějším lastVisited (nebo první nenulový)
         if (e.apiKey && (!bestApiKey || (e.lastVisited && e.lastVisited > bestVisited))) {
           bestApiKey = e.apiKey;
           bestBranch = e.branch || COMMIT_BRANCH_DEFAULT;
@@ -1830,33 +1848,21 @@ function loadFullConfig() {
       }
       cfg.apiKey = bestApiKey;
       cfg.branch = bestBranch;
-      // Vyčisti undefined branch (kvůli JSON.stringify)
-      cfg.knownRepos = cfg.knownRepos.map(r => {
-        const c = Object.assign({}, r);
-        if (c.branch === undefined) delete c.branch;
-        return c;
-      });
       saveFullConfig(cfg);
       try { localStorage.removeItem(LS_KEY_V2); } catch {}
-      debug("Migrace konfigurace v2 → v3: API klíč povýšen na globální (per-device).", "ok");
+      debug("Migrace konfigurace v2 → aktuální: API klíč povýšen na globální (per-device).", "ok");
       return cfg;
     }
-    // Migrace v1 → v3 (přímá): jeden repo, jeden apiKey, povýšit na globální.
+    // Migrace v1 → nová struktura: vezmi apiKey/deviceName/branch. RepoPath zahoď.
     const rawV1 = localStorage.getItem(LS_KEY_V1);
     if (rawV1) {
       const v1 = JSON.parse(rawV1) || {};
       cfg.apiKey = v1.apiKey || "";
       cfg.deviceName = v1.deviceName || "";
       cfg.branch = v1.branch || COMMIT_BRANCH_DEFAULT;
-      if (v1.repoPath) {
-        cfg.knownRepos.push({
-          repoPath: v1.repoPath, storageId: "", storageName: "", lastVisited: nowIso()
-        });
-        cfg.lastRepoPath = v1.repoPath;
-      }
       saveFullConfig(cfg);
       try { localStorage.removeItem(LS_KEY_V1); } catch {}
-      debug("Migrace konfigurace v1 → v3 proběhla.", "ok");
+      debug("Migrace konfigurace v1 → aktuální proběhla.", "ok");
       return cfg;
     }
   } catch(e) {
@@ -1867,11 +1873,18 @@ function loadFullConfig() {
 
 function saveFullConfig(cfg) {
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(cfg));
+    // Uložíme jen tři pole — nic navíc.
+    const clean = {
+      apiKey: cfg.apiKey || "",
+      deviceName: cfg.deviceName || "",
+      branch: cfg.branch || COMMIT_BRANCH_DEFAULT,
+    };
+    localStorage.setItem(LS_KEY, JSON.stringify(clean));
   } catch(e) {
     debug("Chyba uložení konfigurace: " + e.message, "err");
   }
 }
+
 
 //=============================================================================
 // THEMES — vizuální motivy úložiště
@@ -1931,104 +1944,34 @@ function getCurrentThemeId() {
 }
 
 function loadConfig() {
-  // Naplní state.config. API klíč a deviceName jsou globální per-device.
-  // repoPath přijde z URL (priorita) nebo z lastRepoPath (fallback).
-  // branch: pokud má aktuální repo per-repo override v knownRepos, použije se ten;
-  //   jinak globální default.
+  // Naplní state.config z per-device localStorage. repoPath přijde jen z URL —
+  // nikdy se neukládá do localStorage a nepřežívá session.
   const full = loadFullConfig();
   state.config.apiKey = full.apiKey || "";
   state.config.deviceName = full.deviceName || "";
-  // repoPath: pokud už je nastaven (z URL přečtené dřív), drž se ho; jinak last-used.
-  const targetRepo = state.config.repoPath || full.lastRepoPath || "";
-  state.config.repoPath = targetRepo;
-  // Branch: per-repo override > globální default
-  const entry = (full.knownRepos || []).find(r => r.repoPath === targetRepo);
-  state.config.branch = (entry && entry.branch) || full.branch || COMMIT_BRANCH_DEFAULT;
+  state.config.branch = full.branch || COMMIT_BRANCH_DEFAULT;
+  // repoPath: pokud už byl nastaven (z URL při readUrlOnLoad), drž se ho.
+  // Jinak zůstává prázdný — uživatel musí zadat v Nastavení.
+  state.config.repoPath = state.config.repoPath || "";
   // Diagnostika
   const inIframe = (function() { try { return window.self !== window.top; } catch { return true; } })();
   debug("loadConfig: origin=" + window.location.origin + (inIframe ? " (V IFRAMU)" : "")
     + ", apiKey=" + (state.config.apiKey ? "(je " + state.config.apiKey.length + " znaků)" : "PRÁZDNÝ")
     + ", deviceName=" + (state.config.deviceName || "(není)")
-    + ", knownRepos=" + (full.knownRepos || []).length
     + ", repoPath=" + (state.config.repoPath || "(není)"),
     state.config.apiKey ? "ok" : "err"
   );
-  // Pokud v iframe a apiKey není, zobraz nápadnou nápovědu
   if (inIframe && !state.config.apiKey) {
-    showStatus("V iframe není dostupný globální API klíč. Otevřete aplikaci přímo (mimo iframe), zadejte klíč, a iframe pak načte tu samou storage. Více v debug panelu.", "warning", 12000);
+    showStatus("V iframe není dostupný globální API klíč. Otevřete aplikaci přímo (mimo iframe), zadejte klíč, a iframe pak načte tu samou storage.", "warning", 12000);
   }
 }
 
 function saveConfig() {
-  // Uloží globální fields (apiKey, deviceName, branch jako default) + aktualizuje
-  // knownRepos[] entry pro aktuální repoPath (lastVisited).
+  // Uloží jen per-device fields. repoPath a nic dalšího se do localStorage neukládá.
   const full = loadFullConfig();
   full.apiKey = state.config.apiKey || "";
   full.deviceName = state.config.deviceName || "";
-  // Globální branch updatujeme jen pokud aktuální config nepoužívá per-repo override.
-  // Jednoduššeji: nechej globální branch netknutou; per-repo branch se ukládá zvlášť přes
-  // mechanismus knownRepos. Tady jen ukládáme jako default pokud je config.branch jiný než
-  // globální + nejde o per-repo override.
-  const rp = state.config.repoPath;
-  if (rp) {
-    if (!Array.isArray(full.knownRepos)) full.knownRepos = [];
-    const idx = full.knownRepos.findIndex(r => r.repoPath === rp);
-    const existing = idx >= 0 ? full.knownRepos[idx] : null;
-    const branchVal = state.config.branch || COMMIT_BRANCH_DEFAULT;
-    const entry = {
-      repoPath: rp,
-      storageId: existing ? (existing.storageId || "") : "",
-      storageName: existing ? (existing.storageName || "") : "",
-      lastVisited: nowIso(),
-    };
-    // Pokud branch v configu je jiný než globální default, uložíme per-repo override
-    if (branchVal !== (full.branch || COMMIT_BRANCH_DEFAULT)) entry.branch = branchVal;
-    if (idx >= 0) full.knownRepos[idx] = entry;
-    else full.knownRepos.push(entry);
-    full.lastRepoPath = rp;
-  }
-  saveFullConfig(full);
-}
-
-function rememberStorageInfo(storageId, storageName) {
-  // Aktualizuje storageId + storageName pro aktuální repoPath (volá se po úspěšném loadu / vytvoření).
-  const rp = state.config.repoPath;
-  if (!rp) return;
-  const full = loadFullConfig();
-  if (!Array.isArray(full.knownRepos)) full.knownRepos = [];
-  const idx = full.knownRepos.findIndex(r => r.repoPath === rp);
-  const branchVal = state.config.branch || COMMIT_BRANCH_DEFAULT;
-  const entry = {
-    repoPath: rp,
-    storageId: storageId || "",
-    storageName: storageName || "",
-    lastVisited: nowIso(),
-  };
-  if (branchVal !== (full.branch || COMMIT_BRANCH_DEFAULT)) entry.branch = branchVal;
-  if (idx >= 0) full.knownRepos[idx] = entry;
-  else full.knownRepos.push(entry);
-  full.lastRepoPath = rp;
-  saveFullConfig(full);
-}
-
-function listKnownRepos() {
-  // Vrátí pole známých úložišť, řazené od nejnověji navštívených.
-  const full = loadFullConfig();
-  const out = (full.knownRepos || []).slice();
-  out.sort((a, b) => {
-    const ta = a.lastVisited || "", tb = b.lastVisited || "";
-    return tb.localeCompare(ta);
-  });
-  return out;
-}
-
-function forgetRepo(repoPath) {
-  // Odstraní repo ze seznamu známých úložišť. Globální API klíč zůstává.
-  const full = loadFullConfig();
-  if (Array.isArray(full.knownRepos)) {
-    full.knownRepos = full.knownRepos.filter(r => r.repoPath !== repoPath);
-  }
-  if (full.lastRepoPath === repoPath) full.lastRepoPath = "";
+  full.branch = state.config.branch || COMMIT_BRANCH_DEFAULT;
   saveFullConfig(full);
 }
 
@@ -2697,13 +2640,12 @@ async function loadStorageFromGithub() {
     // Defenzivní cleanup — pokud staré buggy verze aplikace pushly JSON s `pendingUpload: true`,
     // odstraníme to teď. Atomický commit blob+JSON zaručuje, že verze v loadnutém JSONu má i blob na githubu.
     stripPendingUploadMarkersFromLoadedStorage(state.storage);
-    rememberStorageInfo(state.storage.id, state.storage.name);
     const st = computeStats();
     handle.succeed(`Načteno: ${st.folders} složek, ${st.files} souborů, ${st.versions} verzí (${fmtSize(st.totalSize)})`);
     showStatus("Úložiště načteno.", "success");
     markSaved();
     // Aktualizuj title hned po načtení (init by render zavolal taky, ale tohle pokrývá
-    // další případy kdy se loadStorageFromGithub volá ručně, např. z openStorage).
+    // další případy kdy se loadStorageFromGithub volá ručně).
     render();
     return true;
   } catch (e) {
@@ -3058,26 +3000,18 @@ function renderHeader() {
   }
 
   // Aktualizace document.title — formát: „<název položky> · <název úložiště> – DMS".
-  // Pokud aktivní úložiště ještě není načtené, použijeme cachovaný název z knownRepos
-  // (aby se v záložce hned zobrazil správný název úložiště, ne výchozí „DMS úložiště").
+  // Před načtením úložiště zůstává výchozí „DMS úložiště".
   let title = "DMS úložiště";
-  let storageNameForTitle = "";
   if (s) {
-    storageNameForTitle = s.name || s.id || "";
-  } else if (state.config.repoPath) {
-    // Fallback z lokální historie navštívených úložišť
-    try {
-      const known = listKnownRepos().find(r => r.repoPath === state.config.repoPath);
-      if (known) storageNameForTitle = known.storageName || known.storageId || "";
-    } catch {}
-  }
-  if (storageNameForTitle) {
-    if (s && state.currentDetailId && state.currentDetailId !== "root") {
-      const found = findItem(state.currentDetailId);
-      const itemName = (found && found.item && found.item.name) ? found.item.name : "";
-      title = (itemName ? itemName + " · " : "") + storageNameForTitle + " – DMS";
-    } else {
-      title = storageNameForTitle + " – DMS";
+    const storageName = s.name || s.id || "";
+    if (storageName) {
+      if (state.currentDetailId && state.currentDetailId !== "root") {
+        const found = findItem(state.currentDetailId);
+        const itemName = (found && found.item && found.item.name) ? found.item.name : "";
+        title = (itemName ? itemName + " · " : "") + storageName + " – DMS";
+      } else {
+        title = storageName + " – DMS";
+      }
     }
   }
   if (document.title !== title) document.title = title;
@@ -3153,11 +3087,143 @@ function renderView() {
 }
 
 function renderEmptyApp(view) {
-  const wrap = el("div", { class: "empty-state" },
-    el("p", null, "Žádné úložiště není načteno."),
-    el("p", null, "Otevřete režim úprav a v Nastavení zadejte cestu ke github složce, případně vytvořte nové úložiště."),
-  );
+  const wrap = el("div", { class: "empty-app-setup" });
+  wrap.appendChild(el("h2", null, "Vítejte v DMS"));
+  wrap.appendChild(el("p", null, "Zvolte, jak chcete pokračovat:"));
+
+  // Volba 1: Otevřít existující úložiště na GitHubu
+  const openSect = el("section", { class: "empty-app-section" });
+  openSect.appendChild(el("h3", null, "Otevřít úložiště na GitHubu"));
+  openSect.appendChild(el("p", { class: "hint" }, "Zadejte cestu k repu ve tvaru owner/repo nebo owner/repo/podsložka. Například: mirek/dms nebo mirek/projekty/2026."));
+
+  const rowRepo = el("div", { class: "field" });
+  rowRepo.appendChild(el("label", { for: "empty-repo-path" }, "Cesta k repu *"));
+  rowRepo.appendChild(el("input", {
+    type: "text",
+    id: "empty-repo-path",
+    placeholder: "owner/repo[/podsložka]",
+    value: state.config.repoPath || "",
+    autocomplete: "off",
+    onkeydown: (e) => { if (e.key === "Enter") { e.preventDefault(); handleEmptyAppOpen(); } },
+  }));
+  openSect.appendChild(rowRepo);
+
+  const rowBranch = el("div", { class: "field" });
+  rowBranch.appendChild(el("label", { for: "empty-branch" }, "Větev"));
+  rowBranch.appendChild(el("input", {
+    type: "text",
+    id: "empty-branch",
+    placeholder: COMMIT_BRANCH_DEFAULT,
+    value: state.config.branch || COMMIT_BRANCH_DEFAULT,
+    autocomplete: "off",
+  }));
+  openSect.appendChild(rowBranch);
+
+  // API klíč — jen pokud ho ještě není v localStorage
+  if (!state.config.apiKey) {
+    const rowKey = el("div", { class: "field" });
+    rowKey.appendChild(el("label", { for: "empty-api-key" }, "GitHub API klíč (per-device, jen lokálně)"));
+    rowKey.appendChild(el("input", {
+      type: "password",
+      id: "empty-api-key",
+      autocomplete: "off",
+    }));
+    rowKey.appendChild(el("div", { class: "hint" }, "Personal access token s repo právy. Klíč se uloží do prohlížeče (nikam se neposílá) a bude sdílený mezi všemi úložišti otevřenými v tomto prohlížeči. Bez klíče funguje jen čtení veřejných repo."));
+    openSect.appendChild(rowKey);
+  } else {
+    openSect.appendChild(el("div", { class: "hint" }, "API klíč je uložen v tomto prohlížeči (per-device). Změnit ho můžete v Nastavení."));
+  }
+
+  const rowDev = el("div", { class: "field" });
+  rowDev.appendChild(el("label", { for: "empty-device" }, "Název zařízení (volitelné)"));
+  rowDev.appendChild(el("input", {
+    type: "text",
+    id: "empty-device",
+    placeholder: "např. MacBook, Kancelář, Mobil",
+    value: state.config.deviceName || "",
+    autocomplete: "off",
+  }));
+  rowDev.appendChild(el("div", { class: "hint" }, "Zobrazuje se u nahraných verzí — poznáte, ze kterého zařízení byla verze uložena."));
+  openSect.appendChild(rowDev);
+
+  openSect.appendChild(el("button", {
+    class: "primary",
+    onclick: () => handleEmptyAppOpen(),
+  }, "Otevřít úložiště"));
+  wrap.appendChild(openSect);
+
+  // Volba 2: Vytvořit nové úložiště
+  const createSect = el("section", { class: "empty-app-section" });
+  createSect.appendChild(el("h3", null, "Nebo vytvořit nové úložiště"));
+  createSect.appendChild(el("p", { class: "hint" }, "Vyplňte údaje nahoře (cestu k repu a API klíč), pak klikněte na tlačítko níže. Zeptáme se ještě na ID a název nového úložiště."));
+  createSect.appendChild(el("button", {
+    class: "primary",
+    onclick: () => handleEmptyAppCreate(),
+  }, "Vytvořit nové úložiště"));
+  wrap.appendChild(createSect);
+
   view.appendChild(wrap);
+
+  // Focus na první prázdné pole
+  setTimeout(() => {
+    const rp = $("empty-repo-path");
+    const key = $("empty-api-key");
+    if (rp && !rp.value) rp.focus();
+    else if (key && !key.value) key.focus();
+    else if (rp) rp.focus();
+  }, 30);
+}
+
+async function handleEmptyAppOpen() {
+  const rp = ($("empty-repo-path") || {}).value || "";
+  const branch = ($("empty-branch") || {}).value || COMMIT_BRANCH_DEFAULT;
+  const key = ($("empty-api-key") || {}).value || "";
+  const dev = ($("empty-device") || {}).value || "";
+  const repoPath = rp.trim();
+  if (!repoPath) {
+    showStatus("Vyplňte cestu k repu.", "warning");
+    const el = $("empty-repo-path"); if (el) el.focus();
+    return;
+  }
+  if (!parseRepoPath(repoPath)) {
+    showStatus("Cesta musí být ve tvaru owner/repo[/podsložka].", "warning");
+    const el = $("empty-repo-path"); if (el) el.focus();
+    return;
+  }
+  state.config.repoPath = repoPath;
+  state.config.branch = branch.trim() || COMMIT_BRANCH_DEFAULT;
+  if (key.trim()) state.config.apiKey = key.trim();
+  if (dev.trim()) state.config.deviceName = dev.trim();
+  saveConfig();
+  updateUrl();
+  await loadStorageFromGithub();
+  render();
+}
+
+async function handleEmptyAppCreate() {
+  // Nejdřív nastav config (repoPath, klíč, branch) — bez nich by push selhal.
+  const rp = ($("empty-repo-path") || {}).value || "";
+  const branch = ($("empty-branch") || {}).value || COMMIT_BRANCH_DEFAULT;
+  const key = ($("empty-api-key") || {}).value || "";
+  const dev = ($("empty-device") || {}).value || "";
+  const repoPath = rp.trim();
+  if (!repoPath) {
+    showStatus("Nejdřív vyplňte cestu k repu (pro uložení nového úložiště).", "warning");
+    const el = $("empty-repo-path"); if (el) el.focus();
+    return;
+  }
+  if (!parseRepoPath(repoPath)) {
+    showStatus("Cesta musí být ve tvaru owner/repo[/podsložka].", "warning");
+    const el = $("empty-repo-path"); if (el) el.focus();
+    return;
+  }
+  state.config.repoPath = repoPath;
+  state.config.branch = branch.trim() || COMMIT_BRANCH_DEFAULT;
+  if (key.trim()) state.config.apiKey = key.trim();
+  if (dev.trim()) state.config.deviceName = dev.trim();
+  saveConfig();
+  // Pak spusť standardní vytváření úložiště
+  await createNewStorage();
 }
 
 // ---------- FOLDER VIEW ----------
@@ -3200,6 +3266,17 @@ function renderFolderView(view, found) {
   );
   sortSel.value = state.sortMode || "name";
   toolbar.appendChild(sortSel);
+  // Export složky jako ZIP — dostupné vždy (i mimo edit režim), v embedu podle nastavení taky
+  {
+    const items = isRoot ? state.storage.rootItems : (folder.items || []);
+    if (items.length) {
+      toolbar.appendChild(el("button", {
+        class: "small",
+        onclick: () => exportFolderAsZip(folder, isRoot),
+        title: isRoot ? "Stáhnout celé úložiště jako ZIP s index.html" : "Stáhnout složku jako ZIP s index.html",
+      }, "⬇ ZIP"));
+    }
+  }
   if (state.editMode) {
     toolbar.appendChild(el("button", { class: "primary small", onclick: () => createFolder(folder), title: "Přidat složku (klávesa F)", "aria-label": "Přidat složku" }, "+ " + T_ICON[T.FOLDER]));
     toolbar.appendChild(el("button", { class: "primary small", onclick: () => createLink(folder), title: "Přidat odkaz (klávesa L)", "aria-label": "Přidat odkaz" }, "+ " + T_ICON[T.LINK]));
@@ -3685,13 +3762,23 @@ function renderFileHeaderSection(found) {
   }
   sect.appendChild(meta);
   if (lastDownloadable) {
-    sect.appendChild(el("div", { style: { marginTop: "8px" } },
-      el("a", {
+    const downloadRow = el("div", { style: { marginTop: "8px" } });
+    downloadRow.appendChild(el("a", {
+      href: "#",
+      title: "Stáhnout nejnovější verzi (klávesa D)",
+      onclick: (e) => { e.preventDefault(); downloadVersion(lastDownloadable); },
+    }, "Stáhnout nejnovější verzi"));
+    // Nabídneme export všech verzí jako ZIP pokud jich je aspoň jedna
+    const dlVersions = (file.versions || []).filter(v => !v.pendingUpload);
+    if (dlVersions.length) {
+      downloadRow.appendChild(document.createTextNode(" · "));
+      downloadRow.appendChild(el("a", {
         href: "#",
-        title: "Stáhnout nejnovější verzi (klávesa D)",
-        onclick: (e) => { e.preventDefault(); downloadVersion(lastDownloadable); },
-      }, "Stáhnout nejnovější verzi"),
-    ));
+        title: "Stáhnout všechny verze souboru jako ZIP s index.html",
+        onclick: (e) => { e.preventDefault(); exportFileAsZip(file); },
+      }, "Stáhnout vše jako ZIP"));
+    }
+    sect.appendChild(downloadRow);
   }
   return sect;
 }
@@ -4934,6 +5021,432 @@ async function uploadVersionAttempt(file, version, b64) {
   }
 }
 
+//=============================================================================
+// ZIP EXPORT — stáhnout soubor/složku jako ZIP se statickým index.html
+//=============================================================================
+// JSZip se stahuje z CDN teprve při první potřebě (žádný slowdown initial page load).
+// URL je připnutá na konkrétní verzi 3.10.1 z cdnjs (kompletně ověřená v době psaní).
+// Pokud CDN výpadne nebo bude blokované, export selže s jasnou chybovou hláškou.
+const JSZIP_CDN_URL = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
+
+async function loadJSZip() {
+  if (window.JSZip) return window.JSZip;
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = JSZIP_CDN_URL;
+    s.crossOrigin = "anonymous";
+    s.onload = () => {
+      if (window.JSZip) resolve(window.JSZip);
+      else reject(new Error("JSZip se načetl z CDN, ale není dostupný jako window.JSZip."));
+    };
+    s.onerror = () => reject(new Error("Nepodařilo se stáhnout JSZip z CDN (cdnjs.cloudflare.com). Zkontrolujte připojení nebo firewall."));
+    document.head.appendChild(s);
+  });
+}
+
+// Sanitace názvu pro souborový systém — nahradí neplatné znaky, omezí délku.
+function sanitizeFsName(name) {
+  return (name || "").toString()
+    .replace(/[\/\\:*?"<>|]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 100) || "položka";
+}
+
+// Zajistí unikátnost názvu v rámci setu — přidá „(2)", „(3)" atd.
+function uniqueDirName(baseName, existingNames) {
+  if (!existingNames.has(baseName)) return baseName;
+  let n = 2;
+  let candidate;
+  do {
+    candidate = baseName + " (" + n + ")";
+    n++;
+  } while (existingNames.has(candidate));
+  return candidate;
+}
+
+// Odhad velikosti exportu — součet velikostí verzí všech souborů v podstromě.
+function estimateExportSize(item) {
+  let total = 0;
+  function walk(it) {
+    if (!it) return;
+    if (it.type === T.FILE && Array.isArray(it.versions)) {
+      for (const v of it.versions) {
+        if (!v.pendingUpload && v.size) total += v.size;
+      }
+    } else if (it.type === T.FOLDER && Array.isArray(it.items)) {
+      for (const sub of it.items) walk(sub);
+    }
+  }
+  walk(item);
+  return total;
+}
+
+async function checkExportSize(size) {
+  const mb = size / (1024 * 1024);
+  if (mb < 100) return true;
+  if (mb < 500) {
+    return await confirmDialog(
+      `Export bude přibližně ${fmtSize(size)}. Bude to trvat několik minut a spotřebovat paměť prohlížeče. Pokračovat?`,
+      { title: "Velký export", okLabel: "Pokračovat" }
+    );
+  }
+  return await confirmDialog(
+    `Export bude přibližně ${fmtSize(size)}, což je hodně. Prohlížeč nemusí zvládnout. Doporučujeme stáhnout jednotlivé podsložky. Přesto pokračovat?`,
+    { title: "Velmi velký export", danger: true, okLabel: "Přesto pokračovat" }
+  );
+}
+
+// Společná hlavička/patička pro exportované HTML — jednoduchý neutrální styl.
+function exportHtmlHead(title) {
+  return `<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<style>
+* { box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 900px; margin: 20px auto; padding: 0 20px; color: #222; line-height: 1.5; background: #fff; }
+h1 { border-bottom: 2px solid #333; padding-bottom: 8px; margin-top: 8px; }
+h2 { margin-top: 24px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
+h3 { margin-top: 16px; font-size: 1.1em; }
+a { color: #0069c2; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.back { display: inline-block; margin-bottom: 8px; font-size: 0.9em; }
+.tags { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+.tag { padding: 1px 8px; background: #e0eaf5; border: 1px solid #bcd; border-radius: 999px; font-size: 0.8em; }
+.meta { color: #666; font-size: 0.9em; margin-top: 4px; }
+.desc { background: #f5f5f5; padding: 10px 14px; border-left: 3px solid #999; margin: 12px 0; white-space: pre-wrap; word-break: break-word; }
+ul.items, ul.versions, ul.comments { list-style: none; padding: 0; margin: 8px 0; }
+ul.items li { padding: 8px 0; border-bottom: 1px solid #eee; }
+ul.items li:last-child { border-bottom: 0; }
+.icon { display: inline-block; width: 1.6em; text-align: center; }
+ul.versions li, ul.comments li { padding: 8px 12px; margin: 6px 0; background: #fafafa; border: 1px solid #e0e0e0; border-radius: 4px; }
+.version-time, .version-time a { font-weight: 600; }
+.version-desc, .comment-text { white-space: pre-wrap; margin-top: 4px; word-break: break-word; }
+.comment-head { font-weight: 500; margin-bottom: 4px; font-size: 0.95em; }
+.markdown-body { margin-top: 8px; }
+.markdown-body pre { background: #f5f5f5; padding: 10px; overflow-x: auto; border-radius: 4px; }
+.markdown-body code { background: #f5f5f5; padding: 2px 4px; border-radius: 3px; font-family: Menlo, Consolas, monospace; }
+.markdown-body pre code { background: transparent; padding: 0; }
+.markdown-body img { max-width: 100%; height: auto; }
+.markdown-body blockquote { border-left: 3px solid #ccc; padding-left: 12px; color: #555; margin: 8px 0; }
+.markdown-body table { border-collapse: collapse; }
+.markdown-body th, .markdown-body td { border: 1px solid #ddd; padding: 6px 10px; }
+footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid #ccc; font-size: 0.85em; color: #999; }
+</style>
+</head>
+<body>
+`;
+}
+
+function exportHtmlFoot() {
+  return `
+<footer>Vytvořeno DMS aplikací, ${escapeHtml(fmtDate(nowIso()))}. Statický export — soubory jsou v podadresářích.</footer>
+</body>
+</html>`;
+}
+
+// Vygeneruje HTML pro detail souboru — seznam verzí s odkazy na jejich blob soubory,
+// tagy, komentáře. `opts.versionPathPrefix` — relativní cesta k verzím (default "verze/").
+// `opts.backLink` — cesta k parent index.html (nebo null).
+function generateFileIndexHtml(file, opts) {
+  const versionPrefix = opts.versionPathPrefix || "verze/";
+  let html = exportHtmlHead(file.name || "Soubor");
+  if (opts.backLink) {
+    html += `<div class="back"><a href="${escapeHtml(opts.backLink)}">← Zpět</a></div>\n`;
+  }
+  html += `<h1><span class="icon">${T_ICON[T.FILE]}</span>${escapeHtml(file.name || "")}</h1>\n`;
+  const tags = getItemTags(file);
+  if (tags.length) {
+    html += `<div class="tags">${tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join("")}</div>\n`;
+  }
+  if (file.description) {
+    html += `<div class="desc">${escapeHtml(file.description)}</div>\n`;
+  }
+  const metaBits = ["ID: " + file.id];
+  if (file.created) metaBits.push("Vytvořeno: " + fmtDate(file.created));
+  if (file.modified) metaBits.push("Upraveno: " + fmtDate(file.modified));
+  html += `<div class="meta">${escapeHtml(metaBits.join(" · "))}</div>\n`;
+  // Verze rozdělené po částech (nebo bez části)
+  const versions = (file.versions || []).filter(v => !v.pendingUpload);
+  const parts = getParts(file);
+  html += `<h2>Verze (${versions.length})</h2>\n`;
+  if (!versions.length) {
+    html += `<p><em>Žádné verze.</em></p>\n`;
+  } else {
+    // Skupiny: bez části + jednotlivé části
+    const byPart = new Map();
+    byPart.set("", []);
+    for (const p of parts) byPart.set(p.id, []);
+    for (const v of versions) {
+      const key = v.partId || "";
+      if (!byPart.has(key)) byPart.set(key, []);
+      byPart.get(key).push(v);
+    }
+    // Pořadí: bez části, pak části v pořadí definice
+    const order = [""];
+    for (const p of parts) order.push(p.id);
+    for (const pId of order) {
+      const list = byPart.get(pId) || [];
+      if (!list.length) continue;
+      const part = pId ? findPart(file, pId) : null;
+      if (parts.length) {
+        const partLabel = part ? part.name : "Bez části";
+        html += `<h3>${escapeHtml(partLabel)} (${list.length})</h3>\n`;
+      }
+      html += `<ul class="versions">\n`;
+      for (const v of list.slice().reverse()) {
+        const ext = getExt(v.filename);
+        const dateText = fmtDate(v.timestamp);
+        const linkText = dateText + (ext ? ` (${ext})` : "");
+        html += `<li>\n`;
+        html += `  <div class="version-time"><a href="${escapeHtml(versionPrefix + v.filename)}">${escapeHtml(linkText)}</a></div>\n`;
+        const m = [fmtSize(v.size || 0)];
+        if (v.device) m.push("zařízení: " + v.device);
+        html += `  <div class="meta">${escapeHtml(m.join(" · "))}</div>\n`;
+        if (v.description) html += `  <div class="version-desc">${escapeHtml(v.description)}</div>\n`;
+        html += `</li>\n`;
+      }
+      html += `</ul>\n`;
+    }
+  }
+  // Komentáře
+  const comments = getComments(file);
+  if (comments.length) {
+    html += `<h2>Komentáře (${comments.length})</h2>\n`;
+    html += `<ul class="comments">\n`;
+    for (const c of comments.slice().reverse()) {
+      html += `<li>\n`;
+      let head = (c.author || "(neznámý)") + " · " + fmtDate(c.created || "");
+      if (c.modified && c.modified !== c.created) head += " · upraveno: " + fmtDate(c.modified);
+      html += `  <div class="comment-head">${escapeHtml(head)}</div>\n`;
+      html += `  <div class="comment-text">${escapeHtml(c.text || "")}</div>\n`;
+      html += `</li>\n`;
+    }
+    html += `</ul>\n`;
+  }
+  html += exportHtmlFoot();
+  return html;
+}
+
+// Vygeneruje HTML pro detail složky. `opts.childDirs` je Map<itemId, subDirName>.
+function generateFolderIndexHtml(folder, opts) {
+  const title = folder.name || "Složka";
+  let html = exportHtmlHead(title);
+  if (opts.backLink) {
+    html += `<div class="back"><a href="${escapeHtml(opts.backLink)}">← Zpět</a></div>\n`;
+  }
+  html += `<h1><span class="icon">${T_ICON[T.FOLDER]}</span>${escapeHtml(title)}</h1>\n`;
+  const tags = getItemTags(folder);
+  if (tags.length) {
+    html += `<div class="tags">${tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join("")}</div>\n`;
+  }
+  if (folder.description) {
+    html += `<div class="desc">${escapeHtml(folder.description)}</div>\n`;
+  }
+  const items = folder.items || [];
+  html += `<h2>Obsah (${items.length})</h2>\n`;
+  if (!items.length) {
+    html += `<p><em>Prázdná složka.</em></p>\n`;
+  } else {
+    // Řazení jako v aplikaci: složky nahoře, pak abecedně
+    const sorted = items.slice().sort((a, b) => {
+      const aF = a.type === T.FOLDER ? 0 : 1;
+      const bF = b.type === T.FOLDER ? 0 : 1;
+      if (aF !== bF) return aF - bF;
+      return (a.name || "").localeCompare(b.name || "", "cs");
+    });
+    html += `<ul class="items">\n`;
+    for (const it of sorted) {
+      const icon = T_ICON[it.type] || "•";
+      html += `<li>\n`;
+      html += `  <span class="icon">${icon}</span>`;
+      if (it.type === T.LINK) {
+        html += `<a href="${escapeHtml(it.url || "#")}" target="_blank" rel="noopener noreferrer">${escapeHtml(it.name || "")}</a> <span class="meta">(externí odkaz)</span>`;
+      } else {
+        const subDir = opts.childDirs.get(it.id);
+        html += `<a href="${escapeHtml(subDir + "/index.html")}">${escapeHtml(it.name || "")}</a>`;
+      }
+      const iTags = getItemTags(it);
+      if (iTags.length) {
+        html += ` <span class="tags" style="display:inline-flex; vertical-align: middle">`;
+        html += iTags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join("");
+        html += `</span>`;
+      }
+      if (it.description) {
+        html += `\n  <div class="meta">${escapeHtml(it.description)}</div>\n`;
+      }
+      html += `</li>\n`;
+    }
+    html += `</ul>\n`;
+  }
+  html += exportHtmlFoot();
+  return html;
+}
+
+// Vygeneruje HTML pro detail poznámky. Reuse renderMarkdown().
+function generateNoteIndexHtml(note, opts) {
+  let html = exportHtmlHead(note.name || "Poznámka");
+  if (opts.backLink) {
+    html += `<div class="back"><a href="${escapeHtml(opts.backLink)}">← Zpět</a></div>\n`;
+  }
+  html += `<h1><span class="icon">${T_ICON[T.NOTE]}</span>${escapeHtml(note.name || "")}</h1>\n`;
+  const tags = getItemTags(note);
+  if (tags.length) {
+    html += `<div class="tags">${tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join("")}</div>\n`;
+  }
+  if (note.description) {
+    html += `<div class="desc">${escapeHtml(note.description)}</div>\n`;
+  }
+  const meta = [];
+  if (note.modified) meta.push("Upraveno: " + fmtDate(note.modified));
+  else if (note.created) meta.push("Vytvořeno: " + fmtDate(note.created));
+  if (meta.length) html += `<div class="meta">${escapeHtml(meta.join(" · "))}</div>\n`;
+  html += `<h2>Obsah</h2>\n`;
+  html += `<p><a href="poznamka.md">Stáhnout zdrojový markdown (poznamka.md)</a></p>\n`;
+  html += `<div class="markdown-body">\n`;
+  if (note.content && note.content.trim()) {
+    html += renderMarkdown(note.content);
+  } else {
+    html += `<p><em>Prázdná poznámka.</em></p>`;
+  }
+  html += `\n</div>\n`;
+  html += exportHtmlFoot();
+  return html;
+}
+
+// Export jednoho souboru: ZIP obsahuje <name>/index.html + <name>/verze/*
+async function exportFileAsZip(file) {
+  const size = estimateExportSize(file);
+  if (!await checkExportSize(size)) return;
+  const handle = beginOp("Export souboru „" + (file.name || file.id) + "\" jako ZIP", "download");
+  try {
+    const JSZip = await loadJSZip();
+    const zip = new JSZip();
+    const topDir = sanitizeFsName(file.name || file.id);
+    const rootFolder = zip.folder(topDir);
+    const html = generateFileIndexHtml(file, { versionPathPrefix: "verze/", backLink: null });
+    rootFolder.file("index.html", html);
+    const versions = (file.versions || []).filter(v => !v.pendingUpload);
+    if (versions.length) {
+      const versionsFolder = rootFolder.folder("verze");
+      let i = 0;
+      for (const v of versions) {
+        i++;
+        showStatus(`Stahuji verzi ${i}/${versions.length}: ${v.filename}`, "info", 3000);
+        const r = await ghReadFile(v.filename);
+        const bytes = base64ToBlobBytes(r.contentBase64);
+        versionsFolder.file(v.filename, bytes);
+      }
+    }
+    showStatus("Vytvářím ZIP…", "info", 2000);
+    const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = topDir + ".zip";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    handle.succeed("Export hotový: " + topDir + ".zip (" + fmtSize(blob.size) + ")");
+    showStatus("Staženo: " + topDir + ".zip", "success");
+  } catch (e) {
+    handle.fail(e);
+    showStatus("Export selhal: " + e.message, "error", 8000);
+  }
+}
+
+// Export složky (rekursivně). isRoot=true znamená export celého úložiště.
+async function exportFolderAsZip(folder, isRoot) {
+  // Root case: použij virtuální folder s items z rootItems, name z úložiště.
+  const rootTarget = isRoot ? {
+    type: T.FOLDER,
+    name: state.storage.name,
+    description: state.storage.description,
+    items: state.storage.rootItems,
+  } : folder;
+  const size = estimateExportSize(rootTarget);
+  if (!await checkExportSize(size)) return;
+  const handle = beginOp("Export složky „" + rootTarget.name + "\" jako ZIP", "download");
+  try {
+    const JSZip = await loadJSZip();
+    const zip = new JSZip();
+    const topDir = sanitizeFsName(rootTarget.name || "úložiště");
+    const rootFolder = zip.folder(topDir);
+
+    // Napočítáme celkem souborů k stažení pro progress
+    let totalFiles = 0;
+    let doneFiles = 0;
+    function countFiles(it) {
+      if (it.type === T.FILE) totalFiles += (it.versions || []).filter(v => !v.pendingUpload).length;
+      else if (it.type === T.FOLDER) for (const s of (it.items || [])) countFiles(s);
+    }
+    countFiles(rootTarget);
+
+    async function processFolder(zipDir, folderItem, backLink) {
+      // Přiřaď unikátní subdir názvy dětem (link se přeskočí — nemá vlastní adresář)
+      const usedNames = new Set();
+      const childDirs = new Map();
+      for (const it of (folderItem.items || [])) {
+        if (it.type === T.LINK) continue;
+        const base = sanitizeFsName(it.name || it.id);
+        const unique = uniqueDirName(base, usedNames);
+        usedNames.add(unique);
+        childDirs.set(it.id, unique);
+      }
+      // Napiš index.html složky
+      zipDir.file("index.html", generateFolderIndexHtml(folderItem, { backLink, childDirs }));
+      // Rekurzivně zpracuj děti
+      for (const it of (folderItem.items || [])) {
+        if (it.type === T.LINK) continue;
+        const subDir = childDirs.get(it.id);
+        const zipSub = zipDir.folder(subDir);
+        const childBack = "../index.html";
+        if (it.type === T.FOLDER) {
+          await processFolder(zipSub, it, childBack);
+        } else if (it.type === T.FILE) {
+          zipSub.file("index.html", generateFileIndexHtml(it, { versionPathPrefix: "verze/", backLink: childBack }));
+          const versions = (it.versions || []).filter(v => !v.pendingUpload);
+          if (versions.length) {
+            const versionsFolder = zipSub.folder("verze");
+            for (const v of versions) {
+              doneFiles++;
+              showStatus(`Stahuji ${doneFiles}/${totalFiles}: ${v.filename}`, "info", 3000);
+              const r = await ghReadFile(v.filename);
+              const bytes = base64ToBlobBytes(r.contentBase64);
+              versionsFolder.file(v.filename, bytes);
+            }
+          }
+        } else if (it.type === T.NOTE) {
+          zipSub.file("index.html", generateNoteIndexHtml(it, { backLink: childBack }));
+          zipSub.file("poznamka.md", it.content || "");
+        }
+      }
+    }
+
+    await processFolder(rootFolder, rootTarget, null);
+
+    showStatus("Vytvářím ZIP…", "info", 2000);
+    const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = topDir + ".zip";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    handle.succeed("Export hotový: " + topDir + ".zip (" + fmtSize(blob.size) + ")");
+    showStatus("Staženo: " + topDir + ".zip", "success");
+  } catch (e) {
+    handle.fail(e);
+    showStatus("Export selhal: " + e.message, "error", 8000);
+  }
+}
+
 async function downloadVersion(version) {
   const handle = beginOp("Stahuji: " + version.filename, "download");
   showStatus("Stahuji „" + version.filename + "\"…");
@@ -5076,51 +5589,6 @@ function renderEditPanel() {
     panel.appendChild(detProps);
   }
 
-  // Section: známá úložiště (multi-storage navigace)
-  const known = listKnownRepos();
-  // ukaž sekci, jen pokud je víc než jeden repo NEBO uživatel má jeden, který není ten současný
-  const interestingKnown = known.filter(k => k.repoPath !== state.config.repoPath);
-  if (known.length >= 1) {
-    const det4 = el("details", { open: !state.storage && known.length > 0 });
-    det4.appendChild(el("summary", null, "Známá úložiště (" + known.length + ")"));
-    const list = el("ul", { class: "known-repos" });
-    for (const k of known) {
-      const li = el("li", { class: "known-repo-item" + (k.repoPath === state.config.repoPath ? " current" : "") });
-      const head = el("div", { class: "known-repo-head" });
-      const titleText = (k.storageName || "(bez názvu)") + (k.storageId ? " [" + k.storageId + "]" : "");
-      if (k.repoPath === state.config.repoPath) {
-        head.appendChild(el("strong", null, titleText));
-        head.appendChild(el("span", { class: "known-repo-current" }, " — právě zobrazeno"));
-      } else {
-        head.appendChild(el("a", {
-          href: "#",
-          onclick: (e) => { e.preventDefault(); openStorage(k.repoPath); },
-          "aria-label": "Otevřít úložiště " + titleText,
-        }, titleText));
-      }
-      li.appendChild(head);
-      li.appendChild(el("div", { class: "known-repo-meta" }, k.repoPath));
-      if (k.lastVisited) {
-        li.appendChild(el("div", { class: "known-repo-meta" }, "Naposledy: " + fmtDate(k.lastVisited)));
-      }
-      const acts = el("div", { class: "known-repo-actions" });
-      acts.appendChild(el("a", {
-        href: "?detail=" + encodeDetailParam(k.repoPath, "root"),
-        target: "_blank",
-        rel: "noopener",
-      }, "Otevřít v novém tabu"));
-      acts.appendChild(document.createTextNode(" · "));
-      acts.appendChild(el("a", {
-        href: "#",
-        onclick: (e) => { e.preventDefault(); forgetRepoConfirm(k.repoPath); },
-      }, "Zapomenout"));
-      li.appendChild(acts);
-      list.appendChild(li);
-    }
-    det4.appendChild(list);
-    panel.appendChild(det4);
-  }
-
   // Section: search (global)
   if (state.storage) {
     const det2 = el("details");
@@ -5191,7 +5659,6 @@ async function saveStorageProps() {
   // Také vyčistit aktuální filtr od neplatných tagů
   state.filterTags = (state.filterTags || []).filter(t => newTags.includes(t));
   state.storage.modified = nowIso();
-  rememberStorageInfo(state.storage.id, state.storage.name);
   markModified();
   showStatus("Vlastnosti uloženy. Změny se odešlou při ukončení režimu úprav.", "success");
   render();
@@ -5213,39 +5680,6 @@ async function saveSettingsAndLoad() {
   render();
 }
 
-async function openStorage(repoPath) {
-  // Otevře jiné úložiště v aktuálním tabu. API klíč zůstává globální (per-device).
-  // Aktualizuje se jen repoPath a (pokud má per-repo override) branch.
-  if (!repoPath) return;
-  if (state.unsaved) {
-    const ok = await confirmDialog("Máte neuložené změny v aktuálním úložišti. Opravdu přepnout?", { okLabel: "Přepnout" });
-    if (!ok) return;
-  }
-  // Vyčisti aktuální stav
-  state.storage = null;
-  state.currentDetailId = "root";
-  state.viewingVersionId = null;
-  state.unsaved = false;
-  $("unsaved-indicator").hidden = true;
-  // Nastav nový repoPath; loadConfig pro něj dohledá per-repo branch override (apiKey je globální)
-  state.config.repoPath = repoPath;
-  loadConfig();
-  updateUrl();
-  render();
-  await loadStorageFromGithub();
-  render();
-}
-
-async function forgetRepoConfirm(repoPath) {
-  const ok = await confirmDialog("Odebrat tohle úložiště ze seznamu známých? (Pouze lokální záznam o návštěvě — globální API klíč zůstává, data na githubu zůstávají.)", {
-    title: "Zapomenout úložiště", danger: true, okLabel: "Zapomenout",
-  });
-  if (!ok) return;
-  forgetRepo(repoPath);
-  showStatus("Úložiště odebráno ze seznamu známých.", "success");
-  render();
-}
-
 async function createNewStorage() {
   if (state.unsaved) {
     const ok = await confirmDialog("Máte neuložené změny ve stávajícím úložišti. Opravdu vytvořit nové?", { okLabel: "Vytvořit nové" });
@@ -5260,7 +5694,6 @@ async function createNewStorage() {
   if (!/^[a-zA-Z0-9_\-]+$/.test(r.id)) { showStatus("Chybný formát ID.", "warning"); return; }
   state.storage = emptyStorage(r.id, r.name, r.description);
   state.currentDetailId = "root";
-  rememberStorageInfo(state.storage.id, state.storage.name);
   markModified();
   // Push immediately if config is ready
   if (state.config.apiKey && parseRepoPath(state.config.repoPath)) {
@@ -5571,8 +6004,9 @@ function wireGlobalKeys() {
 }
 
 async function init() {
-  // Pořadí důležité: URL musí proběhnout PŘED loadConfig, aby loadConfig
-  // dohledal apiKey/branch pro repo z URL (ne z lastRepoPath).
+  // Pořadí důležité: URL musí proběhnout PŘED loadConfig, aby state.config.repoPath
+  // byl už nastaven z URL. loadConfig sám o sobě repoPath nikde nedohledává —
+  // do localStorage se neukládá.
   const urlInfo = readUrlOnLoad();
   loadConfig();
   wireEditModeToggle();
