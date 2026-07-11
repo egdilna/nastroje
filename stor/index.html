@@ -1029,6 +1029,29 @@ a.version-time {
   font-size: 1rem;
   margin: 0 0 10px;
 }
+/* Vytvořit novou část přímo v upload formuláři */
+.up-newpart-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.92rem;
+}
+.up-newpart-toggle input[type="checkbox"] {
+  width: 1rem; height: 1rem; cursor: pointer;
+}
+.up-newpart-fields {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.up-newpart-fields .field:last-child {
+  margin-bottom: 0;
+}
 
 /* Status / messages */
 .status-region {
@@ -3697,6 +3720,94 @@ function renderFileView(view, found) {
       // Předvyplníme podle aktuálního filtru, pokud filtruje na konkrétní část
       if (filterPartId && filterPartId !== "") partSel.value = filterPartId;
       fldP.appendChild(partSel);
+
+      // Checkbox pro rychlé vytvoření nové části při nahrávání
+      const newPartToggle = el("label", { class: "up-newpart-toggle" });
+      const newPartCb = el("input", {
+        type: "checkbox",
+        id: "up-newpart-toggle",
+        onchange: (e) => {
+          const wrap = $("up-newpart-fields");
+          const sel = $("up-part");
+          if (wrap) wrap.hidden = !e.target.checked;
+          // Když se aktivuje "nová část", select se zablokuje (nová část vyhrává)
+          if (sel) sel.disabled = e.target.checked;
+          if (e.target.checked) {
+            setTimeout(() => { const idIn = $("up-newpart-id"); if (idIn) idIn.focus(); }, 30);
+          }
+        },
+      });
+      newPartToggle.appendChild(newPartCb);
+      newPartToggle.appendChild(document.createTextNode(" Vytvořit novou část"));
+      fldP.appendChild(newPartToggle);
+
+      // Skrytá pole pro novou část
+      const newPartWrap = el("div", { id: "up-newpart-fields", class: "up-newpart-fields", hidden: true });
+      const npId = el("div", { class: "field" });
+      npId.appendChild(el("label", { for: "up-newpart-id" }, "ID nové části *"));
+      npId.appendChild(el("input", {
+        type: "text",
+        id: "up-newpart-id",
+        placeholder: "např. novak",
+        autocomplete: "off",
+      }));
+      npId.appendChild(el("div", { class: "hint" }, "Jen a-z, 0-9, _, -. Použito v názvech souborů."));
+      newPartWrap.appendChild(npId);
+      const npName = el("div", { class: "field" });
+      npName.appendChild(el("label", { for: "up-newpart-name" }, "Název nové části *"));
+      npName.appendChild(el("input", {
+        type: "text",
+        id: "up-newpart-name",
+        placeholder: "např. Smlouva s Novákem",
+        autocomplete: "off",
+      }));
+      npName.appendChild(el("div", { class: "hint" }, "Zobrazí se u odkazu verze."));
+      newPartWrap.appendChild(npName);
+      fldP.appendChild(newPartWrap);
+
+      upForm.appendChild(fldP);
+    } else {
+      // Soubor ještě nemá žádné části — dej i tak možnost vytvořit první při nahrávání.
+      const fldP = el("div", { class: "field" });
+      const newPartToggle = el("label", { class: "up-newpart-toggle" });
+      const newPartCb = el("input", {
+        type: "checkbox",
+        id: "up-newpart-toggle",
+        onchange: (e) => {
+          const wrap = $("up-newpart-fields");
+          if (wrap) wrap.hidden = !e.target.checked;
+          if (e.target.checked) {
+            setTimeout(() => { const idIn = $("up-newpart-id"); if (idIn) idIn.focus(); }, 30);
+          }
+        },
+      });
+      newPartToggle.appendChild(newPartCb);
+      newPartToggle.appendChild(document.createTextNode(" Vytvořit část pro tuto verzi"));
+      fldP.appendChild(newPartToggle);
+
+      const newPartWrap = el("div", { id: "up-newpart-fields", class: "up-newpart-fields", hidden: true });
+      const npId = el("div", { class: "field" });
+      npId.appendChild(el("label", { for: "up-newpart-id" }, "ID části *"));
+      npId.appendChild(el("input", {
+        type: "text",
+        id: "up-newpart-id",
+        placeholder: "např. novak",
+        autocomplete: "off",
+      }));
+      npId.appendChild(el("div", { class: "hint" }, "Jen a-z, 0-9, _, -. Použito v názvech souborů."));
+      newPartWrap.appendChild(npId);
+      const npName = el("div", { class: "field" });
+      npName.appendChild(el("label", { for: "up-newpart-name" }, "Název části *"));
+      npName.appendChild(el("input", {
+        type: "text",
+        id: "up-newpart-name",
+        placeholder: "např. Smlouva s Novákem",
+        autocomplete: "off",
+      }));
+      npName.appendChild(el("div", { class: "hint" }, "Zobrazí se u odkazu verze."));
+      newPartWrap.appendChild(npName);
+      fldP.appendChild(newPartWrap);
+
       upForm.appendChild(fldP);
     }
     const fld2 = el("div", { class: "field" });
@@ -4957,10 +5068,44 @@ async function doUploadVersion(file) {
   }
   // Read & encode to base64 (we keep b64 in memory for potential retry)
   const ext = getExt(f.name);
-  // Část (volitelně) — prázdný řetězec / "(žádná)" znamená bez části
-  const partId = (partSel && partSel.value) || "";
-  // Validace: pokud uživatel vybral partId který už neexistuje, zahodíme
-  const validPartId = partId && findPart(file, partId) ? partId : "";
+  // Část: buď existující ze selectu, nebo nová vytvořená checkboxem "Vytvořit novou část".
+  // Priority: nová část (pokud checkbox zaškrtnutý) > existující ze selectu > žádná
+  const newPartToggle = $("up-newpart-toggle");
+  const useNewPart = !!(newPartToggle && newPartToggle.checked);
+  let validPartId = "";
+  if (useNewPart) {
+    const newIdInput = $("up-newpart-id");
+    const newNameInput = $("up-newpart-name");
+    const newId = (newIdInput ? newIdInput.value : "").trim();
+    const newName = (newNameInput ? newNameInput.value : "").trim();
+    if (!newId) {
+      showStatus("Vyplňte ID nové části.", "warning");
+      if (newIdInput) newIdInput.focus();
+      return;
+    }
+    if (!/^[a-zA-Z0-9_\-]+$/.test(newId)) {
+      showStatus("ID části smí obsahovat jen a-z, 0-9, _ a -.", "warning");
+      if (newIdInput) newIdInput.focus();
+      return;
+    }
+    if (!newName) {
+      showStatus("Vyplňte název nové části.", "warning");
+      if (newNameInput) newNameInput.focus();
+      return;
+    }
+    if (!isPartIdUnique(file, newId)) {
+      showStatus("Část s tímto ID už u tohoto souboru existuje. Vyberte jinou z výběru, nebo použijte jiné ID.", "warning");
+      if (newIdInput) newIdInput.focus();
+      return;
+    }
+    // Vytvoř část hned — přidá se do file.parts, verze na ni bude odkazovat.
+    if (!Array.isArray(file.parts)) file.parts = [];
+    file.parts.push({ id: newId, name: newName });
+    validPartId = newId;
+  } else {
+    const partId = (partSel && partSel.value) || "";
+    validPartId = partId && findPart(file, partId) ? partId : "";
+  }
   const newFilename = genVersionFilename(state.storage.id, file.id, validPartId, ext);
   const description = descInput.value || "";
   let b64;
