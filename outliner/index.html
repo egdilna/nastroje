@@ -256,6 +256,8 @@
   .taglink { color: var(--accent); background: var(--note-bg); border-radius: 4px; padding: 0 4px; text-decoration: none; cursor: pointer; font-size: 0.92em; }
   .taglink:hover { text-decoration: underline; }
   .mirror-badge { font-size: 0.8em; color: var(--muted); margin-left: 4px; }
+  .section-badge { font-size: 0.8em; color: var(--accent); margin-left: 4px; font-weight: 600; }
+  li.outline-item.is-section > .trow { border-top: 2px solid var(--accent); }
   .find-result { display: block; width: 100%; text-align: left; padding: 4px 6px; }
   .find-title { font-weight: 600; }
   .find-meta { color: var(--muted); font-size: 0.85em; }
@@ -709,6 +711,16 @@
   </div>
 </dialog>
 
+<dialog id="dlg-section-num" aria-label="Číslování sekce">
+  <h2 style="margin-top:0" id="section-num-title">Číslování sekce</h2>
+  <p class="hint">Toto schéma platí jen pro tuto sekci (od tohoto řádku po další začátek sekce). „Reset na globální“ vrátí sekci k výchozímu číslování dokumentu.</p>
+  <div id="section-num-body"></div>
+  <div class="dialog-actions">
+    <button type="button" data-close>Zavřít</button>
+    <button type="button" id="btn-section-num-reset">Reset na globální</button>
+  </div>
+</dialog>
+
 <input type="file" id="file-input" class="visually-hidden" aria-hidden="true">
 
 <script>
@@ -776,8 +788,27 @@ function newDoc() {
 function defaultStyle() {
   return { fontSize: null, color: null, bold: false, italic: false, align: "left", bg: null };
 }
-function defaultNumLevel(format) {
-  return { format: format, prefix: "", suffix: ".", numbered: format !== "none" };
+function defaultNumLevel(format, opts) {
+  opts = opts || {};
+  return {
+    format: format,
+    prefix: "",
+    suffix: ".",
+    numbered: format !== "none",
+    // per-level composition controls:
+    hierarchical: opts.hierarchical !== undefined ? opts.hierarchical : true, // compose with parent chain
+    continuous: opts.continuous !== undefined ? opts.continuous : false        // count through the whole section, not per-parent
+  };
+}
+// A numbering scheme = ordered level defs + separator. Used globally and per section.
+function defaultNumScheme() {
+  return {
+    levels: [
+      defaultNumLevel("decimal"), defaultNumLevel("decimal"), defaultNumLevel("lower-alpha"),
+      defaultNumLevel("lower-roman"), defaultNumLevel("decimal"), defaultNumLevel("lower-alpha")
+    ],
+    separator: "."
+  };
 }
 function newRow(topic) {
   return {
@@ -790,6 +821,8 @@ function newRow(topic) {
     namedStyles: [],
     rowType: "normal",
     mirrorOf: null, // if set, this row mirrors another row's content (by id)
+    sectionStart: false,      // marks the beginning of an independent numbering section
+    sectionNumbering: null,   // optional per-section scheme {levels, separator}; null = inherit global
     children: [],
   };
 }
@@ -1162,42 +1195,75 @@ function levelDef(level) {
   return nb.levels[Math.min(level - 1, nb.levels.length - 1)];
 }
 // returns map rowId -> display number string.
-// Non-numbered levels are fully omitted from the hierarchical number:
-// a child of an unnumbered parent inherits the parent's counter chain
-// unchanged, so e.g. level1=1, level2=unnumbered, level3 -> "1.1".
+// Supports: independent sections (rows flagged sectionStart, each optionally
+// with its own scheme), per-level hierarchical composition, and per-level
+// continuous counting (runs through the whole section, reset at section start).
 function computeNumbering() {
   const result = {};
   if (!doc.numbering.enabled) return result;
-  const nb = doc.numbering;
-  // counters: array of { token } already-formatted strings for numbered ancestors only
-  function rec(rows, numberedTokens, levelCounters, level) {
-    // levelCounters tracks the running counter at THIS level (per sibling group)
-    let n = 0;
+  const globalScheme = numberingScheme(); // {levels, separator}
+
+  // Active section state, rebuilt whenever we cross a section-start row (in doc order).
+  let scheme = globalScheme;
+  let continuousCounters = {}; // level -> running count within current section
+
+  function schemeLevel(sch, level) {
+    return sch.levels[Math.min(level - 1, sch.levels.length - 1)];
+  }
+  function isNumbered(def) {
+    return def && def.numbered !== false && def.format !== "none";
+  }
+  // numberedChain: array of formatted tokens from numbered hierarchical ancestors
+  // perParent: object mapping level -> count for the current sibling group at each depth (stack via recursion)
+  function rec(rows, numberedChain, level) {
+    let perParentCount = 0; // counter for THIS sibling group at this level
     for (const r of rows) {
-      const numbered = levelIsNumbered(level);
-      let myTokens = numberedTokens;
-      if (numbered) {
-        n++;
-        const def = levelDef(level);
-        const token = formatNumber(n, def.format);
-        if (nb.hierarchical) {
-          const chain = numberedTokens.concat([token]);
-          result[r.id] = def.prefix + chain.join(nb.separator) + def.suffix;
-          myTokens = chain;
+      // entering a new section? switch scheme and reset continuous counters
+      if (r.sectionStart) {
+        scheme = (r.sectionNumbering && Array.isArray(r.sectionNumbering.levels)) ? r.sectionNumbering : globalScheme;
+        continuousCounters = {};
+      }
+      const def = schemeLevel(scheme, level);
+      let myChain = numberedChain;
+      if (isNumbered(def)) {
+        let n;
+        if (def.continuous) {
+          continuousCounters[level] = (continuousCounters[level] || 0) + 1;
+          n = continuousCounters[level];
         } else {
-          result[r.id] = def.prefix + token + def.suffix;
-          myTokens = numberedTokens; // flat: children don't inherit
+          perParentCount++;
+          n = perParentCount;
+        }
+        const token = def.prefix + formatNumber(n, def.format) + def.suffix;
+        // raw numeral (no affixes) used for composing the display chain
+        const rawToken = formatNumber(n, def.format);
+        if (def.hierarchical) {
+          // append to the running chain of consecutive hierarchical levels above
+          const chainRaw = numberedChain.concat([rawToken]);
+          result[r.id] = def.prefix + chainRaw.join(scheme.separator) + def.suffix;
+          myChain = chainRaw;
+        } else {
+          // non-hierarchical: display only own number, and START A NEW chain
+          // containing just this number, so hierarchical children compose onto
+          // it (e.g. non-hier "1." -> hier child "1.1.") without inheriting the
+          // grandparents' numbers.
+          result[r.id] = token;
+          myChain = [rawToken];
         }
       } else {
-        // unnumbered level: no number shown, children inherit ancestor chain unchanged
         result[r.id] = "";
-        myTokens = numberedTokens;
+        myChain = numberedChain; // unnumbered: children inherit ancestor chain unchanged
       }
-      if (r.children.length) rec(r.children, myTokens, {}, level + 1);
+      if (r.children.length) rec(r.children, myChain, level + 1);
     }
   }
-  rec(doc.rows, [], {}, 1);
+  rec(doc.rows, [], 1);
   return result;
+}
+// The active global scheme, migrated from legacy doc.numbering if needed.
+function numberingScheme() {
+  const nb = doc.numbering;
+  return { levels: nb.levels, separator: nb.separator };
 }
 
 /* ---------- Cell value formatting ---------- */
@@ -1521,6 +1587,7 @@ function buildRowContent(r, depth) {
   trow.setAttribute("aria-label",
     tagLabel + numTxt + fullName +
     (mirrored ? ", zrcadlo" : "") +
+    (r.sectionStart ? ", začátek sekce" : "") +
     (r.children.length ? (r.collapsed ? ", sbaleno" : ", rozbaleno") : "") +
     (dr.status ? ", hotovo" : "") +
     (dr.note ? ", má poznámku" : "") +
@@ -1598,6 +1665,14 @@ function buildRowContent(r, depth) {
     badge.setAttribute("aria-hidden", "true");
     contentEl.appendChild(badge);
   }
+  if (r.sectionStart) {
+    const sbadge = document.createElement("span");
+    sbadge.className = "section-badge";
+    sbadge.textContent = " § sekce";
+    sbadge.setAttribute("aria-hidden", "true");
+    sbadge.title = "Začátek samostatné číslovací sekce";
+    contentEl.appendChild(sbadge);
+  }
   topicWrap.appendChild(contentEl);
   topicCell.appendChild(topicWrap);
   trow.appendChild(topicCell);
@@ -1648,6 +1723,13 @@ function buildRowContent(r, depth) {
   }
   if (!r.mirrorOf) {
     menuBody.appendChild(rowActionBtn("⇲ Vytvořit zrcadlo", "Vytvořit zrcadlo (živou kopii) tohoto řádku jako sourozence", () => makeMirror(r.id), { tabbable: true }));
+  }
+  menuBody.appendChild(rowActionBtn(
+    r.sectionStart ? "§ Zrušit začátek sekce" : "§ Začátek sekce (oddělené číslování)",
+    r.sectionStart ? "Zrušit označení začátku číslovací sekce" : "Označit tento řádek jako začátek samostatné číslovací sekce",
+    () => toggleSectionStart(r.id), { tabbable: true }));
+  if (r.sectionStart) {
+    menuBody.appendChild(rowActionBtn("§ Číslování této sekce…", "Nastavit vlastní schéma číslování pro tuto sekci", () => openSectionNumbering(r.id), { tabbable: true }));
   }
   menuBody.appendChild(rowActionBtn("🗑 Smazat", "Smazat řádek", () => { if (confirm("Smazat řádek \u201E" + topicPlain + "\u201C i s potomky?")) deleteRow(r.id); }, { cls: "danger", tabbable: true }));
 
@@ -1700,7 +1782,7 @@ function render() {
     ul.setAttribute("role", "list"); // explicit, survives list-style:none in some SRs
     rows.forEach((r) => {
       const li = document.createElement("li");
-      li.className = "outline-item";
+      li.className = "outline-item" + (r.sectionStart ? " is-section" : "");
       li.setAttribute("data-id", r.id);
 
       const content = buildRowContent(r, depth);
@@ -1787,6 +1869,69 @@ function makeMirror(sourceId) {
   selectRow(nr.id, true);
   announce("Vytvořeno zrcadlo");
   status("Zrcadlo zobrazuje živý obsah zdroje. Úpravou zrcadla se mění zdroj.");
+}
+// Toggle whether a row starts an independent numbering section.
+function toggleSectionStart(id) {
+  const f = findRow(id);
+  if (!f) return;
+  f.row.sectionStart = !f.row.sectionStart;
+  if (!f.row.sectionStart) f.row.sectionNumbering = null;
+  render();
+  announce(f.row.sectionStart ? "Řádek označen jako začátek sekce" : "Začátek sekce zrušen");
+}
+let sectionEditRowId = null;
+// Open a dialog to edit a section's own numbering scheme (levels + separator).
+function openSectionNumbering(id) {
+  const f = findRow(id);
+  if (!f || !f.row.sectionStart) return;
+  sectionEditRowId = id;
+  const r = f.row;
+  if (!r.sectionNumbering) r.sectionNumbering = defaultNumScheme();
+  const dlg = document.getElementById("dlg-section-num");
+  dlg.querySelector("#section-num-title").textContent = "Číslování sekce: " + (plainTopic(r) || "(bez názvu)");
+  renderSectionNumberingBody(r.sectionNumbering);
+  dlg.showModal();
+}
+function renderSectionNumberingBody(scheme) {
+  const body = document.getElementById("section-num-body");
+  body.innerHTML = "";
+  const sepWrap = document.createElement("div"); sepWrap.className = "field";
+  const sepL = document.createElement("label"); sepL.textContent = "Oddělovač úrovní"; sepL.setAttribute("for", "sec-num-sep");
+  const sep = document.createElement("input"); sep.type = "text"; sep.id = "sec-num-sep"; sep.value = scheme.separator; sep.style.width = "60px";
+  sep.addEventListener("change", () => { scheme.separator = sep.value; render(); });
+  sepWrap.appendChild(sepL); sepWrap.appendChild(sep); body.appendChild(sepWrap);
+
+  scheme.levels.forEach((lvl, i) => {
+    if (lvl.numbered == null) lvl.numbered = (lvl.format !== "none");
+    if (lvl.hierarchical == null) lvl.hierarchical = true;
+    if (lvl.continuous == null) lvl.continuous = false;
+    const fs = document.createElement("fieldset");
+    fs.style.border = "1px solid var(--border)"; fs.style.borderRadius = "5px"; fs.style.marginBottom = "6px"; fs.style.padding = "6px";
+    const lg = document.createElement("legend"); lg.textContent = "Úroveň " + (i + 1); lg.style.fontWeight = "600"; fs.appendChild(lg);
+    const numWrap = document.createElement("label"); numWrap.className = "row-inline"; numWrap.style.marginBottom = "4px";
+    const numCb = document.createElement("input"); numCb.type = "checkbox"; numCb.checked = lvl.numbered !== false;
+    numWrap.appendChild(numCb); numWrap.appendChild(document.createTextNode(" Číslovat tuto úroveň")); fs.appendChild(numWrap);
+    const fSel = document.createElement("select");
+    NUM_FORMATS.forEach(([v, l]) => { const o = document.createElement("option"); o.value = v; o.textContent = l; if (v === lvl.format) o.selected = true; fSel.appendChild(o); });
+    fSel.addEventListener("change", () => { lvl.format = fSel.value; render(); });
+    const pIn = document.createElement("input"); pIn.type = "text"; pIn.placeholder = "předpona"; pIn.value = lvl.prefix; pIn.style.width = "70px"; pIn.style.marginLeft = "4px";
+    pIn.addEventListener("change", () => { lvl.prefix = pIn.value; render(); });
+    const sIn = document.createElement("input"); sIn.type = "text"; sIn.placeholder = "přípona"; sIn.value = lvl.suffix; sIn.style.width = "70px"; sIn.style.marginLeft = "4px";
+    sIn.addEventListener("change", () => { lvl.suffix = sIn.value; render(); });
+    numCb.addEventListener("change", () => { lvl.numbered = numCb.checked; fSel.disabled = pIn.disabled = sIn.disabled = !numCb.checked; render(); });
+    fs.appendChild(fSel); fs.appendChild(pIn); fs.appendChild(sIn);
+    const compWrap = document.createElement("div"); compWrap.style.marginTop = "5px";
+    const hL = document.createElement("label"); hL.className = "row-inline";
+    const hCb = document.createElement("input"); hCb.type = "checkbox"; hCb.checked = lvl.hierarchical;
+    hCb.addEventListener("change", () => { lvl.hierarchical = hCb.checked; render(); });
+    hL.appendChild(hCb); hL.appendChild(document.createTextNode(" Hierarchické (skládat s rodičem)"));
+    const cL = document.createElement("label"); cL.className = "row-inline"; cL.style.marginLeft = "10px";
+    const cCb = document.createElement("input"); cCb.type = "checkbox"; cCb.checked = lvl.continuous;
+    cCb.addEventListener("change", () => { lvl.continuous = cCb.checked; render(); });
+    cL.appendChild(cCb); cL.appendChild(document.createTextNode(" Kontinuální (průběžně v sekci)"));
+    compWrap.appendChild(hL); compWrap.appendChild(cL); fs.appendChild(compWrap);
+    body.appendChild(fs);
+  });
 }
 function addSibling(afterId) {
   const nr = newRow("");
@@ -2659,11 +2804,8 @@ function refreshNumbering() {
   enWrap.appendChild(en); body.appendChild(enWrap);
 
   const hierWrap = document.createElement("div"); hierWrap.className = "field";
-  const hier = document.createElement("label"); hier.className = "row-inline";
-  const hierCb = document.createElement("input"); hierCb.type = "checkbox"; hierCb.checked = doc.numbering.hierarchical;
-  hierCb.addEventListener("change", () => { doc.numbering.hierarchical = hierCb.checked; render(); });
-  hier.appendChild(hierCb); hier.appendChild(document.createTextNode(" Hierarchické (1.2.3)"));
-  hierWrap.appendChild(hier); body.appendChild(hierWrap);
+  hierWrap.innerHTML = "<span class='hint'>Skládání a průběžnost se teď nastavují u každé úrovně zvlášť (Hierarchické / Kontinuální). Sekce s odděleným číslováním označíš u řádku přes nabídku akcí → „Začátek sekce“.</span>";
+  body.appendChild(hierWrap);
 
   const sepWrap = document.createElement("div"); sepWrap.className = "field";
   const sepL = document.createElement("label"); sepL.textContent = "Oddělovač úrovní"; sepL.setAttribute("for", "num-sep");
@@ -2704,39 +2846,69 @@ function refreshNumbering() {
 
     fs.appendChild(fSel);
     fs.appendChild(pIn); fs.appendChild(sIn);
+
+    // per-level composition toggles
+    if (lvl.hierarchical == null) lvl.hierarchical = true;
+    if (lvl.continuous == null) lvl.continuous = false;
+    const compWrap = document.createElement("div"); compWrap.style.marginTop = "5px";
+    const hL = document.createElement("label"); hL.className = "row-inline";
+    const hCb = document.createElement("input"); hCb.type = "checkbox"; hCb.checked = lvl.hierarchical;
+    hCb.setAttribute("aria-label", "Hierarchické skládání úrovně " + (i + 1) + " (skládat s rodičem, např. 1.1)");
+    hCb.addEventListener("change", () => { lvl.hierarchical = hCb.checked; render(); });
+    hL.appendChild(hCb); hL.appendChild(document.createTextNode(" Hierarchické (skládat s rodičem)"));
+    const cL = document.createElement("label"); cL.className = "row-inline"; cL.style.marginLeft = "10px";
+    const cCb = document.createElement("input"); cCb.type = "checkbox"; cCb.checked = lvl.continuous;
+    cCb.setAttribute("aria-label", "Kontinuální číslování úrovně " + (i + 1) + " (průběžně přes celou sekci)");
+    cCb.addEventListener("change", () => { lvl.continuous = cCb.checked; render(); });
+    cL.appendChild(cCb); cL.appendChild(document.createTextNode(" Kontinuální (průběžně v sekci)"));
+    compWrap.appendChild(hL); compWrap.appendChild(cL);
+    fs.appendChild(compWrap);
+
     body.appendChild(fs);
   });
   const presets = document.createElement("div"); presets.className = "field";
   presets.innerHTML = "<span class='hint'>Předvolby:</span> ";
-  [["Úřední (§ 1.2)", () => setNumPreset("uredni")], ["Osnova (I/A/1/a)", () => setNumPreset("osnova")], ["Desetinné (1.1.1)", () => setNumPreset("decimal")]].forEach(([label, fn]) => {
+  [["Úřední (§ 1.2)", () => setNumPreset("uredni")], ["Osnova (I/A/1/a)", () => setNumPreset("osnova")], ["Předpis (Část/Článek)", () => setNumPreset("predpis")], ["Desetinné (1.1.1)", () => setNumPreset("decimal")]].forEach(([label, fn]) => {
     const b = document.createElement("button"); b.type = "button"; b.textContent = label; b.style.marginRight = "4px"; b.style.marginTop = "4px"; b.addEventListener("click", fn); presets.appendChild(b);
   });
   body.appendChild(presets);
 }
 function setNumPreset(name) {
+  const L = (format, prefix, suffix, hierarchical, continuous) => ({ format, prefix, suffix, numbered: format !== "none", hierarchical: !!hierarchical, continuous: !!continuous });
   if (name === "uredni") {
     doc.numbering.levels = [
-      { format: "decimal", prefix: "§ ", suffix: "", numbered: true },
-      { format: "decimal", prefix: "odst. ", suffix: "", numbered: true },
-      { format: "lower-alpha", prefix: "písm. ", suffix: ")", numbered: true },
-      { format: "decimal", prefix: "bod ", suffix: ".", numbered: true },
-      { format: "lower-roman", prefix: "", suffix: ".", numbered: true },
-      { format: "lower-alpha", prefix: "", suffix: ")", numbered: true },
+      L("decimal", "§ ", "", false, false),
+      L("decimal", "odst. ", "", false, false),
+      L("lower-alpha", "písm. ", ")", false, false),
+      L("decimal", "bod ", ".", false, false),
+      L("lower-roman", "", ".", false, false),
+      L("lower-alpha", "", ")", false, false),
     ];
-    doc.numbering.hierarchical = false;
   } else if (name === "osnova") {
     doc.numbering.levels = [
-      { format: "upper-roman", prefix: "", suffix: ".", numbered: true },
-      { format: "upper-alpha", prefix: "", suffix: ".", numbered: true },
-      { format: "decimal", prefix: "", suffix: ".", numbered: true },
-      { format: "lower-alpha", prefix: "", suffix: ")", numbered: true },
-      { format: "lower-roman", prefix: "", suffix: ".", numbered: true },
-      { format: "decimal", prefix: "", suffix: ")", numbered: true },
+      L("upper-roman", "", ".", false, false),
+      L("upper-alpha", "", ".", false, false),
+      L("decimal", "", ".", false, false),
+      L("lower-alpha", "", ")", false, false),
+      L("lower-roman", "", ".", false, false),
+      L("decimal", "", ")", false, false),
     ];
-    doc.numbering.hierarchical = false;
+  } else if (name === "predpis") {
+    // legislative: Část (non-hier) → Článek (continuous across Parts) → odst. → písm.
+    doc.numbering.levels = [
+      L("upper-roman", "Část ", "", false, false),
+      L("decimal", "Článek ", "", false, true),
+      L("decimal", "", ".", false, false),
+      L("lower-alpha", "", ")", false, false),
+      L("lower-roman", "", ".", false, false),
+      L("lower-alpha", "", ")", false, false),
+    ];
   } else {
-    doc.numbering.levels = [defaultNumLevel("decimal"), defaultNumLevel("decimal"), defaultNumLevel("decimal"), defaultNumLevel("decimal"), defaultNumLevel("decimal"), defaultNumLevel("decimal")];
-    doc.numbering.hierarchical = true; doc.numbering.separator = ".";
+    doc.numbering.levels = [
+      L("decimal", "", ".", true, false), L("decimal", "", ".", true, false), L("decimal", "", ".", true, false),
+      L("decimal", "", ".", true, false), L("decimal", "", ".", true, false), L("decimal", "", ".", true, false)
+    ];
+    doc.numbering.separator = ".";
   }
   doc.numbering.enabled = true;
   refreshNumbering(); render();
@@ -3375,9 +3547,17 @@ function normalizeDoc(d) {
   if (!d.levelHeadingMap) d.levelHeadingMap = newDoc().levelHeadingMap;
   if (!d.styles) d.styles = newDoc().styles;
   if (!d.filters) d.filters = [];
-  // pad numbering to 6 levels for older documents
+  // pad numbering to 6 levels for older documents, and migrate per-level fields
   if (d.numbering && Array.isArray(d.numbering.levels)) {
     while (d.numbering.levels.length < 6) d.numbering.levels.push(defaultNumLevel("decimal"));
+    // seed per-level hierarchical/continuous from the legacy global "hierarchical" flag
+    const legacyHier = (d.numbering.hierarchical !== undefined) ? d.numbering.hierarchical : true;
+    d.numbering.levels.forEach(lvl => {
+      if (lvl.hierarchical == null) lvl.hierarchical = legacyHier;
+      if (lvl.continuous == null) lvl.continuous = false;
+      if (lvl.numbered == null) lvl.numbered = (lvl.format !== "none");
+    });
+    if (d.numbering.separator == null) d.numbering.separator = ".";
   }
   // ensure the built-in status column exists (older files won't have it)
   if (d.columns && !d.columns.some(c => c.isStatus)) {
@@ -3395,6 +3575,17 @@ function normalizeDoc(d) {
       if (!r.namedStyles) r.namedStyles = [];
       if (!r.rowType) r.rowType = "normal";
       if (r.mirrorOf === undefined) r.mirrorOf = null;
+      if (r.sectionStart === undefined) r.sectionStart = false;
+      if (r.sectionNumbering === undefined) r.sectionNumbering = null;
+      // migrate per-level fields inside a section's own scheme
+      if (r.sectionNumbering && Array.isArray(r.sectionNumbering.levels)) {
+        r.sectionNumbering.levels.forEach(lvl => {
+          if (lvl.hierarchical == null) lvl.hierarchical = true;
+          if (lvl.continuous == null) lvl.continuous = false;
+          if (lvl.numbered == null) lvl.numbered = (lvl.format !== "none");
+        });
+        if (r.sectionNumbering.separator == null) r.sectionNumbering.separator = ".";
+      }
       fix(r.children);
     }
   })(d.rows || []);
@@ -4095,6 +4286,10 @@ document.getElementById("bulk-move-filter").addEventListener("input", (e) => ren
 document.getElementById("btn-bulk-col-apply").addEventListener("click", () => applyBulkColumn(false));
 document.getElementById("btn-bulk-col-clear").addEventListener("click", () => applyBulkColumn(true));
 document.getElementById("btn-bulk-type-apply").addEventListener("click", () => { bulkSetType(document.getElementById("bulk-type-select").value); document.getElementById("dlg-bulk-type").close(); });
+document.getElementById("btn-section-num-reset").addEventListener("click", () => {
+  const f = sectionEditRowId && findRow(sectionEditRowId);
+  if (f) { f.row.sectionNumbering = null; render(); announce("Sekce vrácena na globální číslování"); document.getElementById("dlg-section-num").close(); }
+});
 document.getElementById("btn-find").addEventListener("click", () => { document.getElementById("dlg-find").showModal(); document.getElementById("find-text").focus(); });
 document.getElementById("btn-theme").addEventListener("click", () => {
   const cur = document.documentElement.getAttribute("data-theme");
@@ -4259,7 +4454,12 @@ function buildHelp() {
 </table>
 <p class="hint">Při exportu lze zvolit, zda sledované změny zůstanou jako návrhy, nebo se rovnou přijmou. Funguje v Markdown buňkách i v poznámkách.</p>
 <h3>Číslování</h3>
-<p>V panelu „Číslování řádků" nastavíš formát pro <strong>každou z šesti úrovní</strong> (arabské, římské, písmena), předponu a příponu (např. „§ ", „odst. ", „písm. ", „)"), hierarchický režim (1.2.3) a oddělovač. U kterékoli úrovně lze zaškrtnout, že se <strong>nečísluje</strong> — taková úroveň se z čísla úplně vynechá (potomci pokračují, např. 1 → 1.1, ne 1.0.1). Předvolby pokrývají úřední styl, klasickou osnovu i desetinné číslování.</p>
+<p>V panelu „Číslování řádků" nastavíš pro <strong>každou z šesti úrovní</strong> formát (arabské, římské, písmena), předponu a příponu (např. „§ ", „odst. ", „písm. ", „)") a oddělovač. U kterékoli úrovně lze zaškrtnout, že se <strong>nečísluje</strong> — taková úroveň se z čísla úplně vynechá (potomci pokračují, např. 1 → 1.1, ne 1.0.1). Předvolby pokrývají úřední styl, klasickou osnovu, legislativní předpis (Část/Článek) i desetinné číslování.</p>
+<p>Každá úroveň má navíc dva nezávislé přepínače:</p>
+<p><strong>Hierarchické (skládat s rodičem)</strong> — když je zapnuté, číslo se skládá z čísel nadřazených úrovní (např. „1.1", „1.2.a"). Když je vypnuté, úroveň má samostatné číslo, které se neskládá — takže lze mít třeba „Sekce A, 1., 1.1., 1.2., 2.", kde první úroveň má vlastní číslo, druhá běží samostatně a teprve třetí se skládá. Nebo „1., 1.1., a), b), 1.2.", kde písmenná úroveň je samostatná.</p>
+<p><strong>Kontinuální (průběžně v sekci)</strong> — úroveň se nečísluje od 1 u každého rodiče, ale běží průběžně přes celou sekci i pod různými nadřazenými řádky. Typický příklad: legislativní <em>Článek</em>, který pokračuje 1, 2, 3 v Části I a dál 4, 5 v Části II. Hierarchické a kontinuální jsou nezávislé — úroveň může být obojí (např. „2.4", kde 4 běží průběžně, ale zobrazuje se s rodičem).</p>
+<h3>Sekce s odděleným číslováním</h3>
+<p>Libovolný řádek lze přes nabídku akcí → <strong>„Začátek sekce"</strong> označit jako začátek samostatné číslovací sekce. Sekce běží od tohoto řádku po další začátek sekce (v pořadí dokumentu) a má vlastní čítače: <strong>kontinuální číslování se na začátku každé sekce resetuje</strong>. Přes „Číslování této sekce…" dáš sekci vlastní schéma úrovní, nezávislé na globálním; „Reset na globální" ji vrátí k výchozímu číslování dokumentu. Řádky před první sekcí používají globální výchozí schéma. Sekce je označená odznakem a čtečka u ní hlásí „začátek sekce".</p>
 <h3>Sekce (postranní panel)</h3>
 <p>Panel Sekce ukazuje obsah dokumentu jako <strong>vnořený seznam odkazů</strong> — kliknutím skočíš na daný řádek. Zobrazují se jen řádky, jejichž úroveň je namapovaná na HTML nadpis (h1–h6) v panelu „Styly a úrovně"; úrovně mapované na odstavec či položku seznamu se v sekcích nevypisují (ale jejich nadpisové potomky se zařadí na správné místo hierarchie).</p>
 <h3>Režim výběru a hromadné operace</h3>
