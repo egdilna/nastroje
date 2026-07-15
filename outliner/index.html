@@ -257,6 +257,10 @@
   .taglink:hover { text-decoration: underline; }
   .mirror-badge { font-size: 0.8em; color: var(--muted); margin-left: 4px; }
   .section-badge { font-size: 0.8em; color: var(--accent); margin-left: 4px; font-weight: 600; }
+  .stats-table { width: 100%; border-collapse: collapse; }
+  .stats-table td { border-bottom: 1px solid var(--border); padding: 3px 6px; }
+  #dlg-stats { min-width: 380px; max-width: 560px; }
+  #stats-body { max-height: 60vh; overflow: auto; }
   li.outline-item.is-section > .trow { border-top: 2px solid var(--accent); }
   .find-result { display: block; width: 100%; text-align: left; padding: 4px 6px; }
   .find-title { font-weight: 600; }
@@ -438,6 +442,7 @@
         <option value="undone">Jen nehotové</option>
       </select>
       <button type="button" id="btn-find">Najít…</button>
+      <button type="button" id="btn-stats">Statistiky…</button>
     </div>
     <div class="group">
       <button type="button" id="btn-export" accesskey="e">Export…</button>
@@ -708,6 +713,18 @@
   <div class="dialog-actions">
     <button type="button" data-close>Zrušit</button>
     <button type="button" id="btn-bulk-type-apply">Nastavit typ</button>
+  </div>
+</dialog>
+
+<dialog id="dlg-stats" aria-label="Statistiky dokumentu">
+  <h2 style="margin-top:0">Statistiky dokumentu</h2>
+  <div class="field">
+    <label class="row-inline"><input type="checkbox" id="stats-visible-only"> Počítat jen aktuálně zobrazené řádky (filtr / hoist)</label>
+  </div>
+  <div id="stats-body" aria-live="polite"></div>
+  <div class="dialog-actions">
+    <button type="button" data-close>Zavřít</button>
+    <button type="button" id="btn-stats-copy">Zkopírovat jako text</button>
   </div>
 </dialog>
 
@@ -3261,22 +3278,36 @@ function filtersActive() { return !!searchTerm || statusFilter !== "all" || acti
 // Rows to feed into exporters. Exports honor the CURRENT VIEW: active filters
 // and hoist (focus). Returns a pruned shallow-structured copy so exporters can
 // recurse normally. Save/clipboard are unaffected (they serialize doc directly).
+// Rows to feed into exporters. Exports honor the CURRENT VIEW: active filters
+// and hoist (focus). Mirrors are resolved to their source content so exports
+// show the mirrored text instead of the mirror's own (empty) fields.
+// Save/clipboard are unaffected (they serialize doc directly).
 function exportSourceRows() {
   let roots = doc.rows;
   if (focusRootId && findRow(focusRootId)) roots = findRow(focusRootId).row.children;
-  if (!filtersActive()) return roots;
-  // prune: keep a row if its subtree is visible; recurse into children likewise
-  function prune(rows) {
+  const filtering = filtersActive();
+  // Build an export copy: resolve mirrors, and (when filtering) prune hidden rows.
+  function build(rows) {
     const out = [];
     for (const r of rows) {
-      if (!subtreeVisible(r)) continue;
+      if (filtering && !subtreeVisible(r)) continue;
       const copy = Object.assign({}, r);
-      copy.children = prune(r.children);
+      if (isMirror(r)) {
+        // take the source's displayable content; keep own id/position/children
+        const src = mirrorSource(r);
+        copy.topic = src.topic;
+        copy.note = src.note;
+        copy.cells = src.cells;
+        copy.status = src.status;
+        copy.rowType = src.rowType;
+        copy.mirrorOf = null; // already resolved for export purposes
+      }
+      copy.children = build(r.children);
       out.push(copy);
     }
     return out;
   }
-  return prune(roots);
+  return build(roots);
 }
 
 // Apply current filters to the already-rendered DOM (no re-render).
@@ -4286,6 +4317,21 @@ document.getElementById("bulk-move-filter").addEventListener("input", (e) => ren
 document.getElementById("btn-bulk-col-apply").addEventListener("click", () => applyBulkColumn(false));
 document.getElementById("btn-bulk-col-clear").addEventListener("click", () => applyBulkColumn(true));
 document.getElementById("btn-bulk-type-apply").addEventListener("click", () => { bulkSetType(document.getElementById("bulk-type-select").value); document.getElementById("dlg-bulk-type").close(); });
+document.getElementById("btn-stats").addEventListener("click", openStats);
+document.getElementById("stats-visible-only").addEventListener("change", renderStats);
+document.getElementById("btn-stats-copy").addEventListener("click", async () => {
+  const txt = statsAsText();
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(txt); announce("Statistiky zkopírovány"); return; }
+    throw new Error("no clipboard");
+  } catch (e) {
+    const t = document.createElement("textarea"); t.value = txt; t.style.position = "absolute"; t.style.left = "-9999px";
+    document.body.appendChild(t); t.select();
+    let ok = false; try { ok = document.execCommand("copy"); } catch (e2) { ok = false; }
+    document.body.removeChild(t);
+    announce(ok ? "Statistiky zkopírovány" : "Kopírování se nezdařilo");
+  }
+});
 document.getElementById("btn-section-num-reset").addEventListener("click", () => {
   const f = sectionEditRowId && findRow(sectionEditRowId);
   if (f) { f.row.sectionNumbering = null; render(); announce("Sekce vrácena na globální číslování"); document.getElementById("dlg-section-num").close(); }
@@ -4365,6 +4411,162 @@ fileInput.addEventListener("change", () => {
   reader.readAsText(file);
 });
 function countRows(rows) { let n = 0; walk(rows, () => n++); return n; }
+
+/* ---------- Document statistics ---------- */
+// Collect stats over a row tree: totals, depth, status split, row types,
+// per-column breakdowns (popup choices, checkboxes, dates, numbers/durations).
+function computeStats(rows) {
+  const s = {
+    total: 0, maxDepth: 0, leaves: 0, withNote: 0, mirrors: 0, sections: 0,
+    done: 0, undone: 0,
+    byLevel: {},           // depth -> count
+    byType: {},            // rowType id -> count
+    byColumn: []           // per-column breakdown
+  };
+  walk(rows, (r, parent, idx, depth) => {
+    s.total++;
+    if (depth > s.maxDepth) s.maxDepth = depth;
+    s.byLevel[depth] = (s.byLevel[depth] || 0) + 1;
+    if (!r.children.length) s.leaves++;
+    if (r.note) s.withNote++;
+    if (r.mirrorOf) s.mirrors++;
+    if (r.sectionStart) s.sections++;
+    const src = mirrorSource(r);
+    if (src.status) s.done++; else s.undone++;
+    const t = rowTypeMeta(src.rowType).id;
+    s.byType[t] = (s.byType[t] || 0) + 1;
+  });
+  // per-column breakdowns
+  for (const col of doc.columns) {
+    if (col.isTopic) continue;
+    const entry = { id: col.id, title: col.title, type: col.isStatus ? "checkbox" : col.type, filled: 0, empty: 0, buckets: {}, numeric: null };
+    let sum = 0, cnt = 0, min = null, max = null;
+    walk(rows, (r) => {
+      const src = mirrorSource(r);
+      let v = col.isStatus ? src.status : (src.cells ? src.cells[col.id] : undefined);
+      const isEmpty = (v == null || v === "");
+      if (col.type === "checkbox" || col.isStatus) {
+        const on = !!v;
+        entry.buckets[on ? "ano" : "ne"] = (entry.buckets[on ? "ano" : "ne"] || 0) + 1;
+        if (on) entry.filled++; else entry.empty++;
+        return;
+      }
+      if (isEmpty) { entry.empty++; return; }
+      entry.filled++;
+      if (col.type === "popup") {
+        entry.buckets[String(v)] = (entry.buckets[String(v)] || 0) + 1;
+      } else if (col.type === "number") {
+        const n = parseFloat(v); if (!isNaN(n)) { sum += n; cnt++; min = (min === null ? n : Math.min(min, n)); max = (max === null ? n : Math.max(max, n)); }
+      } else if (col.type === "duration") {
+        const n = parseDuration(v); if (n != null) { sum += n; cnt++; min = (min === null ? n : Math.min(min, n)); max = (max === null ? n : Math.max(max, n)); }
+      } else if (col.type === "date") {
+        const d = dateValueToLocal(v);
+        if (d) { const t = d.getTime(); min = (min === null ? t : Math.min(min, t)); max = (max === null ? t : Math.max(max, t)); cnt++; }
+      }
+    });
+    if (col.type === "number" && cnt) entry.numeric = { sum, avg: sum / cnt, min, max, kind: "number" };
+    else if (col.type === "duration" && cnt) entry.numeric = { sum, avg: sum / cnt, min, max, kind: "duration" };
+    else if (col.type === "date" && cnt) entry.numeric = { min, max, kind: "date" };
+    s.byColumn.push(entry);
+  }
+  return s;
+}
+function pct(n, total) { return total ? (Math.round((n / total) * 1000) / 10) + " %" : "0 %"; }
+function statsRowsSource() {
+  const visOnly = document.getElementById("stats-visible-only").checked;
+  if (!visOnly) return doc.rows;
+  return exportSourceRows(); // honors filter + hoist, resolves mirrors
+}
+function openStats() {
+  renderStats();
+  document.getElementById("dlg-stats").showModal();
+}
+function renderStats() {
+  const rows = statsRowsSource();
+  const s = computeStats(rows);
+  const body = document.getElementById("stats-body");
+  body.innerHTML = "";
+  const mk = (tag, txt, cls) => { const e = document.createElement(tag); if (txt != null) e.textContent = txt; if (cls) e.className = cls; return e; };
+  function table(caption, pairs) {
+    const wrap = document.createElement("div"); wrap.style.marginBottom = "12px";
+    const h = mk("h3", caption); h.style.margin = "8px 0 4px"; h.style.fontSize = "1em"; wrap.appendChild(h);
+    const t = document.createElement("table"); t.className = "help stats-table";
+    pairs.forEach(([k, v]) => {
+      const tr = document.createElement("tr");
+      tr.appendChild(mk("td", k)); const td = mk("td", v); td.style.textAlign = "right"; tr.appendChild(td);
+      t.appendChild(tr);
+    });
+    wrap.appendChild(t); body.appendChild(wrap);
+    return wrap;
+  }
+  // Overview
+  table("Přehled", [
+    ["Celkem řádků", String(s.total)],
+    ["Počet úrovní (max. hloubka)", String(s.maxDepth)],
+    ["Řádků bez potomků (listy)", s.leaves + " (" + pct(s.leaves, s.total) + ")"],
+    ["Řádků s poznámkou", s.withNote + " (" + pct(s.withNote, s.total) + ")"],
+    ["Zrcadel", String(s.mirrors)],
+    ["Sekcí (začátek sekce)", String(s.sections)],
+  ]);
+  // Status
+  table("Stav (hotovo)", [
+    ["Hotovo", s.done + " (" + pct(s.done, s.total) + ")"],
+    ["Nehotovo", s.undone + " (" + pct(s.undone, s.total) + ")"],
+  ]);
+  // Levels
+  const lvlPairs = Object.keys(s.byLevel).sort((a, b) => a - b).map(d => ["Úroveň " + d, s.byLevel[d] + " (" + pct(s.byLevel[d], s.total) + ")"]);
+  if (lvlPairs.length) table("Řádky podle úrovní", lvlPairs);
+  // Row types
+  const typePairs = ROW_TYPES.filter(t => s.byType[t.id]).map(t => [t.label.replace(/\s*\(.*\)\s*/, ""), s.byType[t.id] + " (" + pct(s.byType[t.id], s.total) + ")"]);
+  if (typePairs.length) table("Sémantické typy řádků", typePairs);
+  // Columns
+  for (const c of s.byColumn) {
+    const pairs = [];
+    if (c.type === "popup" || c.type === "checkbox") {
+      const keys = Object.keys(c.buckets);
+      keys.sort();
+      keys.forEach(k => pairs.push([k, c.buckets[k] + " (" + pct(c.buckets[k], s.total) + ")"]));
+      if (c.type === "popup") pairs.push(["(prázdné)", c.empty + " (" + pct(c.empty, s.total) + ")"]);
+    } else {
+      pairs.push(["Vyplněno", c.filled + " (" + pct(c.filled, s.total) + ")"]);
+      pairs.push(["Prázdné", c.empty + " (" + pct(c.empty, s.total) + ")"]);
+      if (c.numeric) {
+        if (c.numeric.kind === "duration") {
+          pairs.push(["Součet", formatDuration(c.numeric.sum)]);
+          pairs.push(["Průměr", formatDuration(Math.round(c.numeric.avg))]);
+          pairs.push(["Min / Max", formatDuration(c.numeric.min) + " / " + formatDuration(c.numeric.max)]);
+        } else if (c.numeric.kind === "number") {
+          const r2 = (x) => Math.round(x * 100) / 100;
+          pairs.push(["Součet", String(r2(c.numeric.sum))]);
+          pairs.push(["Průměr", String(r2(c.numeric.avg))]);
+          pairs.push(["Min / Max", r2(c.numeric.min) + " / " + r2(c.numeric.max)]);
+        } else if (c.numeric.kind === "date") {
+          const fmt = (t) => { const d = new Date(t); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+          pairs.push(["Nejdřívější", fmt(c.numeric.min)]);
+          pairs.push(["Nejpozdější", fmt(c.numeric.max)]);
+        }
+      }
+    }
+    table("Sloupec: " + c.title, pairs);
+  }
+}
+// Plain-text rendering of the current stats (for the clipboard button).
+function statsAsText() {
+  const body = document.getElementById("stats-body");
+  const out = [];
+  body.querySelectorAll("h3").forEach(h => {
+    out.push(h.textContent);
+    const t = h.nextElementSibling;
+    if (t && t.tagName === "TABLE") {
+      t.querySelectorAll("tr").forEach(tr => {
+        const tds = tr.querySelectorAll("td");
+        if (tds.length === 2) out.push("  " + tds[0].textContent + ": " + tds[1].textContent);
+      });
+    }
+    out.push("");
+  });
+  return out.join("\n").trim();
+}
 
 /* ---------- Dialog close buttons ---------- */
 document.querySelectorAll("dialog [data-close]").forEach(btn => {
@@ -4471,7 +4673,9 @@ function buildHelp() {
 <h3>Wiki-odkazy a štítky</h3>
 <p>V textu tématu i poznámky lze psát <strong>wiki-odkazy</strong> <code>[[Název řádku]]</code> (volitelně <code>[[cíl|popisek]]</code>) — kliknutím skočíš na první řádek se shodným tématem; neexistující cíl je vizuálně odlišený. <strong>Štítky</strong> <code>#štítek</code> (fungují i s diakritikou) jsou klikací — kliknutí nastaví filtr na daný štítek. Obojí prochází i do exportů.</p>
 <h3>Zrcadlo (živá kopie)</h3>
-<p>Přes nabídku akcí řádku → <strong>Vytvořit zrcadlo</strong> vznikne vedle řádku jeho zrcadlo, které zobrazuje <strong>živý obsah</strong> zdroje (téma, poznámku, sloupce, stav). Úprava zrcadla otevře a mění zdrojový řádek. Zrcadlo je označené odznakem a odečítač u něj hlásí „zrcadlo".</p>
+<p>Přes nabídku akcí řádku → <strong>Vytvořit zrcadlo</strong> vznikne vedle řádku jeho zrcadlo, které zobrazuje <strong>živý obsah</strong> zdroje (téma, poznámku, sloupce, stav). Úprava zrcadla otevře a mění zdrojový řádek. Zrcadlo je označené odznakem a odečítač u něj hlásí „zrcadlo". V <strong>exportech</strong> se zrcadlo vypíše obsahem svého zdroje, takže se ve výstupu objeví na obou místech.</p>
+<h3>Statistiky dokumentu</h3>
+<p>Tlačítko „Statistiky…" v liště otevře přehled: celkový počet řádků, počet úrovní (maximální hloubka), počet listů, řádků s poznámkou, zrcadel a sekcí; rozpad podle <strong>stavu hotovo/nehotovo</strong> s procenty; počty řádků <strong>podle úrovní</strong>; rozpad podle <strong>sémantických typů řádků</strong> s procenty; a pro každý sloupec jeho vlastní přehled — u <strong>pop-up</strong> sloupců počty a procenta pro jednotlivé volby, u zaškrtávátek ano/ne, u čísel a trvání součet, průměr a min/max, u dat nejdřívější a nejpozdější. Přepínačem lze počítat buď celý dokument, nebo <strong>jen aktuálně zobrazené řádky</strong> (podle filtru a hoistu). Tlačítko „Zkopírovat jako text" vloží celý přehled do schránky.</p>
 <h3>Fulltextové hledání</h3>
 <p>Přes „Najít…" (nebo <kbd>Ctrl/Cmd</kbd>+<kbd>F</kbd>) prohledáš celý dokument — <strong>téma, poznámky i hodnoty sloupců</strong>. Výsledky se vypíšou jako seznam s úryvkem a informací, kde byl výraz nalezen; kliknutím (nebo Předchozí/Další) skočíš na daný řádek.</p>
 <h3>Typ řádku (sémantika)</h3>

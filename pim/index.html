@@ -2050,18 +2050,27 @@ function createEmptyDb() {
 
 // ==== PERSISTENCE ====
 function save() {
+  // Data se NEUKLÁDAJÍ do localStorage (limit prohlížeče ~5 MB je pro reálné databáze málo).
+  // Jediné trvalé úložiště dat je GitHub – ukládá se přes autosave (viz scheduleAutosaveGh)
+  // nebo ručně tlačítkem/menu „Uložit na GitHub".
+  // V localStorage zůstávají jen drobnosti: nastavení (vč. konfigurace GitHubu), token, odkládací prostor.
+  db.updated_at = new Date().toISOString();
+  saveSettingsLocal();
+  debug('Změna zaznamenána (data jen na GitHub): ' + (db.entities ? db.entities.length : 0) + ' entit');
+  scheduleAutosaveGh();
+}
+// Nastavení (bez dat) ukládáme lokálně – je to pár kB, limit prohlížeče to nikdy nepřeteče.
+const SETTINGS_KEY = 'pim_settings_v1';
+function saveSettingsLocal() {
   try {
-    db.updated_at = new Date().toISOString();
-    const blob = { db, settings: state.settings };
-    suppressStorageEvent = true;
-    localStorage.setItem(getProjectKey(), JSON.stringify(blob));
-    setTimeout(() => { suppressStorageEvent = false; }, 100);
-    debug('Uloženo pod klíčem ' + getProjectKey() + ': ' + JSON.stringify(blob).length + ' B');
-    // Autosave na GitHub: pokud je zapnutý, naplánuj upload za 5 s (debounce — sloučí rychle po sobě jdoucí změny).
-    scheduleAutosaveGh();
-  } catch (e) {
-    alertMsg('Chyba ukládání: ' + e.message);
-  }
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings || {}));
+  } catch (e) { debug('Nastavení se nepodařilo uložit: ' + e.message); }
+}
+function loadSettingsLocal() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) Object.assign(state.settings, JSON.parse(raw));
+  } catch (e) { debug('Nastavení se nepodařilo načíst: ' + e.message); }
 }
 function saveDebounced() { clearTimeout(saveTimer); saveTimer = setTimeout(save, 300); }
 
@@ -2125,6 +2134,23 @@ function updateAutosaveButton() {
 }
 
 function load() {
+  // Data se z localStorage NENAČÍTAJÍ – jediným zdrojem dat je GitHub
+  // (přes ?id= v URL, auto-načtení při startu, nebo ruční „Načíst z GitHubu").
+  // Lokálně držíme jen nastavení (vč. konfigurace GitHubu) – viz loadSettingsLocal.
+  try {
+    loadSettingsLocal();
+    if (!state.settings.disabledAspects) state.settings.disabledAspects = [];
+    const knownAspects = Object.keys(ASPECTS);
+    const cleanedDA = state.settings.disabledAspects.filter(k => knownAspects.includes(k));
+    if (cleanedDA.length !== state.settings.disabledAspects.length) {
+      state.settings.disabledAspects = cleanedDA;
+    }
+    if (!state.settings.github) state.settings.github = { owner: '', repo: '', path: '', branch: 'main', autoLoadOnStart: false };
+  } catch (e) { debug('Načtení nastavení selhalo: ' + e.message); }
+  return false; // žádná lokální data – data se načtou z GitHubu
+}
+
+function loadFromLocalStorage_unused() {
   try {
     const key = getProjectKey();
     let raw = localStorage.getItem(key);
@@ -11171,6 +11197,48 @@ function renderSettings(main) {
   if (typeof attachTogglSettingsHandlers === 'function') attachTogglSettingsHandlers();
   // Skupiny dashboardu projektu
   if (typeof attachProjectGroupsSettings === 'function') attachProjectGroupsSettings();
+  // Diagnostika velikosti úložiště
+  if (typeof renderStorageSizeReport === 'function') renderStorageSizeReport();
+}
+
+// Rozbor velikosti dat v localStorage – ukáže, co zabírá nejvíc místa.
+function renderStorageSizeReport() {
+  const el = document.getElementById('storage-size-report');
+  if (!el) return;
+  try {
+    const blob = JSON.stringify({ db, settings: state.settings });
+    const totalBytes = blob.length;
+    const LIMIT = 5 * 1024 * 1024; // typický limit prohlížeče ~5 MB
+    const pct = Math.round(totalBytes / LIMIT * 100);
+    const mb = (totalBytes / 1048576).toFixed(2);
+
+    // velikost po entitách
+    const sizes = (db.entities || []).map(e => {
+      const full = JSON.stringify(e).length;
+      // největší pole entity
+      let biggestKey = '', biggestLen = 0;
+      const attrs = e.attributes || {};
+      Object.keys(attrs).forEach(k => {
+        const len = JSON.stringify(attrs[k] || '').length;
+        if (len > biggestLen) { biggestLen = len; biggestKey = k; }
+      });
+      const bodyLen = (e.body || '').length;
+      if (bodyLen > biggestLen) { biggestLen = bodyLen; biggestKey = 'tělo'; }
+      return { title: getDisplayTitle(e), full, biggestKey, biggestLen };
+    }).sort((a, b) => b.full - a.full).slice(0, 10);
+
+    let h = '<p>Celkem: <strong>' + mb + ' MB</strong> (' + totalBytes.toLocaleString('cs') + ' B), přibližně <strong>' + pct + ' %</strong> obvyklého limitu prohlížeče (~5 MB).</p>';
+    if (pct >= 90) h += '<p style="color:#c33;">Blížíte se limitu nebo jste ho překročili. Data se nemusí uložit lokálně. Pokud máte zapnutý GitHub, ukládá se tam bez omezení.</p>';
+    h += '<p>Největší entity:</p><table><thead><tr><th scope="col">Entita</th><th scope="col">Velikost</th><th scope="col">Největší pole</th></tr></thead><tbody>';
+    sizes.forEach(s => {
+      h += '<tr><td>' + escapeHtml(s.title) + '</td><td>' + Math.round(s.full / 1024) + ' kB</td><td>' +
+        escapeHtml(s.biggestKey || '—') + ' (' + Math.round(s.biggestLen / 1024) + ' kB)</td></tr>';
+    });
+    h += '</tbody></table>';
+    el.innerHTML = h;
+  } catch (e) {
+    el.textContent = 'Nelze spočítat: ' + e.message;
+  }
 }
 
 function attachProjectGroupsSettings() {
@@ -21419,10 +21487,13 @@ async function init() {
   if (!didLoadFromGh) {
     if (!loaded || db.entities.length === 0) {
       setView('dashboard');
-      statusMsg('Vítejte. V Nastavení můžete načíst ukázková data.');
+      const ghReady = (typeof GH !== 'undefined' && GH.isConfigured && GH.isConfigured());
+      statusMsg(ghReady
+        ? 'Data se načítají a ukládají na GitHub. Použijte „Načíst z GitHubu" (menu Soubor).'
+        : 'Vítejte. Data se ukládají na GitHub – nastavte prosím synchronizaci v Nastavení → GitHub.');
     } else {
       setView('dashboard');
-      statusMsg('Načteno ' + db.entities.length + ' entit z místního úložiště.');
+      statusMsg('Načteno ' + db.entities.length + ' entit.');
     }
   } else {
     setView('dashboard');
@@ -22035,8 +22106,14 @@ async function ghHardReload() {
       db: parsed,
       settings: { github: ghConfig }
     };
-    localStorage.setItem(projKey, JSON.stringify(blob));
-    debug('Hard reload: uloženo do localStorage pod klíčem ' + projKey + ' (' + JSON.stringify(blob).length + ' B).');
+    // Data se lokálně neukládají – po refreshi se načtou přímo z GitHubu (viz init/?id=).
+    // Uložíme jen konfiguraci GitHubu, aby po refreshi bylo odkud stahovat.
+    try {
+      const curSettings = JSON.parse(localStorage.getItem('pim_settings_v1') || '{}');
+      curSettings.github = ghConfig;
+      localStorage.setItem('pim_settings_v1', JSON.stringify(curSettings));
+    } catch (e) { debug('Uložení konfigurace GitHubu selhalo: ' + e.message); }
+    debug('Hard reload: data stažena (' + JSON.stringify(blob).length + ' B), po refreshi se načtou z GitHubu.');
 
     toast('✓ Tvrdé načtení dokončeno. Stránka se za chvíli načte znovu.', 4000);
     playSound('load');
