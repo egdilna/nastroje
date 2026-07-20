@@ -1282,7 +1282,8 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <tr><td><code>{{include:ID}}</code></td><td>Transkluze – vloží obsah jiné entity</td></tr>
       <tr><td><code>{{include:Název}}</code></td><td>Transkluze podle názvu</td></tr>
       <tr><td><code>{{include:Deník}}</code> nebo <code>((deník))</code></td><td>Vloží deník: <code>{{include:}}</code> vloží deník jiné entity, <code>((deník))</code> vloží deník TÉTO entity na dané místo v obsahu. Vždy od nejstaršího po nejnovější.</td></tr>
-      <tr><td><code>{{database:Název?columns=A, B&filter=stav=Hotovo, počet&gt;=10&sort=B desc}}</code></td><td>Tabulka databáze s volitelnými parametry. <code>columns</code> = labely sloupců oddělené čárkou; <code>filter</code> = podmínky oddělené čárkou (operátory <code>=</code> shoda, <code>*</code> obsahuje, <code>&lt; &gt; &lt;= &gt;= !=</code>, prázdná hodnota = nevyplněno); <code>sort</code> = label sloupce + asc/desc. Bez parametrů vloží vše.</td></tr>
+      <tr><td><code>{{database:Název?columns=A, B&filter=stav=Hotovo, počet&gt;=10&sort=B desc}}</code></td><td>Tabulka databáze s volitelnými parametry. <code>columns</code> = labely sloupců oddělené čárkou; <code>filter</code> = podmínky oddělené čárkou (operátory <code>=</code> shoda, <code>*</code> obsahuje, <code>&lt; &gt; &lt;= &gt;= !=</code>, prázdná hodnota = nevyplněno, např. <code>Poznámka!=</code> = neprázdné); <code>sort</code> = label sloupce + asc/desc. Bez parametrů vloží vše.</td></tr>
+      <tr><td><code>{{databasetext:Název?filter=...&sort=...&format=* &lt;&lt;Pole&gt;&gt;: &lt;&lt;Jiné pole&gt;&gt;}}</code></td><td>Vyrenderuje řádky databáze jako <strong>text podle vlastní šablony</strong> (ne tabulku). V <code>format</code> se <code>&lt;&lt;Název pole&gt;&gt;</code> nahradí hodnotou z každého řádku; jeden řádek databáze = jeden řádek výstupu. Výsledek je Markdown, takže z něj sestavíte cokoli – odrážkový seznam (<code>format=* &lt;&lt;Pole&gt;&gt;</code>), odkazy (<code>format=[&lt;&lt;Název&gt;&gt;](&lt;&lt;URL&gt;&gt;)</code>) apod. <code>filter</code> a <code>sort</code> fungují stejně jako u <code>{{database}}</code>. <code>format</code> uvádějte jako <strong>poslední</strong> parametr (bere se doslova až do konce).</td></tr>
       <tr><td><code>{{status:Název}}</code></td><td>Status chip – kompaktní souhrn entity (název + nejdůležitější info podle aspektů: stav úkolu, termín schůzky, URL záložky, % cíle, statistika projektu…) s odkazem na entitu. Funguje i v exportu/tisku.</td></tr>
       <tr><td><code>**tučně**</code> <code>*kurzíva*</code></td><td>Standardní markdown</td></tr>
       <tr><td><code># Nadpis</code></td><td>Nadpisy 1.–4. úrovně</td></tr>
@@ -3140,6 +3141,11 @@ function renderMarkdown(text, options = {}) {
       return evaluated;
     });
   }
+  // Pre-process {{databasetext:...}} PŘED blokovým dělením – jeho výstup je Markdown,
+  // který musí projít normálním parserem (aby '* ' vytvořilo seznam, ne kurzívu).
+  text = text.replace(/\{\{databasetext:([^}]+)\}\}/g, (m, inner) => {
+    return resolveDatabaseTextInclude(inner, ctx);
+  });
   const blocks = text.split(/\n{2,}/);
   let html = '';
   for (let block of blocks) {
@@ -3650,6 +3656,74 @@ function buildStatusChipPlain(entity) {
 }
 
 // Zpracuje {{database:Entita?params}} – ref před '?', query za ním.
+// === {{databasetext:Entita?filter=...&sort=...&format=...}} ===
+// Vyrenderuje řádky databáze podle šablony `format`, kde <<Název pole>> = hodnota.
+// Výsledek je Markdown text (parser ho pak zpracuje). Robustní: format je vždy poslední
+// parametr a bere se doslova až do konce (smí obsahovat &, =, [], (), | atd.).
+function parseDatabaseTextParams(query) {
+  // Oddělíme format= (poslední, doslovný) od ostatních parametrů.
+  let format = null;
+  let rest = query || '';
+  const fIdx = rest.search(/(^|&)format=/);
+  if (fIdx >= 0) {
+    const m = rest.match(/(^|&)format=/);
+    const at = rest.indexOf(m[0]) + m[0].length;
+    format = rest.slice(at);              // vše za format= doslova
+    rest = rest.slice(0, rest.indexOf(m[0])); // zbytek parametrů před format=
+  }
+  const base = parseDatabaseIncludeParams(rest); // filters + sort (columns ignorujeme)
+  base.format = format;
+  return base;
+}
+function renderDatabaseTextInclude(entity, query) {
+  const allFields = (typeof getDbFields === 'function') ? getDbFields(entity) : [];
+  const allRecords = (typeof getDbRecords === 'function') ? getDbRecords(entity) : [];
+  if (allFields.length === 0) return '';
+  const parsed = parseDatabaseTextParams(query);
+  // Použijeme stejný filtr/řazení jako {{database}} (columns=null → všechny sloupce k dispozici pro placeholdery)
+  const { records } = applyDatabaseIncludeParams(allFields, allRecords, { columns: null, filters: parsed.filters, sort: parsed.sort });
+  const format = (parsed.format != null && parsed.format !== '') ? parsed.format : '<<' + (allFields[0] ? allFields[0].label : '') + '>>';
+  // Hodnota pole pro placeholder (podle labelu, případně key), s typovým formátováním.
+  function fieldValue(rec, name) {
+    const lc = String(name).trim().toLowerCase();
+    const f = allFields.find(ff => (ff.label || '').trim().toLowerCase() === lc) ||
+              allFields.find(ff => (ff.key || '').toLowerCase() === lc);
+    if (!f) return '';
+    if (f.type === 'composed') return evaluateDbComposed(f, rec, allFields);
+    const v = rec[f.key];
+    if (v == null || v === '') return '';
+    if (f.type === 'bool') return v ? 'Ano' : 'Ne';
+    if (f.type === 'date') return fmtDate(v);
+    return String(v);
+  }
+  const lines = records.map(rec => {
+    // Nahradíme <<Název pole>> hodnotou. Placeholder nepoužívá [] ani () → přežije markdown odkazy.
+    return format.replace(/<<([^>]+)>>/g, (mm, name) => fieldValue(rec, name));
+  });
+  // Řádky spojíme novým řádkem – tím vznikne např. odrážkový seznam, když format začíná "* ".
+  return lines.join('\n');
+}
+
+
+function resolveDatabaseTextInclude(inner, ctx) {
+  const qIdx = inner.indexOf('?');
+  const ref = (qIdx >= 0 ? inner.slice(0, qIdx) : inner).trim();
+  const query = qIdx >= 0 ? inner.slice(qIdx + 1) : '';
+  if (!ref) return '';
+  let target = null;
+  if (ref.startsWith('id:')) target = findEntity(ref.slice(3));
+  else target = findEntity(ref) || findEntityByTitle(ref);
+  if (!target) return '<div class="transclusion-broken">⚠ Databáze „' + escapeHtml(ref) + '" nenalezena.</div>';
+  if (!(target.aspects || []).includes('Database')) {
+    return '<div class="transclusion-broken">⚠ Entita „' + escapeHtml(getDisplayTitle(target)) + '" není databáze.</div>';
+  }
+  if (isSecuredEntity(target) && !isSecuredUnlocked(target.id)) {
+    return '<div class="transclusion-broken">🔒 Obsah „' + escapeHtml(getDisplayTitle(target)) + '" je zamčený.</div>';
+  }
+  // Vrací ČISTÝ markdown text (parser ho zpracuje na daném místě) – žádný obal.
+  return renderDatabaseTextInclude(target, query);
+}
+
 function resolveDatabaseInclude(inner, ctx) {
   const qIdx = inner.indexOf('?');
   const ref = (qIdx >= 0 ? inner.slice(0, qIdx) : inner).trim();
@@ -22791,6 +22865,20 @@ function expandMarkdownIncludes(text, opts) {
       else target = findEntity(refTrim) || findEntityByTitle(refTrim);
       if (!target) return '*[⚠ Entita „' + refTrim + '" nenalezena]*';
       return buildStatusChipPlain(target);
+    });
+    // Nahradit {{databasetext:...}} textem podle šablony (respektuje ?filter/sort/format)
+    work = work.replace(/\{\{databasetext:([^}]+)\}\}/g, (m, inner) => {
+      const qIdx = inner.indexOf('?');
+      const ref = (qIdx >= 0 ? inner.slice(0, qIdx) : inner).trim();
+      const query = qIdx >= 0 ? inner.slice(qIdx + 1) : '';
+      if (!ref) return '';
+      let target = null;
+      if (ref.startsWith('id:')) target = findEntity(ref.slice(3));
+      else target = findEntity(ref) || findEntityByTitle(ref);
+      if (!target) return '*[⚠ Databáze „' + ref + '" nenalezena]*';
+      if (!(target.aspects || []).includes('Database')) return '*[⚠ „' + ref + '" není databáze]*';
+      if (typeof renderDatabaseTextInclude === 'function') return renderDatabaseTextInclude(target, query);
+      return '';
     });
     // Nahradit {{database:...}} Markdown tabulkou (respektuje ?columns/filter/sort)
     work = work.replace(/\{\{database:([^}]+)\}\}/g, (m, inner) => {
