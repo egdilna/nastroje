@@ -35687,6 +35687,89 @@ function openDbBulkChangeDialog(entity) {
 
 // === Edit mode database ===
 // Editor sloupců + záznamů s tlačítky
+// ===== IMPORT TSV/CSV DO DATABÁZE =====
+// Detekuje oddělovač (tab/čárka), první řádek = názvy sloupců, páruje podle labelu (pak podle key).
+function detectDelimiter(text) {
+  const firstLine = (text.split(/\r?\n/)[0] || '');
+  const tabs = (firstLine.match(/\t/g) || []).length;
+  const commas = (firstLine.match(/,/g) || []).length;
+  const semis = (firstLine.match(/;/g) || []).length;
+  if (tabs >= commas && tabs >= semis && tabs > 0) return '\t';
+  if (semis > commas && semis > 0) return ';';
+  return ',';
+}
+// Parser jednoho řádku respektující uvozovky (pro CSV s čárkami v hodnotách).
+function parseDelimitedLine(line, delim) {
+  const out = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQ) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; }
+        else inQ = false;
+      } else cur += ch;
+    } else {
+      if (ch === '"') inQ = true;
+      else if (ch === delim) { out.push(cur); cur = ''; }
+      else cur += ch;
+    }
+  }
+  out.push(cur);
+  return out;
+}
+function parseDelimitedTable(text, delim) {
+  // Rozdělit na řádky, ale respektovat uvozovky přes víc řádků? Pro jednoduchost řádky po \n
+  // (víceřádkové hodnoty v uvozovkách jsou vzácné; drtivá většina TSV/CSV je řádek = záznam).
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.length > 0);
+  return lines.map(l => parseDelimitedLine(l, delim));
+}
+// Naimportuje text do databáze. mode: 'append' | 'replace'. Vrací {added, skipped, matchedCols, unmatchedCols}.
+function importDatabaseDelimited(entity, text, mode) {
+  const delim = detectDelimiter(text);
+  const rows = parseDelimitedTable(text, delim);
+  if (rows.length < 2) return { added: 0, skipped: 0, matchedCols: [], unmatchedCols: [], error: 'Data musí mít hlavičku a alespoň jeden řádek.' };
+  const header = rows[0].map(h => h.trim());
+  const fields = getDbFields(entity);
+  // Mapování: index sloupce v datech → field.key (párování podle labelu, pak podle key, case-insensitive)
+  const colToKey = header.map(colName => {
+    const lc = colName.toLowerCase();
+    const byLabel = fields.find(f => (f.label || '').trim().toLowerCase() === lc);
+    if (byLabel) return byLabel.key;
+    const byKey = fields.find(f => (f.key || '').toLowerCase() === lc);
+    if (byKey) return byKey.key;
+    return null; // nespárováno
+  });
+  const matchedCols = header.filter((h, i) => colToKey[i]);
+  const unmatchedCols = header.filter((h, i) => !colToKey[i]);
+  // Sestavit nové záznamy
+  const newRecords = [];
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    if (row.every(c => c.trim() === '')) continue; // prázdný řádek
+    const rec = {};
+    for (let c = 0; c < header.length; c++) {
+      const key = colToKey[c];
+      if (!key) continue;
+      const field = fields.find(f => f.key === key);
+      let val = (row[c] != null ? row[c] : '').trim();
+      // Typová konverze
+      if (field) {
+        if (field.type === 'number') { const n = Number(val.replace(',', '.')); val = isNaN(n) ? '' : n; }
+        else if (field.type === 'bool') { val = /^(ano|yes|true|1|x)$/i.test(val); }
+      }
+      rec[key] = val;
+    }
+    newRecords.push(rec);
+  }
+  const existing = getDbRecords(entity);
+  const finalRecords = (mode === 'replace') ? newRecords : existing.concat(newRecords);
+  setDbRecords(entity, finalRecords);
+  save();
+  return { added: newRecords.length, matchedCols, unmatchedCols, delim };
+}
+
+
 function renderDatabaseEditor(entity) {
   const fields = getDbFields(entity);
   const records = getDbRecords(entity);
@@ -35738,7 +35821,8 @@ function renderDatabaseEditor(entity) {
     });
     h += '</tbody></table>';
   }
-  h += '<div class="btn-group" style="margin-top:0.4em;"><button id="db-add-record"' + (fields.length === 0 ? ' disabled' : '') + '>+ Přidat záznam</button></div>';
+  h += '<div class="btn-group" style="margin-top:0.4em;"><button id="db-add-record"' + (fields.length === 0 ? ' disabled' : '') + '>+ Přidat záznam</button>' +
+    '<button id="db-import-delimited"' + (fields.length === 0 ? ' disabled' : '') + ' title="Importovat data z TSV nebo CSV (např. z Excelu nebo tabulek)">📥 Importovat TSV/CSV</button></div>';
   h += '</section>';
   return h;
 }
@@ -35860,6 +35944,89 @@ function attachDatabaseEditHandlers(root, entity) {
   });
   const addRec = root.querySelector('#db-add-record');
   if (addRec) addRec.onclick = () => openDatabaseRecordDialog(entity, -1, refresh);
+  const impBtn = root.querySelector('#db-import-delimited');
+  if (impBtn) impBtn.onclick = () => openDatabaseImportDialog(entity, refresh);
+}
+
+// Dialog pro import TSV/CSV do databáze
+function openDatabaseImportDialog(entity, onDone) {
+  const existing = document.getElementById('db-import-dialog');
+  if (existing) existing.remove();
+  const fields = getDbFields(entity);
+  const d = document.createElement('dialog');
+  d.id = 'db-import-dialog';
+  d.setAttribute('aria-labelledby', 'dbimp-title');
+  d.innerHTML =
+    '<h2 id="dbimp-title">Importovat TSV/CSV</h2>' +
+    '<p class="meta">Vložte data (nebo načtěte soubor). První řádek musí obsahovat názvy sloupců – spárují se s poli databáze podle názvu. Oddělovač (tabulátor/čárka/středník) se rozpozná automaticky.</p>' +
+    '<p class="meta">Sloupce databáze: ' + (fields.map(f => escapeHtml(f.label)).join(', ') || '(žádné)') + '</p>' +
+    '<label for="dbimp-ta" class="sr-only">Data k importu</label>' +
+    '<textarea id="dbimp-ta" rows="10" style="width:100%;font-family:monospace;" placeholder="Název\tMěsto\nAnna\tPraha\nBob\tBrno"></textarea>' +
+    '<div class="btn-group" style="margin-top:0.4em;"><button type="button" id="dbimp-file">Načíst ze souboru…</button></div>' +
+    '<fieldset style="margin-top:0.6em;"><legend>Co s existujícími záznamy?</legend>' +
+      '<label style="font-weight:normal;display:block;"><input type="radio" name="dbimp-mode" value="append" checked> Přidat k stávajícím záznamům</label>' +
+      '<label style="font-weight:normal;display:block;"><input type="radio" name="dbimp-mode" value="replace"> Nahradit všechny stávající záznamy</label>' +
+    '</fieldset>' +
+    '<div id="dbimp-preview" class="meta" style="margin-top:0.4em;"></div>' +
+    '<div class="btn-group" style="margin-top:0.6em;"><button type="button" class="primary" id="dbimp-run">Importovat</button><button type="button" id="dbimp-cancel">Zrušit</button></div>';
+  document.body.appendChild(d);
+
+  const ta = d.querySelector('#dbimp-ta');
+  const preview = d.querySelector('#dbimp-preview');
+  function updatePreview() {
+    const text = ta.value.trim();
+    if (!text) { preview.textContent = ''; return; }
+    try {
+      const delim = detectDelimiter(text);
+      const rows = parseDelimitedTable(text, delim);
+      if (rows.length < 2) { preview.textContent = 'Zatím jen hlavička nebo prázdno – přidejte alespoň jeden datový řádek.'; return; }
+      const header = rows[0].map(h => h.trim());
+      const matched = header.filter(colName => fields.some(f => (f.label || '').trim().toLowerCase() === colName.toLowerCase() || (f.key || '').toLowerCase() === colName.toLowerCase()));
+      const unmatched = header.filter(c => !matched.includes(c));
+      const delimName = delim === '\t' ? 'tabulátor' : (delim === ';' ? 'středník' : 'čárka');
+      preview.innerHTML = 'Rozpoznáno: <strong>' + (rows.length - 1) + '</strong> záznamů, oddělovač: ' + delimName + '.<br>' +
+        'Spárované sloupce: ' + (matched.length ? escapeHtml(matched.join(', ')) : '<span style="color:#c33;">žádné!</span>') +
+        (unmatched.length ? '<br>Nespárované (přeskočí se): <span style="color:#a60;">' + escapeHtml(unmatched.join(', ')) + '</span>' : '');
+    } catch (e) { preview.textContent = 'Náhled selhal: ' + e.message; }
+  }
+  ta.addEventListener('input', updatePreview);
+
+  d.querySelector('#dbimp-file').onclick = () => {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = '.tsv,.csv,.txt,text/plain,text/csv,text/tab-separated-values';
+    inp.onchange = () => {
+      const file = inp.files && inp.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => { ta.value = String(reader.result || ''); updatePreview(); };
+      reader.onerror = () => alertMsg('Soubor se nepodařilo přečíst.');
+      reader.readAsText(file);
+    };
+    inp.click();
+  };
+
+  d.querySelector('#dbimp-run').onclick = () => {
+    const text = ta.value.trim();
+    if (!text) { alertMsg('Vložte data k importu.'); return; }
+    const mode = (d.querySelector('input[name="dbimp-mode"]:checked') || {}).value || 'append';
+    const doImport = () => {
+      const res = importDatabaseDelimited(entity, text, mode);
+      if (res.error) { alertMsg(res.error); return; }
+      d.close(); d.remove();
+      if (typeof onDone === 'function') onDone();
+      let msg = 'Naimportováno ' + res.added + ' záznamů.';
+      if (res.unmatchedCols && res.unmatchedCols.length) msg += ' Nespárované sloupce přeskočeny: ' + res.unmatchedCols.join(', ') + '.';
+      toast(msg, 5000);
+    };
+    if (mode === 'replace') {
+      confirmDialog('Nahradit VŠECHNY stávající záznamy importovanými? Původní data se ztratí.', doImport);
+    } else doImport();
+  };
+  d.querySelector('#dbimp-cancel').onclick = () => { d.close(); d.remove(); };
+  d.addEventListener('close', () => d.remove());
+  d.showModal();
+  setTimeout(() => ta.focus(), 50);
 }
 
 // Dialog pro vytvoření / úpravu záznamu
