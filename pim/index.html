@@ -993,7 +993,6 @@ body.theme-dark .markdown aside.cm-comment { background: rgba(255,210,80,0.15); 
 .markdown li.task-item input[type="checkbox"] { margin-right: 0.5em; vertical-align: middle; }
 .markdown li.task-item.task-done { color: #888; }
 .task-counter { margin: 0.2em 0 0.4em; font-style: italic; }
-.markdown.hide-done-tasks li.task-item.task-done { display: none; }
 .db-table { width: 100%; border-collapse: collapse; margin: 0.5em 0; }
 .doc-struct .doc-children { margin-left: 1.4em; border-left: 1px solid var(--border, #ddd); padding-left: 0.6em; }
 .doc-struct .doc-marker { font-weight: bold; }
@@ -2389,10 +2388,6 @@ function countMarkdownDoneTasks(md) {
   if (!md) return 0;
   const m = md.match(/^\s*[-*]\s+\[[xX]\]/gm);
   return m ? m.length : 0;
-}
-// Má tělo entity nějaké hotové markdown úkoly? (pro tlačítko „Skrýt hotové úkoly")
-function mdBodyHasDoneTasks(e) {
-  return e && countMarkdownDoneTasks(e.body || '') > 0;
 }
 
 // Sestaví obsah md-field-actions divu pro dané textarea: úkoly + revize + korektor.
@@ -8583,51 +8578,6 @@ function taskProjectLabel(e) {
 const PRIORITY_CS = { urgent:'Naléhavá', high:'Vysoká', normal:'Normální', low:'Nízká' };
 const PRIORITY_CLS = { urgent:'pri-urgent', high:'pri-high', normal:'pri-normal', low:'pri-low' };
 
-// Sbalitelná sekce v pohledu Úkoly: nehotové markdown úkoly ze všech entit,
-// seskupené podle entity a v ní podle pole (Tělo/atribut) a nadpisu.
-function buildMdTasksOverviewSection() {
-  const entitiesWithTasks = [];
-  let grandTotal = 0;
-  db.entities.forEach(e => {
-    if (e.archived) return;
-    const groups = collectUnfinishedMdTasks(e);
-    if (groups.length === 0) return;
-    let cnt = 0;
-    groups.forEach(g => g.sections.forEach(sec => cnt += sec.tasks.length));
-    if (cnt === 0) return;
-    grandTotal += cnt;
-    entitiesWithTasks.push({ entity: e, groups, count: cnt });
-  });
-  if (grandTotal === 0) return '';
-  entitiesWithTasks.sort((a, b) => b.count - a.count);
-  const open = state.mdTasksOverviewOpen !== false;
-  let h = '<details class="section-collapsible md-tasks-overview" data-md-tasks-overview' + (open ? ' open' : '') + '>' +
-    '<summary>Úkoly v textu (Markdown) – ' + grandTotal + ' nedokončených v ' + entitiesWithTasks.length + ' entitách</summary>' +
-    '<h2>Úkoly v textu (Markdown)</h2>' +
-    '<p class="meta">Nezaškrtnuté <code>- [ ]</code> úkoly z obsahu a textových polí, seskupené podle entity a nadpisu.</p>';
-  entitiesWithTasks.forEach(({ entity, groups, count }) => {
-    h += '<div class="md-task-entity" style="margin:0.6em 0;">' +
-      '<h3 style="margin-bottom:0.2em;"><a href="#" class="wiki-link" data-entity="' + escapeHtml(entity.id) + '">' + getDisplayTitleWithBadges(entity) + '</a> ' +
-      '<span class="meta">(' + count + ')</span></h3>';
-    groups.forEach(g => {
-      if (groups.length > 1 || g.fieldLabel !== 'Tělo') {
-        h += '<p class="meta" style="margin:0.2em 0;">Pole: ' + escapeHtml(g.fieldLabel) + '</p>';
-      }
-      g.sections.forEach(sec => {
-        if (sec.heading) h += '<p style="margin:0.2em 0;font-weight:600;">' + escapeHtml(sec.heading) + '</p>';
-        h += '<ul style="margin:0.1em 0 0.4em;">';
-        sec.tasks.forEach(t => {
-          h += '<li>' + renderInline(t.text, { depth: 1, includeStack: new Set(), entity: entity }) + '</li>';
-        });
-        h += '</ul>';
-      });
-    });
-    h += '</div>';
-  });
-  h += '</details>';
-  return h;
-}
-
 function renderTasks(main) {
   const allTasks = db.entities.filter(e => e.aspects && e.aspects.includes('Task') && !e.archived);
 
@@ -8699,8 +8649,7 @@ function renderTasks(main) {
   ).join('');
 
   main.innerHTML = '<h1>Úkoly</h1><p class="meta">Celkem ' + allTasks.length + ' úkolů' + (tasks.length !== allTasks.length ? ', zobrazeno ' + tasks.length : '') + '.</p>' +
-    (html || '<div class="empty">Žádné úkoly. Vytvořte stiskem „Nová entita“ a aspektem „Úkol“.</div>') +
-    buildMdTasksOverviewSection();
+    (html || '<div class="empty">Žádné úkoly. Vytvořte stiskem „Nová entita“ a aspektem „Úkol“.</div>');
 
   attachEntityRowHandlers(main);
 
@@ -8708,12 +8657,6 @@ function renderTasks(main) {
   main.querySelectorAll('details[data-task-section]').forEach(d => {
     d.addEventListener('toggle', () => { state.taskSectionOpen[d.dataset.taskSection] = d.open; });
   });
-  // Sekce markdown úkolů – zapamatovat sbalení + odkazy na entity
-  const mdOverview = main.querySelector('details[data-md-tasks-overview]');
-  if (mdOverview) {
-    mdOverview.addEventListener('toggle', () => { state.mdTasksOverviewOpen = mdOverview.open; });
-  }
-  attachMarkdownLinkHandlers(main);
 
   // Checkbox hotovo
   main.querySelectorAll('input[type="checkbox"][data-task-id]').forEach(c => {
@@ -11850,7 +11793,6 @@ function renderDetailRead(main, e) {
         '<button id="btn-copy-body-source" title="Zkopírovat zdroj (Markdown)">📋 Zkopírovat zdroj</button>' +
         (getEntityGhPath(e) ? '<button id="btn-gh-push" title="Uložit obsah do GitHubu na cestu ' + escapeHtml(getEntityGhPath(e)) + '">☁ Uložit na GitHub</button>' : '') +
         '<button id="btn-copy-body-formatted" title="Zkopírovat formátovaný (vložitelný do Wordu, Outlooku, Gmailu…)">✨ Zkopírovat formátované</button>' +
-        (mdBodyHasDoneTasks(e) ? '<button id="btn-hide-done-body" aria-pressed="false" title="Skrýt zaškrtnuté (hotové) úkoly v obsahu">☑ Skrýt hotové úkoly</button>' : '') +
       '</div>' +
       bodyTaskCounter +
       readingStatsHtml +
@@ -12037,14 +11979,6 @@ function renderDetailRead(main, e) {
   if (ghPushBtn) ghPushBtn.onclick = () => pushEntityToGithub(e);
   const copyFmtBtn = document.getElementById('btn-copy-body-formatted');
   if (copyFmtBtn) copyFmtBtn.onclick = () => confirmIfUnfinishedTasks(e, () => copyBodyFormatted(e));
-  const hideDoneBtn = document.getElementById('btn-hide-done-body');
-  if (hideDoneBtn) hideDoneBtn.onclick = () => {
-    const bodyEl = document.getElementById('body-rendered');
-    if (!bodyEl) return;
-    const hidden = bodyEl.classList.toggle('hide-done-tasks');
-    hideDoneBtn.setAttribute('aria-pressed', hidden ? 'true' : 'false');
-    hideDoneBtn.textContent = hidden ? '☑ Zobrazit hotové úkoly' : '☑ Skrýt hotové úkoly';
-  };
   const lb = document.getElementById('leave-inbox');
   if (lb) lb.onclick = () => { e.inbox = false; e.updated_at = nowIso(); saveDebounced(); render(); toast('Vyjmuto z Inboxu.'); };
   const ob = document.getElementById('open-outline');
@@ -12052,19 +11986,6 @@ function renderDetailRead(main, e) {
 
   attachEntityRowHandlers(main);
   attachMarkdownLinkHandlers(main);
-  // Tlačítka „Skrýt hotové úkoly" u markdown atributů (textarea pole)
-  main.querySelectorAll('button[data-hide-done-toggle]').forEach(btn => {
-    btn.onclick = () => {
-      // najdi nejbližší .markdown blok za tlačítkem
-      const md = btn.nextElementSibling && btn.nextElementSibling.classList.contains('markdown')
-        ? btn.nextElementSibling
-        : btn.parentElement.querySelector('.markdown');
-      if (!md) return;
-      const hidden = md.classList.toggle('hide-done-tasks');
-      btn.setAttribute('aria-pressed', hidden ? 'true' : 'false');
-      btn.textContent = hidden ? '☑ Zobrazit hotové úkoly' : '☑ Skrýt hotové úkoly';
-    };
-  });
   // Diagram handlers
   if (isDiagram) attachDiagramHandlers(e);
   if (isPlan) attachPlanReadHandlers(e);
@@ -12590,10 +12511,7 @@ function formatAttrValue(f, v, entityCtx) {
     const rendered = renderMarkdown(text, {
       ctx: { depth: 1, includeStack: new Set(), taskSource: 'attr:' + f.key, entity: entityCtx }
     });
-    const hideBtn = (counts && counts.done > 0)
-      ? '<button type="button" class="btn-hide-done-attr" data-hide-done-toggle aria-pressed="false" title="Skrýt hotové úkoly v tomto poli" style="margin-bottom:0.3em;">☑ Skrýt hotové úkoly</button>'
-      : '';
-    return counter + hideBtn + '<div class="markdown attr-textarea">' + rendered + '</div>';
+    return counter + '<div class="markdown attr-textarea">' + rendered + '</div>';
   }
   if (f.type === 'checkbox') return v ? 'Ano' : 'Ne';
   if (f.type === 'relation') {
