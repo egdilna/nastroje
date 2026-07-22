@@ -993,6 +993,7 @@ body.theme-dark .markdown aside.cm-comment { background: rgba(255,210,80,0.15); 
 .markdown li.task-item input[type="checkbox"] { margin-right: 0.5em; vertical-align: middle; }
 .markdown li.task-item.task-done { color: #888; }
 .task-counter { margin: 0.2em 0 0.4em; font-style: italic; }
+.markdown.hide-done-tasks li.task-item.task-done { display: none; }
 .db-table { width: 100%; border-collapse: collapse; margin: 0.5em 0; }
 .doc-struct .doc-children { margin-left: 1.4em; border-left: 1px solid var(--border, #ddd); padding-left: 0.6em; }
 .doc-struct .doc-marker { font-weight: bold; }
@@ -1283,7 +1284,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <tr><td><code>{{include:Název}}</code></td><td>Transkluze podle názvu</td></tr>
       <tr><td><code>{{include:Deník}}</code> nebo <code>((deník))</code></td><td>Vloží deník: <code>{{include:}}</code> vloží deník jiné entity, <code>((deník))</code> vloží deník TÉTO entity na dané místo v obsahu. Vždy od nejstaršího po nejnovější.</td></tr>
       <tr><td><code>{{database:Název?columns=A, B&filter=stav=Hotovo, počet&gt;=10&sort=B desc}}</code></td><td>Tabulka databáze s volitelnými parametry. <code>columns</code> = labely sloupců oddělené čárkou; <code>filter</code> = podmínky oddělené čárkou (operátory <code>=</code> shoda, <code>*</code> obsahuje, <code>&lt; &gt; &lt;= &gt;= !=</code>, prázdná hodnota = nevyplněno, např. <code>Poznámka!=</code> = neprázdné); <code>sort</code> = label sloupce + asc/desc. Bez parametrů vloží vše.</td></tr>
-      <tr><td><code>{{databasetext:Název?filter=...&sort=...&format=* &lt;&lt;Pole&gt;&gt;: &lt;&lt;Jiné pole&gt;&gt;}}</code></td><td>Vyrenderuje řádky databáze jako <strong>text podle vlastní šablony</strong> (ne tabulku). V <code>format</code> se <code>&lt;&lt;Název pole&gt;&gt;</code> nahradí hodnotou z každého řádku; jeden řádek databáze = jeden řádek výstupu. Výsledek je Markdown, takže z něj sestavíte cokoli – odrážkový seznam (<code>format=* &lt;&lt;Pole&gt;&gt;</code>), odkazy (<code>format=[&lt;&lt;Název&gt;&gt;](&lt;&lt;URL&gt;&gt;)</code>) apod. <code>filter</code> a <code>sort</code> fungují stejně jako u <code>{{database}}</code>. <code>format</code> uvádějte jako <strong>poslední</strong> parametr (bere se doslova až do konce).</td></tr>
+      <tr><td><code>{{databasetext:Název?filter=...&sort=...&format=* &lt;&lt;Pole&gt;&gt;: &lt;&lt;Jiné pole&gt;&gt;}}</code></td><td>Vyrenderuje řádky databáze jako <strong>text podle vlastní šablony</strong> (ne tabulku). V <code>format</code> se <code>&lt;&lt;Název pole&gt;&gt;</code> nahradí hodnotou z každého řádku; jeden řádek databáze = jeden řádek výstupu. Výsledek je Markdown, takže z něj sestavíte cokoli – odrážkový seznam (<code>format=* &lt;&lt;Pole&gt;&gt;</code>), odkazy (<code>format=[&lt;&lt;Název&gt;&gt;](&lt;&lt;URL&gt;&gt;)</code>) apod. <code>filter</code> a <code>sort</code> fungují stejně jako u <code>{{database}}</code>. <code>format</code> uvádějte jako <strong>poslední</strong> parametr (bere se doslova až do konce). V šabloně lze použít <code>\n</code> pro nový řádek a <code>\t</code> pro tabulátor (doslovné zpětné lomítko zapište jako <code>\\</code>) – jeden záznam tak může vytvořit i víc řádků, např. odstavec s nadpisem.</td></tr>
       <tr><td><code>{{status:Název}}</code></td><td>Status chip – kompaktní souhrn entity (název + nejdůležitější info podle aspektů: stav úkolu, termín schůzky, URL záložky, % cíle, statistika projektu…) s odkazem na entitu. Funguje i v exportu/tisku.</td></tr>
       <tr><td><code>**tučně**</code> <code>*kurzíva*</code></td><td>Standardní markdown</td></tr>
       <tr><td><code># Nadpis</code></td><td>Nadpisy 1.–4. úrovně</td></tr>
@@ -2388,6 +2389,10 @@ function countMarkdownDoneTasks(md) {
   if (!md) return 0;
   const m = md.match(/^\s*[-*]\s+\[[xX]\]/gm);
   return m ? m.length : 0;
+}
+// Má tělo entity nějaké hotové markdown úkoly? (pro tlačítko „Skrýt hotové úkoly")
+function mdBodyHasDoneTasks(e) {
+  return e && countMarkdownDoneTasks(e.body || '') > 0;
 }
 
 // Sestaví obsah md-field-actions divu pro dané textarea: úkoly + revize + korektor.
@@ -3675,6 +3680,24 @@ function parseDatabaseTextParams(query) {
   base.format = format;
   return base;
 }
+// Převede escape sekvence v šabloně `format` direktivy {{databasetext}}:
+// \n → nový řádek, \t → tabulátor, \\ → doslovné zpětné lomítko.
+// Jeden průchod, aby \\n zůstalo doslova "\n" a nestal se z něj nový řádek.
+function unescapeFormatSequences(s) {
+  if (!s) return s;
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '\\' && i + 1 < s.length) {
+      const nx = s[i + 1];
+      if (nx === 'n') { out += '\n'; i++; continue; }
+      if (nx === 't') { out += '\t'; i++; continue; }
+      if (nx === '\\') { out += '\\'; i++; continue; }
+    }
+    out += s[i];
+  }
+  return out;
+}
+
 function renderDatabaseTextInclude(entity, query) {
   const allFields = (typeof getDbFields === 'function') ? getDbFields(entity) : [];
   const allRecords = (typeof getDbRecords === 'function') ? getDbRecords(entity) : [];
@@ -3692,16 +3715,26 @@ function renderDatabaseTextInclude(entity, query) {
     if (f.type === 'composed') return evaluateDbComposed(f, rec, allFields);
     const v = rec[f.key];
     if (v == null || v === '') return '';
+    if (f.type === 'entity') return dbEntityRefText(v);
+    if (f.type === 'dbrecord') return dbRecordRefText(v);
     if (f.type === 'bool') return v ? 'Ano' : 'Ne';
     if (f.type === 'date') return fmtDate(v);
     return String(v);
   }
   const lines = records.map(rec => {
     // Nahradíme <<Název pole>> hodnotou. Placeholder nepoužívá [] ani () → přežije markdown odkazy.
-    return format.replace(/<<([^>]+)>>/g, (mm, name) => fieldValue(rec, name));
+    let out = format.replace(/<<([^>]+)>>/g, (mm, name) => fieldValue(rec, name));
+    // Escape sekvence v šabloně: \n = nový řádek, \t = tabulátor, \\ = zpětné lomítko.
+    // Zpracováno AŽ PO dosazení hodnot, aby se neřešily escape sekvence uvnitř dat.
+    out = unescapeFormatSequences(out);
+    return out;
   });
-  // Řádky spojíme novým řádkem – tím vznikne např. odrážkový seznam, když format začíná "* ".
-  return lines.join('\n');
+  // Spojení záznamů:
+  // - jednořádkový format → jeden \n (odrážky/řádky seznamu na sebe navazují)
+  // - víceřádkový format (obsahuje \n) → prázdný řádek, aby Markdown bral každý
+  //   záznam jako samostatný blok (jinak by se nadpis druhého záznamu slil s odstavcem prvního)
+  const multiline = lines.some(l => l.indexOf('\n') >= 0);
+  return lines.join(multiline ? '\n\n' : '\n');
 }
 
 
@@ -3961,6 +3994,8 @@ function renderDatabaseIncludeAsMarkdown(entity, query) {
     let cell = '';
     const v = rec[f.key];
     if (f.type === 'composed') cell = evaluateDbComposed(f, rec, allFields);
+    else if (f.type === 'entity') cell = dbEntityRefText(v);
+    else if (f.type === 'dbrecord') cell = dbRecordRefText(v);
     else if (v != null && v !== '') {
       if (f.type === 'bool') cell = v ? 'Ano' : 'Ne';
       else if (f.type === 'date') cell = fmtDate(v);
@@ -3999,6 +4034,8 @@ function renderDatabaseInclude(entity, query) {
       h += '<tr>';
       fields.forEach(f => {
         const v = rec[f.key];
+        if (f.type === 'entity') { h += '<td>' + (v ? dbEntityRefHtml(v) : '') + '</td>'; return; }
+        if (f.type === 'dbrecord') { h += '<td>' + (v ? dbRecordRefHtml(v) : '') + '</td>'; return; }
         let cell = '';
         if (f.type === 'composed') {
           cell = evaluateDbComposed(f, rec, allFields);
@@ -8578,6 +8615,51 @@ function taskProjectLabel(e) {
 const PRIORITY_CS = { urgent:'Naléhavá', high:'Vysoká', normal:'Normální', low:'Nízká' };
 const PRIORITY_CLS = { urgent:'pri-urgent', high:'pri-high', normal:'pri-normal', low:'pri-low' };
 
+// Sbalitelná sekce v pohledu Úkoly: nehotové markdown úkoly ze všech entit,
+// seskupené podle entity a v ní podle pole (Tělo/atribut) a nadpisu.
+function buildMdTasksOverviewSection() {
+  const entitiesWithTasks = [];
+  let grandTotal = 0;
+  db.entities.forEach(e => {
+    if (e.archived) return;
+    const groups = collectUnfinishedMdTasks(e);
+    if (groups.length === 0) return;
+    let cnt = 0;
+    groups.forEach(g => g.sections.forEach(sec => cnt += sec.tasks.length));
+    if (cnt === 0) return;
+    grandTotal += cnt;
+    entitiesWithTasks.push({ entity: e, groups, count: cnt });
+  });
+  if (grandTotal === 0) return '';
+  entitiesWithTasks.sort((a, b) => b.count - a.count);
+  const open = state.mdTasksOverviewOpen !== false;
+  let h = '<details class="section-collapsible md-tasks-overview" data-md-tasks-overview' + (open ? ' open' : '') + '>' +
+    '<summary>Úkoly v textu (Markdown) – ' + grandTotal + ' nedokončených v ' + entitiesWithTasks.length + ' entitách</summary>' +
+    '<h2>Úkoly v textu (Markdown)</h2>' +
+    '<p class="meta">Nezaškrtnuté <code>- [ ]</code> úkoly z obsahu a textových polí, seskupené podle entity a nadpisu.</p>';
+  entitiesWithTasks.forEach(({ entity, groups, count }) => {
+    h += '<div class="md-task-entity" style="margin:0.6em 0;">' +
+      '<h3 style="margin-bottom:0.2em;"><a href="#" class="wiki-link" data-entity="' + escapeHtml(entity.id) + '">' + getDisplayTitleWithBadges(entity) + '</a> ' +
+      '<span class="meta">(' + count + ')</span></h3>';
+    groups.forEach(g => {
+      if (groups.length > 1 || g.fieldLabel !== 'Tělo') {
+        h += '<p class="meta" style="margin:0.2em 0;">Pole: ' + escapeHtml(g.fieldLabel) + '</p>';
+      }
+      g.sections.forEach(sec => {
+        if (sec.heading) h += '<p style="margin:0.2em 0;font-weight:600;">' + escapeHtml(sec.heading) + '</p>';
+        h += '<ul style="margin:0.1em 0 0.4em;">';
+        sec.tasks.forEach(t => {
+          h += '<li>' + renderInline(t.text, { depth: 1, includeStack: new Set(), entity: entity }) + '</li>';
+        });
+        h += '</ul>';
+      });
+    });
+    h += '</div>';
+  });
+  h += '</details>';
+  return h;
+}
+
 function renderTasks(main) {
   const allTasks = db.entities.filter(e => e.aspects && e.aspects.includes('Task') && !e.archived);
 
@@ -8649,7 +8731,8 @@ function renderTasks(main) {
   ).join('');
 
   main.innerHTML = '<h1>Úkoly</h1><p class="meta">Celkem ' + allTasks.length + ' úkolů' + (tasks.length !== allTasks.length ? ', zobrazeno ' + tasks.length : '') + '.</p>' +
-    (html || '<div class="empty">Žádné úkoly. Vytvořte stiskem „Nová entita“ a aspektem „Úkol“.</div>');
+    (html || '<div class="empty">Žádné úkoly. Vytvořte stiskem „Nová entita“ a aspektem „Úkol“.</div>') +
+    buildMdTasksOverviewSection();
 
   attachEntityRowHandlers(main);
 
@@ -8657,6 +8740,12 @@ function renderTasks(main) {
   main.querySelectorAll('details[data-task-section]').forEach(d => {
     d.addEventListener('toggle', () => { state.taskSectionOpen[d.dataset.taskSection] = d.open; });
   });
+  // Sekce markdown úkolů – zapamatovat sbalení + odkazy na entity
+  const mdOverview = main.querySelector('details[data-md-tasks-overview]');
+  if (mdOverview) {
+    mdOverview.addEventListener('toggle', () => { state.mdTasksOverviewOpen = mdOverview.open; });
+  }
+  attachMarkdownLinkHandlers(main);
 
   // Checkbox hotovo
   main.querySelectorAll('input[type="checkbox"][data-task-id]').forEach(c => {
@@ -11793,6 +11882,7 @@ function renderDetailRead(main, e) {
         '<button id="btn-copy-body-source" title="Zkopírovat zdroj (Markdown)">📋 Zkopírovat zdroj</button>' +
         (getEntityGhPath(e) ? '<button id="btn-gh-push" title="Uložit obsah do GitHubu na cestu ' + escapeHtml(getEntityGhPath(e)) + '">☁ Uložit na GitHub</button>' : '') +
         '<button id="btn-copy-body-formatted" title="Zkopírovat formátovaný (vložitelný do Wordu, Outlooku, Gmailu…)">✨ Zkopírovat formátované</button>' +
+        (mdBodyHasDoneTasks(e) ? '<button id="btn-hide-done-body" aria-pressed="false" title="Skrýt zaškrtnuté (hotové) úkoly v obsahu">☑ Skrýt hotové úkoly</button>' : '') +
       '</div>' +
       bodyTaskCounter +
       readingStatsHtml +
@@ -11979,6 +12069,14 @@ function renderDetailRead(main, e) {
   if (ghPushBtn) ghPushBtn.onclick = () => pushEntityToGithub(e);
   const copyFmtBtn = document.getElementById('btn-copy-body-formatted');
   if (copyFmtBtn) copyFmtBtn.onclick = () => confirmIfUnfinishedTasks(e, () => copyBodyFormatted(e));
+  const hideDoneBtn = document.getElementById('btn-hide-done-body');
+  if (hideDoneBtn) hideDoneBtn.onclick = () => {
+    const bodyEl = document.getElementById('body-rendered');
+    if (!bodyEl) return;
+    const hidden = bodyEl.classList.toggle('hide-done-tasks');
+    hideDoneBtn.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+    hideDoneBtn.textContent = hidden ? '☑ Zobrazit hotové úkoly' : '☑ Skrýt hotové úkoly';
+  };
   const lb = document.getElementById('leave-inbox');
   if (lb) lb.onclick = () => { e.inbox = false; e.updated_at = nowIso(); saveDebounced(); render(); toast('Vyjmuto z Inboxu.'); };
   const ob = document.getElementById('open-outline');
@@ -11986,6 +12084,19 @@ function renderDetailRead(main, e) {
 
   attachEntityRowHandlers(main);
   attachMarkdownLinkHandlers(main);
+  // Tlačítka „Skrýt hotové úkoly" u markdown atributů (textarea pole)
+  main.querySelectorAll('button[data-hide-done-toggle]').forEach(btn => {
+    btn.onclick = () => {
+      // najdi nejbližší .markdown blok za tlačítkem
+      const md = btn.nextElementSibling && btn.nextElementSibling.classList.contains('markdown')
+        ? btn.nextElementSibling
+        : btn.parentElement.querySelector('.markdown');
+      if (!md) return;
+      const hidden = md.classList.toggle('hide-done-tasks');
+      btn.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+      btn.textContent = hidden ? '☑ Zobrazit hotové úkoly' : '☑ Skrýt hotové úkoly';
+    };
+  });
   // Diagram handlers
   if (isDiagram) attachDiagramHandlers(e);
   if (isPlan) attachPlanReadHandlers(e);
@@ -12511,7 +12622,10 @@ function formatAttrValue(f, v, entityCtx) {
     const rendered = renderMarkdown(text, {
       ctx: { depth: 1, includeStack: new Set(), taskSource: 'attr:' + f.key, entity: entityCtx }
     });
-    return counter + '<div class="markdown attr-textarea">' + rendered + '</div>';
+    const hideBtn = (counts && counts.done > 0)
+      ? '<button type="button" class="btn-hide-done-attr" data-hide-done-toggle aria-pressed="false" title="Skrýt hotové úkoly v tomto poli" style="margin-bottom:0.3em;">☑ Skrýt hotové úkoly</button>'
+      : '';
+    return counter + hideBtn + '<div class="markdown attr-textarea">' + rendered + '</div>';
   }
   if (f.type === 'checkbox') return v ? 'Ano' : 'Ne';
   if (f.type === 'relation') {
@@ -34640,13 +34754,75 @@ function setDbRecords(entity, records) {
   entity.updated_at = nowIso();
 }
 
+// === Pomocné funkce pro pole typu 'entity' a 'dbrecord' ===
+// Hodnota 'entity' pole = ID entity. Hodnota 'dbrecord' pole = "entityId::recordIndex".
+function dbEntityRefText(v) {
+  if (!v) return '';
+  const e = findEntity(String(v));
+  return e ? getDisplayTitle(e) : '(neznámá entita)';
+}
+function dbEntityRefHtml(v) {
+  if (!v) return '';
+  const e = findEntity(String(v));
+  if (!e) return '<span class="meta">(neznámá entita)</span>';
+  return '<a href="#" class="wiki-link" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a>';
+}
+// Popis jednoho záznamu databáze: hodnota prvního needitovaného textového pole (nebo prvního pole).
+function dbRecordLabel(dbEntity, record) {
+  if (!dbEntity || !record) return '';
+  const fields = (typeof getDbFields === 'function') ? getDbFields(dbEntity) : [];
+  const labelField = fields.find(f => f.type === 'text') || fields[0];
+  if (labelField && record[labelField.key] != null && record[labelField.key] !== '') {
+    return String(record[labelField.key]);
+  }
+  return '(záznam)';
+}
+function parseDbRecordRef(v) {
+  if (!v) return null;
+  const s = String(v);
+  const sep = s.indexOf('::');
+  if (sep < 0) return null;
+  return { entityId: s.slice(0, sep), recordIndex: parseInt(s.slice(sep + 2), 10) };
+}
+function dbRecordRefText(v) {
+  const ref = parseDbRecordRef(v);
+  if (!ref) return '';
+  const dbEntity = findEntity(ref.entityId);
+  if (!dbEntity) return '(neznámá databáze)';
+  const records = (typeof getDbRecords === 'function') ? getDbRecords(dbEntity) : [];
+  const rec = records[ref.recordIndex];
+  if (!rec) return getDisplayTitle(dbEntity) + ' › (neznámý záznam)';
+  return getDisplayTitle(dbEntity) + ' › ' + dbRecordLabel(dbEntity, rec);
+}
+function dbRecordRefHtml(v) {
+  const ref = parseDbRecordRef(v);
+  if (!ref) return '';
+  const dbEntity = findEntity(ref.entityId);
+  if (!dbEntity) return '<span class="meta">(neznámá databáze)</span>';
+  const records = (typeof getDbRecords === 'function') ? getDbRecords(dbEntity) : [];
+  const rec = records[ref.recordIndex];
+  const label = rec ? dbRecordLabel(dbEntity, rec) : '(neznámý záznam)';
+  return '<a href="#" class="wiki-link" data-entity="' + escapeHtml(dbEntity.id) + '">' + escapeHtml(getDisplayTitle(dbEntity)) + '</a> › ' + escapeHtml(label);
+}
+// Zobrazitelná TEXTOVÁ hodnota pole (pro Markdown/plain kontext).
+function dbFieldValueText(f, v) {
+  if (f.type === 'entity') return dbEntityRefText(v);
+  if (f.type === 'dbrecord') return dbRecordRefText(v);
+  if (f.type === 'bool') return v ? 'Ano' : 'Ne';
+  if (f.type === 'date') return fmtDate(v);
+  return String(v);
+}
+
+
 const DB_FIELD_TYPES = {
   text: 'Text',
   number: 'Číslo',
   date: 'Datum',
   bool: 'Ano/Ne',
   select: 'Výběr',
-  composed: 'Sloučený'
+  composed: 'Sloučený',
+  entity: 'Entita (odkaz)',
+  dbrecord: 'Odkaz na záznam databáze'
 };
 
 // Vyhodnotí šablonu „Sloučeného" pole nad jedním záznamem.
@@ -35547,6 +35723,8 @@ function dbFormatCellValue(f, v, record, fields) {
     return escapeHtml(txt);
   }
   if (v === null || v === undefined || v === '') return '';
+  if (f.type === 'entity') return dbEntityRefHtml(v);
+  if (f.type === 'dbrecord') return dbRecordRefHtml(v);
   if (f.type === 'bool') return v ? 'Ano' : 'Ne';
   if (f.type === 'date') return escapeHtml(fmtDate(v));
   if (f.type === 'number') return escapeHtml(String(v));
@@ -36147,6 +36325,33 @@ function openDatabaseRecordDialog(entity, recordIndex, onSave) {
         '<option value=""' + (!v ? ' selected' : '') + '>—</option>' +
         (f.options || []).map(o => '<option value="' + escapeHtml(o) + '"' + (v === o ? ' selected' : '') + '>' + escapeHtml(o) + '</option>').join('') +
         '</select>';
+    } else if (f.type === 'entity') {
+      // Výběr entity – select se všemi entitami (kromě databází kvůli přehlednosti ne, ať jde vybrat cokoli)
+      const opts = db.entities
+        .filter(en => !en.archived)
+        .slice()
+        .sort((a, b) => getDisplayTitle(a).localeCompare(getDisplayTitle(b), 'cs'))
+        .map(en => '<option value="' + escapeHtml(en.id) + '"' + (v === en.id ? ' selected' : '') + '>' + escapeHtml(getDisplayTitle(en)) + '</option>').join('');
+      inp = '<select id="' + id + '" data-dbr-key="' + escapeHtml(f.key) + '"><option value="">—</option>' + opts + '</select>';
+    } else if (f.type === 'dbrecord') {
+      // Výběr databáze + záznamu (dva provázané selecty)
+      const ref = parseDbRecordRef(v);
+      const dbs = db.entities.filter(en => !en.archived && (en.aspects || []).includes('Database'))
+        .sort((a, b) => getDisplayTitle(a).localeCompare(getDisplayTitle(b), 'cs'));
+      const dbOpts = dbs.map(dbe => '<option value="' + escapeHtml(dbe.id) + '"' + (ref && ref.entityId === dbe.id ? ' selected' : '') + '>' + escapeHtml(getDisplayTitle(dbe)) + '</option>').join('');
+      // záznamy vybrané databáze
+      let recOpts = '<option value="">—</option>';
+      if (ref && ref.entityId) {
+        const dbe = findEntity(ref.entityId);
+        if (dbe) {
+          const recs = getDbRecords(dbe);
+          recOpts += recs.map((r, i) => '<option value="' + i + '"' + (ref.recordIndex === i ? ' selected' : '') + '>' + escapeHtml(dbRecordLabel(dbe, r)) + '</option>').join('');
+        }
+      }
+      inp = '<span style="display:flex;flex-direction:column;gap:0.2em;flex:1;">' +
+        '<select data-dbr-rec-db="' + escapeHtml(f.key) + '" aria-label="Databáze"><option value="">— databáze —</option>' + dbOpts + '</select>' +
+        '<select data-dbr-rec-idx="' + escapeHtml(f.key) + '" data-dbr-key="' + escapeHtml(f.key) + '" aria-label="Záznam"' + ((!ref || !ref.entityId) ? ' disabled' : '') + '>' + recOpts + '</select>' +
+      '</span>';
     } else if (f.type === 'composed') {
       // Sloučené pole se needituje – ukážeme živý náhled z aktuálních hodnot.
       inp = '<div class="db-composed-preview meta" data-dbr-composed="' + escapeHtml(f.key) + '" style="padding:0.3em 0.4em;border:1px dashed #ccc;border-radius:3px;white-space:pre-wrap;">' +
@@ -36233,6 +36438,31 @@ function openDatabaseRecordDialog(entity, recordIndex, onSave) {
     el.addEventListener('input', updateComposedPreviews);
     el.addEventListener('change', updateComposedPreviews);
   });
+  // Provázání dbrecord: výběr databáze naplní select záznamů
+  body.querySelectorAll('[data-dbr-rec-db]').forEach(dbSel => {
+    dbSel.onchange = () => {
+      const k = dbSel.dataset.dbrRecDb;
+      const recSel = body.querySelector('[data-dbr-rec-idx="' + k + '"]');
+      if (!recSel) return;
+      const dbId = dbSel.value;
+      recSel.innerHTML = '<option value="">—</option>';
+      if (dbId) {
+        const dbe = findEntity(dbId);
+        if (dbe) {
+          const recs = getDbRecords(dbe);
+          recs.forEach((r, i) => {
+            const opt = document.createElement('option');
+            opt.value = i;
+            opt.textContent = dbRecordLabel(dbe, r);
+            recSel.appendChild(opt);
+          });
+        }
+        recSel.disabled = false;
+      } else {
+        recSel.disabled = true;
+      }
+    };
+  });
 
   document.getElementById('db-rec-save').onclick = () => {
     const newRec = isNew ? { id: 'r_' + Date.now().toString(36) } : { ...rec };
@@ -36241,6 +36471,15 @@ function openDatabaseRecordDialog(entity, recordIndex, onSave) {
       const f = fields.find(ff => ff.key === k);
       if (!f) return;
       if (f.type === 'bool') { newRec[k] = el.checked; return; }
+      if (f.type === 'dbrecord') {
+        // hodnota = "entityId::recordIndex"; databáze z prvního selectu, index z tohoto
+        const dbSel = body.querySelector('[data-dbr-rec-db="' + k + '"]');
+        const dbId = dbSel ? dbSel.value : '';
+        const idx = el.value;
+        if (!dbId || idx === '') { delete newRec[k]; return; }
+        newRec[k] = dbId + '::' + idx;
+        return;
+      }
       let v = el.value;
       if (v === '') { delete newRec[k]; return; }
       if (f.type === 'number') v = Number(v);
