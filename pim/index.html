@@ -19509,29 +19509,6 @@ function attachObjectsEditHandlers(entity) {
   });
   const addBtn = document.getElementById('add-hidden-obj');
   if (addBtn) addBtn.onclick = () => {
-    // Nabídni rovnou načtení ze souboru (název se převezme z názvu souboru),
-    // nebo prázdný objekt přes prompt, když uživatel výběr souboru zruší.
-    const inp = document.createElement('input');
-    inp.type = 'file';
-    inp.onchange = () => {
-      const file = inp.files && inp.files[0];
-      if (!file) { addEmptyObject(); return; }
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (!entity.attributes) entity.attributes = {};
-        const key = 'obj_' + uuid();
-        entity.attributes[key] = { name: file.name || 'objekt', content: String(reader.result || '') };
-        entity.updated_at = nowIso(); save();
-        attachObjectsEditHandlers(entity);
-        toast('Objekt „' + (file.name || 'objekt') + '" načten ze souboru.');
-      };
-      reader.onerror = () => alertMsg('Soubor se nepodařilo přečíst.');
-      reader.readAsText(file);
-    };
-    // Když uživatel dialog zavře bez výběru, onchange se nespustí – nabídneme prázdný objekt tlačítkem.
-    inp.click();
-  };
-  function addEmptyObject() {
     promptDialog('Název nového objektu (včetně přípony, např. data.json):', '').then((val) => {
       if (val == null) return;
       const name = String(val).trim();
@@ -19543,7 +19520,7 @@ function attachObjectsEditHandlers(entity) {
       attachObjectsEditHandlers(entity);
       toast('Objekt „' + name + '" vytvořen. Vložte obsah ve zobrazení entity.');
     });
-  }
+  };
 }
 
 // Render objektů ve ZOBRAZENÍ entity (read) – s tlačítky pro schránku a soubor
@@ -19615,20 +19592,45 @@ function attachObjectsReadHandlers(entity, root) {
       const key = b.dataset.objLoad;
       const obj = entity.attributes[key];
       if (!obj) return;
+      // POZOR: file input MUSÍ být v DOM. Odpojený <input type="file"> v některých
+      // prohlížečích (zejména Safari) dialog neotevře nebo se uvolní z paměti dřív,
+      // než uživatel vybere soubor – onchange se pak nikdy nespustí.
       const inp = document.createElement('input');
       inp.type = 'file';
+      inp.style.position = 'absolute';
+      inp.style.left = '-9999px';
+      document.body.appendChild(inp);
+      const cleanup = () => { if (inp.parentNode) inp.parentNode.removeChild(inp); };
       inp.onchange = () => {
         const file = inp.files && inp.files[0];
-        if (!file) return;
+        if (!file) { cleanup(); return; }
         const reader = new FileReader();
         reader.onload = () => {
-          obj.content = String(reader.result || '');
-          entity.updated_at = nowIso(); save(); render();
+          const content = String(reader.result || '');
+          // Binární soubor (obrázek, PDF, ZIP…) se čtením jako text poškodí – varujeme.
+          if (content.indexOf('\u0000') >= 0 || /\uFFFD{3,}/.test(content)) {
+            cleanup();
+            alertMsg('Soubor „' + (file.name || '') + '" nevypadá jako textový (je binární – např. obrázek nebo PDF). ' +
+              'Objekty umí uchovat jen textový obsah, načtení by data poškodilo. Načtení bylo zrušeno.');
+            return;
+          }
+          obj.content = content;
+          entity.updated_at = nowIso(); save();
+          cleanup();
+          render();
           toast('Nová verze načtena ze souboru „' + (file.name || '') + '" (' + hiddenObjSizeKb(obj.content) + ').');
         };
-        reader.onerror = () => alertMsg('Soubor se nepodařilo přečíst.');
+        reader.onerror = () => {
+          cleanup();
+          alertMsg('Soubor se nepodařilo přečíst: ' + (reader.error && reader.error.message ? reader.error.message : 'neznámá chyba'));
+        };
         reader.readAsText(file);
       };
+      // Když uživatel dialog zavře bez výběru, onchange se nespustí – uklidíme po chvíli.
+      window.addEventListener('focus', function onBack() {
+        window.removeEventListener('focus', onBack);
+        setTimeout(() => { if (!inp.files || inp.files.length === 0) cleanup(); }, 500);
+      });
       inp.click();
     };
   });
