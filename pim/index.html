@@ -1228,6 +1228,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <tr><td><kbd>Shift+P</kbd></td><td>Kalendář</td></tr>
       <tr><td><kbd>Shift+S</kbd></td><td>Tagy</td></tr>
       <tr><td><kbd>Shift+V</kbd></td><td>První vlastní pohled (pinned/savedView)</td></tr>
+      <tr><td><kbd>F10</kbd></td><td>Hlavní nabídka (v režimu klasického menu) – dál šipky, Enter otevře, Esc zavře</td></tr>
     </tbody>
   </table>
   <p class="meta">Pozn.: <kbd>Shift+R</kbd> je <strong>výjimka</strong> – jako jediný Shift+ není navigace, ale vytvoří související entitu (viz akce níže). Také <kbd>Shift+N</kbd> patří k akcím.</p>
@@ -3665,6 +3666,15 @@ function buildStatusChipPlain(entity) {
 // Vyrenderuje řádky databáze podle šablony `format`, kde <<Název pole>> = hodnota.
 // Výsledek je Markdown text (parser ho pak zpracuje). Robustní: format je vždy poslední
 // parametr a bere se doslova až do konce (smí obsahovat &, =, [], (), | atd.).
+// Normalizace názvu pole pro porovnání: sjednotí Unicode (NFC vs NFD – "ó" jako jeden
+// znak vs "o"+čárka, což se liší např. u textu kopírovaného z macOS/Excelu), odstraní
+// okrajové mezery a sjednotí velikost písmen. Bez toho by se vizuálně shodné názvy nenašly.
+function dbNormalizeLabel(s) {
+  let out = String(s == null ? '' : s);
+  if (typeof out.normalize === 'function') out = out.normalize('NFC');
+  return out.trim().toLowerCase();
+}
+
 function parseDatabaseTextParams(query) {
   // Oddělíme format= (poslední, doslovný) od ostatních parametrů.
   let format = null;
@@ -3706,12 +3716,13 @@ function renderDatabaseTextInclude(entity, query) {
   // Použijeme stejný filtr/řazení jako {{database}} (columns=null → všechny sloupce k dispozici pro placeholdery)
   const { records } = applyDatabaseIncludeParams(allFields, allRecords, { columns: null, filters: parsed.filters, sort: parsed.sort });
   const format = (parsed.format != null && parsed.format !== '') ? parsed.format : '<<' + (allFields[0] ? allFields[0].label : '') + '>>';
+  const unknownPlaceholders = [];
   // Hodnota pole pro placeholder (podle labelu, případně key), s typovým formátováním.
   function fieldValue(rec, name) {
-    const lc = String(name).trim().toLowerCase();
-    const f = allFields.find(ff => (ff.label || '').trim().toLowerCase() === lc) ||
-              allFields.find(ff => (ff.key || '').toLowerCase() === lc);
-    if (!f) return '';
+    const lc = dbNormalizeLabel(name);
+    const f = allFields.find(ff => dbNormalizeLabel(ff.label) === lc) ||
+              allFields.find(ff => dbNormalizeLabel(ff.key) === lc);
+    if (!f) { if (unknownPlaceholders.indexOf(String(name)) < 0) unknownPlaceholders.push(String(name)); return ''; }
     if (f.type === 'composed') return evaluateDbComposed(f, rec, allFields);
     const v = rec[f.key];
     if (v == null || v === '') return '';
@@ -3734,7 +3745,19 @@ function renderDatabaseTextInclude(entity, query) {
   // - víceřádkový format (obsahuje \n) → prázdný řádek, aby Markdown bral každý
   //   záznam jako samostatný blok (jinak by se nadpis druhého záznamu slil s odstavcem prvního)
   const multiline = lines.some(l => l.indexOf('\n') >= 0);
-  return lines.join(multiline ? '\n\n' : '\n');
+  let out = lines.join(multiline ? '\n\n' : '\n');
+  // Diagnostika: když se nic nevypsalo nebo je ve format neznámé pole, řekni proč
+  // (jinak direktiva tiše zmizí a není poznat, kde je chyba).
+  const notes = [];
+  if (unknownPlaceholders.length) {
+    notes.push('neznámá pole ve format: ' + unknownPlaceholders.join(', ') +
+      ' (dostupná: ' + allFields.map(f => f.label).join(', ') + ')');
+  }
+  if (records.length === 0) {
+    notes.push(allRecords.length === 0 ? 'databáze nemá žádné záznamy' : 'filtru neodpovídá žádný záznam');
+  }
+  if (notes.length) out += (out ? '\n\n' : '') + '*[⚠ databasetext: ' + notes.join('; ') + ']*';
+  return out;
 }
 
 
@@ -3891,8 +3914,8 @@ function applyDatabaseIncludeParams(allFields, allRecords, parsed) {
   const unknownColumns = [];
   const unknownFilterFields = [];
   const byLabel = {};
-  allFields.forEach(f => { const k = (f.label || '').toLowerCase(); if (!(k in byLabel)) byLabel[k] = f; });
-  const findField = (label) => byLabel[(label || '').toLowerCase()] || null;
+  allFields.forEach(f => { const k = dbNormalizeLabel(f.label); if (!(k in byLabel)) byLabel[k] = f; });
+  const findField = (label) => byLabel[dbNormalizeLabel(label)] || null;
 
   let records = allRecords.filter(rec => {
     for (const cond of parsed.filters) {
@@ -21172,6 +21195,22 @@ function setupKeyboard() {
       return;
     }
 
+    // F10 — hlavní nabídka (standardní zkratka pro menubar).
+    // Dá fokus na první položku nabídky; dál se naviguje šipkami, Enter otevře, Esc zavře.
+    if (ev.key === 'F10' && !ev.ctrlKey && !ev.metaKey && !ev.altKey) {
+      const bar = document.getElementById('app-menubar');
+      if (bar && !bar.hidden) {
+        const firstBtn = bar.querySelector(':scope > .menubar-item > button[role="menuitem"]');
+        if (firstBtn) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          closeAllMenus();
+          firstBtn.focus();
+          return;
+        }
+      }
+    }
+
     const tag = (document.activeElement.tagName || '').toLowerCase();
     const inField = tag === 'input' || tag === 'textarea' || tag === 'select';
 
@@ -36001,10 +36040,10 @@ function importDatabaseDelimited(entity, text, mode) {
   const fields = getDbFields(entity);
   // Mapování: index sloupce v datech → field.key (párování podle labelu, pak podle key, case-insensitive)
   const colToKey = header.map(colName => {
-    const lc = colName.toLowerCase();
-    const byLabel = fields.find(f => (f.label || '').trim().toLowerCase() === lc);
+    const lc = dbNormalizeLabel(colName);
+    const byLabel = fields.find(f => dbNormalizeLabel(f.label) === lc);
     if (byLabel) return byLabel.key;
-    const byKey = fields.find(f => (f.key || '').toLowerCase() === lc);
+    const byKey = fields.find(f => dbNormalizeLabel(f.key) === lc);
     if (byKey) return byKey.key;
     return null; // nespárováno
   });
@@ -36249,7 +36288,7 @@ function openDatabaseImportDialog(entity, onDone) {
       const rows = parseDelimitedTable(text, delim);
       if (rows.length < 2) { preview.textContent = 'Zatím jen hlavička nebo prázdno – přidejte alespoň jeden datový řádek.'; return; }
       const header = rows[0].map(h => h.trim());
-      const matched = header.filter(colName => fields.some(f => (f.label || '').trim().toLowerCase() === colName.toLowerCase() || (f.key || '').toLowerCase() === colName.toLowerCase()));
+      const matched = header.filter(colName => fields.some(f => dbNormalizeLabel(f.label) === dbNormalizeLabel(colName) || dbNormalizeLabel(f.key) === dbNormalizeLabel(colName)));
       const unmatched = header.filter(c => !matched.includes(c));
       const delimName = delim === '\t' ? 'tabulátor' : (delim === ';' ? 'středník' : 'čárka');
       preview.innerHTML = 'Rozpoznáno: <strong>' + (rows.length - 1) + '</strong> záznamů, oddělovač: ' + delimName + '.<br>' +
