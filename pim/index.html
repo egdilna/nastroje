@@ -3754,7 +3754,27 @@ function renderDatabaseTextInclude(entity, query) {
       ' (dostupná: ' + allFields.map(f => f.label).join(', ') + ')');
   }
   if (records.length === 0) {
-    notes.push(allRecords.length === 0 ? 'databáze nemá žádné záznamy' : 'filtru neodpovídá žádný záznam');
+    if (allRecords.length === 0) {
+      notes.push('databáze nemá žádné záznamy');
+    } else {
+      // Ukaž, co v tom sloupci reálně je – aby bylo vidět, proč se hodnota nepotkala
+      // (překlep, jiný sloupec, jiná hodnota…). Zobrazíme pár prvních hodnot.
+      let detail = 'filtru neodpovídá žádný záznam';
+      const firstCond = (parsed.filters && parsed.filters[0]) || null;
+      if (firstCond) {
+        const lc = dbNormalizeLabel(firstCond.label);
+        const ff = allFields.find(x => dbNormalizeLabel(x.label) === lc) || allFields.find(x => dbNormalizeLabel(x.key) === lc);
+        if (ff) {
+          const vals = allRecords.slice(0, 6).map(r => {
+            const raw = (ff.type === 'composed') ? evaluateDbComposed(ff, r, allFields) : r[ff.key];
+            return (raw === undefined || raw === null || raw === '') ? '(prázdné)' : String(raw);
+          });
+          detail += ' – hledá se „' + firstCond.value + '" ve sloupci „' + ff.label + '", ' +
+            'kde jsou hodnoty: ' + vals.join(' | ') + (allRecords.length > 6 ? ' …' : '');
+        }
+      }
+      notes.push(detail);
+    }
   }
   if (notes.length) out += (out ? '\n\n' : '') + '*[⚠ databasetext: ' + notes.join('; ') + ']*';
   return out;
@@ -3921,7 +3941,9 @@ function applyDatabaseIncludeParams(allFields, allRecords, parsed) {
     for (const cond of parsed.filters) {
       const f = findField(cond.label);
       if (!f) { if (!unknownFilterFields.includes(cond.label)) unknownFilterFields.push(cond.label); return false; }
-      if (!dbIncludeMatch(f, rec[f.key], cond)) return false;
+      // Počítaná (sloučená) pole nemají vlastní hodnotu v záznamu – vyhodnotíme šablonu.
+      const cellVal = (f.type === 'composed') ? evaluateDbComposed(f, rec, allFields) : rec[f.key];
+      if (!dbIncludeMatch(f, cellVal, cond)) return false;
     }
     return true;
   });
@@ -3956,6 +3978,18 @@ function applyDatabaseIncludeParams(allFields, allRecords, parsed) {
 }
 
 // Porovná hodnotu pole s podmínkou. Case-insensitive pro text.
+// Normalizace HODNOTY pro porovnání ve filtru: sjednotí Unicode (NFC), odstraní
+// neviditelné znaky, které se běžně zatoulají při kopírování z webu/PDF/Wordu
+// (zero-width space, soft hyphen, směrové značky, word joiner, BOM), převede
+// nedělitelné mezery na obyčejné a sjednotí velikost písmen.
+function dbNormalizeValue(s) {
+  let out = String(s == null ? '' : s);
+  if (typeof out.normalize === 'function') out = out.normalize('NFC');
+  out = out.replace(/[\u200B-\u200F\u00AD\u2060\uFEFF\u202A-\u202E]/g, '');
+  out = out.replace(/[\u00A0\u2007\u202F]/g, ' ');
+  return out.trim().toLowerCase();
+}
+
 function dbIncludeMatch(field, rawVal, cond) {
   const op = cond.op;
   const cmpVal = cond.value;
@@ -3963,14 +3997,14 @@ function dbIncludeMatch(field, rawVal, cond) {
   if (op === '=' && cmpVal === '') return isEmptyVal;
   if (op === '!=' && cmpVal === '') return !isEmptyVal;
   const valStr = isEmptyVal ? '' : String(rawVal);
-  if (op === '*') return valStr.toLowerCase().includes(cmpVal.toLowerCase());
+  if (op === '*') return dbNormalizeValue(valStr).includes(dbNormalizeValue(cmpVal));
   if (op === '=') {
     if (field.type === 'bool') return String(!!rawVal) === normalizeBoolFilter(cmpVal);
-    return valStr.trim().toLowerCase() === cmpVal.trim().toLowerCase();
+    return dbNormalizeValue(valStr) === dbNormalizeValue(cmpVal);
   }
   if (op === '!=') {
     if (field.type === 'bool') return String(!!rawVal) !== normalizeBoolFilter(cmpVal);
-    return valStr.trim().toLowerCase() !== cmpVal.trim().toLowerCase();
+    return dbNormalizeValue(valStr) !== dbNormalizeValue(cmpVal);
   }
   if (op === '<' || op === '>' || op === '<=' || op === '>=') {
     if (isEmptyVal) return false;
