@@ -9,7 +9,7 @@ Tohle je mikroweb věnovaný informacím o našich (snad) užitečných nástroj
 
 Všechny nástroje máte v seznamu vlevo.
 
-Osobně moje favority jsou: [ArchiMate editor](#archimate), [PIM information manager](#pim) a [PlantUML editor](#plantuml). Ale je jich tady už přes 20.
+Osobně moje favority jsou: [ArchiMate editor](#archimate), [PIM information manager](#pim), [DKM data manažer](#dkm), [Šablonář](#mdt)  a [PlantUML editor](#plantuml). Ale je jich tady už přes 20.
 
 ## Novinky k našim nástrojům
 
@@ -203,13 +203,41 @@ PlantUML je dnes asi nejpoužívanější framework pro tzv. text diagramming, t
 
 Univerzální information a PIM manager specializovaný na produktivitu.
 
-### ✏️Hlavní funkce
+### Hlavní funkce
+
+Jde o naprosto univerzální manažer informací, ať už osobních a nebo třeba pro celý projekt.
+
+* Založen na entitách určitého typu a aspektu, jako jsou projekt, událost, úkol, osoba, organizace, cíl, poznámka, myšlenka, otázka a odpověď a mnoho dalších
+* Možnost jednoduše přidávat vlastní typy informací
+* Speciální entity pro plán (tabulka s projektovým plánem s automatickým počítáním), databáze (jednoduchá databáze s vlastní strukturou a exportem i do XLSX), strukturovaný dokument (rich outline document se všemi funkcemi), sledování častu (jednoduchý time tracking s exportem do oblíbených online trackerů), tracker (pro sledování přírůstků a úbytků čehokoliv), deník (datumové a časové záznamy s chytrým přehledem), prezentace a slide (pro moźnost online prezentací přes Markdown rovnou v nástroji) a další
+* Velká přizpůsobitelnost, vlastní aspekty, atributy, pohledy pokročilé filtry a hledání, přizpůsobení zobrazení
+* Chytré zadávání (termín v úkolu třeba pozítří, markdown odkaz apod.) rovnou při tvorbě názvu entity
+* Pokročilá správa projektu, kdy na kartě projektu jsou speciální projektové funkce
+* Speciální funkce a vychytávky jsou i na kartě události
+* Možnost správ příloh a datových objektů
+* Dvojjazyčnost (anglicky a česky)
+* Pokročilé funkce jako je víc panelů, samostatná okna, promítání entity, prezentce, exporty i do DOCX, volba struktury a obsahu exportu a tisku entity, pokročilé vícenásobné vazby, komentáře, anotace v textu a mnoho dalšího
+
+
+
+### Dokumentace
+
+Existují
+
+- [česká příručka](https://nastroje.egdilna.cz/pim/docs-cs.md)
+- [english guide](https://nastroje.egdilna.cz/pim/docs-en.md)
+
+
 
 ### Historie změn
 
 
 | Datum | Typ | Popis |
 | --- | --- | --- |
+| 22. 7. 2026 | Vylepšení | V syntaxi databasetext výpisech lze teď do výsledku přidat nový řádek prostřednictvím zpětného lomítka n |
+| 22. 7. 2026 | Oprava | Opravena chyba, kdy se někdy nemusela načíst ze souboru nová verze uloženého objektu, pokud měla entita objekty. |
+| 20. 7. 2026 | Vylepšení | Kromě funkce database pro include tabulky z databáze je nová funkce databasetext která dle filtrů a stringu format vykreslí obsah databáze a jejích polí jako libovolný zahrnutý výstup. Tohle je hrozně univerzální parser skoro na všechno. A také doplněna nápověda o popis syntaxe. |
+| 7. 7. 2026 | Vylepšení | Předělán pohled Úkoly, nyní s rozbalovacími sekcemi, pokročilejšími filtry a také s pár funkcemi na tlačítka pro každý úkol, teď je to daleko užitečnější karta. |
 | 2. 7. 2026 | Funkce | Nová možnost uchovávt a pracovat s datovými objekty, nově atributy typu object, přístup buď přes rozhraní a nebo tlačítka zkopírovqt a vložit přes schránku a uložit a nahradit přes soubor. |
 | 30. 6. 2026 | Oprava | Opravena chyba v exportu do DOCX a PDF, kdy se někdy nevykreslovaly správně revize přes critic markup, pokud šlo o přímé nahrazení textu. DOCX nic takového neumí, takže teď je to odstraněný a za ním hned vložený text. |
 | 28. 6. 2026 | Oprava | Někdy se při složitých dotazech do databáze přes database placeholder nepromítla tabulka správně do zkopírovaného obsahu entity, opraveno. |
@@ -243,13 +271,11 @@ Webová aplikace pro správu znalostí s entitním modelem a aspekty. Podporuje 
 * Rozšiřitelnost pomocí datových vrstev a obsahových pluginů
 * Podporuje ukládání do GIT jako soubor či jako data objects.
 
-
 ### Dokumentace
 
 K dispozici je kompletní [[uživatelská příručka v češtině]](https://nastroje.egdilna.cz/dkm/docs-cs.md) a také [user guide in english](https://nastroje.egdilna.cz/dkm/docs-en.md)
 
 ### Historie změn a oprav
-
 
 
 | Datum | Typ | Popis |
@@ -265,10 +291,9 @@ K dispozici je kompletní [[uživatelská příručka v češtině]](https://nas
 
 ## Šablonář MDT
 
-
 ⛓️ [Nástroj Šablonář MDT](https://nastroje.egdilna.cz/mdt) je jednoduchý, univerzální a čistě webový nástroj pro tvorbu a vyplňování jakýchkoliv šablon čehokoliv, od jednoduchých formulářů až po rozsáhlé šablony strukturovaných dokumentů. Umožňuje nejen trovbu, ale především uživatelské vyplňování, ukládání rozpracovaných vyplnění a export i do DOCX s metadaty. Online běží na https://nastroje.egdilna.cz/mdt
 
-- [ ] přejmenovat ten include jako jsou ostatní a tedy o nástroji
+- [x] přejmenovat ten include jako jsou ostatní a tedy o nástroji
 
 ### ✏️Hlavní funkce
 
@@ -318,7 +343,6 @@ multisection
 #### Popis a účel
 
 TIN (Target instruction notation) je standard pro vytváření pokročilých instrukcí pro umělou inteligenci. S pomocí TIN standardu lze vytvořit precizně fungujícího agenta AI a velice snadno ovlivit, co a jak dělá a nedělá.
-
 
 #### Dokumentace
 
@@ -394,9 +418,9 @@ V případě zájmu natočíme stručné videonávody.
 #### ✏️Historie změn a oprav
 
 
-
 | Datum | Typ | Popis |
 | --- | --- | --- |
+| 9. 7. 2026 | Oprava | Opravena taková prapodivná chyba, kdy v české verzi se špatně v exportu do DOCX exportoval obsah markdown. V anglické to nedělalo a neptejte se mě proč. Opraveno tak, že jsem přešel na vlastní XML parser co využíváme i v ostatních nástrojích a je klid. |
 | 5. 7. 2026 | Funkce | Velká nová verze se spoustou funkcí a oprav (viz dokumentace). Třeba: Tlačítko Zpět už nezajíždí do editace a vedle něj přibylo rozbalovátko s historií navštívených entit a pohledů v rámci session. Sekce Odkazuje sem nyní zahrnuje i odkazy z atributů typu relace a z wiki-linků. Přibyla rychlá paleta příkazů Ctrl+P s fuzzy vyhledáváním nad entitami, pohledy a akcemi. V textových atributech fungují wiki-linky ve formátu [[Název entity]]. Po kliknutí na indikátor neuložených změn se otevře diff proti poslednímu uložení. Bulk režim umí sloučit vybrané entity do jedné cílové s přesměrováním všech vazeb. Přidán PlantUML export vazeb s výběrem stylu (class, component, use case). Seznam entit lze přepnout do zobrazení Kanban podle vybraného select atributu nebo Časové osy podle date atributu. K entitám lze přidávat komentáře s autorem z uživatelského nastavení a existuje samostatný pohled na komentáře napříč projektem. Nový typ přílohy Objekt drží pojmenovaný textový obsah s tlačítky pro kopírování, vkládání, uložení jako soubor a načtení nové verze. V aplikaci je nyní víc panelů (Ctrl+T pro nový, Ctrl+W pro zavření) s nezávislou prací na různých entitách. Detail entity jde otevřít v samostatném okně prohlížeče s automatickou synchronizací dat mezi okny přes BroadcastChannel. |
 
 
@@ -441,9 +465,9 @@ Správce záložek, bookmarků a odkazů
 #### ✏️Historie změn a oprav
 
 
-
 | Datum | Typ | Popis |
 | --- | --- | --- |
+| 9. 7. 2026 | Oprava | Opravena taková prapodivná chyba, kdy v české verzi se špatně v exportu do DOCX exportoval obsah markdown. V anglické to nedělalo a neptejte se mě proč. Opraveno tak, že jsem přešel na vlastní XML parser co využíváme i v ostatních nástrojích a je klid. |
 | 5. 7. 2026 | Funkce | Velká nová verze se spoustou funkcí a oprav (viz dokumentace). Třeba: Tlačítko Zpět už nezajíždí do editace a vedle něj přibylo rozbalovátko s historií navštívených entit a pohledů v rámci session. Sekce Odkazuje sem nyní zahrnuje i odkazy z atributů typu relace a z wiki-linků. Přibyla rychlá paleta příkazů Ctrl+P s fuzzy vyhledáváním nad entitami, pohledy a akcemi. V textových atributech fungují wiki-linky ve formátu [[Název entity]]. Po kliknutí na indikátor neuložených změn se otevře diff proti poslednímu uložení. Bulk režim umí sloučit vybrané entity do jedné cílové s přesměrováním všech vazeb. Přidán PlantUML export vazeb s výběrem stylu (class, component, use case). Seznam entit lze přepnout do zobrazení Kanban podle vybraného select atributu nebo Časové osy podle date atributu. K entitám lze přidávat komentáře s autorem z uživatelského nastavení a existuje samostatný pohled na komentáře napříč projektem. Nový typ přílohy Objekt drží pojmenovaný textový obsah s tlačítky pro kopírování, vkládání, uložení jako soubor a načtení nové verze. V aplikaci je nyní víc panelů (Ctrl+T pro nový, Ctrl+W pro zavření) s nezávislou prací na různých entitách. Detail entity jde otevřít v samostatném okně prohlížeče s automatickou synchronizací dat mezi okny přes BroadcastChannel. |
 
 
