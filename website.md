@@ -238,6 +238,7 @@ Existují
 | Datum | Typ | Popis |
 | --- | --- | --- |
 | 28. 7. 2026 | Oprava | Oprava korektoru češtiny, kdy při určitém výskytu některých písmen s diakritikou na konci slova chybně označoval za chybu a nabízel to samé slovo jako opravu. |
+| 28. 7. 2026 | Vylepšení | Nyní se při otevření entity překreslí adresa URL rovnou na tuto entitu, takže teď můžete odkazovat na konkrétní entitu a používat i funkce prohlížeče, jako jsou záložky a sdílení apod. |
 | 22. 7. 2026 | Vylepšení | V syntaxi databasetext výpisech lze teď do výsledku přidat nový řádek prostřednictvím zpětného lomítka n |
 | 22. 7. 2026 | Oprava | Opravena chyba, kdy se někdy nemusela načíst ze souboru nová verze uloženého objektu, pokud měla entita objekty. |
 | 20. 7. 2026 | Vylepšení | Kromě funkce database pro include tabulky z databáze je nová funkce databasetext která dle filtrů a stringu format vykreslí obsah databáze a jejích polí jako libovolný zahrnutý výstup. Tohle je hrozně univerzální parser skoro na všechno. A také doplněna nápověda o popis syntaxe. |
