@@ -13,6 +13,9 @@ Osobně moje favority jsou: [ArchiMate editor](#archimate), [PIM information man
 
 ## Novinky k našim nástrojům
 
+28.7.2026: Abyste neřekli, že vám taky nic nedopřeju, pamatujete si na Feather wiki? Malý jednosouborový wiki systém? Tak jsem konečně dodělal český překlad a českou skriptovou mutaci. Najdete to tady na https://nastroje.egdilna.cz/featherwiki ale je to nástroj EGdílny jen tak napůl.
+
+
 5.7.2026: Teď celý tenhle web spravuju a pushuju přes funkce nástroje PIM, ale to vás asi nezajímá. Co by vás ale zajímat mohlo je nový nástroj Outliner (jak název napovídá je to outliner editor) a dnes jsem vydal novou fakt nabušenou verzi DKM manažeru dat.
 
 
@@ -234,6 +237,7 @@ Existují
 
 | Datum | Typ | Popis |
 | --- | --- | --- |
+| 28. 7. 2026 | Oprava | Oprava korektoru češtiny, kdy při určitém výskytu některých písmen s diakritikou na konci slova chybně označoval za chybu a nabízel to samé slovo jako opravu. |
 | 22. 7. 2026 | Vylepšení | V syntaxi databasetext výpisech lze teď do výsledku přidat nový řádek prostřednictvím zpětného lomítka n |
 | 22. 7. 2026 | Oprava | Opravena chyba, kdy se někdy nemusela načíst ze souboru nová verze uloženého objektu, pokud měla entita objekty. |
 | 20. 7. 2026 | Vylepšení | Kromě funkce database pro include tabulky z databáze je nová funkce databasetext která dle filtrů a stringu format vykreslí obsah databáze a jejích polí jako libovolný zahrnutý výstup. Tohle je hrozně univerzální parser skoro na všechno. A také doplněna nápověda o popis syntaxe. |
