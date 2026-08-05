@@ -214,6 +214,17 @@ hr{border:none;border-top:1px solid #ddd;margin:1em 0}
         </select>
         <div id="statusHelp" class="help">Aktuální stav diagramu ve workflow. Zobrazí se v seznamu projektu za názvem v závorce a lze jej použít k filtrování.</div>
       </div>
+      <div class="field">
+        <label>
+          <input type="checkbox" id="diagramApplyHidden">
+          <span id="diagramApplyHiddenLabel">Aplikovat skrytí prvků při vykreslení</span>
+        </label>
+        <div id="diagramApplyHiddenHelp" class="help">Když je zaškrtnuto, náhled a export vygenerují jen viditelné prvky (výřez). Skryté prvky zůstávají v modelu, jen se dočasně nevykreslí.</div>
+      </div>
+      <div class="field">
+        <button type="button" id="btnManageHidden">Skrytí prvků…</button>
+        <div id="btnManageHiddenHelp" class="help">Otevře dialog pro hromadné zaškrtávání, které prvky skrýt / zobrazit.</div>
+      </div>
     </section>
 
     <section id="versionsSection" class="panel" aria-labelledby="versionsHeading">
@@ -516,6 +527,19 @@ hr{border:none;border-top:1px solid #ddd;margin:1em 0}
   <div class="dialog-actions">
     <button id="dlgClipboardOk" type="button">Načíst</button>
     <button id="dlgClipboardCancel" type="button">Zrušit</button>
+  </div>
+</dialog>
+<dialog id="dlgHiddenManager" aria-labelledby="dlgHiddenTitle">
+  <h2 id="dlgHiddenTitle">Skrytí prvků diagramu</h2>
+  <p class="help" id="dlgHiddenIntro">Zaškrtnutím prvku ho skryjete z vygenerovaného diagramu. Změny se aplikují okamžitě.</p>
+  <div id="dlgHiddenSummary" role="status" aria-live="polite" style="margin:.5em 0;font-weight:bold">Skryto: 0 z 0 prvků</div>
+  <div style="display:flex;gap:.5em;flex-wrap:wrap;margin:.5em 0">
+    <button type="button" id="dlgHiddenShowAll">Zobrazit vše</button>
+    <button type="button" id="dlgHiddenHideAll">Skrýt vše</button>
+  </div>
+  <div id="dlgHiddenList" style="max-height:60vh;overflow:auto;border:1px solid #ccc;padding:.5em;background:#fff"></div>
+  <div class="dialog-actions">
+    <button id="dlgHiddenClose" type="button">Zavřít</button>
   </div>
 </dialog>
 <script>
@@ -2364,6 +2388,129 @@ function setDone(d, id, value){
 }
 function toggleDone(d, id){
   setDone(d, id, !isDone(d, id));
+}
+
+// === SKRÝVÁNÍ PRVKŮ =========================================
+// Prvky se dají označit jako „skryté" — v modelu zůstávají (nesmažou se), ale
+// generator je při vykreslování diagramu vynechá. Skrytí je perzistentní.
+// Kaskádové chování: skrytý kontejner (balíček, systém, uzel) automaticky
+// skryje své přímé i tranzitivní potomky. Vazba se skryje, když je skrytý
+// kterýkoli z jejích konců.
+function isHidden(d, id){
+  return !!(d && d.hidden && d.hidden[id]);
+}
+function setHidden(d, id, value){
+  if(!d) return;
+  if(!d.hidden) d.hidden = {};
+  if(value) d.hidden[id] = true;
+  else delete d.hidden[id];
+  state.project.modified = nowIso();
+}
+function toggleHidden(d, id){
+  setHidden(d, id, !isHidden(d, id));
+}
+// Ověří, zda je prvek skrytý přímo NEBO tranzitivně kaskádou přes svého předka.
+// Prochází řetěz rodičů podle typu diagramu.
+function isEffectivelyHidden(d, id){
+  if(isHidden(d, id)) return true;
+  const m = (d && d.model) || {};
+  // Najdi rodiče podle typu — vrátí id rodiče nebo null
+  let parentId = null;
+  switch(d && d.type){
+    case 'class': {
+      const pkg = (m.packages || []).find(p => p.id === id);
+      const cls = (m.classes || []).find(c => c.id === id);
+      if(pkg && pkg.parentId) parentId = pkg.parentId;
+      else if(cls && cls.packageId) parentId = cls.packageId;
+      break;
+    }
+    case 'usecase': {
+      const uc = (m.useCases || []).find(u => u.id === id);
+      if(uc && uc.systemId) parentId = uc.systemId;
+      break;
+    }
+    case 'component': {
+      const comp = (m.components || []).find(c => c.id === id);
+      const iface = (m.interfaces || []).find(i => i.id === id);
+      if(comp && comp.groupId) parentId = comp.groupId;
+      else if(iface && iface.groupId) parentId = iface.groupId;
+      break;
+    }
+    case 'deployment': {
+      const nd = (m.nodes || []).find(n => n.id === id);
+      if(nd && nd.parentId) parentId = nd.parentId;
+      break;
+    }
+  }
+  if(parentId) return isEffectivelyHidden(d, parentId);
+  return false;
+}
+// Vrátí důvod „auto-skrytí" pokud prvek dědí skrytí od předka. Pro UI dialogu.
+// Vrátí ID nejbližšího skrytého předka, nebo null.
+function findHidingAncestor(d, id){
+  const m = (d && d.model) || {};
+  function parentOf(childId){
+    switch(d && d.type){
+      case 'class': {
+        const pkg = (m.packages || []).find(p => p.id === childId);
+        if(pkg && pkg.parentId) return pkg.parentId;
+        const cls = (m.classes || []).find(c => c.id === childId);
+        if(cls && cls.packageId) return cls.packageId;
+        break;
+      }
+      case 'usecase': {
+        const uc = (m.useCases || []).find(u => u.id === childId);
+        if(uc && uc.systemId) return uc.systemId;
+        break;
+      }
+      case 'component': {
+        const comp = (m.components || []).find(c => c.id === childId);
+        if(comp && comp.groupId) return comp.groupId;
+        const iface = (m.interfaces || []).find(i => i.id === childId);
+        if(iface && iface.groupId) return iface.groupId;
+        break;
+      }
+      case 'deployment': {
+        const nd = (m.nodes || []).find(n => n.id === childId);
+        if(nd && nd.parentId) return nd.parentId;
+        break;
+      }
+    }
+    return null;
+  }
+  let cur = parentOf(id);
+  while(cur){
+    if(isHidden(d, cur)) return cur;
+    cur = parentOf(cur);
+  }
+  return null;
+}
+// Pro vazbu vrátí ID skrytého konce (source nebo target), pokud jsou skryté.
+// Vazba je „auto-skrytá", když je alespoň jeden z jejích konců skrytý.
+function findHidingEndpoint(d, rel){
+  if(!rel) return null;
+  // Class diagram používá sourceClassId/targetClassId, ostatní sourceId/targetId
+  const srcId = rel.sourceClassId != null ? rel.sourceClassId : rel.sourceId;
+  const tgtId = rel.targetClassId != null ? rel.targetClassId : rel.targetId;
+  if(srcId && isEffectivelyHidden(d, srcId)) return srcId;
+  if(tgtId && isEffectivelyHidden(d, tgtId)) return tgtId;
+  return null;
+}
+// Zkrácená kontrola „má se prvek vygenerovat do PlantUML" — respektuje jak
+// vlastní skrytí, tak kaskádu i skrytí přes vazbu. Volá se z generátorů.
+// Vazba se skryje i když je auto-skrytá kvůli skrytému konci.
+function shouldGenerateElement(d, id){
+  // Skrytí se aplikuje jen když je zapnutý přepínač d.settings.applyHidden
+  const settings = (d && d.settings) || {};
+  if(!settings.applyHidden) return true;
+  return !isEffectivelyHidden(d, id);
+}
+function shouldGenerateRelationship(d, rel){
+  const settings = (d && d.settings) || {};
+  if(!settings.applyHidden) return true;
+  if(!rel) return true;
+  if(isHidden(d, rel.id)) return false;
+  return findHidingEndpoint(d, rel) === null;
 }
 
 // Vrátí pole id přímých potomků (jedna úroveň) prvku podle typu diagramu.
@@ -5575,23 +5722,23 @@ function generatePuml(diagram){
   }
   out.push('');
   switch(diagram.type){
-    case 'activity': out.push(genActivity(diagram.model)); break;
-    case 'class': out.push(genClass(diagram.model)); break;
-    case 'sequence': out.push(genSequence(diagram.model)); break;
-    case 'usecase': out.push(genUseCase(diagram.model)); break;
-    case 'state': out.push(genState(diagram.model)); break;
-    case 'component': out.push(genComponent(diagram.model)); break;
-    case 'deployment': out.push(genDeployment(diagram.model)); break;
-    case 'network': out.push(genNetwork(diagram.model)); break;
-    case 'timing': out.push(genTiming(diagram.model)); break;
-    case 'mindmap': out.push(genMindmap(diagram.model)); break;
-    case 'wbs': out.push(genWbs(diagram.model)); break;
+    case 'activity': out.push(genActivity(diagram.model, diagram)); break;
+    case 'class': out.push(genClass(diagram.model, diagram)); break;
+    case 'sequence': out.push(genSequence(diagram.model, diagram)); break;
+    case 'usecase': out.push(genUseCase(diagram.model, diagram)); break;
+    case 'state': out.push(genState(diagram.model, diagram)); break;
+    case 'component': out.push(genComponent(diagram.model, diagram)); break;
+    case 'deployment': out.push(genDeployment(diagram.model, diagram)); break;
+    case 'network': out.push(genNetwork(diagram.model, diagram)); break;
+    case 'timing': out.push(genTiming(diagram.model, diagram)); break;
+    case 'mindmap': out.push(genMindmap(diagram.model, diagram)); break;
+    case 'wbs': out.push(genWbs(diagram.model, diagram)); break;
   }
   out.push('@end' + wrapKw);
   return out.join('\n');
 }
 
-function genActivity(model){
+function genActivity(model, diagram){
   const out = [];
 
   // Auto-registrace plavacích drah: dráhy, na které odkazují akce, se automaticky
@@ -5835,10 +5982,16 @@ function emitStandaloneNotes(out, notes, refResolver){
   });
 }
 
-function genClass(model){
+function genClass(model, diagram){
   const out = [];
-  const pkgs = model.packages || [];
-  const classes = model.classes || [];
+  const rawPkgs = model.packages || [];
+  const rawClasses = model.classes || [];
+  const rawRels = model.relationships || [];
+  // Aplikace skrytí — pokud je zapnuté v nastavení, filtrujeme kolekce.
+  const showAll = !diagram || !(diagram.settings && diagram.settings.applyHidden);
+  const pkgs = showAll ? rawPkgs : rawPkgs.filter(p => !isEffectivelyHidden(diagram, p.id));
+  const classes = showAll ? rawClasses : rawClasses.filter(c => !isEffectivelyHidden(diagram, c.id));
+  const rels = showAll ? rawRels : rawRels.filter(r => shouldGenerateRelationship(diagram, r));
   const childrenOf = {};
   pkgs.forEach(p => childrenOf[p.id] = []);
   pkgs.forEach(p => { if(p.parentId && childrenOf[p.parentId]) childrenOf[p.parentId].push(p); });
@@ -5942,7 +6095,7 @@ function genClass(model){
     inheritance:'--|>', realization:'..|>', composition:'--*',
     aggregation:'--o', association:'--', dependency:'<..'
   };
-  (model.relationships || []).forEach(r => {
+  rels.forEach(r => {
     const from = classes.find(c => c.id === r.sourceClassId);
     const to = classes.find(c => c.id === r.targetClassId);
     if(!from || !to) return;
@@ -5962,14 +6115,17 @@ function genClass(model){
     }
   });
   // Samostatné poznámky (volně plovoucí). attachTo (id třídy) je volitelné.
-  emitStandaloneNotes(out, model.notes, id => {
+  const filteredNotes = showAll ? (model.notes || [])
+    : (model.notes || []).filter(n => !isHidden(diagram, n.id) &&
+        (!n.attachTo || !isEffectivelyHidden(diagram, n.attachTo)));
+  emitStandaloneNotes(out, filteredNotes, id => {
     const tgt = classes.find(c => c.id === id);
     return tgt ? classRef(tgt) : null;
   });
   return out.join('\n');
 }
 
-function genSequence(model){
+function genSequence(model, diagram){
   const out = [];
   const participants = model.participants || [];
   const boxes = model.boxes || [];
@@ -6083,7 +6239,7 @@ function genSequence(model){
   return out.join('\n');
 }
 
-function genUseCase(model){
+function genUseCase(model, diagram){
   const out = [];
   const actors = model.actors || [];
   const useCases = model.useCases || [];
@@ -6188,7 +6344,7 @@ function genUseCase(model){
 }
 
 // === GENERÁTOR: STATE =========================================
-function genState(model){
+function genState(model, diagram){
   const out = [];
   const states = model.states || [];
   const transitions = model.transitions || [];
@@ -6262,7 +6418,7 @@ function genState(model){
 }
 
 // === GENERÁTOR: COMPONENT =====================================
-function genComponent(model){
+function genComponent(model, diagram){
   const out = [];
   const components = model.components || [];
   const interfaces = model.interfaces || [];
@@ -6397,7 +6553,7 @@ const DEPLOY_TYPES = [
   {value:'package',    kw:'package'},
   {value:'usecase',    kw:'usecase'}
 ];
-function genDeployment(model){
+function genDeployment(model, diagram){
   const out = [];
   const nodes = model.nodes || [];
   const relationships = model.relationships || [];
@@ -6469,7 +6625,7 @@ const NWDIAG_SHAPES = [
   {value:'node', label:'uzel'}, {value:'database', label:'databáze'}, {value:'cloud', label:'oblak'},
   {value:'storage', label:'úložiště'}, {value:'queue', label:'fronta'}, {value:'actor', label:'aktér'}
 ];
-function genNetwork(model){
+function genNetwork(model, diagram){
   // nwdiag se vkládá dovnitř @startuml jako blok `nwdiag { ... }`,
   // aby fungovaly title/header/footer z generatePuml.
   const out = [];
@@ -6911,13 +7067,13 @@ function _mmEmitNode(out, kind, node, level){
   }
   (node.children || []).forEach(c => _mmEmitNode(out, kind, c, level + 1));
 }
-function genMindmap(model){
+function genMindmap(model, diagram){
   const out = [];
   _mmEmitStyleBlock(out, model);
   (model.roots || []).forEach(root => _mmEmitNode(out, 'mindmap', root, 1));
   return out.join('\n');
 }
-function genWbs(model){
+function genWbs(model, diagram){
   const out = [];
   _mmEmitStyleBlock(out, model);
   (model.roots || []).forEach(root => _mmEmitNode(out, 'wbs', root, 1));
@@ -6955,7 +7111,7 @@ function _mmEmitStyleBlock(out, model){
 }
 
 // === GENERÁTOR: TIMING =======================================
-function genTiming(model){
+function genTiming(model, diagram){
   const out = [];
   const participants = model.participants || [];
   const frames = (model.frames || []).slice().sort((a,b) => (parseFloat(a.time)||0) - (parseFloat(b.time)||0));
@@ -7945,13 +8101,15 @@ function pathEqual(a, b){
   return true;
 }
 
-function treeItem(label, badgeText, badgeClass, isSelected, onSelect, extraButtons, doneInfo){
+function treeItem(label, badgeText, badgeClass, isSelected, onSelect, extraButtons, doneInfo, hiddenFlag){
   // Položka seznamu prvků: odkaz pro otevření detailu + tlačítka pro akce.
   // Odkaz (nikoli tlačítko) protože sémanticky jde o navigaci na detail prvku.
   // Akce (přesun, smazat) zůstávají tlačítka — to jsou akce, ne navigace.
   // doneInfo (volitelné): { isDone, onToggle } — vykreslí zaškrtávátko vlevo.
+  // hiddenFlag (volitelné): boolean — pokud true, přidá vizuální indikaci
+  //   skrytí (přeškrtnutí + prefix ⊘) a aria hlásí „skrytý".
   const item = document.createElement('div');
-  item.className = 'tree-item' + (isSelected ? ' selected' : '');
+  item.className = 'tree-item' + (isSelected ? ' selected' : '') + (hiddenFlag ? ' is-hidden' : '');
   // Checkbox „hotovo" — pokud byl předán doneInfo, vykreslí se před labelem.
   if(doneInfo){
     const cb = document.createElement('input');
@@ -7969,20 +8127,25 @@ function treeItem(label, badgeText, badgeClass, isSelected, onSelect, extraButto
   const a = document.createElement('a');
   a.href = '#';
   a.className = 'label';
-  // aria-label = celý popis pro screen reader (badge slovně + jméno + stav).
-  // Emoji 🔗 (značka sdíleného prvku) nahradíme slovem „sdílený", aby ho
-  // screen reader přečetl srozumitelně. Stereotypy v <<...>> obalech
-  // ponecháme jen jejich obsah (čteno přirozeně), místo doslovných „menší
-  // než menší než", které čte většina screen readerů.
   const ariaParts = [];
   if(badgeText) ariaParts.push(badgeText);
   const ariaLabel = L.fn.nameOr(label)
     .replace(/^🔗\s*/, L.fn.sharedPrefix)
     .replace(/<<([^>]+)>>/g, '$1');
   ariaParts.push(ariaLabel);
+  if(hiddenFlag) ariaParts.push(getLang() === 'en' ? 'hidden' : 'skrytý');
   a.setAttribute('aria-label', ariaParts.join(' ') + (isSelected ? '' + L.fn.selected : ''));
   if(isSelected) a.setAttribute('aria-current', 'true');
   // visuální obsah
+  if(hiddenFlag){
+    const hidMark = document.createElement('span');
+    hidMark.setAttribute('aria-hidden', 'true');
+    hidMark.style.color = '#a60';
+    hidMark.style.marginRight = '.3em';
+    hidMark.title = getLang() === 'en' ? 'Hidden in diagram' : 'Skrytý v diagramu';
+    hidMark.textContent = '⊘';
+    a.appendChild(hidMark);
+  }
   if(badgeText){
     const badge = document.createElement('span');
     badge.className = 'badge ' + (badgeClass || '');
@@ -7991,7 +8154,13 @@ function treeItem(label, badgeText, badgeClass, isSelected, onSelect, extraButto
     a.appendChild(badge);
     a.appendChild(document.createTextNode(' '));
   }
-  a.appendChild(document.createTextNode(L.fn.nameOr(label)));
+  const nameSpan = document.createElement('span');
+  if(hiddenFlag){
+    nameSpan.style.textDecoration = 'line-through';
+    nameSpan.style.color = '#888';
+  }
+  nameSpan.textContent = L.fn.nameOr(label);
+  a.appendChild(nameSpan);
   a.addEventListener('click', (e) => { e.preventDefault(); onSelect(); });
   item.appendChild(a);
   if(extraButtons) extraButtons.forEach(b => item.appendChild(b));
@@ -8489,10 +8658,6 @@ function renderModelToolbar(d){
 function renderModelTree(d){
   const root = document.getElementById('modelTree');
   clear(root);
-  // Filtr „hotovo / nehotovo" pro celý strom — radio-style trojice tlačítek.
-  // Filtruje pouze prvky, které mají vlastní id v modelu. Skupiny nadřazené
-  // (kontejnery, jako třídy/sítě v Network), které samy nemají id, se vždy
-  // zobrazují, aby strom zůstal navigovatelný.
   root.appendChild(renderTreeFilter());
   switch(d.type){
     case 'activity': renderActivityTree(d, root); break;
@@ -8510,6 +8675,75 @@ function renderModelTree(d){
     case 'mindmap': renderMindmapTree(d, root); break;
     case 'wbs': renderWbsTree(d, root); break;
   }
+  // Po vykreslení stromu označíme položky, jejichž prvek je skrytý (přímo nebo
+  // kaskádou). Pracujeme přes shodu ID: každý tree item ukládáme s data-elem-id,
+  // ale zpětně kompatibilní řešení: projdeme aktivní zaškrtávátka „done" a
+  // najdeme jejich rodičovský .tree-item podle CSS. Efektivnější: procházíme
+  // v každé render funkci — ale tady to uděláme retroaktivně, ať to funguje
+  // pro všechny typy diagramů bez úprav v každé z nich.
+  _markHiddenTreeItems(d, root);
+}
+
+// Retroaktivní post-processing stromu: přejde všechny .tree-item a pokud
+// najde odpovídající prvek s isHidden, přidá CSS class + textové mírky.
+// Skenuje modelové kolekce a hledá tree-items obsahující jméno prvku;
+// **funguje jen jako grafická nápověda** — kanonický zdroj pravdy pro
+// generator je nezávislý.
+function _markHiddenTreeItems(d, root){
+  if(!d || !d.hidden) return;
+  const hiddenIds = Object.keys(d.hidden).filter(id => d.hidden[id]);
+  if(!hiddenIds.length && !d.settings || !d.settings.applyHidden) {
+    // Nemá smysl skenovat, když nic není skryté ani kaskáda
+    if(!hiddenIds.length) return;
+  }
+  const m = d.model || {};
+  // Sestavíme mapu id → název pro rychlé zpětné dohledání
+  const idToName = {};
+  const collections = [m.classes, m.packages, m.actors, m.useCases, m.systems,
+                       m.components, m.interfaces, m.groups, m.nodes,
+                       m.tasks, m.milestones, m.events, m.periods,
+                       m.rules, m.participants, m.states, m.notes, m.relationships];
+  for(const arr of collections){
+    if(!arr) continue;
+    for(const it of arr){
+      if(it && it.id){
+        const eff = (typeof effective === 'function') ? effective(it) : it;
+        idToName[it.id] = eff.name || eff.label || eff.text || it.alias || it.id;
+      }
+    }
+  }
+  // Projdeme všechny tree-item elementy a označíme ty, jejichž label
+  // odpovídá jménu skrytého (přímo nebo kaskádou) prvku.
+  const items = root.querySelectorAll('.tree-item');
+  items.forEach(item => {
+    const labelEl = item.querySelector('a.label');
+    if(!labelEl) return;
+    const text = labelEl.textContent.trim();
+    // Zkusíme najít prvek podle jména; pokud je skrytý, přidáme třídu
+    for(const id of Object.keys(idToName)){
+      const name = idToName[id];
+      if(!name) continue;
+      // Musí být přesná shoda (nebo shoda po odstranění markerů — badge není v textContent u <a>)
+      if(text === name || text.endsWith(' ' + name) || text.startsWith(name)){
+        if(isEffectivelyHidden(d, id)){
+          item.classList.add('is-hidden');
+          // Přidat vizuální prefix a přeškrtnutí, pokud tam ještě není
+          if(!labelEl.querySelector('.hidden-mark')){
+            const mark = document.createElement('span');
+            mark.className = 'hidden-mark';
+            mark.setAttribute('aria-hidden', 'true');
+            mark.style.color = '#a60';
+            mark.style.marginRight = '.3em';
+            mark.textContent = '⊘';
+            labelEl.insertBefore(mark, labelEl.firstChild);
+          }
+          labelEl.style.textDecoration = 'line-through';
+          labelEl.style.opacity = '0.6';
+        }
+        break;
+      }
+    }
+  });
 }
 
 // Vrátí element s tlačítky pro filtr stromu. Globální state.treeFilter řídí,
@@ -9383,7 +9617,67 @@ function renderDetail(d){
     case 'mindmap': renderMindmapDetail(d, root); break;
     case 'wbs': renderWbsDetail(d, root); break;
   }
+  // Zaškrtávátko „Skrýt tento prvek v diagramu" — přidá se na konec detailu
+  // každého prvku, který má ID (tj. je adresovatelný ve stromu).
+  _appendHiddenToggle(d, root);
 }
+
+// Přidá do detail panelu checkbox pro skrytí aktuálně vybraného prvku.
+// Selected path může být kolekce ('classes', 'relationships', …) + index, nebo
+// hierarchická cesta pro mindmap/WBS. Vyhledá odpovídající prvek a jeho ID.
+function _appendHiddenToggle(d, root){
+  const p = state.selectedPath;
+  if(!p || !p.length) return;
+  const m = d && d.model;
+  if(!m) return;
+  // Najdi prvek podle path
+  let elem = null;
+  if(p[0] === 'roots'){
+    // Mindmap / WBS — cesta ['roots', i, j, k, …] přes children
+    let node = (m.roots || [])[p[1]];
+    for(let i = 2; i < p.length; i++){
+      if(!node) break;
+      node = (node.children || [])[p[i]];
+    }
+    elem = node;
+  } else {
+    // Ostatní: p = [arrName, idx]
+    const arr = m[p[0]];
+    if(Array.isArray(arr) && typeof p[1] === 'number') elem = arr[p[1]];
+  }
+  if(!elem || !elem.id) return;
+  const id = elem.id;
+  const isEn = getLang() === 'en';
+  const cbId = 'detail_hidden_' + id;
+  const wrap = el('section', { class:'hidden-toggle',
+    style:'margin-top:1em;padding:.5em;border-top:1px solid #ccc' });
+  const cb = el('input', { type:'checkbox', id: cbId });
+  cb.checked = isHidden(d, id);
+  const lbl = el('label', { for: cbId, style:'margin-left:.3em;cursor:pointer' },
+    isEn ? 'Hide this element in the rendered diagram' : 'Skrýt tento prvek ve vykresleném diagramu');
+  cb.addEventListener('change', () => {
+    setHidden(d, id, cb.checked);
+    touchDiagram(d);
+    try { renderApp(); } catch(e){}
+  });
+  wrap.appendChild(cb);
+  wrap.appendChild(lbl);
+  // Ukázat, jestli je prvek auto-skrytý přes rodiče (i když checkbox není zaškrtnutý)
+  const anc = findHidingAncestor(d, id);
+  if(anc && !cb.checked){
+    const m2 = d.model;
+    let ancName = anc;
+    for(const arr of [m2.packages, m2.systems, m2.components, m2.groups, m2.nodes]){
+      if(!arr) continue;
+      const it = arr.find(x => x && x.id === anc);
+      if(it){ ancName = (typeof effective === 'function' ? effective(it).name : it.name) || it.alias || anc; break; }
+    }
+    wrap.appendChild(el('div', { class:'help', style:'margin-top:.3em;color:#a60' },
+      (isEn ? 'This element is automatically hidden via parent: ' : 'Tento prvek je automaticky skrytý přes rodiče: ') + ancName));
+  }
+  root.appendChild(wrap);
+}
+
 
 function field(label, control, helpText){
   const f = el('div',{class:'field'});
@@ -13718,6 +14012,283 @@ async function deleteDiagramAction(){
 }
 
 // === VERZE ====================================================
+// === DIALOG: HROMADNÉ SKRYTÍ PRVKŮ ============================
+// Otevírá modal, kde uživatel může zaškrtávat/odškrtávat, které prvky jsou
+// skryté. Zobrazuje sekce podle typu (třídy, balíčky, vazby, …). Změny se
+// aplikují okamžitě (bez OK/Storno) — dialog má jen tlačítko Zavřít.
+
+let _hiddenMgrDiagram = null;
+
+function openHiddenManager(d){
+  if(!d) return;
+  _hiddenMgrDiagram = d;
+  d.hidden = d.hidden || {};
+  _renderHiddenManager();
+  document.getElementById('dlgHiddenManager').showModal();
+}
+
+// Enumeruje všechny skrývatelné prvky diagramu, seskupené podle typu.
+// Vrací pole { title, items:[{id, label, indent, autoHiddenBy}] }.
+// `indent` je hloubka (pro vizuální zanoření), `autoHiddenBy` je textový důvod
+// kaskádového skrytí (jméno rodiče nebo skrytého konce vazby), nebo null.
+function _enumerateHidableElements(d){
+  const m = (d && d.model) || {};
+  const sections = [];
+  const isEn = getLang() === 'en';
+
+  function push(sectionTitle, items){
+    if(items && items.length) sections.push({ title: sectionTitle, items });
+  }
+  function nameOf(id){
+    // Najde jméno prvku podle ID napříč běžnými kolekcemi
+    for(const arr of [m.classes, m.packages, m.actors, m.useCases, m.systems,
+                       m.components, m.interfaces, m.groups, m.nodes,
+                       m.tasks, m.milestones, m.events, m.periods,
+                       m.rules, m.participants, m.states]){
+      if(!arr) continue;
+      for(const it of arr){
+        if(it && it.id === id){
+          const eff = (typeof effective === 'function') ? effective(it) : it;
+          return eff.name || eff.label || eff.text || it.alias || id;
+        }
+      }
+    }
+    return id;
+  }
+  function autoHiddenNote(id){
+    const anc = findHidingAncestor(d, id);
+    if(anc) return (isEn ? 'auto-hidden via: ' : 'auto-skryto přes: ') + nameOf(anc);
+    return null;
+  }
+  function relAutoNote(rel){
+    const endId = findHidingEndpoint(d, rel);
+    if(endId) return (isEn ? 'auto-hidden: endpoint ' : 'auto-skryto: konec ') + nameOf(endId);
+    return null;
+  }
+  function relLabel(rel){
+    const srcId = rel.sourceClassId != null ? rel.sourceClassId : rel.sourceId;
+    const tgtId = rel.targetClassId != null ? rel.targetClassId : rel.targetId;
+    const s = nameOf(srcId);
+    const t = nameOf(tgtId);
+    const typ = rel.type ? ' (' + rel.type + ')' : '';
+    const lbl = rel.label ? ': ' + rel.label : '';
+    return s + ' → ' + t + typ + lbl;
+  }
+
+  switch(d.type){
+    case 'class': {
+      // Balíčky s odsazením podle vnoření
+      function walkPkg(parentId, level){
+        const items = [];
+        (m.packages||[]).forEach(p => {
+          if((p.parentId || null) === parentId){
+            items.push({ id: p.id, label: L.fn.nameOr(p.name), indent: level,
+              autoHiddenBy: parentId ? autoHiddenNote(p.id) : null });
+            walkPkg(p.id, level + 1).forEach(x => items.push(x));
+          }
+        });
+        return items;
+      }
+      const pkgs = walkPkg(null, 0);
+      push(isEn ? 'Packages (' + pkgs.length + ')' : 'Balíčky (' + pkgs.length + ')', pkgs);
+      const classes = (m.classes||[]).map(c => ({
+        id: c.id, label: L.fn.nameOr(effective(c).name), indent: 0,
+        autoHiddenBy: autoHiddenNote(c.id)
+      }));
+      push(isEn ? 'Classes (' + classes.length + ')' : 'Třídy (' + classes.length + ')', classes);
+      const rels = (m.relationships||[]).map(r => ({
+        id: r.id, label: relLabel(r), indent: 0, autoHiddenBy: relAutoNote(r)
+      }));
+      push(isEn ? 'Relationships (' + rels.length + ')' : 'Vazby (' + rels.length + ')', rels);
+      break;
+    }
+    case 'usecase': {
+      const systems = (m.systems||[]).map(s => ({
+        id: s.id, label: L.fn.nameOr(s.name), indent: 0, autoHiddenBy: null
+      }));
+      push(isEn ? 'Systems (' + systems.length + ')' : 'Systémy (' + systems.length + ')', systems);
+      const actors = (m.actors||[]).map(a => ({
+        id: a.id, label: L.fn.nameOr(a.name), indent: 0, autoHiddenBy: null
+      }));
+      push(isEn ? 'Actors (' + actors.length + ')' : 'Aktéři (' + actors.length + ')', actors);
+      const ucs = (m.useCases||[]).map(u => ({
+        id: u.id, label: L.fn.nameOr(u.name), indent: u.systemId ? 1 : 0,
+        autoHiddenBy: autoHiddenNote(u.id)
+      }));
+      push(isEn ? 'Use cases (' + ucs.length + ')' : 'Případy užití (' + ucs.length + ')', ucs);
+      const rels = (m.relationships||[]).map(r => ({
+        id: r.id, label: relLabel(r), indent: 0, autoHiddenBy: relAutoNote(r)
+      }));
+      push(isEn ? 'Relationships (' + rels.length + ')' : 'Vazby (' + rels.length + ')', rels);
+      break;
+    }
+    case 'component': {
+      const groups = (m.groups||[]).map(g => ({
+        id: g.id, label: L.fn.nameOr(g.name), indent: 0, autoHiddenBy: null
+      }));
+      push(isEn ? 'Groups (' + groups.length + ')' : 'Skupiny (' + groups.length + ')', groups);
+      const comps = (m.components||[]).map(c => ({
+        id: c.id, label: L.fn.nameOr(effective(c).name), indent: c.groupId ? 1 : 0,
+        autoHiddenBy: autoHiddenNote(c.id)
+      }));
+      push(isEn ? 'Components (' + comps.length + ')' : 'Komponenty (' + comps.length + ')', comps);
+      const ifaces = (m.interfaces||[]).map(i => ({
+        id: i.id, label: L.fn.nameOr(i.name), indent: i.groupId ? 1 : 0,
+        autoHiddenBy: autoHiddenNote(i.id)
+      }));
+      push(isEn ? 'Interfaces (' + ifaces.length + ')' : 'Rozhraní (' + ifaces.length + ')', ifaces);
+      const rels = (m.relationships||[]).map(r => ({
+        id: r.id, label: relLabel(r), indent: 0, autoHiddenBy: relAutoNote(r)
+      }));
+      push(isEn ? 'Connections (' + rels.length + ')' : 'Propojení (' + rels.length + ')', rels);
+      break;
+    }
+    case 'deployment': {
+      function walkNode(parentId, level){
+        const items = [];
+        (m.nodes||[]).forEach(n => {
+          if((n.parentId || null) === parentId){
+            items.push({ id: n.id, label: L.fn.nameOr(n.name), indent: level,
+              autoHiddenBy: parentId ? autoHiddenNote(n.id) : null });
+            walkNode(n.id, level + 1).forEach(x => items.push(x));
+          }
+        });
+        return items;
+      }
+      const nodes = walkNode(null, 0);
+      push(isEn ? 'Nodes (' + nodes.length + ')' : 'Uzly (' + nodes.length + ')', nodes);
+      const rels = (m.relationships||[]).map(r => ({
+        id: r.id, label: relLabel(r), indent: 0, autoHiddenBy: relAutoNote(r)
+      }));
+      push(isEn ? 'Arrows (' + rels.length + ')' : 'Šipky (' + rels.length + ')', rels);
+      break;
+    }
+    case 'network': {
+      const nets = (m.networks||[]).map(n => ({
+        id: n.id, label: L.fn.nameOr(n.name), indent: 0, autoHiddenBy: null
+      }));
+      push(isEn ? 'Networks (' + nets.length + ')' : 'Sítě (' + nets.length + ')', nets);
+      const nodes = (m.nodes||[]).map(n => ({
+        id: n.id, label: L.fn.nameOr(n.name), indent: 0, autoHiddenBy: null
+      }));
+      push(isEn ? 'Nodes (' + nodes.length + ')' : 'Uzly (' + nodes.length + ')', nodes);
+      break;
+    }
+    case 'gantt': {
+      const tasks = (m.tasks||[]).map(t => ({
+        id: t.id, label: L.fn.nameOr(t.label), indent: 0, autoHiddenBy: null
+      }));
+      push(isEn ? 'Tasks (' + tasks.length + ')' : 'Úlohy (' + tasks.length + ')', tasks);
+      const ms = (m.milestones||[]).map(x => ({
+        id: x.id, label: L.fn.nameOr(x.label), indent: 0, autoHiddenBy: null
+      }));
+      push(isEn ? 'Milestones (' + ms.length + ')' : 'Milníky (' + ms.length + ')', ms);
+      break;
+    }
+    case 'timeline': {
+      const evs = (m.events||[]).map(e => ({
+        id: e.id, label: L.fn.nameOr(e.label), indent: 0, autoHiddenBy: null
+      }));
+      push(isEn ? 'Events (' + evs.length + ')' : 'Události (' + evs.length + ')', evs);
+      const pers = (m.periods||[]).map(p => ({
+        id: p.id, label: L.fn.nameOr(p.label), indent: 0, autoHiddenBy: null
+      }));
+      push(isEn ? 'Periods (' + pers.length + ')' : 'Období (' + pers.length + ')', pers);
+      break;
+    }
+    case 'ebnf': {
+      const rules = (m.rules||[]).map(r => ({
+        id: r.id, label: L.fn.nameOr(r.name), indent: 0, autoHiddenBy: null
+      }));
+      push(isEn ? 'Rules (' + rules.length + ')' : 'Pravidla (' + rules.length + ')', rules);
+      break;
+    }
+    // Poznámky u všech diagramů (pokud jsou)
+  }
+  const notes = (m.notes || []).map((n, i) => ({
+    id: n.id || ('__note_' + i),
+    label: (n.text || '(prázdná)').split(/\r?\n/)[0].slice(0, 60),
+    indent: 0, autoHiddenBy: null
+  }));
+  if(notes.length) push(isEn ? 'Notes (' + notes.length + ')' : 'Poznámky (' + notes.length + ')', notes);
+
+  return sections;
+}
+
+function _renderHiddenManager(){
+  const d = _hiddenMgrDiagram;
+  if(!d) return;
+  const isEn = getLang() === 'en';
+  const list = document.getElementById('dlgHiddenList');
+  const summary = document.getElementById('dlgHiddenSummary');
+  const title = document.getElementById('dlgHiddenTitle');
+  const intro = document.getElementById('dlgHiddenIntro');
+  const showAll = document.getElementById('dlgHiddenShowAll');
+  const hideAll = document.getElementById('dlgHiddenHideAll');
+  const closeBtn = document.getElementById('dlgHiddenClose');
+  title.textContent = isEn ? 'Element hiding' : 'Skrytí prvků diagramu';
+  intro.textContent = isEn
+    ? 'Check an element to hide it from the rendered diagram. Changes apply immediately.'
+    : 'Zaškrtnutím prvku ho skryjete z vygenerovaného diagramu. Změny se aplikují okamžitě.';
+  showAll.textContent = isEn ? 'Show all' : 'Zobrazit vše';
+  hideAll.textContent = isEn ? 'Hide all' : 'Skrýt vše';
+  closeBtn.textContent = isEn ? 'Close' : 'Zavřít';
+
+  clear(list);
+  const sections = _enumerateHidableElements(d);
+  let totalCount = 0;
+  let hiddenCount = 0;
+  const allIds = [];
+  sections.forEach(sec => {
+    const fs = el('fieldset', { style:'margin:.5em 0;padding:.5em;border:1px solid #ccc' });
+    fs.appendChild(el('legend', { style:'font-weight:bold' }, sec.title));
+    sec.items.forEach(item => {
+      totalCount++;
+      allIds.push(item.id);
+      if(isHidden(d, item.id)) hiddenCount++;
+      const row = el('div', { style:'margin:.15em 0;padding-left:' + (item.indent * 1.5) + 'em' });
+      const cbId = 'hm_' + item.id;
+      const cb = el('input', { type:'checkbox', id: cbId });
+      cb.checked = isHidden(d, item.id);
+      const lbl = el('label', { for: cbId, style:'margin-left:.3em;cursor:pointer' }, item.label);
+      cb.addEventListener('change', () => {
+        setHidden(d, item.id, cb.checked);
+        // Aktualizujeme labelu (přeškrtnutí) + summary + auto-poznámky u ostatních
+        _renderHiddenManager();
+      });
+      // Vizuál: pokud skrytý (přímo nebo auto), přeškrtnutý
+      if(cb.checked || item.autoHiddenBy){
+        lbl.style.textDecoration = 'line-through';
+        lbl.style.color = '#888';
+      }
+      row.appendChild(cb);
+      row.appendChild(lbl);
+      if(item.autoHiddenBy){
+        row.appendChild(el('span', { style:'margin-left:.5em;font-size:.85em;color:#888;font-style:italic' },
+          '(' + item.autoHiddenBy + ')'));
+      }
+      fs.appendChild(row);
+    });
+    list.appendChild(fs);
+  });
+
+  summary.textContent = isEn
+    ? 'Hidden: ' + hiddenCount + ' of ' + totalCount + ' elements'
+    : 'Skryto: ' + hiddenCount + ' z ' + totalCount + ' prvků';
+
+  showAll.onclick = () => {
+    d.hidden = {};
+    touchDiagram(d);
+    _renderHiddenManager();
+  };
+  hideAll.onclick = () => {
+    d.hidden = d.hidden || {};
+    allIds.forEach(id => { d.hidden[id] = true; });
+    touchDiagram(d);
+    _renderHiddenManager();
+  };
+}
+
 function renderDiagramStatus(d){
   const sel = document.getElementById('diagramStatusSelect');
   if(!sel || !d) return;
@@ -13750,6 +14321,35 @@ function renderDiagramStatus(d){
     try { renderDiagramTree(); } catch(e){}
     try { updateHeaderTitle(); } catch(e){}
   };
+
+  // Přepínač „Aplikovat skrytí prvků při vykreslení". Když je zapnutý,
+  // generator vynechává skryté prvky (výřez); vypnutý = plný diagram.
+  const cbHidden = document.getElementById('diagramApplyHidden');
+  const cbHiddenLabel = document.getElementById('diagramApplyHiddenLabel');
+  const cbHiddenHelp = document.getElementById('diagramApplyHiddenHelp');
+  const btnManage = document.getElementById('btnManageHidden');
+  const btnManageHelp = document.getElementById('btnManageHiddenHelp');
+  if(cbHidden){
+    d.settings = d.settings || {};
+    cbHidden.checked = !!d.settings.applyHidden;
+    if(cbHiddenLabel) cbHiddenLabel.textContent = isEn
+      ? 'Apply element hiding when rendering'
+      : 'Aplikovat skrytí prvků při vykreslení';
+    if(cbHiddenHelp) cbHiddenHelp.textContent = isEn
+      ? 'When checked, preview and export generate only visible elements (a partial view). Hidden elements remain in the model and are only temporarily excluded.'
+      : 'Když je zaškrtnuto, náhled a export vygenerují jen viditelné prvky (výřez). Skryté prvky zůstávají v modelu, jen se dočasně nevykreslí.';
+    cbHidden.onchange = () => {
+      d.settings.applyHidden = cbHidden.checked;
+      touchDiagram(d);
+    };
+  }
+  if(btnManage){
+    btnManage.textContent = isEn ? 'Manage hidden…' : 'Skrytí prvků…';
+    if(btnManageHelp) btnManageHelp.textContent = isEn
+      ? 'Opens a dialog to bulk-toggle which elements to hide / show.'
+      : 'Otevře dialog pro hromadné zaškrtávání, které prvky skrýt / zobrazit.';
+    btnManage.onclick = () => openHiddenManager(d);
+  }
 }
 
 function renderVersions(d){
@@ -13773,7 +14373,23 @@ function renderVersions(d){
 async function saveVersionAction(){
   const d = getCurrentDiagram();
   if(!d) return;
-  const label = await dlgPrompt(L.dlg.saveVersion, 'Popisek verze:', '', 'Krátký popisek pomůže se v historii orientovat.');
+  const isEn = getLang() === 'en';
+  // Předvyplníme popisek poslední verze — uživatel typicky pojmenovává verze
+  // podle vzoru (např. „v1.2.3" nebo „návrh — 1. iterace") a chce jen upravit
+  // číslo/pořadí místo psaní znovu od nuly.
+  const lastLabel = (d.versions && d.versions.length)
+    ? (d.versions[d.versions.length - 1].label || '')
+    : '';
+  const helpTxt = lastLabel
+    ? (isEn
+        ? 'A short label helps you find the version later. Pre-filled from the previous version — adjust as needed.'
+        : 'Krátký popisek pomůže se v historii orientovat. Předvyplněno z poslední verze — upravte podle potřeby.')
+    : (isEn
+        ? 'A short label helps you find the version later.'
+        : 'Krátký popisek pomůže se v historii orientovat.');
+  const label = await dlgPrompt(L.dlg.saveVersion,
+    isEn ? 'Version label:' : 'Popisek verze:',
+    lastLabel, helpTxt);
   if(label === null) return;
   d.versions.push({
     id: uid('vr'),
@@ -13957,6 +14573,7 @@ function loadProjectJsonText(text, fileName){
       d.settings = d.settings || {};
       // Stav diagramu (workflow). Starší pupe ho nemají — default = bez stavu.
       if(d.status === undefined) d.status = '';
+      if(!d.hidden) d.hidden = {};
       // Mindmap/WBS: zajistit existenci pole stereotypes (starší pupe ho nemají).
       if((d.type === 'mindmap' || d.type === 'wbs') && d.model){
         d.model.stereotypes = d.model.stereotypes || [];
@@ -15391,6 +16008,11 @@ function init(){
   });
   document.getElementById('dlgClipboardCancel').addEventListener('click', () => {
     document.getElementById('dlgClipboardPaste').close();
+  });
+  document.getElementById('dlgHiddenClose').addEventListener('click', () => {
+    document.getElementById('dlgHiddenManager').close();
+    _hiddenMgrDiagram = null;
+    try { renderApp(); } catch(e){}
   });
   // Globální klávesové zkratky — Ctrl+Shift+O/S. Pozor: Ctrl+Shift+O má Chrome
   // vázán na správce záložek, preventDefault() ho přebije.
