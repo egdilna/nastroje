@@ -193,6 +193,8 @@ PlantUML je dnes asi nejpoužívanější framework pro tzv. text diagramming, t
 
 | Datum | Typ | Popis |
 | --- | --- | --- |
+| 5. 8. 2026 | Funkce | U diagramů lze nyní v detailu diagramu zkrývat určité prvky, halíčky a vazby. Diagram má tak vlastně dvě verze, všechno a jen nezkryté. Přepíná se to právě na kartě Diagram, funguje i pro vykreslování a výpisy textové dokumentace diagramu. |
+| 3. 8. 2026 | Oprava | Oprava chyby, kdy se někdy při složitém diagramu s více úrovněmi entit třeba u class diagramu špatně kódovalo URL. Syntax byla správná, chyba je jen v kódu pro plantuml.com, teď náhled a veškeré vykreslení funguje správně. |
 | 2. 7. 2026 | Funkce | Nová možnost pracovat s daty projektu přes schránku. Nová tlačítka pro načtení ze schránky (CTRL+SHIFT+O) a uložit do schránky (CTRL+SHIFT+S). |
 | 28. 6. 2026 | Vylepšení | U gantt diagramů se teď může nechat pole začátku projektu prázdné a tedy nebudou vykreslena absolutní data |
 | 28. 6. 2026 | Oprava | Opraven problém, kdy se někdy nesprávně nevyfiltrovaly jen hotové či nehotové prvky v seznamu prvků diagramu v levé části |
@@ -237,6 +239,7 @@ Existují
 
 | Datum | Typ | Popis |
 | --- | --- | --- |
+| 3. 8. 2026 | Vylepšení | I v detailu pokud je někde vazba na prvek, lze jej nyní otevŕít jedním kliknutím v novém panelu, takže neztratíte kontext. A taky přidána maličkost při editaci, u vazeb je nyní možno rovnou rychle vazbu editovat, což šlo před tím jen z přehledu Nástroje / Vazby / Všechny vazby / Upravit vazbu. |
 | 28. 7. 2026 | Oprava | Oprava korektoru češtiny, kdy při určitém výskytu některých písmen s diakritikou na konci slova chybně označoval za chybu a nabízel to samé slovo jako opravu. |
 | 28. 7. 2026 | Vylepšení | Nyní se při otevření entity překreslí adresa URL rovnou na tuto entitu, takže teď můžete odkazovat na konkrétní entitu a používat i funkce prohlížeče, jako jsou záložky a sdílení apod. |
 | 22. 7. 2026 | Vylepšení | V syntaxi databasetext výpisech lze teď do výsledku přidat nový řádek prostřednictvím zpětného lomítka n |
