@@ -4708,6 +4708,25 @@ function extractIncludeTargetsFromText(text) {
   return out;
 }
 
+// Najde {{database:Ref}} i {{databasetext:Ref}} v textu a vrátí seznam refů
+// (název/id cílové databázové entity – část před případným '?' s parametry).
+function extractDatabaseTargetsFromText(text) {
+  if (!text) return [];
+  const out = [];
+  const seen = new Set();
+  const re = /\{\{database(?:text)?:([^}]+)\}\}/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    let ref = m[1].trim();
+    const q = ref.indexOf('?');
+    if (q >= 0) ref = ref.slice(0, q).trim(); // odstranit ?columns/filter/sort/format
+    if (!ref || seen.has(ref)) continue;
+    seen.add(ref);
+    out.push(ref);
+  }
+  return out;
+}
+
 // Najde {{status:Název}} placeholdery v textu.
 function extractStatusTargetsFromText(text) {
   if (!text) return [];
@@ -4810,6 +4829,7 @@ function getInverseTextReferences(entity) {
   const wikiFromMap = new Map();   // id → entity
   const includeFromMap = new Map();
   const statusFromMap = new Map();
+  const databaseFromMap = new Map();
   const targetId = entity.id;
   const targetTitleLc = (entity.title || '').toLowerCase();
   db.entities.forEach(e => {
@@ -4825,6 +4845,11 @@ function getInverseTextReferences(entity) {
           if (!includeFromMap.has(e.id)) includeFromMap.set(e.id, e);
         }
       });
+      extractDatabaseTargetsFromText(src.text).forEach(t => {
+        if (t === targetId || t.toLowerCase() === targetTitleLc) {
+          if (!databaseFromMap.has(e.id)) databaseFromMap.set(e.id, e);
+        }
+      });
       if (typeof extractStatusTargetsFromText === 'function') {
         extractStatusTargetsFromText(src.text).forEach(t => {
           if (t === targetId || t.toLowerCase() === targetTitleLc) {
@@ -4837,7 +4862,8 @@ function getInverseTextReferences(entity) {
   return {
     wikiFrom: [...wikiFromMap.values()],
     includeFrom: [...includeFromMap.values()],
-    statusFrom: [...statusFromMap.values()]
+    statusFrom: [...statusFromMap.values()],
+    databaseFrom: [...databaseFromMap.values()]
   };
 }
 function getEntityDate(e) {
@@ -13036,7 +13062,7 @@ function renderInverseLinksReadOnly(e) {
   const inv = getInverseLinks(e.id);
   const invRel = getInverseRelations(e.id);
   const invText = getInverseTextReferences(e);
-  if (inv.length === 0 && invRel.length === 0 && invText.wikiFrom.length === 0 && invText.includeFrom.length === 0 && (!invText.statusFrom || invText.statusFrom.length === 0)) return '';
+  if (inv.length === 0 && invRel.length === 0 && invText.wikiFrom.length === 0 && invText.includeFrom.length === 0 && (!invText.statusFrom || invText.statusFrom.length === 0) && (!invText.databaseFrom || invText.databaseFrom.length === 0)) return '';
   let h = '<ul style="list-style:none;padding-left:0;">';
   inv.forEach(({from,link}) => {
     const ti = RELATION_TYPES[link.type];
@@ -13069,6 +13095,13 @@ function renderInverseLinksReadOnly(e) {
   invText.includeFrom.forEach(from => {
     const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
     h += '<li><strong>includuje:</strong> ' +
+      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' + openInPanelBtnHtml(from.id) +
+      (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
+      '</li>';
+  });
+  (invText.databaseFrom || []).forEach(from => {
+    const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
+    h += '<li><strong>zobrazeno v databázi:</strong> ' +
       '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' + openInPanelBtnHtml(from.id) +
       (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
       '</li>';
@@ -14233,7 +14266,7 @@ function renderEditLinks(e) {
   const inv = getInverseLinks(e.id);
   const invRel = getInverseRelations(e.id);
   const invText = getInverseTextReferences(e);
-  if (inv.length === 0 && invRel.length === 0 && invText.wikiFrom.length === 0 && invText.includeFrom.length === 0) {
+  if (inv.length === 0 && invRel.length === 0 && invText.wikiFrom.length === 0 && invText.includeFrom.length === 0 && (!invText.databaseFrom || invText.databaseFrom.length === 0)) {
     ic.innerHTML = '<p class="meta">Žádné příchozí vazby.</p>';
   } else {
     let invH = '';
@@ -14263,7 +14296,14 @@ function renderEditLinks(e) {
     invText.includeFrom.forEach(from => {
       const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
       invH += '<div class="link-row"><span class="link-target"><strong>includuje:</strong> ' +
-        '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' +
+        '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' + openInPanelBtnHtml(from.id) +
+        (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
+        '</span></div>';
+    });
+    (invText.databaseFrom || []).forEach(from => {
+      const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
+      invH += '<div class="link-row"><span class="link-target"><strong>zobrazeno v databázi:</strong> ' +
+        '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' + openInPanelBtnHtml(from.id) +
         (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
         '</span></div>';
     });
