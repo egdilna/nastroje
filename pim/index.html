@@ -233,6 +233,9 @@ button.paragraph-anno-add-btn { display: inline-block; margin-left: 0.4em; paddi
 body.theme-dark button.paragraph-anno-add-btn { background: #2a3a4a; border-color: #555; }
 button.paragraph-anno-add-btn:hover { background: #c0d0e0; }
 details.annotations-list-wrapper { margin: 1em 0; padding: 0.5em 0.8em; background: #fffbe6; border-radius: 4px; border: 1px solid #e8d970; }
+.inline-annotation { display: inline; background: #fffbe6; border: 1px solid #e8d970; border-radius: 3px; padding: 0 0.35em; margin: 0 0.15em; font-size: 0.9em; color: #7a6a00; }
+body.theme-dark .inline-annotation { background: #3a3410; border-color: #6a5f1a; color: #d8c860; }
+.inline-annotation-text { font-style: italic; }
 body.theme-dark details.annotations-list-wrapper { background: #2a2410; border-color: #5a4a1a; }
 details.annotations-list-wrapper summary { cursor: pointer; font-weight: 600; }
 ol.annotations-list { list-style: decimal; padding-left: 1.5em; margin: 0.5em 0 0; }
@@ -2416,6 +2419,264 @@ function mdBodyHasDoneTasks(e) {
 // fieldKey: klíč pole pro entitu (pro pojmenování dialogu)
 // fieldLabel: lidský popis pole pro toast / hlavičky
 // value: aktuální obsah textarea
+// === Konverze HTML (rich text) → Markdown ===
+// Vlastní převodník bez externích knihoven (single-file, funguje offline).
+// Pokrývá nadpisy, tučné/kurzíva/přeškrtnuté, odkazy, obrázky, seznamy (i vnořené),
+// číslované seznamy, úkoly (checkbox), tabulky, blockquote, kód (inline i blok),
+// vodorovnou čáru a odstavce. Neznámé prvky degradují na svůj textový obsah.
+function htmlToMarkdown(html) {
+  if (!html) return '';
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  // Odstranit prvky, které do textu nepatří
+  doc.querySelectorAll('script,style,head,meta,link,title').forEach(n => n.remove());
+  const out = mdRenderChildren(doc.body || doc.documentElement, { listStack: [] });
+  // Sjednotit nadbytečné prázdné řádky (max 1 prázdný mezi bloky) a ořezat okraje
+  return out.replace(/\n{3,}/g, '\n\n').replace(/[ \t]+\n/g, '\n').trim() + '\n';
+}
+
+function mdEscapeInline(text) {
+  // Escapovat jen znaky, které by uprostřed běžného textu spustily markdown formátování.
+  // Tečky, pomlčky, #, +, ! apod. neescapujeme – v běžné větě problém nedělají a
+  // nadměrné escapování (např. „kurzíva\.") kazí výstup.
+  return text.replace(/([\\`*_\[\]<>])/g, '\\$1');
+}
+
+function mdCollapseWs(text) {
+  return text.replace(/\s+/g, ' ');
+}
+
+// Vyrenderuje potomky uzlu a spojí je
+function mdRenderChildren(node, ctx) {
+  let out = '';
+  node.childNodes.forEach(ch => { out += mdRenderNode(ch, ctx); });
+  return out;
+}
+
+// Inline render (pro obsah nadpisů, odstavců, buněk…) – bez blokových zalomení
+function mdRenderInlineChildren(node, ctx) {
+  let out = '';
+  node.childNodes.forEach(ch => { out += mdRenderInlineNode(ch, ctx); });
+  return out;
+}
+
+function mdRenderInlineNode(node, ctx) {
+  if (node.nodeType === 3) return mdEscapeInline(mdCollapseWs(node.nodeValue));
+  if (node.nodeType !== 1) return '';
+  const tag = node.tagName.toLowerCase();
+  const inner = () => mdRenderInlineChildren(node, ctx);
+  switch (tag) {
+    case 'br': return '  \n';
+    case 'strong': case 'b': { const t = inner().trim(); return t ? '**' + t + '**' : ''; }
+    case 'em': case 'i': { const t = inner().trim(); return t ? '*' + t + '*' : ''; }
+    case 'del': case 's': case 'strike': { const t = inner().trim(); return t ? '~~' + t + '~~' : ''; }
+    case 'code': { const t = node.textContent; return t ? '`' + t.replace(/`/g, '\u200b`') + '`' : ''; }
+    case 'a': {
+      const href = node.getAttribute('href') || '';
+      const t = inner().trim() || href;
+      if (!href || href.startsWith('javascript:')) return t;
+      return '[' + t + '](' + href + ')';
+    }
+    case 'img': {
+      const src = node.getAttribute('src') || '';
+      const alt = node.getAttribute('alt') || '';
+      if (!src || src.startsWith('data:')) return alt ? '[' + alt + ']' : ''; // data: URL nevkládáme
+      return '![' + alt + '](' + src + ')';
+    }
+    case 'sup': { const t = inner().trim(); return t ? '^' + t + '^' : ''; }
+    case 'sub': { const t = inner().trim(); return t ? '~' + t + '~' : ''; }
+    case 'span': case 'font': case 'u': case 'mark': case 'small': case 'abbr': case 'cite': case 'q':
+      return inner();
+    default:
+      return inner();
+  }
+}
+
+function mdRenderNode(node, ctx) {
+  if (node.nodeType === 3) {
+    // Textový uzel na blokové úrovni – sbalit bílé znaky; čistě prázdný → nic
+    const t = mdCollapseWs(node.nodeValue);
+    return t.trim() === '' ? '' : mdEscapeInline(t);
+  }
+  if (node.nodeType !== 1) return '';
+  const tag = node.tagName.toLowerCase();
+  switch (tag) {
+    case 'h1': case 'h2': case 'h3': case 'h4': case 'h5': case 'h6': {
+      const lvl = Number(tag[1]);
+      const t = mdRenderInlineChildren(node, ctx).trim();
+      return t ? '\n' + '#'.repeat(lvl) + ' ' + t + '\n\n' : '';
+    }
+    case 'p': {
+      const t = mdRenderInlineChildren(node, ctx).trim();
+      return t ? '\n' + t + '\n\n' : '';
+    }
+    case 'br': return '  \n';
+    case 'hr': return '\n---\n\n';
+    case 'blockquote': {
+      const inner = mdRenderChildren(node, ctx).trim();
+      if (!inner) return '';
+      const quoted = inner.split('\n').map(l => l ? '> ' + l : '>').join('\n');
+      return '\n' + quoted + '\n\n';
+    }
+    case 'pre': {
+      // Blok kódu – vzít čistý text
+      let codeEl = node.querySelector('code');
+      let text = (codeEl ? codeEl.textContent : node.textContent) || '';
+      text = text.replace(/\n$/, '');
+      let lang = '';
+      if (codeEl) {
+        const cls = codeEl.getAttribute('class') || '';
+        const m = cls.match(/language-([a-z0-9]+)/i);
+        if (m) lang = m[1];
+      }
+      return '\n```' + lang + '\n' + text + '\n```\n\n';
+    }
+    case 'ul': case 'ol': {
+      return '\n' + mdRenderList(node, ctx, tag === 'ol') + '\n';
+    }
+    case 'table': return '\n' + mdRenderTable(node, ctx) + '\n';
+    case 'div': case 'section': case 'article': case 'main': case 'header':
+    case 'footer': case 'figure': case 'figcaption': case 'aside': {
+      // Blokový kontejner – vyrenderovat potomky, zajistit oddělení
+      const inner = mdRenderChildren(node, ctx);
+      // Pokud div obsahuje jen inline obsah (žádný blok), zabalit jako odstavec
+      const hasBlock = node.querySelector('p,div,ul,ol,table,h1,h2,h3,h4,h5,h6,blockquote,pre,hr,section,article');
+      if (!hasBlock) {
+        const t = mdRenderInlineChildren(node, ctx).trim();
+        return t ? '\n' + t + '\n\n' : '';
+      }
+      return inner;
+    }
+    default:
+      // Inline nebo neznámý prvek na blokové úrovni
+      return mdRenderInlineNode(node, ctx);
+  }
+}
+
+function mdRenderList(listNode, ctx, ordered) {
+  const items = [];
+  let idx = 1;
+  const depth = ctx.listStack.length;
+  const indent = '  '.repeat(depth);
+  Array.from(listNode.children).forEach(li => {
+    if (li.tagName.toLowerCase() !== 'li') return;
+    // Detekce úkolu (checkbox uvnitř li)
+    const cb = li.querySelector(':scope > input[type="checkbox"], :scope > label > input[type="checkbox"]');
+    let marker;
+    if (ordered) marker = indent + (idx++) + '. ';
+    else marker = indent + '- ';
+    let taskPrefix = '';
+    if (cb) taskPrefix = cb.checked ? '[x] ' : '[ ] ';
+    // Obsah položky: nejdřív inline část, pak vnořené seznamy
+    const childCtx = { listStack: ctx.listStack.concat([ordered ? 'ol' : 'ul']) };
+    // Vyrenderovat inline obsah (mimo vnořené ul/ol)
+    let inlineParts = '';
+    let nested = '';
+    li.childNodes.forEach(ch => {
+      if (ch.nodeType === 1 && (ch.tagName.toLowerCase() === 'ul' || ch.tagName.toLowerCase() === 'ol')) {
+        nested += '\n' + mdRenderList(ch, childCtx, ch.tagName.toLowerCase() === 'ol');
+      } else if (ch.nodeType === 1 && ch.tagName.toLowerCase() === 'input' && ch.type === 'checkbox') {
+        // přeskočit – zpracováno jako taskPrefix
+      } else {
+        inlineParts += mdRenderInlineNode(ch, childCtx);
+      }
+    });
+    const line = marker + taskPrefix + inlineParts.replace(/\s+/g, ' ').trim();
+    items.push(line + (nested ? '\n' + nested.replace(/\n+$/, '') : ''));
+  });
+  return items.join('\n');
+}
+
+function mdRenderTable(tableNode, ctx) {
+  const rows = [];
+  const trs = Array.from(tableNode.querySelectorAll('tr'));
+  if (trs.length === 0) return '';
+  let headerDone = false;
+  let colCount = 0;
+  trs.forEach((tr, ri) => {
+    const cells = Array.from(tr.children).filter(c => /^(td|th)$/i.test(c.tagName));
+    const vals = cells.map(c => mdRenderInlineChildren(c, ctx).replace(/\s+/g, ' ').trim().replace(/\|/g, '\\|'));
+    if (vals.length > colCount) colCount = vals.length;
+    rows.push(vals);
+  });
+  // Doplnit prázdné buňky na stejný počet sloupců
+  rows.forEach(r => { while (r.length < colCount) r.push(''); });
+  if (colCount === 0) return '';
+  // První řádek jako hlavička (i kdyby to byly td)
+  const head = rows[0];
+  const sep = new Array(colCount).fill('---');
+  let out = '| ' + head.join(' | ') + ' |\n| ' + sep.join(' | ') + ' |\n';
+  for (let i = 1; i < rows.length; i++) {
+    out += '| ' + rows[i].join(' | ') + ' |\n';
+  }
+  return out;
+}
+
+// Vloží obsah schránky převedený na Markdown na pozici kurzoru v daném poli.
+// Preferuje HTML (formátovaný text z webu/Wordu); když ve schránce HTML není,
+// vloží prostý text tak, jak je.
+async function pasteHtmlAsMarkdown(targetId) {
+  const ta = document.getElementById(targetId);
+  if (!ta) return;
+  let md = null;
+  let usedHtml = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.read && window.isSecureContext) {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        if (item.types.includes('text/html')) {
+          const blob = await item.getType('text/html');
+          const html = await blob.text();
+          md = htmlToMarkdown(html);
+          usedHtml = true;
+          break;
+        }
+      }
+      if (md === null) {
+        // Žádné HTML – zkusit prostý text
+        for (const item of items) {
+          if (item.types.includes('text/plain')) {
+            const blob = await item.getType('text/plain');
+            md = await blob.text();
+            break;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    // clipboard.read selhal (oprávnění / nepodporováno) – zkusíme readText níže
+  }
+  if (md === null) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        md = await navigator.clipboard.readText();
+      }
+    } catch (e) { /* nic */ }
+  }
+  if (md === null || md === '') {
+    // Poslední možnost: skrytá contenteditable, do které uživatel vloží ručně (Ctrl+V)
+    toast('Nepodařilo se přečíst schránku. Zkuste vložit ručně (Ctrl+V) přímo do pole.');
+    ta.focus();
+    return;
+  }
+  insertAtCursor(ta, md.trimEnd());
+  ta.dispatchEvent(new Event('input', { bubbles: true }));
+  toast(usedHtml ? '✓ HTML převedeno na Markdown a vloženo.' : '✓ Text ze schránky vložen.');
+}
+
+// Vloží text na pozici kurzoru v textarea (nebo nahradí výběr) a posune kurzor za něj.
+function insertAtCursor(ta, text) {
+  const start = (ta.selectionStart != null) ? ta.selectionStart : ta.value.length;
+  const end = (ta.selectionEnd != null) ? ta.selectionEnd : ta.value.length;
+  const before = ta.value.slice(0, start);
+  const after = ta.value.slice(end);
+  // Přidat oddělovací nový řádek, pokud vkládáme víceřádkový blok doprostřed textu
+  let ins = text;
+  ta.value = before + ins + after;
+  const pos = start + ins.length;
+  ta.selectionStart = ta.selectionEnd = pos;
+  ta.focus();
+}
+
 // excludeMd: pokud true, nepřidá Revizi/Korektor (např. PlantUML zdroj)
 function buildMdFieldActions(targetId, fieldKey, fieldLabel, value, excludeMd) {
   const trimmed = (value || '').trim();
@@ -2423,6 +2684,7 @@ function buildMdFieldActions(targetId, fieldKey, fieldLabel, value, excludeMd) {
   // Tlačítko „Vložit…" – otevírá rozšířený dialog se 5 možnostmi
   if (!excludeMd) {
     h += '<button type="button" class="md-insert-helper" data-md-ins-target="' + escapeHtml(targetId) + '" title="Vložit dynamický prvek: atribut, wiki odkaz, include, status chip nebo příznak">📎 Vložit…</button> ';
+    h += '<button type="button" class="md-paste-html" data-md-paste-target="' + escapeHtml(targetId) + '" title="Vloží obsah schránky (formátovaný text / HTML z webu, Wordu apod.) převedený na Markdown na místo kurzoru">📥 Vložit z HTML</button> ';
   }
   if (!trimmed) return h;
   const doneCnt = countMarkdownDoneTasks(value);
@@ -3151,6 +3413,18 @@ function renderMarkdown(text, options = {}) {
     codeBlocks.push(c);
     return '\u0000CODEBLOCK' + (codeBlocks.length - 1) + '\u0000';
   });
+  // Inline anotace (>text): zobrazí se jako anotační bublina u odstavce. Do exportu/tisku
+  // nejdou (tam se stripují dřív). Zpracováno po code blocks, aby se (>...) v kódu neřešilo.
+  // options.stripAnnotations = vynechat úplně (použito při expanzi pro ne-include výstupy).
+  if (options.stripAnnotations) {
+    text = text.replace(INLINE_ANNOTATION_RE, '').replace(/  +/g, ' ');
+  } else {
+    text = text.replace(INLINE_ANNOTATION_RE, (m, content) => {
+      const c = content.trim();
+      if (!c) return '';
+      return '\u0000ANNOT' + escapeHtml(c) + '\u0000';
+    });
+  }
   // Placeholder ((deník)) / ((denik)) → vykreslený deník TÉTO entity (od nejstaršího).
   // HTML uložíme do markeru, aby přežilo escapování v renderInline.
   const journalBlocks = [];
@@ -3182,6 +3456,10 @@ function renderMarkdown(text, options = {}) {
   }
   html = html.replace(/\u0000CODEBLOCK(\d+)\u0000/g, (m, i) => {
     return '<pre><code>' + escapeHtml(codeBlocks[Number(i)]) + '</code></pre>';
+  });
+  // Inline anotace → bublina za textem odstavce
+  html = html.replace(/\u0000ANNOT([\s\S]*?)\u0000/g, (m, c) => {
+    return '<span class="inline-annotation" title="Anotace">📝 <span class="inline-annotation-text">' + c + '</span></span>';
   });
   html = html.replace(/\u0000JOURNALBLOCK(\d+)\u0000/g, (m, i) => {
     return journalBlocks[Number(i)] || '';
@@ -5329,6 +5607,7 @@ function openStickyDialog() {
     const actDiv = d.querySelector('#sticky-text-actions');
     if (actDiv) {
       let hh = '<button type="button" class="md-insert-helper" data-md-ins-target="sticky-text" title="Vložit wiki odkaz, include nebo status chip">📎 Vložit…</button> ';
+      hh += '<button type="button" class="md-paste-html" data-md-paste-target="sticky-text" title="Vloží obsah schránky (formátovaný text / HTML) převedený na Markdown na místo kurzoru">📥 Vložit z HTML</button> ';
       const doneCnt = countMarkdownDoneTasks(ta.value);
       if (doneCnt > 0) hh += '<button type="button" class="md-del-done-tasks" data-md-del-done-target="sticky-text" title="Smazat všechny zaškrtnuté úkoly">Smazat hotové úkoly (' + doneCnt + ')</button>';
       actDiv.innerHTML = hh;
@@ -5338,6 +5617,8 @@ function openStickyDialog() {
   function attachStickyToolHandlers() {
     const ins = d.querySelector('.md-insert-helper[data-md-ins-target="sticky-text"]');
     if (ins) ins.onclick = () => openMdInsertChooser(null, 'sticky-text');
+    const pasteBtn = d.querySelector('.md-paste-html[data-md-paste-target="sticky-text"]');
+    if (pasteBtn) pasteBtn.onclick = () => pasteHtmlAsMarkdown('sticky-text');
     const del = d.querySelector('.md-del-done-tasks[data-md-del-done-target="sticky-text"]');
     if (del) del.onclick = () => {
       ta.value = stripMarkdownDoneTasks(ta.value);
@@ -13612,11 +13893,12 @@ function renderDetailEdit(main, e) {
       state._editTitleOriginalEntityId = null;
       state._editTitleOriginal = null;
     }
-    // Quick anotace: (>text) → klasická anotace + odstranit z body
+    // Anotace nově žijí v textu jako (>text). Jednorázově zmigrovat případné staré
+    // JSON anotace do textu (pak už je pole prázdné a zdrojem pravdy je body).
     {
-      const cnt = processQuickAnnotations(e);
+      const cnt = migrateAnnotationsToText(e);
       if (cnt > 0) {
-        toast('Z textu přidáno ' + cnt + ' anotac' + (cnt === 1 ? 'e' : cnt < 5 ? 'e' : 'í') + '.');
+        toast('Anotace převedeny do textu (' + cnt + ').');
       }
     }
     // Secured aspect: pokud je entity Secured, znovu zašifrovat obsah
@@ -13845,6 +14127,9 @@ function renderDetailEdit(main, e) {
       btn.onclick = () => {
         openMdLint(e, btn.dataset.mdLintTarget, btn.dataset.mdLintField || '', btn.dataset.mdLintLabel || 'Markdown pole');
       };
+    });
+    document.querySelectorAll('button[data-md-paste-target]').forEach(btn => {
+      btn.onclick = () => pasteHtmlAsMarkdown(btn.dataset.mdPasteTarget);
     });
     document.querySelectorAll('button[data-md-ph-target]').forEach(btn => {
       btn.onclick = () => {
@@ -14102,6 +14387,9 @@ function renderEditAttributes(e) {
       btn.onclick = () => {
         openMdLint(e, btn.dataset.mdLintTarget, btn.dataset.mdLintField || '', btn.dataset.mdLintLabel || 'Markdown pole');
       };
+    });
+    root.querySelectorAll('button[data-md-paste-target]').forEach(btn => {
+      btn.onclick = () => pasteHtmlAsMarkdown(btn.dataset.mdPasteTarget);
     });
     // 📎 Vložit… (otevírá chooser dialog se 5 možnostmi)
     root.querySelectorAll('button.md-insert-helper').forEach(btn => {
@@ -15185,6 +15473,104 @@ function newAnnotation(content, paragraphText, paragraphIndex) {
   };
 }
 
+// === Inline anotace v textu ===
+// Anotace nově žijí přímo v body jako `(>text anotace)` na řádku odstavce, kterého
+// se týkají. Text je jediným zdrojem pravdy. Panel anotací i zobrazení čtou odtud.
+// Anotace je prostý text (ne markdown). Do exportu/tisku/kopírování nejdou.
+//
+// Regex pro jednu inline anotaci. Obsah nesmí obsahovat neuzávorkované závorky.
+const INLINE_ANNOTATION_RE = /\(>([^()]*?)\)/g;
+
+// Odstraní inline anotace z textu (pro export/tisk/kopírování). Uklidí i mezery po nich.
+function stripInlineAnnotations(text) {
+  if (!text) return text;
+  return text.split('\n').map(line => {
+    let cleaned = line.replace(INLINE_ANNOTATION_RE, '');
+    cleaned = cleaned.replace(/  +/g, ' ').replace(/ +$/, '');
+    return cleaned;
+  }).join('\n');
+}
+
+// Vytáhne z body seznam inline anotací s indexem odstavce, na kterém leží.
+// Vrací [{ paragraphIndex, content, id }]. paragraphIndex počítá podle extractBodyParagraphs
+// z textu OČIŠTĚNÉHO od anotací (tj. tak, jak ho uvidí čtenář).
+function extractInlineAnnotations(body) {
+  if (!body) return [];
+  const cleanBody = stripInlineAnnotations(body);
+  const cleanParagraphs = extractBodyParagraphs(cleanBody);
+  const lines = body.split('\n');
+  const cleanLines = cleanBody.split('\n');
+  const result = [];
+  let annCounter = 0;
+  for (let i = 0; i < lines.length; i++) {
+    INLINE_ANNOTATION_RE.lastIndex = 0;
+    let m;
+    const found = [];
+    while ((m = INLINE_ANNOTATION_RE.exec(lines[i])) !== null) {
+      found.push(m[1].trim());
+    }
+    if (found.length === 0) continue;
+    // Text řádku po očištění (na tomto řádku); když je prázdný, vezmi nejbližší předchozí neprázdný
+    let refText = (cleanLines[i] || '').trim();
+    let li = i;
+    while (!refText && li > 0) { li--; refText = (cleanLines[li] || '').trim(); }
+    // Najdi paragraph index podle textu
+    let pIdx = cleanParagraphs.findIndex(p => p === refText || p.startsWith(refText) || (refText && p.includes(refText)));
+    if (pIdx < 0) pIdx = null;
+    found.forEach(content => {
+      result.push({ paragraphIndex: pIdx, content: content, lineIndex: i, id: 'inl-' + (i) + '-' + (annCounter++) });
+    });
+  }
+  return result;
+}
+
+// Jednorázová migrace: staré JSON anotace (entity.annotations) přesune do textu jako (>...)
+// a pole vyprázdní. Vrací počet migrovaných.
+function migrateAnnotationsToText(entity) {
+  if (!entity || !Array.isArray(entity.annotations) || entity.annotations.length === 0) return 0;
+  const matched = matchAnnotationsToParagraphs(entity);
+  const body = entity.body || '';
+  const paragraphs = extractBodyParagraphs(body);
+  // Pro každý paragraph index si posbírej anotace, které k němu patří
+  const byParagraph = new Map(); // pIdx → [content...]
+  const orphans = [];
+  matched.forEach(m => {
+    const content = (m.annotation.content || '').replace(/\s+/g, ' ').trim();
+    if (!content) return;
+    if (m.paragraphIndex == null || m.matchType === 'orphan') { orphans.push(content); return; }
+    if (!byParagraph.has(m.paragraphIndex)) byParagraph.set(m.paragraphIndex, []);
+    byParagraph.get(m.paragraphIndex).push(content);
+  });
+  // Vlož anotace do body na konec řádku odpovídajícího odstavci.
+  // Paragraphy nejsou 1:1 řádky, tak najdeme v body řádek, který odpovídá textu odstavce.
+  const lines = body.split('\n');
+  let migrated = 0;
+  byParagraph.forEach((contents, pIdx) => {
+    const paraText = (paragraphs[pIdx] || '').trim();
+    if (!paraText) { contents.forEach(c => orphans.push(c)); return; }
+    // Najdi poslední řádek, který obsahuje (nebo je obsažen v) text odstavce
+    let targetLine = -1;
+    for (let i = 0; i < lines.length; i++) {
+      const lt = lines[i].trim();
+      if (!lt) continue;
+      if (lt === paraText || paraText.startsWith(lt) || lt.includes(paraText) || paraText.includes(lt)) targetLine = i;
+    }
+    if (targetLine < 0) { contents.forEach(c => orphans.push(c)); return; }
+    const suffix = contents.map(c => ' (>' + c + ')').join('');
+    lines[targetLine] = lines[targetLine].replace(/\s+$/, '') + suffix;
+    migrated += contents.length;
+  });
+  let newBody = lines.join('\n');
+  // Sirotky (bez odstavce) přidej na konec jako samostatný odstavec
+  if (orphans.length > 0) {
+    newBody = newBody.replace(/\s+$/, '') + '\n\n' + orphans.map(c => '(>' + c + ')').join(' ');
+    migrated += orphans.length;
+  }
+  entity.body = newBody;
+  entity.annotations = [];
+  return migrated;
+}
+
 // Quick-anotace: najde v body texty ve tvaru (>poznámka), pro každý vytvoří klasickou anotaci
 // k odstavci/řádku, kde se nacházela, a z body je odstraní.
 // Vrací počet vytvořených anotací.
@@ -16004,45 +16390,29 @@ function attachEventTasksHandlers(main, entity) {
 }
 
 function renderAnnotationsList(entity) {
-  if (!entity.annotations || entity.annotations.length === 0) return '';
-  const matched = matchAnnotationsToParagraphs(entity);
-  const paragraphs = extractBodyParagraphs(entity.body || '');
-  const n = matched.length;
+  const inline = extractInlineAnnotations(entity.body || '');
+  if (inline.length === 0) return '';
+  const paragraphs = extractBodyParagraphs(stripInlineAnnotations(entity.body || ''));
+  const n = inline.length;
   const word = n === 1 ? 'anotace' : (n < 5 ? 'anotace' : 'anotací');
   let h = '<details class="annotations-list-wrapper"><summary>📝 ' + n + ' ' + word + ' k odstavcům</summary><ol class="annotations-list">';
-  matched.forEach((m, i) => {
-    const ann = m.annotation;
-    let matchInfo = '';
-    let para = '';
-    if (m.matchType === 'exact') {
-      para = paragraphs[m.paragraphIndex] || '';
-    } else if (m.matchType === 'fuzzy') {
-      para = paragraphs[m.paragraphIndex] || '';
-      matchInfo = ' <span class="anno-match-info meta">(přemapováno přibližně, podobnost ' + Math.round(m.similarity * 100) + ' %)</span>';
-    } else if (m.matchType === 'position') {
-      para = paragraphs[m.paragraphIndex] || '';
-      matchInfo = ' <span class="anno-match-info meta">(odstavec přepsán, anotace zůstává na pozici #' + (m.paragraphIndex + 1) + ')</span>';
-    } else {
-      matchInfo = ' <span class="anno-match-info meta">(původní odstavec smazán)</span>';
-    }
-    // Lidský popis odstavce
+  inline.forEach((a, i) => {
+    const para = (a.paragraphIndex != null && paragraphs[a.paragraphIndex]) ? paragraphs[a.paragraphIndex] : '';
     const desc = describeParagraph(para);
     const snippet = (desc.content || '').slice(0, 80);
-    h += '<li class="anno-item' + (m.matchType === 'orphan' ? ' anno-orphan' : '') + '" data-anno-id="' + escapeHtml(ann.id) + '">';
-    if (m.matchType === 'orphan') {
-      h += '<div><strong>Sirotek</strong>' + matchInfo + '</div>';
+    h += '<li class="anno-item" data-anno-id="' + escapeHtml(a.id) + '">';
+    if (a.paragraphIndex == null) {
+      h += '<div><strong>K odstavci</strong></div>';
     } else {
-      h += '<div><strong>K odstavci #' + (m.paragraphIndex + 1) + '</strong> <span class="anno-para-kind">[' + escapeHtml(desc.kind) + ']</span>: ';
-      h += '<a href="#" class="anno-jump" data-anno-pi="' + m.paragraphIndex + '" data-anno-id="' + escapeHtml(ann.id) + '">' + (snippet ? escapeHtml(snippet) + (desc.content.length > 80 ? '…' : '') : '<em class="meta">(prázdné)</em>') + '</a>' + matchInfo + '</div>';
+      h += '<div><strong>K odstavci #' + (a.paragraphIndex + 1) + '</strong> <span class="anno-para-kind">[' + escapeHtml(desc.kind) + ']</span>: ';
+      h += '<a href="#" class="anno-jump" data-anno-pi="' + a.paragraphIndex + '" data-anno-id="' + escapeHtml(a.id) + '">' + (snippet ? escapeHtml(snippet) + (desc.content.length > 80 ? '…' : '') : '<em class="meta">(prázdné)</em>') + '</a></div>';
     }
-    h += '<div class="anno-content markdown">' + renderMarkdown(ann.content || '', { ctx: { depth: 1, includeStack: new Set() } }) + '</div>';
-    if (m.matchType !== 'exact' && ann.originalText && (m.matchType === 'orphan' || (paragraphs[m.paragraphIndex] && ann.originalText !== paragraphs[m.paragraphIndex]))) {
-      h += '<details class="anno-original"><summary>Původní text odstavce</summary><blockquote>' + escapeHtml(ann.originalText) + '</blockquote></details>';
-    }
+    // Anotace je prostý text (ne markdown)
+    h += '<div class="anno-content">' + escapeHtml(a.content || '') + '</div>';
     if (!(typeof window !== 'undefined' && window.__VIEWER_MODE)) {
       h += '<div class="anno-actions btn-group">' +
-        '<button type="button" data-anno-edit="' + escapeHtml(ann.id) + '">Upravit</button>' +
-        '<button type="button" class="danger" data-anno-del="' + escapeHtml(ann.id) + '">Smazat</button>' +
+        '<button type="button" data-anno-edit="' + escapeHtml(a.id) + '" data-anno-line="' + a.lineIndex + '">Upravit</button>' +
+        '<button type="button" class="danger" data-anno-del="' + escapeHtml(a.id) + '" data-anno-line="' + a.lineIndex + '" data-anno-content="' + escapeHtml(a.content) + '">Smazat</button>' +
       '</div>';
     }
     h += '</li>';
@@ -16158,16 +16528,17 @@ function attachAnnotationsListHandlers(entity) {
   });
   document.querySelectorAll('[data-anno-edit]').forEach(b => {
     b.onclick = () => {
+      const lineIdx = Number(b.dataset.annoLine);
       const annId = b.dataset.annoEdit;
-      const ann = (entity.annotations || []).find(a => a.id === annId);
-      if (ann) openAnnotationDialog(entity, ann.paragraphIndex, ann);
+      openInlineAnnotationEditor(entity, lineIdx, annId);
     };
   });
   document.querySelectorAll('[data-anno-del]').forEach(b => {
     b.onclick = () => {
-      const annId = b.dataset.annoDel;
+      const lineIdx = Number(b.dataset.annoDel ? b.dataset.annoLine : b.dataset.annoLine);
+      const content = b.dataset.annoContent || '';
       confirmDialog('Smazat anotaci?', () => {
-        entity.annotations = (entity.annotations || []).filter(a => a.id !== annId);
+        removeInlineAnnotation(entity, lineIdx, content);
         entity.updated_at = nowIso();
         save();
         render();
@@ -16177,45 +16548,122 @@ function attachAnnotationsListHandlers(entity) {
   });
 }
 
-function openAnnotationDialog(entity, paragraphIndex, existing) {
+// Odebere jednu inline anotaci (>content) z daného řádku body.
+function removeInlineAnnotation(entity, lineIdx, content) {
+  const lines = (entity.body || '').split('\n');
+  if (lineIdx < 0 || lineIdx >= lines.length) return;
+  // Odeber první výskyt (>content) na řádku
+  const needle = '(>' + content + ')';
+  let line = lines[lineIdx];
+  const pos = line.indexOf(needle);
+  if (pos >= 0) {
+    line = line.slice(0, pos) + line.slice(pos + needle.length);
+  } else {
+    // Fallback: odeber první inline anotaci na řádku
+    line = line.replace(INLINE_ANNOTATION_RE, '');
+  }
+  line = line.replace(/  +/g, ' ').replace(/ +$/, '');
+  lines[lineIdx] = line;
+  entity.body = lines.join('\n');
+}
+
+// Editor jedné inline anotace – mění (>text) přímo v body.
+function openInlineAnnotationEditor(entity, lineIdx, annId) {
+  const inline = extractInlineAnnotations(entity.body || '');
+  const target = inline.find(a => a.id === annId) || inline.find(a => a.lineIndex === lineIdx);
+  const oldContent = target ? target.content : '';
   const existingDialog = document.getElementById('anno-dialog');
   if (existingDialog) existingDialog.remove();
-  const paragraphs = extractBodyParagraphs(entity.body || '');
-  const paragraphText = paragraphIndex !== null && paragraphIndex !== undefined && paragraphIndex >= 0 && paragraphIndex < paragraphs.length
-    ? paragraphs[paragraphIndex]
-    : (existing ? existing.originalText : '');
-  const isNew = !existing;
   const d = document.createElement('dialog');
   d.id = 'anno-dialog';
   d.setAttribute('aria-labelledby', 'anno-dialog-title');
   d.innerHTML =
-    '<h2 id="anno-dialog-title">' + (isNew ? 'Nová anotace' : 'Upravit anotaci') + '</h2>' +
-    '<p class="meta">K odstavci' + (paragraphIndex !== null && paragraphIndex !== undefined ? ' č. ' + (paragraphIndex + 1) : '') + ':</p>' +
-    '<blockquote style="background:#f5f5f5;padding:0.5em;max-height:8em;overflow:auto;">' + escapeHtml(paragraphText.slice(0, 400) + (paragraphText.length > 400 ? '…' : '')) + '</blockquote>' +
-    '<label for="anno-content">Anotace (Markdown)</label>' +
-    '<textarea id="anno-content" rows="6">' + escapeHtml((existing && existing.content) || '') + '</textarea>' +
+    '<h2 id="anno-dialog-title">Upravit anotaci</h2>' +
+    '<label for="anno-content">Anotace (prostý text)</label>' +
+    '<textarea id="anno-content" rows="4">' + escapeHtml(oldContent) + '</textarea>' +
     '<div class="btn-group">' +
-      '<button type="button" class="primary" id="anno-save">' + (isNew ? 'Přidat anotaci' : 'Uložit') + '</button>' +
+      '<button type="button" class="primary" id="anno-save">Uložit</button>' +
       '<button type="button" id="anno-cancel">Zrušit</button>' +
     '</div>';
   document.body.appendChild(d);
   const ta = d.querySelector('#anno-content');
-  if (typeof setupAutocomplete === 'function') setupAutocomplete(ta);
   d.querySelector('#anno-save').onclick = () => {
-    const content = ta.value.trim();
+    const newContent = ta.value.replace(/[()]/g, '').replace(/\s+/g, ' ').trim();
+    if (!newContent) { alertMsg('Anotace nesmí být prázdná.'); return; }
+    // Nahraď (>oldContent) → (>newContent) na řádku
+    const lines = (entity.body || '').split('\n');
+    if (lineIdx >= 0 && lineIdx < lines.length) {
+      const needle = '(>' + oldContent + ')';
+      const pos = lines[lineIdx].indexOf(needle);
+      if (pos >= 0) {
+        lines[lineIdx] = lines[lineIdx].slice(0, pos) + '(>' + newContent + ')' + lines[lineIdx].slice(pos + needle.length);
+      } else {
+        // fallback: první anotace na řádku
+        let replaced = false;
+        lines[lineIdx] = lines[lineIdx].replace(INLINE_ANNOTATION_RE, (m) => { if (replaced) return m; replaced = true; return '(>' + newContent + ')'; });
+      }
+      entity.body = lines.join('\n');
+      entity.updated_at = nowIso();
+      save();
+      render();
+      toast('Anotace upravena.');
+    }
+    d.close(); d.remove();
+  };
+  d.querySelector('#anno-cancel').onclick = () => { d.close(); d.remove(); };
+  d.showModal();
+  ta.focus();
+}
+
+function openAnnotationDialog(entity, paragraphIndex, existing) {
+  const existingDialog = document.getElementById('anno-dialog');
+  if (existingDialog) existingDialog.remove();
+  const cleanBody = stripInlineAnnotations(entity.body || '');
+  const paragraphs = extractBodyParagraphs(cleanBody);
+  const paragraphText = (paragraphIndex != null && paragraphIndex >= 0 && paragraphIndex < paragraphs.length)
+    ? paragraphs[paragraphIndex] : '';
+  const d = document.createElement('dialog');
+  d.id = 'anno-dialog';
+  d.setAttribute('aria-labelledby', 'anno-dialog-title');
+  d.innerHTML =
+    '<h2 id="anno-dialog-title">Nová anotace</h2>' +
+    '<p class="meta">K odstavci' + (paragraphIndex != null ? ' č. ' + (paragraphIndex + 1) : '') + ':</p>' +
+    '<blockquote style="background:#f5f5f5;padding:0.5em;max-height:8em;overflow:auto;">' + escapeHtml(paragraphText.slice(0, 400) + (paragraphText.length > 400 ? '…' : '')) + '</blockquote>' +
+    '<label for="anno-content">Anotace (prostý text)</label>' +
+    '<textarea id="anno-content" rows="4"></textarea>' +
+    '<div class="btn-group">' +
+      '<button type="button" class="primary" id="anno-save">Přidat anotaci</button>' +
+      '<button type="button" id="anno-cancel">Zrušit</button>' +
+    '</div>';
+  document.body.appendChild(d);
+  const ta = d.querySelector('#anno-content');
+  d.querySelector('#anno-save').onclick = () => {
+    const content = ta.value.replace(/[()]/g, '').replace(/\s+/g, ' ').trim();
     if (!content) { alertMsg('Anotace nesmí být prázdná.'); return; }
-    if (!Array.isArray(entity.annotations)) entity.annotations = [];
-    if (isNew) {
-      entity.annotations.push(newAnnotation(content, paragraphText, paragraphIndex));
+    // Vlož (>content) na konec řádku odpovídajícího odstavci paragraphIndex.
+    const lines = (entity.body || '').split('\n');
+    const cleanLines = cleanBody.split('\n');
+    // Najdi poslední řádek, který v očištěném textu odpovídá textu odstavce
+    let targetLine = -1;
+    if (paragraphText) {
+      for (let i = 0; i < cleanLines.length; i++) {
+        const lt = (cleanLines[i] || '').trim();
+        if (!lt) continue;
+        if (lt === paragraphText.trim() || paragraphText.trim().startsWith(lt) || lt.includes(paragraphText.trim()) || paragraphText.trim().includes(lt)) targetLine = i;
+      }
+    }
+    if (targetLine < 0) {
+      // Není odstavec – přidej na konec jako samostatný řádek
+      entity.body = (entity.body || '').replace(/\s+$/, '') + (entity.body ? '\n\n' : '') + '(>' + content + ')';
     } else {
-      existing.content = content;
-      existing.updatedAt = nowIso();
+      lines[targetLine] = lines[targetLine].replace(/\s+$/, '') + ' (>' + content + ')';
+      entity.body = lines.join('\n');
     }
     entity.updated_at = nowIso();
     save();
     d.close(); d.remove();
     render();
-    toast(isNew ? 'Anotace přidána.' : 'Anotace uložena.');
+    toast('Anotace přidána.');
   };
   d.querySelector('#anno-cancel').onclick = () => { d.close(); d.remove(); };
   d.showModal();
@@ -17566,6 +18014,9 @@ function openSectionEditor(entity, sectionIdx) {
     });
     editDiv.querySelectorAll('button[data-md-lint-target]').forEach(btn => {
       btn.onclick = () => openMdLint(entity, 'sec-edit-ta', 'body', 'sekce');
+    });
+    editDiv.querySelectorAll('button[data-md-paste-target]').forEach(btn => {
+      btn.onclick = () => pasteHtmlAsMarkdown(btn.dataset.mdPasteTarget);
     });
     editDiv.querySelectorAll('button.md-insert-helper').forEach(btn => {
       btn.onclick = () => openMdInsertChooser(entity, 'sec-edit-ta');
@@ -21711,13 +22162,13 @@ function setupKeyboard() {
     if (ev.key === 'Escape' && state.view === 'detail' && state.detailMode === 'edit') {
       // Přepnout na read PŘED save() — autosave guard v edit modu by jinak zablokoval upload
       state.detailMode = 'read';
-      // Quick anotace: (>text) → klasická anotace + odstranit z body
+      // Anotace žijí v textu (>text); zmigrovat případné staré JSON anotace.
       const _qaE = findEntity(state.detailId);
       if (_qaE) {
-        const cnt = processQuickAnnotations(_qaE);
+        const cnt = migrateAnnotationsToText(_qaE);
         if (cnt > 0) {
           save();
-          toast('Z textu přidáno ' + cnt + ' anotac' + (cnt === 1 ? 'e' : cnt < 5 ? 'e' : 'í') + '.');
+          toast('Anotace převedeny do textu (' + cnt + ').');
         }
       }
       render(); ev.preventDefault(); return;
@@ -23578,7 +24029,11 @@ function expandMarkdownIncludes(text, opts) {
       return header + inner;
     });
   }
-  return expand(text, 0, new Set(), rootEntity);
+  let expanded = expand(text, 0, new Set(), rootEntity);
+  // Inline anotace (>text) do exportu/tisku/kopírování nepatří – stripneme je,
+  // pokud si volající vyžádá stripAnnotations. Při include (výchozí) zůstávají.
+  if (opts.stripAnnotations) expanded = stripInlineAnnotations(expanded);
+  return expanded;
 }
 
 // Vykreslí databázi jako MD tabulku (pro export)
@@ -23635,7 +24090,7 @@ async function pushEntityToGithub(entity) {
   if (!GH.getToken()) { alertMsg('Chybí GitHub token. Nastavte ho v nastavení GitHubu.'); return; }
 
   // Obsah = rozexpandované tělo (direktivy, čítače, placeholdery) – stejně jako export.
-  const content = expandMarkdownIncludes(entity.body || '', { markIncluded: false, entity: entity });
+  const content = expandMarkdownIncludes(entity.body || '', { markIncluded: false, entity: entity, stripAnnotations: true });
   const branch = 'main';
   const apiBase = '/repos/' + encodeURIComponent(parsed.owner) + '/' + encodeURIComponent(parsed.repo) +
                   '/contents/' + parsed.path.split('/').map(encodeURIComponent).join('/');
@@ -23715,7 +24170,7 @@ function buildEntityExportModel(entity, selection) {
   };
   // Diagram (aspekt Diagram): jeho obrázek není v body, je v attributes.encoded.
   // Do exportu ho přidáme jako Markdown obrázek → projde všemi cestami (MD/HTML/tisk/DOCX jako PNG).
-  let bodyExpanded = sel.body ? expandMarkdownIncludes(e.body || '', { markIncluded: false, entity: e }) : '';
+  let bodyExpanded = sel.body ? expandMarkdownIncludes(e.body || '', { markIncluded: false, entity: e, stripAnnotations: true }) : '';
   if (sel.body && (e.aspects || []).includes('Diagram')) {
     const enc = e.attributes && e.attributes.encoded;
     const dName = (e.attributes && e.attributes.diagram_name) || getDisplayTitle(e) || 'Diagram';
