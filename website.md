@@ -9,7 +9,7 @@ Tohle je mikroweb věnovaný informacím o našich (snad) užitečných nástroj
 
 Všechny nástroje máte v seznamu vlevo.
 
-Osobně moje favority jsou: [ArchiMate editor](#archimate), [PIM information manager](#pim), [DKM data manažer](#dkm), [Šablonář](#mdt)  a [PlantUML editor](#plantuml). Ale je jich tady už přes 20.
+Osobně moje favority jsou: [ArchiMate editor](#archimate), [PIM information manager](#pim), [DKM data manažer](#dkm), [Šablonář](#mdt) a [PlantUML editor](#plantuml). Ale je jich tady už přes 20.
 
 ## Novinky k našim nástrojům
 
@@ -32,7 +32,7 @@ Osobně moje favority jsou: [ArchiMate editor](#archimate), [PIM information man
 
 2.6.2026: Web teď konečně funguje i na adrese https://nastroje.egdilna.cz a na této adrese fungují i jednotlivé nástroje.
 
-7.4.2026: Nový nástroj [Správce záložek] - Bookmark je komplexním správcem sady záložek (bookmarků). Data o záložkách v katalogu lze ukládat a načítat buď z lokálního JSON souboru, ale především z GitHubu a GIT repozitáře a to včetně privátních cest. První funkční betaverze publikována v nástrojích a to na adrese https://nastroje.egdilna.cz/bookmark 
+7.4.2026: Nový nástroj [Správce záložek] - Bookmark je komplexním správcem sady záložek (bookmarků). Data o záložkách v katalogu lze ukládat a načítat buď z lokálního JSON souboru, ale především z GitHubu a GIT repozitáře a to včetně privátních cest. První funkční betaverze publikována v nástrojích a to na adrese https://nastroje.egdilna.cz/bookmark
 
 6.4.2026: Pozor, většina našich nástrojů teď mimo jiných metod pro načítání a ukládání dat <mark>podporuje i plnou itegraci s GIT úložištěm, třeba GitHub přes API</mark>. Pro zápisy budete potřebovat vlastní GitHub API klíč, ale ten zůstane jen ve vašem prohlížeči a nikdy se neukládá ani k nám a ani do příslušného datového souboru.
 
@@ -127,14 +127,14 @@ Existuje i [Uživatelská dokumentace](https://nastroje.egdilna.cz/rpp/dokumenta
 
 | Datum | Typ | Popis |
 | --- | --- | --- |
-| (žádný záznam) |  |  |
+| (žádný záznam) | | |
 
 
 # Opendata
 
 ## Prohlížeč opendat
 
-⛓️ [Nástroj prohlížeč opendat](https://nastroje.egdilna.cz/opendata)  je českým webovým jednoduchým prohlížečem otevřených dat. Nejen v ČR existuje povinnost publikace otevřených dat formou popsaných datových sad, které lze najít třeba v NKOD. A protože jde jen o surová data, je k jejich zpracování potřeba nástroj. Tenhle je jednoduchý, zadáte adresu schématu a sady a nástroj vám vše vykreslí, umožní filtrovat, hledat, exportovat procháze. Běží online na https://nastroje.egdilna.cz/opendata
+⛓️ [Nástroj prohlížeč opendat](https://nastroje.egdilna.cz/opendata) je českým webovým jednoduchým prohlížečem otevřených dat. Nejen v ČR existuje povinnost publikace otevřených dat formou popsaných datových sad, které lze najít třeba v NKOD. A protože jde jen o surová data, je k jejich zpracování potřeba nástroj. Tenhle je jednoduchý, zadáte adresu schématu a sady a nástroj vám vše vykreslí, umožní filtrovat, hledat, exportovat procháze. Běží online na https://nastroje.egdilna.cz/opendata
 
 ### Hlavní funkce
 
@@ -151,8 +151,8 @@ Existuje i [Uživatelská dokumentace](https://nastroje.egdilna.cz/rpp/dokumenta
 
 1. Otevřete si prohlížeč z odkazu výše (nebo si otevřete jeho staženou offline verzi)
 1. Po otevření je třeba vložit do příslušných polí:
-    1. URL JSON schématu datové sady
-    2. URL datové sady (JSON, JSONLD, JSONRDF, CSV)
+ 1. URL JSON schématu datové sady
+ 2. URL datové sady (JSON, JSONLD, JSONRDF, CSV)
 1. Načtou se všechna data
 1. Data lze filtrovat (prohlížeč rozpozná patternová pole), třídit, hledat v nich, zobrazovat
 1. Funguje i export
@@ -239,6 +239,7 @@ Existují
 
 | Datum | Typ | Popis |
 | --- | --- | --- |
+| 7. 8. 2026 | Vylepšení | Přidáno víc než 20 klávesových zkratek pro funkce v editoru textu. Od prostého formátování až po ovládání critic revizí apod. Sem to nebudu celé vypisovat, podívejte se do aktualizované nápovědy v aplikaci. |
 | 3. 8. 2026 | Vylepšení | I v detailu pokud je někde vazba na prvek, lze jej nyní otevŕít jedním kliknutím v novém panelu, takže neztratíte kontext. A taky přidána maličkost při editaci, u vazeb je nyní možno rovnou rychle vazbu editovat, což šlo před tím jen z přehledu Nástroje / Vazby / Všechny vazby / Upravit vazbu. |
 | 28. 7. 2026 | Oprava | Oprava korektoru češtiny, kdy při určitém výskytu některých písmen s diakritikou na konci slova chybně označoval za chybu a nabízel to samé slovo jako opravu. |
 | 28. 7. 2026 | Vylepšení | Nyní se při otevření entity překreslí adresa URL rovnou na tuto entitu, takže teď můžete odkazovat na konkrétní entitu a používat i funkce prohlížeče, jako jsou záložky a sdílení apod. |
@@ -255,6 +256,7 @@ Existují
 | 8. 6. 2026 | Funkce | Nyní se databáze includují do jiných entit přes nový příkaz picluide database místo include, podporuje celou řadu parametrů jako jsou vybrané sloupce filtrování, apod. Ostatně i tento výpis je tvořen filtrovaným exportem databáze změn aplikací |
 | 2. 6. 2026 | Funkce | Poměrně výrazná nová verze se spoustou funkcí. Time tracking pro jakoukoliv entitu, sledování času napříč projektem, detaily projektu vylepšeny, zcela přepracováno rozhraní pro události... |
 | 9. 4. 2026 | Vylepšení | Zpřehlednění detailu u diagramu a databáze a zpřehlednění time tracker pohledů. |
+| | Vylepšení | Když používáte projekty, vytváříte-li z entity v projektu novou entitu jakýmkoliv způsobem, nabídne se vám ji rovnou přidat do jednoho či více souvisejících projektů, přičemž to inteligentně rozpozná projekty kterých se to může týkat. Do teď tohle bylo jen při tvorbě z detailu projektu nebo schůzky. |
 
 
 # DKM
@@ -313,7 +315,7 @@ K dispozici je kompletní [[uživatelská příručka v češtině]](https://nas
 
 Principem nástroje je, že si každý může vytvořit šablonu a každý si pak může přes jednoduchý URL parametr otevřít rovnou danou šablonu.
 
-Ukázat funkce se dá skvěle na pŕíkladech, jako je 
+Ukázat funkce se dá skvěle na pŕíkladech, jako je
 
 - Interaktivní šablona sebehodnocení souladu AIS s požadavky GP https://nastroje.egdilna.cz/mdt?template=https://raw.githubusercontent.com/egdilna/sablony/main/dokumentace_is/mdt-sablona-sebehodnoceni-ais-soulad-gp.mdt
 
@@ -387,7 +389,7 @@ Co to umí?
 
 #### ✏️Odkazy a dokumentace
 
-ℹ️ Dokumentace          se vytváří...
+ℹ️ Dokumentace se vytváří...
 
 - [ ] vážně pohnout s dokumentací k editoru spisového plánu
 - [ ] pak až bude hotová dokumentace tak sem odkaz
