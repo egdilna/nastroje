@@ -2651,6 +2651,16 @@ function openRowEditor(id, focusColId) {
   document.getElementById("row-ed-topic").addEventListener("input", updatePreview);
   updatePreview();
 
+  // Markdown formatting shortcuts on the topic, note and any Markdown columns.
+  attachMarkdownKeys(document.getElementById("row-ed-topic"));
+  attachMarkdownKeys(document.getElementById("row-ed-note"));
+  doc.columns.forEach(col => {
+    if (col.type === "markdown" && !col.isTopic) {
+      const el = document.getElementById("row-ed-col-" + col.id);
+      if (el) attachMarkdownKeys(el);
+    }
+  });
+
   dlg.showModal();
   let focusEl;
   if (focusColId === "note") focusEl = document.getElementById("row-ed-note");
@@ -2668,6 +2678,95 @@ function buildEditorField(labelText, id, value, kind, rows) {
   inp.id = id; inp.value = value || "";
   f.appendChild(inp);
   return f;
+}
+// Attach formatting keyboard shortcuts to a Markdown textarea/input.
+// Wraps the selection (or inserts placeholders) and announces each action.
+function attachMarkdownKeys(el) {
+  el.addEventListener("keydown", async (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    const k = e.key;
+    // normalize: some layouts report shifted symbols
+    let handled = true;
+    if (k === "b" || k === "B") wrapSelection(el, "**", "**", "tučné");
+    else if (k === "i" || k === "I") wrapSelection(el, "*", "*", "kurzíva");
+    else if (k === "=" ) wrapSelection(el, "{==", "==}", "zvýraznění");
+    else if (k === "+") wrapSelection(el, "{++", "++}", "vložení (Critic)");
+    else if (k === "-") wrapSelection(el, "{--", "--}", "odstranění (Critic)");
+    else if (k === ".") criticReplace(el);
+    else if (k === "k" || k === "K") { e.preventDefault(); await insertLink(el); return; }
+    else handled = false;
+    if (handled) e.preventDefault();
+  });
+}
+// Wrap the current selection with before/after; if nothing selected, insert the
+// markers and place the caret between them. Announces the action.
+function wrapSelection(el, before, after, label) {
+  const s = el.selectionStart, en = el.selectionEnd;
+  const val = el.value;
+  const sel = val.slice(s, en);
+  const out = val.slice(0, s) + before + sel + after + val.slice(en);
+  el.value = out;
+  if (sel) {
+    // keep the wrapped text selected
+    el.selectionStart = s + before.length;
+    el.selectionEnd = en + before.length;
+    announce(label + " použito na výběr");
+  } else {
+    const caret = s + before.length;
+    el.selectionStart = el.selectionEnd = caret;
+    announce(label + " vloženo, pište mezi značky");
+  }
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.focus();
+}
+// CriticMarkup substitution: selected text becomes the "old" part, caret lands
+// where the replacement is typed: {~~old~>|~~}
+function criticReplace(el) {
+  const s = el.selectionStart, en = el.selectionEnd;
+  const val = el.value;
+  const sel = val.slice(s, en);
+  const before = "{~~" + sel + "~>";
+  const after = "~~}";
+  const out = val.slice(0, s) + before + after + val.slice(en);
+  el.value = out;
+  const caret = s + before.length; // right after ~>
+  el.selectionStart = el.selectionEnd = caret;
+  announce(sel ? "Náhrada (Critic): pište nový text" : "Náhrada (Critic) vložena, pište nový text");
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.focus();
+}
+// Insert a Markdown link. If the clipboard holds a URL, use it and put the caret
+// on the link text; otherwise insert [text]() with the caret between the parens.
+async function insertLink(el) {
+  const s = el.selectionStart, en = el.selectionEnd;
+  const val = el.value;
+  const sel = val.slice(s, en);
+  let url = "";
+  try {
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      const clip = (await navigator.clipboard.readText() || "").trim();
+      if (/^(https?:\/\/|mailto:|www\.)\S+$/i.test(clip)) url = clip;
+    }
+  } catch (err) { /* clipboard blocked: fall back to empty URL */ }
+  if (url) {
+    const text = sel || "název";
+    const out = val.slice(0, s) + "[" + text + "](" + url + ")" + val.slice(en);
+    el.value = out;
+    // caret/selection on the link text
+    el.selectionStart = s + 1;
+    el.selectionEnd = s + 1 + text.length;
+    announce("Odkaz s URL ze schránky vložen, upravte název");
+  } else {
+    const text = sel || "název";
+    const out = val.slice(0, s) + "[" + text + "]()" + val.slice(en);
+    el.value = out;
+    // caret between the parentheses
+    const caret = s + 1 + text.length + 2; // after "](" -> "[text]("
+    el.selectionStart = el.selectionEnd = caret;
+    announce("Odkaz vložen, vepište URL do závorky");
+  }
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.focus();
 }
 // Build the appropriate editor control for a column type.
 function buildColumnField(col, value) {
@@ -5221,6 +5320,18 @@ function buildHelp() {
 <tr><td><code>{&gt;&gt;text&lt;&lt;}</code></td><td>Komentář</td><td>Komentář ve Wordu</td></tr>
 </table>
 <p class="hint">Při exportu lze zvolit, zda sledované změny zůstanou jako návrhy, nebo se rovnou přijmou. Funguje v Markdown buňkách i v poznámkách.</p>
+<h3>Klávesové zkratky při psaní</h3>
+<p>V editoru tématu, poznámky i v Markdown sloupcích fungují formátovací zkratky. Obalí označený text, nebo (není-li nic označeno) vloží značky a umístí kurzor mezi ně. Každou akci odečítač ohlásí.</p>
+<table class="help">
+<tr><th>Zkratka</th><th>Akce</th></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>B</kbd></td><td>Tučné <code>**…**</code></td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>I</kbd></td><td>Kurzíva <code>*…*</code></td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>Odkaz — je-li ve schránce URL, vloží <code>[název](url)</code> a označí název; jinak <code>[text]()</code> s kurzorem mezi závorky</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>+</kbd></td><td>Critic vložení <code>{++…++}</code></td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>-</kbd></td><td>Critic odstranění <code>{--…--}</code></td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>.</kbd></td><td>Critic náhrada — označený text se stane původním, kurzor skočí na místo, kam píšeš náhradu: <code>{~~staré~&gt;|~~}</code></td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>=</kbd></td><td>Zvýraznění <code>{==…==}</code></td></tr>
+</table>
 <h3>Číslování</h3>
 <p>V panelu „Číslování řádků" nastavíš pro <strong>každou z šesti úrovní</strong> formát (arabské, římské, písmena), předponu a příponu (např. „§ ", „odst. ", „písm. ", „)") a oddělovač. U kterékoli úrovně lze zaškrtnout, že se <strong>nečísluje</strong> — taková úroveň se z čísla úplně vynechá (potomci pokračují, např. 1 → 1.1, ne 1.0.1). Předvolby pokrývají úřední styl, klasickou osnovu, legislativní předpis (Část/Článek) i desetinné číslování.</p>
 <p>Každá úroveň má navíc dva nezávislé přepínače:</p>
