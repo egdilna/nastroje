@@ -1248,6 +1248,10 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <tr><td><kbd>p</kbd> nebo <kbd>Alt+Shift+P</kbd></td><td>Skok na první otevřený panel (tab)</td></tr>
       <tr><td><kbd>s</kbd></td><td>Uložit na GitHub</td></tr>
       <tr><td><kbd>e</kbd></td><td>V detailu: přepnout edit ↔ čtení</td></tr>
+      <tr><td><kbd>F1</kbd></td><td>Otevřít nápovědu (klávesové zkratky)</td></tr>
+      <tr><td><kbd>F2</kbd></td><td>V detailu: přejít do editu a fokus do názvu (přejmenovat)</td></tr>
+      <tr><td><kbd>F3</kbd></td><td>V detailu: přejít do editu a fokus do těla</td></tr>
+      <tr><td><kbd>Shift</kbd>+<kbd>F4</kbd></td><td>V detailu: přejít do sekce příznaků a rozbalit ji</td></tr>
       <tr><td><kbd>u</kbd></td><td>V edit módu: uložit a zpět na čtení</td></tr>
       <tr><td><kbd>r</kbd></td><td>V detailu: přidat vazbu na existující entitu</td></tr>
       <tr><td><kbd>Shift+R</kbd></td><td><strong>Výjimka z navigace:</strong> v detailu vytvořit novou související entitu (s vazbou)</td></tr>
@@ -1292,12 +1296,15 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <tr><td><kbd>Ctrl+-</kbd></td><td>Označené jako Critic odstranění <code>{--…--}</code></td></tr>
       <tr><td><kbd>Ctrl+.</kbd></td><td>Označené jako Critic náhrada <code>{~~…~&gt;…~~}</code></td></tr>
       <tr><td><kbd>Ctrl+=</kbd></td><td>Označené jako zvýraznění <code>{==…==}</code></td></tr>
-      <tr><td><kbd>Ctrl+Shift+W</kbd></td><td>Vložit wiki odkaz na entitu</td></tr>
+      <tr><td><kbd>Ctrl+Shift+K</kbd></td><td>Vložit wiki odkaz na entitu</td></tr>
       <tr><td><kbd>Ctrl+Shift+E</kbd></td><td>Vložit include <code>{{include:…}}</code></td></tr>
       <tr><td><kbd>Ctrl+Shift+S</kbd></td><td>Vložit status <code>{{status:…}}</code></td></tr>
       <tr><td><kbd>Ctrl+Shift+I</kbd></td><td>Vložit příznak (nabídka emoji)</td></tr>
-      <tr><td><kbd>Ctrl+Shift+N</kbd></td><td>Z označeného textu vytvořit novou entitu</td></tr>
+      <tr><td><kbd>Ctrl+M</kbd></td><td>Z označeného textu vytvořit novou entitu</td></tr>
       <tr><td><kbd>Ctrl+Shift+A</kbd></td><td>Přejít na lištu akcí s označeným textem</td></tr>
+      <tr><td><kbd>Ctrl+Shift+U</kbd></td><td>Udělat z řádku markdown úkol (<code>- [ ]</code>)</td></tr>
+      <tr><td><kbd>Ctrl+Shift+C</kbd></td><td>Označit úkol na řádku jako hotový (<code>[ ]</code> → <code>[x]</code>)</td></tr>
+      <tr><td><kbd>F4</kbd></td><td>Vložit příznak na pozici kurzoru</td></tr>
     </tbody>
   </table>
   <h3>Syntaxe v textu</h3>
@@ -20190,6 +20197,57 @@ function mdInsertHeadingSameLevel(ta) {
   if (typeof statusMsg === 'function') statusMsg('Nadpis úrovně ' + level + '.');
 }
 
+// Z aktuálního řádku udělá markdown úkol. Když už úkol je, nechá ho být.
+// Zachová případnou odrážku/odsazení.
+function mdToggleTaskLine(ta) {
+  const pos = ta.selectionStart;
+  const val = ta.value;
+  const lineStart = val.lastIndexOf('\n', pos - 1) + 1;
+  let lineEnd = val.indexOf('\n', pos);
+  if (lineEnd < 0) lineEnd = val.length;
+  const line = val.slice(lineStart, lineEnd);
+  // Už je úkol? Nic neděláme.
+  if (/^\s*(?:[-*+]\s+)?\[[ xX]\]\s/.test(line)) {
+    if (typeof statusMsg === 'function') statusMsg('Řádek už je úkol.');
+    return;
+  }
+  // Zachovej odsazení; existující odrážku "- " nahradíme "- [ ] "
+  const indentMatch = line.match(/^(\s*)([-*+]\s+)?(.*)$/);
+  const indent = indentMatch[1] || '';
+  const rest = indentMatch[3] || '';
+  const newLine = indent + '- [ ] ' + rest;
+  ta.value = val.slice(0, lineStart) + newLine + val.slice(lineEnd);
+  ta.dispatchEvent(new Event('input', { bubbles: true }));
+  ta.focus();
+  // Kurzor na konec vloženého (nebo za "- [ ] " když byl řádek prázdný)
+  const caret = rest ? lineStart + newLine.length : lineStart + (indent + '- [ ] ').length;
+  try { ta.setSelectionRange(caret, caret); } catch (e) {}
+  if (typeof statusMsg === 'function') statusMsg('Řádek označen jako úkol.');
+}
+
+// Je-li aktuální řádek nehotový úkol, přepne ho na hotový ([ ] → [x]).
+function mdMarkTaskDone(ta) {
+  const pos = ta.selectionStart;
+  const val = ta.value;
+  const lineStart = val.lastIndexOf('\n', pos - 1) + 1;
+  let lineEnd = val.indexOf('\n', pos);
+  if (lineEnd < 0) lineEnd = val.length;
+  const line = val.slice(lineStart, lineEnd);
+  const m = line.match(/^(\s*(?:[-*+]\s+)?)\[( )\]/);
+  if (!m) {
+    // Je už hotový?
+    if (/^\s*(?:[-*+]\s+)?\[[xX]\]/.test(line)) { if (typeof statusMsg === 'function') statusMsg('Úkol je už hotový.'); return; }
+    if (typeof statusMsg === 'function') statusMsg('Tento řádek není úkol.');
+    return;
+  }
+  const newLine = line.replace(/^(\s*(?:[-*+]\s+)?)\[ \]/, '$1[x]');
+  ta.value = val.slice(0, lineStart) + newLine + val.slice(lineEnd);
+  ta.dispatchEvent(new Event('input', { bubbles: true }));
+  ta.focus();
+  try { ta.setSelectionRange(pos, pos); } catch (e) {}
+  if (typeof statusMsg === 'function') statusMsg('Úkol označen jako hotový.');
+}
+
 // Napojí klávesové zkratky na markdown textareu. entityGetter vrací aktuální entitu (nebo null).
 function attachMarkdownShortcuts(ta, targetId, entityGetter) {
   if (!ta || ta._mdShortcutsBound) return;
@@ -20206,12 +20264,19 @@ function attachMarkdownShortcuts(ta, targetId, entityGetter) {
     const ent = () => (typeof entityGetter === 'function' ? entityGetter() : null);
     const needSel = () => { if (!hasSel || !selected.trim()) { toast('Nejprve označte text.'); if (typeof statusMsg === 'function') statusMsg('Nejprve označte text.'); return false; } return true; };
 
+    // Potlačí výchozí akci prohlížeče u zkratek, které jde potlačit.
+    const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+
     // --- Ctrl+Shift kombinace ---
-    if (ctrl && shift && kl === 'i') { ev.preventDefault(); openMdInsertHelper(targetId, 'flag'); return; }
-    if (ctrl && shift && kl === 'n') { ev.preventDefault(); if (needSel()) { const e = ent(); if (e) doMdExtract(ta, e, start, end, selected); else toast('Vytvoření entity funguje jen v entitě.'); } return; }
+    if (ctrl && shift && kl === 'i') { stop(ev); openMdInsertHelper(targetId, 'flag'); return; }
+    // Nová entita z výběru: Ctrl+M (Ctrl+Shift+N si drží prohlížeč, proto ho nepoužíváme)
+    if (ctrl && !shift && kl === 'm') {
+      stop(ev);
+      if (needSel()) { const e = ent(); if (e) doMdExtract(ta, e, start, end, selected); else toast('Vytvoření entity funguje jen v entitě.'); }
+      return;
+    }
     if (ctrl && shift && kl === 'a') {
-      ev.preventDefault();
-      // Přesun fokusu na lištu akcí s označeným textem
+      stop(ev);
       const bar = document.getElementById(targetId + '-sel-actions') || document.getElementById(targetId + '-actions');
       if (bar) { const btn = bar.querySelector('button'); if (btn) { bar.hidden = false; btn.focus(); return; } }
       toast('Lišta akcí není dostupná.');
@@ -20219,24 +20284,31 @@ function attachMarkdownShortcuts(ta, targetId, entityGetter) {
     }
 
     // --- CriticMarkup a wrap (bez Shift) ---
-    // Ctrl++ (plus): critic vložení. Na některých layoutech je '+' přes Shift, tak bereme i '='/'+'.
-    if (ctrl && !shift && (key === '+' || (key === '=' && false))) { ev.preventDefault(); if (needSel()) mdWrapCritic(ta, 'cm-ins', start, end, selected); return; }
-    if (ctrl && shift && (key === '+')) { ev.preventDefault(); if (needSel()) mdWrapCritic(ta, 'cm-ins', start, end, selected); return; }
-    if (ctrl && !shift && key === '-') { ev.preventDefault(); if (needSel()) mdWrapCritic(ta, 'cm-del', start, end, selected); return; }
-    if (ctrl && !shift && key === '.') { ev.preventDefault(); if (needSel()) mdWrapCritic(ta, 'cm-sub', start, end, selected); return; }
-    if (ctrl && !shift && key === '=') { ev.preventDefault(); if (needSel()) mdWrapCritic(ta, 'cm-mark', start, end, selected); return; }
+    if (ctrl && !shift && key === '+') { stop(ev); if (needSel()) mdWrapCritic(ta, 'cm-ins', start, end, selected); return; }
+    if (ctrl && shift && key === '+') { stop(ev); if (needSel()) mdWrapCritic(ta, 'cm-ins', start, end, selected); return; }
+    if (ctrl && !shift && key === '-') { stop(ev); if (needSel()) mdWrapCritic(ta, 'cm-del', start, end, selected); return; }
+    if (ctrl && !shift && key === '.') { stop(ev); if (needSel()) mdWrapCritic(ta, 'cm-sub', start, end, selected); return; }
+    if (ctrl && !shift && key === '=') { stop(ev); if (needSel()) mdWrapCritic(ta, 'cm-mark', start, end, selected); return; }
 
     // --- Formátování ---
-    if (ctrl && !shift && kl === 'b') { ev.preventDefault(); mdWrapInline(ta, '**'); return; }
-    if (ctrl && !shift && kl === 'i') { ev.preventDefault(); mdWrapInline(ta, '*'); return; }
-    if (ctrl && !shift && kl === 'k') { ev.preventDefault(); mdInsertLink(ta); return; }
-    if (ctrl && !shift && kl === 'h') { ev.preventDefault(); mdInsertHeadingSameLevel(ta); return; }
+    if (ctrl && !shift && kl === 'b') { stop(ev); mdWrapInline(ta, '**'); return; }
+    if (ctrl && !shift && kl === 'i') { stop(ev); mdWrapInline(ta, '*'); return; }
+    if (ctrl && !shift && kl === 'k') { stop(ev); mdInsertLink(ta); return; }
+    if (ctrl && !shift && kl === 'h') { stop(ev); mdInsertHeadingSameLevel(ta); return; }
 
     // --- Vkládání dynamických prvků ---
-    if (ctrl && shift && kl === 'w') { ev.preventDefault(); openMdInsertHelper(targetId, 'wiki'); return; }
-    if (ctrl && shift && kl === 's') { ev.preventDefault(); openMdInsertHelper(targetId, 'status'); return; }
-    if (ctrl && shift && kl === 'e') { ev.preventDefault(); openMdInsertHelper(targetId, 'include'); return; }
-  });
+    // Wiki: Ctrl+Shift+K (Ctrl+Shift+W si drží prohlížeč, proto ho nepoužíváme)
+    if (ctrl && shift && kl === 'k') { stop(ev); openMdInsertHelper(targetId, 'wiki'); return; }
+    if (ctrl && shift && kl === 's') { stop(ev); openMdInsertHelper(targetId, 'status'); return; }
+    if (ctrl && shift && kl === 'e') { stop(ev); openMdInsertHelper(targetId, 'include'); return; }
+
+    // --- Úkoly ---
+    // Ctrl+Shift+U: udělá z aktuálního řádku markdown úkol. Je-li na řádku text, vloží
+    // "- [ ] " před něj; je-li prázdný, jen vloží syntax na začátek.
+    if (ctrl && shift && kl === 'u') { stop(ev); mdToggleTaskLine(ta); return; }
+    // Ctrl+Shift+C: je-li aktuální řádek úkol, přepne ho na hotový ([ ] → [x]).
+    if (ctrl && shift && kl === 'c') { stop(ev); mdMarkTaskDone(ta); return; }
+  }, true); // capture fáze – chytíme událost dřív než výchozí zpracování stránky
 }
 
 function doMdExtract(ta, parentEntity, start, end, selected) {
@@ -22317,6 +22389,49 @@ function setupKeyboard() {
 
     const tag = (document.activeElement.tagName || '').toLowerCase();
     const inField = tag === 'input' || tag === 'textarea' || tag === 'select';
+
+    // ===== FUNKČNÍ KLÁVESY (fungují ve view i edit, i v editačním poli) =====
+    // F1 = nápověda (klávesové zkratky)
+    if (ev.key === 'F1') {
+      const dh = document.getElementById('dialog-help');
+      if (dh) { dh.showModal(); ev.preventDefault(); return; }
+    }
+    // F2 = přejmenovat: přepni do edit a fokus do názvu
+    if (ev.key === 'F2' && !ev.shiftKey && state.view === 'detail' && state.detailId) {
+      if (state.detailMode !== 'edit') { state.detailMode = 'edit'; render(); }
+      setTimeout(() => { const t = document.getElementById('d-title'); if (t) { t.focus(); t.select(); } }, 60);
+      ev.preventDefault(); return;
+    }
+    // F3 = editace těla: přepni do edit a fokus do těla
+    if (ev.key === 'F3' && !ev.shiftKey && state.view === 'detail' && state.detailId) {
+      if (state.detailMode !== 'edit') { state.detailMode = 'edit'; render(); }
+      setTimeout(() => { const b = document.getElementById('d-body'); if (b) { b.focus(); const p = b.value.length; try { b.setSelectionRange(p, p); } catch (e) {} } }, 60);
+      ev.preventDefault(); return;
+    }
+    // Shift+F4 = ve view přejít do sekce příznaků a rozbalit ji
+    if (ev.key === 'F4' && ev.shiftKey && state.view === 'detail' && state.detailId) {
+      const sec = document.getElementById('entity-flags-section');
+      if (sec) {
+        if (sec.tagName.toLowerCase() === 'details') sec.open = true;
+        sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const focusable = sec.querySelector('summary, a, button');
+        if (focusable) setTimeout(() => focusable.focus(), 60);
+      } else {
+        toast('Tato entita nemá žádné příznaky.');
+      }
+      ev.preventDefault(); return;
+    }
+    // F4 = vložit příznak na pozici kurzoru (jako Ctrl+Shift+I). Jen když je fokus v md poli.
+    if (ev.key === 'F4' && !ev.shiftKey) {
+      const ae = document.activeElement;
+      if (ae && (ae.id === 'd-body' || ae.id === 'sec-edit-ta' || ae.id === 'sticky-text')) {
+        openMdInsertHelper(ae.id, 'flag'); ev.preventDefault(); return;
+      }
+      if (state.view === 'detail' && state.detailMode === 'edit') {
+        const b = document.getElementById('d-body');
+        if (b) { b.focus(); openMdInsertHelper('d-body', 'flag'); ev.preventDefault(); return; }
+      }
+    }
 
     // Esc — zavře viditelné výsledky hledání v hlavičce (přednost před edit-Escape)
     if (ev.key === 'Escape') {
