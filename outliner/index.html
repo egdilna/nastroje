@@ -162,6 +162,11 @@
   .context-menu .cmi-key { color: var(--muted); font-size: 0.85em; }
   .context-menu .cmi-sep { border-top: 1px solid var(--border); margin: 4px 2px; height: 0; }
   .layout { display: flex; flex-wrap: wrap; align-items: flex-start; }
+  .versions-table th, .versions-table td { border-bottom: 1px solid var(--border); padding: 4px 6px; text-align: left; vertical-align: top; }
+  .versions-table td button { font-size: 0.9em; padding: 2px 8px; }
+  #dlg-versions { min-width: 520px; max-width: 760px; }
+  ul.version-preview, ul.version-preview ul { margin: 0; padding-left: 18px; }
+  ul.version-preview li { margin: 1px 0; }
   .sidebar {
     flex: 0 0 280px;
     max-width: 320px;
@@ -479,6 +484,9 @@
           <li role="separator" class="menu-sep"></li>
           <li role="none"><button type="button" role="menuitem" id="btn-import">Import…</button></li>
           <li role="none"><button type="button" role="menuitem" id="btn-export" accesskey="e">Export… <span class="menu-key">Alt+E</span></button></li>
+          <li role="separator" class="menu-sep"></li>
+          <li role="none"><button type="button" role="menuitem" id="btn-save-version">Uložit verzi…</button></li>
+          <li role="none"><button type="button" role="menuitem" id="btn-manage-versions">Verze dokumentu…</button></li>
         </ul>
       </li>
       <li role="none" class="menu-root">
@@ -835,6 +843,38 @@
 
 <input type="file" id="file-input" class="visually-hidden" aria-hidden="true">
 
+<dialog id="dlg-save-version" aria-label="Uložit verzi">
+  <h2 style="margin-top:0">Uložit verzi</h2>
+  <p class="hint">Uloží snímek aktuálního stavu dokumentu. Verze se ukládají spolu s dokumentem do souboru .outline.</p>
+  <div class="field">
+    <label for="version-name">Název verze</label>
+    <input type="text" id="version-name" placeholder="např. Pracovní návrh 2">
+  </div>
+  <div class="dialog-actions">
+    <button type="button" data-close>Zrušit</button>
+    <button type="button" id="btn-do-save-version">Uložit verzi</button>
+  </div>
+</dialog>
+
+<dialog id="dlg-versions" aria-label="Verze dokumentu">
+  <h2 style="margin-top:0">Verze dokumentu</h2>
+  <div id="versions-body" aria-live="polite"></div>
+  <div class="dialog-actions">
+    <button type="button" data-close>Zavřít</button>
+  </div>
+</dialog>
+
+<dialog id="dlg-version-view" aria-label="Náhled verze">
+  <h2 style="margin-top:0" id="version-view-title">Náhled verze</h2>
+  <p class="hint" id="version-view-meta"></p>
+  <div id="version-view-body" style="max-height:60vh; overflow:auto; border:1px solid var(--border); border-radius:6px; padding:10px"></div>
+  <div class="dialog-actions">
+    <button type="button" data-close>Zavřít</button>
+    <button type="button" id="btn-version-view-restore">Vrátit se k této verzi</button>
+    <button type="button" id="btn-version-view-savefile">Uložit jako .outline</button>
+  </div>
+</dialog>
+
 <div id="context-menu" class="context-menu" role="menu" aria-label="Akce řádku" hidden></div>
 
 <script>
@@ -897,6 +937,7 @@ function newDoc() {
     },
     levelHeadingMap: { 1: "h1", 2: "h2", 3: "h3", 4: "h4", 5: "h5", 6: "h6" },
     filters: [],
+    versions: [], // saved snapshots: { id, name, timestamp, doc }
   };
 }
 function defaultStyle() {
@@ -3940,6 +3981,7 @@ function normalizeDoc(d) {
   if (!d.levelHeadingMap) d.levelHeadingMap = newDoc().levelHeadingMap;
   if (!d.styles) d.styles = newDoc().styles;
   if (!d.filters) d.filters = [];
+  if (!Array.isArray(d.versions)) d.versions = [];
   // pad numbering to 6 levels for older documents, and migrate per-level fields
   if (d.numbering && Array.isArray(d.numbering.levels)) {
     while (d.numbering.levels.length < 6) d.numbering.levels.push(defaultNumLevel("decimal"));
@@ -4562,6 +4604,148 @@ function saveDoc() {
   debug("Uloženo .outline (" + json.length + " B)");
 }
 
+/* ---------- Versioning ---------- */
+// A version is a snapshot: { id, name, timestamp (ISO), doc: <deep copy without versions> }.
+function snapshotCurrentDoc() {
+  const copy = JSON.parse(JSON.stringify(doc));
+  delete copy.versions; // never nest version history inside a snapshot
+  return copy;
+}
+function formatVersionTime(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  const p = (n) => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+function openSaveVersion() {
+  const input = document.getElementById("version-name");
+  // pre-fill with the name of the most recent version
+  const last = doc.versions && doc.versions.length ? doc.versions[doc.versions.length - 1] : null;
+  input.value = last ? last.name : "";
+  document.getElementById("dlg-save-version").showModal();
+  input.focus(); input.select();
+}
+function doSaveVersion() {
+  if (!Array.isArray(doc.versions)) doc.versions = [];
+  const name = (document.getElementById("version-name").value || "").trim() || ("Verze " + (doc.versions.length + 1));
+  const v = { id: uid(), name: name, timestamp: new Date().toISOString(), doc: snapshotCurrentDoc() };
+  doc.versions.push(v);
+  document.getElementById("dlg-save-version").close();
+  announce("Verze uložena: " + name);
+  debug("Uložena verze \u201E" + name + "\u201C (" + countRows(v.doc.rows) + " řádků)");
+}
+function openVersions() {
+  renderVersions();
+  document.getElementById("dlg-versions").showModal();
+}
+function renderVersions() {
+  const body = document.getElementById("versions-body");
+  body.innerHTML = "";
+  const vs = doc.versions || [];
+  if (!vs.length) {
+    const p = document.createElement("p"); p.className = "hint";
+    p.textContent = "Zatím nejsou uloženy žádné verze. Verzi vytvoříš přes Soubor → Uložit verzi.";
+    body.appendChild(p);
+    return;
+  }
+  const table = document.createElement("table");
+  table.className = "help versions-table"; table.style.width = "100%";
+  const thead = document.createElement("tr");
+  ["Název", "Datum a čas", "Řádků", "Akce"].forEach(h => { const th = document.createElement("th"); th.scope = "col"; th.textContent = h; thead.appendChild(th); });
+  table.appendChild(thead);
+  // newest first
+  vs.slice().reverse().forEach(v => {
+    const tr = document.createElement("tr");
+    const tdName = document.createElement("td"); tdName.textContent = v.name; tr.appendChild(tdName);
+    const tdTime = document.createElement("td"); tdTime.textContent = formatVersionTime(v.timestamp); tr.appendChild(tdTime);
+    const tdRows = document.createElement("td"); tdRows.textContent = String(countRows((v.doc && v.doc.rows) || [])); tdRows.style.textAlign = "right"; tr.appendChild(tdRows);
+    const tdAct = document.createElement("td");
+    const mk = (label, title, fn, cls) => { const b = document.createElement("button"); b.type = "button"; b.textContent = label; b.title = title; b.style.marginRight = "4px"; if (cls) b.className = cls; b.addEventListener("click", fn); return b; };
+    tdAct.appendChild(mk("Zobrazit", "Zobrazit náhled verze", () => openVersionView(v.id)));
+    tdAct.appendChild(mk("Vrátit", "Vrátit se k této verzi", () => restoreVersion(v.id)));
+    tdAct.appendChild(mk("Uložit jako…", "Uložit tuto verzi jako samostatný soubor .outline", () => saveVersionAsFile(v.id)));
+    tdAct.appendChild(mk("Přejmenovat", "Přejmenovat verzi", () => renameVersion(v.id), ""));
+    tdAct.appendChild(mk("Smazat", "Smazat verzi", () => deleteVersion(v.id), "danger"));
+    tr.appendChild(tdAct);
+    table.appendChild(tr);
+  });
+  body.appendChild(table);
+}
+function findVersion(id) { return (doc.versions || []).find(v => v.id === id) || null; }
+function openVersionView(id) {
+  const v = findVersion(id); if (!v) return;
+  document.getElementById("version-view-title").textContent = "Náhled verze: " + v.name;
+  document.getElementById("version-view-meta").textContent = "Uloženo " + formatVersionTime(v.timestamp) + " • " + countRows((v.doc && v.doc.rows) || []) + " řádků";
+  const host = document.getElementById("version-view-body");
+  host.innerHTML = "";
+  host.appendChild(renderVersionOutline(v.doc));
+  currentViewedVersionId = id;
+  document.getElementById("dlg-version-view").showModal();
+}
+// Render a read-only nested list of a snapshot's rows (topic text only).
+function renderVersionOutline(snapDoc) {
+  const rootUl = document.createElement("ul");
+  rootUl.className = "version-preview";
+  function rec(rows, ul) {
+    for (const r of rows) {
+      const li = document.createElement("li");
+      // resolve mirror text within the snapshot
+      let topic = r.topic;
+      if (r.mirrorOf) {
+        let src = null; (function find(rs) { for (const x of rs) { if (x.id === r.mirrorOf) { src = x; return; } if (x.children) find(x.children); } })(snapDoc.rows);
+        if (src) topic = src.topic;
+      }
+      li.textContent = markdownToPlain(topic || "") || "(prázdné)";
+      if (r.status) { const b = document.createElement("span"); b.textContent = " ✓"; b.style.color = "var(--accent)"; li.appendChild(b); }
+      ul.appendChild(li);
+      if (r.children && r.children.length) { const sub = document.createElement("ul"); rec(r.children, sub); li.appendChild(sub); }
+    }
+  }
+  rec(snapDoc.rows || [], rootUl);
+  return rootUl;
+}
+let currentViewedVersionId = null;
+function restoreVersion(id) {
+  const v = findVersion(id); if (!v) return;
+  if (!confirm("Vrátit se k verzi \u201E" + v.name + "\u201C? Aktuální stav bude nahrazen. (Uložené verze zůstanou zachovány — zvaž uložení aktuálního stavu jako verze.)")) return;
+  const keepVersions = doc.versions; // preserve the version history
+  const restored = JSON.parse(JSON.stringify(v.doc));
+  restored.versions = keepVersions;
+  normalizeDoc(restored);
+  doc = restored; selectedId = null; focusRootId = null;
+  searchTerm = ""; statusFilter = "all"; activeConditions = []; activeRecursive = true;
+  const qf = document.getElementById("quick-filter"); if (qf) qf.value = "";
+  const sf = document.getElementById("status-filter"); if (sf) sf.value = "all";
+  const dv = document.getElementById("dlg-version-view"); if (dv.open) dv.close();
+  const dm = document.getElementById("dlg-versions"); if (dm.open) dm.close();
+  fullRefresh();
+  announce("Obnovena verze: " + v.name);
+}
+function saveVersionAsFile(id) {
+  const v = findVersion(id); if (!v) return;
+  const out = JSON.parse(JSON.stringify(v.doc));
+  out.versions = []; // exported file starts with no nested history
+  const json = JSON.stringify(out, null, 2);
+  const nm = (v.name || "verze").replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 40) || "verze";
+  download(safeName() + "_" + nm + ".outline", json, "application/json");
+  announce("Verze uložena jako soubor");
+}
+function renameVersion(id) {
+  const v = findVersion(id); if (!v) return;
+  const nn = prompt("Nový název verze:", v.name);
+  if (nn == null) return;
+  v.name = nn.trim() || v.name;
+  renderVersions();
+  announce("Verze přejmenována");
+}
+function deleteVersion(id) {
+  const v = findVersion(id); if (!v) return;
+  if (!confirm("Smazat verzi \u201E" + v.name + "\u201C? Tuto akci nelze vzít zpět.")) return;
+  doc.versions = (doc.versions || []).filter(x => x.id !== id);
+  renderVersions();
+  announce("Verze smazána");
+}
+
 /* ---------- Clipboard project I/O ---------- */
 // Apply a JSON project string as the whole document (mirrors the file-open path).
 function applyLoadedProject(text, sourceLabel) {
@@ -4653,6 +4837,11 @@ document.getElementById("btn-new").addEventListener("click", () => {
   announce("Nový dokument");
 });
 document.getElementById("btn-save").addEventListener("click", saveDoc);
+document.getElementById("btn-save-version").addEventListener("click", openSaveVersion);
+document.getElementById("btn-manage-versions").addEventListener("click", openVersions);
+document.getElementById("btn-do-save-version").addEventListener("click", doSaveVersion);
+document.getElementById("btn-version-view-restore").addEventListener("click", () => { if (currentViewedVersionId) restoreVersion(currentViewedVersionId); });
+document.getElementById("btn-version-view-savefile").addEventListener("click", () => { if (currentViewedVersionId) saveVersionAsFile(currentViewedVersionId); });
 document.getElementById("btn-open").addEventListener("click", () => { importMode = "open"; pickFile(); });
 document.getElementById("btn-clip-save").addEventListener("click", clipboardSaveProject);
 document.getElementById("btn-clip-load").addEventListener("click", clipboardLoadProject);
@@ -5009,12 +5198,12 @@ function buildHelp() {
 </table>
 <p>Každý řádek má vlastní tlačítka: <strong>Upravit</strong> (otevře editor celého řádku — téma, poznámka i všechny sloupce) a rozbalovací nabídku <strong>Akce</strong> s volbami přidat sourozence/potomka, přesun nahoru/dolů, odsadit/předsadit, hoist (zaměřit jen na tuto větev) / zrušit hoist, sbalit/rozbalit a smazat. Sbalování má i vlastní trojúhelníček na začátku řádku. V nabídce Zobrazení jsou navíc <strong>Sbalit vše</strong> a <strong>Rozbalit vše</strong>, které přepnou všechny větve v aktuálním pohledu (při zapnutém hoistu jen zaměřenou větev); pokud by se vybraný řádek sbalením schoval, výběr se přesune na nejbližšího viditelného předka.</p>
 <h3>Kontextová nabídka řádku</h3>
-<p>Na každém řádku je přístupná kontextová nabídka se všemi akcemi (úprava řádku i poznámky, přepnutí hotovo, přidání sourozence/potomka, posun nahoru/dolů, zanoření/vynoření, hoist, zrcadlo, začátek sekce, smazání) a navíc: podnabídku <strong>Typ řádku</strong> pro rychlou změnu sémantiky, podnabídku pro každý <strong>výběrový (pop-up) sloupec</strong> s rychlou volbou hodnoty i jejím vyprázdněním, a položky <strong>Vybrat řádek</strong> (zapne režim výběru a zaškrtne tento řádek) a <strong>Vybrat celou větev</strong> (zaškrtne řádek i všechny jeho potomky rekurzivně).</p>
-<p>Nabídku otevřeš <strong>pravým tlačítkem myši</strong> nebo z klávesnice klávesou <kbd>Shift</kbd>+<kbd>F10</kbd> či klávesou kontextové nabídky na vybraném řádku (funguje i původní <kbd>t</kbd> a rozbalovací tlačítko Akce). Ovládá se jako běžné menu: <kbd>↑</kbd> <kbd>↓</kbd> pohyb, <kbd>→</kbd> otevře podnabídku, <kbd>←</kbd> se z podnabídky vrátí, psaním písmene skočíš na položku, <kbd>Home</kbd>/<kbd>End</kbd> na kraje, <kbd>Esc</kbd> zavře a vrátí fokus na řádek. Nedostupné akce (třeba „Posunout nahoru" u prvního řádku) se přeskakují. Tlačítka Upravit a Akce u řádku zůstávají.</p>
-<h3>Kontextová nabídka řádku</h3>
 <p>Na každém řádku lze otevřít kontextovou nabídku se všemi jeho akcemi: <strong>pravým tlačítkem myši</strong>, klávesou <kbd>Shift+F10</kbd>, samostatnou klávesou <kbd>Menu</kbd> (ContextMenu), nebo klávesou <kbd>T</kbd>. Nabídka obsahuje úpravu řádku a poznámky, přepnutí hotového, přidání sourozence/potomka, posun nahoru/dolů, zanoření a vynoření, sbalení/rozbalení, hoist, zrcadlo, začátek sekce, informace o řádku a smazání. Jako podnabídky nabízí <strong>Typ řádku</strong> a <strong>každý sloupec typu výběr</strong> — u něj rychle zvolíš hodnotu nebo ji vyprázdníš. Navíc jsou tu dvě položky pro hromadné úpravy: <strong>Vybrat řádek</strong> (zapne režim výběru a zaškrtne tento řádek) a <strong>Vybrat celou větev</strong> (zaškrtne řádek i všechny jeho potomky). Nabídka se ovládá jako běžné menu — šipky <kbd>↑</kbd> <kbd>↓</kbd>, <kbd>Home</kbd>/<kbd>End</kbd>, psaní písmene pro skok na položku, <kbd>→</kbd> nebo <kbd>Enter</kbd> otevře podnabídku, <kbd>←</kbd> nebo <kbd>Esc</kbd> zavře. Původní tlačítka <strong>Upravit</strong> a <strong>Akce</strong> u řádku zůstávají k dispozici.</p>
+<h3>Verze dokumentu</h3>
+<p>Přes <strong>Soubor → Uložit verzi</strong> uložíš pojmenovaný snímek aktuálního stavu dokumentu. Název se předvyplní podle poslední verze (u první je prázdný), datum a čas se doplní automaticky. Verze se ukládají spolu s dokumentem do souboru .outline, takže se přenášejí s ním.</p>
+<p>Přes <strong>Soubor → Verze dokumentu</strong> se otevře seznam všech verzí (nejnovější nahoře) s názvem, datem a časem a počtem řádků. U každé verze lze: <strong>Zobrazit</strong> náhled jejího obsahu, <strong>Vrátit</strong> se k ní (nahradí aktuální stav — uložené verze přitom zůstanou zachovány, takže se nic neztratí), <strong>Uložit jako…</strong> samostatný soubor .outline, <strong>Přejmenovat</strong> a <strong>Smazat</strong>. Náhled i „Vrátit se k verzi" jsou dostupné i přímo z okna náhledu.</p>
 <h3>Hlavní nabídka</h3>
-<p>Všechny nástroje jsou v klasické nabídce nahoře: <strong>Soubor</strong> (nový, otevřít, uložit, schránka, import, export), <strong>Úpravy</strong> (práce s vybraným řádkem — upravit, poznámka, přepnout hotovo, přidat sourozence/potomka, posun nahoru/dolů, zanořit/vynořit, zrcadlo, začátek sekce, smazat, plus režim výběru), <strong>Zobrazení</strong> (sbalit/rozbalit vše i jednotlivou větev, hoist a jeho zrušení, přejít do osnovy, přečíst informace o řádku, skrýt panely, tmavý režim), <strong>Nástroje</strong> (najít, statistiky) a <strong>Nápověda</strong>. Pod nabídkou zůstávají pole rychlého filtru a filtru podle stavu.</p>
+<p>Všechny nástroje jsou v klasické nabídce nahoře: <strong>Soubor</strong> (nový, otevřít, uložit, schránka, import, export, verze dokumentu), <strong>Úpravy</strong> (práce s vybraným řádkem — upravit, poznámka, přepnout hotovo, přidat sourozence/potomka, posun nahoru/dolů, zanořit/vynořit, zrcadlo, začátek sekce, smazat, plus režim výběru), <strong>Zobrazení</strong> (sbalit/rozbalit vše i jednotlivou větev, hoist a jeho zrušení, přejít do osnovy, přečíst informace o řádku, skrýt panely, tmavý režim), <strong>Nástroje</strong> (najít, statistiky) a <strong>Nápověda</strong>. Pod nabídkou zůstávají pole rychlého filtru a filtru podle stavu.</p>
 <p>Položky pracující s řádkem se vztahují na <strong>právě vybraný řádek</strong> a jsou nedostupné, když se na daný řádek nehodí (u prvního řádku nelze „Posunout nahoru", bez rodiče nelze „Vynořit" a podobně). U každé položky, která má klávesovou zkratku, je zkratka vypsaná vedle názvu — takže nabídka slouží i jako průběžná připomínka zkratek.</p>
 <p>Nabídka se ovládá jako běžné menu: klávesou <kbd>F10</kbd> do ní skočíš odkudkoli, <kbd>←</kbd> <kbd>→</kbd> přecházíš mezi nabídkami, <kbd>↓</kbd> nebo <kbd>Enter</kbd> nabídku otevře, <kbd>↑</kbd> <kbd>↓</kbd> se pohybuješ mezi položkami, psaním písmene skočíš na položku začínající tímto písmenem, <kbd>Home</kbd> a <kbd>End</kbd> na první a poslední, <kbd>Esc</kbd> nabídku zavře. Přepínací položky (režim výběru, skrýt panely, tmavý režim) se odečítači hlásí jako zaškrtávací a nedostupné položky se při pohybu přeskakují.</p>
 <p>Téma se v seznamu zobrazuje vyrenderované, a pokud je úrovni přiřazen nadpis (H1–H6), i jako odpovídající nadpis. Hierarchie je tvořena vnořenými seznamy (přístupné pro čtečky). Seznam nic needituje přímo — všechny hodnoty se mění v editoru řádku.</p>
