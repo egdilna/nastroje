@@ -233,9 +233,10 @@ button.paragraph-anno-add-btn { display: inline-block; margin-left: 0.4em; paddi
 body.theme-dark button.paragraph-anno-add-btn { background: #2a3a4a; border-color: #555; }
 button.paragraph-anno-add-btn:hover { background: #c0d0e0; }
 details.annotations-list-wrapper { margin: 1em 0; padding: 0.5em 0.8em; background: #fffbe6; border-radius: 4px; border: 1px solid #e8d970; }
-.inline-annotation { display: inline; background: #fffbe6; border: 1px solid #e8d970; border-radius: 3px; padding: 0 0.35em; margin: 0 0.15em; font-size: 0.9em; color: #7a6a00; }
-body.theme-dark .inline-annotation { background: #3a3410; border-color: #6a5f1a; color: #d8c860; }
-.inline-annotation-text { font-style: italic; }
+.annotation-ref { text-decoration: none; font-size: 0.85em; color: #7a6a00; cursor: pointer; white-space: nowrap; }
+.annotation-ref sup { font-weight: 600; }
+.annotation-ref:hover, .annotation-ref:focus { text-decoration: underline; }
+body.theme-dark .annotation-ref { color: #d8c860; }
 body.theme-dark details.annotations-list-wrapper { background: #2a2410; border-color: #5a4a1a; }
 details.annotations-list-wrapper summary { cursor: pointer; font-weight: 600; }
 ol.annotations-list { list-style: decimal; padding-left: 1.5em; margin: 0.5em 0 0; }
@@ -3452,10 +3453,14 @@ function renderMarkdown(text, options = {}) {
   if (options.stripAnnotations) {
     text = text.replace(INLINE_ANNOTATION_RE, '').replace(/  +/g, ' ');
   } else {
+    // Do textu vložíme jen nenápadný marker (číslo) odkazující do sekce anotací;
+    // samotný text anotace se v odstavci NEzobrazuje – patří jen do sekce Anotace.
+    if (!ctx._annCounter) ctx._annCounter = { n: 0 };
     text = text.replace(INLINE_ANNOTATION_RE, (m, content) => {
       const c = content.trim();
       if (!c) return '';
-      return '\u0000ANNOT' + escapeHtml(c) + '\u0000';
+      const idx = ctx._annCounter.n++;
+      return '\u0000ANNOTREF' + idx + '\u0000';
     });
   }
   // Placeholder ((deník)) / ((denik)) → vykreslený deník TÉTO entity (od nejstaršího).
@@ -3490,9 +3495,10 @@ function renderMarkdown(text, options = {}) {
   html = html.replace(/\u0000CODEBLOCK(\d+)\u0000/g, (m, i) => {
     return '<pre><code>' + escapeHtml(codeBlocks[Number(i)]) + '</code></pre>';
   });
-  // Inline anotace → bublina za textem odstavce
-  html = html.replace(/\u0000ANNOT([\s\S]*?)\u0000/g, (m, c) => {
-    return '<span class="inline-annotation" title="Anotace">📝 <span class="inline-annotation-text">' + c + '</span></span>';
+  // Inline anotace → nenápadný marker (odkaz) do sekce anotací; text anotace není v odstavci
+  html = html.replace(/\u0000ANNOTREF(\d+)\u0000/g, (m, i) => {
+    const num = Number(i) + 1;
+    return '<a href="#" class="annotation-ref" data-anno-ref="' + i + '" title="Anotace ' + num + ' – přejít do seznamu anotací" aria-label="Anotace ' + num + '">📝<sup>' + num + '</sup></a>';
   });
   html = html.replace(/\u0000JOURNALBLOCK(\d+)\u0000/g, (m, i) => {
     return journalBlocks[Number(i)] || '';
@@ -16436,11 +16442,11 @@ function renderAnnotationsList(entity) {
     const para = (a.paragraphIndex != null && paragraphs[a.paragraphIndex]) ? paragraphs[a.paragraphIndex] : '';
     const desc = describeParagraph(para);
     const snippet = (desc.content || '').slice(0, 80);
-    h += '<li class="anno-item" data-anno-id="' + escapeHtml(a.id) + '">';
+    h += '<li class="anno-item" id="anno-item-' + i + '" data-anno-id="' + escapeHtml(a.id) + '">';
     if (a.paragraphIndex == null) {
-      h += '<div><strong>K odstavci</strong></div>';
+      h += '<div><strong>' + (i + 1) + '. K odstavci</strong></div>';
     } else {
-      h += '<div><strong>K odstavci #' + (a.paragraphIndex + 1) + '</strong> <span class="anno-para-kind">[' + escapeHtml(desc.kind) + ']</span>: ';
+      h += '<div><strong>' + (i + 1) + '. K odstavci #' + (a.paragraphIndex + 1) + '</strong> <span class="anno-para-kind">[' + escapeHtml(desc.kind) + ']</span>: ';
       h += '<a href="#" class="anno-jump" data-anno-pi="' + a.paragraphIndex + '" data-anno-id="' + escapeHtml(a.id) + '">' + (snippet ? escapeHtml(snippet) + (desc.content.length > 80 ? '…' : '') : '<em class="meta">(prázdné)</em>') + '</a></div>';
     }
     // Anotace je prostý text (ne markdown)
@@ -16550,6 +16556,22 @@ function setupAnnotations(entity) {
 }
 
 function attachAnnotationsListHandlers(entity) {
+  // Marker v textu (📝^N) → skok na položku v sekci anotací, rozbalí sekci a zvýrazní ji
+  document.querySelectorAll('a.annotation-ref').forEach(a => {
+    a.onclick = (ev) => {
+      ev.preventDefault();
+      const idx = a.dataset.annoRef;
+      const item = document.getElementById('anno-item-' + idx);
+      if (!item) return;
+      // Rozbalit sekci anotací, pokud je sbalená
+      const wrapper = item.closest('details.annotations-list-wrapper');
+      if (wrapper) wrapper.open = true;
+      item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      item.classList.remove('anno-target-flash');
+      void item.offsetWidth;
+      item.classList.add('anno-target-flash');
+    };
+  });
   document.querySelectorAll('a.anno-jump').forEach(a => {
     a.onclick = (ev) => {
       ev.preventDefault();
@@ -19535,6 +19557,9 @@ function openSpellCheck(entity, targetId, fieldKey, fieldLabel) {
     err: null
   };
   render();
+  // Automaticky spustit kontrolu hned po otevření (slovník se dočte souběžně na pozadí).
+  // Rekontrola zůstává dostupná přes tlačítko „Zkontrolovat".
+  doSpellCheck();
 }
 
 // Bezpečná rekonstrukce textu s opravami, když tokeny neslepují zpět na původní text
