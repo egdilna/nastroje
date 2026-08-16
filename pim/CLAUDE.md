@@ -12,23 +12,42 @@ webu EGdílny.
 
 Uživatelská dokumentace: `docs-cs.md` (31 kB) a `docs-en.md` — aktualizuj je se změnou chování.
 
-## Než začneš: soubor obsahuje sám sebe
-Kolem **ř. 27535–36130** je konstanta `STATIC_VIEWER_TEMPLATE` — kompletní **druhá kopie
-aplikace** ve zjednodušené („viewer“) podobě, uložená jako template literál. Proto grep na
-`const ASPECTS`, `VIEW: ÚKOLY`, `GITHUB MODUL` a podobné najde **dva výskyty**:
+## Než začneš: v souboru je i šablona offline prohlížeče
+PIM umí ze svých dat vygenerovat **samostatný offline prohlížeč** — jednosouborovou HTML
+stránku, kterou lze rozdat nebo publikovat a která data jen zobrazuje (needituje, neukládá,
+nesynchronizuje). Předloha tohoto prohlížeče je uložená přímo v souboru jako konstanta
+`STATIC_VIEWER_TEMPLATE`:
+
 | Rozsah | Co to je |
 |---|---|
-| ř. 1643–27534 | živá aplikace — **sem patří tvoje změny** |
-| ř. 27535–36130 | `STATIC_VIEWER_TEMPLATE` (+ `__VIEWER_EXTRA__`, `__PIM_DATA_PLACEHOLDER__`) |
-| ř. 36206+ | `VIEWER_EXTRA_JS` — další kód prohlížeče jako **escapovaný řetězec** |
+| ř. 1643–27534 | živá aplikace — **sem patří změny funkčnosti** |
+| ř. 27535–36130 | `STATIC_VIEWER_TEMPLATE` — šablona generovaného prohlížeče (template literál) s místy `__VIEWER_EXTRA__` a `__PIM_DATA_PLACEHOLDER__` |
 | ř. 36130+ | `sanitizeDbForStaticViewer()` a zbytek aplikace |
+| ř. 36206+ | `VIEWER_EXTRA_JS` — doplňkový kód prohlížeče jako **escapovaný řetězec** |
 
-**Vždy si ověř, do které poloviny míříš.** Uvnitř šablony platí zvláštní pravidla: `</script>`
-se píše jako `<\/script>`, zpětné apostrofy a `${` se musí escapovat a v `VIEWER_EXTRA_JS`
-jsou zdvojená zpětná lomítka. Když měníš funkci sdílenou s prohlížečem, uprav **obě** kopie —
-jinak se vygenerovaný statický prohlížeč rozejde s aplikací.
-`sanitizeDbForStaticViewer()` maže z exportu GitHub metadata a citlivá data — při přidání
-nového pole zvaž, zda do prohlížeče patří.
+Prohlížeč **není celá aplikace**: editační cesty, ukládání, GitHub modul i další funkce jsou
+v něm vypuštěné (`GITHUB MODUL (stripped in viewer)`, `window.__VIEWER_MODE = true`, `save()`
+přepsané na no-op). Je to samostatná, zjednodušená zobrazovací vrstva nad stejnými daty.
+
+Prakticky to ale znamená, že **zobrazovací kód existuje na dvou místech** a leccos se musí
+upravit v obou. Týká se to všeho, co prohlížeč umí taky ukázat — render Markdownu, wiki odkazy,
+status chipy, database includy, pohledy nad daty (Úkoly, Kalendář, Hledání, Vazby, Tagy,
+Vlastní pohledy, Šablony, Detail, Outline), definice v `ASPECTS`, `GLOBAL_FIELDS` a podobné
+konstanty. Proto grep na `const ASPECTS`, `VIEW: ÚKOLY` a spol. vrací **dva výskyty** —
+vždy si ověř, ve které části jsi, a u sdílené funkčnosti uprav obě. Jinak se vygenerovaný
+prohlížeč rozejde s aplikací a data se v něm zobrazí jinak (nebo vůbec).
+
+Naopak čistě editační funkce do šablony nepatří — nepřenášej je tam jen kvůli symetrii.
+
+Uvnitř šablony platí zvláštní zápis: `</script>` se píše jako `<\/script>`, zpětné apostrofy
+a `${` se musí escapovat a ve `VIEWER_EXTRA_JS` (běžný řetězec, ne template literál) jsou
+zdvojená zpětná lomítka. Chyba v escapování se projeví až ve vygenerovaném souboru, ne při
+načtení PIM — proto je generování prohlížeče povinný test.
+
+`sanitizeDbForStaticViewer(filterTags, opts)` připravuje data pro prohlížeč: dělá hlubokou
+kopii, odstraňuje GitHub metadata a citlivé věci a umí filtrovat podle tagů. **Při přidání
+nového pole do dat rozhodni, zda do prohlížeče patří** — všechno, co tudy projde, se dostane
+ven k příjemci vygenerovaného souboru.
 
 ## Datový model
 `SCHEMA_VERSION = 2`, data v `localStorage["pim_db_v1"]` (`STORAGE_KEY`).
@@ -120,7 +139,9 @@ a čitelnostní pojistky — neruš je, případně zpřístupni v nastavení.
 Entity s různými aspekty → vazby a graf souvislostí → Markdown s wiki odkazem, statusem
 a database includem → úkoly, projekt s plánem, deník → databáze (filtry, řazení, import TSV/CSV) →
 příloha pod i nad 256 kB (ověř IndexedDB) → šifrovaný atribut: zamknout, odemknout, export
-(nesmí obsahovat plaintext) → uložení a načtení souboru → **statický prohlížeč** (vygeneruj
-a otevři — hlavní test, že jsou obě kopie kódu v souladu) → GitHub uložení i autosave →
+(nesmí obsahovat plaintext) → uložení a načtení souboru → **offline prohlížeč** (vygeneruj
+a otevři — hlavní test toho, že šablona odpovídá aplikaci a že escapování v ní sedí;
+zkontroluj i filtrování podle tagů a že se ven nedostalo nic citlivého) →
+GitHub uložení i autosave →
 přirozené datum v textu → kontrola pravopisu (a chování při nedostupné službě) →
 klávesová navigace v tabulce entit → reload a ověření všech `localStorage` klíčů.
