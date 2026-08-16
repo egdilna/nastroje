@@ -9,7 +9,7 @@ Nástroj je dostupný také jako samostatný soubor HTML ke stažení a provozov
 
 ## Přehled funkcí
 
-**FeatherWiki** (Česká EGD verze, upstream verze 1.9.1 „Goldfinch") je odlehčená osobní wiki, která běží celá z jednoho jediného HTML souboru. Nevyžaduje žádný server, žádnou databázi ani instalaci — obsah wiki (stránky, obrázky, nastavení, vlastní CSS/JS) je uložen přímo uvnitř téhož HTML souboru, ve kterém běží. Uložení změn probíhá formou stažení aktualizovaného HTML souboru (nebo, pokud to server umí, přímým zápisem přes WebDAV).
+**FeatherWiki** (Česká EGD verze, upstream 1.9.1 „Goldfinch") je odlehčená osobní wiki, která běží celá z jednoho jediného HTML souboru. Nevyžaduje žádný server, žádnou databázi ani instalaci — obsah wiki (stránky, obrázky, nastavení, vlastní CSS/JS) je uložen přímo uvnitř téhož HTML souboru, ve kterém aplikace běží. Uložení změn probíhá formou stažení aktualizovaného HTML souboru nebo — pokud to server umí — přímým zápisem přes WebDAV.
 
 ### Klíčové funkce
 
@@ -24,7 +24,7 @@ Nástroj je dostupný také jako samostatný soubor HTML ke stažení a provozov
 - **Publikovaný režim** — skryje tlačítka pro editaci a činí wiki „jen ke čtení"
 - **Statický HTML export** — volitelně přibalí obsah wiki i jako čisté HTML pro prohlížeče bez JavaScriptu
 - **Import z jiné wiki** — přenesení obsahu ze staršího souboru Feather Wiki
-- **Ukládání klávesovou zkratkou** — Ctrl+S / Cmd+S
+- **Ukládání klávesovou zkratkou** — Ctrl+S / Cmd+S (Ctrl+Shift+S vynutí lokální stažení)
 - **Ochrana proti ztrátě změn** — potvrzovací dialog při zavírání okna nebo přechodu, pokud jsou neuložené změny
 
 ### Uložení dat
@@ -37,7 +37,7 @@ Veškerý obsah wiki je uložen přímo uvnitř téhož HTML souboru:
 - Vlastní JavaScript ve značce `<script id=j>`
 - Vlastní HEAD přímo v `<head>` výsledného souboru
 
-Data se nikam neodesílají. Uložit se dá dvěma způsoby:
+Data se nikam samovolně neodesílají. Uložit se dá dvěma způsoby:
 
 1. **Lokální uložení** — kliknutí na tlačítko **Uložit wiki** stáhne aktualizovaný HTML soubor prohlížečem
 2. **Uložení na server** — pokud je wiki hostována na serveru, který podporuje WebDAV (metoda `PUT` a hlavička `DAV`), nabídne aplikace navíc tlačítko **Uložit wiki na server**, které soubor zapíše přímo zpět
@@ -64,11 +64,11 @@ Na malých obrazovkách se panel skryje a nahradí tlačítkem **Skrýt menu / Z
 
 ### Hlavní oblast (vpravo)
 
-Zobrazuje obsah aktuální stránky nebo jednu ze systémových stránek (Nastavení, Všechny stránky, Chybějící stránky, výpis dle štítku, editor).
+Zobrazuje obsah aktuální stránky nebo jednu ze systémových stránek (Nastavení, Všechny stránky, Chybějící stránky, výpis podle štítku, editor).
 
 ### Zápatí
 
-V zápatí je odkaz „Běží na Feather Wiki" s uvedením verze.
+V zápatí je odkaz „Běží na Feather Wiki" s uvedením verze v atributu `title`.
 
 ---
 
@@ -80,7 +80,7 @@ Novou stránku lze založit několika způsoby:
 
 - V postranním panelu rozbalit **Nová stránka**, zadat název a potvrdit **Vytvořit stránku** (název musí mít alespoň 2 znaky)
 - Kliknout na odkaz na dosud neexistující stránku — aplikace nabídne její vytvoření
-- Ručně otevřít URL `?page=slug_nové_stránky`
+- Ručně otevřít URL `?page=slug_nové_stránky` (pokud slug neexistuje, aplikace nabídne založení a odvodí název ze slugu — podtržítka převede na mezery a slova s velkými písmeny)
 
 ### Editace stránky
 
@@ -103,9 +103,10 @@ Tlačítka:
 
 ### Vlastnosti stránky
 
-- **Datum vytvoření** a **datum poslední úpravy** — zobrazují se v záhlaví stránky
+- **Datum vytvoření** a **datum poslední úpravy** — zobrazují se v záhlaví stránky (jsou-li shodná, zobrazí se pouze jedno)
 - **Drobečková navigace** — nad nadpisem stránky se zobrazí posloupnost rodičovských stránek
 - **Podstránky** — v zápatí stránky se zobrazí seznam podstránek
+- **Kotva u nadpisů** — u každého nadpisu se při najetí myší objeví odkaz `#` pro sdílení odkazu přímo na daný nadpis
 
 ---
 
@@ -129,14 +130,14 @@ WYSIWYG editor s formátovací lištou. Ovládací tlačítka:
 | ↦ ↔ ↤ | Zarovnat vlevo / na střed / vpravo |
 | # | Číslovaný seznam |
 | • | Odrážkový seznam |
-| „ " | Citace (blockquote) |
+| „ " | Citace (`<blockquote>`) |
 | ― | Oddělovač (`<hr>`) |
 | 🔗 | Odkaz (výzva k zadání URL) |
 | 🖼️ | Odkaz na externí obrázek (výzva k zadání URL) |
 | 📸 | Vložit obrázek ze souboru |
 | 📎 | Přidat existující obrázek z knihovny wiki |
 
-Odsazení seznamů: klávesa **Tab** odsadí, **Shift+Tab** vrátí zpět.
+Odsazení seznamů: klávesa **Tab** odsadí, **Shift+Tab** vrátí zpět. Stisknutí **Enter** uvnitř nadpisu nebo citace ukončí formátování a přejde na nový odstavec.
 
 ### Markdown editor
 
@@ -146,7 +147,17 @@ Textové pole pro Markdown s tlačítky:
 - **Vložit obrázek ze souboru** — nahraje a vloží obrázek
 - **Přidat existující obrázek** — vloží obrázek z knihovny wiki
 
-Podporovaná Markdown syntaxe zahrnuje nadpisy (`#` až `######`, i podtržením `====` a `----`), tučné (`**text**`, `__text__`), kurzívu (`*text*`, `_text_`), přeškrtnutí (`~~text~~`), citace (`> text`), odrážkové i číslované seznamy s vnořováním pomocí Tab/mezer, oddělovač (`---`), zaškrtávací pole `[ ]` a `[x]`, kódové bloky ve trojitých apostrofech (```) s jazykem, odkazy `[text](url)` i obrázky `![alt](url)`, HTML značky (procházejí beze změny), zalomení řádku (dvě mezery na konci řádku) a únikový zápis `\znak`.
+Podporovaná Markdown syntaxe zahrnuje:
+
+- Nadpisy (`#` až `######`, případně podtržením `====` a `----`)
+- Tučné (`**text**`, `__text__`), kurzíva (`*text*`, `_text_`), přeškrtnutí (`~~text~~`)
+- Citace (`> text`), odrážkové i číslované seznamy s vnořováním pomocí Tab / mezer
+- Oddělovač (`---`), zaškrtávací pole `[ ]` a `[x]`
+- Kódové bloky ve trojitých apostrofech (```) s volitelným označením jazyka, inline kód v jednoduchých apostrofech
+- Odkazy `[text](url)` (a e-mail / URL v ostrých závorkách `<…>`), obrázky `![alt](url)`
+- HTML značky (procházejí beze změny)
+- Zalomení řádku dvěma mezerami na konci řádku
+- Únikový zápis `\znak` (např. `\*` pro doslovnou hvězdičku)
 
 ### HTML editor
 
@@ -154,7 +165,7 @@ Textové pole s přímým HTML zdrojem stránky. Umožňuje plnou kontrolu nad z
 
 ### Přepínání editoru u stránky
 
-Nad editorem je tlačítko **Použít Markdown / Použít editor**. Přepnutí z Markdownu na vizuální editor nabídne konverzi Markdown → HTML (potvrzením „Zrušit" se zachová původní obsah).
+Nad editorem je tlačítko **Použít Markdown / Použít editor**. Přepnutí z Markdownu na vizuální editor nabídne konverzi Markdown → HTML (potvrzením „Zrušit" se zachová původní obsah). Přepnutí na HTML editor se nastavuje v hlavním nastavení wiki (Default Page Editor).
 
 ### Interní odkazy wiki
 
@@ -168,7 +179,7 @@ Odkazy na dosud neexistující stránky se zvýrazňují jinou barvou; kliknutí
 
 ### Vsuvka `<nowiki>`
 
-Text uzavřený do `<nowiki>…</nowiki>` se nezpracovává jako Markdown/wiki syntaxe a zobrazí se doslova.
+Text uzavřený do `<nowiki>…</nowiki>` se nezpracovává jako Markdown / wiki syntaxe a zobrazí se doslova.
 
 ---
 
@@ -189,7 +200,7 @@ Před prvním vložením se zobrazí varování „Vkládání obrázků zvětš
 
 Tlačítkem **Přidat existující obrázek** nebo v nastavení wiki v sekci **Vložené obrázky** je dostupná knihovna všech vložených obrázků. U každého obrázku:
 
-- Miniatura, alternativní text, rozměry
+- Miniatura, alternativní text, rozměry v pixelech
 - **Zobrazit** — otevře obrázek v samostatném okně v původní velikosti
 - **Upravit alternativní text** (jen v nastavení)
 - **Smazat obrázek** (jen v nastavení) — trvale odstraní obrázek; pokud byl použit na stránkách, nahradí jeho výskyty textem `deleted`
@@ -198,7 +209,7 @@ Tlačítkem **Přidat existující obrázek** nebo v nastavení wiki v sekci **V
 
 ### Zápis obrázku v obsahu
 
-Ve zdrojovém zápisu wiki jsou obrázky reprezentovány jako `img:{id}:img` (Markdown/vizuální editor je při renderu nahradí odpovídajícím `<img>` s alt textem z knihovny).
+Ve zdrojovém zápisu wiki jsou obrázky reprezentovány jako `img:{id}:img` (Markdown i vizuální editor je při renderu nahradí odpovídajícím `<img>` s alt textem z knihovny).
 
 ---
 
@@ -215,14 +226,14 @@ Ve zdrojovém zápisu wiki jsou obrázky reprezentovány jako `img:{id}:img` (Ma
 
 | URL | Popis |
 |-----|-------|
-| `?` | Domovská stránka wiki (nastavená v Nastavení, nebo seznam všech stránek) |
+| `?` | Domovská stránka wiki (nastavená v Nastavení, jinak seznam všech stránek) |
 | `?page=slug` | Konkrétní stránka podle slugu |
 | `?page=a` | **Všechny stránky** — hierarchický seznam všech nezakázaných stránek |
 | `?page=s` | **Nastavení wiki** — dostupné vždy, i v publikovaném režimu |
 | `?page=m` | **Chybějící stránky** — přehled odkazů na dosud nevytvořené stránky |
 | `?tag=název` | Stránky s daným štítkem |
 
-Pokud v URL parametru `page` je slug neexistující stránky, aplikace nabídne její založení (název se odvodí z podtržítek: `moje_prvni_stranka` → „Moje Prvni Stranka").
+Pokud v URL parametru `page` je slug neexistující stránky, aplikace nabídne její založení a název odvodí z podtržítek (např. `moje_prvni_stranka` → „Moje Prvni Stranka").
 
 ---
 
@@ -230,7 +241,7 @@ Pokud v URL parametru `page` je slug neexistující stránky, aplikace nabídne 
 
 ### Stránky
 
-Hierarchický strom stránek nejvyšší úrovně a jejich podstránek. Nadřazené stránky jsou rozbalovací (`<details>`). Aktuálně otevřená stránka je zvýrazněna. Pod stromem se vždy zobrazují odkazy **Všechny stránky** a — pokud existují chybějící odkazy — **Chybějící stránky**.
+Hierarchický strom stránek nejvyšší úrovně a jejich podstránek. Nadřazené stránky jsou rozbalovací (`<details>`) a při načtení podstránky se automaticky rozbalí až k aktivní stránce. Aktuálně otevřená stránka je zvýrazněna. Pod stromem se vždy zobrazuje odkaz **Všechny stránky** a — pokud existují chybějící odkazy — **Chybějící stránky**.
 
 ### Štítky
 
@@ -261,7 +272,7 @@ Otevře se odkazem **Nastavení wiki** v postranním panelu (nebo přímo přes 
 | Pole | Popis |
 |------|-------|
 | Vlastní CSS | CSS vložené do stránky ve značce `<style id=c>` — aplikuje se okamžitě |
-| Vlastní JS | JavaScript spuštěný jednou při načtení wiki (nutno wiki uložit a znovu otevřít, aby se projevil) |
+| Vlastní JS | JavaScript spuštěný jednou při načtení wiki (nutno wiki uložit a znovu otevřít, aby se změna projevila) |
 | Vlastní Head | Libovolné HTML vkládané do `<head>` (upozornění: chybné HTML může wiki rozbít) |
 
 ### Přepínače
@@ -269,7 +280,7 @@ Otevře se odkazem **Nastavení wiki** v postranním panelu (nebo přímo přes 
 | Volba | Popis |
 |-------|-------|
 | Zahrnout statické HTML | Vloží do výstupu obsah všech stránek i jako čisté statické HTML pro prohlížeče bez JavaScriptu — téměř zdvojnásobí velikost souboru |
-| Publikovaná needitovatelná wiki | Skryje tlačítka **Uložit**, **Nová stránka** a **Nastavení wiki** i tlačítko **Upravit** na stránkách; zrušení je možné ručním otevřením `?page=s` |
+| Publikovaná needitovatelná wiki | Skryje tlačítka **Uložit**, **Nová stránka**, **Nastavení wiki** i tlačítko **Upravit** na stránkách; zrušení je možné ručním otevřením `?page=s` |
 
 Změny se aplikují tlačítkem **Aktualizovat** (potvrzením se změny zapíšou do stavu wiki; k jejich zápisu do souboru je nutné wiki dále uložit).
 
@@ -285,23 +296,23 @@ Sekce **Vložené obrázky** v dolní části nastavení zpřístupňuje knihovn
 
 ## Ukládání wiki
 
-Změny provedené v aplikaci jsou nejprve pouze v paměti. Aby se zapsaly do HTML souboru, je nutné wiki uložit.
+Změny provedené v aplikaci jsou nejprve pouze v paměti prohlížeče. Aby se zapsaly do HTML souboru, je nutné wiki uložit.
 
 ### Lokální uložení
 
 - V postranním panelu tlačítko **Uložit wiki** (v publikovaném režimu je skryté)
 - Klávesová zkratka **Ctrl+S** (na Macu **Cmd+S**)
 
-Prohlížeč stáhne aktualizovaný HTML soubor pod původním názvem (nebo `index.html`).
+Prohlížeč stáhne aktualizovaný HTML soubor pod původním názvem (nebo `index.html`, není-li k dispozici jiný).
 
 ### Uložení na server (WebDAV)
 
 Pokud je wiki hostována na serveru s podporou WebDAV, aplikace to při načtení detekuje (metoda `OPTIONS` + hlavička `DAV`) a zobrazí navíc tlačítko **Uložit wiki na server**. To zapíše aktualizovanou wiki přímo zpět na server metodou `PUT`.
 
 - **Ctrl+S** v tomto režimu ukládá na server
-- **Ctrl+Shift+S** vynutí lokální stažení
+- **Ctrl+Shift+S** vynutí lokální stažení, i když je dostupný server
 
-Úspěch/chyba se ohlásí notifikací v horní části okna.
+Úspěch / chyba se ohlásí notifikací v horní části okna.
 
 ### Upozornění na neuložené změny
 
@@ -320,7 +331,7 @@ Pokud jsou v paměti neuložené změny:
 |---------|------|
 | Ctrl+S / Cmd+S | Uložit wiki (lokálně nebo na server, viz kapitola Ukládání) |
 | Ctrl+Shift+S | Vynutit lokální uložení, i když je dostupný server |
-| Tab | V Markdown/HTML editoru odsadí řádek (nebo výběr) |
+| Tab | V Markdown / HTML editoru odsadí řádek (nebo výběr) |
 | Shift+Tab | Zruší odsazení řádku (nebo výběru) |
 | Enter | V citaci nebo nadpisu ve vizuálním editoru přejde na nový odstavec |
 
@@ -352,7 +363,20 @@ Cena za výhodu: velikost souboru narůstá téměř dvojnásobně.
 
 ## Notifikace
 
-Systémové zprávy (např. „Nastavení aktualizováno", „Uloženo", „Uložení selhalo!") se zobrazují jako oznámení v horní části okna. Kliknutím na notifikaci ji lze zavřít; jinak se sama zavře po několika sekundách (chybové zprávy zůstávají zobrazeny 9999 ms).
+Systémové zprávy (např. „Nastavení aktualizováno", „Uloženo", „Uložení selhalo!") se zobrazují jako oznámení v horní části okna. Kliknutím na notifikaci ji lze zavřít; jinak se sama zavře po přibližně 5 sekundách. Chybové notifikace zůstávají zobrazené déle (přibližně 10 sekund) a mají červené pozadí.
+
+---
+
+## Konkrétní úpravy v distribuované české EGD verzi
+
+Distribuovaný soubor obsahuje kromě standardní aplikace Feather Wiki i tyto úpravy:
+
+- **Kompletní česká lokalizace** rozhraní (název „Česká FW", popis „Česká EGD verze FeatherWiki", jazyk stránky nastaven na `cs-cz`)
+- **Výchozí editor je Markdown** (`editor: "md"` v inicializační konfiguraci)
+- **Náhrada Markdown parseru knihovnou Marked.js** — ve značce `<script id=j>` je vlastní JavaScript, který při načtení wiki nahradí vestavěný Markdown parser knihovnou [Marked.js](https://marked.js.org) načítanou z CDN `https://cdn.jsdelivr.net/npm/marked/marked.min.js`. Znamená to:
+  - Renderování Markdownu odpovídá aktuální stabilní verzi Marked.js (širší podpora syntaxe než vestavěný minimalistický parser)
+  - **První načtení vyžaduje připojení k internetu** pro stažení knihovny; po prvním úspěšném načtení bude knihovna obvykle v cache prohlížeče
+  - Pokud používáte wiki plně offline, můžete v Nastavení → Vlastní JS tento skript odstranit (vrátíte se k vestavěnému parseru), případně nahradit URL vlastním hostovaným souborem
 
 ---
 
@@ -360,7 +384,7 @@ Systémové zprávy (např. „Nastavení aktualizováno", „Uloženo", „Ulo�
 
 ### Prohlížeče
 
-Aplikace je jednosouborová statická HTML stránka bez externích závislostí. Vyžaduje moderní prohlížeč s podporou JavaScriptu (Chrome, Firefox, Edge, Safari v aktuálních verzích). Pro čtení publikované wiki v prohlížeči bez JavaScriptu je nutné mít při ukládání zapnutou volbu **Zahrnout statické HTML**.
+Aplikace je jednosouborová statická HTML stránka bez externích závislostí (kromě volitelného načtení Marked.js, viz výše). Vyžaduje moderní prohlížeč s podporou JavaScriptu (Chrome, Firefox, Edge, Safari v aktuálních verzích). Pro čtení publikované wiki v prohlížeči bez JavaScriptu je nutné mít při ukládání zapnutou volbu **Zahrnout statické HTML**.
 
 ### Struktura souboru
 
@@ -371,10 +395,14 @@ Uložený HTML soubor obsahuje ve své `<head>` sekci:
 - `<meta name=version content=1.9.1>`
 - `<style id=s>` — vestavěné styly aplikace
 - `<style id=c>` — volitelné vlastní CSS
-- `<script id=p type=application/json>` — komprimovaná data wiki (stránky, obrázky, metadata)
+- `<script id=p type=application/json>` — komprimovaná data wiki (stránky, obrázky, metadata); JSON má zkrácené názvy klíčů a slovník ve zvláštní vlastnosti `_`
 - `<script id=a>` — kód aplikace
-- `<script id=j>` — volitelný vlastní JavaScript (spouštěný po načtení)
 - volitelný vlastní obsah HEAD
+
+V `<body>` je:
+
+- základní `<main>` a `<footer>` (přepisované aplikací při běhu)
+- `<script id=j>` — volitelný vlastní JavaScript, obalený v `FW.ready(() => { … })` a spouštěný po načtení wiki
 
 ### Verze upstream
 
@@ -385,7 +413,9 @@ Uložený HTML soubor obsahuje ve své `<head>` sekci:
 
 ### Bezpečnost
 
-Aplikace neposílá žádná data mimo prohlížeč. Uložení probíhá stažením souboru nebo (jen na WebDAV serveru) přímým zápisem zpět na místo, odkud byla wiki načtena. Vlastní JavaScript zadaný v nastavení se spouští při každém načtení wiki — při přebírání souboru z cizího zdroje je proto vhodné jeho obsah v nastavení zkontrolovat.
+Aplikace neposílá zadaný obsah wiki nikam mimo prohlížeč. Uložení probíhá stažením souboru nebo (jen na WebDAV serveru) přímým zápisem zpět na místo, odkud byla wiki načtena.
+
+Vlastní JavaScript zadaný v nastavení se spouští při každém načtení wiki — při přebírání souboru z cizího zdroje je vhodné jeho obsah v nastavení zkontrolovat. To se týká i této distribuce, která ve výchozím stavu obsahuje skript stahující knihovnu Marked.js z veřejného CDN.
 
 ---
 
