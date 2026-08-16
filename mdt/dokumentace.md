@@ -15,17 +15,18 @@ Vše běží v jednom HTML souboru — žádný server, žádná instalace, data
 
 ### Klíčové funkce
 
-- **Tři režimy zobrazení** — Náhled vzoru (struktura šablony s barevně rozlišenými placeholdery), Vyplnění (interaktivní formulář), Náhled výsledku (finální dokument)
-- **Sedm typů placeholderů** — krátký text, blok textu, odrážky, číslovaný seznam, výběr z možností, tabulka a SPOT (místo pro ruční doplnění)
-- **Pokyny pro vyplňujícího** — komentáře, které se zobrazí jen v editoru a do výsledku se nepřenášejí
-- **Synchronizovaná pole** — pokud se stejný placeholder vyskytuje vícekrát, zadává se hodnota jen jednou a automaticky se promítne do všech výskytů
-- **Opakované sekce** — bloky šablony, které lze v režimu vyplnění opakovat libovolně mnohokrát (např. položky, přílohy, podkapitoly)
-- **Volitelné tabulky** — tabulka se ve výsledku objeví jen pokud ji uživatel skutečně vytvoří
-- **Editace inline tabulek** — i klasická markdown tabulka přímo v šabloně se dá pohodlně upravovat v editoru
-- **Export do .md, .docx, schránky** — vyplněný dokument lze uložit nebo zkopírovat v různých formátech
-- **Rozpracovaná verze (.mdd)** — uložení šablony i s rozpracovanými hodnotami pro pozdější dokončení
-- **Editor zdroje** — přímé úpravy zdrojového textu šablony bez nutnosti otevírat externí editor
-- **Načtení z URL** — šablonu lze otevřít přes parametr `?template=...`, hodí se pro sdílení odkazem
+- **Tři režimy zobrazení** — Náhled vzoru (struktura šablony s barevně rozlišenými placeholdery), Vyplnění (interaktivní formulář), Náhled výsledku (finální dokument).
+- **Osm typů placeholderů** — krátký text, blok textu, odrážky, číslovaný seznam, výběr z možností, tabulka, datum (s formátováním v české lokalizaci) a SPOT (místo pro ruční doplnění).
+- **Pokyny pro vyplňujícího** — komentáře, které se zobrazí jen v editoru a do výsledku se nepřenášejí.
+- **Synchronizovaná pole** — pokud se stejný placeholder vyskytuje vícekrát, zadává se hodnota jen jednou a automaticky se promítne do všech výskytů.
+- **Opakované sekce** — bloky šablony, které lze v režimu vyplnění opakovat libovolně mnohokrát (např. položky, přílohy, podkapitoly).
+- **Volitelné tabulky** — tabulka se ve výsledku objeví jen pokud ji uživatel skutečně vytvoří.
+- **Editace inline tabulek** — i klasická markdown tabulka přímo v šabloně se dá pohodlně upravovat v editoru.
+- **Datum s vlastním formátováním** — nativní výběr data v prohlížeči s okamžitým náhledem v české formátování; formát lze definovat pomocí tokenů ve stylu PHP `date()`.
+- **Export do .md, .docx, schránky** — vyplněný dokument lze uložit nebo zkopírovat v různých formátech.
+- **Rozpracovaná verze (.mdd)** — uložení šablony i s rozpracovanými hodnotami pro pozdější dokončení.
+- **Editor zdroje** — přímé úpravy zdrojového textu šablony bez nutnosti otevírat externí editor.
+- **Načtení z URL** — šablonu lze otevřít přes parametr `?template=...`, hodí se pro sdílení odkazem.
 
 ### Přístupnost
 
@@ -39,7 +40,7 @@ Soubor `.mdt` je obyčejný markdown text doplněný o speciální značky. Vše
 
 ### Placeholdery: `[[[Typ: obsah]]]`
 
-Placeholder je trojnásobné hranaté závorky obklopující název typu a obsah oddělené dvojtečkou. Název typu je nerozlišuje malá a velká písmena ani diakritiku (`Text`, `text`, `TEXT`, `Odrážky`, `odrazky` jsou ekvivalentní).
+Placeholder je trojnásobná hranatá závorka obklopující název typu a obsah oddělené dvojtečkou. Název typu je nerozlišuje malá a velká písmena ani diakritiku (`Text`, `text`, `TEXT`, `Odrážky`, `odrazky` jsou ekvivalentní).
 
 | Typ | Význam | Příklad |
 |-----|--------|---------|
@@ -49,6 +50,7 @@ Placeholder je trojnásobné hranaté závorky obklopující název typu a obsah
 | `Číslované` | Číslovaný seznam (1., 2., 3., …) | `[[[Číslované: kroky postupu]]]` |
 | `Volba` | Výběr z předem definovaných možností oddělených čárkou | `[[[Volba: ano, ne, nevím]]]` |
 | `Tabulka` | Volitelná tabulka se zadanými sloupci (oddělenými čárkou) | `[[[Tabulka: Jméno, Kontakt, Poznámka]]]` |
+| `Datum` | Výběr data s volitelným formátem pro zobrazení (PHP-style, česky) | `[[[Datum: termín podání \| j. F Y]]]` |
 | `Spot` | Místo pro ruční doplnění mimo nástroj (obrázek, graf…) — vždy se zobrazí jako zvýrazněný blok | `[[[Spot: sem vložte obrázek]]]` |
 
 Text uvnitř obsahu placeholderu slouží jako popisek pole a v náhledu jako placeholder vstupu.
@@ -65,7 +67,7 @@ Pokyny se v režimu náhledu a vyplnění zobrazí jako zvýrazněný informačn
 
 ### Synchronizovaná pole
 
-Pokud se v šabloně vyskytne víc placeholderů typu `Text`, `Textarea`, `Odrážky` nebo `Číslované` se stejným obsahem, považuje je nástroj za jedno pole — uživatel vyplní hodnotu jen u prvního výskytu a všechny ostatní se aktualizují automaticky. Porovnání ignoruje velikost písmen, diakritiku a zdvojené mezery.
+Pokud se v šabloně vyskytne víc placeholderů typu `Text`, `Textarea`, `Odrážky`, `Číslované` nebo `Datum` se stejným obsahem (u `Datum` se srovnává jen název před svislítkem), považuje je nástroj za jedno pole — uživatel vyplní hodnotu jen u prvního výskytu a všechny ostatní se aktualizují automaticky. Porovnání ignoruje velikost písmen, diakritiku a zdvojené mezery.
 
 Příklad — text se zadá jednou a objeví se na obou místech:
 
@@ -73,6 +75,14 @@ Příklad — text se zadá jednou a objeví se na obou místech:
 Jméno: [[[Text: jméno klienta]]]
 …
 S pozdravem zaslal: [[[Text: jméno klienta]]]
+```
+
+U `Datum` lze díky srovnání jen podle názvu použít stejné datum na více místech, přičemž každý výskyt může mít vlastní formát zobrazení:
+
+```
+Datum podání: [[[Datum: termín podání | j. n. Y]]]
+…
+Slovy: [[[Datum: termín podání | j. F Y]]]
 ```
 
 ### Opakované sekce: `[[[Opakování: Název]]] … [[[/Opakování]]]`
@@ -108,6 +118,61 @@ Rozdíl oproti placeholderu `[[[Tabulka]]]` je v tom, že inline tabulka je vžd
 
 ---
 
+## Datum a formátování data
+
+Placeholder `[[[Datum: Název | formát]]]` nabídne uživateli nativní výběr data v prohlížeči (`<input type="date">`) a vedle pole rovnou ukazuje, jak bude datum vypadat po naformátování zvoleným formátem.
+
+### Zápis placeholderu
+
+- Bez formátu — použije se výchozí formát `j. n. Y` (např. `1. 3. 2026`):
+  ```
+  [[[Datum: platnost do]]]
+  ```
+- S vlastním formátem oddělený svislítkem `|`:
+  ```
+  [[[Datum: platnost do | j. F Y]]]        →  1. března 2026
+  [[[Datum: schválení | d.m.Y]]]           →  01.03.2026
+  [[[Datum: zveřejnění | l j. f Y]]]       →  neděle 1. března 2026
+  ```
+
+### Podporované tokeny formátu
+
+Podmnožina PHP `date()` relevantní pro datum bez času, s texty v české lokalizaci:
+
+| Token | Význam | Ukázka |
+|-------|--------|--------|
+| `d` | Den v měsíci, 2 číslice s vedoucí nulou | `01`–`31` |
+| `j` | Den v měsíci, bez vedoucí nuly | `1`–`31` |
+| `D` | Zkratka dne v týdnu (česky) | `po`, `út`, `st`, `čt`, `pá`, `so`, `ne` |
+| `l` | Plný název dne v týdnu (česky) | `pondělí`, `úterý`, … |
+| `N` | ISO číslo dne v týdnu | `1` (po) až `7` (ne) |
+| `w` | Číslo dne v týdnu | `0` (ne) až `6` (so) |
+| `S` | Anglická přípona pořadí | `st`, `nd`, `rd`, `th` |
+| `z` | Den v roce | `0`–`365` |
+| `W` | ISO číslo týdne (2 číslice) | `01`–`53` |
+| `F` | Plný název měsíce, 1. pád (česky) | `leden`, `únor`, … |
+| `f` | Plný název měsíce, 2. pád (česky) — rozšíření pro češtinu | `ledna`, `února`, … |
+| `M` | Zkratka měsíce (česky) | `led`, `úno`, `bře`, … |
+| `m` | Číslo měsíce, 2 číslice s vedoucí nulou | `01`–`12` |
+| `n` | Číslo měsíce, bez vedoucí nuly | `1`–`12` |
+| `t` | Počet dnů v daném měsíci | `28`–`31` |
+| `L` | Přestupný rok | `1` / `0` |
+| `Y` | Rok, 4 číslice | `2026` |
+| `y` | Rok, 2 číslice | `26` |
+| `o` | Rok podle ISO 8601 (týdenní číslování) | `2026` |
+
+Znak, který má zůstat doslovně, uveďte zpětným lomítkem: `\\Y` vypíše literální `Y`, `\\\\` literální zpětné lomítko. Znaky mimo tabulku (mezery, tečky, čárky, závorky atd.) se přebírají tak, jak jsou.
+
+### Chování v jednotlivých režimech
+
+- **Náhled vzoru** — datum se zobrazí jako značka `[[[Datum: Název | formát]]]` s modrým podbarvením.
+- **Vyplnění** — pole `<input type="date">` s okamžitým náhledem naformátovaného výsledku vedle něj (např. `→ 1. března 2026`).
+- **Náhled výsledku a export** — hodnota se do dokumentu vloží už zformátovaná.
+
+Interní hodnota se ukládá ve tvaru `YYYY-MM-DD` (ISO 8601), takže rozpracovaná verze (`.mdd`) zůstává čitelná a přenositelná bez ohledu na formát pro zobrazení.
+
+---
+
 ## Navigace a rozložení
 
 ### Horní nástrojový pruh
@@ -116,10 +181,10 @@ Horní pruh obsahuje dvě sekce:
 
 **Načíst nebo změnit šablonu** (sbalitelná část):
 
-| Tlačítko | Popis |
-|----------|-------|
+| Tlačítko / pole | Popis |
+|-----------------|-------|
 | 📂 Soubor | Otevření lokálního souboru (`.mdt`, `.mdd`, `.md`, `.txt`, `.json`) |
-| 🌐 URL | Načtení šablony z internetové adresy |
+| 🌐 URL | Pole pro adresu šablony na internetu |
 | Načíst z URL | Spustí stažení šablony ze zadané adresy |
 | 📄 Nová | Vytvoří novou prázdnou šablonu a otevře editor zdroje |
 | ✏ Zdroj | Zobrazí/upraví zdrojový text aktuální šablony |
@@ -151,7 +216,7 @@ Pod horním pruhem je informační/stavový řádek (žlutý — informace, zele
 
 ## Režim Náhled vzoru
 
-V tomto režimu se šablona vykreslí jako klasický markdown, ale placeholdery jsou nahrazeny barevně rozlišenými značkami typu `[[[Text: jméno]]]`, `[[[Volba: ano, ne]]]` atd. Jednotlivé typy mají vlastní barevné pozadí pro snadnou orientaci.
+V tomto režimu se šablona vykreslí jako klasický markdown, ale placeholdery jsou nahrazeny barevně rozlišenými značkami typu `[[[Text: jméno]]]`, `[[[Volba: ano, ne]]]`, `[[[Datum: platnost | d.m.Y]]]` atd. Jednotlivé typy mají vlastní barevné pozadí pro snadnou orientaci.
 
 Pokyny `{{{…}}}` se zobrazují jako žluté boxy s ikonou 💡. Opakované sekce jsou orámované jako pojmenované fieldsety. Spot bloky jsou výrazné žluté boxy s ikonou 📍.
 
@@ -171,6 +236,8 @@ Hlavní pracovní režim. Šablona se vykreslí podobně jako v náhledu, ale na
 
 **Volba** — rozevírací seznam (`<select>`) s předem definovanými možnostmi. První položka „— vyberte —" znamená prázdnou hodnotu.
 
+**Datum** — nativní pole `<input type="date">` (v prohlížeči se otevře systémový kalendář). Vedle pole se zobrazuje okamžitý náhled výsledné hodnoty v nastaveném formátu, uvozený šipkou `→`.
+
 **Odrážky / Číslované** — editor položek se seznamem. Tlačítka u každé položky:
 
 | Tlačítko | Akce |
@@ -187,7 +254,7 @@ Hlavní pracovní režim. Šablona se vykreslí podobně jako v náhledu, ale na
 
 **Spot** — nevyplňuje se, zobrazí se jako žlutý box s popisem.
 
-**Synchronizovaná hodnota (zrcadlo)** — druhý a každý další výskyt stejného pole se ukáže jako šedý textový náhled aktuálně zadané hodnoty (případně „(nevyplněno: …)").
+**Synchronizovaná hodnota (zrcadlo)** — druhý a každý další výskyt stejného pole se ukáže jako šedý textový náhled aktuálně zadané hodnoty (případně „(nevyplněno: …)"). U `Datum` se zrcadlo formátuje podle vlastního formátu daného výskytu, takže stejné datum může být na různých místech zobrazeno různě.
 
 ### Opakované sekce
 
@@ -211,7 +278,7 @@ Klasická markdown tabulka v šabloně se zobrazí v rámečku „Editovatelná 
 
 ## Režim Náhled výsledku
 
-Vykresluje finální dokument přesně tak, jak bude vypadat po uložení. Placeholdery jsou nahrazeny zadanými hodnotami, pokyny jsou skryté, prázdné tabulky se přeskakují, opakované sekce jsou expandované.
+Vykresluje finální dokument přesně tak, jak bude vypadat po uložení. Placeholdery jsou nahrazeny zadanými hodnotami (u dat naformátovanými podle zadaného formátu), pokyny jsou skryté, prázdné tabulky se přeskakují, opakované sekce jsou expandované.
 
 Nevyplněná pole se zobrazují jako červené značky `[NEVYPLNĚNO: Typ — popis]`, aby bylo zjevné, co chybí. Spot bloky zůstávají jako žluté označení k ručnímu doplnění.
 
@@ -247,7 +314,7 @@ Pozor — načítání z URL může selhat kvůli CORS, pokud server šablony ne
 | Formát | Tlačítko | Co obsahuje |
 |--------|----------|-------------|
 | `.mdt` | 💾 Uložit .mdt | Pouze čistou šablonu (bez vyplněných hodnot) |
-| `.mdd` | 💾 Rozpracované (.mdd) | JSON se šablonou + všemi vyplněnými hodnotami + režimem, časem uložení |
+| `.mdd` | 💾 Rozpracované (.mdd) | JSON se šablonou + všemi vyplněnými hodnotami + režimem a časem uložení |
 | `.md` | 💾 Vyplněný .md | Finální vyplněný markdown (pokyny odstraněné) |
 | `.docx` | 💾 Vyplněný .docx | Word dokument s formátováním (nadpisy, seznamy, tabulky, Spot bloky) |
 | Schránka | 📋 Kopírovat MD | Vyplněný markdown rovnou do schránky systému |
@@ -291,6 +358,7 @@ Vyplněný dokument lze uložit jako `.docx` soubor, který otevře Microsoft Wo
 - Kódové bloky (`` ``` ``) v písmu Consolas
 - Citace (`>`) odsazené se svislou čarou
 - Spot bloky jako orámované odstavce s podbarvením a tučným popiskem
+- Data zformátovaná podle zvoleného formátu (např. `1. března 2026`)
 
 Knihovna `docx` (verze 8.5.0) se načítá z CDN unpkg.com — pokud není internet, export do `.docx` nebude fungovat. Ostatní funkce (`.md`, `.mdt`, `.mdd`, kopírování do schránky) jsou plně offline.
 
@@ -300,9 +368,10 @@ Knihovna `docx` (verze 8.5.0) se načítá z CDN unpkg.com — pokud není inter
 
 - **Přehlednost** — pojmenovávejte placeholdery srozumitelně podle toho, co se má zadat (např. `[[[Text: jméno klienta]]]` místo `[[[Text: x]]]`). Tento text se zobrazí jako popisek pole.
 - **Pokyny šetří dotazy** — komentáře `{{{…}}}` jsou ideální místo na zápis instrukcí, kontextu, požadavků na styl. Vyplňující je vidí, ale do výsledku se nepřenášejí.
-- **Synchronizace stejnojmenných polí** — využijte fakt, že stejný text v `[[[Text: …]]]` se vyplňuje jen jednou (např. jméno žadatele na začátku i na konci dokumentu).
+- **Synchronizace stejnojmenných polí** — využijte fakt, že stejný text v `[[[Text: …]]]` se vyplňuje jen jednou (např. jméno žadatele na začátku i na konci dokumentu). U dat to funguje také — a každý výskyt může mít vlastní formát zobrazení (například jednou `d.m.Y` a jednou `j. F Y`).
 - **Volitelné části** — pro nepovinné bloky používejte `[[[Tabulka: …]]]` (volitelná, musí ji uživatel aktivovat) nebo `[[[Opakování: …]]]` (lze přidat 0 a více instancí).
 - **Spot pro obrázky** — místa, kam patří grafika nebo data z jiných zdrojů, označte `[[[Spot: …]]]`, aby vyplňující věděl, co tam doplnit ručně po vygenerování dokumentu.
+- **Datum — správně česky** — pro plné české datum použijte `j. f Y` (rodivý pád — „1. března 2026"), pro tabulkové zápisy `d.m.Y` nebo `j. n. Y`.
 - **Vzor** — nástroj má vzorovou šablonu `vzor.mdt` ukazující všechny prvky formátu MDT.
 
 ---
@@ -327,10 +396,12 @@ Knihovna `docx` (verze 8.5.0) se načítá z CDN unpkg.com — pokud není inter
 
 Hodnoty se ukládají pod klíči:
 
-- `Typ::normalizovaný_obsah` — pro deduplikovaná pole (Text, Textarea, Odrážky, Číslované)
-- `__idx_N` — pro pole bez deduplikace (Volba, Tabulka)
+- `Typ::normalizovaný_obsah` — pro deduplikovaná pole (`Text`, `Textarea`, `Odrážky`, `Číslované`, `Datum`). U `Datum` je normalizovaným obsahem pouze název před svislítkem (bez formátu).
+- `__idx_N` — pro pole bez deduplikace (`Volba`, `Tabulka`)
 - `__inline_table_N` — pro inline markdown tabulky
 - `__repeat_N` — pro opakované sekce (pole instancí, každá instance má vlastní jmenný prostor)
+
+Datum se ukládá jako řetězec `YYYY-MM-DD` (formát, který produkuje `<input type="date">`). Formát pro zobrazení není součástí uložené hodnoty — je součástí šablony a aplikuje se až při vykreslení.
 
 ### Detekce typu souboru
 
@@ -338,7 +409,7 @@ Nástroj rozliší `.mdt` a `.mdd` automaticky — pokud text začíná `{` a ob
 
 ### Migrace starších `.mdd` souborů
 
-Při načtení starší rozpracované verze se automaticky převede klíčování hodnot na aktuální normalizovaný tvar (porovnání bez rozlišení velikosti písmen a diakritiky).
+Při načtení starší rozpracované verze se automaticky převede klíčování hodnot na aktuální normalizovaný tvar (porovnání bez rozlišení velikosti písmen a diakritiky). Migrace se aplikuje i uvnitř jednotlivých instancí opakovaných sekcí.
 
 ### Závislosti
 
@@ -350,4 +421,4 @@ Nástroj nepoužívá `localStorage` — všechna data jsou pouze v paměti aktu
 
 ### Kompatibilita
 
-Nástroj funguje v aktuálních verzích Chrome, Firefox, Safari, Edge a dalších prohlížečích založených na moderních webových standardech. Kopírování do schránky používá Clipboard API; pokud není dostupné, použije se starší metoda přes `document.execCommand('copy')`.
+Nástroj funguje v aktuálních verzích Chrome, Firefox, Safari, Edge a dalších prohlížečích založených na moderních webových standardech. Kopírování do schránky používá Clipboard API; pokud není dostupné, použije se starší metoda přes `document.execCommand('copy')`. Pole pro datum používá nativní `<input type="date">`, takže vzhled a chování kalendáře odpovídá tomu, co uživatel zná ze svého prohlížeče a operačního systému.
