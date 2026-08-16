@@ -25,7 +25,7 @@ Nástroj je dostupný také jako samostatný soubor HTML ke stažení a provozov
 - **Synchronizace s GitHubem** — automatické ukládání do libovolného souboru v repozitáři včetně soukromého; kolize se automaticky řeší přenačtením a opakovaným uložením.
 - **Panely** — přepínatelný pravý panel se souhrnem příznaků v bloku nebo přehledem odkazů z i na aktuální stránku.
 - **Hledání** — fulltextové hledání v rámci celého bloku, oddílu nebo stránky, s filtry na příznak, velikost písmen a názvy stránek.
-- **Historie stránky** — na každé stránce lze uložit snímek a později se k němu vrátit.
+- **Historie stránky** — na každé stránce lze uložit snímek a později se k němu vrátit (posledních 20 verzí).
 - **Barevné oddíly** — oddíl i skupina oddílů mohou dostat jednu z devíti barev; barva se dědí ze skupiny a hlásí se i textem pro odečítač obrazovky.
 - **Undo / Redo** — 60 kroků zpět a znovu pro každou úpravu obsahu i struktury.
 
@@ -41,11 +41,11 @@ Obsah poznámkového bloku se v prohlížeči **neukládá**. V úložišti proh
 
 ## Navigace a rozložení
 
-Aplikace se skládá ze čtyř hlavních oblastí:
+Aplikace se skládá z několika hlavních oblastí, které se skládají shora dolů.
 
 ### Záhlaví aplikace
 
-Obsahuje název aplikace, název aktuálně otevřené stránky (nadpis 1. úrovně) a drobečkovou navigaci (blok › oddíl › nadřízená stránka › stránka).
+Obsahuje název aplikace „Mronenote", název aktuálně otevřené stránky (nadpis 1. úrovně) a drobečkovou navigaci (blok › oddíl › nadřízená stránka › stránka).
 
 ### Hlavní nabídka (menubar)
 
@@ -54,33 +54,47 @@ Vodorovná lišta nabídek přístupná klávesou **F10** a přes **Alt** + podt
 | Nabídka | Zkratka | Obsah |
 |---|---|---|
 | **S**oubor | Alt+S | Nový blok, otevřít, uložit .json, schránka, exporty (HTML, Markdown, DOCX), import Markdownu, GitHub, tisk, nastavení |
-| **Ú**pravy | Alt+Ú | Zpět/znovu, přidat/smazat řádek, zanořit/vynořit, přesun, kopírování odkazů, hledání |
-| **F**ormát | Alt+F | Tučně, kurzíva, podtržení, přeškrtnutí, kód, zvýraznění, zrušit formát, styl a typ seznamu |
+| **Ú**pravy | Alt+U | Zpět/znovu, přidat/smazat řádek, zanořit/vynořit, přesun, kopírování odkazů, hledání |
+| **F**ormát | Alt+F | Tučně, kurzíva, podtržení, přeškrtnutí, kód, zvýraznění, zrušit formát, styl odstavce a typ seznamu |
 | **V**ložit | Alt+V | Odkaz, wiki odkaz, vnitřní odkaz, tabulka, obrázek, příloha, CriticMarkup značky, datum, oddělovač |
-| **P**říznaky | Alt+P | Nabídka všech příznaků, dialog příznaků, správa příznaků, odebrání příznaků, hotovo |
+| **P**říznaky | Alt+P | Nabídka všech příznaků, dialog příznaků, správa příznaků, odebrání příznaků, hotovo, panel souhrnu |
 | **B**lok a stránky | Alt+B | Nový oddíl, skupina, stránka, podstránka, přejmenování, přesun, smazání, historie, panel odkazů |
 | **Z**obrazení | Alt+Z | Režim úprav/čtení, sbalit/rozbalit, sbalit vše, sbalit do úrovně, úklid zaškrtávátek |
 | **N**ápověda | Alt+N | Kompletní nápověda a přehled zkratek (F1) |
 
 ### Rychlá lišta akcí (quickbar)
 
-Pruh pod hlavní nabídkou obsahuje nejčastěji potřebná tlačítka — přepínač režimu, zanoření/vynoření, posun nahoru/dolů, sbalit/rozbalit, rychlé příznaky (Úkol, Důležité, Otázka), wiki odkaz a hledání.
+Pruh pod hlavní nabídkou obsahuje nejčastěji potřebná tlačítka:
+
+| Tlačítko | Funkce |
+|---|---|
+| **Režim: úpravy / čtení** | Přepnutí režimu (F2) |
+| **Zanořit** / **Vynořit** | Zanoření a vynoření řádku |
+| **Nahoru** / **Dolů** | Přesun řádku |
+| **Sbalit/rozbalit** | Sbalení aktuálního řádku |
+| **Úkol**, **Důležité**, **Otázka** | První tři příznaky v pořadí |
+| **Wiki odkaz** | Vložení wiki odkazu |
+| **Hledat** | Otevření dialogu hledání |
 
 ### Postranní strom (navigace bloku)
 
-Levý panel zobrazuje strom skupin, oddílů, stránek a podstránek. Nahoře je pole **Rychlý filtr stránek** — hledaný text se hned zvýrazní ve stromu. Panel lze skrýt tlačítkem **☰** vlevo nahoře; šířku lze měnit tažením za pravou hranu.
+Levý panel zobrazuje strom skupin, oddílů, stránek a podstránek. Nahoře je pole **Rychlý filtr stránek** — hledaný text se hned zvýrazní ve stromu. Panel lze skrýt tlačítkem **☰ Skrýt panel** vlevo nahoře; šířku lze měnit tažením za pravou hranu.
 
 ### Pracovní plocha
 
-Zobrazuje název právě otevřené stránky (editovatelný) a osnovu jejích řádků. Vlevo u každého řádku je trojúhelník pro sbalování a v úpravách i tlačítko **⋮** s kontextovou nabídkou řádku.
+Zobrazuje editovatelné pole s názvem právě otevřené stránky, nadpis **Obsah stránky** a osnovu jejích řádků. Vlevo u každého řádku je trojúhelník pro sbalování, v úpravách i tlačítko **⋮** s kontextovou nabídkou řádku. Pod osnovou je tlačítko **Přidat řádek na konec**.
 
 ### Postranní panel (volitelný)
 
-Pravý panel se aktivuje v nabídce **Příznaky → Souhrn příznaků** nebo **Blok a stránky → Odkazy stránky**. Slouží k přehledu.
+Pravý panel se aktivuje v nabídce **Příznaky → Souhrn příznaků (panel)** nebo **Blok a stránky → Odkazy stránky (panel)**. Slouží k přehledu; skryje se opětovným zvolením volby.
 
 ### Stavový řádek a lišta GitHubu
 
-Pod pracovní plochou hlásí stavový řádek výsledek poslední akce (např. „Zanořeno o úroveň níž.") a lišta GitHubu ukazuje stav synchronizace a čas posledního uložení.
+Pod pracovní plochou hlásí stavový řádek výsledek poslední akce (např. „Zanořeno o úroveň níž.") a lišta GitHubu ukazuje repozitář, se kterým je aplikace spojena, a čas posledního uložení (např. „uloženo před 12 s").
+
+### Ladicí výpis
+
+Volitelný panel (zapíná se v Nastavení) ukazuje časový přehled operací (spuštění, uložení, chyby GitHubu). Slouží k ladění a hlášení problémů.
 
 ---
 
@@ -111,16 +125,28 @@ Poznámkový blok
 | Nová skupina oddílů | Nabídka **Blok a stránky → Nová skupina oddílů…** |
 | Nová stránka | **Ctrl+N**, případně z dialogu oddílu |
 | Nová podstránka | Nabídka **Blok a stránky → Nová podstránka…** |
-| Přejmenování stránky | Kliknutím na název, případně nabídkou; wiki odkazy na starý název se automaticky přepíší |
+| Přejmenování stránky | Kliknutím do pole s názvem stránky, nebo přes **Blok a stránky → Přejmenovat stránku…**; wiki odkazy na starý název se automaticky přepíší |
 | Přesun stránky | Nabídka **Blok a stránky → Přesunout stránku…**; cílem může být oddíl (na konec) nebo jiná stránka (stane se podstránkou) |
 | Přesun oddílu / skupiny | V dialogu oddílu/skupiny volbami **Přesunout do** a **Pozice** |
 | Změna pořadí | Přes dialog položky nebo klávesovými zkratkami při editaci pozice |
 
 Přesun sebou vezme celý podstrom; do vlastního potomka přesunout nelze (smyčka).
 
+### Dialog oddílu
+
+Kliknutí na oddíl v levém stromu otevře jeho dialog s poli **Název oddílu**, **Barva**, **Přesunout do** a **Pozice** a s tlačítky **Uložit**, **Přidat stránku**, **Smazat oddíl** a **Zrušit**.
+
+### Dialog skupiny oddílů
+
+Kliknutí na skupinu otevře její dialog s poli **Název skupiny oddílů**, **Barva**, **Přesunout do** a **Pozice**, dále s tlačítky **Uložit**, **Přidat oddíl**, **Přidat podskupinu**, **Smazat skupinu** a **Zrušit**.
+
 ### Barvy oddílů
 
-Oddíl i skupinu oddílů lze obarvit jednou z devíti barev: modrá, zelená, červená, fialová, oranžová, tyrkysová, růžová, hnědá, šedá. Oddíly bez vlastní barvy dědí barvu skupiny. Barva se zobrazuje jako pruh nalevo a jako tečka u názvu; **v odečítači obrazovky se hlásí i textem**.
+Oddíl i skupinu oddílů lze obarvit jednou z devíti barev: modrá, zelená, červená, fialová, oranžová, tyrkysová, růžová, hnědá, šedá. Oddíly bez vlastní barvy dědí barvu skupiny. Barva se zobrazuje jako pruh nalevo a jako tečka u názvu; **v odečítači obrazovky se hlásí i textem** (např. „Oddíl Práce, 4 stránky, barva modrá").
+
+### Rychlý filtr stránek
+
+Nad stromem je pole **Rychlý filtr stránek**. Napsaný text se okamžitě promítne do stromu — položky, které neodpovídají a nemají odpovídající potomka, se skryjí. Šipkou dolů z filtru vstoupíte do stromu.
 
 ---
 
@@ -144,7 +170,7 @@ Za úkolem se **nový řádek na úkol nedědí**, aby zaškrtávátko nevznikal
 
 ### Styl řádku
 
-Styl řádku se mění v nabídce **Formát → Styl odstavce**, klávesou **F3** (nabídka) nebo v kontextové nabídce řádku:
+Styl řádku se mění v nabídce **Formát → Styl odstavce**, klávesou **F3** (otevře kontextovou nabídku rovnou na podnabídce Styl řádku), nebo v kontextové nabídce řádku:
 
 | Styl | Vzhled |
 |---|---|
@@ -152,8 +178,8 @@ Styl řádku se mění v nabídce **Formát → Styl odstavce**, klávesou **F3*
 | Nadpis 1, 2, 3 | Zvětšený tučný text |
 | Citace | Kurzíva s levým pruhem |
 | Kód | Neproporcionální písmo s podbarvením |
-| Textový blok (Markdown) | Editor Markdownu s náhledem |
-| Oddělovač | Vodorovná čára (vloží se přes nabídku Vložit → Oddělovač) |
+| Textový blok (Markdown) | Editor Markdownu s živým náhledem |
+| Oddělovač | Vodorovná čára (vloží se přes **Vložit → Oddělovač**) |
 
 ### Typ seznamu
 
@@ -164,11 +190,31 @@ Styl řádku se mění v nabídce **Formát → Styl odstavce**, klávesou **F3*
 | Číslování | Automatické pořadové číslo |
 | Zaškrtávátko | Řádek typu úkol, se skutečným checkboxem |
 
-Řádek s příznakem **Úkol** dostává zaškrtávátko automaticky. Volba **Zobrazení → Zrušit zaškrtávátka u prázdných úkolů…** hromadně opraví řádky, které zbyly zaškrtávacím pole omylem.
+Řádek s příznakem **Úkol** dostává zaškrtávátko automaticky. Volba **Zobrazení → Zrušit zaškrtávátka u prázdných úkolů…** hromadně opraví řádky, které zbyly zaškrtávacím polem omylem.
 
 ### Kontextová nabídka řádku
 
-Otevře se pravým tlačítkem myši, klávesou kontextové nabídky, **Shift+F10** nebo tlačítkem **⋮** vlevo od řádku (užitečné na dotykových zařízeních). Obsahuje formátování, odkazy, příznaky (podnabídka), styl (podnabídka), typ seznamu (podnabídka), zanoření, přesun a mazání řádku. Pohyb šipkami, potvrzení **Enter**, zavření **Escape**.
+Otevře se pravým tlačítkem myši, klávesou kontextové nabídky, **Shift+F10** nebo tlačítkem **⋮** vlevo od řádku (užitečné na dotykových zařízeních). Obsahuje:
+
+- Vyjmout / Kopírovat / Vložit
+- Tučně, Kurzíva, Podtržení, Zvýraznění, Zrušit formátování
+- Odkaz, Wiki odkaz, Vnitřní odkaz, Kopírovat odkaz na tento odstavec, Vložit zkopírovaný odkaz
+- **Příznaky** (podnabídka se všemi příznaky jako přepínači)
+- Označit jako hotové / nehotové
+- Odebrat všechny příznaky
+- **Styl řádku** (podnabídka)
+- **Typ seznamu** (podnabídka)
+- Zanořit, Vynořit, Přesunout nahoru / dolů, Sbalit / Rozbalit
+- Přidat řádek pod
+- Smazat řádek
+
+Pohyb šipkami nahoru a dolů, podnabídka **šipkou doprava**, zpět **šipkou doleva**, potvrzení **Enterem** nebo **mezerou**, zavření **Escape**.
+
+### Sbalování a hromadné operace
+
+- **Zobrazení → Sbalit vše** / **Rozbalit vše** — hromadně sbalí nebo rozbalí všechny řádky aktuální stránky.
+- **Zobrazení → Sbalit do úrovně** — vybere se úroveň 1–5, na které zůstanou položky rozbalené.
+- **Zobrazení → Zrušit zaškrtávátka u prázdných úkolů…** — spočítá řádky se zaškrtávátkem, které nejsou označené jako úkol, a po potvrzení je převede zpět na běžné řádky.
 
 ---
 
@@ -194,11 +240,11 @@ Povoleny jsou tyto HTML značky (vše ostatní se při sanitizaci rozbalí): `B`
 
 Běžný řádek nese jednu myšlenku; **textový blok** unese celou podkapitolu psanou v Markdownu.
 
-**Jak jej vytvořit:** u prázdného řádku klikněte na tlačítko **Markdown** vedle pole, nebo v kontextové nabídce zvolte **Styl řádku → Textový blok (Markdown)**.
+**Jak jej vytvořit:** u prázdného řádku klikněte na tlačítko **Markdown** vedle pole, nebo v kontextové nabídce řádku zvolte **Styl řádku → Textový blok (Markdown)**.
 
 **V úpravách** píšete syrový Markdown do textového pole a pod ním vidíte živý náhled. V **režimu čtení** se zobrazí jen vyrenderovaný text.
 
-**Ovládání:** **Enter** vytváří nový řádek uvnitř bloku; nový řádek osnovy za blokem vytvoříte **Ctrl+Enter**.
+**Ovládání:** **Enter** vytváří nový řádek uvnitř bloku; nový řádek osnovy za blokem vytvoříte **Ctrl+Enter**. **Escape** blok opustí do stromu osnovy.
 
 **Podporováno:** nadpisy `#`–`######`, odstavce, `**tučně**`, `*kurzíva*`, `_kurzíva_`, `` `kód` ``, `~~přeškrtnuté~~`, `==zvýrazněné==`, odkazy `[text](url)`, obrázky `![alt](url)`, odrážky `-`/`*`/`+`, číslování `1.`, vnořené seznamy, zaškrtávací seznam `- [ ]` / `- [x]`, citace `>`, čára `---`, blok kódu ` ``` `.
 
@@ -208,10 +254,11 @@ Běžný řádek nese jednu myšlenku; **textový blok** unese celou podkapitolu
 
 Pokud je v Nastavení zapnut **převod Markdownu při psaní**, ihned se konvertují:
 
-- **Na začátku řádku:** `#` nadpis, `##` a `###` nižší nadpisy, `-` nebo `*` odrážka, `1.` číslování, `>` citace, `- [ ]` a `- [x]` úkol.
+- **Na začátku řádku:** `#` nadpis, `##` a `###` nižší nadpisy, `####` nadpis 3, `-` nebo `*` odrážka, `1.` číslování, `>` citace, `` ``` `` kód, `- [ ]` a `- [x]` úkol.
 - **Uvnitř textu:** `**tučně**`, `*kurzíva*` nebo `_kurzíva_`, `` `kód` ``, `~~přeškrtnuté~~`, `==zvýrazněné==`.
 - **Odkazy:** `[popisek](https://adresa)` a holé adresy `https://…` nebo `www.…` se převedou na klikací odkaz; samotný e-mail v `[popisek](adresa)` na `mailto:`.
 - Holá adresa se převede až po napsané mezeře nebo při opuštění řádku, aby se tečky uvnitř adresy nespletly s koncem věty.
+- Vložená značka se převede, jakmile dopíšete uzavírací znak; řádková po mezeře za značkou.
 
 ---
 
@@ -240,7 +287,8 @@ Pokud je v Nastavení zapnut **převod Markdownu při psaní**, ihned se konvert
 
 | Akce | Kde |
 |---|---|
-| Nabídka příznaků řádku | Nabídka **Příznaky**, klávesa **F4** |
+| Nabídka příznaků řádku | Nabídka **Příznaky** (obsahuje seznam všech příznaků jako přepínače) |
+| Otevření nabídky příznaků klávesou | **F4** |
 | První tři příznaky v pořadí | **Ctrl+Shift+1**, **Ctrl+Shift+2**, **Ctrl+Shift+3** |
 | Označit hotovo / nehotovo | **Ctrl+Shift+D** (přidá `Hotový úkol`, odebere `Úkol`) |
 | Smazat všechny příznaky řádku | **Shift+F4** nebo **Příznaky → Odebrat příznaky z řádku** |
@@ -250,16 +298,18 @@ Pokud je v Nastavení zapnut **převod Markdownu při psaní**, ihned se konvert
 
 Nabídka **Příznaky → Spravovat příznaky…** otevře tabulku, v níž lze:
 
-- Přejmenovat příznak, změnit symbol (emoji nebo obyčejný znak) i barvu.
-- Změnit pořadí šipkami — první tři pak reagují na zkratky **Ctrl+Shift+1** až **3**.
-- Skrýt nepoužívaný příznak z nabídky (u řádků, kde už je použit, zůstane).
+- **Přejmenovat** příznak, změnit **symbol** (emoji nebo obyčejný znak) i **barvu**.
+- Změnit **pořadí** šipkami ve sloupci Pořadí — první tři pak reagují na zkratky **Ctrl+Shift+1** až **3** a jsou v rychlé liště jako **Úkol**, **Důležité**, **Otázka**.
+- **Skrýt** nepoužívaný příznak z nabídky (u řádků, kde už je použit, zůstane).
 - Sledovat sloupec **Použití** s počtem výskytů v bloku.
+- **Vybrat symbol ze seznamu…** — nabídne dialog s emoji a znaky, které se vloží do naposledy upravovaného pole.
+- **Obnovit výchozí nastavení příznaků** — vrátí u všech 24 příznaků výchozí název, symbol i barvu.
 
 **Klíč příznaku (vnitřní identifikátor) je neměnný**, proto úpravy nerozbijí existující označení. Nastavení příznaků se ukládá **do bloku**, putuje tedy se souborem.
 
 ### Souhrn příznaků (pravý panel)
 
-Nabídka **Příznaky → Souhrn příznaků (panel)** zobrazí v pravém panelu přehled všech použitých příznaků v bloku, s počtem výskytů a klikacími odkazy na jednotlivé řádky.
+Nabídka **Příznaky → Souhrn příznaků (panel)** zobrazí v pravém panelu přehled všech použitých příznaků v bloku, s počtem výskytů a klikacími odkazy na jednotlivé řádky. Nabízí filtr **Zobrazit příznak**, kterým lze omezit zobrazení na jeden vybraný.
 
 ---
 
@@ -269,7 +319,7 @@ Mronenote rozlišuje tři druhy odkazů.
 
 ### 1. Externí odkazy (HTTP, mailto)
 
-Vloží se z nabídky **Vložit → Odkaz…** nebo zkratkou **Ctrl+K**. Dialog nabízí URL a viditelný popisek. Kliknutí na odkaz v obsahu si nejprve vyžádá potvrzení a poté ho otevře v novém okně; s **Ctrl** se otevře přímo.
+Vloží se z nabídky **Vložit → Odkaz…** nebo zkratkou **Ctrl+K**. Dialog nabízí URL a viditelný popisek (předplní se aktuálně označeným textem). Kliknutí na odkaz v obsahu si nejprve vyžádá potvrzení a poté ho otevře v novém okně; s **Ctrl** se otevře přímo.
 
 ### 2. Wiki odkazy `[[Název stránky]]`
 
@@ -279,34 +329,34 @@ Odkazují na stránku podle názvu. Vytvoříte je:
 - Ručně zápisem `[[Název stránky]]` v textu — po opuštění řádku se automaticky převede.
 - Formát `[[Cíl|Zobrazený text]]` umožňuje jiný popisek než název cíle.
 
-Klikání na odkaz na neexistující stránku nabídne její okamžité vytvoření. Chybějící cíle jsou v textu vyznačeny čerchovaným podtržením a najdete je i v panelu **Odkazy stránky**.
+Kliknutí na odkaz na neexistující stránku nabídne její okamžité vytvoření. Chybějící cíle jsou v textu vyznačeny čárkovaným podtržením a najdete je i v panelu **Odkazy stránky**.
 
 Wiki odkazy míří na název — při přejmenování cílové stránky se **automaticky přepíší** ve všech řádcích celého bloku.
 
 ### 3. Vnitřní odkazy na identifikátor
 
-Odkazují na konkrétní odstavec, stránku, oddíl, skupinu oddílů nebo celý blok pomocí vnitřního ID. Přežijí přejmenování cíle.
+Odkazují na konkrétní odstavec, stránku, oddíl, skupinu oddílů nebo celý blok pomocí vnitřního ID (formát `mronenote:<druh>/<id>`). Přežijí přejmenování cíle.
 
-| Akce | Zkratka |
+| Akce | Zkratka / Kde |
 |---|---|
-| Kopírovat odkaz na odstavec | **Ctrl+Shift+C** |
-| Kopírovat odkaz na stránku | Nabídka **Úpravy** |
-| Kopírovat odkaz na oddíl | Nabídka **Úpravy** |
-| Kopírovat odkaz na celý blok | Nabídka **Úpravy** |
+| Kopírovat odkaz na odstavec | **Ctrl+Shift+C** nebo **Úpravy → Kopírovat odkaz na odstavec** |
+| Kopírovat odkaz na stránku | **Úpravy → Kopírovat odkaz na stránku** |
+| Kopírovat odkaz na oddíl | **Úpravy → Kopírovat odkaz na oddíl** |
+| Kopírovat odkaz na celý blok | **Úpravy → Kopírovat odkaz na poznámkový blok** |
 | Vložit zkopírovaný odkaz | **Ctrl+Shift+V** |
 | Vybrat cíl ze seznamu | **Vložit → Vnitřní odkaz na odstavec či stránku…** |
 
-Po přechodu na vnitřní odkaz se cílový odstavec zvýrazní a získá fokus.
+Po přechodu na vnitřní odkaz se cílový odstavec zvýrazní (blikne) a získá fokus. Odkaz se do systémové schránky ukládá v čitelném tvaru `text <mronenote:druh/id>`.
 
 ### Panel odkazů stránky
 
 **Blok a stránky → Odkazy stránky (panel)** zobrazí v pravém panelu:
 
-- Wiki odkazy vedoucí z této stránky
-- Wiki odkazy vedoucí na tuto stránku (backlinks)
-- Vnitřní odkazy z této stránky
-- Vnitřní odkazy vedoucí na tuto stránku
-- Chybějící cíle wiki odkazů (s tlačítkem pro vytvoření chybějící stránky)
+- **Odkazy z této stránky** (wiki odkazy)
+- **Odkazy na tuto stránku** (backlinks)
+- **Vnitřní odkazy z této stránky**
+- **Vnitřní odkazy na tuto stránku**
+- **Chybějící cíle** wiki odkazů (s tlačítkem pro vytvoření chybějící stránky)
 
 ---
 
@@ -316,10 +366,10 @@ Nabídka **Vložit** kromě odkazů umožňuje vkládat:
 
 | Prvek | Detail |
 |---|---|
-| **Tabulku** | Zvolíte rozměry, vloží se HTML tabulka; buňky lze upravovat |
-| **Obrázek** | Nahrání souboru z disku, povinný alternativní text pro přístupnost |
-| **Přílohu** | Libovolný soubor (uloží se do bloku jako data URL); zobrazí se odkaz se jménem a velikostí |
-| **Datum a čas** | Vloží aktuální datum v českém formátu |
+| **Tabulku…** | Zvolíte počet řádků a sloupců a popisek; vloží se jako podřízené řádky osnovy (každý řádek tabulky jako samostatná položka, buňky oddělené středníkem) — zajišťuje čitelnost v odečítači obrazovky |
+| **Obrázek…** | Nahrání souboru z disku, povinný alternativní text pro přístupnost |
+| **Přílohu…** | Libovolný soubor (uloží se do bloku jako data URL); zobrazí se odkaz se jménem a velikostí |
+| **Datum a čas** | Vloží aktuální datum a čas v českém formátu |
 | **Oddělovač** | Vodorovná čára jako samostatný řádek |
 
 **Přílohy a obrázky se ukládají přímo do bloku** (a tedy i do souboru `.json` a synchronizovaného souboru na GitHubu). Fungují bez serveru, ale velké soubory výrazně zvětší uložený blok — doporučuje se vkládat menší přílohy.
@@ -336,7 +386,7 @@ Značky pro revizi textu:
 | Poznámka | Komentář revizora | `{>>poznámka<<}` |
 | Zvýraznění | Zvýraznit v textu | `{==text==}` |
 
-Značky lze psát ručně nebo vložit z nabídky **Vložit**. **Při exportu do DOCX vzniknou skutečné sledované změny Wordu a skutečné komentáře**, které recipient přijímá nebo odmítá běžnou cestou.
+Značky lze psát ručně nebo vložit z nabídky **Vložit → Revize: …**. **Při exportu do DOCX vzniknou skutečné sledované změny Wordu a skutečné komentáře**, které recipient přijímá nebo odmítá běžnou cestou.
 
 ---
 
@@ -349,7 +399,7 @@ Přepínač **Režim: úpravy / čtení** v rychlé liště (nebo klávesa **F2*
 | **Úpravy** | Řádky jsou editovatelné, aktivní jsou všechna tlačítka a zkratky pro změny |
 | **Čtení** | Obsah nelze měnit, text lze pohodlně vybírat a kopírovat, odkazy se otevírají klávesou **Enter**; zaškrtávátka úkolů zůstávají funkční |
 
-**Po spuštění aplikace je vždy zvolen režim čtení.** Volba se pamatuje pro další relaci.
+**Po spuštění aplikace je vždy zvolen režim čtení.** Zvolený režim se pamatuje spolu s blokem (v nastavení bloku).
 
 ### Navigace v obsahu ve čtení
 
@@ -365,7 +415,7 @@ Ve čtení má obsah **jeden vstupní bod tabulátoru** (chová se jako strom):
 
 ### Navigace v levém stromu
 
-Analogická logika: **↑ ↓** procházení, **→** rozbalit + přejít, **←** sbalit + přejít na rodiče, **Home** / **End** skok na kraje. Z pole rychlého filtru lze do stromu vstoupit šipkou **↓**.
+Analogická logika: **↑ ↓** procházení, **→** rozbalit + přejít, **←** sbalit + přejít na rodiče, **Home** / **End** skok na kraje. Z pole rychlého filtru lze do stromu vstoupit šipkou **↓**. Kliknutí na oddíl otevře dialog oddílu, kliknutí na skupinu otevře dialog skupiny, kliknutí na stránku ji otevře.
 
 ---
 
@@ -381,13 +431,13 @@ Analogická logika: **↑ ↓** procházení, **→** rozbalit + přejít, **←
 | **Rozlišovat velikost písmen** | ANO/NE |
 | **Hledat i v názvech stránek** | ANO/NE |
 
-Výsledky se zobrazí v dialogu s klikacími odkazy — kliknutí přejde přímo na příslušný řádek.
+Výsledky se zobrazí v dialogu s klikacími odkazy — kliknutí přejde přímo na příslušný řádek. Ve výsledku je nalezený výraz zvýrazněn a doplněn popisem oddílu, stránky a případných příznaků řádku.
 
 ---
 
 ## Historie stránky
 
-**Blok a stránky → Historie stránky…** ukazuje datum vytvoření, datum poslední změny a seznam ručně uložených snímků stránky. Tlačítko **Uložit současnou verzi** zapíše aktuální obsah do historie; **Obnovit verzi z…** obsah stránky nahradí zvolenou verzí (po potvrzení). Historie je vázaná ke stránce a ukládá se spolu s blokem.
+**Blok a stránky → Historie stránky…** ukazuje datum vytvoření, datum poslední změny a seznam ručně uložených snímků stránky. Tlačítko **Uložit současnou verzi** zapíše aktuální obsah do historie; **Obnovit verzi z…** obsah stránky nahradí zvolenou verzí (po potvrzení). Historie je vázaná ke stránce, ukládá se spolu s blokem a udržuje nejvíce 20 posledních verzí (starší se zahazují).
 
 ---
 
@@ -396,6 +446,14 @@ Výsledky se zobrazí v dialogu s klikacími odkazy — kliknutí přejde přím
 ### Uložení do souboru
 
 **Soubor → Uložit jako .json…** stáhne celý blok jako soubor `název.mron.json` — plnohodnotný snímek se všemi stránkami, přílohami, historií i konfigurací příznaků.
+
+### Otevření souboru
+
+**Soubor → Otevřít soubor…** otevře systémový výběr souboru; podporované přípony `.json`, `.mron`, `application/json`. Načtený obsah nahradí aktuální blok.
+
+### Nový poznámkový blok
+
+**Soubor → Nový poznámkový blok…** po potvrzení názvu vytvoří prázdný blok s jedním oddílem („Oddíl 1") a jednou stránkou („První stránka").
 
 ### Schránka
 
@@ -417,14 +475,15 @@ Pokud prohlížeč přístup ke schránce nepovolí, aplikace nabídne textové 
 
 **Detaily DOCX exportu:**
 
-- Nadpisy používají vestavěné styly Wordu (H1–H3) — lze z nich vygenerovat obsah.
-- Úkoly mají zaškrtávací pole, hotové úkoly přeškrtnutí.
-- Příznaky se vypisují jako čitelný štítek na začátku odstavce (srozumitelné v tisku i v odečítači).
-- CriticMarkup se převede na skutečné sledované změny a komentáře.
+- Nadpisy používají vestavěné styly Wordu (Heading1–Heading4) — lze z nich vygenerovat obsah.
+- Úkoly mají zaškrtávací pole (☐/☒), hotové úkoly přeškrtnutí.
+- Příznaky se vypisují jako čitelný štítek na začátku odstavce (`[symbol název]`) — srozumitelné v tisku i v odečítači.
+- CriticMarkup se převede na skutečné sledované změny (`w:ins`, `w:del`) a skutečné komentáře Wordu.
+- Balík `.docx` se sestavuje přímo v prohlížeči (vlastní ZIP writer bez knihoven).
 
 ### Import Markdownu
 
-**Soubor → Importovat Markdown…** vytvoří v bloku nový oddíl a v něm novou stránku, do níž převede strukturu Markdownu na osnovu (nadpisy, odrážky, číslování, úkoly, wiki odkazy `[[…]]`, `[text](url)`, značky příznaků `symbol @klic`).
+**Soubor → Importovat Markdown…** vytvoří v bloku nový oddíl a v něm novou stránku, do níž převede strukturu Markdownu na osnovu (nadpisy → styly odstavce, odrážky → hierarchie, úkoly `- [ ]`, wiki odkazy `[[…]]`, `[text](url)`, holé adresy, značky příznaků `symbol @klic`).
 
 ### Tisk
 
@@ -434,7 +493,7 @@ Pokud prohlížeč přístup ke schránce nepovolí, aplikace nabídne textové 
 
 ## Synchronizace s GitHubem
 
-Volitelná synchronizace uloží obsah bloku do zvoleného souboru v repozitáři na GitHubu.
+Volitelná synchronizace uloží obsah bloku do zvoleného souboru v repozitáři na GitHubu (přes GitHub REST API).
 
 ### Nastavení
 
@@ -445,23 +504,23 @@ Volitelná synchronizace uloží obsah bloku do zvoleného souboru v repozitář
 | **Repozitář a cesta k souboru** | Tvar `vlastnik/repozitar/slozka/soubor.mrone`, například `michalradacz/experimenty/mronenote/public.mrone` |
 | **Větev** | Nepovinná; prázdné = výchozí větev repozitáře |
 | **Přístupový token GitHubu** | Osobní token s oprávněním ke čtení i zápisu obsahu; funguje i se soukromým repozitářem |
-| **Automaticky ukládat změny** | Přepínač automatického ukládání |
+| **Automaticky ukládat změny na GitHub** | Přepínač automatického ukládání |
 
-Tlačítko **Ověřit spojení** ověří přístupnost repozitáře a hlásí, zda token má právo zápisu.
+Tlačítka dialogu: **Uložit nastavení**, **Ověřit spojení**, **Načíst z GitHubu**, **Uložit na GitHub**, **Odstranit nastavení**, **Zavřít**. Tlačítko **Ověřit spojení** hlásí, zda se povedlo spojení, zda je repozitář veřejný nebo soukromý a zda má token právo zápisu.
 
 ### Ukládání a načítání
 
 - **Po spuštění** se blok automaticky načte z GitHubu a otevře v režimu čtení.
 - **Automatické ukládání**: 3 sekundy po poslední úpravě, a pokud píšete bez přestávky, nejpozději po 30 sekundách.
 - Uloží se také při **opuštění řádku** a při **zavření okna**.
-- **Ručně** kdykoli klávesou **Ctrl+S** (nebo **Ctrl+Alt+S**).
-- Každé uložení se ohlásí ve stavovém řádku; čas posledního uložení najdete v nabídce **Soubor** a v dolní liště.
-- Pokud uložení **selže**, změny zůstanou označené jako neuložené a aplikace to zkusí znovu.
-- Pokud soubor mezitím **změnil někdo jiný**, aplikace načte aktuální verzi a uložení zopakuje.
+- **Ručně** kdykoli klávesou **Ctrl+S** (nebo **Ctrl+Alt+S**). Pokud GitHub není nastaven, **Ctrl+S** uloží do souboru `.json`.
+- Každé uložení se ohlásí ve stavovém řádku; čas posledního uložení najdete v nabídce **Soubor** (u položky „GitHub…") a v dolní liště (např. „uloženo před 12 s").
+- Pokud uložení **selže**, změny zůstanou označené jako neuložené a aplikace to za 20 sekund zkusí znovu.
+- Pokud soubor mezitím **změnil někdo jiný** (409/422), aplikace načte aktuální verzi (SHA) a uložení automaticky zopakuje.
 
 ### Bezpečnost tokenu
 
-Token se ukládá **pouze do prohlížeče** (localStorage) a odesílá se výhradně na GitHub API. Přesto: na sdíleném počítači jej nepoužívejte, používejte token s co nejužším oprávněním a omezenou platností. **Kdokoli s přístupem k profilu prohlížeče token přečte.**
+Token se ukládá **pouze do prohlížeče** (`localStorage`, klíč `mronenote.github.v1`) a odesílá se výhradně na GitHub API. Přesto: na sdíleném počítači jej nepoužívejte, používejte token s co nejužším oprávněním a omezenou platností. **Kdokoli s přístupem k profilu prohlížeče token přečte.**
 
 ---
 
@@ -473,12 +532,12 @@ Token se ukládá **pouze do prohlížeče** (localStorage) a odesílá se výhr
 |---|---|
 | Název poznámkového bloku | Textové pole |
 | Motiv | **Světlý** / **Tmavý** / **Vysoký kontrast** |
-| Velikost písma | 12 – 28 px |
+| Velikost písma (px) | 12 – 28 |
 | Průběžně ukládat na GitHub | Přepínač automatického ukládání |
 | Zobrazovat ladicí výpis na stránce | Debug panel s logem operací |
-| Převádět Markdown při psaní | Zapíná / vypíná on-the-fly převod v běžných řádcích |
+| Převádět Markdown při psaní | Zapíná / vypíná on-the-fly převod v běžných řádcích (výchozí: zapnuto) |
 
-Nastavení bloku (motiv, písmo, autosave, debug, Markdown) se ukládá **do bloku** a putuje se souborem.
+Nastavení bloku (motiv, písmo, autosave, debug, Markdown, zvolený režim) se ukládá **do bloku** a putuje se souborem.
 
 ---
 
@@ -492,7 +551,7 @@ Nastavení bloku (motiv, písmo, autosave, debug, Markdown) se ukládá **do blo
 | Přepnout režim úprav a čtení | **F2** |
 | Přeskočit mezi stromem, obsahem a nabídkou | **F6** (zpět **Shift+F6**) |
 | Přejít do hlavní nabídky | **F10** |
-| Otevřít nabídku podle podtrženého písmene | **Alt+písmeno** |
+| Otevřít nabídku podle podtrženého písmene | **Alt+písmeno** (S, U, F, V, P, B, Z, N) |
 | Pohyb v nabídce | šipky, **Home**, **End** |
 | Zavřít nabídku / dialog | **Escape** |
 
@@ -502,7 +561,8 @@ Nastavení bloku (motiv, písmo, autosave, debug, Markdown) se ukládá **do blo
 |---|---|
 | Nová stránka | **Ctrl+N** |
 | Nový oddíl | **Ctrl+Shift+N** |
-| Uložit na GitHub | **Ctrl+S** nebo **Ctrl+Alt+S** |
+| Uložit na GitHub (nebo do souboru, když není nastaveno) | **Ctrl+S** |
+| Ručně uložit na GitHub | **Ctrl+Alt+S** |
 | Uložit do souboru `.json` | z nabídky **Soubor** |
 | Zkopírovat celý blok do schránky | **Ctrl+Shift+S** |
 | Načíst celý blok ze schránky | **Ctrl+Shift+O** |
@@ -522,6 +582,7 @@ Nastavení bloku (motiv, písmo, autosave, debug, Markdown) se ukládá **do blo
 | Pohyb mezi řádky | šipky **↑** / **↓** |
 | Sbalit nebo rozbalit řádek | **Ctrl+.** |
 | Smazat prázdný řádek | **Backspace** |
+| Nový řádek osnovy z Markdown bloku | **Ctrl+Enter** (uvnitř Markdown bloku) |
 
 ### Formátování
 
@@ -546,9 +607,9 @@ Nastavení bloku (motiv, písmo, autosave, debug, Markdown) se ukládá **do blo
 | Akce | Zkratka |
 |---|---|
 | První tři příznaky v nabídce | **Ctrl+Shift+1**, **Ctrl+Shift+2**, **Ctrl+Shift+3** |
-| Nabídka příznaků řádku | **F4** |
+| Nabídka příznaků řádku (kontextová) | **F4** |
 | Smazat příznaky řádku | **Shift+F4** |
-| Nabídka stylu řádku | **F3** |
+| Nabídka stylu řádku (kontextová) | **F3** |
 | Označit hotovo nebo nehotovo | **Ctrl+Shift+D** |
 
 ### Kontextová nabídka
@@ -567,30 +628,28 @@ Nastavení bloku (motiv, písmo, autosave, debug, Markdown) se ukládá **do blo
 Poznámkový blok je uložen jako strom objektů:
 
 ```
-nb = {
-  name, sections:[…], settings:{…}, flags:[…]
-}
+nb      = {name, sections:[…], settings:{…}, flags:[…]}
 section = {id, type:'section', name, color, pages:[…], collapsed}
 group   = {id, type:'group',   name, color, children:[…], collapsed}
-page = {id, title, items:[…], created, modified, history:[…], sub:[…]}
-item = {id, html, md, style, list, collapsed, done, flags:[…], children:[…], att}
+page    = {id, title, items:[…], created, modified, history:[…], sub:[…]}
+item    = {id, html, md, style, list, collapsed, done, flags:[…], children:[…], att}
 ```
 
-Soubor `.json` je přímý serializovaný obraz této struktury. Přílohy (obrázky, soubory) jsou uloženy jako **data URL** přímo v atributu `att` řádku.
+Soubor `.json` je přímý serializovaný obraz této struktury. Přílohy (obrázky, soubory) jsou uloženy jako **data URL** přímo v atributu `att` řádku (`{kind, data, name, size[, alt]}`).
 
 ### Ukládání
 
-- V úložišti prohlížeče (`localStorage`) je uložena **pouze konfigurace synchronizace s GitHubem**.
+- V úložišti prohlížeče (`localStorage`, klíč `mronenote.github.v1`) je uložena **pouze konfigurace synchronizace s GitHubem**.
 - Obsah bloku se ukládá na GitHub (pokud je nastaven) a/nebo do souboru `.json`.
-- Aplikace nepoužívá cizí knihovny, není závislá na CDN a funguje offline.
+- Aplikace nepoužívá cizí knihovny, není závislá na CDN a funguje offline. DOCX i ZIP jsou vytvářeny vlastním kódem přímo v prohlížeči.
 
 ### Sanitace HTML
 
-Veškerý HTML text v řádcích prochází sanitací — povoleny jsou jen bezpečné značky a atributy. JavaScriptové handlery, `javascript:` URL a nedůvěryhodné `src` jsou odstraněny.
+Veškerý HTML text v řádcích prochází sanitací — povoleny jsou jen bezpečné značky (`B`, `I`, `U`, `S`, `EM`, `STRONG`, `CODE`, `SPAN`, `A`, `BR`, `SUP`, `SUB`, `MARK`, `IMG`, `H1`–`H6`, `P`, `UL`, `OL`, `LI`, `BLOCKQUOTE`, `PRE`, `HR`, `INPUT`) a bezpečné atributy (`href`, `data-wiki`, `data-ref`, `class`, `title`, `src` jen pro `data:image/` a `https:`, `alt`, `width`, `type=checkbox`, `checked`, `disabled`). JavaScriptové handlery, `javascript:` URL a nedůvěryhodné `src` jsou odstraněny.
 
 ### Kompatibilita
 
-Aplikace funguje v moderních prohlížečích (Chrome, Firefox, Edge, Safari). Ke svému běhu **nevyžaduje připojení k internetu** — internet se využívá pouze pro volitelnou synchronizaci s GitHubem.
+Aplikace funguje v moderních prohlížečích (Chrome, Firefox, Edge, Safari). Ke svému běhu **nevyžaduje připojení k internetu** — internet se využívá pouze pro volitelnou synchronizaci s GitHubem. Volitelně se využívá Clipboard API (u prohlížečů, kde není k dispozici, nabízí aplikace textové pole s náhradním postupem).
 
 ### Migrace starších souborů
 
@@ -599,6 +658,11 @@ Při načtení bloku se automaticky doplní:
 - Chybějící výchozí příznaky (u souborů, kde chybí novější příznaky).
 - Uzel bez atributu `type` se interpretuje jako oddíl.
 - Chybějící `md` na řádku, chybějící `history` na stránce a další pole se doplní prázdnou hodnotou.
+- U řádků typu Markdown se z `md` přegeneruje `html` (renderem se sanitizací).
+
+### Debug / ladicí výpis
+
+Volitelný panel (Nastavení → **Zobrazovat ladicí výpis**) zobrazuje časovou stopu operací: spuštění, úspěšná i neúspěšná uložení na GitHub, načítání, chyby dialogů. Slouží k ladění a hlášení problémů.
 
 ---
 
@@ -610,16 +674,15 @@ Při načtení bloku se automaticky doplní:
 | **Skupina oddílů** | Volitelný obal pro seskupení oddílů; může obsahovat další skupiny |
 | **Oddíl** | Kolekce stránek s možnou barvou |
 | **Stránka** | Nositel osnovy řádků, může mít podstránky |
+| **Podstránka** | Stránka zařazená pod jinou stránku; přesouvá se s ní |
 | **Řádek (item)** | Základní jednotka obsahu — text, styl, typ seznamu, příznaky, děti |
 | **Textový blok (Markdown)** | Speciální řádek pro delší text psaný v Markdownu |
 | **Příznak** | Barevný štítek s emoji symbolem přiřazený řádku |
 | **Wiki odkaz** | Odkaz na jinou stránku podle názvu (`[[Název]]`) |
-| **Vnitřní odkaz** | Odkaz na konkrétní odstavec/stránku/oddíl podle vnitřního ID |
-| **CriticMarkup** | Textová syntaxe pro sledování změn ({++vloženo++}, {--smazáno--}, …) |
+| **Vnitřní odkaz** | Odkaz na konkrétní odstavec/stránku/oddíl podle vnitřního ID (`mronenote:druh/id`) |
+| **CriticMarkup** | Textová syntaxe pro sledování změn (`{++vloženo++}`, `{--smazáno--}`, …) |
 | **Režim čtení** | Read-only zobrazení, ve kterém není možné obsah měnit |
 | **Autosave** | Průběžné automatické ukládání na GitHub |
 | **Sanitace** | Bezpečnostní filtrování HTML značek a atributů |
 
 ---
-
-*Dokumentace odpovídá stavu aplikace Mronenote ke dni vydání. Nástroj je vyvíjen v rámci iniciativy eGdílna.*
