@@ -1,9 +1,11 @@
 # PIM — Personal Information Manager
 
+
 A web application for managing personal and professional information in a single HTML file. No installation, no server — everything runs in the browser and is stored locally. Optional GitHub synchronization.
 
 - **Online version**: <https://egdilna.github.io/nastroje/pim>
 - **Source code (open source)**: <https://github.com/egdilna/nastroje/blob/main/pim>
+- **Changelog (version history)**: <https://nastroje.egdilna.cz/#pim>
 - **Download and offline use**: download `pim.html` and open it in a modern browser (Chrome, Firefox, Safari, Edge). The app runs without an internet connection (except for some external services such as the PlantUML server or the Czech spell checker).
 
 ## Core concept
@@ -72,6 +74,7 @@ An aspect is a "role" of an entity. You can assign any number:
 | **Plan** | WBS task table with deadlines, predecessors, statuses, entity linking |
 | **Tracker** | Value, unit, target, change history |
 | **Diagram** | PlantUML source + preview, copy actions |
+| **Structured document** | Outline editor with custom styles, numbering (arabic/letters/roman, multi-level), H1–H6 headings, collapsible sections and Markdown blocks; export to MD and DOCX (tracked changes from CriticMarkup) |
 | **Presentation / Slide** | Slide-by-slide mode with timer (T/R keys, MM:SS / H:MM:SS) |
 | **Goal, Question, Decision, Idea** | Specific fields |
 | **Note, Document, Reference, Bookmark** | URL (with 📋 URL / 📋 Markdown buttons), author, date |
@@ -79,7 +82,9 @@ An aspect is a "role" of an entity. You can assign any number:
 | **Communication** | Direction, channel (email, phone, meeting…), subject, outcome |
 | **🔒 Secured** | AES-GCM 256 content encryption, per-entity password |
 
-**Custom aspects**: in Settings you can define your own aspects with any number of fields of these types: text, textarea (markdown), number, date, date+time, URL, email, phone, checkbox, select, link to another entity, **composite text/markdown** (computed from a template), **source code** (collapsible block with 📋 Copy).
+**Custom aspects**: in Settings you can define your own aspects with any number of fields of these types: text, textarea (markdown), number, date, date+time, URL, email, phone, checkbox, select, link to another entity, **composite text/markdown** (computed from a template), **source code** (collapsible block with 📋 Copy). A custom aspect can be given an **icon (emoji)**, which then shows next to the entity and in lists.
+
+In Settings, both built-in and custom aspects show their **icon** in the lists — built-in ones in the checkbox list, custom ones in a dedicated table column.
 
 ### "Source code" attribute type
 
@@ -114,22 +119,83 @@ The entity body uses markdown with extensions:
 - **Wiki links**: `[[Entity title]]` or `[[id:abc-123|label]]`
 - **Include (transclusion)**: `{{include:Entity title}}` — embeds the content of another entity (with recursive placeholder evaluation)
 - **Markdown tasks**: `- [ ] task`, `- [x] done` (with **→ Entity** button in annotation mode to convert to a standalone Task with `partOf` link)
-- **CriticMarkup**: `{++add++}`, `{--delete--}`, `{>>note<<}` — revision editor with step-by-step accept/reject
+- **CriticMarkup**: `{++add++}`, `{--delete--}`, `{==highlight==}`, `{>>note<<}`, `{~~old~>new~~}` (substitution) — revision editor with step-by-step accept/reject
 - **Private blocks**: `~~~private … ~~~` — visible only in-app, not in export/include
 - **Footnotes**: `[^1]` + `[^1]: text`
 - **Placeholders**: `((Attribute))` — see above
+- **Automatic counters**: `((#))` = level 1, `((##))` = level 2, etc.; `((#.##))` prints a multi-level number (e.g. `1.2`) — the deepest level increments, higher ones are read-only, deeper ones reset when a higher one increments. `((#name))` = a named running counter for the whole entity (each name runs independently)
+- **Insert structured document**: `((document))` inserts the content of this entity's "Structured document" aspect at that point in the body (as Markdown)
 - **Inline select**: `(!a/b/|c!)` — see above
-- **Quick annotation**: `(>text)` — when saving edit mode, it gets converted to a regular annotation on the line where it was, and disappears from the body
+- **Inline annotation**: `(>text)` — stays in the source, renders as an annotation bubble; never reaches export/print/copy (see Annotations section)
+
+## Tools above a text field
+
+Below every Markdown field (entity body, text attributes) there is a toolbar:
+
+- **📎 Insert…** — inserts a dynamic element: wiki link, include (transclusion), status chip, flag, or (inside an entity) an attribute placeholder
+- **📥 Paste from HTML** — takes formatted text from the clipboard (e.g. copied from a web page) and **converts it to Markdown** inserted at the cursor. Handles headings, bold/italic/strikethrough, links, images, lists (including nested and tasks), tables, blockquotes, and code. If there's no HTML in the clipboard, it pastes plain text
+- **📝 Review** — CriticMarkup revision manager (accept/reject step by step)
+- **🔍 Spellcheck** — spelling check (ÚFAL Korektor). Suggestions can be accepted with a single click; corrections are written directly into the text and work reliably even in text with diacritics and emoji
+- **🧹 Lint** — Markdown syntax check
+
+When you **select text** in a field, a "From selected text" toolbar appears with more actions:
+
+- **📤 To new entity…** — moves the selection into a new entity (as its content) and inserts a **wiki link**, **include**, or **status** in its place. In the dialog you can immediately check which **projects** (taken from the source entity) the new entity should belong to
+- **➕ Critic insert / ➖ Critic delete / 🔄 Critic replace** — wraps the selection in CriticMarkup
+- **🖍 Highlight** — wraps the selection in `{==…==}`
+- **💬 Comment** — adds a `{>>…<<}` comment after the selection (cursor lands inside the comment)
+- **🔗 As link** — turns the selection into the text of a Markdown link and uses the **clipboard** contents as the URL. Workflow: copy a URL somewhere (Ctrl+C), then select the text and click — you get `[text](URL from clipboard)`
+
+Every selection action is also **announced to the screen reader** (via aria-live), so you know what happened even without sight.
+
+### Markdown editing keyboard shortcuts
+
+When typing in a Markdown field (entity body, sections, scratchpad), these shortcuts work (⌘ instead of Ctrl on Mac):
+
+| Key | Action |
+|---|---|
+| `Ctrl+B` | Bold `**text**` |
+| `Ctrl+I` | Italic `*text*` |
+| `Ctrl+K` | Link — if the clipboard holds a URL, inserts `[text](url)` with the cursor on the name; otherwise `[text]()` with the cursor between the parentheses |
+| `Ctrl+H` | Heading at the same level as the last heading above the cursor (otherwise H2) |
+| `Ctrl++` | Selection as Critic insert `{++…++}` |
+| `Ctrl+-` | Selection as Critic delete `{--…--}` |
+| `Ctrl+.` | Selection as Critic replace `{~~…~>…~~}` |
+| `Ctrl+=` | Selection as highlight `{==…==}` |
+| `Ctrl+Shift+W` | Insert wiki link to an entity |
+| `Ctrl+Shift+E` | Insert include `{{include:…}}` |
+| `Ctrl+Shift+S` | Insert status `{{status:…}}` |
+| `Ctrl+Shift+I` | Insert flag (emoji picker) |
+| `Ctrl+Shift+N` | Create a new entity from the selected text |
+| `Ctrl+Shift+A` | Jump to the action toolbar for the selected text |
+
+### Hiding completed tasks
+
+If the content (or a Markdown attribute) contains checked tasks `- [x]`, a button appears to **hide them in the preview** — the text is unchanged, completed items are just tidied away.
+
+## Scratchpad
+
+Quick notes, snippets, and temporary ideas outside the database. Open it with the **📌 Scratchpad** button or the `Alt+Shift+V` shortcut. Content is saved automatically in the browser and persists between sessions (it is not part of the database or exports).
+
+It has its own toolbar: **📎 Insert…**, **📥 Paste from HTML** (convert formatted clipboard text to Markdown), clearing completed tasks, and — after selecting text — actions over the selection including CriticMarkup, highlight, comment, and **🔗 As link** (URL from clipboard). The Markdown editing keyboard shortcuts work here too. Spellcheck, Review, and Lint are full-screen modes available directly on entities; they are not in the scratchpad.
 
 ## Annotations
 
-Annotations are "post-it" notes attached to individual lines or paragraphs of content. They don't modify the text — they live alongside it in the "Annotations" section below the body.
+Annotations are short notes attached to individual lines or paragraphs of content. They **live directly in the source text** as `(>annotation text)` at the end of the relevant line — the text is the single source of truth, so an annotation is always firmly bound to its paragraph (it can never "detach" or get remapped).
 
-**Annotation unit = one line**. For a normal paragraph this means the entire paragraph; for a **bullet/ordered list** it's a **single `<li>`**; for a **table** it's a **single `<tr>`**. So you can annotate a specific list item or table row.
+**Writing directly in text**: type `(>note)` anywhere on a line. On display and in `{{include:…}}` it renders as a yellow annotation bubble. An annotation is **plain text** (not markdown).
 
-**Enable**: key `a` in detail read mode, or the **📝 Annotations** button. In the mode, each line shows a **+ Annotation** button.
+**Annotations panel** below the entity body lists every annotation, shows which paragraph it belongs to, and lets you manage it: **Edit** (a simple single-line field, Enter saves) and **Delete** — both directly modify the `(>text)` in the source.
 
-**Quick annotation** directly in text: type `(>note for later)` anywhere in the body. When you save edit mode, the text is removed and a regular annotation appears below that line. Purpose: quickly leave yourself an "IOU" while writing, without having to enable the mode, click buttons, etc.
+**Enable annotation mode**: key `a` in detail read mode, or the **📝 Annotations** button. In the mode, each line shows a **+ Annotation** button that appends `(>…)` to the end of that line.
+
+**Annotation unit = one line**. For a normal paragraph this means the entire paragraph; for a **bullet/ordered list** it's a **single `<li>`**; for a **table** it's a **single `<tr>`**.
+
+**Where annotations show and where they don't**:
+- **Display and include** (`{{include:…}}`) — the annotation renders as a bubble
+- **Export, print, copy source and copy formatted** — the annotation is **omitted** (never reaches the output)
+
+**Migration**: if you still have old annotations stored separately (from an earlier version), they are automatically converted into text as `(>text)` next to their paragraph the first time you save the entity.
 
 ## Table editor
 
@@ -154,6 +220,16 @@ Flags are **emoji inside text** that act as visual markers. They're not part of 
 - **🔄** — change emoji to another from the flag list (grid with alternatives)
 
 Flags are ideal for **your own tagging system**: 🔴 urgent, 🤔 think about, 💡 idea, ⏳ waiting, etc. You can mass-search and browse them across all entities.
+
+## Topic 🌳
+
+The **Topic** aspect is a "virtual entity" that automatically collects content into a single hub. Entities belong to a topic in three ways:
+
+- **by tag** — set the topic's `topic_tag` and every entity with that tag appears in the topic
+- **manually pinned** — pick specific entities into the key-entities field
+- **via the "part of" link** — any entity with a `partOf` link to the topic appears in it (from the topic's perspective, as "contains")
+
+An entity that qualifies in more than one way shows only once. Archived entities are ignored.
 
 ## Meeting Attendees section 👥
 
@@ -191,6 +267,11 @@ Links:
 - Meeting → task: **mentions** (the task was mentioned at the meeting)
 
 A meeting can be in **multiple projects at once** — the task becomes part of all of them.
+
+### ➕ New entity (other aspect)
+Next to the new task you can directly create an entity of **any aspect** (note, document, person…): enter a title, pick an aspect and optionally tick which of the meeting's projects the entity should belong to. The entity gets a `mentions` link from the meeting and `partOf` links to the chosen projects — no manual creating and linking.
+
+The same is available in the **project detail**: below the quick task there is a "+ New entity in this project" field (title + aspect choice) that creates an entity with a `partOf` link to the project.
 
 ### 📎 Existing task from project
 A select with all tasks from the meeting's projects that aren't yet linked. Adds a `mentions` link from the meeting → task (the task stays part of its project, just is now mentioned at this meeting).
@@ -236,7 +317,9 @@ In the **All** view, under "Filters", is a collapsible **Advanced attribute filt
    - `is empty`, `is not empty`, `is checked`, `is unchecked`
 3. **Value** — adaptive by type (text, number, date, select with options, checkbox)
 
-Filters combine with **AND** logic. They're saved in Saved Views.
+Filters combine with **AND** logic.
+
+**Saved views** keep the complete filter — aspect, tags (including "doesn't have tag"), task status, priority, deadline and advanced attribute filters. The filter survives toggling selection mode. Tag comparison is case-insensitive.
 
 ## Keyboard shortcuts
 
@@ -254,6 +337,7 @@ Filters combine with **AND** logic. They're saved in Saved Views.
 | `Alt+Shift+S` | Save to GitHub |
 | `/` | Jump to search field |
 | `?` | Help |
+| `F10` | Main menu (in classic menu mode) — then arrows, Enter opens, Esc closes |
 | `p` / `Alt+Shift+P` | Jump to first open panel |
 | `Esc` | Close dialog / leave edit / back |
 
@@ -264,10 +348,12 @@ Filters combine with **AND** logic. They're saved in Saved Views.
 | `e` | Toggle edit ↔ read |
 | `u` | In edit mode: save and return to read |
 | `r` | Add a link to an existing entity |
-| `Shift+R` | Create a new related entity |
+| `Shift+R` | Create a new related entity (you can check the source entity's projects right away) |
 | `c` | Add a comment |
 | `d` | (read, if it has headings) Toggle section-edit mode |
 | `a` | (read) Toggle annotation mode |
+| `z` | (entity with "Time tracking" aspect) Start/stop timer |
+| `Shift+Z` | Add "Time tracking" aspect (if missing) and start the timer right away |
 | `Esc` | Back to read mode (saves quick annotations and changes) |
 
 ### Navigation
@@ -276,6 +362,12 @@ Filters combine with **AND** logic. They're saved in Saved Views.
 |---|---|
 | Arrows ↑↓ in quick search results | Step through results |
 | Arrows ↑↓ in entity table | Move between rows |
+| `e` on a table row | Edit entity directly |
+| `o` on a table row | Open in a new panel |
+| `l` on a table row | Quick-edit tags |
+| `r` on a table row | Edit reminder date |
+| `a` on a table row | Edit aspects |
+| `Enter` on a table row | Open entity |
 | Arrows ↑↓ in search results | Step through results |
 
 ## Links between entities
@@ -295,6 +387,25 @@ Links are typed references between entities. Defined types:
 | `attendedBy` | was attendee of |
 
 **Links show in both directions**: on the entity you see your outgoing links in Links section and incoming in Inverse Links.
+
+**Unified entity picker**: when adding a link (and elsewhere where an entity is selected — meeting attendees and tasks, etc.) a single shared dialog is used, with search and an **aspect filter**. For people, the organization they work at is shown in parentheses; for tasks, their status — to make selection easier.
+
+## Adding a new entity straight into projects
+
+When you create a new entity **from an existing one** — via a wiki link to a non-existent entity, via `Shift+R` (new related entity), or via "📤 To new entity…" from selected text — you're offered the **source entity's projects** as pre-checked boxes. Whichever you leave checked, the new entity immediately gets a `partOf` link into those projects. If the source entity isn't in any project, the boxes don't appear.
+
+## Database directives `{{database:…}}` and `{{databasetext:…}}`
+
+For an entity with the **Database** aspect, its records can be inserted into the text of another (or the same) entity:
+
+- `{{database:Name}}` — inserts records as a **Markdown table**
+- `{{databasetext:Name?format=…}}` — inserts records as **text** using a custom template (`format` with `<<Column>>` placeholders)
+
+After the name you can add parameters separated by `&`: `columns` (column selection), `filter` (conditions), `sort` (sorting).
+
+**Filter** supports the operators `=`, `*` (contains), `!=`, `<`, `>`, `<=`, `>=`, and an empty value (not filled). Multiple comma-separated conditions combine with **AND**.
+
+**OR list via `|`**: for `=`, `*`, and `!=` you can give several values separated by a pipe — `filter=Code=A|B|C` means "Code is A **or** B **or** C". It also works on **computed (composed) fields**. (Note: `Code=A, Code=B` is AND and returns nothing, since a cell can't hold two values at once — use `|` for "one of these values".)
 
 ## URL attributes — copy buttons
 
@@ -330,14 +441,22 @@ Below each section is a quick-add action for a new project child.
 
 ## Print / Export / Copy
 
+The **📋 Copy source** and **✨ Copy formatted** buttons (below the entity body), as well as export and print, render the `{{include:…}}`, `{{database:…}}`, `{{status:…}}` directives, placeholders and counters — so the clipboard/export never gets a raw directive, but its result. **Inline annotations `(>text)` never reach export, print, or copy** (they stay only in the source and in includes). Copying to the clipboard and downloading files also work in environments without a secure context (there's a reliable fallback path).
+
 From the entity detail, the **🖨 Export / print…** button opens a dialog with checkboxes for each section and a format choice:
 
-- **MD** — markdown (with include expansion, placeholder evaluation, inline-select simplification to `(!c!)`)
+- **MD** — markdown (with expansion of include as well as `{{database:…}}` to a table and `{{status:…}}` to a text summary, placeholder and counter `((#))` evaluation, inline-select simplification to `(!c!)`)
 - **HTML** — for printing directly from the browser (Ctrl+P)
 - **DOCX** — for Word, Outlook, email clients
 - **PDF** — via system print
 
 The **Meeting tasks** section renders into MD/HTML/DOCX/PDF, but **not** into include (so a meeting embedded in another entity doesn't drag its whole task table along).
+
+For entities with the **Project** aspect, the dialog also offers a **Tasks by category** option — the project's tasks are added to the export (MD/HTML/DOCX) grouped into kanban categories (To do, In progress, Waiting, Done) as headings with a task list. Handy as a project status report.
+
+### Link to a specific entity
+
+In the entity detail there is a **🔗 Copy link** button that copies a link pointing directly to this entity to the clipboard (it carries both the database and the specific entity via the `?id=…&e=…` parameters). Opening the link loads the database from GitHub and jumps straight to that entity. The address bar also keeps this link up to date as you open entities, so it can be copied straight from there.
 
 ## Data sync with GitHub
 

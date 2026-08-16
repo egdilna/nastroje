@@ -359,6 +359,24 @@
   .chunk-item.is-done { border-left: 3px solid var(--success); }
   .chunk-item.is-done .chunk-header { background: #1a2a1a; }
 
+  .chunk-voice-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.4rem;
+  }
+  .chunk-voice-row label {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+  .chunk-voice-row select {
+    font-size: 0.82rem;
+    padding: 0.25rem 0.4rem;
+    max-width: 16rem;
+    flex: 1;
+  }
+
   .chunk-done-label {
     display: block;
     padding: 0.4rem 0;
@@ -682,7 +700,7 @@ function loadFromStorage() {
     const proj = JSON.parse(localStorage.getItem(STORAGE_KEY_PROJ) || 'null');
     if (proj && Array.isArray(proj.chunks)) {
       proj.chunks.forEach(c => {
-        addChunkFromData(c.text || '', c.id, c.done);
+        addChunkFromData(c.text || '', c.id, c.done, c.voiceId);
       });
       state.nextId = (Math.max(0, ...state.chunks.map(c => c.id)) + 1);
       updateChunksUI();
@@ -692,7 +710,7 @@ function loadFromStorage() {
 
 function saveProjectToStorage() {
   const proj = {
-    chunks: state.chunks.map(c => ({ id: c.id, text: c.text, done: c.done }))
+    chunks: state.chunks.map(c => ({ id: c.id, text: c.text, done: c.done, voiceId: c.voiceId }))
   };
   localStorage.setItem(STORAGE_KEY_PROJ, JSON.stringify(proj));
 }
@@ -722,6 +740,12 @@ async function loadVoices() {
     const data = await resp.json();
     state.voices = (data.voices || []).sort((a,b) => a.name.localeCompare(b.name, 'cs'));
     populateVoiceSelect();
+    // Přeřadit chunk-level voice selecty
+    document.querySelectorAll('.chunk-voice-select').forEach(sel => {
+      const cid = parseInt(sel.dataset.chunkId);
+      const c = state.chunks.find(x => x.id === cid);
+      if (c) populateChunkVoiceSelect(sel, c.voiceId);
+    });
     setStatus(`Načteno ${state.voices.length} hlasů.`, 'ok');
     announce(`Načteno ${state.voices.length} hlasů.`);
   } catch(e) {
@@ -753,9 +777,55 @@ function populateVoiceSelect() {
   localStorage.setItem(STORAGE_KEY_VOICE, state.selectedVoiceId);
 }
 
+function populateChunkVoiceSelect(sel, selectedVoiceId) {
+  const current = sel.value; // zachovat pokud možno
+  sel.innerHTML = '';
+  const { used, rest } = sortedVoices();
+
+  const optGlobal = document.createElement('option');
+  optGlobal.value = '';
+  const globalVoiceName = state.voices.find(v => v.voice_id === state.selectedVoiceId)?.name;
+  optGlobal.textContent = globalVoiceName ? `— globální (${globalVoiceName}) —` : '— globální hlas —';
+  sel.appendChild(optGlobal);
+
+  if (used.length) {
+    const grpUsed = document.createElement('optgroup');
+    grpUsed.label = 'Použité v projektu';
+    used.forEach(v => {
+      const o = document.createElement('option');
+      o.value = v.voice_id;
+      o.textContent = v.name;
+      grpUsed.appendChild(o);
+    });
+    sel.appendChild(grpUsed);
+  }
+
+  if (rest.length) {
+    const grpRest = document.createElement('optgroup');
+    grpRest.label = 'Ostatní hlasy';
+    rest.forEach(v => {
+      const o = document.createElement('option');
+      o.value = v.voice_id;
+      o.textContent = v.name;
+      grpRest.appendChild(o);
+    });
+    sel.appendChild(grpRest);
+  }
+
+  // Nastav vybranou hodnotu
+  sel.value = selectedVoiceId || '';
+  if (!sel.value) sel.selectedIndex = 0;
+}
+
 voiceSelect.addEventListener('change', () => {
   state.selectedVoiceId = voiceSelect.value;
   localStorage.setItem(STORAGE_KEY_VOICE, state.selectedVoiceId);
+  // Aktualizuj popisek globálního hlasu ve všech chunk-selectech
+  document.querySelectorAll('.chunk-voice-select').forEach(sel => {
+    const cid = parseInt(sel.dataset.chunkId);
+    const c = state.chunks.find(x => x.id === cid);
+    if (c) populateChunkVoiceSelect(sel, c.voiceId);
+  });
 });
 
 btnPreviewVoice.addEventListener('click', async () => {
@@ -808,10 +878,25 @@ function stopCurrentAudio() {
   });
 }
 
+// Hlasy seřazené: napřed použité v projektu, pak abecedně
+function sortedVoices() {
+  const usedIds = new Set(state.chunks.map(c => c.voiceId).filter(Boolean));
+  const used = state.voices.filter(v => usedIds.has(v.voice_id));
+  const rest  = state.voices.filter(v => !usedIds.has(v.voice_id));
+  return { used, rest };
+}
+
 async function generateAndPlay(chunkId, text, store) {
   if (!state.apiKey)  { setStatus('Chybí API klíč.', 'error'); return; }
-  if (!state.selectedVoiceId) { setStatus('Vyberte hlas.', 'error'); return; }
   if (!text.trim())   { setStatus('Prázdný text.', 'error'); return; }
+
+  // Zjisti hlas: chunk-specific, nebo globální
+  let voiceId = state.selectedVoiceId;
+  if (chunkId >= 0) {
+    const chunk = state.chunks.find(c => c.id === chunkId);
+    if (chunk?.voiceId) voiceId = chunk.voiceId;
+  }
+  if (!voiceId) { setStatus('Vyberte hlas.', 'error'); return; }
 
   stopCurrentAudio();
 
@@ -824,7 +909,7 @@ async function generateAndPlay(chunkId, text, store) {
   setStatus(`Generuji TTS…`, 'info');
 
   try {
-    const blob = await generateTTS(text, state.selectedVoiceId);
+    const blob = await generateTTS(text, voiceId);
     const url  = URL.createObjectURL(blob);
 
     if (store && chunkId >= 0) {
@@ -901,13 +986,15 @@ function makeChunk(text='', id=null) {
     audioUrl: null,
     audioDuration: null,
     status: 'none',
-    done: false
+    done: false,
+    voiceId: null  // null = použít globální hlas
   };
 }
 
-function addChunkFromData(text, id, done=false) {
+function addChunkFromData(text, id, done=false, voiceId=null) {
   const c = makeChunk(text, id);
   c.done = !!done;
+  c.voiceId = voiceId || null;
   state.chunks.push(c);
   return c;
 }
@@ -1147,6 +1234,7 @@ function renderChunks() {
         ta.hidden = true;
         btnGen.hidden = true;
         bodyActions.hidden = true;
+        voiceRow.hidden = true;
         staticLabel.hidden = false;
         staticLabel.textContent = chunk.text;
         btnMerge.disabled = true;
@@ -1155,6 +1243,7 @@ function renderChunks() {
         ta.hidden = false;
         btnGen.hidden = false;
         bodyActions.hidden = false;
+        voiceRow.hidden = false;
         staticLabel.hidden = true;
         btnMerge.disabled = (idx === 0);
       }
@@ -1164,7 +1253,35 @@ function renderChunks() {
 
     if (chunk.done) bodyActions.hidden = true;
 
-    body.append(doneRow, staticLabel, ta, btnGen, bodyActions);
+    // Per-chunk hlas
+    const voiceRow = document.createElement('div');
+    voiceRow.className = 'chunk-voice-row';
+    voiceRow.hidden = chunk.done;
+
+    const voiceLbl = document.createElement('label');
+    voiceLbl.htmlFor = `voice-${chunk.id}`;
+    voiceLbl.textContent = 'Hlas:';
+
+    const voiceSel = document.createElement('select');
+    voiceSel.id = `voice-${chunk.id}`;
+    voiceSel.setAttribute('aria-label', `Hlas pro chunk ${idx + 1}`);
+    populateChunkVoiceSelect(voiceSel, chunk.voiceId);
+
+    voiceSel.addEventListener('change', () => {
+      chunk.voiceId = voiceSel.value || null;
+      saveProjectToStorage();
+      // Přeřadit hlasy ve všech chunk selectech
+      document.querySelectorAll('.chunk-voice-select').forEach(sel => {
+        const cid = parseInt(sel.dataset.chunkId);
+        const c = state.chunks.find(x => x.id === cid);
+        if (c) populateChunkVoiceSelect(sel, c.voiceId);
+      });
+    });
+    voiceSel.className = 'chunk-voice-select';
+    voiceSel.dataset.chunkId = chunk.id;
+
+    voiceRow.append(voiceLbl, voiceSel);
+    body.append(doneRow, voiceRow, staticLabel, ta, btnGen, bodyActions);
 
     // Player
     const player = document.createElement('div');
@@ -1387,7 +1504,7 @@ btnExport.addEventListener('click', () => {
   const proj = {
     version: 1,
     exportedAt: new Date().toISOString(),
-    chunks: state.chunks.map(c => ({ id: c.id, text: c.text, done: c.done }))
+    chunks: state.chunks.map(c => ({ id: c.id, text: c.text, done: c.done, voiceId: c.voiceId }))
   };
   const blob = new Blob([JSON.stringify(proj, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);

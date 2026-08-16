@@ -24,12 +24,25 @@
                 </div>
                 <h1 class="text-xl font-bold tracking-tight">TIN Editor <span class="text-gray-400 font-normal text-sm">v1.0</span></h1>
             </div>
-            <div class="flex gap-2">
-                <button @click="importJSON" class="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+            <div class="flex gap-2 items-center flex-wrap justify-end">
+                <label class="flex items-center gap-1.5 text-xs text-gray-600 select-none cursor-pointer mr-1" title="Save/copy JSON without indentation to reduce size">
+                    <input type="checkbox" x-model="minify" class="rounded border-gray-300">
+                    Minify
+                </label>
+                <button @click="importJSON" class="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50" title="Load TIN from file">
                     <i data-lucide="upload" class="w-4 h-4"></i> Import
                 </button>
-                <button @click="exportJSON" class="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 shadow-sm">
+                <button @click="pasteJSON" class="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50" title="Load TIN JSON from clipboard">
+                    <i data-lucide="clipboard-paste" class="w-4 h-4"></i> Paste
+                </button>
+                <button @click="copyJSON" class="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50" title="Copy current TIN JSON to clipboard">
+                    <i data-lucide="clipboard-copy" class="w-4 h-4"></i> Copy
+                </button>
+                <button @click="exportJSON" class="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 shadow-sm" title="Download TIN as JSON file">
                     <i data-lucide="download" class="w-4 h-4"></i> Export JSON
+                </button>
+                <button @click="openPrompt" class="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 shadow-sm" title="Generate Markdown system prompt from this TIN">
+                    <i data-lucide="file-text" class="w-4 h-4"></i> Prompt (MD)
                 </button>
             </div>
         </div>
@@ -206,6 +219,35 @@
 
     </main>
 
+    <div x-show="showPrompt" x-cloak @keydown.escape.window="showPrompt = false"
+         class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col" @click.stop>
+            <div class="flex items-center justify-between px-6 py-4 border-b">
+                <div class="flex items-center gap-2 text-emerald-600">
+                    <i data-lucide="file-text" class="w-5 h-5"></i>
+                    <h3 class="text-lg font-bold text-gray-800">Generated System Prompt (Markdown)</h3>
+                </div>
+                <button @click="showPrompt = false" class="text-gray-400 hover:text-gray-600">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="flex-1 overflow-auto p-6">
+                <textarea x-model="generatedPrompt" readonly class="w-full h-96 font-mono text-xs border border-gray-200 rounded-md p-3 bg-gray-50"></textarea>
+            </div>
+            <div class="flex justify-end gap-2 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
+                <button @click="showPrompt = false" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+                    Close
+                </button>
+                <button @click="copyPrompt" class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+                    <i data-lucide="clipboard-copy" class="w-4 h-4"></i> Copy to Clipboard
+                </button>
+                <button @click="downloadPrompt" class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 shadow-sm">
+                    <i data-lucide="download" class="w-4 h-4"></i> Download .md
+                </button>
+            </div>
+        </div>
+    </div>
+
     <input type="file" id="importFile" class="hidden" @change="handleFileImport" accept=".json">
 
     <script>
@@ -232,6 +274,10 @@
                         language: "text/markdown"
                     }
                 },
+
+                minify: false,
+                showPrompt: false,
+                generatedPrompt: "",
 
                 init() {
                     // Start with one empty section
@@ -279,14 +325,158 @@
                     });
                 },
 
+                serialize() {
+                    return this.minify
+                        ? JSON.stringify(this.tin)
+                        : JSON.stringify(this.tin, null, 2);
+                },
+
                 exportJSON() {
-                    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(this.tin, null, 2));
+                    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(this.serialize());
                     const downloadAnchorNode = document.createElement('a');
                     downloadAnchorNode.setAttribute("href", dataStr);
                     downloadAnchorNode.setAttribute("download", (this.tin.metadata.id || "instruction") + ".tin.json");
                     document.body.appendChild(downloadAnchorNode);
                     downloadAnchorNode.click();
                     downloadAnchorNode.remove();
+                },
+
+                async copyJSON() {
+                    try {
+                        await navigator.clipboard.writeText(this.serialize());
+                        alert(this.minify
+                            ? 'TIN JSON copied to clipboard (minified).'
+                            : 'TIN JSON copied to clipboard (formatted).');
+                    } catch (err) {
+                        alert('Could not access clipboard. Check browser permissions.');
+                    }
+                },
+
+                async pasteJSON() {
+                    try {
+                        const text = await navigator.clipboard.readText();
+                        if (!text) { alert('Clipboard is empty.'); return; }
+                        const imported = JSON.parse(text);
+                        this.tin = Object.assign({}, this.tin, imported);
+                        alert('TIN loaded from clipboard.');
+                    } catch (err) {
+                        if (err instanceof SyntaxError) {
+                            alert('Clipboard content is not valid JSON.');
+                        } else {
+                            alert('Could not access clipboard. Check browser permissions.');
+                        }
+                    }
+                },
+
+                openPrompt() {
+                    this.generatedPrompt = this.generatePromptText();
+                    this.showPrompt = true;
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                async copyPrompt() {
+                    try {
+                        await navigator.clipboard.writeText(this.generatedPrompt);
+                        alert('System prompt copied to clipboard.');
+                    } catch (err) {
+                        alert('Could not access clipboard. Check browser permissions.');
+                    }
+                },
+
+                downloadPrompt() {
+                    const dataStr = "data:text/markdown;charset=utf-8," + encodeURIComponent(this.generatedPrompt);
+                    const a = document.createElement('a');
+                    a.setAttribute("href", dataStr);
+                    a.setAttribute("download", (this.tin.metadata.id || "instruction") + ".prompt.md");
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                },
+
+                collectByType(sections, type, out) {
+                    if (!sections) return out;
+                    for (const s of sections) {
+                        if (Array.isArray(s.instructions)) {
+                            for (const i of s.instructions) {
+                                if (i.type === type && i.text && i.text.trim()) {
+                                    out.push(i.text.trim());
+                                }
+                            }
+                        }
+                        if (Array.isArray(s.areas)) this.collectByType(s.areas, type, out);
+                    }
+                    return out;
+                },
+
+                generatePromptText() {
+                    const m = this.tin.metadata || {};
+                    const c = this.tin.context || {};
+                    const lines = [];
+                    lines.push('# Role: ' + (m.name || '(unnamed)'));
+                    lines.push('');
+                    if (m.purpose) { lines.push(m.purpose); lines.push(''); }
+                    const meta = [];
+                    if (m.id) meta.push('id: `' + m.id + '`');
+                    if (m.version) meta.push('version: ' + m.version);
+                    if (m.lang) meta.push('lang: ' + m.lang);
+                    if (meta.length) { lines.push('*(' + meta.join(', ') + ')*'); lines.push(''); }
+
+                    const donts = this.collectByType(this.tin.sections, 'dont', []);
+                    if (c.scope || c.out_of_scope || donts.length) {
+                        lines.push('## Scope & Boundaries');
+                        lines.push('');
+                        if (c.scope) { lines.push('**In scope:** ' + c.scope); lines.push(''); }
+                        if (c.out_of_scope) { lines.push('**Out of scope:** ' + c.out_of_scope); lines.push(''); }
+                        if (donts.length) {
+                            lines.push('**Explicit prohibitions:**');
+                            lines.push('');
+                            donts.forEach(t => lines.push('- ' + t));
+                            lines.push('');
+                        }
+                    }
+
+                    const dos = this.collectByType(this.tin.sections, 'do', []);
+                    if (dos.length) {
+                        lines.push('## Active Rules');
+                        lines.push('');
+                        dos.forEach(t => lines.push('- ' + t));
+                        lines.push('');
+                    }
+
+                    const notes = this.collectByType(this.tin.sections, 'note', []);
+                    if (notes.length || c.assumptions) {
+                        lines.push('## Context & Notes');
+                        lines.push('');
+                        if (c.assumptions) { lines.push('**Assumptions:** ' + c.assumptions); lines.push(''); }
+                        notes.forEach(t => lines.push('- ' + t));
+                        if (notes.length) lines.push('');
+                    }
+
+                    if (Array.isArray(this.tin.files) && this.tin.files.length) {
+                        lines.push('## Referenced Materials');
+                        lines.push('');
+                        this.tin.files.forEach(f => {
+                            lines.push('### ' + (f.id || '(unnamed)') + ': `' + (f.uri || '') + '`');
+                            lines.push('');
+                            if (f.understand) { lines.push('**What it is:** ' + f.understand); lines.push(''); }
+                            if (f.use) { lines.push('**How to use:** ' + f.use); lines.push(''); }
+                            if (f.scope) { lines.push('**Where to look:** ' + f.scope); lines.push(''); }
+                            if (f.ignore) { lines.push('**What to ignore:** ' + f.ignore); lines.push(''); }
+                        });
+                    }
+
+                    if (this.tin.output) {
+                        lines.push('## Output Format');
+                        lines.push('');
+                        if (this.tin.output.description) { lines.push(this.tin.output.description); lines.push(''); }
+                        if (this.tin.output.language) { lines.push('**Output language:** ' + this.tin.output.language); lines.push(''); }
+                    }
+
+                    lines.push('---');
+                    lines.push('');
+                    lines.push('*Generated from TIN ' + (this.tin.tin || '?') + ' (' + (m.id || 'no id') + ', version ' + (m.version || '?') + ').*');
+
+                    return lines.join('\n');
                 },
 
                 importJSON() {

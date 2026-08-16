@@ -5,6 +5,7 @@ Webová aplikace pro správu osobních a profesních informací v jediném HTML 
 - **Online verze**: <https://egdilna.github.io/nastroje/pim>
 - **Zdrojový kód (open source)**: <https://github.com/egdilna/nastroje/blob/main/pim>
 - **Stažení a offline použití**: stáhněte soubor `pim.html`, otevřete v moderním prohlížeči (Chrome, Firefox, Safari, Edge). Aplikace běží i bez připojení k internetu (kromě některých externích služeb jako PlantUML server nebo Korektor).
+- **Changelog (historie změn)**: <https://nastroje.egdilna.cz/#pim>
 
 ## Hlavní koncept
 
@@ -72,6 +73,7 @@ Aspekt je „role" entity. Můžete jich přiřadit libovolný počet:
 | **Plán** | WBS tabulka úkolů s termíny, předchůdci, stavy, propojením s entitami |
 | **Tracker** | Hodnota, jednotka, cíl, historie změn |
 | **Diagram** | PlantUML zdroj + náhled, kopírovací akce |
+| **Strukturovaný dokument** | Outline editor s vlastními styly, číslováním (arabsky/písmena/římsky, víceúrovňové), nadpisy H1–H6, sbalitelnými sekcemi a Markdown bloky; export do MD i DOCX (revize z CriticMarkup) |
 | **Prezentace / Slide** | Slide-by-slide režim s timer (T/R klávesy, MM:SS / H:MM:SS) |
 | **Cíl, Otázka, Rozhodnutí, Nápad** | Specifická pole |
 | **Poznámka, Dokument, Zdroj, Záložka** | URL (s tlačítky 📋 URL / 📋 Markdown), autor, datum |
@@ -79,7 +81,9 @@ Aspekt je „role" entity. Můžete jich přiřadit libovolný počet:
 | **Komunikace** | Směr, kanál (e-mail, telefon, schůzka…), předmět, výsledek |
 | **🔒 Zabezpečené** | AES-GCM 256 šifrování obsahu, per-entity heslo |
 
-**Vlastní aspekty**: v Nastavení můžete definovat vlastní aspekty s libovolnými poli těchto typů: text, textarea (markdown), číslo, datum, datum+čas, URL, e-mail, telefon, checkbox, select, vazba na jinou entitu, **složený text/markdown** (vyhodnocuje se ze vzorce), **zdrojový kód** (sbalitelný blok s 📋 Kopírovat).
+**Vlastní aspekty**: v Nastavení můžete definovat vlastní aspekty s libovolnými poli těchto typů: text, textarea (markdown), číslo, datum, datum+čas, URL, e-mail, telefon, checkbox, select, vazba na jinou entitu, **složený text/markdown** (vyhodnocuje se ze vzorce), **zdrojový kód** (sbalitelný blok s 📋 Kopírovat). Vlastnímu aspektu lze přiřadit **ikonu (emoji)**, která se pak zobrazuje u entity i v seznamech.
+
+V Nastavení se u vestavěných i vlastních aspektů v seznamech zobrazuje jejich **ikona** — u vestavěných v seznamu se zaškrtáváním, u vlastních v samostatném sloupci tabulky.
 
 ### Atribut typu „Zdrojový kód"
 
@@ -114,22 +118,83 @@ Tělo entity je v markdownu s rozšířeními:
 - **Wiki odkazy**: `[[Název entity]]` nebo `[[id:abc-123|popisek]]`
 - **Include (transkluze)**: `{{include:Název entity}}` — vloží obsah jiné entity (s rekurzivním placeholderem)
 - **Markdown úkoly**: `- [ ] úkol`, `- [x] hotovo` (s tlačítkem **→ Entita** v anotačním režimu pro převod na samostatný Task s vazbou `partOf`)
-- **CriticMarkup**: `{++přidat++}`, `{--smazat--}`, `{>>poznámka<<}` — editor revizí s krok-za-krokem
+- **CriticMarkup**: `{++přidat++}`, `{--smazat--}`, `{==zvýraznit==}`, `{>>poznámka<<}`, `{~~staré~>nové~~}` (substituce) — editor revizí s krok-za-krokem
 - **Private bloky**: `~~~private … ~~~` — viditelné jen v aplikaci, ne v exportu/include
 - **Footnotes**: `[^1]` + `[^1]: text`
 - **Placeholdery**: `((Atribut))` — viz výše
+- **Automatické čítače**: `((#))` = úroveň 1, `((##))` = úroveň 2 atd.; `((#.##))` vypíše víceúrovňové číslo (např. `1.2`) — poslední úroveň se zvyšuje, vyšší se jen čtou, hlubší se při zvýšení vynulují. `((#jméno))` = pojmenovaný průběžný čítač pro celou entitu (každé jméno běží nezávisle)
+- **Vložení strukturovaného dokumentu**: `((dokument))` vloží na dané místo v těle obsah aspektu „Strukturovaný dokument" této entity (jako Markdown)
 - **Inline-select**: `(!a/b/|c!)` — viz výše
-- **Quick anotace**: `(>text)` — při uložení edit modu se převede na klasickou anotaci k řádku, kde se nacházel, a z těla zmizí
+- **Inline anotace**: `(>text)` — zůstává ve zdroji, zobrazí se jako anotační bublina; do exportu/tisku/kopírování nejde (viz sekce Anotace)
+
+## Nástroje nad textovým polem
+
+Pod každým markdownovým polem (tělo entity, textové atributy) je lišta s nástroji:
+
+- **📎 Vložit…** — vloží dynamický prvek: wiki odkaz, include (transkluzi), status chip, příznak nebo (v entitě) placeholder atributu
+- **📥 Vložit z HTML** — vezme formátovaný text ze schránky (např. zkopírovaný z webové stránky) a **převede ho na Markdown** vložený na pozici kurzoru. Zvládá nadpisy, tučné/kurzíva/přeškrtnuté, odkazy, obrázky, seznamy (i vnořené a úkoly), tabulky, citace a kód. Když ve schránce HTML není, vloží prostý text
+- **📝 Revize** — správce CriticMarkup revizí (krok za krokem přijmout/odmítnout)
+- **🔍 Korektor** — kontrola pravopisu (Korektor ÚFAL). Návrhy oprav lze přijmout jedním kliknutím; opravy se zapisují přímo do textu a spolehlivě i v textech s diakritikou a emoji
+- **🧹 Lint** — kontrola syntaxe markdownu
+
+Když v poli **označíte text**, objeví se lišta „Z označeného textu" s dalšími akcemi:
+
+- **📤 Do nové entity…** — výběr přesune do nové entity (jako její obsah) a místo něj vloží **wiki odkaz**, **include** nebo **status**. V dialogu můžete rovnou zaškrtnout, do kterých **projektů** (převzatých ze zdrojové entity) má nová entita patřit
+- **➕ Critic vložení / ➖ Critic odstranění / 🔄 Critic náhrada** — obalí výběr značkou CriticMarkup
+- **🖍 Zvýraznění** — obalí výběr do `{==…==}`
+- **💬 Komentář** — přidá za výběr komentář `{>>…<<}` (kurzor rovnou uvnitř komentáře)
+- **🔗 Jako odkaz** — z výběru udělá text markdownového odkazu a jako URL vloží obsah **schránky**. Postup: zkopírujte si někde URL (Ctrl+C), pak označte text a klikněte — vznikne `[text](URL ze schránky)`
+
+Každá akce s výběrem se navíc **ohlásí odečítači obrazovky** (přes aria-live), takže i bez zraku víte, co se stalo.
+
+### Klávesové zkratky při editaci markdownu
+
+Když píšete v markdownovém poli (tělo entity, sekce, odkládací prostor), fungují zkratky (na Macu ⌘ místo Ctrl):
+
+| Klávesa | Akce |
+|---|---|
+| `Ctrl+B` | Tučné `**text**` |
+| `Ctrl+I` | Kurzíva `*text*` |
+| `Ctrl+K` | Odkaz — je-li ve schránce URL, vloží `[text](url)` a kurzor dá na název; jinak `[text]()` a kurzor mezi závorky |
+| `Ctrl+H` | Nadpis stejné úrovně jako poslední nadpis nad kurzorem (jinak H2) |
+| `Ctrl++` | Označené jako Critic vložení `{++…++}` |
+| `Ctrl+-` | Označené jako Critic odstranění `{--…--}` |
+| `Ctrl+.` | Označené jako Critic náhrada `{~~…~>…~~}` |
+| `Ctrl+=` | Označené jako zvýraznění `{==…==}` |
+| `Ctrl+Shift+W` | Vložit wiki odkaz na entitu |
+| `Ctrl+Shift+E` | Vložit include `{{include:…}}` |
+| `Ctrl+Shift+S` | Vložit status `{{status:…}}` |
+| `Ctrl+Shift+I` | Vložit příznak (nabídka emoji) |
+| `Ctrl+Shift+N` | Z označeného textu vytvořit novou entitu |
+| `Ctrl+Shift+A` | Přejít na lištu akcí s označeným textem |
+
+### Skrytí hotových úkolů
+
+Pokud má obsah (nebo markdownový atribut) zaškrtnuté úkoly `- [x]`, objeví se tlačítko pro jejich **skrytí v náhledu** — text se nezmění, jen se přehledně schovají splněné položky.
+
+## Odkládací prostor
+
+Rychlé poznámky, výstřižky a dočasné nápady mimo databázi. Otevřete tlačítkem **📌 Odkládací prostor** nebo zkratkou `Alt+Shift+V`. Obsah se ukládá automaticky do prohlížeče a přetrvává mezi sezeními (není součástí databáze ani exportu).
+
+Má vlastní lištu nástrojů: **📎 Vložit…**, **📥 Vložit z HTML** (převod formátovaného textu ze schránky na Markdown), mazání hotových úkolů a — po označení textu — akce nad výběrem včetně CriticMarkup, zvýraznění, komentáře a **🔗 Jako odkaz** (URL ze schránky). Fungují tu i klávesové zkratky pro editaci markdownu. Korektor, Revize a Lint jsou celoobrazovkové režimy dostupné přímo u entit, v odkládacím prostoru nejsou.
 
 ## Anotace
 
-Anotace jsou „post-it" poznámky k jednotlivým řádkům či odstavcům obsahu. Nezasahují do textu — žijí vedle něj v sekci „Anotace" pod tělem.
+Anotace jsou krátké poznámky k jednotlivým řádkům či odstavcům obsahu. **Žijí přímo ve zdrojovém textu** jako zápis `(>text anotace)` na konci daného řádku — text je tak jediným zdrojem pravdy a anotace je vždy pevně svázaná se svým odstavcem (nemůže se „odpojit" ani přemapovat).
 
-**Jednotka anotace = jeden řádek**. Pro normální odstavec to znamená celý odstavec; pro **bullet/ordered list** je to **jednotlivá `<li>`**; pro **tabulku** je to **jednotlivý `<tr>`**. Můžete tedy anotovat konkrétní položku seznamu nebo řádek tabulky.
+**Zápis přímo v textu**: napište `(>poznámka)` kamkoli na řádek. Při zobrazení a při `{{include:…}}` se z toho stane žlutá anotační bublina. Anotace je **prostý text** (ne markdown).
 
-**Zapnutí**: klávesa `a` v read modu detailu nebo tlačítko **📝 Anotace**. V režimu se u každého řádku objeví tlačítko **+ Anotace**.
+**Panel anotací** pod tělem entity vypisuje všechny anotace, ukazuje, ke kterému odstavci patří, a umožňuje je spravovat: **Upravit** (jednoduché jednořádkové pole, Enter uloží) a **Smazat** — obojí přímo mění `(>text)` ve zdroji.
 
-**Quick anotace** přímo v textu: napište `(>poznámka pro pozdější zpracování)` kdekoli v textu. Při uložení edit modu se text vymaže a vznikne klasická anotace pod tím řádkem. Účel: rychle si při psaní nechat „dluhopis" budoucímu sobě, bez nutnosti zapínat režim, klikat tlačítka atd.
+**Zapnutí anotačního režimu**: klávesa `a` v read modu detailu nebo tlačítko **📝 Anotace**. V režimu se u každého řádku objeví tlačítko **+ Anotace**, které přidá `(>…)` na konec toho řádku.
+
+**Jednotka anotace = jeden řádek**. Pro normální odstavec to znamená celý odstavec; pro **bullet/ordered list** je to **jednotlivá `<li>`**; pro **tabulku** je to **jednotlivý `<tr>`**.
+
+**Kde se anotace zobrazí a kde ne**:
+- **Zobrazení a include** (`{{include:…}}`) — anotace se vyrenderuje jako bublina
+- **Export, tisk, kopírování zdroje i formátovaného** — anotace se **vynechá** (do výstupu nejde)
+
+**Migrace**: pokud máte ještě staré anotace uložené odděleně (z dřívější verze), při prvním uložení entity se automaticky převedou do textu jako `(>text)` u svého odstavce.
 
 ## Editor tabulky
 
@@ -154,6 +219,16 @@ Příznaky jsou **emoji uvnitř textu**, která fungují jako vizuální značky
 - **🔄** — změnit emoji na jiné ze seznamu příznaků (grid s alternativami)
 
 Příznaky jsou ideální pro **vlastní systém značek**: 🔴 urgentní, 🤔 k zamyšlení, 💡 nápad, ⏳ čeká, atd. Můžete je hromadně vyhledat a procházet napříč všemi entitami.
+
+## Téma 🌳
+
+Aspekt **Téma (Topic)** je „virtuální entita", která automaticky sbírá obsah do jednoho rozcestníku. Entity do tématu spadají třemi způsoby:
+
+- **podle tagu** — nastavíte téma `topic_tag` a všechny entity s tímto tagem se objeví v tématu
+- **ručně připnuté** — vyberete konkrétní entity do pole klíčových entit
+- **přes vazbu „je součástí"** — každá entita, která má na téma vazbu `partOf`, se v tématu objeví (z pohledu tématu jako „obsahuje")
+
+Entita, která spadá víc způsoby najednou, se v tématu ukáže jen jednou. Archivované entity se ignorují.
 
 ## Sekce Účastníci schůzky 👥
 
@@ -191,6 +266,11 @@ Vazby:
 - Schůzka → úkol: **mentions** (úkol byl na schůzce zmíněn)
 
 Schůzka může být ve **více projektech současně** — úkol bude součástí všech.
+
+### ➕ Nová entita (jiný aspekt)
+Vedle nového úkolu lze rovnou založit entitu **libovolného aspektu** (poznámka, dokument, osoba…): zadáte název, vyberete aspekt a volitelně zaškrtnete, do kterých projektů schůzky má entita patřit. Entita dostane vazbu `mentions` ze schůzky a `partOf` na vybrané projekty — bez ručního vytváření a vázání.
+
+Totéž je k dispozici i v **detailu projektu**: pod rychlým úkolem je pole „+ Nová entita do tohoto projektu" (název + výběr aspektu), které založí entitu s vazbou `partOf` na projekt.
 
 ### 📎 Existující úkol z projektu
 Select se všemi úkoly z projektů schůzky, které ještě nejsou propojené. Přidá schůzce vazbu `mentions` → úkol (úkol zůstává součástí svého projektu, jen je teď zmíněn na této schůzce).
@@ -236,7 +316,9 @@ V kartě **Vše** je v sekci „Filtry" rozbalovací podsekce **Pokročilé filt
    - `je prázdné`, `není prázdné`, `je zaškrtnuto`, `není zaškrtnuto`
 3. **Hodnota** — adaptivní podle typu (text, číslo, datum, select s options, checkbox)
 
-Filtry se kombinují logikou **AND**. Ukládají se v Saved Views.
+Filtry se kombinují logikou **AND**.
+
+**Uložené pohledy** uchovají kompletní filtr — aspekt, tagy (včetně „nemá tag"), stav úkolu, prioritu, termín i pokročilé filtry atributů. Filtr přežije i zapnutí režimu výběru. Porovnání tagů nerozlišuje velikost písmen.
 
 ## Klávesové zkratky
 
@@ -254,6 +336,7 @@ Filtry se kombinují logikou **AND**. Ukládají se v Saved Views.
 | `Alt+Shift+S` | Uložit na GitHub |
 | `/` | Skok do pole hledání |
 | `?` | Nápověda |
+| `F10` | Hlavní nabídka (v režimu klasického menu) — dál šipky, Enter otevře, Esc zavře |
 | `p` / `Alt+Shift+P` | Skok na první otevřený panel |
 | `Esc` | Zavřít dialog / opustit edit / zpět |
 
@@ -264,10 +347,12 @@ Filtry se kombinují logikou **AND**. Ukládají se v Saved Views.
 | `e` | Přepnout edit ↔ čtení |
 | `u` | V edit módu: uložit a zpět na čtení |
 | `r` | Přidat vazbu na existující entitu |
-| `Shift+R` | Vytvořit novou související entitu |
+| `Shift+R` | Vytvořit novou související entitu (lze rovnou zaškrtnout projekty zdrojové entity) |
 | `c` | Přidat komentář |
 | `d` | (read, pokud má nadpisy) Přepnout režim editace sekcí |
 | `a` | (read) Přepnout anotační režim |
+| `z` | (u entity s aspektem „Sledování času") Spustit/zastavit timer |
+| `Shift+Z` | Přidat aspekt „Sledování času" (pokud chybí) a rovnou spustit timer |
 | `Esc` | Zpět na read mode (uloží quick anotace a změny) |
 
 ### Navigace
@@ -276,6 +361,12 @@ Filtry se kombinují logikou **AND**. Ukládají se v Saved Views.
 |---|---|
 | Šipky ↑↓ v rychlých výsledcích hledání | Skákání mezi výsledky |
 | Šipky ↑↓ v tabulce entit | Pohyb mezi řádky |
+| `e` na řádku tabulky | Přímá editace entity |
+| `o` na řádku tabulky | Otevřít v novém panelu |
+| `l` na řádku tabulky | Rychlá úprava štítků |
+| `r` na řádku tabulky | Úprava data připomenutí |
+| `a` na řádku tabulky | Úprava aspektů |
+| `Enter` na řádku tabulky | Otevřít entitu |
 | Šipky ↑↓ v search results | Skákání mezi výsledky |
 
 ## Vazby mezi entitami
@@ -295,6 +386,25 @@ Vazby jsou typované odkazy mezi entitami. Definované typy:
 | `attendedBy` (zúčastnil se) | byl účastníkem |
 
 **Vazby se zobrazují v obou směrech**: u entity vidíte své outgoing vazby v sekci Vazby a incoming v Inverzních vazbách.
+
+**Sjednocený výběr entity**: při přidávání vazby (i jinde, kde se vybírá entita — účastníci a úkoly schůzky apod.) se používá jeden společný dialog s hledáním a **filtrem podle aspektu**. U osob se v závorce zobrazuje organizace, kde pracují, u úkolů jejich stav — pro snazší orientaci ve výběru.
+
+## Přidávání nové entity rovnou do projektů
+
+Když vytváříte novou entitu **z existující** — přes wiki odkaz na neexistující entitu, přes `Shift+R` (nová souvislost), nebo přes „📤 Do nové entity…" z označeného textu — nabídne se vám seznam **projektů zdrojové entity** jako předzaškrtnutá políčka. Co necháte zaškrtnuté, do těch projektů nová entita rovnou dostane vazbu `partOf` (je součástí). Když zdrojová entita v žádném projektu není, políčka se nezobrazí.
+
+## Databázové direktivy `{{database:…}}` a `{{databasetext:…}}`
+
+U entity s aspektem **Databáze** lze její záznamy vložit do textu jiné (nebo téže) entity:
+
+- `{{database:Název}}` — vloží záznamy jako **Markdown tabulku**
+- `{{databasetext:Název?format=…}}` — vloží záznamy jako **text** podle vlastní šablony (`format` s placeholdery `<<Sloupec>>`)
+
+Za název lze přidat parametry oddělené `&`: `columns` (výběr sloupců), `filter` (podmínky), `sort` (řazení).
+
+**Filtr** podporuje operátory `=`, `*` (obsahuje), `!=`, `<`, `>`, `<=`, `>=` a prázdnou hodnotu (nevyplněno). Víc podmínek oddělených čárkou se kombinuje logikou **A** (AND).
+
+**OR seznam přes `|`**: u `=`, `*` a `!=` můžete uvést víc hodnot oddělených svislítkem — `filter=Kód=A|B|C` znamená „Kód je A **nebo** B **nebo** C". Funguje i na **počítaných sloučených polích**. (Pozn.: `Kód=A, Kód=B` je AND a nevrátí nic, protože buňka nemůže mít dvě hodnoty zároveň — pro „jednu z hodnot" použijte `|`.)
 
 ## URL atributy — kopírovací tlačítka
 
@@ -330,14 +440,22 @@ Pod každou sekcí je rychlá akce pro přidání nového dítěte projektu.
 
 ## Tisk / Export / Kopírování
 
+Tlačítka **📋 Zkopírovat zdroj** a **✨ Zkopírovat formátované** (pod tělem entity) i export a tisk vykreslují direktivy `{{include:…}}`, `{{database:…}}`, `{{status:…}}`, placeholdery a čítače — do schránky/exportu se tedy nedostane surová direktiva, ale její výsledek. **Inline anotace `(>text)` se do exportu, tisku ani kopírování nedostanou** (zůstávají jen ve zdroji a při include). Kopírování do schránky i stahování souborů funguje i v prostředích bez zabezpečeného kontextu (má spolehlivou záložní cestu).
+
 Z detailu entity tlačítko **🖨 Export / tisk…** otevírá dialog s checkboxy pro každou sekci a výběrem formátu:
 
-- **MD** — markdown (s expandováním include, vyhodnocením placeholderů, zjednodušením inline-selectů na `(!c!)`)
+- **MD** — markdown (s expandováním include i `{{database:…}}` na tabulku a `{{status:…}}` na textový souhrn, vyhodnocením placeholderů a čítačů `((#))`, zjednodušením inline-selectů na `(!c!)`)
 - **HTML** — pro tisk přímo z prohlížeče (Ctrl+P)
 - **DOCX** — pro Word, Outlook, e-mailové klienty
 - **PDF** — přes systémový tisk
 
 Sekce **Úkoly schůzky** se vykresluje do MD/HTML/DOCX/PDF, ale **ne** do include (aby se schůzka v jiné entitě nezahrnula s celou tabulkou úkolů).
+
+U entit s aspektem **Projekt** nabízí dialog navíc volbu **Úkoly po kategoriích** — do exportu (MD/HTML/DOCX) se vloží úkoly projektu seskupené do kanbanových kategorií (K udělání, Probíhá, Čeká, Hotovo) jako nadpisy se seznamem úkolů. Hodí se jako report o stavu projektu.
+
+### Odkaz na konkrétní entitu
+
+V detailu entity je tlačítko **🔗 Kopírovat odkaz**, které do schránky uloží odkaz vedoucí přímo na tuto entitu (drží databázi i konkrétní entitu přes parametry `?id=…&e=…`). Po otevření odkazu se načte databáze z GitHubu a skočí se rovnou na danou entitu. Adresní řádek navíc tento odkaz průběžně udržuje aktuální podle otevřené entity, takže jde zkopírovat i přímo odtud.
 
 ## Datová synchronizace s GitHubem
 
