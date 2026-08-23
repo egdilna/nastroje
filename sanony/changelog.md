@@ -8,6 +8,20 @@ a nástroj se drží [sémantického verzování](https://semver.org/lang/cs/).
 
 ## [1.1.4] - 2026-08-23
 
+### Přidáno
+
+- Do archivu lze nahrát více souborů najednou — v panelu „Nový soubor“ jde ve file dialogu
+  označit víc souborů (Ctrl/Shift) a nahrají se jedním zadáním.
+  - Při výběru dvou a více souborů se pole název, popis a štítky skryjí: názvy se přebírají
+    z vybraných souborů a popis se štítky se doplní později u jednotlivých souborů.
+  - Soubory se odesílají postupně, jeden po druhém; `folder.json` se zapisuje až nakonec,
+    takže místo dvou commitů na soubor vznikne N+1 commitů na celou dávku.
+  - Na názvy, které už v archivu nebo v repozitáři existují, se nástroj ptá jednou souhrnně
+    a nabídne jejich nahrání jako nové verze, přeskočení, nebo zrušení celé dávky.
+  - Uzamčené soubory, odkazy na web a vyhrazený název `folder.json` se přeskočí a vypíšou.
+  - Když se jeden soubor nenahraje, ostatní pokračují; na konci se vypíše souhrn a do archivu
+    se zapíšou jen soubory, které skutečně prošly.
+
 ### Změněno
 
 - Titulek okna prohlížeče nyní ukazuje, kde se uživatel v archivu nachází, ve tvaru
