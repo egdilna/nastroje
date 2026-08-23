@@ -2084,35 +2084,63 @@ function otevriNovySoubor(cesta){
   var uroven = hloubka(cesta);
   var kde = cesta ? (UROVNE[uroven-1] + " " + posledni(cesta)) : "volně v archivu";
   var f = panel("Nový soubor – " + kde);
-  var iNazev = poleText(f, "ns-nazev", "Název souboru včetně přípony", "",
+
+  /* Název, popis a štítky dávají smysl jen u jednoho souboru; u dávky se skryjí. */
+  var jenJeden = document.createElement("div");
+  f.appendChild(jenJeden);
+  var iNazev = poleText(jenJeden, "ns-nazev", "Název souboru včetně přípony", "",
     "Necháte-li pole prázdné, převezme se název vybraného souboru. " +
     "Zadaný název je závazný: jakýkoli později nahraný soubor se uloží pod ním.");
-  var iPopis = poleTextarea(f, "ns-popis", "Popis", "");
-  var dejStitky = poleStitky(f, []);
+  var iPopis = poleTextarea(jenJeden, "ns-popis", "Popis", "");
+  var dejStitky = poleStitky(jenJeden, []);
 
   var l = document.createElement("label");
   l.className = "f"; l.setAttribute("for","ns-obsah");
   l.textContent = "Počáteční obsah (nepovinné)";
   f.appendChild(l);
   var iSoubor = document.createElement("input");
-  iSoubor.type = "file"; iSoubor.id = "ns-obsah";
+  iSoubor.type = "file"; iSoubor.id = "ns-obsah"; iSoubor.multiple = true;
   f.appendChild(iSoubor);
   var ph = document.createElement("p");
   ph.className = "fhint";
-  ph.textContent = "Pokud soubor nevyberete, vytvoří se prázdný a název je pak povinný.";
   f.appendChild(ph);
+  var pv = document.createElement("p");
+  pv.className = "fhint";
+  pv.hidden = true;
+  f.appendChild(pv);
 
-  iSoubor.addEventListener("change", function(){
-    var vybrany = iSoubor.files && iSoubor.files[0];
-    if (!vybrany || iNazev.value.trim()) return;
-    iNazev.value = vybrany.name;
-    oznam("Název převzat z vybraného souboru: " + vybrany.name);
-  });
+  var VYCHOZI_HINT = "Vybrat můžete i více souborů najednou; názvy se pak převezmou z nich. " +
+    "Pokud soubor nevyberete, vytvoří se prázdný a název je pak povinný.";
+  ph.textContent = VYCHOZI_HINT;
+
+  function prepniRezim(){
+    var v = vybraneSoubory(iSoubor);
+    var davka = v.length > 1;
+    jenJeden.hidden = davka;
+    pv.hidden = !davka;
+    if (davka){
+      var celkem = 0, jmena = [];
+      v.forEach(function(x){ celkem += x.size || 0; jmena.push(x.name); });
+      ph.textContent = "Soubory se nahrají jeden po druhém pod svými názvy. " +
+        "Popis a štítky se u dávky nevyplňují; doplníte je u jednotlivých souborů později.";
+      pv.textContent = "Vybráno " + v.length + " " + pluralCz(v.length,"soubor","soubory","souborů") +
+        " (" + velikost(celkem) + "): " + jmena.join(", ");
+      oznam("Vybráno " + v.length + " souborů k nahrání");
+      return;
+    }
+    ph.textContent = VYCHOZI_HINT;
+    if (v.length === 1 && !iNazev.value.trim()){
+      iNazev.value = v[0].name;
+      oznam("Název převzat z vybraného souboru: " + v[0].name);
+    }
+  }
+  iSoubor.addEventListener("change", prepniRezim);
 
   var akce = document.createElement("div");
   akce.style.marginTop = "16px";
   akce.appendChild(tlacitko("Vytvořit a odeslat na GitHub", "primary", function(){
-    vytvorNovy(iNazev.value, iPopis.value, normCesta(cesta), iSoubor, dejStitky());
+    if (vybraneSoubory(iSoubor).length > 1) vytvorDavku(iSoubor, normCesta(cesta));
+    else vytvorNovy(iNazev.value, iPopis.value, normCesta(cesta), iSoubor, dejStitky());
   }));
   akce.appendChild(tlacitko("Zrušit", "", zavriEdit));
   f.appendChild(akce);
@@ -3031,6 +3059,144 @@ function vytvorNovy(nazev, popis, slozka, vstup, tagy){
   }else{
     dokonci("", "jako prázdný soubor");
   }
+}
+
+function vybraneSoubory(vstup){
+  var out = [];
+  if (vstup && vstup.files){
+    for (var i=0;i<vstup.files.length;i++) out.push(vstup.files[i]);
+  }
+  return out;
+}
+
+/* Obsah místního souboru jako base64; čtení je asynchronní, proto slib. */
+function prectiSoubor(soubor){
+  return new Promise(function(ok, chyba){
+    var c = new FileReader();
+    c.onload = function(){ ok(bytesNaBase64(new Uint8Array(c.result))); };
+    c.onerror = function(){ chyba(new Error("soubor se nepodařilo přečíst")); };
+    c.readAsArrayBuffer(soubor);
+  });
+}
+
+/* Nahrání více souborů najednou. Commituje se postupně, jeden soubor po druhém:
+   Contents API zapisuje do stejné větve a souběžné zápisy by skončily konfliktem.
+   folder.json se zapíše až nakonec, takže z 2×N commitů zbude N+1. */
+function vytvorDavku(vstup, slozka){
+  if (!kontrola(true)) return;
+  if (!metadata){ stav("Nejprve načtěte nebo založte folder.json.", "err"); return; }
+
+  var preskocene = [], kePrepsani = [], fronta = [];
+
+  vybraneSoubory(vstup).forEach(function(soubor){
+    var nazev = soubor.name;
+    if (nazev === "folder.json"){ preskocene.push(nazev + " (název je vyhrazen pro metadata)"); return; }
+    if (/[\\/]/.test(nazev)){ preskocene.push(nazev + " (název obsahuje lomítko)"); return; }
+    var z = najdi(nazev);
+    if (z && z.locked){ preskocene.push(nazev + " (uzamčeno)"); return; }
+    if (z && jeOdkaz(z)){ preskocene.push(nazev + " (v archivu je pod tímto názvem odkaz na web)"); return; }
+    var existuje = !!z || Object.prototype.hasOwnProperty.call(shaMapa, nazev);
+    if (existuje) kePrepsani.push(nazev);
+    fronta.push({ soubor:soubor, nazev:nazev });
+  });
+
+  /* Na kolize se ptáme jednou souhrnně, ne u každého souboru zvlášť. */
+  if (kePrepsani.length && !confirm(
+        kePrepsani.length + " z vybraných souborů už existuje:\n" + kePrepsani.join(", ") +
+        "\n\nOK = nahrát je jako novou verzi.\nZrušit = nabídnu jejich přeskočení.")){
+    var zbyva = fronta.filter(function(x){ return kePrepsani.indexOf(x.nazev) < 0; });
+    if (!zbyva.length){
+      stav("Nahrávání zrušeno: všechny vybrané soubory už v archivu jsou.", "err");
+      return;
+    }
+    if (!confirm("Přeskočit je a nahrát jen zbývajících " + zbyva.length + "?\n\nZrušit = nenahrávat nic.")){
+      stav("Nahrávání zrušeno.", "err");
+      return;
+    }
+    kePrepsani.forEach(function(n){ preskocene.push(n + " (už existuje, přeskočeno)"); });
+    fronta = zbyva;
+  }
+
+  var celkem = fronta.length;
+  if (!celkem){ stav("Nebylo co nahrát. " + preskocene.join("; "), "err"); return; }
+
+  var zaloha = JSON.parse(JSON.stringify(metadata.files));
+  var zapsane = [], selhalo = [];
+
+  function krok(i){
+    if (i >= celkem) return Promise.resolve();
+    var polozka = fronta[i];
+    var nazev = polozka.nazev;
+    stav("Nahrávám " + (i+1) + " z " + celkem + ": " + nazev + ".");
+    return prectiSoubor(polozka.soubor).then(function(base64){
+      return ziskejSoubor(nazev).catch(function(e){
+        if (e.status === 404) return null;
+        throw e;
+      }).then(function(existujici){
+        var z = najdi(nazev);
+        var nova = (z && z.version ? z.version : 0) + 1;
+        var zprava = z ? ("Nová verze " + nazev + " (v" + nova + ") z místního souboru")
+                  : existujici ? ("Přepsání souboru " + nazev + " z místního souboru")
+                  : ("Vytvoření souboru " + nazev + " z místního souboru");
+        return ulozSoubor(nazev, base64, zprava, existujici ? existujici.sha : undefined);
+      });
+    }).then(function(d){
+      shaMapa[nazev] = d.content.sha;
+      velikostiRepo[nazev] = d.content.size;
+      var ted = new Date().toISOString();
+      var z = najdi(nazev);
+      if (z){
+        z.version = (z.version || 0) + 1;
+        z.updated = ted;
+        z.size = d.content.size;
+      }else{
+        /* Popis ani štítky se u dávky nevyplňují, doplní se u jednotlivých souborů. */
+        metadata.files.push({
+          name:nazev, description:"", folder:slozka, version:1, tags:[], notes:[],
+          created:ted, updated:ted, size:d.content.size
+        });
+      }
+      zapsane.push(nazev);
+    }).catch(function(e){
+      selhalo.push(nazev + " (" + e.message + ")");
+    }).then(function(){
+      return krok(i+1);
+    });
+  }
+
+  function podrobnosti(){
+    var t = "";
+    if (selhalo.length) t += " Nepodařilo se: " + selhalo.join("; ") + ".";
+    if (preskocene.length) t += " Přeskočeno: " + preskocene.join("; ") + ".";
+    return t;
+  }
+
+  stav("Nahrávám " + celkem + " " + pluralCz(celkem,"soubor","soubory","souborů") + ".");
+  krok(0).then(function(){
+    if (!zapsane.length){
+      metadata.files = zaloha;
+      stav("Nenahrál se žádný soubor." + podrobnosti(), "err");
+      return;
+    }
+    return ulozMetadata("Nahrání " + zapsane.length + " " +
+                        pluralCz(zapsane.length,"souboru","souborů","souborů") + " do archivu")
+      .then(function(){
+        stav("Nahráno " + zapsane.length + " z " + celkem + " " +
+             pluralCz(celkem,"souboru","souborů","souborů") + ": " + zapsane.join(", ") + "." +
+             podrobnosti(), selhalo.length ? "" : "ok");
+        oznam("Nahráno " + zapsane.length + " " + pluralCz(zapsane.length,"soubor","soubory","souborů"));
+        editace = null;
+        vykresli(0);
+      })
+      .catch(function(e){
+        /* Soubory v repozitáři leží, jen o nich folder.json neví; nabídne je pak
+           nastavení jako soubory k zařazení. */
+        metadata.files = zaloha;
+        stav("Soubory se nahrály, ale zápis do archivu se nezdařil: " + e.message +
+             " \u2014 najdete je v nastavení mezi soubory k zařazení.", "err");
+        vykresli();
+      });
+  });
 }
 
 /* ================= Markdown ================= */
