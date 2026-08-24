@@ -224,6 +224,10 @@ table.mrizka-tab input{border:0;padding:2px;background:none}
 #textovy-rezim{padding:4px}
 #textovy-rezim ul{margin:.3em 0;padding-left:1.3em}
 body.prezentace #mrizka>li.soukrome{display:none}
+#os.jenokno #sidebar{display:none}
+#os.jenokno .lista{display:none}
+#os.jenokno #dlazdice-obal{visibility:hidden}
+#os.jenokno .okno.maximalizovane{border-radius:var(--r-stredni)}
 @media (max-width:820px){
   #sidebar:not([hidden]){width:212px}
   #os.uzky #sidebar{width:62px}
@@ -377,6 +381,21 @@ function ozivitListu(box,popis){
     q[n].focus();
   });
   return box;
+}
+function nabidkaTlacitko(popis,polozky,tridaTlacitka){
+  const idm="nabidka-"+id();
+  const ul=el("ul",{class:"seznam",role:"none",id:idm,hidden:true,
+    style:"border:1px solid var(--ram);border-radius:var(--r-stredni);padding:4px;margin-top:8px;background:color-mix(in srgb,var(--okno) 94%,#000)"});
+  const tl=el("button",{class:tridaTlacitka||"btn druhy mini","aria-haspopup":"menu","aria-expanded":"false","aria-controls":idm},popis+" ▾");
+  const zavrit=(vratitFokus)=>{ ul.hidden=true; tl.setAttribute("aria-expanded","false"); if(vratitFokus) tl.focus(); };
+  const otevrit=()=>{ ul.hidden=false; tl.setAttribute("aria-expanded","true");
+    setTimeout(()=>ul.querySelector('[role="menuitem"]')?.focus(),0); };
+  tl.addEventListener("click",()=>{ ul.hidden?otevrit():zavrit(true); });
+  polozky.forEach(([ik,n,f])=>ul.append(polozkaMenu(ik,n,()=>{ zavrit(); f(); })));
+  ozivitMenu(ul,popis);
+  ul.addEventListener("keydown",e=>{ if(e.key==="Escape"){ e.stopPropagation(); e.preventDefault(); zavrit(true); } });
+  ul.addEventListener("focusout",()=>setTimeout(()=>{ if(!ul.contains(document.activeElement)) zavrit(); },0));
+  return el("div",{style:"margin-top:18px"},tl,ul);
 }
 function polozkaMenu(ikona,text,akce,zkratka){
   const b=el("button",{role:"menuitem",class:"rostouci",style:"text-align:left;font-weight:600",onclick:akce},text);
@@ -892,6 +911,7 @@ function otevritOkno(k){
   const {klic,nazev,ikona="🪟",sirka=560,vyska=440,bezokraje=false,obsah}=k;
   let w=$(`.okno[data-klic="${CSS.escape(klic)}"]`);
   if(w){ if(w.classList.contains("min")) obnovitOkno(w); doPredu(w); return w; }
+  $$(".okno.maximalizovane").forEach(obnovitVelikost);
   const pl=$("#plocha").getBoundingClientRect();
   const male=pl.width<620;
   const sir=male?Math.max(240,pl.width-16):Math.min(sirka,pl.width-40);
@@ -921,22 +941,56 @@ function otevritOkno(k){
     if(e.key==="Escape"){e.stopPropagation();zavritOkno(klic);}
     if(e.ctrlKey&&e.altKey&&e.key.startsWith("Arrow")){e.preventDefault();ukotvit(w,e.key);}
   });
-  doPredu(w); kreslitPanel(); log("Otevřeno okno",nazev);
+  doPredu(w); izolovatMaximalizovane(); kreslitPanel(); log("Otevřeno okno",nazev);
   telo.setAttribute("tabindex","-1"); telo.focus();
   return w;
 }
 function zavritOkno(klic){
   const w=$(`.okno[data-klic="${CSS.escape(klic)}"]`); if(!w) return;
-  w.remove(); kreslitPanel(); log("Zavřeno okno",klic);
+  const bylMax=w.classList.contains("maximalizovane");
+  w.remove(); izolovatMaximalizovane(); kreslitPanel(); log("Zavřeno okno",klic);
+  if(bylMax) ($(".dlazdice")||$("#tl-menu"))?.focus();
 }
 function doPredu(w){ $$(".okno").forEach(x=>x.classList.remove("aktivni")); w.classList.add("aktivni"); w.style.zIndex=++zTop; kreslitPanel(); }
-function minimalizovat(w){ w.classList.add("min"); w.classList.remove("aktivni"); kreslitPanel(); hlas("Okno minimalizováno"); }
+function minimalizovat(w){
+  obnovitVelikost(w);
+  w.classList.add("min"); w.classList.remove("aktivni");
+  izolovatMaximalizovane(); kreslitPanel(); hlas("Okno minimalizováno");
+}
 function obnovitOkno(w){ w.classList.remove("min"); doPredu(w); }
-function maximalizovat(w){
+function obnovitVelikost(w){
   if(w.dataset.puvodni){ Object.assign(w.style,JSON.parse(w.dataset.puvodni)); delete w.dataset.puvodni; }
-  else{ w.dataset.puvodni=JSON.stringify({left:w.style.left,top:w.style.top,width:w.style.width,height:w.style.height});
-    Object.assign(w.style,{left:"8px",top:"8px",width:"calc(100% - 16px)",height:"calc(100% - 16px)"}); }
+  w.classList.remove("maximalizovane");
+}
+function maximalizovat(w){
+  const bylo=w.classList.contains("maximalizovane");
+  $$(".okno.maximalizovane").forEach(x=>{ if(x!==w) obnovitVelikost(x); });
+  if(bylo) obnovitVelikost(w);
+  else{
+    w.dataset.puvodni=JSON.stringify({left:w.style.left,top:w.style.top,width:w.style.width,height:w.style.height});
+    Object.assign(w.style,{left:"8px",top:"8px",width:"calc(100% - 16px)",height:"calc(100% - 16px)"});
+    w.classList.add("maximalizovane");
+    const telo=$(".o-telo",w); telo.setAttribute("tabindex","-1"); telo.focus();
+  }
   doPredu(w);
+  izolovatMaximalizovane();
+  hlas(bylo?"Okno obnoveno":"Okno maximalizováno — zobrazeno je jen ono");
+}
+function izolovatMaximalizovane(){
+  const max=$(".okno.maximalizovane");
+  const skryt=[$(".lista"),$("#dlazdice-obal"),$("#sidebar"),...$$(".okno").filter(x=>x!==max)];
+  skryt.forEach(e=>{
+    if(!e) return;
+    if(max){
+      if(e.contains(document.activeElement)&&max) { const telo=$(".o-telo",max); telo.setAttribute("tabindex","-1"); telo.focus(); }
+      e.setAttribute("aria-hidden","true"); e.inert=true;
+    } else { e.removeAttribute("aria-hidden"); e.inert=false; }
+  });
+  $("#os").classList.toggle("jenokno",!!max);
+  $$(".okno").forEach(w=>{
+    const b=$(".o-lista .o-btn:nth-of-type(2)",w);
+    if(b) b.setAttribute("aria-label",(w.classList.contains("maximalizovane")?"Obnovit velikost okna ":"Maximalizovat okno ")+(w.dataset.nazev||""));
+  });
 }
 function ukotvit(w,klavesa){
   const p=$("#plocha").getBoundingClientRect();
@@ -992,6 +1046,16 @@ function hlavicka(o,t){
   h.append(el("label",{class:"pole"},el("span",{},"Název"),n));
   t.append(h);
   t.append(el("div",{class:"pole"},el("span",{style:"display:block;font-size:12px;font-weight:650;margin-bottom:5px;color:var(--dlazdice-slaby)"},"Štítky"),editorStitku(o)));
+}
+function akceDlazdice(o){
+  return [
+    ["🎨","Vzhled dlaždice",()=>vzhledDlazdice(o)],
+    ["📤","Přesunout na plochu nebo do složky",()=>presunNaPlochu(o)],
+    ["🏷️","Spravovat štítky",()=>otevritNastroj("stitky")],
+    ["📄","Duplikovat",()=>{const k=JSON.parse(JSON.stringify(o));k.id=id();k.nazev+=" (kopie)";k.poradi=999;S.objekty.push(k);ulozit();kreslitPlochu();hlas("Duplikováno");}],
+    ["⤓","Exportovat jako JSON",()=>stahnout(o.nazev+".json",JSON.stringify(o,null,2),"application/json")],
+    ["🗑️","Smazat",()=>smazat(o.id)]
+  ];
 }
 function editor(o,t,w){
   const c=o.obsah;
@@ -1147,13 +1211,10 @@ function editor(o,t,w){
     case "aplikace": case "odkaz": {
       const bar=el("div",{class:"pruh",style:"padding:10px 12px 0;margin:0"});
       ozivitListu(bar,"Nástroje aplikace "+o.nazev);
-      const u=el("input",{type:"url",value:c.url||"",placeholder:"https://",style:"flex:1;min-width:160px"});
       const ram=el("iframe",{title:o.nazev,allow:"clipboard-read; clipboard-write; fullscreen; camera; microphone; geolocation"});
       if(c.izolovat) ram.setAttribute("sandbox","allow-scripts allow-forms allow-popups allow-same-origin allow-downloads allow-modals");
-      const jdi=()=>{ c.url=u.value; zmena(o); ram.src=c.url||"about:blank"; };
-      u.addEventListener("keydown",e=>{if(e.key==="Enter")jdi();});
-      bar.append(u,el("button",{class:"btn mini",onclick:jdi},"Načíst"),
-        el("button",{class:"btn druhy mini",onclick:()=>{ram.src=ram.src;hlas("Znovu načteno");}},"⟳ Obnovit"),
+      bar.append(el("button",{class:"btn mini",onclick:()=>{ram.src=c.url||"about:blank";hlas("Znovu načteno");}},"⟳ Obnovit"),
+        el("button",{class:"btn druhy mini",onclick:()=>{ram.src=c.url||"about:blank";hlas("Zpět na úvod aplikace");}},"⌂ Úvod"),
         el("button",{class:"btn druhy mini",onclick:()=>c.url&&window.open(c.url,"_blank","noopener")},"↗ Nová karta"),
         el("button",{class:"btn druhy mini",onclick:()=>{
           const n=prompt("Název aplikace:",o.nazev);
@@ -1222,11 +1283,7 @@ function editor(o,t,w){
     }
   }
   if(o.typ==="aplikace"||o.typ==="odkaz") return;   // správa je v nastavení aplikace
-  t.append(ozivitListu(el("div",{class:"pruh",style:"margin-top:18px"},
-    el("button",{class:"btn druhy mini",onclick:()=>vzhledDlazdice(o)},"Vzhled dlaždice"),
-    el("button",{class:"btn druhy mini",onclick:()=>presunNaPlochu(o)},"Přesunout na plochu"),
-    el("button",{class:"btn druhy mini",onclick:()=>{const k=JSON.parse(JSON.stringify(o));k.id=id();k.nazev+=" (kopie)";k.poradi=999;S.objekty.push(k);ulozit();kreslitPlochu();hlas("Duplikováno");}},"Duplikovat"),
-    el("button",{class:"btn nebezpecny mini",onclick:()=>smazat(o.id)},"Smazat")),"Správa dlaždice "+o.nazev));
+  t.append(nabidkaTlacitko("Další akce",akceDlazdice(o)));
 }
 
 /* ============================================================
@@ -1418,12 +1475,8 @@ function nastaveniAplikace(o){
     iz.addEventListener("change",()=>{c.izolovat=iz.checked;zmena(o);hlas(iz.checked?"Izolace zapnuta":"Izolace vypnuta");});
     t.append(el("label",{class:"radek"},iz,el("span",{},"Spouštět v izolovaném rámu (sandbox)")),
       el("p",{class:"tichy"},"Izolaci zapněte jen u cizích stránek. U vlastních aplikací ji nechte vypnutou — v izolovaném rámu jim Safari a Chrome nepustí přihlášení ani lokální úložiště, takže si nic nepamatují."),
-      ozivitListu(el("div",{class:"pruh"},
-        el("button",{class:"btn mini",onclick:()=>{zavritOkno("nastaveni-app-"+o.id);otevritObjekt(o.id);}},"Otevřít aplikaci"),
-        el("button",{class:"btn druhy mini",onclick:()=>vzhledDlazdice(o)},"Vzhled dlaždice"),
-        el("button",{class:"btn druhy mini",onclick:()=>presunNaPlochu(o)},"Přesunout na plochu"),
-        el("button",{class:"btn druhy mini",onclick:()=>{const k=JSON.parse(JSON.stringify(o));k.id=id();k.nazev+=" (kopie)";k.poradi=999;S.objekty.push(k);ulozit();kreslitPlochu();hlas("Duplikováno");}},"Duplikovat"),
-        el("button",{class:"btn nebezpecny mini",onclick:()=>{zavritOkno("nastaveni-app-"+o.id);smazat(o.id);}},"Smazat")),"Správa aplikace "+o.nazev));
+      el("div",{class:"pruh"},el("button",{class:"btn mini",onclick:()=>{zavritOkno("nastaveni-app-"+o.id);otevritObjekt(o.id);}},"Otevřít aplikaci")),
+      nabidkaTlacitko("Další akce",akceDlazdice(o)));
   }});
 }
 function novaDlazdice(){
@@ -1770,7 +1823,7 @@ const NASTROJE={
       ["Shift + F1","Tato nápověda"],["Ctrl + F10","Hlavní nabídka"],
       ["F9","Přeskočit do bočního panelu a zpět"],["Shift + F9","Sbalit nebo rozbalit boční panel"],
       ["F8","Další plocha"],["Shift + F8","Seznam ploch"],
-      ["Ctrl + F6","Další otevřené okno"],["Ctrl + Shift + F6","Předchozí otevřené okno"],
+      ["Ctrl + F6","Další otevřené okno (v maximalizovaném režimu přepíná celé okno)"],["Ctrl + Shift + F6","Předchozí otevřené okno"],
       ["F2","Přejmenovat vybranou dlaždici"],
       ["Šipky","Pohyb mezi dlaždicemi podle jejich rozložení"],["Home / End","První / poslední dlaždice"],
       ["Tab","Pohyb mezi ovládacími prvky"],["Enter nebo mezerník","Otevřít vybranou dlaždici"],
@@ -2459,6 +2512,7 @@ function kreslitPaletu(){
   if(!paletaData.length) ul.append(el("li",{},el("div",{class:"tichy",style:"padding:12px"},"Nic neodpovídá. Zkuste jiný výraz.")));
 }
 function rozlozitOkna(){
+  $$(".okno.maximalizovane").forEach(obnovitVelikost); izolovatMaximalizovane();
   const okna=$$(".okno:not(.min)"); if(!okna.length) return;
   const p=$("#plocha").getBoundingClientRect();
   const sl=Math.ceil(Math.sqrt(okna.length)), ra=Math.ceil(okna.length/sl);
@@ -2482,8 +2536,16 @@ function dalsiOkno(smer=1){
   const akt=$(".okno.aktivni:not(.min)");
   const i=akt?okna.indexOf(akt):-1;
   const w=okna[(i+smer+okna.length)%okna.length];
+  const rezimJednoho=!!$(".okno.maximalizovane");
+  if(rezimJednoho&&!w.classList.contains("maximalizovane")){
+    $$(".okno.maximalizovane").forEach(obnovitVelikost);
+    w.dataset.puvodni=JSON.stringify({left:w.style.left,top:w.style.top,width:w.style.width,height:w.style.height});
+    Object.assign(w.style,{left:"8px",top:"8px",width:"calc(100% - 16px)",height:"calc(100% - 16px)"});
+    w.classList.add("maximalizovane");
+  }
   doPredu(w);
   const telo=$(".o-telo",w); telo.setAttribute("tabindex","-1"); telo.focus();
+  izolovatMaximalizovane();
   hlas(w.dataset.nazev||"Okno");
 }
 function dalsiPlocha(smer=1){
