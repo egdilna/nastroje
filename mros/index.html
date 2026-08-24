@@ -378,7 +378,7 @@ function novyStav(){
       velikost:15, mezera:14, radaVyska:118, vzorTecek:false, panelStav:"plny"
     },
     chovani:{potvrzovatMazani:true, otviratDvojklikem:false, ukazovatDatum:true, novaOknaKaskada:true},
-    github:{repo:"",vetev:"main",cesta:"prostredi.json",token:"",autoUlozit:false},
+    github:{repo:"",vetev:"main",cesta:"prostredi.json",token:"",autoUlozit:true},
     nastroje:null,
     stitkyBarvy:{},
     zapisnik:"",
@@ -425,40 +425,51 @@ function zapnuty(k){
   return S.nastroje[k]!==false && (S.nastroje[k]===true||VYCHOZI_NASTROJE.includes(k));
 }
 
-/* ---------- úložiště ---------- */
-const KLIC="virtualni-prostredi-v1";
+/* ---------- úložiště ----------
+   Prostředí žije v GitHubu. V prohlížeči zůstává jen přístup k repozitáři. */
+const KLIC="prostredi-konfigurace-v1";
+let nesynchronizovano=false;
+function velikostDat(){ return new Blob([JSON.stringify(S)]).size; }
+function ulozitKonfiguraci(){
+  try{ localStorage.setItem(KLIC,JSON.stringify({github:S.github})); }
+  catch(e){ log("Přístup k repozitáři nelze uložit",e.message); }
+}
 function ulozit(){
   S.zmeneno=Date.now();
-  try{ localStorage.setItem(KLIC,JSON.stringify(S)); stavUlozeni("Uloženo v prohlížeči "+new Date().toLocaleTimeString("cs-CZ")); }
-  catch(e){ log("Chyba ukládání",e.message); hlas("Nepodařilo se uložit do prohlížeče"); }
+  nesynchronizovano=true;
+  ulozitKonfiguraci();
+  if(!ghPripraven()) stavUlozeni("Bez úložiště — nastavte GitHub");
+  else if(!S.github.autoUlozit) stavUlozeni("Neuložené změny — uložte obláčkem");
   naplanovatSync();
 }
 function nacist(){
   try{
     const d=localStorage.getItem(KLIC);
-    if(d){ const n=JSON.parse(d); S=Object.assign(novyStav(),n);
-      S.vzhled=Object.assign(novyStav().vzhled,n.vzhled||{});
-      S.vzhled.barvy=Object.assign({...VYCHOZI_BARVY},(n.vzhled||{}).barvy||{});
-      S.nazvy=Object.assign(novyStav().nazvy,n.nazvy||{});
-      S.chovani=Object.assign(novyStav().chovani,n.chovani||{});
-      S.github=Object.assign(novyStav().github,n.github||{});
-      const tvary={};
-      S.objekty.forEach(o=>{
-        o.stitky=(o.stitky||[]).map(x=>String(x).trim().replace(/\s+/g," ")).filter(Boolean);
-        const vid=new Set();
-        o.stitky=o.stitky.filter(x=>{ const k=klicStitku(x); if(vid.has(k)) return false; vid.add(k); return true; })
-          .map(x=>{ const k=klicStitku(x); if(!tvary[k]) tvary[k]=x; return tvary[k]; });
-      });
-      S.objekty.forEach(o=>{
-        if(o.rodic===undefined) o.rodic=null;
-        if(o.typ==="slozka"&&o.obsah&&Array.isArray(o.obsah.deti)){
-          o.obsah.deti.forEach(cid=>{const d=S.objekty.find(x=>x.id===cid); if(d) d.rodic=o.id;});
-          delete o.obsah.deti;
-        }
-      });
-      log("Stav načten z prohlížeče");
-    } else log("Nový, prázdný stav");
-  }catch(e){ log("Chyba načítání",e.message); }
+    if(d){ const k=JSON.parse(d); S.github=Object.assign(novyStav().github,k.github||{}); log("Přístup k repozitáři načten"); }
+    else log("Bez uloženého přístupu k repozitáři");
+  }catch(e){ log("Chyba načítání konfigurace",e.message); }
+}
+function prevzitStav(d){
+  S=Object.assign(novyStav(),d);
+  S.vzhled=Object.assign(novyStav().vzhled,d.vzhled||{});
+  S.vzhled.barvy=Object.assign({...VYCHOZI_BARVY},(d.vzhled||{}).barvy||{});
+  S.nazvy=Object.assign(novyStav().nazvy,d.nazvy||{});
+  S.chovani=Object.assign(novyStav().chovani,d.chovani||{});
+  S.github=Object.assign(novyStav().github,d.github||{},S.github||{});
+  const tvary={};
+  S.objekty.forEach(o=>{
+    o.stitky=(o.stitky||[]).map(x=>String(x).trim().replace(/\s+/g," ")).filter(Boolean);
+    const vid=new Set();
+    o.stitky=o.stitky.filter(x=>{ const k=klicStitku(x); if(vid.has(k)) return false; vid.add(k); return true; })
+      .map(x=>{ const k=klicStitku(x); if(!tvary[k]) tvary[k]=x; return tvary[k]; });
+    if(o.rodic===undefined) o.rodic=null;
+    if(o.typ==="slozka"&&o.obsah&&Array.isArray(o.obsah.deti)){
+      o.obsah.deti.forEach(cid=>{const c=S.objekty.find(x=>x.id===cid); if(c) c.rodic=o.id;});
+      delete o.obsah.deti;
+    }
+  });
+  ulozitKonfiguraci(); pouzitVzhled(); kreslitPanel(); kreslitPlochu();
+  nesynchronizovano=false;
 }
 
 /* ---------- vzhled ---------- */
@@ -643,7 +654,8 @@ function nahled(o){
     }
     case "tabulka": return `<span class="tichy">${(c.radky||[]).length} řádků × ${(c.hlavicka||[]).length} sloupců</span>`;
     case "citace": return esc((c.text||"").slice(0,160))+(c.zdroj?`<div class="tichy">— ${esc(c.zdroj)}</div>`:"");
-    case "odkaz": case "aplikace": return `<span class="tichy">${esc(c.url||"Bez adresy")}</span>`;
+    case "odkaz": case "aplikace":
+      return c.url?"":"<span class='tichy'>Bez adresy — otevřete a doplňte</span>";
     case "soubor": return `<span class="tichy">${esc(c.nazevSouboru||"Bez souboru")}</span>`;
     case "slozka": return `<span class="tichy">${deti(o.id).length} položek</span>`;
     case "sezeni": return `<span class="tichy">${(c.okna||[]).length} oken v sezení</span>`;
@@ -673,16 +685,17 @@ function kreslitPlochu(){
     const li=el("li",{style:`grid-column:span ${o.w};grid-row:span ${o.h}`});
     if(o.stitky.some(x=>bezDiakritiky(x)==="soukrome")) li.classList.add("soukrome");
     const b=el("div",{class:"dlazdice",role:"button",tabindex:"0",draggable:"true","data-id":o.id,
+      "aria-label":TYPY[o.typ].n+": "+o.nazev+(o.stitky.length?", štítky "+o.stitky.join(", "):""),
       "aria-describedby":"popis-"+o.id, title:TYPY[o.typ].n});
     b.innerHTML=`
       <span class="d-hlava">
         <span class="d-ikona" style="background:${esc(o.barva||TYPY[o.typ].b)}" aria-hidden="true">${esc(o.ikona||TYPY[o.typ].i)}</span>
-        <span class="d-nazev">${esc(o.nazev)}</span>
+        <span class="d-nazev" aria-hidden="true">${esc(o.nazev)}</span>
       </span>
       <span class="d-telo">${nahled(o)}</span>
       ${o.stitky.length?`<span class="d-pata">${o.stitky.map(s=>{const b=barvaStitku(klicStitku(s));
         return `<span class="stitek"${b?` style="background:${esc(b)}22;color:${esc(b)}"`:""}>${esc(s)}</span>`;}).join("")}</span>`:""}
-      <span class="jenproctecku" id="popis-${o.id}">${TYPY[o.typ].n}. Nabídka klávesou Enter s Alt, smazání klávesou Delete.</span>`;
+      <span class="jenproctecku" id="popis-${o.id}">Otevřete klávesou Enter, nabídku vyvoláte Alt s Enter, smazání klávesou Delete.</span>`;
     b.addEventListener("click",()=>otevritObjekt(o.id));
     b.addEventListener("contextmenu",e=>{e.preventDefault();nabidkaDlazdice(o.id);});
     b.addEventListener("keydown",e=>{
@@ -799,7 +812,7 @@ function kreslitPanel(){
   RYCHLE_TVORBA.forEach(k=>{
     const x=TYPY[k];
     const b=el("button",{class:"sb-pol"},el("span",{class:"ikonka",style:`background:${x.b}33`},x.i),el("span",{},x.n));
-    b.addEventListener("click",()=>{const o=vytvorit(k);otevritObjekt(o.id);});
+    b.addEventListener("click",()=>zalozit(k));
     vy.append(b);
   });
   const vsevic=el("button",{class:"sb-pol"},el("span",{class:"ikonka"},"⋯"),el("span",{},"Všechny druhy dlaždic"));
@@ -1072,18 +1085,23 @@ function editor(o,t,w){
     }
     case "aplikace": case "odkaz": {
       const bar=el("div",{class:"pruh",style:"padding:10px 12px 0;margin:0"});
-      const u=el("input",{type:"url",value:c.url||"",placeholder:"https://",style:"flex:1;min-width:180px"});
-      const ram=el("iframe",{title:o.nazev,sandbox:"allow-scripts allow-forms allow-popups allow-same-origin allow-downloads"});
+      const u=el("input",{type:"url",value:c.url||"",placeholder:"https://",style:"flex:1;min-width:160px"});
+      const ram=el("iframe",{title:o.nazev,allow:"clipboard-read; clipboard-write; fullscreen; camera; microphone; geolocation"});
+      if(c.izolovat) ram.setAttribute("sandbox","allow-scripts allow-forms allow-popups allow-same-origin allow-downloads allow-modals");
       const jdi=()=>{ c.url=u.value; zmena(o); ram.src=c.url||"about:blank"; };
       u.addEventListener("keydown",e=>{if(e.key==="Enter")jdi();});
       bar.append(u,el("button",{class:"btn mini",onclick:jdi},"Načíst"),
         el("button",{class:"btn druhy mini",onclick:()=>{ram.src=ram.src;hlas("Znovu načteno");}},"⟳ Obnovit"),
-        el("button",{class:"btn druhy mini",onclick:()=>c.url&&window.open(c.url,"_blank","noopener")},"↗ Nová karta"));
+        el("button",{class:"btn druhy mini",onclick:()=>c.url&&window.open(c.url,"_blank","noopener")},"↗ Nová karta"),
+        el("button",{class:"btn druhy mini",onclick:()=>{
+          const n=prompt("Název aplikace:",o.nazev);
+          if(n&&n.trim()){ o.nazev=n.trim(); zmena(o); w.dataset.nazev=o.nazev; $("h2",w).textContent=o.nazev; kreslitPanel(); }
+        }},"✏️ Název"),
+        el("button",{class:"btn druhy mini",onclick:()=>{ zavritOkno("obj-"+o.id); nastaveniAplikace(o); }},"⚙ Nastavení"));
       const obal=el("div",{style:"flex:1;min-height:0"},ram);
       t.style.display="flex"; t.style.flexDirection="column";
       t.append(bar,obal);
       if(c.url) ram.src=c.url;
-      t.append(el("div",{class:"tichy",style:"padding:4px 12px 8px"},"Pokud se stránka nezobrazí, zakazuje vkládání do rámu — otevřete ji v nové kartě."));
       break;
     }
     case "soubor": {
@@ -1091,7 +1109,6 @@ function editor(o,t,w){
       inp.addEventListener("change",async()=>{
         const f=inp.files[0]; if(!f) return;
         c.nazevSouboru=f.name; c.mime=f.type;
-        if(f.size>1.5e6){ hlas("Soubor je příliš velký (max 1,5 MB)"); return; }
         if(/^text|json|xml|javascript|csv/.test(f.type)||/\.(md|txt|csv|json|xml|html|js|css)$/i.test(f.name)){
           c.text=await f.text(); c.data="";
         } else {
@@ -1172,6 +1189,7 @@ function nabidkaDlazdice(i){
   otevritOkno({klic:"nabidka-"+i,nazev:"Dlaždice: "+o.nazev,ikona:o.ikona,sirka:420,vyska:460,obsah:t=>{
     const akce=[
       ["Otevřít","↗",()=>{zavritOkno("nabidka-"+i);otevritObjekt(i);}],
+      ...(o.typ==="aplikace"||o.typ==="odkaz"?[["Nastavení aplikace","⚙",()=>{zavritOkno("nabidka-"+i);nastaveniAplikace(o);}]]:[]),
       ["Přejmenovat","✏️",()=>{prejmenovat(i);}],
       ["Vzhled dlaždice","🎨",()=>{zavritOkno("nabidka-"+i);vzhledDlazdice(o);}],
       ["Přesunout na plochu nebo do složky","📤",()=>{zavritOkno("nabidka-"+i);presunNaPlochu(o);}],
@@ -1228,7 +1246,7 @@ function otevritSlozku(o){
       const ul=el("ul",{class:"seznam"});
       d.forEach(x=>ul.append(el("li",{},el("span",{class:"ikonka"},x.ikona),
         el("button",{class:"rostouci",style:"text-align:left",onclick:()=>otevritObjekt(x.id)},
-          el("div",{style:"font-weight:600"},x.nazev),el("div",{class:"tichy"},TYPY[x.typ].n)),
+          el("div",{class:"tichy"},TYPY[x.typ].n),el("div",{style:"font-weight:600"},x.nazev)),
         el("button",{class:"btn druhy mini",onclick:()=>{x.rodic=null;x.plocha=o.plocha;zmena(x);kresli();hlas("Vyjmuto na plochu");}},"Na plochu"),
         el("button",{class:"o-btn",onclick:()=>{smazat(x.id);kresli();},"aria-label":"Smazat "+x.nazev},"🗑"))));
       box.append(ul);
@@ -1294,6 +1312,54 @@ function upravitPlochu(pid){
     }},"Smazat plochu"));
   }});
 }
+function zalozit(k){
+  if(k==="aplikace"||k==="odkaz") return novaAplikace(k);
+  const o=vytvorit(k); otevritObjekt(o.id); return o;
+}
+function novaAplikace(typ){
+  otevritOkno({klic:"nova-aplikace",nazev:typ==="aplikace"?"Nová aplikace v okně":"Nový odkaz",ikona:TYPY[typ].i,sirka:460,vyska:420,obsah:t=>{
+    const n=el("input",{type:"text",placeholder:"např. Registr práv a povinností"});
+    const u=el("input",{type:"url",placeholder:"https://"});
+    const ik=el("input",{type:"text",value:TYPY[typ].i,maxlength:"3"});
+    const rez=el("select",{});
+    rez.append(el("option",{value:"aplikace",selected:typ==="aplikace"},"Otevírat v okně prostředí"),
+      el("option",{value:"odkaz",selected:typ==="odkaz"},"Otevírat v nové kartě prohlížeče"));
+    const zaloz=()=>{
+      if(!n.value.trim()&&!u.value.trim()) return hlas("Zadejte název nebo adresu");
+      const o=vytvorit(rez.value,n.value.trim()||u.value.trim(),{url:u.value.trim(),vlastniOkno:rez.value==="aplikace"});
+      o.ikona=ik.value||TYPY[rez.value].i; zmena(o);
+      zavritOkno("nova-aplikace"); otevritObjekt(o.id);
+    };
+    [n,u].forEach(x=>x.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();zaloz();}}));
+    t.append(el("label",{class:"pole"},el("span",{},"Název"),n),
+      el("label",{class:"pole"},el("span",{},"Adresa"),u),
+      el("div",{class:"radek"},el("label",{class:"pole"},el("span",{},"Ikona"),ik),el("label",{class:"pole"},el("span",{},"Způsob otevírání"),rez)),
+      el("button",{class:"btn",onclick:zaloz},"Vytvořit"));
+    setTimeout(()=>n.focus(),60);
+  }});
+}
+function nastaveniAplikace(o){
+  const c=o.obsah;
+  otevritOkno({klic:"nastaveni-app-"+o.id,nazev:"Nastavení: "+o.nazev,ikona:"⚙",sirka:520,vyska:560,obsah:t=>{
+    hlavicka(o,t);
+    const u=el("input",{type:"url",value:c.url||""});
+    u.addEventListener("input",()=>{c.url=u.value;zmena(o);});
+    t.append(el("label",{class:"pole"},el("span",{},"Adresa"),u));
+    const rez=el("select",{});
+    rez.append(el("option",{value:"aplikace",selected:o.typ==="aplikace"},"Otevírat v okně prostředí"),
+      el("option",{value:"odkaz",selected:o.typ==="odkaz"},"Otevírat v nové kartě prohlížeče"));
+    rez.addEventListener("change",()=>{o.typ=rez.value;c.vlastniOkno=rez.value==="aplikace";zmena(o);kreslitPlochu();});
+    t.append(el("label",{class:"pole"},el("span",{},"Způsob otevírání"),rez));
+    const iz=el("input",{type:"checkbox"}); iz.checked=!!c.izolovat;
+    iz.addEventListener("change",()=>{c.izolovat=iz.checked;zmena(o);hlas(iz.checked?"Izolace zapnuta":"Izolace vypnuta");});
+    t.append(el("label",{class:"radek"},iz,el("span",{},"Spouštět v izolovaném rámu (sandbox)")),
+      el("p",{class:"tichy"},"Izolaci zapněte jen u cizích stránek. U vlastních aplikací ji nechte vypnutou — v izolovaném rámu jim Safari a Chrome nepustí přihlášení ani lokální úložiště, takže si nic nepamatují."),
+      el("div",{class:"pruh"},
+        el("button",{class:"btn mini",onclick:()=>{zavritOkno("nastaveni-app-"+o.id);otevritObjekt(o.id);}},"Otevřít aplikaci"),
+        el("button",{class:"btn druhy mini",onclick:()=>vzhledDlazdice(o)},"Vzhled dlaždice"),
+        el("button",{class:"btn nebezpecny mini",onclick:()=>{zavritOkno("nastaveni-app-"+o.id);smazat(o.id);}},"Smazat")));
+  }});
+}
 function novaDlazdice(){
   otevritOkno({klic:"nova",nazev:"Nová dlaždice",ikona:"＋",sirka:560,vyska:540,obsah:t=>{
     for(const [sk,nazev] of Object.entries(SKUPINY)){
@@ -1301,7 +1367,7 @@ function novaDlazdice(){
       const g=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px"});
       Object.entries(TYPY).filter(([,x])=>x.sk===sk).forEach(([k,x])=>{
         const b=el("button",{class:"karta",style:"text-align:left;display:flex;gap:10px;align-items:center;margin:0",
-          onclick:()=>{zavritOkno("nova");const o=vytvorit(k);otevritObjekt(o.id);}},
+          onclick:()=>{zavritOkno("nova");zalozit(k);}},
           el("span",{class:"d-ikona",style:"background:"+x.b},x.i),el("span",{style:"font-weight:650;font-size:13px"},x.n));
         g.append(b);
       });
@@ -1344,7 +1410,7 @@ const NASTROJE={
       const ul=el("ul",{class:"seznam"});
       d.forEach(o=>ul.append(el("li",{},el("span",{class:"ikonka"},o.ikona),
         el("button",{class:"rostouci",style:"text-align:left",onclick:()=>otevritObjekt(o.id)},
-          el("div",{style:"font-weight:600"},o.nazev),el("div",{class:"tichy"},TYPY[o.typ].n+" · "+cas(o.zmeneno))),
+          el("div",{class:"tichy"},TYPY[o.typ].n),el("div",{style:"font-weight:600"},o.nazev),el("div",{class:"tichy"},cas(o.zmeneno))),
         el("button",{class:"o-btn",onclick:()=>{smazat(o.id);kresli();},"aria-label":"Smazat "+o.nazev},"🗑"))));
       v.append(el("div",{class:"tichy"},`Celkem ${d.length} dlaždic`),ul);
     };
@@ -1606,8 +1672,9 @@ const NASTROJE={
         const li=el("li",{},el("strong",{},p.nazev+(p.id===S.aktivni?" (aktivní)":"")));
         const vn=el("ul",{});
         naPlose(p.id).forEach(o=>{
-          const oli=el("li",{},el("button",{style:"text-align:left;font-weight:600",onclick:()=>otevritObjekt(o.id)},o.nazev),
-            " — "+TYPY[o.typ].n);
+          const oli=el("li",{},el("span",{class:"tichy"},TYPY[o.typ].n+": "),
+            el("button",{style:"text-align:left;font-weight:600",onclick:()=>otevritObjekt(o.id)},o.nazev),
+            "");
           const txt=el("div",{class:"tichy"}); txt.innerHTML=nahled(o); oli.append(txt);
           vn.append(oli);
         });
@@ -1696,8 +1763,9 @@ Object.assign(NASTROJE,{
       razeni.forEach(o=>{
         const li=el("li",{},el("span",{class:"ikonka",style:`background:${o.barva}22`},o.ikona),
           el("button",{class:"rostouci",style:"text-align:left",onclick:()=>{ if(o.typ==="slozka"){slozka=o.id;kresli();} else otevritObjekt(o.id); }},
+            el("div",{class:"tichy"},TYPY[o.typ].n),
             el("div",{style:"font-weight:600"},o.nazev),
-            el("div",{class:"tichy"},TYPY[o.typ].n+" · "+cas(o.zmeneno)+(o.stitky.length?" · "+o.stitky.join(", "):""))),
+            el("div",{class:"tichy"},cas(o.zmeneno)+(o.stitky.length?" · "+o.stitky.join(", "):""))),
           el("button",{class:"o-btn",title:"Přejmenovat",onclick:()=>{prejmenovat(o.id);kresli();},"aria-label":"Přejmenovat "+o.nazev},"✏️"),
           el("button",{class:"o-btn",title:"Přesunout",onclick:()=>presunDialog(o,kresli),"aria-label":"Přesunout "+o.nazev},"📤"),
           el("button",{class:"o-btn",title:"Smazat",onclick:()=>{smazat(o.id);kresli();},"aria-label":"Smazat "+o.nazev},"🗑"));
@@ -1752,7 +1820,7 @@ Object.assign(NASTROJE,{
         el("label",{class:"pole"},el("span",{},"Způsob otevírání"),rezim),
         el("button",{class:"btn mini",onclick:()=>{
           if(!u.value) return hlas("Vyplňte adresu");
-          const o=vytvorit(rezim.value,n.value||u.value,{url:u.value,vlastniOkno:rezim.value==="aplikace"});
+          const o=vytvorit(rezim.value,n.value||u.value,{url:u.value,vlastniOkno:rezim.value==="aplikace",izolovat:false});
           o.ikona=ik.value||"🪟"; zmena(o); n.value="";u.value=""; kresli(); hlas("Aplikace přidána");
         }},"＋ Přidat"));
     };
@@ -2134,7 +2202,8 @@ function nastaveniOkno(t){
       obsah.append(el("p",{class:"tichy"},"Změny se ukládají okamžitě."));
     }
     if(akt==="data"){
-      obsah.append(el("p",{class:"tichy"},"Celé prostředí je jeden soubor JSON — plochy, dlaždice, nastavení i koš."));
+      obsah.append(el("p",{class:"tichy"},"Celé prostředí je jeden soubor JSON — plochy, dlaždice, nastavení i koš. Ukládá se do GitHubu; v prohlížeči se drží jen přístup k repozitáři, takže tu nejsou žádné limity velikosti."),
+        el("div",{class:"karta"},"Velikost prostředí: "+(velikostDat()/1024).toFixed(1)+" kB"));
       obsah.append(el("div",{class:"pruh"},
         el("button",{class:"btn mini",onclick:()=>stahnout("prostredi-"+dnes()+".json",JSON.stringify(S,null,2),"application/json")},"Stáhnout zálohu"),
         el("button",{class:"btn druhy mini",onclick:()=>otevritNastroj("github")},"Synchronizace s GitHubem")));
@@ -2143,16 +2212,16 @@ function nastaveniOkno(t){
         const s=f.files[0]; if(!s) return;
         try{ const d=JSON.parse(await s.text());
           if(!confirm("Nahradit současné prostředí obsahem souboru?")) return;
-          S=Object.assign(novyStav(),d); ulozit(); pouzitVzhled(); kreslitPanel(); kreslitPlochu();
+          const g=S.github; prevzitStav(d); S.github=g; ulozit();
           hlas("Prostředí obnoveno ze zálohy"); }
         catch(e){ hlas("Soubor se nepodařilo načíst"); log("Chyba importu",e.message); }
       });
       obsah.append(el("label",{class:"pole"},el("span",{},"Obnovit ze zálohy"),f));
       obsah.append(el("button",{class:"btn nebezpecny mini",onclick:()=>{
-        if(!confirm("Opravdu smazat všechna data a začít znovu?")) return;
-        localStorage.removeItem(KLIC); S=novyStav(); ulozit(); pouzitVzhled(); kreslitPanel(); kreslitPlochu();
+        if(!confirm("Vyprázdnit prostředí a začít znovu? V GitHubu zůstane poslední commit, dokud znovu neuložíte.")) return;
+        const g=S.github; S=novyStav(); S.github=g; ulozit(); pouzitVzhled(); kreslitPanel(); kreslitPlochu();
         $$(".okno").forEach(w=>w.remove()); hlas("Prostředí vyprázdněno");
-      }},"Smazat vše a začít znovu"));
+      }},"Vyprázdnit prostředí"));
     }
   };
   zalozky.forEach(([k,n])=>{
@@ -2173,12 +2242,12 @@ function novaPlocha(){
 let ghCasovac=null, ghSha=null, ghBezi=false, ghCeka=false;
 function stavUlozeni(t){ const e=$("#stav-ulozeni"); if(e) e.textContent=t; }
 function ghPripraven(){ return !!(S.github.repo&&S.github.token); }
-function ghAuto(){ return ghPripraven()&&S.github.autoUlozit; }
+function ghAuto(){ return ghPripraven()&&S.github.autoUlozit!==false; }
 function naplanovatSync(){
   if(!ghAuto()) return;
   ghCeka=true; clearTimeout(ghCasovac);
   stavUlozeni("Čeká na uložení do GitHubu…");
-  ghCasovac=setTimeout(()=>{ ghUlozit(true); }, 20000);
+  ghCasovac=setTimeout(()=>{ ghUlozit(true); }, 8000);
 }
 async function ghApi(cesta,volby={}){
   const g=S.github;
@@ -2196,7 +2265,7 @@ async function ghUlozit(tise){
     if(!ghSha){ try{ ghSha=(await ghApi(g.cesta+"?ref="+g.vetev)).sha; }catch{ ghSha=null; } }
     const obsah=btoa(unescape(encodeURIComponent(JSON.stringify(S,null,2))));
     const r=await ghApi(g.cesta,{method:"PUT",body:JSON.stringify({message:"Uložení prostředí "+new Date().toISOString(),content:obsah,branch:g.vetev,sha:ghSha})});
-    ghSha=r.content?.sha||null; ghCeka=false;
+    ghSha=r.content?.sha||null; ghCeka=false; nesynchronizovano=false;
     stavUlozeni("Uloženo v GitHubu "+new Date().toLocaleTimeString("cs-CZ"));
     log("GitHub: uloženo"); if(!tise) hlas("Uloženo do GitHubu");
     return true;
@@ -2211,10 +2280,8 @@ async function ghNacist(){
   const sr=await ghApi(g.cesta+"?ref="+g.vetev);
   ghSha=sr.sha;
   const d=JSON.parse(decodeURIComponent(escape(atob(sr.content.replace(/\n/g,"")))));
-  S=Object.assign(novyStav(),d);
-  S.vzhled=Object.assign(novyStav().vzhled,d.vzhled||{});
-  S.vzhled.barvy=Object.assign({...VYCHOZI_BARVY},(d.vzhled||{}).barvy||{});
-  ulozit(); pouzitVzhled(); kreslitPanel(); kreslitPlochu();
+  prevzitStav(d);
+  stavUlozeni("Načteno z GitHubu "+new Date().toLocaleTimeString("cs-CZ"));
 }
 function githubOkno(t){
   const g=S.github;
@@ -2223,15 +2290,15 @@ function githubOkno(t){
     i.addEventListener("input",()=>{g[klic]=i.value;ghSha=null;ulozit();});
     t.append(el("label",{class:"pole"},el("span",{},popis),i));
   };
-  t.append(el("p",{class:"tichy"},"Prostředí se ukládá jako jeden soubor JSON do vašeho repozitáře. Token zůstává jen ve vašem prohlížeči."));
+  t.append(el("p",{class:"tichy"},"Repozitář je jediné úložiště prostředí — celý stav je jeden soubor JSON, každé uložení je commit. V prohlížeči zůstává jen přístup k repozitáři, žádná data."));
   p("Repozitář (uživatel/repo)","repo","text","egdilna/prostredi");
   p("Větev","vetev","text","main");
   p("Cesta k souboru","cesta","text","prostredi.json");
   p("Osobní přístupový token","token","password","ghp_…");
-  const auto=el("input",{type:"checkbox"}); auto.checked=!!g.autoUlozit;
+  const auto=el("input",{type:"checkbox"}); auto.checked=g.autoUlozit!==false;
   auto.addEventListener("change",()=>{ g.autoUlozit=auto.checked; ulozit();
     hlas(auto.checked?"Automatické ukládání zapnuto":"Automatické ukládání vypnuto"); });
-  t.append(el("label",{class:"radek"},auto,el("span",{},"Ukládat automaticky (20 s po poslední změně a při zavření karty)")));
+  t.append(el("label",{class:"radek"},auto,el("span",{},"Ukládat automaticky (8 s po poslední změně, při skrytí karty a při zavření)")));
   const stav=el("div",{class:"vysledek"},ghPripraven()?(g.autoUlozit?"Automatické ukládání je zapnuté.":"Připraveno, ukládá se ručně."):"Vyplňte repozitář a token.");
   const hl=x=>{stav.textContent=x;log("GitHub",x);};
   t.append(el("div",{class:"pruh",style:"margin-top:10px"},
@@ -2268,7 +2335,7 @@ function prikazy(){
     {n:"Uspořádat okna vedle sebe",i:"▦",f:rozlozitOkna}
   ];
   Object.entries(NASTROJE).forEach(([k,t])=>{ if(t.skryt||zapnuty(k)) p.push({n:"Nástroj: "+t.n,i:t.i,f:()=>otevritNastroj(k)}); });
-  Object.entries(TYPY).forEach(([k,t])=>p.push({n:"Vytvořit: "+t.n,i:t.i,f:()=>{const o=vytvorit(k);otevritObjekt(o.id);}}));
+  Object.entries(TYPY).forEach(([k,t])=>p.push({n:"Vytvořit: "+t.n,i:t.i,f:()=>zalozit(k)}));
   S.plochy.forEach((x,n)=>p.push({n:"Plocha: "+x.nazev,i:x.ikona||"🗂️",f:()=>{S.aktivni=x.id;ulozit();kreslitPlochu();kreslitPanel();}}));
   S.objekty.forEach(o=>p.push({n:"Otevřít: "+o.nazev,i:o.ikona,f:()=>otevritObjekt(o.id)}));
   Object.entries(MOTIVY).forEach(([n,m])=>p.push({n:"Motiv: "+n,i:"🎨",f:()=>{Object.assign(S.vzhled.barvy,m);ulozit();pouzitVzhled();hlas("Motiv "+n);}}));
@@ -2325,7 +2392,7 @@ function otevritNabidku(){
         zk?el("span",{class:"tichy",style:"font-family:var(--pismo-mono);font-size:11px"},zk):null)));
       t.append(ul);
     };
-    sekce("Vytvořit",[...RYCHLE_TVORBA.map(k=>[TYPY[k].i,TYPY[k].n,()=>{const o=vytvorit(k);otevritObjekt(o.id);}]),
+    sekce("Vytvořit",[...RYCHLE_TVORBA.map(k=>[TYPY[k].i,TYPY[k].n,()=>zalozit(k)]),
       ["⋯","Všechny druhy dlaždic…",novaDlazdice]]);
     sekce("Nástroje",Object.entries(NASTROJE).filter(([k,x])=>!x.skryt&&zapnuty(k)).map(([k,x])=>[x.i,x.n,()=>otevritNastroj(k)]));
     sekce("Plochy",[...S.plochy.map(p=>[p.ikona||"🗂️",p.nazev,()=>{S.aktivni=p.id;ulozit();kreslitPlochu();kreslitPanel();}]),
@@ -2381,18 +2448,30 @@ $("#dlazdice-obal").addEventListener("contextmenu",e=>{
   if(e.target.closest(".dlazdice")) return;
   e.preventDefault(); novaDlazdice();
 });
-window.addEventListener("beforeunload",()=>{
-  ulozit();
-  if(ghAuto()&&ghCeka&&navigator.sendBeacon===undefined){}
+window.addEventListener("beforeunload",e=>{
+  ulozitKonfiguraci();
+  if(nesynchronizovano&&ghPripraven()) ghUlozit(true);
+  if(nesynchronizovano){ e.preventDefault(); e.returnValue="Změny ještě nebyly uloženy do GitHubu."; }
 });
-document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="hidden"&&ghAuto()&&ghCeka){ clearTimeout(ghCasovac); ghUlozit(true); } });
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="hidden"&&nesynchronizovano&&ghPripraven()){ clearTimeout(ghCasovac); ghUlozit(true); }
+});
+setInterval(()=>{ if(nesynchronizovano&&ghAuto()&&!ghBezi) ghUlozit(true); },120000);
 
 nacist();
-if(!localStorage.getItem(KLIC)&&window.innerWidth<820) S.vzhled.panelStav="skryty";
+if(window.innerWidth<820) S.vzhled.panelStav="skryty";
 pouzitVzhled();
 kreslitPanel();
 kreslitPlochu();
 log("Prostředí spuštěno");
+if(ghPripraven()){
+  stavUlozeni("Načítám z GitHubu…");
+  ghNacist().catch(e=>{ stavUlozeni("Načtení z GitHubu selhalo"); log("GitHub chyba",e.message);
+    hlas("Načtení z GitHubu selhalo — zkontrolujte nastavení"); otevritNastroj("github"); });
+} else {
+  stavUlozeni("Bez úložiště — nastavte GitHub");
+  otevritNastroj("github");
+}
 setInterval(()=>{
   const dnesni=S.pripominky.filter(p=>p.datum===dnes());
   if(dnesni.length&&!window.__pripomenuto){ window.__pripomenuto=true; hlas("Dnes máte "+dnesni.length+" připomínku/y"); }
