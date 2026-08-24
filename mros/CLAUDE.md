@@ -148,7 +148,7 @@ Ukazatel stavu je na dvou místech (`#stav-ulozeni` v patičce panelu,
 ## 7. Okna
 
 ```js
-otevritOkno({ klic, nazev, ikona, sirka, vyska, bezokraje, obsah })
+otevritOkno({ klic, nazev, ikona, sirka, vyska, bezokraje, escZavre, obsah })
 ```
 
 - `klic` je jedinečný identifikátor; druhé volání se stejným klíčem okno jen vytáhne
@@ -158,12 +158,24 @@ otevritOkno({ klic, nazev, ikona, sirka, vyska, bezokraje, obsah })
   `h5` je zvolené záměrně, aby šlo mezi okny skákat klávesou pro nadpisy a nekolidovalo
   to s `h1` plochy, `h2` sekcí panelu a `h3` uvnitř nástrojů.
 - Pod 620 px šířky se okna otevírají přes celou plochu.
+- **Escape v okně okno minimalizuje**, nezavírá ho — obsah i rozdělaná práce zůstávají
+  a okno se vrátí kliknutím v bočním panelu (sekce *Okna*) nebo příkazem
+  *Zobrazit skrytá okna*. Zavírá se jen křížkem v liště okna.
+- `escZavre:true` je výjimka pro nabídky a krátké dialogy (`nabidka-*`, `nova`,
+  `presun-*`, `vzhled-*`, `plocha-*`, `nastaveni-app-*`, `seznam-ploch`), kde Escape
+  znamená „zrušit" — ty se zavírají. Nové okno s trvalým obsahem příznak nedostává.
+- Protože `.okno.min` je `display:none`, `minimalizovat()` odvede fokus ven
+  (`fokusPoMinimalizaci()`: položka okna v panelu → jiné otevřené okno → dlaždice).
 
 **Maximalizace = režim jednoho okna.** `maximalizovat()` + `izolovatMaximalizovane()`
 nastaví bočnímu panelu, liště, mřížce dlaždic i ostatním oknům `inert` a `aria-hidden`
 a přidá `#os.jenokno`. Pro odečítač i tabulátor zbyde jen to jedno okno. Režim se ruší
 obnovením velikosti, minimalizací, zavřením, uspořádáním oken i otevřením nového okna.
 **Když měníš cokoli kolem oken, volej `izolovatMaximalizovane()`.**
+
+`#sidebar` a `#plocha` mají v mřížce `#os` napevno `grid-column:1` a `grid-column:2`.
+Bez toho by se plocha při skrytém panelu (`sidebar.hidden`, i režim jednoho okna) přesunula
+do sloupce `auto`, zúžila se na šířku obsahu a maximalizované okno by byl jen pruh vlevo.
 
 ---
 
@@ -227,7 +239,7 @@ Alt+číslo ani Ctrl+písmeno. Vše ostatní jde přes paletu a nabídku.
 | Delete | do koše |
 | Ctrl+←/→ | změna pořadí dlaždice |
 | Ctrl+Alt+šipky | ukotvení okna k okraji |
-| Escape | zavřít okno nebo nabídku |
+| Escape | minimalizovat okno do panelu; v nabídce, dialogu a paletě zavřít |
 
 Novou zkratku přidej na **tři** místa: obsluha v `document.addEventListener("keydown")`,
 seznam v nástroji `napoveda`, popisky v `prikazy()` a `otevritNabidku()`.
