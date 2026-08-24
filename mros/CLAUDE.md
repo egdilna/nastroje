@@ -80,6 +80,8 @@ Pořadí sekcí v `prostredi.html`:
   dialogy              stahnout prejmenovat nabidkaDlazdice vzhledDlazdice
                        presunNaPlochu otevritSlozku spustitSezeni upravitPlochu
                        zalozit novaAplikace nastaveniAplikace novaDlazdice
+  podpora nástrojů     PRAMENY PREDPISY citace* | SIF_* sif* | tab* | GLOSAR_UKAZKA
+                       text* (textTypografie textZPdf textExtrahuj …) | QR_* qr*
   nástroje             NASTROJE = { … } + Object.assign(NASTROJE, { … })
   nastavení            nastaveniOkno novaPlocha spravaStitku
   GitHub               stav* gh* kUlozeni githubOkno
@@ -100,8 +102,11 @@ S = {
   vzorTecek, panelStav}, chovani{}, nastroje{klic:bool}|null, stitkyBarvy{},
   github{repo,vetev,cesta,token,autoUlozit}, plochy[], aktivni,
   objekty[], kos[], schranka[], pripominky[], zapisnik, navyky[],
-  mereni{zaznamy[],bezi}, sablony[], zmeneno
+  mereni{zaznamy[],bezi}, sablony[], glosar[], zmeneno
 }
+
+`glosar[]` je `{ id, pojem, vyklad, oblast, odkaz, zmeneno }` — vlastní slovník pojmů
+uživatele. Ukázková sada (`GLOSAR_UKAZKA`) se vkládá jen na vyžádání tlačítkem.
 ```
 
 Objekt (dlaždice):
@@ -191,6 +196,30 @@ Registr `NASTROJE` — položka `{ n, i, b, w, v, f, skryt }` (název, ikona, ba
 4. Vypnuté nástroje se neukazují v panelu ani v paletě.
 
 `nastaveni` a `napoveda` mají `skryt: true` — jsou trvale v patičce panelu.
+
+### Podpora nástrojů
+
+Delší logika nástrojů žije v samostatných funkcích nad registrem, ne v `f()`:
+
+| Oblast | Funkce | Poznámka |
+|---|---|---|
+| Citace | `citaceUstanoveni` `citacePramen` `citaceVarianty` `citaceOdkaz` `citaceNormalizuj` `citaceNajdi` | `PRAMENY` = typy pramenů se skloňováním, `PREDPISY` = našeptávání názvů |
+| Šifrování | `sifKlic` `sifZasifruj` `sifDesifruj` | AES-256-GCM, PBKDF2 (210 000 iterací), formát `MROS-AES-GCM-1:` + base64(sůl 16 B \| IV 12 B \| šifra) |
+| Tabulky | `tabNacti` `tabZCsv` `tabZMarkdownu` `tabZJson` `tabZHtml` `tabDo*` `tabTransponuj` | `tabNacti` rozpozná formát vstupu sám |
+| Text | `textTypografie` `textZPdf` `textNeviditelne` `textZalomit` `textExtrahuj` `textFrekvence` `textCtivost` `textMnozina` `textVety` `textSpojitOdstavce` | čisté funkce text → text, jdou použít i jinde |
+| QR | `qrMatice` `qrSvg` `qrIban` | vlastní kodér podle ISO/IEC 18004 |
+
+**QR kodér** umí režim bajtů (UTF-8), verze 1–40 a všechny čtyři úrovně opravy.
+`QR_ECC` a `QR_BLOKY` jsou tabulky ze standardu, zbytek se počítá:
+`qrSurove()` (počet datových modulů), `qrZarovnani()` (zarovnávací značky),
+Reed–Solomon nad GF(256) s generátorem 0x11D, výběr masky podle penalizace.
+Výstup je bit po bitu shodný s knihovnou `qrcode` — při zásahu do kodéru se to dá
+znovu ověřit porovnáním matic. `qrIban()` skládá IBAN z tuzemského čísla účtu
+(kontrolní číslice mod 97), používá ho šablona QR platby (SPAYD).
+
+**Nezlomitelné mezery a jiné neviditelné znaky** patří do zdrojového kódu jen jako
+`\u00a0`, nikdy doslova — jinak se nedají v kódu odlišit od obyčejné mezery a tiše
+rozbijí regulární výrazy.
 
 ---
 

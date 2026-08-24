@@ -461,6 +461,7 @@ function novyStav(){
     navyky:[],
     mereni:{zaznamy:[],bezi:null},
     sablony:[],
+    glosar:[],
     plochy:[{id:"p1",nazev:"Plocha",ikona:"🏠"}],
     aktivni:"p1",
     objekty:[],
@@ -1312,6 +1313,10 @@ function stahnout(nazev,obsah,mime="text/plain"){
   const a=el("a",{href:u,download:nazev}); a.click(); setTimeout(()=>URL.revokeObjectURL(u),2000);
   log("Staženo",nazev);
 }
+function zkopirovat(text,hlaska){
+  if(!text) return hlas("Není co kopírovat");
+  navigator.clipboard?.writeText(text); doSchranky(text); hlas(hlaska||"Zkopírováno");
+}
 function doSchranky(text){
   if(!text) return;
   S.schranka.unshift({text:String(text).slice(0,4000),kdy:Date.now()});
@@ -1689,24 +1694,118 @@ const NASTROJE={
         const kl=[...new Set(pole.flatMap(r=>Object.keys(r)))];
         return [kl.join(";"),...pole.map(r=>kl.map(k=>String(r[k]??"")).join(";"))].join("\n");})},"JSON → CSV")),vys);
   }},
-  textnastroje:{n:"Textové nástroje",i:"✍️",b:"#8a6cff",f:(t)=>{
-    const ta=el("textarea",{"aria-label":"Text",placeholder:"Vložte text…"});
+  textnastroje:{n:"Textové nástroje",i:"✍️",b:"#8a6cff",w:780,v:660,f:(t)=>{
+    const ta=el("textarea",{"aria-label":"Text",placeholder:"Vložte text…",style:"min-height:140px"});
+    const tb=el("textarea",{"aria-label":"Druhý seznam pro množinové operace",placeholder:"Druhý seznam (B) — jedna položka na řádek",style:"min-height:80px"});
     const st=el("div",{class:"tichy"});
     const vys=el("div",{class:"vysledek"});
+    const historie=[];
     const stat=()=>{ const x=ta.value;
       st.textContent=`Znaků: ${x.length} · bez mezer: ${x.replace(/\s/g,"").length} · slov: ${(x.trim().match(/\S+/g)||[]).length} · řádků: ${x?x.split("\n").length:0}`; };
     ta.addEventListener("input",stat); stat();
-    const u=f=>()=>{ vys.textContent=f(ta.value); };
+    const u=f=>()=>{ try{ vys.textContent=String(f(ta.value)??""); }catch(e){ vys.textContent="Chyba: "+e.message; } };
+    const radky=(x,f)=>f(x.split("\n")).join("\n");
+    const b=(popis,f,hlavni)=>el("button",{class:"btn "+(hlavni?"":"druhy ")+"mini",onclick:f},popis);
+    const pole=(popisek,vychozi,sirka,typ)=>{
+      const i=el("input",{type:typ||"text",value:vychozi,"aria-label":popisek,placeholder:popisek});
+      if(typ==="number"){ i.min="20"; i.max="400"; }
+      return {i,prvek:el("label",{class:"pole",style:"flex:0 0 "+(sirka||"140px")+";margin:0"},el("span",{},popisek),i)};
+    };
+    const skupina=(nadpis,...prvky)=>t.append(el("h3",{class:"nadpis"},nadpis),el("div",{class:"pruh"},prvky.flat()));
+
     t.append(ta,st,el("div",{class:"pruh",style:"margin-top:10px"},
-      el("button",{class:"btn mini",onclick:u(x=>x.toUpperCase())},"VELKÁ"),
-      el("button",{class:"btn druhy mini",onclick:u(x=>x.toLowerCase())},"malá"),
-      el("button",{class:"btn druhy mini",onclick:u(x=>x.replace(/\b\p{L}/gu,c=>c.toUpperCase()))},"Každé Slovo"),
-      el("button",{class:"btn druhy mini",onclick:u(x=>x.split("\n").sort((a,b)=>a.localeCompare(b,"cs")).join("\n"))},"Seřadit řádky"),
-      el("button",{class:"btn druhy mini",onclick:u(x=>[...new Set(x.split("\n"))].join("\n"))},"Odstranit duplicity"),
-      el("button",{class:"btn druhy mini",onclick:u(x=>x.split("\n").filter(r=>r.trim()).join("\n"))},"Zahodit prázdné"),
-      el("button",{class:"btn druhy mini",onclick:u(x=>x.normalize("NFD").replace(/[\u0300-\u036f]/g,""))},"Bez diakritiky"),
-      el("button",{class:"btn druhy mini",onclick:u(x=>x.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""))},"Vytvořit slug"),
-      el("button",{class:"btn druhy mini",onclick:u(x=>x.split("\n").reverse().join("\n"))},"Obrátit pořadí")),vys);
+      b("Použít výsledek na vstup",()=>{
+        if(!vys.textContent) return hlas("Nejdřív něco spočítejte");
+        historie.push(ta.value); ta.value=vys.textContent; stat(); hlas("Výsledek použit jako vstup");
+      },true),
+      b("Zkopírovat výsledek",()=>zkopirovat(vys.textContent)),
+      b("Krok zpět",()=>{ if(!historie.length) return hlas("Není kam se vrátit"); ta.value=historie.pop(); stat(); }),
+      b("Vyčistit",()=>{ historie.push(ta.value); ta.value=""; vys.textContent=""; stat(); }),
+      b("Jako poznámku",()=>{
+        if(!vys.textContent) return hlas("Není co uložit");
+        const o=vytvorit("text","Text z nástrojů",{text:vys.textContent}); otevritObjekt(o.id);
+      })),vys);
+
+    skupina("Velikost písmen",
+      b("VELKÁ",u(x=>x.toUpperCase())), b("malá",u(x=>x.toLowerCase())),
+      b("Každé Slovo",u(x=>x.replace(/\b\p{L}/gu,c=>c.toUpperCase()))),
+      b("Jako věty",u(textVety)), b("Bez diakritiky",u(x=>x.normalize("NFD").replace(/[\u0300-\u036f]/g,""))),
+      b("Vytvořit slug",u(x=>x.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""))));
+
+    skupina("Čištění a typografie",
+      b("České typografické úpravy",u(textTypografie)),
+      b("Očistit text z PDF",u(textZPdf)),
+      b("Odstranit neviditelné znaky",u(textNeviditelne)),
+      b("Sjednotit mezery",u(x=>radky(x,r=>r.map(y=>y.replace(/[ \t]+/g," ").trim())))),
+      b("Spojit odstavce",u(textSpojitOdstavce)),
+      b("Odstranit HTML značky",u(x=>new DOMParser().parseFromString(x,"text/html").body.textContent||"")),
+      b("Escapovat HTML",u(x=>esc(x))));
+
+    skupina("Řádky",
+      b("Seřadit A→Z",u(x=>radky(x,r=>r.sort((a,c)=>a.localeCompare(c,"cs"))))),
+      b("Seřadit číselně",u(x=>radky(x,r=>r.sort((a,c)=>(parseFloat(a)||0)-(parseFloat(c)||0)||a.localeCompare(c,"cs"))))),
+      b("Podle délky",u(x=>radky(x,r=>r.sort((a,c)=>a.length-c.length)))),
+      b("Obrátit pořadí",u(x=>radky(x,r=>r.reverse()))),
+      b("Zamíchat",u(x=>radky(x,r=>{ for(let i=r.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [r[i],r[j]]=[r[j],r[i]]; } return r; }))),
+      b("Odstranit duplicity",u(x=>[...new Set(x.split("\n"))].join("\n"))),
+      b("Zahodit prázdné",u(x=>radky(x,r=>r.filter(y=>y.trim())))),
+      b("Oříznout mezery",u(x=>radky(x,r=>r.map(y=>y.trim())))),
+      b("Číslovat řádky",u(x=>radky(x,r=>r.map((y,i)=>(i+1)+". "+y)))),
+      b("Odstranit číslování",u(x=>radky(x,r=>r.map(y=>y.replace(/^\s*(\d+[.)]|[-*•>])\s+/,""))))));
+
+    const sirka=pole("Šířka řádku","80","110px","number");
+    const odd=pole("Oddělovač",";","130px");
+    const pre=pole("Před řádek","","140px");
+    const suf=pole("Za řádek","","140px");
+    skupina("Zalomení, spojení a okraje řádků",
+      sirka.prvek, b("Zalomit na šířku",u(x=>textZalomit(x,sirka.i.value))),
+      b("Zrušit zalomení",u(textSpojitOdstavce)),
+      odd.prvek,
+      b("Rozdělit na řádky",u(x=>x.split(odd.i.value||";").map(y=>y.trim()).join("\n"))),
+      b("Spojit řádky",u(x=>x.split("\n").filter(y=>y.trim()).join(odd.i.value||";"))),
+      pre.prvek, suf.prvek,
+      b("Obalit řádky",u(x=>radky(x,r=>r.map(y=>y.trim()?pre.i.value+y+suf.i.value:y)))));
+
+    const najit=pole("Najít","","170px"), nahradit=pole("Nahradit za","","170px");
+    const jeRegex=el("input",{type:"checkbox"}), citlive=el("input",{type:"checkbox"});
+    const hledaci=()=>{
+      if(!najit.i.value) throw new Error("vyplňte pole Najít.");
+      return jeRegex.checked?new RegExp(najit.i.value,"g"+(citlive.checked?"":"i"))
+        :new RegExp(najit.i.value.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"g"+(citlive.checked?"":"i"));
+    };
+    skupina("Hledání a nahrazení",
+      najit.prvek, nahradit.prvek,
+      el("label",{class:"radek",style:"gap:6px;align-items:center;margin:0 8px 0 0"},jeRegex,el("span",{},"regulární výraz")),
+      el("label",{class:"radek",style:"gap:6px;align-items:center;margin:0 8px 0 0"},citlive,el("span",{},"rozlišovat velikost")),
+      b("Nahradit vše",u(x=>{ const r=hledaci(); const poc=(x.match(r)||[]).length;
+        const v=x.replace(r,nahradit.i.value); hlas("Nahrazeno výskytů: "+poc); return v; })),
+      b("Spočítat výskyty",u(x=>{ const r=hledaci(); const n=x.match(r)||[];
+        const poc=new Map(); n.forEach(s=>poc.set(s,(poc.get(s)||0)+1));
+        return "Celkem výskytů: "+n.length+"\n\n"+[...poc.entries()].sort((a,c)=>c[1]-a[1]).map(([s,c])=>c+"×  "+s).join("\n"); })),
+      b("Ponechat jen shodné řádky",u(x=>{ const r=hledaci(); return radky(x,p=>p.filter(y=>{r.lastIndex=0;return r.test(y);})); })),
+      b("Zahodit shodné řádky",u(x=>{ const r=hledaci(); return radky(x,p=>p.filter(y=>{r.lastIndex=0;return !r.test(y);})); })));
+
+    const druh=el("select",{"aria-label":"Co vytáhnout"});
+    [["email","E-maily"],["url","Odkazy"],["telefon","Telefonní čísla"],["cislo","Čísla"],["datum","Data"],
+     ["ico","Osmimístná čísla (IČO)"],["predpis","Předpisy ve Sbírce"],["vlastni","Vlastní regulární výraz"]]
+      .forEach(([v,n])=>druh.append(el("option",{value:v},n)));
+    const vlastni=pole("Vlastní výraz","","200px");
+    skupina("Vytažení údajů",
+      el("label",{class:"pole",style:"flex:0 0 220px;margin:0"},el("span",{},"Co vytáhnout"),druh),
+      vlastni.prvek,
+      b("Vytáhnout",u(x=>textExtrahuj(x,druh.value,vlastni.i.value)||"Nic nenalezeno.")));
+
+    skupina("Rozbor textu",
+      b("Statistika a čtivost",u(textCtivost)),
+      b("Frekvence slov",u(textFrekvence)));
+
+    t.append(el("h3",{class:"nadpis"},"Množinové operace nad řádky"),
+      el("p",{class:"tichy"},"A je hlavní text nahoře, B je seznam níže."),tb,
+      el("div",{class:"pruh",style:"margin-top:10px"},
+        b("Průnik A ∩ B",u(x=>textMnozina(x,tb.value,"prunik"))),
+        b("A bez B",u(x=>textMnozina(x,tb.value,"rozdilAB"))),
+        b("B bez A",u(x=>textMnozina(x,tb.value,"rozdilBA"))),
+        b("Sjednocení A ∪ B",u(x=>textMnozina(x,tb.value,"sjednoceni")))));
   }},
   diff:{n:"Porovnání textů",i:"🔀",b:"#d4536b",w:680,f:(t)=>{
     const a=el("textarea",{class:"kod","aria-label":"Původní text"}), b=el("textarea",{class:"kod","aria-label":"Nový text"});
@@ -1859,6 +1958,7 @@ const NASTROJE={
       ["Správce souborů","Boční panel → Správce souborů: procházení ploch a složek, přejmenování, přesun, mazání"],
       ["Aplikace","Boční panel → Aplikace: katalog webových aplikací otevíraných v okně nebo v nové kartě"],
       ["Které nástroje se zobrazují","Nastavení → záložka Nástroje: zaškrtávací seznam"],
+      ["Citace předpisů, glosář, převod tabulek, QR kód, šifrovaná poznámka","Nastavení → Nástroje: zapněte je v seznamu, pak se objeví v bočním panelu i v paletě"],
       ["Barvy, názvy, tvary, písmo","Nastavení → Názvy, Barvy, Tvary a písmo"],
       ["Zálohy a GitHub","Nastavení → Data, nebo tlačítko s obláčkem dole v panelu"]];
     const ul2=el("ul",{class:"seznam"});
@@ -1884,6 +1984,534 @@ function prezentacniRezim(zap){
   ulozit(); pouzitVzhled(); kreslitPlochu();
   hlas(zap?"Prezentační režim zapnut":"Prezentační režim vypnut");
 }
+/* ============================================================
+   Podpora rozšiřujících nástrojů
+   ============================================================ */
+
+/* ---------- citace pramenů ----------
+   Skládá citaci z pramene (předpis, norma, smlouva, vnitřní předpis) a ustanovení
+   (§/čl., odstavec, písmeno, bod, věta, příloha) a umí citace najít a sjednotit v textu. */
+const PRAMENY={
+  zakon:{n:"Zákon",nom:"zákon",gen:"zákona",cislo:"č. {c} Sb.",sb:true},
+  vyhlaska:{n:"Vyhláška",nom:"vyhláška",gen:"vyhlášky",cislo:"č. {c} Sb.",sb:true},
+  narizeni:{n:"Nařízení vlády",nom:"nařízení vlády",gen:"nařízení vlády",cislo:"č. {c} Sb.",sb:true},
+  usneseni:{n:"Usnesení vlády",nom:"usnesení vlády",gen:"usnesení vlády",cislo:"č. {c}"},
+  narizeniEU:{n:"Nařízení EU",nom:"nařízení Evropského parlamentu a Rady (EU)",gen:"nařízení Evropského parlamentu a Rady (EU)",cislo:"{c}"},
+  smerniceEU:{n:"Směrnice EU",nom:"směrnice Evropského parlamentu a Rady (EU)",gen:"směrnice Evropského parlamentu a Rady (EU)",cislo:"{c}"},
+  norma:{n:"Technická norma",nom:"norma",gen:"normy",cislo:"{c}"},
+  vnitrni:{n:"Vnitřní předpis",nom:"vnitřní předpis",gen:"vnitřního předpisu",cislo:"č. {c}"},
+  smlouva:{n:"Smlouva",nom:"smlouva",gen:"smlouvy",cislo:"č. {c}"},
+  metodika:{n:"Metodika nebo pokyn",nom:"metodický pokyn",gen:"metodického pokynu",cislo:"č. {c}"},
+  vlastni:{n:"Vlastní pramen",nom:"",gen:"",cislo:"č. {c}"}
+};
+/* nejčastěji citované předpisy — jen pro našeptávání názvu, seznam lze rozšířit */
+const PREDPISY={
+  "500/2004":"správní řád","89/2012":"občanský zákoník","262/2006":"zákoník práce",
+  "111/2009":"o základních registrech","12/2020":"o právu na digitální služby",
+  "365/2000":"o informačních systémech veřejné správy",
+  "300/2008":"o elektronických úkonech a autorizované konverzi dokumentů",
+  "250/2017":"o elektronické identifikaci","297/2016":"o službách vytvářejících důvěru pro elektronické transakce",
+  "106/1999":"o svobodném přístupu k informacím","110/2019":"o zpracování osobních údajů",
+  "499/2004":"o archivnictví a spisové službě","134/2016":"o zadávání veřejných zakázek",
+  "128/2000":"o obcích","129/2000":"o krajích","131/2000":"o hlavním městě Praze",
+  "320/2001":"o finanční kontrole ve veřejné správě","250/2000":"o rozpočtových pravidlech územních rozpočtů",
+  "634/2004":"o správních poplatcích","250/2016":"o odpovědnosti za přestupky a řízení o nich",
+  "150/2002":"soudní řád správní","280/2009":"daňový řád","283/2021":"stavební zákon",
+  "181/2014":"o kybernetické bezpečnosti","99/2019":"o přístupnosti internetových stránek a mobilních aplikací",
+  "2016/679":"obecné nařízení o ochraně osobních údajů (GDPR)","910/2014":"nařízení eIDAS"
+};
+function citaceUstanoveni(s){
+  const c=[];
+  if(s.cast) c.push((s.jednotka==="čl."?"čl. ":"§ ")+s.cast);
+  if(s.odst) c.push("odst. "+s.odst);
+  if(s.pism) c.push("písm. "+s.pism.replace(/\)+$/,"")+")");
+  if(s.bod) c.push("bod "+s.bod);
+  if(s.veta) c.push("věta "+s.veta);
+  if(s.priloha) c.push("příloha č. "+s.priloha);
+  return c.join(" ");
+}
+function citacePramen(s,pad){
+  const p=PRAMENY[s.typ]||PRAMENY.zakon;
+  if(s.typ==="vlastni") return [s.nazev,s.cislo?p.cislo.replace("{c}",s.cislo):""].filter(Boolean).join(" ").trim();
+  const cis=s.cislo?p.cislo.replace("{c}",s.cislo):"";
+  let x=[pad==="gen"?p.gen:p.nom,cis].filter(Boolean).join(" ");
+  if(s.nazev) x+=", "+s.nazev;
+  return x;
+}
+function citaceOdkaz(s){
+  const p=PRAMENY[s.typ];
+  if(!p||!p.sb) return "";
+  const m=/^(\d+)\/(\d{4})$/.exec(s.cislo||"");
+  if(!m) return "";
+  const kotva=[s.cast&&"p"+s.cast,s.odst,s.pism&&s.pism.replace(/\)+$/,"")].filter(Boolean).join("-");
+  return "https://www.zakonyprolidi.cz/cs/"+m[2]+"-"+m[1]+(kotva?"#"+kotva:"");
+}
+function citaceVarianty(s){
+  const ust=citaceUstanoveni(s), gen=citacePramen(s,"gen"), nom=citacePramen(s,"nom");
+  const dovetek=s.zneni&&PRAMENY[s.typ]&&PRAMENY[s.typ].sb?", ve znění pozdějších předpisů":"";
+  const v=[];
+  if(ust&&gen) v.push(["Plná citace",ust+" "+gen+dovetek]);
+  if(ust&&gen) v.push(["Zkrácená citace",ust+" "+gen.split(",")[0]]);
+  if(ust&&gen) v.push(["V závorce","("+ust+" "+gen.split(",")[0]+")"]);
+  if(nom) v.push(["Pramen samostatně",nom+dovetek]);
+  if(ust) v.push(["Jen ustanovení",ust]);
+  const url=citaceOdkaz(s);
+  if(url){ v.push(["Odkaz",url]); v.push(["Odkaz v Markdownu","["+(ust?ust+" ":"")+(gen||nom).split(",")[0]+"]("+url+")"]); }
+  return v;
+}
+function citaceNormalizuj(x){
+  let t=String(x||"");
+  t=t.replace(/§\s*(\d)/g,"§ $1");
+  t=t.replace(/\b(odst|písm|čl|bod|str|č)\.\s*/gi,(m,w)=>w+". ");
+  t=t.replace(/\b(odstavec|odstavce)\s+(\d)/gi,"odst. $2");
+  t=t.replace(/\b(písmeno|písmene)\s+([a-z])/gi,"písm. $2");
+  t=t.replace(/\b(zák\.|zákon|zákona|zákonem|vyhl\.|vyhláška|vyhlášky)\s*č\. ?\s*(\d+)\s*\/\s*(\d{4})\s*Sb\.?/gi,
+    (m,w,c,r)=>{ const s=/^zák\.$/i.test(w)?"zákona":(/^vyhl\.$/i.test(w)?"vyhlášky":w); return s+" č. "+c+"/"+r+" Sb."; });
+  t=t.replace(/(^|[^/\d])č\. ?\s*(\d+)\s*\/\s*(\d{4})\s*Sb\.?/g,"$1č. $2/$3 Sb.");
+  t=t.replace(/písm\. ([a-z])(?!\))/gi,"písm. $1)");
+  return t;
+}
+function citaceNajdi(x){
+  const t=citaceNormalizuj(x), nalez=[];
+  const pridej=(text,nazev,url)=>{ if(!nalez.some(n=>n.text===text)) nalez.push({text,nazev,url}); };
+  for(const m of t.matchAll(/č\. ?(\d+)\/(\d{4}) Sb\./g)){
+    const kl=m[1]+"/"+m[2];
+    pridej(m[0].trim(),PREDPISY[kl]||"",("https://www.zakonyprolidi.cz/cs/"+m[2]+"-"+m[1]));
+  }
+  for(const m of t.matchAll(/(?:§|čl\.) ?\d+[a-z]?(?:\s+odst\. ?\d+)?(?:\s+písm\. ?[a-z]\))?(?:\s+bod\.? ?\d+)?/g))
+    pridej(m[0].trim(),"","");
+  return nalez;
+}
+
+/* ---------- šifrování poznámek ----------
+   AES-256-GCM, klíč odvozený z hesla přes PBKDF2. Formát bloku:
+   hlavička + base64(sůl 16 B | inicializační vektor 12 B | šifrovaný text). */
+const SIF_HLAVICKA="MROS-AES-GCM-1:";
+const SIF_ITERACI=210000;
+function bytyDoBase64(b){
+  let s="";
+  for(let i=0;i<b.length;i+=8192) s+=String.fromCharCode.apply(null,b.subarray(i,i+8192));
+  return btoa(s);
+}
+function base64DoBytu(t){
+  const s=atob(t), b=new Uint8Array(s.length);
+  for(let i=0;i<s.length;i++) b[i]=s.charCodeAt(i);
+  return b;
+}
+async function sifKlic(heslo,sul){
+  const zaklad=await crypto.subtle.importKey("raw",new TextEncoder().encode(heslo),"PBKDF2",false,["deriveKey"]);
+  return crypto.subtle.deriveKey({name:"PBKDF2",salt:sul,iterations:SIF_ITERACI,hash:"SHA-256"},
+    zaklad,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
+}
+async function sifZasifruj(text,heslo){
+  if(!text.trim()) throw new Error("Není co šifrovat.");
+  const sul=crypto.getRandomValues(new Uint8Array(16)), iv=crypto.getRandomValues(new Uint8Array(12));
+  const k=await sifKlic(heslo,sul);
+  const c=new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM",iv},k,new TextEncoder().encode(text)));
+  const vse=new Uint8Array(28+c.length); vse.set(sul,0); vse.set(iv,16); vse.set(c,28);
+  return SIF_HLAVICKA+"\n"+bytyDoBase64(vse).replace(/(.{72})/g,"$1\n");
+}
+async function sifDesifruj(blok,heslo){
+  const cisty=String(blok||"").replace(SIF_HLAVICKA,"").replace(/\s+/g,"");
+  if(!cisty) throw new Error("Vložte zašifrovaný blok.");
+  let vse;
+  try{ vse=base64DoBytu(cisty); }catch(e){ throw new Error("Blok není platný — chybí nebo je poškozený."); }
+  if(vse.length<29) throw new Error("Blok je příliš krátký.");
+  const k=await sifKlic(heslo,vse.slice(0,16));
+  try{
+    const c=await crypto.subtle.decrypt({name:"AES-GCM",iv:vse.slice(16,28)},k,vse.slice(28));
+    return new TextDecoder().decode(c);
+  }catch(e){ throw new Error("nesprávné heslo nebo poškozený text."); }
+}
+
+/* ---------- tabulkový převodník ----------
+   Rozpozná vstup (CSV, TSV, Markdown, JSON, HTML) a převede mřížku na jiný formát. */
+function tabOddelovac(text){
+  const r=(text.split("\n").find(x=>x.trim())||"");
+  const poc=d=>(r.split(d).length-1);
+  const kandidati=[["\t",poc("\t")],[";",poc(";")],[",",poc(",")],["|",poc("|")]];
+  kandidati.sort((a,b)=>b[1]-a[1]);
+  return kandidati[0][1]?kandidati[0][0]:";";
+}
+function tabZCsv(text,odd){
+  const radky=[]; let pole=[],bunka="",vUvoz=false;
+  const t=text.replace(/\r\n?/g,"\n");
+  for(let i=0;i<t.length;i++){
+    const z=t[i];
+    if(vUvoz){
+      if(z==='"'){ if(t[i+1]==='"'){bunka+='"';i++;} else vUvoz=false; }
+      else bunka+=z;
+    } else if(z==='"') vUvoz=true;
+    else if(z===odd){ pole.push(bunka); bunka=""; }
+    else if(z==="\n"){ pole.push(bunka); radky.push(pole); pole=[]; bunka=""; }
+    else bunka+=z;
+  }
+  if(bunka!==""||pole.length){ pole.push(bunka); radky.push(pole); }
+  return radky.filter(r=>r.some(b=>b!==""));
+}
+function tabZMarkdownu(text){
+  return text.split("\n").filter(r=>r.includes("|")&&!/^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(r))
+    .map(r=>r.replace(/^\s*\|/,"").replace(/\|\s*$/,"").split("|").map(b=>b.trim()));
+}
+function tabZJson(text){
+  const d=JSON.parse(text);
+  if(Array.isArray(d)&&d.length&&Array.isArray(d[0])) return d.map(r=>r.map(x=>String(x??"")));
+  if(Array.isArray(d)){
+    const kl=[...new Set(d.flatMap(o=>Object.keys(o||{})))];
+    return [kl,...d.map(o=>kl.map(k=>{const v=(o||{})[k]; return v==null?"":(typeof v==="object"?JSON.stringify(v):String(v));}))];
+  }
+  return [["klíč","hodnota"],...Object.entries(d).map(([k,v])=>[k,typeof v==="object"?JSON.stringify(v):String(v)])];
+}
+function tabZHtml(text){
+  const doc=new DOMParser().parseFromString(text,"text/html");
+  const tab=doc.querySelector("table"); if(!tab) throw new Error("V HTML není žádná tabulka.");
+  return [...tab.querySelectorAll("tr")].map(r=>[...r.querySelectorAll("th,td")].map(b=>b.textContent.trim()));
+}
+function tabNacti(text,odd){
+  const t=text.trim();
+  if(!t) return {format:"prázdné",mrizka:[]};
+  if(/^[[{]/.test(t)){ try{ return {format:"JSON",mrizka:tabZJson(t)}; }catch(e){} }
+  if(/<table/i.test(t)) return {format:"HTML",mrizka:tabZHtml(t)};
+  if(/^\s*\|/m.test(t)&&/\|/.test(t)) return {format:"Markdown",mrizka:tabZMarkdownu(t)};
+  const d=odd&&odd!=="auto"?odd:tabOddelovac(t);
+  return {format:d==="\t"?"TSV":"CSV ("+d+")",mrizka:tabZCsv(t,d)};
+}
+function tabSrovnej(m){
+  const s=Math.max(0,...m.map(r=>r.length));
+  return m.map(r=>{ const n=r.slice(); while(n.length<s) n.push(""); return n; });
+}
+function tabTransponuj(m){
+  const s=tabSrovnej(m);
+  return s.length?s[0].map((_,i)=>s.map(r=>r[i])):[];
+}
+function tabDoCsv(m,odd){
+  return tabSrovnej(m).map(r=>r.map(b=>{
+    const x=String(b??"");
+    return /["\n]|[;,\t|]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x;
+  }).join(odd)).join("\n");
+}
+function tabDoMarkdownu(m,hlavicka){
+  const s=tabSrovnej(m); if(!s.length) return "";
+  const h=hlavicka?s[0]:s[0].map((_,i)=>"Sloupec "+(i+1));
+  const telo=hlavicka?s.slice(1):s;
+  const uprav=b=>String(b??"").replace(/\|/g,"\\|");
+  return ["| "+h.map(uprav).join(" | ")+" |",
+    "|"+h.map(()=>"---").join("|")+"|",
+    ...telo.map(r=>"| "+r.map(uprav).join(" | ")+" |")].join("\n");
+}
+function tabDoJson(m,hlavicka,objekty){
+  const s=tabSrovnej(m); if(!s.length) return "[]";
+  if(!objekty) return JSON.stringify(s,null,2);
+  const h=hlavicka?s[0]:s[0].map((_,i)=>"sloupec"+(i+1));
+  const telo=hlavicka?s.slice(1):s;
+  return JSON.stringify(telo.map(r=>Object.fromEntries(h.map((k,i)=>[k,r[i]??""]))),null,2);
+}
+function tabDoHtml(m,hlavicka){
+  const s=tabSrovnej(m); if(!s.length) return "";
+  const bunky=(r,tag)=>r.map(b=>"    <"+tag+">"+esc(b)+"</"+tag+">").join("\n");
+  const casti=["<table>"];
+  if(hlavicka&&s.length){ casti.push("  <thead>\n  <tr>\n"+bunky(s[0],"th")+"\n  </tr>\n  </thead>"); }
+  casti.push("  <tbody>");
+  (hlavicka?s.slice(1):s).forEach(r=>casti.push("  <tr>\n"+bunky(r,"td")+"\n  </tr>"));
+  casti.push("  </tbody>","</table>");
+  return casti.join("\n");
+}
+function tabDoSeznamu(m,hlavicka){
+  const s=tabSrovnej(m); if(!s.length) return "";
+  if(!hlavicka) return s.map(r=>"- "+r.filter(Boolean).join(" — ")).join("\n");
+  const h=s[0];
+  return s.slice(1).map(r=>"- **"+(r[0]||"")+"**\n"+h.slice(1).map((k,i)=>"  - "+k+": "+(r[i+1]||"")).join("\n")).join("\n");
+}
+
+/* ukázková sada pojmů pro glosář — jen výchozí náplň, uživatel si vede vlastní */
+const GLOSAR_UKAZKA=[
+  {pojem:"ISVS",vyklad:"Informační systém veřejné správy — systém sloužící k výkonu veřejné správy podle zákona č. 365/2000 Sb.",oblast:"eGovernment",odkaz:""},
+  {pojem:"ZR",vyklad:"Základní registry — ROB, ROS, RÚIAN a RPP; referenční údaje veřejné správy podle zákona č. 111/2009 Sb.",oblast:"Registry",odkaz:""},
+  {pojem:"ROB",vyklad:"Registr obyvatel — referenční údaje o fyzických osobách.",oblast:"Registry",odkaz:""},
+  {pojem:"ROS",vyklad:"Registr osob — referenční údaje o právnických osobách, podnikajících fyzických osobách a orgánech veřejné moci.",oblast:"Registry",odkaz:""},
+  {pojem:"RÚIAN",vyklad:"Registr územní identifikace, adres a nemovitostí.",oblast:"Registry",odkaz:""},
+  {pojem:"RPP",vyklad:"Registr práv a povinností — agendy, činnostní role a oprávnění k údajům.",oblast:"Registry",odkaz:""},
+  {pojem:"AIS",vyklad:"Agendový informační systém — systém, ve kterém se vykonává konkrétní agenda.",oblast:"eGovernment",odkaz:""},
+  {pojem:"ISDS",vyklad:"Informační systém datových schránek podle zákona č. 300/2008 Sb.",oblast:"Komunikace",odkaz:""},
+  {pojem:"NIA",vyklad:"Národní bod pro identifikaci a autentizaci — prokazování totožnosti při přístupu k digitálním službám.",oblast:"Identita",odkaz:""},
+  {pojem:"eIDAS",vyklad:"Nařízení (EU) č. 910/2014 o elektronické identifikaci a službách vytvářejících důvěru.",oblast:"Právo",odkaz:""},
+  {pojem:"CzechPOINT",vyklad:"Kontaktní místo veřejné správy poskytující ověřené výstupy z informačních systémů.",oblast:"Služby",odkaz:""},
+  {pojem:"NSESSS",vyklad:"Národní standard pro elektronické systémy spisové služby.",oblast:"Spisová služba",odkaz:""},
+  {pojem:"Skartační znak",vyklad:"Označení A, S nebo V určující, jak se s dokumentem naloží po uplynutí skartační lhůty.",oblast:"Spisová služba",odkaz:""},
+  {pojem:"Referenční údaj",vyklad:"Údaj vedený v základním registru, který se považuje za správný, dokud není prokázán opak.",oblast:"Registry",odkaz:""},
+  {pojem:"Ohlašovatel agendy",vyklad:"Orgán veřejné moci, který ohlašuje agendu do registru práv a povinností.",oblast:"eGovernment",odkaz:""}
+];
+
+/* ---------- textové operace ----------
+   Samostatné funkce, aby šly použít i mimo nástroj Textové nástroje. */
+const MALA_CS="a-záčďéěíňóřšťúůýž";
+function textVety(x){
+  return String(x).toLowerCase().replace(/(^|[.!?…]\s+|\n\s*)(\p{L})/gu,(m,p,z)=>p+z.toUpperCase());
+}
+function textTypografie(x){
+  const chranene=[];   /* adresy a e-maily se zúprav vyjmou, jinak by v nich přibývaly mezery */
+  let t=String(x).replace(/\r\n?/g,"\n")
+    .replace(/(?:https?:\/\/|www\.)[^\s<>"']+|[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g,
+      m=>{ chranene.push(m); return "\u0000"+(chranene.length-1)+"\u0000"; });
+  t=t.replace(/[ \t]{2,}/g," ");
+  t=t.replace(/\.{3,}/g,"…");
+  t=t.replace(/ +([,.;:!?])/g,"$1");
+  t=t.replace(/([,;:!?])(?=[^\s\d)\]}\/"'])/g,"$1 ");
+  t=t.replace(/(^|\s)-(\s)/g,"$1–$2");
+  t=t.replace(/(\d)\s?-\s?(\d)/g,"$1–$2");
+  t=t.replace(/"([^"\n]*)"/g,"„$1“");
+  t=t.replace(/(^|[\s(])'([^'\n]*)'/g,"$1‚$2‘");
+  t=t.replace(/(^|[\s(„])([kKsSvVzZoOuUaAiI]) +/g,"$1$2\u00a0");
+  t=t.replace(/§ *(\d)/g,"§\u00a0$1");
+  t=t.replace(/\b(č|odst|písm|čl|str|sp|zn)\. +/g,"$1.\u00a0");
+  t=t.replace(/(\d) +(%|‰|Kč|EUR|€|km|kg|ks|m|cm|mm|hod|min|Sb\.)/g,"$1\u00a0$2");
+  t=t.split("\n").map(r=>r.replace(/[ \t]+$/,"")).join("\n");
+  return t.replace(/\u0000(\d+)\u0000/g,(m,i)=>chranene[Number(i)]);
+}
+function textZPdf(x){
+  let t=String(x).replace(/\r\n?/g,"\n").replace(/\u00ad/g,"");
+  t=t.replace(new RegExp("(["+MALA_CS+"])-\\n(["+MALA_CS+"])","g"),"$1$2");
+  t=t.replace(/^[ \t]*\d{1,4}[ \t]*$/gm,"");
+  t=t.replace(/^[ \t]*(Stránka|Strana|Page)[ \t]+\d+([ \t]*(z|of)[ \t]*\d+)?[ \t]*$/gim,"");
+  t=t.replace(new RegExp("([^\\n.!?:;•\\-–])\\n(?=["+MALA_CS+"(])","g"),"$1 ");
+  return t.replace(/\n{3,}/g,"\n\n").replace(/[ \t]{2,}/g," ").trim();
+}
+function textNeviditelne(x){
+  return String(x).replace(/\r\n?/g,"\n")
+    .replace(/[\u200b-\u200f\u2028\u2029\ufeff\u00ad]/g,"")
+    .replace(/[\u00a0\u202f\u2007\u2009]/g," ");
+}
+function textZalomit(x,sirka){
+  const n=Math.max(20,Number(sirka)||80);
+  return String(x).split("\n").map(radek=>{
+    if(radek.length<=n) return radek;
+    const slova=radek.split(/ +/), ven=[]; let r="";
+    for(const s of slova){
+      if(!r) r=s;
+      else if((r+" "+s).length<=n) r+=" "+s;
+      else { ven.push(r); r=s; }
+    }
+    if(r) ven.push(r);
+    return ven.join("\n");
+  }).join("\n");
+}
+function textSpojitOdstavce(x){
+  return String(x).replace(/\r\n?/g,"\n").split(/\n{2,}/)
+    .map(o=>o.split("\n").map(r=>r.trim()).filter(Boolean).join(" ")).join("\n\n");
+}
+function textExtrahuj(x,druh,vlastni){
+  const vzory={
+    email:/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g,
+    url:/\b(?:https?:\/\/|www\.)[^\s<>"'()]+/g,
+    telefon:/(?:\+\d{1,3} ?)?(?:\d{3} ?){2}\d{3}\b/g,
+    cislo:/-?\d+(?:[.,]\d+)?/g,
+    datum:/\b\d{1,2}\.\s?\d{1,2}\.\s?\d{4}\b|\b\d{4}-\d{2}-\d{2}\b/g,
+    ico:/\b\d{8}\b/g,
+    predpis:/\b\d{1,3}\/\d{4}\s*Sb\./g
+  };
+  const r=druh==="vlastni"?new RegExp(vlastni,"g"):vzory[druh];
+  if(!r) return "";
+  const nalez=String(x).match(r)||[];
+  return [...new Set(nalez.map(s=>s.trim()))].join("\n");
+}
+const TEXT_SLOVA_BEZ=new Set(("a i o u v z s k na se je že do ve pro na po od za do jako být byl byla bylo jsou jsem "+
+  "ten ta to ty ti tato tento této jeho její jejich který která které kteří kterých si už však ale nebo než též tak také "+
+  "podle při před nad pod mezi bez proti podle to co jak kde kdy když aby").split(" "));
+function textFrekvence(x){
+  const slova=(String(x).toLowerCase().match(/\p{L}[\p{L}\p{M}-]*/gu)||[]).filter(s=>s.length>2&&!TEXT_SLOVA_BEZ.has(s));
+  const poc=new Map();
+  slova.forEach(s=>poc.set(s,(poc.get(s)||0)+1));
+  const razeno=[...poc.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"cs")).slice(0,40);
+  if(!razeno.length) return "Žádná slova k vyhodnocení.";
+  const sirka=Math.max(...razeno.map(([s])=>s.length));
+  return razeno.map(([s,n])=>s.padEnd(sirka+2)+String(n).padStart(4)+"  "+"▍".repeat(Math.min(30,n))).join("\n");
+}
+function textCtivost(x){
+  const t=String(x).trim();
+  const slova=(t.match(/\S+/g)||[]).length;
+  const vety=(t.match(/[.!?…]+(\s|$)/g)||[]).length||(t?1:0);
+  const znaky=t.length, bezMezer=t.replace(/\s/g,"").length;
+  const odstavce=t?t.split(/\n{2,}/).filter(o=>o.trim()).length:0;
+  const min=slova/200;
+  const cas=min<1?Math.round(min*60)+" s":Math.round(min)+" min";
+  return ["Znaků: "+znaky+" (bez mezer "+bezMezer+")","Slov: "+slova,"Vět: "+vety,"Odstavců: "+odstavce,
+    "Průměrná délka věty: "+(vety?(slova/vety).toFixed(1):"0")+" slov",
+    "Průměrná délka slova: "+(slova?(bezMezer/slova).toFixed(1):"0")+" znaků",
+    "Odhad doby čtení: "+cas+" (200 slov za minutu)"].join("\n");
+}
+function textMnozina(a,b,operace){
+  const na=String(a).split("\n").map(r=>r.trim()).filter(Boolean);
+  const nb=new Set(String(b).split("\n").map(r=>r.trim()).filter(Boolean));
+  const sa=new Set(na);
+  if(operace==="prunik") return na.filter(r=>nb.has(r)).filter((r,i,p)=>p.indexOf(r)===i).join("\n");
+  if(operace==="rozdilAB") return na.filter(r=>!nb.has(r)).filter((r,i,p)=>p.indexOf(r)===i).join("\n");
+  if(operace==="rozdilBA") return [...nb].filter(r=>!sa.has(r)).join("\n");
+  return [...new Set([...na,...nb])].join("\n");
+}
+
+/* ---------- QR kód (ISO/IEC 18004, režim bajtů) ----------
+   Vlastní kodér: vybere nejmenší verzi, spočítá Reed–Solomonovy opravné kódy,
+   proloží bloky, vykreslí značky a vybere masku s nejnižší penalizací. */
+const QR_UROVNE={L:0,M:1,Q:2,H:3};
+const QR_UROVEN_BITY=[1,0,3,2];
+const QR_ECC="7 10 15 20 26 18 20 24 30 18 20 24 26 30 22 24 28 30 28 28 28 28 30 30 26 28 30 30 30 30 30 30 30 30 30 30 30 30 30 30|10 16 26 18 24 16 18 22 22 26 30 22 22 24 24 28 28 26 26 26 26 28 28 28 28 28 28 28 28 28 28 28 28 28 28 28 28 28 28 28|13 22 18 26 18 24 18 22 20 24 28 26 24 20 30 24 28 28 26 30 28 30 30 30 30 28 30 30 30 30 30 30 30 30 30 30 30 30 30 30|17 28 22 16 22 28 26 26 24 28 24 28 22 24 24 30 28 28 26 28 30 24 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30".split("|").map(r=>r.split(" ").map(Number));
+const QR_BLOKY="1 1 1 1 1 2 2 2 2 4 4 4 4 4 6 6 6 6 7 8 8 9 9 10 12 12 12 13 14 15 16 17 18 19 19 20 21 22 24 25|1 1 1 2 2 4 4 4 5 5 5 8 9 9 10 10 11 13 14 16 17 17 18 20 21 23 25 26 28 29 31 33 35 37 38 40 43 45 47 49|1 1 2 2 4 4 6 6 8 8 8 10 12 16 12 17 16 18 21 20 23 23 25 27 29 34 34 35 38 40 43 45 48 51 53 56 59 62 65 68|1 1 2 4 4 4 5 6 8 8 11 11 16 16 18 16 19 21 25 25 25 34 30 32 35 37 40 42 45 48 51 54 57 60 63 66 70 74 77 81".split("|").map(r=>r.split(" ").map(Number));
+const QR_EXP=new Uint8Array(512), QR_LOG=new Uint8Array(256);
+for(let i=0,x=1;i<255;i++){ QR_EXP[i]=x; QR_LOG[x]=i; x=(x<<1)^((x>>7)*0x11d); }
+for(let i=255;i<512;i++) QR_EXP[i]=QR_EXP[i-255];
+const qrNas=(a,b)=>(a&&b)?QR_EXP[QR_LOG[a]+QR_LOG[b]]:0;
+
+const qrSurove=v=>{ let r=(16*v+128)*v+64;
+  if(v>=2){ const a=Math.floor(v/7)+2; r-=(25*a-10)*a-55; if(v>=7) r-=36; } return r; };
+const qrDatSlov=(v,u)=>Math.floor(qrSurove(v)/8)-QR_ECC[u][v-1]*QR_BLOKY[u][v-1];
+function qrZarovnani(v){
+  if(v===1) return [];
+  const poc=Math.floor(v/7)+2, krok=(v===32)?26:Math.ceil((v*4+4)/(poc*2-2))*2, p=[6];
+  for(let x=v*4+10;p.length<poc;x-=krok) p.splice(1,0,x);
+  return p;
+}
+function qrGenerator(st){
+  let g=[1];
+  for(let i=0;i<st;i++){ const n=new Array(g.length+1).fill(0);
+    for(let j=0;j<g.length;j++){ n[j]^=g[j]; n[j+1]^=qrNas(g[j],QR_EXP[i]); }
+    g=n; }
+  return g;
+}
+function qrOpravne(data,st){
+  const g=qrGenerator(st), r=new Uint8Array(st);
+  for(const b of data){ const f=b^r[0];
+    r.copyWithin(0,1); r[st-1]=0;
+    for(let j=0;j<st;j++) r[j]^=qrNas(g[j+1],f); }
+  return r;
+}
+/* text → prokládaná posloupnost kódových slov */
+function qrKodovaSlova(bajty,v,u){
+  const kapacita=qrDatSlov(v,u), pocetBitu=(v<10?8:16);
+  const bity=[];
+  const pridej=(x,d)=>{ for(let i=d-1;i>=0;i--) bity.push((x>>>i)&1); };
+  pridej(4,4); pridej(bajty.length,pocetBitu);
+  for(const b of bajty) pridej(b,8);
+  pridej(0,Math.min(4,kapacita*8-bity.length));
+  while(bity.length%8) bity.push(0);
+  const data=[];
+  for(let i=0;i<bity.length;i+=8) data.push(parseInt(bity.slice(i,i+8).join(""),2));
+  for(let i=0;data.length<kapacita;i++) data.push(i%2?0x11:0xec);
+  const bloku=QR_BLOKY[u][v-1], st=QR_ECC[u][v-1];
+  const kratke=Math.floor(kapacita/bloku), dlouhych=kapacita%bloku;
+  const dataBloky=[], eccBloky=[];
+  let p=0;
+  for(let i=0;i<bloku;i++){
+    const len=kratke+(i>=bloku-dlouhych?1:0);
+    const d=data.slice(p,p+len); p+=len;
+    dataBloky.push(d); eccBloky.push(qrOpravne(d,st));
+  }
+  const vysledek=[];
+  for(let i=0;i<kratke+1;i++) for(const d of dataBloky) if(i<d.length) vysledek.push(d[i]);
+  for(let i=0;i<st;i++) for(const e of eccBloky) vysledek.push(e[i]);
+  return vysledek;
+}
+/* hlavní funkce: text → matice modulů */
+function qrMatice(text,uroven="M"){
+  const u=QR_UROVNE[uroven]??1;
+  const bajty=[...new TextEncoder().encode(text)];
+  let v=0;
+  for(let i=1;i<=40;i++){ const bitu=4+(i<10?8:16)+bajty.length*8; if(bitu<=qrDatSlov(i,u)*8){ v=i; break; } }
+  if(!v) throw new Error("Text je příliš dlouhý i pro největší QR kód (verze 40).");
+  const slova=qrKodovaSlova(bajty,v,u), n=v*4+17;
+  const m=Array.from({length:n},()=>new Int8Array(n).fill(-1));   /* -1 = volný modul */
+  const kresli=(x,y,w,h,f)=>{ for(let dy=0;dy<h;dy++) for(let dx=0;dx<w;dx++){ const a=y+dy,b=x+dx; if(a>=0&&a<n&&b>=0&&b<n) m[a][b]=f(dx,dy); } };
+  const hledacek=(x,y)=>{ kresli(x-1,y-1,9,9,()=>0);
+    kresli(x,y,7,7,(dx,dy)=>(dx===0||dx===6||dy===0||dy===6||(dx>=2&&dx<=4&&dy>=2&&dy<=4))?1:0); };
+  hledacek(0,0); hledacek(n-7,0); hledacek(0,n-7);
+  for(let i=8;i<n-8;i++){ m[6][i]=m[i][6]=(i%2===0)?1:0; }                      /* časovací vzory */
+  const z=qrZarovnani(v);
+  for(const y of z) for(const x of z){
+    if((x===6&&y===6)||(x===6&&y===n-7)||(x===n-7&&y===6)) continue;
+    kresli(x-2,y-2,5,5,(dx,dy)=>(dx===0||dx===4||dy===0||dy===4||(dx===2&&dy===2))?1:0);
+  }
+  m[n-8][8]=1;                                                                   /* tmavý modul */
+  for(let i=0;i<9;i++){ if(m[8][i]<0) m[8][i]=0; if(m[i][8]<0) m[i][8]=0; }       /* místo pro formát */
+  for(let i=0;i<8;i++){ if(m[8][n-1-i]<0) m[8][n-1-i]=0; if(m[n-1-i][8]<0) m[n-1-i][8]=0; }
+  if(v>=7){
+    let r=v; for(let i=0;i<12;i++) r=(r<<1)^((r>>>11)*0x1f25);
+    const bity=(v<<12)|r;
+    for(let i=0;i<18;i++){ const b=(bity>>>i)&1; m[Math.floor(i/3)][n-11+i%3]=b; m[n-11+i%3][Math.floor(i/3)]=b; }
+  }
+  const rezervovano=m.map(r=>r.map(x=>x>=0?1:0));
+  let idx=0, bit=7;
+  for(let pravy=n-1;pravy>=1;pravy-=2){
+    if(pravy===6) pravy=5;
+    for(let sm=0;sm<n;sm++){
+      const y=((n-1-pravy)&2)===0?n-1-sm:sm;                                      /* směr hada */
+      for(let dx=0;dx<2;dx++){
+        const x=pravy-dx;
+        if(rezervovano[y][x]) continue;
+        m[y][x]=idx<slova.length?((slova[idx]>>>bit)&1):0;
+        if(--bit<0){ bit=7; idx++; }
+      }
+    }
+  }
+  const maskFn=[(x,y)=>(x+y)%2,(x,y)=>y%2,(x,y)=>x%3,(x,y)=>(x+y)%3,
+    (x,y)=>(Math.floor(y/2)+Math.floor(x/3))%2,(x,y)=>(x*y)%2+(x*y)%3,
+    (x,y)=>((x*y)%2+(x*y)%3)%2,(x,y)=>(((x+y)%2)+((x*y)%3))%2];
+  let nej=null, nejMaska=0, nejPen=Infinity;
+  for(let maska=0;maska<8;maska++){
+    const k=m.map(r=>Int8Array.from(r));
+    for(let y=0;y<n;y++) for(let x=0;x<n;x++) if(!rezervovano[y][x]&&maskFn[maska](x,y)===0) k[y][x]^=1;
+    let d=(QR_UROVEN_BITY[u]<<3)|maska, r=d;
+    for(let i=0;i<10;i++) r=(r<<1)^((r>>>9)*0x537);
+    const fb=(((d<<10)|r)^0x5412);
+    for(let i=0;i<15;i++){
+      const b=(fb>>>i)&1;
+      if(i<6) k[i][8]=b; else if(i===6) k[7][8]=b; else if(i===7) k[8][8]=b;
+      else if(i===8) k[8][7]=b; else k[8][14-i]=b;
+      if(i<8) k[8][n-1-i]=b; else k[n-15+i][8]=b;
+    }
+    const p=qrPenalizace(k,n);
+    if(p<nejPen){ nejPen=p; nej=k; nejMaska=maska; }
+  }
+  return {n,m:nej,verze:v,uroven,maska:nejMaska};
+}
+function qrPenalizace(k,n){
+  let p=0;
+  const rada=(get)=>{ for(let y=0;y<n;y++){ let b=get(y,0),d=1;
+    for(let x=1;x<n;x++){ const c=get(y,x); if(c===b) d++; else { if(d>=5) p+=3+(d-5); b=c; d=1; } }
+    if(d>=5) p+=3+(d-5); } };
+  rada((y,x)=>k[y][x]); rada((y,x)=>k[x][y]);
+  for(let y=0;y<n-1;y++) for(let x=0;x<n-1;x++){
+    const c=k[y][x]; if(c===k[y][x+1]&&c===k[y+1][x]&&c===k[y+1][x+1]) p+=3; }
+  const vzor=[1,0,1,1,1,0,1,0,0,0,0], vzor2=[0,0,0,0,1,0,1,1,1,0,1];
+  const shoda=(get,y,x,v)=>{ for(let i=0;i<11;i++) if(get(y,x+i)!==v[i]) return false; return true; };
+  for(let y=0;y<n;y++) for(let x=0;x+11<=n;x++){
+    if(shoda((a,b)=>k[a][b],y,x,vzor)||shoda((a,b)=>k[a][b],y,x,vzor2)) p+=40;
+    if(shoda((a,b)=>k[b][a],y,x,vzor)||shoda((a,b)=>k[b][a],y,x,vzor2)) p+=40;
+  }
+  let tmavych=0; for(let y=0;y<n;y++) for(let x=0;x<n;x++) tmavych+=k[y][x];
+  p+=Math.abs(Math.ceil((tmavych*100/(n*n))/5)-10)*10;   /* odchylka podílu tmavých od 50 % po 5 % */
+  return p;
+}
+
+/* QR jako SVG — ostré při libovolném zvětšení a vhodné do tisku */
+function qrSvg(q,px=8,okraj=4){
+  const c=q.n+okraj*2, cesty=[];
+  for(let y=0;y<q.n;y++) for(let x=0;x<q.n;x++)
+    if(q.m[y][x]) cesty.push("M"+(x+okraj)+" "+(y+okraj)+"h1v1h-1z");
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="'+c*px+'" height="'+c*px+'" viewBox="0 0 '+c+" "+c+'" shape-rendering="crispEdges">'+
+    '<rect width="'+c+'" height="'+c+'" fill="#ffffff"/><path fill="#000000" d="'+cesty.join("")+'"/></svg>';
+}
+/* číslo účtu (předčíslí-číslo/kód banky) → IBAN; hotový IBAN se jen očistí */
+function qrIban(ucet){
+  const x=String(ucet||"").replace(/\s+/g,"").toUpperCase();
+  if(/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(x)) return x;
+  const m=/^(?:(\d{1,6})-)?(\d{1,10})\/(\d{4})$/.exec(x);
+  if(!m) return "";
+  const bban=m[3]+String(m[1]||"").padStart(6,"0")+m[2].padStart(10,"0");
+  const cislice=(bban+"CZ00").replace(/[A-Z]/g,z=>String(z.charCodeAt(0)-55));
+  let zbytek=0;
+  for(const c of cislice) zbytek=(zbytek*10+Number(c))%97;
+  return "CZ"+String(98-zbytek).padStart(2,"0")+bban;
+}
+
 Object.assign(NASTROJE,{
   soubory:{n:"Správce souborů",i:"🗄️",b:"#f2a33c",w:760,v:560,f:(t)=>{
     let plocha=S.aktivni, slozka=null;
@@ -2194,6 +2822,390 @@ Object.assign(NASTROJE,{
         el("button",{class:"btn",onclick:()=>{prezentacniRezim(true);zavritOkno("n-prezentace");}},"Zapnout"),
         el("button",{class:"btn druhy",onclick:()=>{prezentacniRezim(false);zavritOkno("n-prezentace");}},"Vypnout")),
       el("div",{class:"karta"},"Stav: "+(zap?"zapnuto":"vypnuto")));
+  }},
+  citace:{n:"Citace a odkazy",i:"❝",b:"#8a6cff",w:720,v:640,f:(t)=>{
+    const s={typ:"zakon",cislo:"",nazev:"",jednotka:"§",cast:"",odst:"",pism:"",bod:"",veta:"",priloha:"",zneni:true};
+    const dl=el("datalist",{id:"citace-predpisy"});
+    Object.entries(PREDPISY).forEach(([c,n])=>dl.append(el("option",{value:c},n)));
+    const vys=el("div",{}), vstupy={};
+    const pole=(popis,klic,sirka,extra)=>{
+      const i=el("input",Object.assign({type:"text",value:s[klic],"aria-label":popis},extra||{}));
+      vstupy[klic]=i;
+      i.addEventListener("input",()=>{
+        s[klic]=i.value.trim();
+        /* u známého předpisu se název doplní sám, dokud si ho uživatel nevyplní po svém */
+        if(klic==="cislo"&&PREDPISY[s.cislo]&&!s.nazev){ s.nazev=PREDPISY[s.cislo]; vstupy.nazev.value=s.nazev; }
+        kresli();
+      });
+      return el("label",{class:"pole",style:sirka?"flex:0 0 "+sirka:"flex:1;min-width:120px"},el("span",{},popis),i);
+    };
+    const kresli=()=>{
+      vys.innerHTML="";
+      const v=citaceVarianty(s);
+      if(!v.length){ vys.append(el("p",{class:"tichy"},"Vyplňte alespoň číslo pramene nebo ustanovení.")); return; }
+      const ul=el("ul",{class:"seznam"});
+      v.forEach(([popis,text])=>{
+        const b=el("button",{class:"rostouci",style:"text-align:left;padding:8px 0",
+          title:"Kliknutím zkopírujete",onclick:()=>zkopirovat(text)},
+          el("div",{class:"tichy",style:"font-size:11px"},popis),
+          el("div",{style:"font-family:var(--pismo-mono);font-size:12.5px;word-break:break-word"},text));
+        ul.append(el("li",{style:"border-bottom:1px solid var(--ram)"},b));
+      });
+      vys.append(ul,el("p",{class:"tichy"},"Kliknutím na řádek se citace zkopíruje do schránky."));
+    };
+    const vyber=el("select",{"aria-label":"Typ pramene"});
+    Object.entries(PRAMENY).forEach(([k,p])=>vyber.append(el("option",{value:k,selected:k===s.typ},p.n)));
+    vyber.addEventListener("change",()=>{s.typ=vyber.value;kresli();});
+    const jed=el("select",{"aria-label":"Označení ustanovení"});
+    ["§","čl."].forEach(x=>jed.append(el("option",{value:x},x)));
+    jed.addEventListener("change",()=>{s.jednotka=jed.value;kresli();});
+    const zn=el("input",{type:"checkbox",checked:s.zneni});
+    zn.addEventListener("change",()=>{s.zneni=zn.checked;kresli();});
+    t.append(dl,
+      el("div",{class:"radek"},el("label",{class:"pole",style:"flex:0 0 200px"},el("span",{},"Typ pramene"),vyber),
+        pole("Číslo (např. 111/2009)","cislo","180px",{list:"citace-predpisy"}),
+        pole("Název pramene","nazev")),
+      el("h3",{class:"nadpis"},"Ustanovení"),
+      el("div",{class:"radek"},
+        el("label",{class:"pole",style:"flex:0 0 90px"},el("span",{},"Označení"),jed),
+        pole("Číslo","cast","90px"),pole("Odstavec","odst","90px"),pole("Písmeno","pism","90px"),
+        pole("Bod","bod","80px"),pole("Věta","veta","110px"),pole("Příloha č.","priloha","100px")),
+      el("label",{class:"radek",style:"gap:8px;align-items:center;margin-bottom:12px"},zn,
+        el("span",{},"doplnit „ve znění pozdějších předpisů“")),
+      el("h3",{class:"nadpis"},"Varianty citace"),vys);
+    kresli();
+
+    const ta=el("textarea",{"aria-label":"Text k rozboru",placeholder:"Vložte text s citacemi…"});
+    const rozbor=el("div",{});
+    t.append(el("h3",{class:"nadpis"},"Rozbor a sjednocení citací v textu"),
+      el("p",{class:"tichy"},"Sjednotí zápis (§ 5 odst. 2 písm. a), č. 111/2009 Sb.), doplní nezlomitelné mezery a vypíše nalezené prameny."),
+      ta,el("div",{class:"pruh",style:"margin-top:10px"},
+        el("button",{class:"btn mini",onclick:()=>{
+          const n=citaceNormalizuj(ta.value);
+          rozbor.innerHTML="";
+          const box=el("div",{class:"vysledek"},n);
+          const nalez=citaceNajdi(ta.value);
+          rozbor.append(box,el("div",{class:"pruh",style:"margin-top:10px"},
+            el("button",{class:"btn mini",onclick:()=>zkopirovat(n)},"Zkopírovat text"),
+            el("button",{class:"btn druhy mini",onclick:()=>{ta.value=n;}},"Použít na vstup")));
+          if(nalez.length){
+            const ul=el("ul",{class:"seznam"});
+            nalez.forEach(x=>ul.append(el("li",{style:"padding:4px 0"},
+              el("code",{style:"font-family:var(--pismo-mono)"},x.text),
+              x.nazev?el("span",{class:"tichy"}," — "+x.nazev):null,
+              x.url?el("a",{href:x.url,target:"_blank",rel:"noopener",style:"margin-left:8px"},"otevřít"):null)));
+            rozbor.append(el("h3",{class:"nadpis"},"Nalezené prameny a ustanovení"),ul);
+          } else rozbor.append(el("p",{class:"tichy"},"Žádná citace nenalezena."));
+        }},"Rozebrat a sjednotit")),rozbor);
+  }},
+  glosar:{n:"Glosář pojmů",i:"📚",b:"#3aa1e2",w:720,v:640,f:(t)=>{
+    S.glosar=S.glosar||[];
+    let hledat="",oblast="";
+    const seznam=el("div",{});
+    const oblasti=()=>[...new Set(S.glosar.map(p=>(p.oblast||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"cs"));
+    const vyhovuje=p=>{
+      if(oblast&&(p.oblast||"")!==oblast) return false;
+      if(!hledat) return true;
+      const h=bezDiakritiky(hledat);
+      return [p.pojem,p.vyklad,p.oblast,p.odkaz].some(x=>bezDiakritiky(String(x||"")).includes(h));
+    };
+    const kresli=()=>{
+      seznam.innerHTML="";
+      const vse=S.glosar.filter(vyhovuje).sort((a,b)=>String(a.pojem||"").localeCompare(String(b.pojem||""),"cs"));
+      if(!S.glosar.length){
+        seznam.append(el("p",{class:"tichy"},"Glosář je prázdný. Přidejte vlastní pojem, nebo vložte ukázkovou sadu pojmů eGovernmentu."));
+      } else if(!vse.length) seznam.append(el("p",{class:"tichy"},"Hledání nic nenašlo."));
+      vse.forEach(p=>{
+        const k=el("div",{class:"karta"});
+        const pole=(popisek,klic,prvek)=>{
+          const i=el(prvek||"input",prvek?{"aria-label":popisek}:{type:"text","aria-label":popisek,value:p[klic]||""});
+          if(prvek) i.value=p[klic]||"";
+          i.addEventListener("input",()=>{p[klic]=i.value;p.zmeneno=Date.now();ulozit();});
+          return el("label",{class:"pole",style:"flex:1;min-width:140px"},el("span",{},popisek),i);
+        };
+        k.append(el("div",{class:"radek"},pole("Pojem nebo zkratka","pojem"),pole("Oblast","oblast"),
+          el("button",{class:"o-btn",style:"align-self:end;margin-bottom:12px","aria-label":"Smazat pojem "+(p.pojem||""),
+            onclick:()=>{ if(S.chovani.potvrzovatMazani&&!confirm("Smazat pojem „"+(p.pojem||"")+"“?")) return;
+              S.glosar=S.glosar.filter(x=>x!==p); ulozit(); kresli(); hlas("Pojem smazán"); }},"✕")),
+          pole("Výklad","vyklad","textarea"),
+          el("div",{class:"radek"},pole("Odkaz","odkaz"),
+            el("div",{class:"pruh",style:"margin:0 0 12px;align-self:end"},
+              el("button",{class:"btn druhy mini",onclick:()=>zkopirovat((p.pojem||"")+" — "+(p.vyklad||""))},"Zkopírovat"),
+              p.odkaz?el("a",{class:"btn druhy mini",href:p.odkaz,target:"_blank",rel:"noopener"},"Otevřít"):null)));
+        seznam.append(k);
+      });
+    };
+    const h=el("input",{type:"search","aria-label":"Hledat v glosáři",placeholder:"Hledat pojem, zkratku nebo výklad…"});
+    h.addEventListener("input",()=>{hledat=h.value.trim();kresli();});
+    const ob=el("select",{"aria-label":"Oblast"});
+    const naplnOblasti=()=>{ ob.innerHTML=""; ob.append(el("option",{value:""},"Všechny oblasti"));
+      oblasti().forEach(o=>ob.append(el("option",{value:o,selected:o===oblast},o))); };
+    ob.addEventListener("change",()=>{oblast=ob.value;kresli();});
+    naplnOblasti();
+    const obnov=()=>{naplnOblasti();kresli();};
+    t.append(el("div",{class:"radek"},el("label",{class:"pole",style:"flex:1"},el("span",{},"Hledání"),h),
+        el("label",{class:"pole",style:"flex:0 0 200px"},el("span",{},"Oblast"),ob)),
+      el("div",{class:"pruh"},
+        el("button",{class:"btn mini",onclick:()=>{
+          S.glosar.unshift({id:id(),pojem:"",vyklad:"",oblast:oblast||"",odkaz:"",zmeneno:Date.now()});
+          ulozit(); hledat=""; h.value=""; obnov();
+        }},"＋ Přidat pojem"),
+        el("button",{class:"btn druhy mini",onclick:()=>{
+          const nove=GLOSAR_UKAZKA.filter(u=>!S.glosar.some(p=>bezDiakritiky(p.pojem||"")===bezDiakritiky(u.pojem)));
+          if(!nove.length) return hlas("Ukázkové pojmy už v glosáři jsou");
+          nove.forEach(u=>S.glosar.push({id:id(),...u,zmeneno:Date.now()}));
+          ulozit(); obnov(); hlas("Vloženo pojmů: "+nove.length);
+        }},"Vložit ukázkovou sadu"),
+        el("button",{class:"btn druhy mini",onclick:()=>{
+          const md=["# Glosář",""].concat(S.glosar.filter(vyhovuje)
+            .sort((a,b)=>String(a.pojem||"").localeCompare(String(b.pojem||""),"cs"))
+            .map(p=>"**"+(p.pojem||"")+"**"+(p.oblast?" *("+p.oblast+")*":"")+" — "+(p.vyklad||"")+(p.odkaz?" ["+p.odkaz+"]("+p.odkaz+")":""))).join("\n\n");
+          const o=vytvorit("markdown","Glosář",{text:md}); otevritObjekt(o.id);
+        }},"Jako dlaždici"),
+        el("button",{class:"btn druhy mini",onclick:()=>stahnout("glosar.json",JSON.stringify(S.glosar,null,2),"application/json")},"Export JSON"),
+        el("button",{class:"btn druhy mini",onclick:()=>{
+          const vstup=el("input",{type:"file",accept:".json,.csv,application/json,text/csv"});
+          vstup.addEventListener("change",async()=>{
+            const f=vstup.files[0]; if(!f) return;
+            try{
+              const text=await f.text();
+              let polozky;
+              if(/\.json$/i.test(f.name)||/^\s*\[/.test(text)) polozky=JSON.parse(text);
+              else{
+                const m=tabNacti(text,"auto").mrizka;
+                const hl=m[0].map(x=>bezDiakritiky(x));
+                const i=n=>hl.indexOf(n);
+                polozky=m.slice(1).map(r=>({pojem:r[Math.max(0,i("pojem"))]||r[0]||"",
+                  vyklad:r[i("vyklad")>=0?i("vyklad"):1]||"",oblast:r[i("oblast")>=0?i("oblast"):2]||"",odkaz:r[i("odkaz")>=0?i("odkaz"):3]||""}));
+              }
+              let pridano=0;
+              polozky.forEach(p=>{ if(!p||!p.pojem) return;
+                S.glosar.push({id:id(),pojem:String(p.pojem),vyklad:String(p.vyklad||""),oblast:String(p.oblast||""),odkaz:String(p.odkaz||""),zmeneno:Date.now()}); pridano++; });
+              ulozit(); obnov(); hlas("Načteno pojmů: "+pridano);
+            }catch(e){ hlas("Import se nezdařil: "+e.message); }
+          });
+          vstup.click();
+        }},"Import JSON nebo CSV")),
+      seznam);
+    kresli();
+  }},
+  tabulky:{n:"Tabulkový převodník",i:"🔁",b:"#0e9aa7",w:760,v:640,f:(t)=>{
+    const stav={vstupOdd:"auto",vystup:"md",hlavicka:true,transpozice:false,orezat:true};
+    const ta=el("textarea",{class:"kod","aria-label":"Vstupní data",placeholder:"Vložte CSV, TSV, Markdown tabulku, JSON nebo HTML tabulku…",style:"min-height:150px"});
+    const popis=el("div",{class:"tichy"});
+    const vys=el("div",{class:"vysledek"});
+    const nahled=el("div",{style:"overflow-x:auto"});
+    const vyber=(popisek,klic,volby)=>{
+      const s=el("select",{"aria-label":popisek});
+      volby.forEach(([v,n])=>s.append(el("option",{value:v,selected:stav[klic]===v},n)));
+      s.addEventListener("change",()=>{stav[klic]=s.value;prevod();});
+      return el("label",{class:"pole",style:"flex:1;min-width:150px"},el("span",{},popisek),s);
+    };
+    const prepinac=(popisek,klic)=>{
+      const i=el("input",{type:"checkbox",checked:stav[klic]});
+      i.addEventListener("change",()=>{stav[klic]=i.checked;prevod();});
+      return el("label",{class:"radek",style:"gap:6px;align-items:center;flex:0 0 auto;margin:0 14px 12px 0"},i,el("span",{},popisek));
+    };
+    const prevod=()=>{
+      nahled.innerHTML="";
+      if(!ta.value.trim()){ popis.textContent=""; vys.textContent=""; return; }
+      let n;
+      try{ n=tabNacti(ta.value,stav.vstupOdd); }
+      catch(e){ popis.textContent=""; vys.textContent="Chyba čtení: "+e.message; return; }
+      let m=n.mrizka;
+      if(stav.orezat) m=m.map(r=>r.map(b=>String(b??"").trim()));
+      if(stav.transpozice) m=tabTransponuj(m);
+      const s=tabSrovnej(m);
+      popis.textContent=`Rozpoznáno: ${n.format} · ${s.length} řádků · ${s[0]?s[0].length:0} sloupců`;
+      try{
+        vys.textContent={
+          md:()=>tabDoMarkdownu(m,stav.hlavicka),
+          "csv;":()=>tabDoCsv(m,";"),"csv,":()=>tabDoCsv(m,","),tsv:()=>tabDoCsv(m,"\t"),
+          jsono:()=>tabDoJson(m,stav.hlavicka,true),jsonp:()=>tabDoJson(m,stav.hlavicka,false),
+          html:()=>tabDoHtml(m,stav.hlavicka),seznam:()=>tabDoSeznamu(m,stav.hlavicka)
+        }[stav.vystup]();
+      }catch(e){ vys.textContent="Chyba převodu: "+e.message; }
+      const tab=el("table",{class:"mrizka-tab"});
+      s.slice(0,60).forEach((r,i)=>tab.append(el("tr",{},r.map(b=>el(stav.hlavicka&&i===0?"th":"td",{},String(b??""))))));
+      nahled.append(tab);
+      if(s.length>60) nahled.append(el("p",{class:"tichy"},"Náhled ukazuje prvních 60 řádků, převod pracuje se všemi."));
+    };
+    ta.addEventListener("input",prevod);
+    t.append(ta,
+      el("div",{class:"radek"},
+        vyber("Oddělovač vstupu","vstupOdd",[["auto","rozpoznat automaticky"],[";","středník"],[",","čárka"],["\t","tabulátor"],["|","svislítko"]]),
+        vyber("Výstupní formát","vystup",[["md","Markdown tabulka"],["csv;","CSV (středník)"],["csv,","CSV (čárka)"],
+          ["tsv","TSV (tabulátor)"],["jsono","JSON — pole objektů"],["jsonp","JSON — pole polí"],
+          ["html","HTML tabulka"],["seznam","Odrážkový seznam"]])),
+      el("div",{class:"radek"},prepinac("první řádek je hlavička","hlavicka"),
+        prepinac("prohodit řádky a sloupce","transpozice"),prepinac("oříznout mezery","orezat")),
+      popis,
+      el("h3",{class:"nadpis"},"Výsledek"),vys,
+      el("div",{class:"pruh",style:"margin-top:10px"},
+        el("button",{class:"btn mini",onclick:()=>zkopirovat(vys.textContent)},"Zkopírovat"),
+        el("button",{class:"btn druhy mini",onclick:()=>{ta.value=vys.textContent;prevod();}},"Použít na vstup"),
+        el("button",{class:"btn druhy mini",onclick:()=>{
+          const p={md:["tabulka.md","text/markdown"],"csv;":["tabulka.csv","text/csv"],"csv,":["tabulka.csv","text/csv"],
+            tsv:["tabulka.tsv","text/tab-separated-values"],jsono:["tabulka.json","application/json"],
+            jsonp:["tabulka.json","application/json"],html:["tabulka.html","text/html"],seznam:["tabulka.md","text/markdown"]}[stav.vystup];
+          stahnout(p[0],vys.textContent,p[1]);
+        }},"Stáhnout"),
+        el("button",{class:"btn druhy mini",onclick:()=>{
+          if(!vys.textContent) return hlas("Není co uložit");
+          const o=vytvorit(stav.vystup==="md"?"markdown":"kod","Převedená tabulka",
+            stav.vystup==="md"?{text:vys.textContent}:{kod:vys.textContent,jazyk:""});
+          otevritObjekt(o.id);
+        }},"Jako dlaždici")),
+      el("h3",{class:"nadpis"},"Náhled dat"),nahled);
+  }},
+  qr:{n:"QR kód",i:"⬛",b:"#151827",w:720,v:660,f:(t)=>{
+    const stav={sablona:"text",uroven:"M",modul:6,pole:{}};
+    const SABLONY={
+      text:{n:"Text nebo odkaz",pole:[["obsah","Text nebo adresa","https://"]],sestav:p=>p.obsah||""},
+      platba:{n:"Platba (QR platba, SPAYD)",pole:[["ucet","Účet (např. 19-2000145399/0800) nebo IBAN",""],
+        ["castka","Částka","0.00"],["mena","Měna","CZK"],["vs","Variabilní symbol",""],["ss","Specifický symbol",""],
+        ["ks","Konstantní symbol",""],["zprava","Zpráva pro příjemce",""],["splatnost","Splatnost (RRRR-MM-DD)",""]],
+        sestav:p=>{
+          const iban=qrIban(p.ucet||"");
+          if(!iban) throw new Error("Zadejte účet ve tvaru předčíslí-číslo/kód banky, nebo rovnou IBAN.");
+          const c=["SPD","1.0","ACC:"+iban];
+          if(p.castka) c.push("AM:"+Number(String(p.castka).replace(",",".")).toFixed(2));
+          c.push("CC:"+((p.mena||"CZK").toUpperCase()));
+          if(p.vs) c.push("X-VS:"+p.vs.replace(/\D/g,""));
+          if(p.ss) c.push("X-SS:"+p.ss.replace(/\D/g,""));
+          if(p.ks) c.push("X-KS:"+p.ks.replace(/\D/g,""));
+          if(p.splatnost) c.push("DT:"+p.splatnost.replace(/-/g,""));
+          if(p.zprava) c.push("MSG:"+bezDiakritiky(p.zprava).toUpperCase().slice(0,60).replace(/\*/g,""));
+          return c.join("*");
+        }},
+      kontakt:{n:"Kontakt (vCard)",pole:[["jmeno","Jméno",""],["prijmeni","Příjmení",""],["organizace","Organizace",""],
+        ["funkce","Funkce",""],["telefon","Telefon",""],["email","E-mail",""],["web","Web",""]],
+        sestav:p=>["BEGIN:VCARD","VERSION:3.0","N:"+(p.prijmeni||"")+";"+(p.jmeno||""),
+          "FN:"+[p.jmeno,p.prijmeni].filter(Boolean).join(" "),
+          p.organizace?"ORG:"+p.organizace:"",p.funkce?"TITLE:"+p.funkce:"",
+          p.telefon?"TEL;TYPE=WORK:"+p.telefon:"",p.email?"EMAIL:"+p.email:"",p.web?"URL:"+p.web:"","END:VCARD"]
+          .filter(Boolean).join("\n")},
+      wifi:{n:"Připojení k Wi-Fi",pole:[["ssid","Název sítě (SSID)",""],["heslo","Heslo",""],["typ","Zabezpečení (WPA, WEP, nopass)","WPA"]],
+        sestav:p=>"WIFI:T:"+(p.typ||"WPA")+";S:"+(p.ssid||"").replace(/([\;,:"])/g,"\\$1")+";P:"+(p.heslo||"").replace(/([\;,:"])/g,"\\$1")+";;"},
+      email:{n:"E-mail",pole:[["komu","Adresa",""],["predmet","Předmět",""],["telo","Text",""]],
+        sestav:p=>"mailto:"+(p.komu||"")+((p.predmet||p.telo)?"?"+[p.predmet?"subject="+encodeURIComponent(p.predmet):"",p.telo?"body="+encodeURIComponent(p.telo):""].filter(Boolean).join("&"):"")},
+      sms:{n:"SMS",pole:[["cislo","Telefonní číslo",""],["text","Text zprávy",""]],
+        sestav:p=>"SMSTO:"+(p.cislo||"")+":"+(p.text||"")}
+    };
+    const formular=el("div",{}), plocha=el("div",{style:"text-align:center"});
+    const obsahBox=el("div",{class:"vysledek"});
+    const info=el("div",{class:"tichy"});
+    let posledni=null;
+    const prekresli=()=>{
+      plocha.innerHTML=""; info.textContent="";
+      let obsah="";
+      try{ obsah=SABLONY[stav.sablona].sestav(stav.pole); }
+      catch(e){ obsahBox.textContent=""; info.textContent=e.message; posledni=null; return; }
+      obsahBox.textContent=obsah;
+      if(!obsah.trim()){ posledni=null; return; }
+      let q;
+      try{ q=qrMatice(obsah,stav.uroven); }
+      catch(e){ info.textContent=e.message; posledni=null; return; }
+      posledni=q;
+      const okraj=4, px=stav.modul, velikost=(q.n+okraj*2)*px;
+      const c=el("canvas",{width:velikost,height:velikost,role:"img",
+        "aria-label":"QR kód, verze "+q.verze+", obsah: "+obsah.slice(0,80),
+        style:"max-width:100%;height:auto;image-rendering:pixelated;border-radius:8px;background:#fff"});
+      const g=c.getContext("2d");
+      g.fillStyle="#fff"; g.fillRect(0,0,velikost,velikost);
+      g.fillStyle="#000";
+      for(let y=0;y<q.n;y++) for(let x=0;x<q.n;x++) if(q.m[y][x]) g.fillRect((x+okraj)*px,(y+okraj)*px,px,px);
+      plocha.append(c);
+      info.textContent=`Verze ${q.verze} · ${q.n}×${q.n} modulů · úroveň opravy ${q.uroven} · ${new TextEncoder().encode(obsah).length} bajtů`;
+      plocha.dataset.png=c.toDataURL("image/png");
+    };
+    const kresliFormular=()=>{
+      formular.innerHTML="";
+      const s=SABLONY[stav.sablona];
+      const r=el("div",{class:"radek"});
+      s.pole.forEach(([klic,popisek,vzor])=>{
+        const dlouhy=["obsah","telo","text","zprava"].includes(klic);
+        const i=el(dlouhy?"textarea":"input",{"aria-label":popisek,placeholder:vzor||""});
+        if(!dlouhy) i.type="text";
+        i.value=stav.pole[klic]||"";
+        i.addEventListener("input",()=>{stav.pole[klic]=i.value;prekresli();});
+        r.append(el("label",{class:"pole",style:dlouhy?"flex:1 1 100%":"flex:1;min-width:160px"},el("span",{},popisek),i));
+      });
+      formular.append(r);
+      prekresli();
+    };
+    const sab=el("select",{"aria-label":"Šablona obsahu"});
+    Object.entries(SABLONY).forEach(([k,v])=>sab.append(el("option",{value:k,selected:k===stav.sablona},v.n)));
+    sab.addEventListener("change",()=>{stav.sablona=sab.value;stav.pole={};kresliFormular();});
+    const ur=el("select",{"aria-label":"Úroveň opravy chyb"});
+    [["L","L — nejmenší kód (7 %)"],["M","M — běžná volba (15 %)"],["Q","Q — odolnější (25 %)"],["H","H — nejodolnější (30 %)"]]
+      .forEach(([v,n])=>ur.append(el("option",{value:v,selected:v===stav.uroven},n)));
+    ur.addEventListener("change",()=>{stav.uroven=ur.value;prekresli();});
+    const vel=el("select",{"aria-label":"Velikost modulu"});
+    [[4,"malý"],[6,"střední"],[10,"velký"],[16,"na tisk"]].forEach(([v,n])=>vel.append(el("option",{value:v,selected:v===stav.modul},n)));
+    vel.addEventListener("change",()=>{stav.modul=Number(vel.value);prekresli();});
+    t.append(el("div",{class:"radek"},
+        el("label",{class:"pole",style:"flex:1;min-width:180px"},el("span",{},"Šablona"),sab),
+        el("label",{class:"pole",style:"flex:1;min-width:180px"},el("span",{},"Úroveň opravy"),ur),
+        el("label",{class:"pole",style:"flex:0 0 140px"},el("span",{},"Velikost"),vel)),
+      formular, plocha, info,
+      el("div",{class:"pruh",style:"margin-top:12px;justify-content:center"},
+        el("button",{class:"btn mini",onclick:()=>{
+          if(!plocha.dataset.png) return hlas("Nejdřív vyplňte obsah");
+          const a=el("a",{href:plocha.dataset.png,download:"qr-kod.png"}); a.click();
+        }},"Stáhnout PNG"),
+        el("button",{class:"btn druhy mini",onclick:()=>{
+          if(!posledni) return hlas("Nejdřív vyplňte obsah");
+          stahnout("qr-kod.svg",qrSvg(posledni),"image/svg+xml");
+        }},"Stáhnout SVG"),
+        el("button",{class:"btn druhy mini",onclick:()=>zkopirovat(obsahBox.textContent)},"Zkopírovat obsah"),
+        el("button",{class:"btn druhy mini",onclick:()=>{
+          if(!plocha.dataset.png) return hlas("Nejdřív vyplňte obsah");
+          const o=vytvorit("soubor","QR kód",{nazevSouboru:"qr-kod.png",mime:"image/png",data:plocha.dataset.png,text:""});
+          otevritObjekt(o.id);
+        }},"Uložit jako dlaždici")),
+      el("h3",{class:"nadpis"},"Zakódovaný obsah"),obsahBox);
+    kresliFormular();
+  }},
+  sifrovana:{n:"Šifrovaná poznámka",i:"🔒",b:"#4a5568",w:640,v:600,f:(t)=>{
+    const ta=el("textarea",{"aria-label":"Text",placeholder:"Text k zašifrování, nebo vložený zašifrovaný blok…",style:"min-height:150px"});
+    const heslo=el("input",{type:"password","aria-label":"Heslo",placeholder:"Heslo",autocomplete:"new-password"});
+    const ukaz=el("input",{type:"checkbox"});
+    ukaz.addEventListener("change",()=>{heslo.type=ukaz.checked?"text":"password";});
+    const vys=el("div",{class:"vysledek"});
+    const sila=el("div",{class:"tichy"});
+    heslo.addEventListener("input",()=>{
+      const h=heslo.value;
+      sila.textContent=!h?"":h.length<8?"Krátké heslo — použijte alespoň 12 znaků."
+        :h.length<12?"Přijatelné heslo, delší je lepší.":"Dobrá délka hesla.";
+    });
+    const bez=()=>{ if(heslo.value) return false; hlas("Zadejte heslo"); heslo.focus(); return true; };
+    t.append(
+      el("p",{class:"tichy"},"Šifruje se v prohlížeči (AES-256-GCM, klíč z hesla přes PBKDF2). "+
+        "Heslo se nikam neukládá a nelze je obnovit — bez něj je text ztracen. Zašifrovaný blok se ukládá do prostředí a synchronizuje na GitHub."),
+      ta,
+      el("div",{class:"radek"},el("label",{class:"pole",style:"flex:1"},el("span",{},"Heslo"),heslo),
+        el("label",{class:"radek",style:"gap:6px;align-items:center;flex:0 0 auto"},ukaz,el("span",{},"ukázat"))),
+      sila,
+      el("div",{class:"pruh",style:"margin-top:10px"},
+        el("button",{class:"btn mini",onclick:async()=>{
+          if(bez()) return;
+          try{ vys.textContent=await sifZasifruj(ta.value,heslo.value); hlas("Zašifrováno"); }
+          catch(e){ vys.textContent="Chyba: "+e.message; }
+        }},"Zašifrovat"),
+        el("button",{class:"btn druhy mini",onclick:async()=>{
+          if(bez()) return;
+          try{ vys.textContent=await sifDesifruj(ta.value,heslo.value); hlas("Dešifrováno"); }
+          catch(e){ vys.textContent="Nepodařilo se dešifrovat: "+e.message; }
+        }},"Dešifrovat")),
+      vys,
+      el("div",{class:"pruh",style:"margin-top:10px"},
+        el("button",{class:"btn druhy mini",onclick:()=>zkopirovat(vys.textContent)},"Zkopírovat výsledek"),
+        el("button",{class:"btn druhy mini",onclick:()=>{ta.value=vys.textContent;ta.focus();}},"Použít na vstup"),
+        el("button",{class:"btn druhy mini",onclick:()=>{
+          if(!vys.textContent) return hlas("Nejdřív něco zašifrujte");
+          const o=vytvorit("text","Šifrovaná poznámka",{text:vys.textContent}); otevritObjekt(o.id);
+        }},"Uložit jako dlaždici")));
   }}
 });
 NASTROJE.nastaveni.skryt=true; NASTROJE.napoveda.skryt=true;
