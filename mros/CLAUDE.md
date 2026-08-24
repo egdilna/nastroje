@@ -80,6 +80,8 @@ Pořadí sekcí v `prostredi.html`:
   dialogy              stahnout prejmenovat nabidkaDlazdice vzhledDlazdice
                        presunNaPlochu otevritSlozku spustitSezeni upravitPlochu
                        zalozit novaAplikace nastaveniAplikace novaDlazdice
+  podpora nástrojů     PRAMENY PREDPISY citace* | SIF_* sif* | tab* | GLOSAR_UKAZKA
+                       text* (textTypografie textZPdf textExtrahuj …) | QR_* qr*
   nástroje             NASTROJE = { … } + Object.assign(NASTROJE, { … })
   nastavení            nastaveniOkno novaPlocha spravaStitku
   GitHub               stav* gh* kUlozeni githubOkno
@@ -100,8 +102,11 @@ S = {
   vzorTecek, panelStav}, chovani{}, nastroje{klic:bool}|null, stitkyBarvy{},
   github{repo,vetev,cesta,token,autoUlozit}, plochy[], aktivni,
   objekty[], kos[], schranka[], pripominky[], zapisnik, navyky[],
-  mereni{zaznamy[],bezi}, sablony[], zmeneno
+  mereni{zaznamy[],bezi}, sablony[], glosar[], zmeneno
 }
+
+`glosar[]` je `{ id, pojem, vyklad, oblast, odkaz, zmeneno }` — vlastní slovník pojmů
+uživatele. Ukázková sada (`GLOSAR_UKAZKA`) se vkládá jen na vyžádání tlačítkem.
 ```
 
 Objekt (dlaždice):
@@ -148,7 +153,7 @@ Ukazatel stavu je na dvou místech (`#stav-ulozeni` v patičce panelu,
 ## 7. Okna
 
 ```js
-otevritOkno({ klic, nazev, ikona, sirka, vyska, bezokraje, obsah })
+otevritOkno({ klic, nazev, ikona, sirka, vyska, bezokraje, escZavre, obsah })
 ```
 
 - `klic` je jedinečný identifikátor; druhé volání se stejným klíčem okno jen vytáhne
@@ -158,12 +163,24 @@ otevritOkno({ klic, nazev, ikona, sirka, vyska, bezokraje, obsah })
   `h5` je zvolené záměrně, aby šlo mezi okny skákat klávesou pro nadpisy a nekolidovalo
   to s `h1` plochy, `h2` sekcí panelu a `h3` uvnitř nástrojů.
 - Pod 620 px šířky se okna otevírají přes celou plochu.
+- **Escape v okně okno minimalizuje**, nezavírá ho — obsah i rozdělaná práce zůstávají
+  a okno se vrátí kliknutím v bočním panelu (sekce *Okna*) nebo příkazem
+  *Zobrazit skrytá okna*. Zavírá se jen křížkem v liště okna.
+- `escZavre:true` je výjimka pro nabídky a krátké dialogy (`nabidka-*`, `nova`,
+  `presun-*`, `vzhled-*`, `plocha-*`, `nastaveni-app-*`, `seznam-ploch`), kde Escape
+  znamená „zrušit" — ty se zavírají. Nové okno s trvalým obsahem příznak nedostává.
+- Protože `.okno.min` je `display:none`, `minimalizovat()` odvede fokus ven
+  (`fokusPoMinimalizaci()`: položka okna v panelu → jiné otevřené okno → dlaždice).
 
 **Maximalizace = režim jednoho okna.** `maximalizovat()` + `izolovatMaximalizovane()`
 nastaví bočnímu panelu, liště, mřížce dlaždic i ostatním oknům `inert` a `aria-hidden`
 a přidá `#os.jenokno`. Pro odečítač i tabulátor zbyde jen to jedno okno. Režim se ruší
 obnovením velikosti, minimalizací, zavřením, uspořádáním oken i otevřením nového okna.
 **Když měníš cokoli kolem oken, volej `izolovatMaximalizovane()`.**
+
+`#sidebar` a `#plocha` mají v mřížce `#os` napevno `grid-column:1` a `grid-column:2`.
+Bez toho by se plocha při skrytém panelu (`sidebar.hidden`, i režim jednoho okna) přesunula
+do sloupce `auto`, zúžila se na šířku obsahu a maximalizované okno by byl jen pruh vlevo.
 
 ---
 
@@ -179,6 +196,30 @@ Registr `NASTROJE` — položka `{ n, i, b, w, v, f, skryt }` (název, ikona, ba
 4. Vypnuté nástroje se neukazují v panelu ani v paletě.
 
 `nastaveni` a `napoveda` mají `skryt: true` — jsou trvale v patičce panelu.
+
+### Podpora nástrojů
+
+Delší logika nástrojů žije v samostatných funkcích nad registrem, ne v `f()`:
+
+| Oblast | Funkce | Poznámka |
+|---|---|---|
+| Citace | `citaceUstanoveni` `citacePramen` `citaceVarianty` `citaceOdkaz` `citaceNormalizuj` `citaceNajdi` | `PRAMENY` = typy pramenů se skloňováním, `PREDPISY` = našeptávání názvů |
+| Šifrování | `sifKlic` `sifZasifruj` `sifDesifruj` | AES-256-GCM, PBKDF2 (210 000 iterací), formát `MROS-AES-GCM-1:` + base64(sůl 16 B \| IV 12 B \| šifra) |
+| Tabulky | `tabNacti` `tabZCsv` `tabZMarkdownu` `tabZJson` `tabZHtml` `tabDo*` `tabTransponuj` | `tabNacti` rozpozná formát vstupu sám |
+| Text | `textTypografie` `textZPdf` `textNeviditelne` `textZalomit` `textExtrahuj` `textFrekvence` `textCtivost` `textMnozina` `textVety` `textSpojitOdstavce` | čisté funkce text → text, jdou použít i jinde |
+| QR | `qrMatice` `qrSvg` `qrIban` | vlastní kodér podle ISO/IEC 18004 |
+
+**QR kodér** umí režim bajtů (UTF-8), verze 1–40 a všechny čtyři úrovně opravy.
+`QR_ECC` a `QR_BLOKY` jsou tabulky ze standardu, zbytek se počítá:
+`qrSurove()` (počet datových modulů), `qrZarovnani()` (zarovnávací značky),
+Reed–Solomon nad GF(256) s generátorem 0x11D, výběr masky podle penalizace.
+Výstup je bit po bitu shodný s knihovnou `qrcode` — při zásahu do kodéru se to dá
+znovu ověřit porovnáním matic. `qrIban()` skládá IBAN z tuzemského čísla účtu
+(kontrolní číslice mod 97), používá ho šablona QR platby (SPAYD).
+
+**Nezlomitelné mezery a jiné neviditelné znaky** patří do zdrojového kódu jen jako
+`\u00a0`, nikdy doslova — jinak se nedají v kódu odlišit od obyčejné mezery a tiše
+rozbijí regulární výrazy.
 
 ---
 
@@ -227,7 +268,7 @@ Alt+číslo ani Ctrl+písmeno. Vše ostatní jde přes paletu a nabídku.
 | Delete | do koše |
 | Ctrl+←/→ | změna pořadí dlaždice |
 | Ctrl+Alt+šipky | ukotvení okna k okraji |
-| Escape | zavřít okno nebo nabídku |
+| Escape | minimalizovat okno do panelu; v nabídce, dialogu a paletě zavřít |
 
 Novou zkratku přidej na **tři** místa: obsluha v `document.addEventListener("keydown")`,
 seznam v nástroji `napoveda`, popisky v `prikazy()` a `otevritNabidku()`.
