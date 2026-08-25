@@ -453,7 +453,7 @@ function novyStav(){
       pismo:"'Segoe UI Variable Text','Segoe UI',system-ui,-apple-system,sans-serif",
       velikost:15, mezera:14, radaVyska:118, vzorTecek:false, panelStav:"plny"
     },
-    chovani:{potvrzovatMazani:true, otviratDvojklikem:false, ukazovatDatum:true, novaOknaKaskada:true},
+    chovani:{potvrzovatMazani:true, otviratDvojklikem:false, ukazovatDatum:true, novaOknaKaskada:true, otviratKeCteni:true},
     github:{repo:"",vetev:"main",cesta:"prostredi.json",token:"",autoUlozit:true},
     nastroje:null,
     stitkyBarvy:{},
@@ -863,7 +863,7 @@ let hodinyTimer=null;
 function tikatHodiny(){
   clearInterval(hodinyTimer);
   const f=()=>$$("[data-hodiny]").forEach(e=>{
-    const o=objekt(e.closest(".dlazdice").dataset.id);
+    const o=objekt(e.dataset.hodinyId||e.closest(".dlazdice")?.dataset.id);
     e.textContent=new Date().toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:!(o?.obsah?.format24!==false)});
   });
   f(); if($("[data-hodiny]")) hodinyTimer=setInterval(f,1000);
@@ -1055,7 +1055,7 @@ function otevritObjekt(i){
   otevritOkno({klic:"obj-"+i,nazev:o.nazev,ikona:o.ikona,
     sirka:o.typ==="aplikace"||o.typ==="odkaz"?900:620, vyska:o.typ==="aplikace"||o.typ==="odkaz"?620:520,
     bezokraje:(o.typ==="aplikace"||o.typ==="odkaz"),
-    obsah:(t,w)=>editor(o,t,w)});
+    obsah:(t,w)=>oknoObjektu(o,t,w)});
 }
 function hlavicka(o,t){
   const h=el("div",{class:"radek"});
@@ -1075,6 +1075,193 @@ function akceDlazdice(o){
     ["⤓","Exportovat jako JSON",()=>stahnout(o.nazev+".json",JSON.stringify(o,null,2),"application/json")],
     ["🗑️","Smazat",()=>smazat(o.id)]
   ];
+}
+/* ---------- režim zobrazení ----------
+   Dlaždice se otevírají ke čtení: text je sazba, ne pole formuláře. Činné zůstává to,
+   co je práce s obsahem, ne jeho úprava — zaškrtávání, odkazy a počítadlo. Zbytek se
+   mění až po přepnutí na Upravit (tlačítko v liště okna nebo klávesa F4). */
+const BEZ_ZOBRAZENI=["aplikace","odkaz","slozka","sezeni"];
+const maZobrazeni=typ=>!BEZ_ZOBRAZENI.includes(typ);
+function oknoObjektu(o,t,w){
+  if(!maZobrazeni(o.typ)) return editor(o,t,w);
+  let rezim=S.chovani.otviratKeCteni===false?"upravy":"zobrazeni";
+  const lista=el("div",{class:"pruh",style:"align-items:flex-start;margin-bottom:14px"});
+  const telo=el("div",{});
+  const kresli=()=>{
+    const jeZobrazeni=rezim==="zobrazeni";
+    lista.innerHTML=""; telo.innerHTML="";
+    const prep=el("button",{class:"btn mini","data-prepinac-rezimu":"1",
+      "aria-label":(jeZobrazeni?"Přepnout na úpravy":"Přepnout na zobrazení")+" — klávesa F4",
+      title:"Přepnout režim, klávesa F4"},jeZobrazeni?"✏️ Upravit":"👁 Zobrazení");
+    prep.addEventListener("click",()=>{
+      rezim=jeZobrazeni?"upravy":"zobrazeni";
+      kresli();
+      hlas(rezim==="zobrazeni"?"Režim zobrazení":"Režim úprav");
+      $("[data-prepinac-rezimu]",lista)?.focus();
+    });
+    const dalsi=nabidkaTlacitko("Další akce",akceDlazdice(o));
+    dalsi.style.marginTop="0";
+    lista.append(prep,dalsi);
+    ozivitListu(lista,"Nástroje dlaždice "+o.nazev);
+    w.dataset.rezim=rezim;
+    if(jeZobrazeni) zobrazeni(o,telo); else editor(o,telo,w);
+  };
+  t.append(lista,telo);
+  kresli();
+}
+function prepnoutRezimOkna(){
+  const w=$(".okno.aktivni")||$(".okno:not(.min)");
+  const b=w&&$("[data-prepinac-rezimu]",w);
+  if(!b) return hlas("Toto okno režim zobrazení nemá");
+  b.click(); return true;
+}
+function zobrazeni(o,t){
+  const c=o.obsah||{};
+  const ulozP=()=>zmena(o);
+  const prazdno=text=>el("p",{class:"tichy"},text);
+  if((o.stitky||[]).length)
+    t.append(el("div",{class:"pruh","aria-label":"Štítky: "+o.stitky.join(", ")},
+      o.stitky.map(s=>el("span",{class:"stitek"},s))));
+  const skrtnout=(prvek,hotovo)=>{ prvek.style.textDecoration=hotovo?"line-through":"none"; prvek.style.opacity=hotovo?".6":"1"; };
+  switch(o.typ){
+    case "text":
+      t.append(c.text?el("div",{class:"karta",style:"white-space:pre-wrap"},c.text):prazdno("Poznámka je zatím prázdná."));
+      break;
+    case "markdown":
+      t.append(c.text?el("div",{class:"md karta",html:md(c.text)}):prazdno("Poznámka je zatím prázdná."));
+      break;
+    case "kod":
+      if(!c.kod){ t.append(prazdno("Zatím bez kódu.")); break; }
+      if(c.jazyk) t.append(el("div",{class:"tichy",style:"margin-bottom:6px"},c.jazyk));
+      t.append(el("pre",{class:"karta",style:"font-family:var(--pismo-mono);font-size:13px;overflow:auto;margin:0 0 10px"},c.kod),
+        el("button",{class:"btn druhy mini",onclick:()=>zkopirovat(c.kod,"Kód zkopírován")},"Zkopírovat kód"));
+      break;
+    case "seznam": {
+      const pol=c.polozky||[];
+      if(!pol.length){ t.append(prazdno("Seznam je prázdný.")); break; }
+      const stav=el("div",{class:"tichy",style:"margin-bottom:6px"});
+      const spocitat=()=>{ stav.textContent="Hotovo "+pol.filter(p=>p.hotovo).length+" z "+pol.length; };
+      const ul=el("ul",{class:"seznam"});
+      pol.forEach(p=>{
+        const ch=el("input",{type:"checkbox"}); ch.checked=!!p.hotovo;
+        const txt=el("span",{class:"rostouci"},p.text||"(bez textu)");
+        skrtnout(txt,p.hotovo);
+        ch.addEventListener("change",()=>{ p.hotovo=ch.checked; skrtnout(txt,ch.checked); spocitat(); ulozP(); });
+        ul.append(el("li",{},el("label",{class:"radek",style:"gap:10px;margin:0;flex:1;cursor:pointer"},ch,txt)));
+      });
+      spocitat(); t.append(stav,ul);
+      break;
+    }
+    case "napady": {
+      const pol=c.polozky||[];
+      if(!pol.length){ t.append(prazdno("Zatím žádný nápad.")); break; }
+      t.append(el("ul",{class:"seznam"},pol.map(p=>el("li",{},
+        el("span",{"aria-hidden":"true"},"💡"),el("span",{class:"rostouci"},p.text||"(bez textu)")))));
+      break;
+    }
+    case "ukoly": {
+      const uk=c.ukoly||[];
+      if(!uk.length){ t.append(prazdno("Žádné úkoly.")); break; }
+      const stav=el("div",{class:"tichy",style:"margin-bottom:6px"});
+      const spocitat=()=>{ stav.textContent="Splněno "+uk.filter(u=>u.hotovo).length+" z "+uk.length; };
+      const ul=el("ul",{class:"seznam"});
+      uk.forEach(u=>{
+        const ch=el("input",{type:"checkbox"}); ch.checked=!!u.hotovo;
+        const txt=el("span",{class:"rostouci"},u.text||"(bez názvu)");
+        const znacky=el("span",{class:"pruh",style:"margin:0;gap:6px;flex:0 0 auto"});
+        const poTerminu=u.termin&&!u.hotovo&&u.termin<dnes();
+        if(u.termin) znacky.append(el("span",{class:"stitek",
+          style:poTerminu?"background:color-mix(in srgb,#d4536b 20%,transparent);color:#a33049":""},
+          (poTerminu?"po termínu, ":"")+new Date(u.termin).toLocaleDateString("cs-CZ")));
+        if(u.priorita) znacky.append(el("span",{class:"stitek"},"priorita "+u.priorita));
+        skrtnout(txt,u.hotovo);
+        ch.addEventListener("change",()=>{ u.hotovo=ch.checked; skrtnout(txt,ch.checked); spocitat(); ulozP(); });
+        ul.append(el("li",{},el("label",{class:"radek",style:"gap:10px;margin:0;flex:1;cursor:pointer"},ch,txt),znacky));
+      });
+      spocitat(); t.append(stav,ul);
+      break;
+    }
+    case "odkazy": {
+      const od=c.odkazy||[];
+      if(!od.length){ t.append(prazdno("Zatím žádný odkaz.")); break; }
+      t.append(el("ul",{class:"seznam"},od.map(d=>el("li",{},
+        el("span",{"aria-hidden":"true"},"🔗"),
+        el("span",{class:"rostouci"},
+          d.url?el("a",{href:d.url,target:"_blank",rel:"noopener"},d.nazev||d.url)
+               :el("span",{},d.nazev||"(bez adresy)"),
+          d.nazev&&d.url?el("div",{class:"tichy",style:"font-size:11px;word-break:break-all"},d.url):null)))));
+      break;
+    }
+    case "tabulka": {
+      const hl=c.hlavicka||[], rd=c.radky||[];
+      const tab=el("table",{class:"mrizka-tab"},
+        el("thead",{},el("tr",{},hl.map(h=>el("th",{},h||"")))),
+        el("tbody",{},rd.map(r=>el("tr",{},hl.map((_,i)=>el("td",{},r[i]||""))))));
+      t.append(el("div",{style:"overflow-x:auto"},tab));
+      if(!rd.length) t.append(prazdno("Tabulka nemá žádné řádky."));
+      t.append(el("div",{class:"pruh",style:"margin-top:10px"},
+        el("button",{class:"btn druhy mini",onclick:()=>{
+          const csv=[hl,...rd].map(r=>r.map(x=>'"'+String(x||"").replace(/"/g,'""')+'"').join(";")).join("\n");
+          stahnout(o.nazev+".csv",csv,"text/csv");
+        }},"Stáhnout CSV")));
+      break;
+    }
+    case "denik": {
+      const z=c.zapisy||[];
+      if(!z.length){ t.append(prazdno("Deník je zatím prázdný.")); break; }
+      z.forEach(x=>t.append(el("div",{class:"karta"},
+        el("h3",{style:"margin:0 0 8px;font-size:14px"},
+          x.datum?new Date(x.datum).toLocaleDateString("cs-CZ",{day:"numeric",month:"long",year:"numeric"}):"Bez data"),
+        el("div",{style:"white-space:pre-wrap"},x.text||""))));
+      break;
+    }
+    case "citace": {
+      if(!c.text&&!c.zdroj){ t.append(prazdno("Výpisek je prázdný.")); break; }
+      t.append(el("div",{class:"karta"},
+        el("blockquote",{style:"margin:0;padding-left:14px;border-left:3px solid var(--akcent);white-space:pre-wrap"},c.text||""),
+        (c.zdroj||c.url)?el("div",{class:"tichy",style:"margin-top:10px"},"— "+(c.zdroj||"zdroj"),
+          c.url?el("a",{href:c.url,target:"_blank",rel:"noopener",style:"margin-left:8px"},"otevřít zdroj"):null):null));
+      break;
+    }
+    case "soubor": {
+      if(!c.nazevSouboru){ t.append(prazdno("Zatím bez souboru — přepněte na Upravit a nahrajte ho.")); break; }
+      t.append(el("div",{class:"karta"},el("strong",{},c.nazevSouboru),
+        el("div",{class:"tichy"},c.mime||"neznámý typ"),
+        el("div",{class:"pruh",style:"margin-top:10px"},
+          el("button",{class:"btn mini",onclick:()=>{
+            if(c.data){ const a=el("a",{href:c.data,download:c.nazevSouboru}); a.click(); }
+            else stahnout(c.nazevSouboru,c.text,c.mime||"text/plain");
+          }},"Stáhnout"))));
+      if(c.data&&/^image\//.test(c.mime))
+        t.append(el("img",{src:c.data,alt:c.nazevSouboru,style:"max-width:100%;border-radius:12px"}));
+      if(c.text) t.append(el("pre",{class:"karta",
+        style:"font-family:var(--pismo-mono);font-size:12.5px;overflow:auto;max-height:360px;white-space:pre-wrap"},c.text));
+      break;
+    }
+    case "hodiny":
+      t.append(el("div",{class:"hodiny-velke","data-hodiny":"1","data-hodiny-id":o.id},"--:--"),
+        el("div",{class:"tichy"},(c.format24!==false?"24hodinový":"12hodinový")+" formát"));
+      tikatHodiny();
+      break;
+    case "pocitadlo": {
+      const v=el("div",{class:"hodiny-velke",role:"status","aria-live":"polite"},String(c.hodnota||0));
+      const zmen=d=>{ c.hodnota=(c.hodnota||0)+d*(c.krok||1); v.textContent=c.hodnota; ulozP(); };
+      t.append(v,el("div",{class:"tichy",style:"margin-bottom:10px"},"Krok: "+(c.krok||1)),
+        el("div",{class:"pruh"},
+          el("button",{class:"btn",onclick:()=>zmen(1),"aria-label":"Přičíst "+(c.krok||1)},"＋ Přičíst"),
+          el("button",{class:"btn druhy",onclick:()=>zmen(-1),"aria-label":"Odečíst "+(c.krok||1)},"– Odečíst")));
+      break;
+    }
+    case "odpocet": {
+      if(!c.datum){ t.append(prazdno("Cílové datum není nastavené.")); break; }
+      const d=Math.ceil((new Date(c.datum)-new Date())/864e5);
+      t.append(el("div",{class:"hodiny-velke"},String(Math.abs(d))),
+        el("div",{class:"tichy"},(d>=0?"dní zbývá do ":"dní uplynulo od ")+
+          new Date(c.datum).toLocaleDateString("cs-CZ",{day:"numeric",month:"long",year:"numeric"})));
+      break;
+    }
+    default: t.append(prazdno("Tento typ se zobrazuje jen v režimu úprav."));
+  }
 }
 function editor(o,t,w){
   const c=o.obsah;
@@ -1301,8 +1488,6 @@ function editor(o,t,w){
       break;
     }
   }
-  if(o.typ==="aplikace"||o.typ==="odkaz") return;   // správa je v nastavení aplikace
-  t.append(nabidkaTlacitko("Další akce",akceDlazdice(o)));
 }
 
 /* ============================================================
@@ -1942,6 +2127,7 @@ const NASTROJE={
       ["F8","Další plocha"],["Shift + F8","Seznam ploch"],
       ["Ctrl + F6","Další otevřené okno (v maximalizovaném režimu přepíná celé okno)"],["Ctrl + Shift + F6","Předchozí otevřené okno"],
       ["F2","Přejmenovat vybranou dlaždici"],
+      ["F4","Přepnout okno dlaždice mezi zobrazením a úpravami"],
       ["Šipky","Pohyb mezi dlaždicemi podle jejich rozložení"],["Home / End","První / poslední dlaždice"],
       ["Tab","Pohyb mezi ovládacími prvky"],["Enter nebo mezerník","Otevřít vybranou dlaždici"],
       ["Alt + Enter","Nabídka vybrané dlaždice"],["Delete","Přesunout vybranou dlaždici do koše"],
@@ -1957,6 +2143,7 @@ const NASTROJE={
     const kde=[["Vytvořit poznámku, složku, odkaz nebo aplikaci","Boční panel → sekce Vytvořit, nebo tlačítko Nová dlaždice, nebo pravé tlačítko na volné ploše"],
       ["Správce souborů","Boční panel → Správce souborů: procházení ploch a složek, přejmenování, přesun, mazání"],
       ["Aplikace","Boční panel → Aplikace: katalog webových aplikací otevíraných v okně nebo v nové kartě"],
+      ["Úprava obsahu dlaždice","Okno dlaždice se otevírá ke čtení — tlačítko Upravit v liště okna nebo klávesa F4 přepne na úpravy"],
       ["Které nástroje se zobrazují","Nastavení → záložka Nástroje: zaškrtávací seznam"],
       ["Citace předpisů, glosář, převod tabulek, QR kód, šifrovaná poznámka","Nastavení → Nástroje: zapněte je v seznamu, pak se objeví v bočním panelu i v paletě"],
       ["Barvy, názvy, tvary, písmo","Nastavení → Názvy, Barvy, Tvary a písmo"],
@@ -3350,6 +3537,7 @@ function nastaveniOkno(t){
       prep("Ptát se před smazáním dlaždice",S.chovani.potvrzovatMazani,x=>S.chovani.potvrzovatMazani=x);
       prep("Zobrazovat datum pod názvem plochy",S.chovani.ukazovatDatum,x=>S.chovani.ukazovatDatum=x);
       prep("Otevírat nová okna kaskádovitě",S.chovani.novaOknaKaskada,x=>S.chovani.novaOknaKaskada=x);
+      prep("Otevírat dlaždice v režimu zobrazení",S.chovani.otviratKeCteni!==false,x=>S.chovani.otviratKeCteni=x);
       obsah.append(el("p",{class:"tichy"},"Změny se ukládají okamžitě."));
     }
     if(akt==="data"){
@@ -3514,6 +3702,7 @@ function prikazy(){
     {n:"Zavřít všechna okna",i:"✕",f:()=>{$$(".okno").forEach(w=>w.remove());kreslitPanel();hlas("Okna zavřena");}},
     {n:"Uspořádat okna vedle sebe",i:"▦",f:rozlozitOkna}
   ];
+  p.push({n:"Přepnout dlaždici mezi zobrazením a úpravami",i:"👁",f:prepnoutRezimOkna});
   Object.entries(NASTROJE).forEach(([k,t])=>{ if(t.skryt||zapnuty(k)) p.push({n:"Nástroj: "+t.n,i:t.i,f:()=>otevritNastroj(k)}); });
   Object.entries(TYPY).forEach(([k,t])=>p.push({n:"Vytvořit: "+t.n,i:t.i,f:()=>zalozit(k)}));
   S.plochy.forEach((x,n)=>p.push({n:"Plocha: "+x.nazev,i:x.ikona||"🗂️",f:()=>{S.aktivni=x.id;ulozit();kreslitPlochu();kreslitPanel();}}));
@@ -3635,6 +3824,8 @@ document.addEventListener("keydown",e=>{
   if(e.key==="F9"){e.preventDefault(); e.shiftKey?prepnoutPanel():prepnoutFokus(); return;}
   if(e.key==="F10"&&e.ctrlKey){e.preventDefault();otevritNabidku();return;}
   if(e.key==="F8"){e.preventDefault(); e.shiftKey?seznamPloch():dalsiPlocha(1); return;}
+  if(e.key==="F4"){ const w=$(".okno.aktivni"); const b=w&&$("[data-prepinac-rezimu]",w);
+    if(b){ e.preventDefault(); b.click(); } return; }
   if(e.key==="F2"&&!vPoli){ const d=document.activeElement.closest?.(".dlazdice"); if(d){e.preventDefault();prejmenovat(d.dataset.id);} return; }
 });
 $("#tl-panel").addEventListener("click",prepnoutPanel);

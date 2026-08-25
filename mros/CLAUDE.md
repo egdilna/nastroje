@@ -76,7 +76,8 @@ Pořadí sekcí v `prostredi.html`:
   panel                kreslitPanel
   okna                 otevritOkno zavritOkno doPredu minimalizovat maximalizovat
                        izolovatMaximalizovane ukotvit tahat
-  editory              otevritObjekt hlavicka akceDlazdice editor
+  editory              otevritObjekt oknoObjektu zobrazeni editor hlavicka
+                       akceDlazdice maZobrazeni prepnoutRezimOkna
   dialogy              stahnout prejmenovat nabidkaDlazdice vzhledDlazdice
                        presunNaPlochu otevritSlozku spustitSezeni upravitPlochu
                        zalozit novaAplikace nastaveniAplikace novaDlazdice
@@ -99,7 +100,7 @@ Celý stav je jediný objekt `S` (viz `novyStav()`):
 ```js
 S = {
   verze, nazvy{}, vzhled{barvy{}, radius*, pismo, velikost, mezera, radaVyska,
-  vzorTecek, panelStav}, chovani{}, nastroje{klic:bool}|null, stitkyBarvy{},
+  vzorTecek, panelStav}, chovani{…, otviratKeCteni}, nastroje{klic:bool}|null, stitkyBarvy{},
   github{repo,vetev,cesta,token,autoUlozit}, plochy[], aktivni,
   objekty[], kos[], schranka[], pripominky[], zapisnik, navyky[],
   mereni{zaznamy[],bezi}, sablony[], glosar[], zmeneno
@@ -147,6 +148,29 @@ Tok:
 Ukazatel stavu je na dvou místech (`#stav-ulozeni` v patičce panelu,
 `#stav-plocha` nad plochou), čas posledního uložení je relativní
 (`relativne()`, `Intl.RelativeTimeFormat`), překresluje se **jednou za minutu**.
+
+---
+
+## 6b. Dlaždice: zobrazení a úpravy
+
+Okno dlaždice staví `oknoObjektu()`. Nahoře je lišta (`role="toolbar"`) s přepínačem
+režimu a nabídkou *Další akce*, pod ní obsah v jednom ze dvou režimů:
+
+- **Zobrazení** (`zobrazeni()`) — výchozí. Obsah je sazba, ne formulář: text v odstavcích,
+  Markdown vykreslený, kód v `<pre>`, tabulka jako tabulka, odkazy jako odkazy.
+  **Činné zůstává to, co je práce s obsahem, ne jeho úprava** — zaškrtávátka
+  v kontrolním seznamu a úkolech, otevírání odkazů, tlačítka počítadla. Vše ostatní
+  (přejmenování, mazání položek, termíny, priority) je až v úpravách.
+- **Úpravy** (`editor()`) — dosavadní editor se všemi poli včetně názvu a štítků.
+
+Přepíná se tlačítkem v liště, klávesou **F4** nebo příkazem v paletě
+(`prepnoutRezimOkna()` hledá `[data-prepinac-rezimu]` v aktivním okně).
+Výchozí režim řídí `S.chovani.otviratKeCteni` (*Nastavení → Chování*).
+`BEZ_ZOBRAZENI` vyjmenovává typy, které režim nemají: aplikace a odkaz jsou samy
+o sobě zobrazením, složka a sezení se do editoru vůbec nedostanou.
+
+Nový typ dlaždice proto potřebuje **dvě** větve: `case` v `editor()` a `case`
+v `zobrazeni()`. Když v zobrazení chybí, ukáže se hláška o režimu úprav.
 
 ---
 
@@ -262,6 +286,7 @@ Alt+číslo ani Ctrl+písmeno. Vše ostatní jde přes paletu a nabídku.
 | F8 / Shift+F8 | další plocha / seznam ploch |
 | Ctrl+F6 / Ctrl+Shift+F6 | další a předchozí otevřené okno (v maximalizovaném režimu přepíná celoobrazovkově) |
 | F2 | přejmenovat vybranou dlaždici |
+| F4 | přepnout okno dlaždice mezi zobrazením a úpravami |
 | šipky, Home, End | pohyb mezi dlaždicemi |
 | Enter, mezerník | otevřít dlaždici |
 | Alt+Enter | nabídka dlaždice |
