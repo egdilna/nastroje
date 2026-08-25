@@ -199,6 +199,14 @@ Nový typ dlaždice proto potřebuje **tři** větve: `case` v `editor()`, `case
 v `zobrazeni()` a `case` v `nahled()` pro náhled na ploše. Když větev v zobrazení
 chybí, ukáže se hláška o režimu úprav.
 
+**Pořadí položek** řeší `tlacitkaPoradi(pole, n, popis, box, ulozAKresli)` — vrací
+dvojici tlačítek ↑ a ↓, na krajích nedostupných. Po přesunu překreslí seznam a vrátí
+fokus na přesunutou položku podle `data-poradi` a `data-smer`, aby šlo pořadí měnit
+i z klávesnice. Používají ho editory kontrolního seznamu, nápadníku, úkolů, odkazníku,
+deníku, řádků tabulky a sbírky citací. Slovník pojmů je řazený abecedně, ruční pořadí
+tam nedává smysl. Vrácené pole tlačítek se do `append()` musí rozbalit (`...`),
+`el()` si pole zploští samo.
+
 ---
 
 ## 7. Okna
