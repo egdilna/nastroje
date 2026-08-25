@@ -106,14 +106,9 @@ S = {
   mereni{zaznamy[],bezi}, sablony[], glosar[], citace[], zmeneno
 }
 
-`glosar[]` je `{ id, pojem, vyklad, oblast, odkaz, zmeneno }` — vlastní slovník pojmů
-uživatele. Ukázková sada (`GLOSAR_UKAZKA`) se vkládá jen na vyžádání tlačítkem.
-
-`citace[]` je sbírka citací: celý formulář nástroje *Citace a odkazy* plus `id`
-a `zmeneno`, tedy `{ id, typ, cislo, nazev, jednotka, cast, odst, pism, bod, veta,
-priloha, zneni, text, poznamka, zmeneno }`. `text` je doslovné znění ustanovení.
-Záznam se nikdy neukládá odvozený — citace se z něj skládá až při vykreslení
-(`citaceVarianty()`), takže změna sazby citací se projeví i na starých záznamech.
+`glosar[]` a `citace[]` jsou **jen pozůstatek po starším uspořádání**. Obojí dnes žije
+v dlaždicích (typy `slovnik` a `sbirka`); `prenestSbirkyDoDlazdic()` obsah při načtení
+prostředí přesype do dlaždic a pole vyprázdní. Nová data se do nich nikdy nezapisují.
 ```
 
 Objekt (dlaždice):
@@ -128,6 +123,31 @@ Objekt (dlaždice):
   `vsePlose(p)` všechno včetně obsahu složek.
 - Tvar `obsah` určuje `vychoziObsah(typ)`. Typy jsou v `TYPY`
   (`{n, i, b, sk}` = název, ikona, barva, skupina).
+
+### Sbírky v dlaždicích
+
+Dlaždice `sbirka` (citace) a `slovnik` (pojmy) mají obsah `{ polozky: [] }`:
+
+| Typ | Položka |
+|---|---|
+| `sbirka` | `{ id, typ, cislo, nazev, jednotka, cast, odst, pism, bod, veta, priloha, zneni, text, poznamka, zmeneno }` — celý formulář nástroje *Citace a odkazy*; `text` je doslovné znění ustanovení |
+| `slovnik` | `{ id, pojem, vyklad, oblast, odkaz, zmeneno }` |
+
+Citace se nikdy neukládá odvozená — skládá se až při vykreslení (`citaceVarianty()`),
+takže změna sazby citací se projeví i zpětně na starých záznamech.
+
+Nástroje *Citace a odkazy* a *Glosář pojmů* nad těmito dlaždicemi pracují **napříč
+všemi** (`polozkyTypu(typ)` vrací `{o, p}`, tedy dlaždici a položku) a nové položky
+ukládají do dlaždice zvolené v `vyberDlazdice()`; když žádná neexistuje, první uložení
+ji založí (`cilovaDlazdice()`). Nástroj je tedy nad daty, ne jejich vlastníkem —
+jediné úložiště je plocha.
+
+Import a export mají obě sbírky společný: `citaceDoTabulky` / `citaceZTabulky`
+a `slovnikDoTabulky` / `slovnikZTabulky` převádějí mezi položkami a mřížkou,
+`tabDoCsv()` z tabulkového převodníku z ní udělá CSV i TSV, `nactiZeSouboru()`
+přečte JSON, CSV i TSV a formát pozná sám. Sloupce citací jsou navržené tak,
+aby přežily kolečko export → import; sloupec *Citace* je jen pro čtení,
+data nesou strukturované sloupce.
 
 ---
 
@@ -175,8 +195,9 @@ Výchozí režim řídí `S.chovani.otviratKeCteni` (*Nastavení → Chování*)
 `BEZ_ZOBRAZENI` vyjmenovává typy, které režim nemají: aplikace a odkaz jsou samy
 o sobě zobrazením, složka a sezení se do editoru vůbec nedostanou.
 
-Nový typ dlaždice proto potřebuje **dvě** větve: `case` v `editor()` a `case`
-v `zobrazeni()`. Když v zobrazení chybí, ukáže se hláška o režimu úprav.
+Nový typ dlaždice proto potřebuje **tři** větve: `case` v `editor()`, `case`
+v `zobrazeni()` a `case` v `nahled()` pro náhled na ploše. Když větev v zobrazení
+chybí, ukáže se hláška o režimu úprav.
 
 ---
 
