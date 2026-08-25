@@ -319,10 +319,18 @@ stromu. Fokus se před skrytím přesune na tlačítko pro zobrazení.
 Šipky na ploše hledají nejbližší dlaždici geometricky (`sousedniDlazdice()`), ne podle
 pořadí v DOM, kvůli různě velkým dlaždicím.
 
-Dlaždice **nemá obsluhu `contextmenu`** — Safari hlásí dlouhý dotyk jako kontextovou
-nabídku, takže se dlaždice místo otevření hádala o nabídku. Kliknutí ji vždy otevře;
-nabídka je pod tlačítkem ⋯ v rohu, pod Alt+Enter a v otevřeném okně pod *Další akce*.
-`-webkit-touch-callout:none` na `.dlazdice` brání systémové nabídce dlouhého dotyku.
+**Dlaždice je tlačítko a nic jiného.** Nemá obsluhu `contextmenu` ani tlačítko nabídky —
+Safari hlásilo dlouhý dotyk jako kontextovou nabídku a dlaždice se místo otevření hádala
+o nabídku. Nabídka dlaždice je pod **Alt+Enter** a v otevřeném okně pod *Další akce*
+(`listaDlazdice()` ji přidává i do oken složky, sezení a aplikace, která režim zobrazení
+nemají).
+
+Otevírání **nestojí na události `click`**: Safari ji na prvku s `draggable="true"` často
+vůbec nepošle. Dlaždice se otevírá na `pointerup` po klepnutí bez tažení (posun do 8 bodů,
+`dragstart` ho ruší), `click` je pojistka pro ostatní prohlížeče a příznak `obslouzeno`
+hlídá, aby se okno neotevřelo dvakrát. `-webkit-touch-callout:none` a `user-select:none`
+na `.dlazdice` berou Safari důvody kliknutí spolknout.
+
 Pravé tlačítko zůstává na volné ploše (nová dlaždice) a na ploše v bočním panelu.
 
 ---
