@@ -138,6 +138,9 @@ button{cursor:pointer;border:0;background:none}
 .d-telo .hotovo{text-decoration:line-through;opacity:.5}
 .d-telo pre{margin:0;font-family:var(--pismo-mono);font-size:11px;white-space:pre-wrap;overflow:hidden}
 .d-pata{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dlazdice-slaby)}
+.postup{height:4px;border-radius:999px;margin:5px 0 7px;overflow:hidden;
+  background:color-mix(in srgb,var(--dlazdice-text) 14%,transparent)}
+.postup i{display:block;height:100%;border-radius:999px;background:var(--akcent)}
 .stitek{background:color-mix(in srgb,var(--akcent) 15%,transparent);color:color-mix(in srgb,var(--akcent) 75%,#000);padding:1px 8px;border-radius:999px;font-size:10.5px;font-weight:600}
 .d-menu{
   position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:9px;
@@ -721,6 +724,23 @@ function smazat(i,tise){
 function zmena(o){ o.zmeneno=Date.now(); ulozit(); kreslitPlochu(); }
 
 /* ---------- náhledy dlaždic ---------- */
+/* ministatistika splněného — text a tenký proužek postupu */
+function postupHtml(hotovo,celkem,popis,dovetek){
+  const pct=celkem?Math.round(hotovo/celkem*100):0;
+  return `<div class="tichy">${popis} ${hotovo} z ${celkem} · ${pct}\u00a0%${dovetek||""}</div>`
+    +`<div class="postup" role="img" aria-label="${popis} ${pct} procent"><i style="width:${pct}%"></i></div>`;
+}
+/* stručný stav do popisku dlaždice, aby ho odečítač obrazovky přečetl spolu s názvem */
+function souhrnDlazdice(o){
+  const c=o.obsah||{};
+  if(o.typ==="seznam"&&(c.polozky||[]).length)
+    return ", hotovo "+c.polozky.filter(x=>x.hotovo).length+" z "+c.polozky.length;
+  if(o.typ==="ukoly"&&(c.ukoly||[]).length){
+    const poTerminu=c.ukoly.filter(x=>!x.hotovo&&x.termin&&x.termin<dnes()).length;
+    return ", splněno "+c.ukoly.filter(x=>x.hotovo).length+" z "+c.ukoly.length+(poTerminu?", po termínu "+poTerminu:"");
+  }
+  return "";
+}
 function nahled(o){
   const c=o.obsah||{};
   switch(o.typ){
@@ -731,11 +751,19 @@ function nahled(o){
     case "kod": return "<pre>"+esc((c.kod||"").slice(0,200))+"</pre>";
     case "seznam": case "napady": {
       const p=c.polozky||[]; if(!p.length) return "<span class='tichy'>Zatím nic</span>";
-      return "<ul>"+p.slice(0,5).map(x=>`<li class="${x.hotovo?"hotovo":""}">${esc(x.text)}</li>`).join("")+"</ul>"+(p.length>5?`<span class="tichy">a další ${p.length-5}</span>`:"");
+      const hlavicka=o.typ==="seznam"?postupHtml(p.filter(x=>x.hotovo).length,p.length,"Hotovo"):
+        `<div class="tichy">Nápadů: ${p.length}</div>`;
+      return hlavicka+"<ul>"+p.slice(0,5).map(x=>`<li class="${x.hotovo?"hotovo":""}">${esc(x.text)}</li>`).join("")+"</ul>"+(p.length>5?`<span class="tichy">a další ${p.length-5}</span>`:"");
     }
     case "ukoly": {
-      const u=(c.ukoly||[]).filter(x=>!x.hotovo); if(!u.length) return "<span class='tichy'>Vše hotovo</span>";
-      return "<ul>"+u.slice(0,4).map(x=>`<li>${esc(x.text)}${x.termin?` <span class="tichy">(${x.termin})</span>`:""}</li>`).join("")+"</ul>";
+      const vse=c.ukoly||[]; if(!vse.length) return "<span class='tichy'>Žádné úkoly</span>";
+      const poTerminu=vse.filter(x=>!x.hotovo&&x.termin&&x.termin<dnes()).length;
+      const hlavicka=postupHtml(vse.filter(x=>x.hotovo).length,vse.length,"Splněno",
+        poTerminu?` · po termínu ${poTerminu}`:"");
+      const u=vse.filter(x=>!x.hotovo);
+      if(!u.length) return hlavicka+"<span class='tichy'>Vše hotovo</span>";
+      return hlavicka+"<ul>"+u.slice(0,4).map(x=>`<li>${esc(x.text)}${x.termin?` <span class="tichy">(${x.termin})</span>`:""}</li>`).join("")
+        +"</ul>"+(u.length>4?`<span class="tichy">a další ${u.length-4}</span>`:"");
     }
     case "odkazy": {
       const d=c.odkazy||[]; if(!d.length) return "<span class='tichy'>Bez odkazů</span>";
@@ -784,7 +812,7 @@ function kreslitPlochu(){
     const li=el("li",{style:`grid-column:span ${o.w};grid-row:span ${o.h}`});
     if(o.stitky.some(x=>bezDiakritiky(x)==="soukrome")) li.classList.add("soukrome");
     const b=el("div",{class:"dlazdice",role:"button",tabindex:"0",draggable:"true","data-id":o.id,
-      "aria-label":TYPY[o.typ].n+": "+o.nazev+(o.stitky.length?", štítky "+o.stitky.join(", "):""),
+      "aria-label":TYPY[o.typ].n+": "+o.nazev+souhrnDlazdice(o)+(o.stitky.length?", štítky "+o.stitky.join(", "):""),
       "aria-describedby":"popis-"+o.id, title:TYPY[o.typ].n});
     b.innerHTML=`
       <span class="d-hlava">
@@ -1356,8 +1384,14 @@ function zobrazeni(o,t){
     case "seznam": {
       const pol=c.polozky||[];
       if(!pol.length){ t.append(prazdno("Seznam je prázdný.")); break; }
-      const stav=el("div",{class:"tichy",style:"margin-bottom:6px"});
-      const spocitat=()=>{ stav.textContent="Hotovo "+pol.filter(p=>p.hotovo).length+" z "+pol.length; };
+      const stav=el("div",{class:"tichy"});
+      const postup=el("div",{class:"postup"},el("i",{}));
+      const spocitat=()=>{
+        const h=pol.filter(p=>p.hotovo).length, pct=Math.round(h/pol.length*100);
+        stav.textContent="Hotovo "+h+" z "+pol.length+" \u00b7 "+pct+"\u00a0%";
+        $("i",postup).style.width=pct+"%";
+        postup.setAttribute("role","img"); postup.setAttribute("aria-label","Hotovo "+pct+" procent");
+      };
       const ul=el("ul",{class:"seznam"});
       pol.forEach(p=>{
         const ch=el("input",{type:"checkbox"}); ch.checked=!!p.hotovo;
@@ -1366,7 +1400,7 @@ function zobrazeni(o,t){
         ch.addEventListener("change",()=>{ p.hotovo=ch.checked; skrtnout(txt,ch.checked); spocitat(); ulozP(); });
         ul.append(el("li",{},el("label",{class:"radek",style:"gap:10px;margin:0;flex:1;cursor:pointer"},ch,txt)));
       });
-      spocitat(); t.append(stav,ul);
+      spocitat(); t.append(stav,postup,ul);
       break;
     }
     case "napady": {
@@ -1379,8 +1413,15 @@ function zobrazeni(o,t){
     case "ukoly": {
       const uk=c.ukoly||[];
       if(!uk.length){ t.append(prazdno("Žádné úkoly.")); break; }
-      const stav=el("div",{class:"tichy",style:"margin-bottom:6px"});
-      const spocitat=()=>{ stav.textContent="Splněno "+uk.filter(u=>u.hotovo).length+" z "+uk.length; };
+      const stav=el("div",{class:"tichy"});
+      const postup=el("div",{class:"postup"},el("i",{}));
+      const spocitat=()=>{
+        const h=uk.filter(u=>u.hotovo).length, pct=Math.round(h/uk.length*100);
+        const poTerminu=uk.filter(u=>!u.hotovo&&u.termin&&u.termin<dnes()).length;
+        stav.textContent="Splněno "+h+" z "+uk.length+" \u00b7 "+pct+"\u00a0%"+(poTerminu?" \u00b7 po termínu "+poTerminu:"");
+        $("i",postup).style.width=pct+"%";
+        postup.setAttribute("role","img"); postup.setAttribute("aria-label","Splněno "+pct+" procent");
+      };
       const ul=el("ul",{class:"seznam"});
       uk.forEach(u=>{
         const ch=el("input",{type:"checkbox"}); ch.checked=!!u.hotovo;
@@ -1395,7 +1436,7 @@ function zobrazeni(o,t){
         ch.addEventListener("change",()=>{ u.hotovo=ch.checked; skrtnout(txt,ch.checked); spocitat(); ulozP(); });
         ul.append(el("li",{},el("label",{class:"radek",style:"gap:10px;margin:0;flex:1;cursor:pointer"},ch,txt),znacky));
       });
-      spocitat(); t.append(stav,ul);
+      spocitat(); t.append(stav,postup,ul);
       break;
     }
     case "odkazy": {
@@ -1522,6 +1563,41 @@ function zobrazeni(o,t){
     default: t.append(prazdno("Tento typ se zobrazuje jen v režimu úprav."));
   }
 }
+/* ---------- vkládání ze schránky ----------
+   Víceřádkový text se rozpadne na položky seznamu; rozeznají se odrážky, číslování
+   i zaškrtnutí „[x]“. Odkaz v Markdownu se rozdělí na název a adresu. */
+function textNaPolozky(text){
+  return String(text||"").replace(/\r\n?/g,"\n").split("\n").map(radek=>{
+    let x=radek.trim();
+    if(!x) return null;
+    x=x.replace(/^(?:[-*•‣▪–]|\d+[.)])\s+/,"");
+    const m=/^\[([ xX])\]\s*/.exec(x);
+    const hotovo=!!m&&m[1].toLowerCase()==="x";
+    if(m) x=x.slice(m[0].length);
+    x=x.trim();
+    return x?{text:x,hotovo}:null;
+  }).filter(Boolean);
+}
+function mdOdkaz(text){
+  const m=/^\s*\[([^\]]*)\]\(\s*(\S+?)(?:\s+"[^"]*")?\s*\)\s*$/.exec(String(text||""));
+  return m&&m[2]?{nazev:m[1].trim(),url:m[2].trim()}:null;
+}
+function zeSchranky(e){ return (e.clipboardData||window.clipboardData)?.getData("text")||""; }
+/* vložení odkazu v Markdownu do kteréhokoli z polí rozdělí text na název a adresu */
+function vlozitMdOdkaz(poleNazev,poleUrl,pouzit){
+  const obsluha=e=>{
+    const o=mdOdkaz(zeSchranky(e));
+    if(!o) return;
+    e.preventDefault();
+    if(o.nazev) poleNazev.value=o.nazev;
+    poleUrl.value=o.url;
+    pouzit(o.nazev,o.url);
+    hlas("Odkaz rozdělen na název a adresu");
+  };
+  poleNazev.addEventListener("paste",obsluha);
+  poleUrl.addEventListener("paste",obsluha);
+}
+
 /* ---------- pořadí položek v editorech ----------
    Dvojice tlačítek pro posun položky. Po přesunu se seznam překreslí a fokus zůstane
    na přesunuté položce, aby šlo pořadí měnit i z klávesnice. `box` je překreslovaný obal. */
@@ -1581,6 +1657,19 @@ function editor(o,t,w){
           } else li.append(el("span",{"aria-hidden":"true"},"💡"));
           const inp=el("input",{type:"text",value:p.text,"aria-label":"Text položky"});
           inp.addEventListener("input",()=>{p.text=inp.value;ulozP();});
+          inp.addEventListener("paste",e=>{
+            const nove=textNaPolozky(zeSchranky(e));
+            if(nove.length<2) return;                       /* jeden řádek necháme vložit běžně */
+            e.preventDefault();
+            p.text=nove[0].text;
+            if(o.typ==="seznam") p.hotovo=nove[0].hotovo;
+            const zbytek=nove.slice(1).map(x=>o.typ==="seznam"?{text:x.text,hotovo:x.hotovo}:{text:x.text});
+            c.polozky.splice(n+1,0,...zbytek);
+            ulozP(); kresli();
+            const pole=$$("input[type=text]",box);
+            pole[Math.min(n+zbytek.length,pole.length-1)]?.focus();
+            hlas("Vloženo položek: "+nove.length);
+          });
           li.append(el("span",{class:"rostouci"},inp),
             ...tlacitkaPoradi(c.polozky,n,p.text||"položka "+(n+1),box,()=>{ulozP();kresli();}),
             el("button",{class:"o-btn",onclick:()=>{c.polozky.splice(n,1);ulozP();kresli();},"aria-label":"Odstranit položku"},"✕"));
@@ -1604,6 +1693,17 @@ function editor(o,t,w){
           ch.addEventListener("change",()=>{u.hotovo=ch.checked;ulozP();kresli();});
           const tx=el("input",{type:"text",value:u.text,"aria-label":"Úkol"});
           tx.addEventListener("input",()=>{u.text=tx.value;ulozP();});
+          tx.addEventListener("paste",e=>{
+            const nove=textNaPolozky(zeSchranky(e));
+            if(nove.length<2) return;
+            e.preventDefault();
+            u.text=nove[0].text; u.hotovo=nove[0].hotovo;
+            c.ukoly.splice(n+1,0,...nove.slice(1).map(x=>({text:x.text,hotovo:x.hotovo,priorita:"střední"})));
+            ulozP(); kresli();
+            const pole=$$("input[type=text]",box);
+            pole[Math.min(n+nove.length-1,pole.length-1)]?.focus();
+            hlas("Vloženo úkolů: "+nove.length);
+          });
           r1.append(ch,el("span",{class:"rostouci"},tx),
             ...tlacitkaPoradi(c.ukoly,n,u.text||"úkol "+(n+1),box,()=>{ulozP();kresli();}),
             el("button",{class:"o-btn",onclick:()=>{c.ukoly.splice(n,1);ulozP();kresli();},"aria-label":"Odstranit úkol"},"✕"));
@@ -1628,6 +1728,7 @@ function editor(o,t,w){
           const ur=el("input",{type:"url",value:d.url||"",placeholder:"https://"});
           nz.addEventListener("input",()=>{d.nazev=nz.value;ulozP();});
           ur.addEventListener("input",()=>{d.url=ur.value;ulozP();});
+          vlozitMdOdkaz(nz,ur,(nazev,url)=>{ if(nazev) d.nazev=nazev; d.url=url; ulozP(); });
           k.append(el("label",{class:"pole"},el("span",{},"Název"),nz),el("label",{class:"pole"},el("span",{},"Adresa"),ur),
             el("button",{class:"o-btn",onclick:()=>{d.url&&window.open(d.url,"_blank","noopener");},"aria-label":"Otevřít"},"↗"),
             ...tlacitkaPoradi(c.odkazy,n,d.nazev||d.url||"odkaz "+(n+1),box,()=>{ulozP();kresli();}),
@@ -2018,6 +2119,7 @@ function novaAplikace(typ){
       zavritOkno("nova-aplikace"); otevritObjekt(o.id);
     };
     [n,u].forEach(x=>x.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();zaloz();}}));
+    vlozitMdOdkaz(n,u,()=>{});
     t.append(el("label",{class:"pole"},el("span",{},"Název"),n),
       el("label",{class:"pole"},el("span",{},"Adresa"),u),
       el("div",{class:"radek"},el("label",{class:"pole"},el("span",{},"Ikona"),ik),el("label",{class:"pole"},el("span",{},"Způsob otevírání"),rez)),
