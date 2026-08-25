@@ -485,6 +485,8 @@ const TYPY = {
   denik:     {n:"Deníkový zápis", i:"🗓️", b:"#c2569a", sk:"poznamky"},
   odkazy:    {n:"Odkazník", i:"🔗", b:"#3aa1e2", sk:"poznamky"},
   citace:    {n:"Výpisek s citací", i:"❝", b:"#8a6cff", sk:"poznamky"},
+  sbirka:    {n:"Sbírka citací", i:"📑", b:"#7c5cff", sk:"poznamky"},
+  slovnik:   {n:"Slovník pojmů", i:"📚", b:"#3aa1e2", sk:"poznamky"},
   napady:    {n:"Nápadník", i:"💡", b:"#f0b429", sk:"poznamky"},
   odkaz:     {n:"Odkaz", i:"🌐", b:"#2f8fed", sk:"objekty"},
   aplikace:  {n:"Aplikace v okně", i:"🪟", b:"#7c5cff", sk:"objekty"},
@@ -548,6 +550,7 @@ function prevzitStav(d){
       delete o.obsah.deti;
     }
   });
+  prenestSbirkyDoDlazdic();
   ulozitKonfiguraci(); pouzitVzhled(); kreslitPanel(); kreslitPlochu();
   nesynchronizovano=false;
 }
@@ -680,7 +683,7 @@ const deti = r=>S.objekty.filter(o=>o.rodic===r).sort((a,b)=>a.poradi-b.poradi);
 function cestaSlozky(o){ const c=[]; let x=o; while(x&&x.rodic){ x=objekt(x.rodic); if(x) c.unshift(x); } return c; }
 function vychoziObsah(typ){
   switch(typ){
-    case "seznam": case "napady": return {polozky:[]};
+    case "seznam": case "napady": case "sbirka": case "slovnik": return {polozky:[]};
     case "ukoly": return {ukoly:[]};
     case "odkazy": return {odkazy:[]};
     case "tabulka": return {hlavicka:["Sloupec 1","Sloupec 2"],radky:[["",""]]};
@@ -737,6 +740,16 @@ function nahled(o){
       return "<ul>"+d.slice(0,5).map(x=>`<li>${esc(x.nazev||x.url)}</li>`).join("")+"</ul>";
     }
     case "tabulka": return `<span class="tichy">${(c.radky||[]).length} řádků × ${(c.hlavicka||[]).length} sloupců</span>`;
+    case "sbirka": {
+      const z=c.polozky||[]; if(!z.length) return "<span class='tichy'>Zatím žádná citace</span>";
+      return "<ul>"+z.slice(0,4).map(x=>`<li>${esc(citacePlna(x).slice(0,90))}</li>`).join("")+"</ul>"
+        +(z.length>4?`<span class="tichy">a další ${z.length-4}</span>`:"");
+    }
+    case "slovnik": {
+      const z=c.polozky||[]; if(!z.length) return "<span class='tichy'>Zatím žádný pojem</span>";
+      return "<ul>"+z.slice(0,4).map(x=>`<li><strong>${esc(x.pojem||"")}</strong> ${esc((x.vyklad||"").slice(0,70))}</li>`).join("")+"</ul>"
+        +(z.length>4?`<span class="tichy">a další ${z.length-4}</span>`:"");
+    }
     case "citace": return esc((c.text||"").slice(0,160))+(c.zdroj?`<div class="tichy">— ${esc(c.zdroj)}</div>`:"");
     case "odkaz": case "aplikace":
       return c.url?"":"<span class='tichy'>Bez adresy — otevřete a doplňte</span>";
@@ -1077,6 +1090,207 @@ function akceDlazdice(o){
     ["🗑️","Smazat",()=>smazat(o.id)]
   ];
 }
+/* ---------- sbírky v dlaždicích ----------
+   Sbírka citací i slovník pojmů jsou dlaždice s obsahem {polozky:[…]}. Nástroje nad nimi
+   pracují napříč všemi dlaždicemi svého typu a nové položky ukládají do zvolené cílové
+   dlaždice, takže existuje jediné úložiště — plocha. */
+const dlazdiceTypu=typ=>S.objekty.filter(o=>o.typ===typ);
+const polozkyTypu=typ=>dlazdiceTypu(typ).flatMap(o=>((o.obsah.polozky=o.obsah.polozky||[])).map(p=>({o,p})));
+const cilovaDlazdice=typ=>dlazdiceTypu(typ)[0]||vytvorit(typ,TYPY[typ].n);
+function vyberDlazdice(typ,popisek,pozmene){
+  const s=el("select",{"aria-label":popisek});
+  const obnov=()=>{
+    const bylo=s.value;
+    s.innerHTML="";
+    dlazdiceTypu(typ).forEach(o=>s.append(el("option",{value:o.id},o.nazev)));
+    s.append(el("option",{value:"__nova"},"＋ nová dlaždice…"));
+    if(bylo&&[...s.options].some(x=>x.value===bylo)) s.value=bylo;
+  };
+  obnov();
+  s.addEventListener("change",()=>{
+    if(s.value==="__nova"){
+      const n=prompt("Název nové dlaždice:",TYPY[typ].n);
+      if(n&&n.trim()){ const o=vytvorit(typ,n.trim()); obnov(); s.value=o.id; }
+      else obnov();
+    }
+    pozmene&&pozmene();
+  });
+  const cil=()=>{
+    let o=S.objekty.find(x=>x.id===s.value&&x.typ===typ);
+    if(!o){ o=cilovaDlazdice(typ); obnov(); s.value=o.id; }
+    return o;
+  };
+  return {prvek:el("label",{class:"pole",style:"flex:1;min-width:180px"},el("span",{},popisek),s),cil,obnov};
+}
+/* přenos dřívějších sbírek z nastavení prostředí do dlaždic — proběhne jednou */
+function prenestSbirkyDoDlazdic(){
+  const prenes=(pole,typ)=>{
+    if(!Array.isArray(pole)||!pole.length) return 0;
+    const c=cilovaDlazdice(typ);
+    c.obsah.polozky=(c.obsah.polozky||[]).concat(pole);
+    c.zmeneno=Date.now();
+    return pole.length;
+  };
+  const a=prenes(S.citace,"sbirka"), b=prenes(S.glosar,"slovnik");
+  if(a||b){
+    S.citace=[]; S.glosar=[]; ulozit(); kreslitPlochu(); kreslitPanel();
+    log("Sbírky přeneseny do dlaždic",a+" citací, "+b+" pojmů");
+    hlas("Sbírka citací a slovník jsou nově dlaždice na ploše");
+  }
+}
+/* ---------- převody sbírek do tabulky a zpět ---------- */
+const CITACE_SLOUPCE=[["Citace",null],["Typ","typ"],["Číslo","cislo"],["Název","nazev"],["Označení","jednotka"],
+  ["Ustanovení","cast"],["Odstavec","odst"],["Písmeno","pism"],["Bod","bod"],["Věta","veta"],["Příloha","priloha"],
+  ["Znění","text"],["Poznámka","poznamka"],["Ve znění pozdějších","zneni"],["Odkaz",null],["Změněno",null]];
+const SLOVNIK_SLOUPCE=[["Pojem","pojem"],["Výklad","vyklad"],["Oblast","oblast"],["Odkaz","odkaz"]];
+function sloupecPodleNazvu(hlavicka,nazvy){
+  const h=hlavicka.map(x=>bezDiakritiky(String(x).trim()));
+  for(const n of nazvy){ const i=h.indexOf(bezDiakritiky(n)); if(i>=0) return i; }
+  return -1;
+}
+function citaceDoTabulky(zaznamy){
+  return [CITACE_SLOUPCE.map(x=>x[0]),...zaznamy.map(z=>{
+    const v=citaceVarianty(z), najdi=n=>(v.find(x=>x[0]===n)||["",""])[1];
+    return CITACE_SLOUPCE.map(([n,klic])=>{
+      if(klic==="zneni") return z.zneni?"ano":"ne";
+      if(klic) return String(z[klic]==null?"":z[klic]);
+      if(n==="Citace") return najdi("Plná citace")||najdi("Pramen samostatně")||najdi("Jen znění ustanovení");
+      if(n==="Odkaz") return citaceOdkaz(z);
+      return z.zmeneno?new Date(z.zmeneno).toISOString().slice(0,10):"";
+    });
+  })];
+}
+function citaceZTabulky(m){
+  if(m.length<2) return [];
+  const kde=nazvy=>sloupecPodleNazvu(m[0],nazvy);
+  const mapa={typ:kde(["typ"]),cislo:kde(["číslo","předpis","cislo predpisu"]),nazev:kde(["název","nazev pramene"]),
+    jednotka:kde(["označení","jednotka"]),cast:kde(["ustanovení","paragraf","§"]),odst:kde(["odstavec","odst"]),
+    pism:kde(["písmeno","písm"]),bod:kde(["bod"]),veta:kde(["věta"]),priloha:kde(["příloha","příloha č."]),
+    text:kde(["znění","text","text ustanovení"]),poznamka:kde(["poznámka"]),zneni:kde(["ve znění pozdějších","dovětek"])};
+  if(Object.values(mapa).every(i=>i<0)) return [];
+  return m.slice(1).map(r=>{
+    const z=citacePrazdna();
+    Object.entries(mapa).forEach(([k,i])=>{ if(i>=0&&r[i]!=null&&String(r[i]).trim()!=="") z[k]=String(r[i]).trim(); });
+    z.zneni=mapa.zneni>=0?/^(ano|true|1|x|ve zn)/i.test(String(r[mapa.zneni]||"")):true;
+    if(!PRAMENY[z.typ]){
+      const nalez=Object.entries(PRAMENY).find(([k,p])=>bezDiakritiky(p.n)===bezDiakritiky(z.typ||""));
+      z.typ=nalez?nalez[0]:"zakon";
+    }
+    z.jednotka=/^čl/i.test(z.jednotka||"")?"čl.":"§";
+    z.id=id(); z.zmeneno=Date.now();
+    return z;
+  }).filter(z=>z.cislo||z.nazev||z.text);
+}
+function slovnikDoTabulky(polozky){
+  return [SLOVNIK_SLOUPCE.map(x=>x[0]),...polozky.map(p=>SLOVNIK_SLOUPCE.map(([,k])=>String(p[k]||"")))];
+}
+function slovnikZTabulky(m){
+  if(m.length<2) return [];
+  const kde=nazvy=>sloupecPodleNazvu(m[0],nazvy);
+  const mapa={pojem:kde(["pojem","zkratka","termín","název"]),vyklad:kde(["výklad","význam","popis","vysvětlení","definice"]),
+    oblast:kde(["oblast","kategorie","téma"]),odkaz:kde(["odkaz","url","zdroj"])};
+  if(mapa.pojem<0&&mapa.vyklad<0) return [];
+  return m.slice(1).map(r=>({id:id(),
+    pojem:String(r[mapa.pojem>=0?mapa.pojem:0]||"").trim(),
+    vyklad:String(r[mapa.vyklad>=0?mapa.vyklad:1]||"").trim(),
+    oblast:String(r[mapa.oblast>=0?mapa.oblast:-1]||"").trim(),
+    odkaz:String(r[mapa.odkaz>=0?mapa.odkaz:-1]||"").trim(),
+    zmeneno:Date.now()})).filter(p=>p.pojem||p.vyklad);
+}
+/* načtení sbírky ze souboru — JSON, CSV i TSV, formát se pozná sám */
+function nactiZeSouboru(zTabulky,hotovo){
+  const vstup=el("input",{type:"file",accept:".json,.csv,.tsv,.txt,application/json,text/csv"});
+  vstup.addEventListener("change",async()=>{
+    const f=vstup.files[0]; if(!f) return;
+    try{
+      const text=await f.text();
+      let zaznamy;
+      if(/\.json$/i.test(f.name)||/^\s*[[{]/.test(text)){
+        const d=JSON.parse(text);
+        zaznamy=Array.isArray(d)?d:(Array.isArray(d.polozky)?d.polozky:[]);
+        zaznamy=zaznamy.filter(x=>x&&typeof x==="object").map(x=>Object.assign({},x,{id:id(),zmeneno:x.zmeneno||Date.now()}));
+      } else zaznamy=zTabulky(tabNacti(text,"auto").mrizka);
+      if(!zaznamy.length) return hlas("V souboru nejsou rozpoznatelné položky");
+      hotovo(zaznamy,f.name);
+    }catch(e){ hlas("Import se nezdařil: "+e.message); }
+  });
+  vstup.click();
+}
+function tlacitkaExportu(nazev,polozky,doTabulky){
+  const prazdna=()=>{ if(polozky().length) return false; hlas("Není co exportovat"); return true; };
+  return [
+    el("button",{class:"btn druhy mini",onclick:()=>{ if(prazdna()) return;
+      stahnout(nazev()+".csv",tabDoCsv(doTabulky(polozky()),";"),"text/csv"); }},"Export CSV"),
+    el("button",{class:"btn druhy mini",onclick:()=>{ if(prazdna()) return;
+      stahnout(nazev()+".tsv",tabDoCsv(doTabulky(polozky()),"\t"),"text/tab-separated-values"); }},"Export TSV"),
+    el("button",{class:"btn druhy mini",onclick:()=>{ if(prazdna()) return;
+      stahnout(nazev()+".json",JSON.stringify(polozky(),null,2),"application/json"); }},"Export JSON")
+  ];
+}
+/* ---------- vykreslení položek sbírek ---------- */
+function citaceVyhovuje(z,dotaz){
+  if(!dotaz) return true;
+  const h=bezDiakritiky(dotaz);
+  return bezDiakritiky([z.nazev,z.cislo,z.text,z.poznamka,citaceVarianty(z).map(x=>x[1]).join(" ")].join(" ")).includes(h);
+}
+function citacePlna(z){
+  const v=citaceVarianty(z);
+  return (v.find(x=>x[0]==="Plná citace")||v.find(x=>x[0]==="Pramen samostatně")||v[0]||["",""])[1];
+}
+function citaceKarta(z,akce){
+  const plna=citacePlna(z), odkaz=citaceOdkaz(z);
+  const k=el("div",{class:"karta"},el("div",{style:"font-weight:650;word-break:break-word"},plna||"(bez citace)"));
+  if(z.text) k.append(el("blockquote",{style:"margin:8px 0 0;padding-left:12px;border-left:3px solid var(--akcent);white-space:pre-wrap"},z.text));
+  if(z.poznamka) k.append(el("div",{class:"tichy",style:"margin-top:8px"},z.poznamka));
+  k.append(el("div",{class:"pruh",style:"margin:10px 0 0"},
+    el("button",{class:"btn mini",onclick:()=>zkopirovat(plna)},"Zkopírovat citaci"),
+    z.text?el("button",{class:"btn druhy mini",onclick:()=>zkopirovat(z.text,"Znění zkopírováno")},"Zkopírovat znění"):null,
+    odkaz?el("a",{class:"btn druhy mini",href:odkaz,target:"_blank",rel:"noopener"},"Otevřít předpis"):null,
+    akce||[]));
+  return k;
+}
+let citaceKPrevzeti=null;
+function upravitCitaciVNastroji(z){
+  citaceKPrevzeti=z;
+  zavritOkno("n-citace");
+  otevritNastroj("citace");
+}
+function slovnikVyhovuje(p,dotaz,oblast){
+  if(oblast&&(p.oblast||"")!==oblast) return false;
+  if(!dotaz) return true;
+  const h=bezDiakritiky(dotaz);
+  return bezDiakritiky([p.pojem,p.vyklad,p.oblast,p.odkaz].join(" ")).includes(h);
+}
+const slovnikRazeni=(a,b)=>String(a.pojem||"").localeCompare(String(b.pojem||""),"cs");
+function slovnikKarta(p,ulozP,smazat){
+  const k=el("div",{class:"karta"});
+  const pole=(popisek,klic,prvek)=>{
+    const i=el(prvek||"input",prvek?{"aria-label":popisek}:{type:"text","aria-label":popisek,value:p[klic]||""});
+    if(prvek) i.value=p[klic]||"";
+    i.addEventListener("input",()=>{p[klic]=i.value;p.zmeneno=Date.now();ulozP();});
+    return el("label",{class:"pole",style:"flex:1;min-width:140px"},el("span",{},popisek),i);
+  };
+  k.append(el("div",{class:"radek"},pole("Pojem nebo zkratka","pojem"),pole("Oblast","oblast"),
+    smazat?el("button",{class:"o-btn",style:"align-self:end;margin-bottom:12px","aria-label":"Smazat pojem "+(p.pojem||""),
+      onclick:smazat},"✕"):null),
+    pole("Výklad","vyklad","textarea"),
+    el("div",{class:"radek"},pole("Odkaz","odkaz"),
+      el("div",{class:"pruh",style:"margin:0 0 12px;align-self:end"},
+        el("button",{class:"btn druhy mini",onclick:()=>zkopirovat((p.pojem||"")+" — "+(p.vyklad||""))},"Zkopírovat"),
+        p.odkaz?el("a",{class:"btn druhy mini",href:p.odkaz,target:"_blank",rel:"noopener"},"Otevřít"):null)));
+  return k;
+}
+function slovnikPolozkaCteni(p){
+  return el("div",{class:"karta"},
+    el("div",{class:"radek",style:"gap:8px;margin-bottom:4px"},
+      el("strong",{},p.pojem||"(bez pojmu)"),
+      p.oblast?el("span",{class:"stitek"},p.oblast):null),
+    el("div",{style:"white-space:pre-wrap"},p.vyklad||""),
+    el("div",{class:"pruh",style:"margin:10px 0 0"},
+      el("button",{class:"btn druhy mini",onclick:()=>zkopirovat((p.pojem||"")+" — "+(p.vyklad||""))},"Zkopírovat"),
+      p.odkaz?el("a",{class:"btn druhy mini",href:p.odkaz,target:"_blank",rel:"noopener"},"Otevřít odkaz"):null));
+}
+
 /* ---------- režim zobrazení ----------
    Dlaždice se otevírají ke čtení: text je sazba, ne pole formuláře. Činné zůstává to,
    co je práce s obsahem, ne jeho úprava — zaškrtávání, odkazy a počítadlo. Zbytek se
@@ -1205,6 +1419,48 @@ function zobrazeni(o,t){
           const csv=[hl,...rd].map(r=>r.map(x=>'"'+String(x||"").replace(/"/g,'""')+'"').join(";")).join("\n");
           stahnout(o.nazev+".csv",csv,"text/csv");
         }},"Stáhnout CSV")));
+      break;
+    }
+    case "sbirka": {
+      const z=c.polozky||[];
+      const h=el("input",{type:"search","aria-label":"Hledat ve sbírce",placeholder:"Hledat v citacích, znění i poznámkách…"});
+      const seznam=el("div",{});
+      const kresli=()=>{
+        seznam.innerHTML="";
+        const dotaz=h.value.trim(), v=z.filter(x=>citaceVyhovuje(x,dotaz));
+        seznam.append(el("div",{class:"tichy",style:"margin-bottom:8px"},
+          "Citací: "+z.length+(dotaz?", vyhovuje hledání: "+v.length:"")));
+        if(!v.length) seznam.append(el("p",{class:"tichy"},dotaz?"Hledání nic nenašlo.":"Sbírka je zatím prázdná — citace přidáte v úpravách nebo nástrojem Citace a odkazy."));
+        v.forEach(x=>seznam.append(citaceKarta(x)));
+      };
+      h.addEventListener("input",kresli); kresli();
+      t.append(el("label",{class:"pole"},el("span",{},"Hledání"),h),
+        el("div",{class:"pruh"},tlacitkaExportu(()=>o.nazev,()=>c.polozky||[],citaceDoTabulky)),seznam);
+      break;
+    }
+    case "slovnik": {
+      const z=c.polozky||[];
+      const h=el("input",{type:"search","aria-label":"Hledat ve slovníku",placeholder:"Hledat pojem, zkratku nebo výklad…"});
+      const ob=el("select",{"aria-label":"Oblast"});
+      const seznam=el("div",{});
+      const oblasti=()=>[...new Set(z.map(p=>(p.oblast||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"cs"));
+      const naplnOblasti=()=>{ const bylo=ob.value; ob.innerHTML="";
+        ob.append(el("option",{value:""},"Všechny oblasti"));
+        oblasti().forEach(x=>ob.append(el("option",{value:x},x)));
+        if(bylo) ob.value=bylo; };
+      const kresli=()=>{
+        seznam.innerHTML="";
+        const dotaz=h.value.trim(), v=z.filter(p=>slovnikVyhovuje(p,dotaz,ob.value)).sort(slovnikRazeni);
+        seznam.append(el("div",{class:"tichy",style:"margin-bottom:8px"},
+          "Pojmů: "+z.length+((dotaz||ob.value)?", vyhovuje: "+v.length:"")));
+        if(!v.length) seznam.append(el("p",{class:"tichy"},z.length?"Hledání nic nenašlo.":"Slovník je zatím prázdný — pojmy přidáte v úpravách."));
+        v.forEach(p=>seznam.append(slovnikPolozkaCteni(p)));
+      };
+      naplnOblasti();
+      h.addEventListener("input",kresli); ob.addEventListener("change",kresli); kresli();
+      t.append(el("div",{class:"radek"},el("label",{class:"pole",style:"flex:1"},el("span",{},"Hledání"),h),
+          el("label",{class:"pole",style:"flex:0 0 200px"},el("span",{},"Oblast"),ob)),
+        el("div",{class:"pruh"},tlacitkaExportu(()=>o.nazev,()=>c.polozky||[],slovnikDoTabulky)),seznam);
       break;
     }
     case "denik": {
@@ -1384,6 +1640,70 @@ function editor(o,t,w){
           el("button",{class:"btn mini",onclick:()=>{c.hlavicka.push("Sloupec "+(c.hlavicka.length+1));c.radky.forEach(r=>r.push(""));ulozP();kresli();}},"＋ Sloupec"),
           el("button",{class:"btn druhy mini",onclick:()=>{c.radky.pop();ulozP();kresli();}},"– Řádek"),
           el("button",{class:"btn druhy mini",onclick:()=>{const csv=[c.hlavicka,...c.radky].map(r=>r.map(x=>`"${String(x||"").replace(/"/g,'""')}"`).join(";")).join("\n");stahnout(o.nazev+".csv",csv,"text/csv");}},"Stáhnout CSV")));
+      };
+      kresli(); break;
+    }
+    case "sbirka": {
+      const box=el("div",{}); t.append(box);
+      const kresli=()=>{
+        box.innerHTML="";
+        c.polozky=c.polozky||[];
+        box.append(el("div",{class:"pruh"},
+          el("button",{class:"btn mini",onclick:()=>{
+            const z=Object.assign(citacePrazdna(),{id:id(),zmeneno:Date.now()});
+            c.polozky.unshift(z); ulozP(); upravitCitaciVNastroji(z);
+          }},"＋ Citace v nástroji"),
+          el("button",{class:"btn druhy mini",onclick:()=>nactiZeSouboru(citaceZTabulky,zaznamy=>{
+            c.polozky.push(...zaznamy); ulozP(); kresli(); hlas("Načteno citací: "+zaznamy.length);
+          })},"Import CSV, TSV nebo JSON"),
+          tlacitkaExportu(()=>o.nazev,()=>c.polozky,citaceDoTabulky)));
+        if(!c.polozky.length){ box.append(el("p",{class:"tichy"},"Zatím žádná citace. Sestavte ji v nástroji Citace a odkazy, nebo naimportujte soubor.")); return; }
+        c.polozky.forEach((z,n)=>{
+          const k=el("div",{class:"karta"},el("div",{style:"font-weight:650;word-break:break-word"},citacePlna(z)||"(bez citace)"));
+          const zn=el("textarea",{"aria-label":"Znění ustanovení"}); zn.value=z.text||"";
+          zn.addEventListener("input",()=>{z.text=zn.value;z.zmeneno=Date.now();ulozP();});
+          const po=el("input",{type:"text","aria-label":"Poznámka",value:z.poznamka||""});
+          po.addEventListener("input",()=>{z.poznamka=po.value;z.zmeneno=Date.now();ulozP();});
+          k.append(el("label",{class:"pole"},el("span",{},"Znění ustanovení"),zn),
+            el("label",{class:"pole"},el("span",{},"Poznámka"),po),
+            el("div",{class:"pruh",style:"margin:0"},
+              el("button",{class:"btn druhy mini",onclick:()=>upravitCitaciVNastroji(z)},"Upravit v nástroji"),
+              el("button",{class:"btn druhy mini",onclick:()=>zkopirovat(citacePlna(z))},"Zkopírovat citaci"),
+              el("button",{class:"btn druhy mini",onclick:()=>{
+                if(S.chovani.potvrzovatMazani&&!confirm("Smazat citaci ze sbírky?")) return;
+                c.polozky.splice(n,1); ulozP(); kresli(); hlas("Citace smazána");
+              }},"Smazat")));
+          box.append(k);
+        });
+      };
+      kresli(); break;
+    }
+    case "slovnik": {
+      const box=el("div",{}); t.append(box);
+      const kresli=()=>{
+        box.innerHTML="";
+        c.polozky=c.polozky||[];
+        box.append(el("div",{class:"pruh"},
+          el("button",{class:"btn mini",onclick:()=>{
+            c.polozky.unshift({id:id(),pojem:"",vyklad:"",oblast:"",odkaz:"",zmeneno:Date.now()});
+            ulozP(); kresli();
+            setTimeout(()=>$$("input[type=text]",box)[0]?.focus(),0);
+          }},"＋ Přidat pojem"),
+          el("button",{class:"btn druhy mini",onclick:()=>{
+            const nove=GLOSAR_UKAZKA.filter(u=>!c.polozky.some(p=>bezDiakritiky(p.pojem||"")===bezDiakritiky(u.pojem)));
+            if(!nove.length) return hlas("Ukázkové pojmy už ve slovníku jsou");
+            nove.forEach(u=>c.polozky.push(Object.assign({id:id(),zmeneno:Date.now()},u)));
+            ulozP(); kresli(); hlas("Vloženo pojmů: "+nove.length);
+          }},"Vložit ukázkovou sadu"),
+          el("button",{class:"btn druhy mini",onclick:()=>nactiZeSouboru(slovnikZTabulky,zaznamy=>{
+            c.polozky.push(...zaznamy); ulozP(); kresli(); hlas("Načteno pojmů: "+zaznamy.length);
+          })},"Import CSV, TSV nebo JSON"),
+          tlacitkaExportu(()=>o.nazev,()=>c.polozky,slovnikDoTabulky)));
+        if(!c.polozky.length){ box.append(el("p",{class:"tichy"},"Slovník je prázdný. Přidejte pojem, vložte ukázkovou sadu, nebo naimportujte soubor.")); return; }
+        c.polozky.slice().sort(slovnikRazeni).forEach(p=>box.append(slovnikKarta(p,ulozP,()=>{
+          if(S.chovani.potvrzovatMazani&&!confirm("Smazat pojem „"+(p.pojem||"")+"“?")) return;
+          c.polozky=c.polozky.filter(x=>x!==p); ulozP(); kresli(); hlas("Pojem smazán");
+        })));
       };
       kresli(); break;
     }
@@ -3032,9 +3352,9 @@ Object.assign(NASTROJE,{
       el("div",{class:"karta"},"Stav: "+(zap?"zapnuto":"vypnuto")));
   }},
   citace:{n:"Citace a odkazy",i:"❝",b:"#8a6cff",w:780,v:700,f:(t)=>{
-    S.citace=S.citace||[];
-    let s=citacePrazdna(), upravovane=null, hledat="";
+    let s=citacePrazdna(), upravovany=null, hledat="";
     const vstupy={}, sablony=el("div",{}), sbirka=el("div",{}), stavFormulare=el("div",{class:"tichy"});
+    const cilovka=vyberDlazdice("sbirka","Ukládat do dlaždice",()=>kresliSbirku());
     const dl=el("datalist",{id:"citace-predpisy"});
     Object.entries(PREDPISY).forEach(([c,n])=>dl.append(el("option",{value:c},n)));
     const zapis=(klic,hodnota)=>{
@@ -3058,9 +3378,11 @@ Object.assign(NASTROJE,{
       Object.entries(vstupy).forEach(([k,i])=>{ if(i.type==="checkbox") i.checked=!!s[k]; else i.value=s[k]==null?"":s[k]; });
       kresliSablony(); kresliStav();
     };
+    const dlazdiceZaznamu=z=>dlazdiceTypu("sbirka").find(o=>(o.obsah.polozky||[]).includes(z));
     const kresliStav=()=>{
-      stavFormulare.textContent=upravovane
-        ? "Upravujete uloženou citaci — Uložit ji přepíše."
+      const kde=upravovany&&dlazdiceZaznamu(upravovany);
+      stavFormulare.textContent=kde
+        ? "Upravujete uloženou citaci z dlaždice „"+kde.nazev+"“ — Uložit ji přepíše."
         : "Nová citace, zatím neuložená.";
     };
     /* ---- šablony k vložení: samostatná tlačítka, ne seznam ---- */
@@ -3076,62 +3398,52 @@ Object.assign(NASTROJE,{
         el("span",{style:"font-family:var(--pismo-mono);font-size:12.5px;white-space:pre-wrap;word-break:break-word"},text))));
       sablony.append(el("p",{class:"tichy"},"Kliknutím na šablonu se text zkopíruje do schránky."));
     };
-    /* ---- sbírka citací ---- */
-    const vyhovuje=z=>{
-      if(!hledat) return true;
-      const h=bezDiakritiky(hledat);
-      const v=citaceVarianty(z).map(x=>x[1]).join(" ");
-      return bezDiakritiky([z.nazev,z.cislo,z.text,z.poznamka,v].join(" ")).includes(h);
-    };
+    /* ---- sbírka napříč dlaždicemi ---- */
     const nactiDoFormulare=z=>{
-      s=Object.assign(citacePrazdna(),z); upravovane=z.id;
+      s=Object.assign(citacePrazdna(),z); upravovany=z;
       naplnFormular(); hlas("Citace načtena do formuláře");
-      vstupy.cislo.focus();
     };
     const kresliSbirku=()=>{
       sbirka.innerHTML="";
-      if(!S.citace.length){ sbirka.append(el("p",{class:"tichy"},"Sbírka je zatím prázdná. Sestavte citaci a uložte ji tlačítkem Uložit do sbírky.")); return; }
-      const vse=S.citace.filter(vyhovuje).sort((a,b)=>(b.zmeneno||0)-(a.zmeneno||0));
-      sbirka.append(el("p",{class:"tichy"},"Uloženo citací: "+S.citace.length+(hledat?", vyhovuje hledání: "+vse.length:"")));
-      if(!vse.length){ sbirka.append(el("p",{class:"tichy"},"Hledání nic nenašlo.")); return; }
-      vse.forEach(z=>{
-        const v=citaceVarianty(z);
-        const plna=(v.find(x=>x[0]==="Plná citace")||v.find(x=>x[0]==="Pramen samostatně")||v[0]||["",""])[1];
-        const odkaz=citaceOdkaz(z);
-        const k=el("div",{class:"karta"},el("div",{style:"font-weight:650;word-break:break-word"},plna||"(bez citace)"));
-        if(z.text) k.append(el("blockquote",{style:"margin:8px 0 0;padding-left:12px;border-left:3px solid var(--akcent);white-space:pre-wrap"},z.text));
-        if(z.poznamka) k.append(el("div",{class:"tichy",style:"margin-top:8px"},z.poznamka));
-        k.append(el("div",{class:"pruh",style:"margin:10px 0 0"},
-          el("button",{class:"btn mini",onclick:()=>zkopirovat(plna)},"Zkopírovat citaci"),
-          z.text?el("button",{class:"btn druhy mini",onclick:()=>zkopirovat(z.text,"Text ustanovení zkopírován")},"Zkopírovat text"):null,
-          el("button",{class:"btn druhy mini",onclick:()=>nactiDoFormulare(z)},"Otevřít ve formuláři"),
-          odkaz?el("a",{class:"btn druhy mini",href:odkaz,target:"_blank",rel:"noopener"},"Otevřít předpis"):null,
+      const vse=polozkyTypu("sbirka");
+      const dlazdic=dlazdiceTypu("sbirka").length;
+      if(!vse.length){
+        sbirka.append(el("p",{class:"tichy"},dlazdic
+          ? "Sbírka je zatím prázdná. Sestavte citaci a uložte ji tlačítkem Uložit do sbírky."
+          : "Zatím není žádná dlaždice Sbírka citací — první uložení ji založí."));
+        return;
+      }
+      const vyhovujici=vse.filter(x=>citaceVyhovuje(x.p,hledat)).sort((a,b)=>(b.p.zmeneno||0)-(a.p.zmeneno||0));
+      sbirka.append(el("p",{class:"tichy"},"Uloženo citací: "+vse.length+
+        (dlazdic>1?" · dlaždic: "+dlazdic:"")+(hledat?" · vyhovuje hledání: "+vyhovujici.length:"")));
+      if(!vyhovujici.length){ sbirka.append(el("p",{class:"tichy"},"Hledání nic nenašlo.")); return; }
+      vyhovujici.forEach(({o,p})=>{
+        const k=citaceKarta(p,[
+          el("button",{class:"btn druhy mini",onclick:()=>nactiDoFormulare(p)},"Otevřít ve formuláři"),
           el("button",{class:"btn druhy mini",onclick:()=>{
             if(S.chovani.potvrzovatMazani&&!confirm("Smazat citaci ze sbírky?")) return;
-            S.citace=S.citace.filter(x=>x.id!==z.id);
-            if(upravovane===z.id){ upravovane=null; kresliStav(); }
-            ulozit(); kresliSbirku(); hlas("Citace smazána");
-          }},"Smazat")));
+            o.obsah.polozky=o.obsah.polozky.filter(x=>x!==p);
+            if(upravovany===p) upravovany=null;
+            zmena(o); kresliStav(); kresliSbirku(); hlas("Citace smazána");
+          }},"Smazat")]);
+        if(dlazdic>1) k.append(el("div",{class:"tichy",style:"margin-top:8px"},"Dlaždice: "+o.nazev));
         sbirka.append(k);
       });
     };
-    const ulozitCitaci=(jakoNovou)=>{
+    const ulozitCitaci=jakoNovou=>{
       if(!citaceVarianty(s).length) return hlas("Nejdřív vyplňte citaci");
-      const zaznam=Object.assign({},s,{id:(!jakoNovou&&upravovane)||id(),zmeneno:Date.now()});
-      const n=S.citace.findIndex(x=>x.id===zaznam.id);
-      if(n>=0) S.citace[n]=zaznam; else S.citace.unshift(zaznam);
-      upravovane=zaznam.id;
-      ulozit(); kresliStav(); kresliSbirku();
-      hlas(n>=0?"Citace uložena":"Citace přidána do sbírky");
-    };
-    const doTabulky=()=>{
-      const hlavicka=["Citace","Pramen","Ustanovení","Text ustanovení","Poznámka","Odkaz","Změněno"];
-      const radky=S.citace.filter(vyhovuje).map(z=>{
-        const v=citaceVarianty(z), najdi=n=>(v.find(x=>x[0]===n)||["",""])[1];
-        return [najdi("Plná citace")||najdi("Pramen samostatně"),citacePramen(z,"nom"),citaceUstanoveni(z),
-          z.text||"",z.poznamka||"",citaceOdkaz(z),z.zmeneno?new Date(z.zmeneno).toISOString().slice(0,10):""];
-      });
-      return [hlavicka,...radky];
+      const kde=!jakoNovou&&upravovany&&dlazdiceZaznamu(upravovany);
+      if(kde){
+        Object.assign(upravovany,s,{zmeneno:Date.now()});
+        zmena(kde); hlas("Citace uložena");
+      } else {
+        const cil=cilovka.cil();
+        const z=Object.assign(citacePrazdna(),s,{id:id(),zmeneno:Date.now()});
+        (cil.obsah.polozky=cil.obsah.polozky||[]).unshift(z);
+        upravovany=z; zmena(cil); cilovka.obnov();
+        hlas("Citace přidána do dlaždice „"+cil.nazev+"“");
+      }
+      kresliStav(); kresliSbirku();
     };
     /* ---- sestavení okna ---- */
     const vyber=el("select",{"aria-label":"Typ pramene"});
@@ -3158,45 +3470,29 @@ Object.assign(NASTROJE,{
       oblast("Text ustanovení","text","Doslovné znění, které si chcete uchovat…"),
       pole("Poznámka","poznamka"),
       el("h3",{class:"nadpis"},"Šablony k vložení"),sablony,
-      el("h3",{class:"nadpis"},"Sbírka citací"),stavFormulare,
+      el("h3",{class:"nadpis"},"Sbírka citací"),
+      el("p",{class:"tichy"},"Citace se ukládají do dlaždic typu Sbírka citací. Nástroj hledá napříč všemi."),
+      el("div",{class:"radek"},cilovka.prvek),stavFormulare,
       el("div",{class:"pruh",style:"margin-top:10px"},
         el("button",{class:"btn mini",onclick:()=>ulozitCitaci(false)},"Uložit do sbírky"),
         el("button",{class:"btn druhy mini",onclick:()=>ulozitCitaci(true)},"Uložit jako novou"),
-        el("button",{class:"btn druhy mini",onclick:()=>{ s=citacePrazdna(); upravovane=null; naplnFormular(); hlas("Formulář vyčištěn"); }},"Nová citace")));
-    const h=el("input",{type:"search","aria-label":"Hledat ve sbírce citací",placeholder:"Hledat v citacích, textu i poznámkách…"});
+        el("button",{class:"btn druhy mini",onclick:()=>{ s=citacePrazdna(); upravovany=null; naplnFormular(); hlas("Formulář vyčištěn"); }},"Nová citace")));
+    const h=el("input",{type:"search","aria-label":"Hledat ve sbírce citací",placeholder:"Hledat v citacích, znění i poznámkách…"});
     h.addEventListener("input",()=>{hledat=h.value.trim();kresliSbirku();});
     t.append(el("label",{class:"pole"},el("span",{},"Hledání ve sbírce"),h),
       el("div",{class:"pruh"},
-        el("button",{class:"btn druhy mini",onclick:()=>{
-          if(!S.citace.length) return hlas("Sbírka je prázdná");
-          stahnout("citace.csv",tabDoCsv(doTabulky(),";"),"text/csv");
-        }},"Export CSV"),
-        el("button",{class:"btn druhy mini",onclick:()=>{
-          if(!S.citace.length) return hlas("Sbírka je prázdná");
-          stahnout("citace.tsv",tabDoCsv(doTabulky(),"\t"),"text/tab-separated-values");
-        }},"Export TSV"),
-        el("button",{class:"btn druhy mini",onclick:()=>{
-          if(!S.citace.length) return hlas("Sbírka je prázdná");
-          stahnout("citace.json",JSON.stringify(S.citace,null,2),"application/json");
-        }},"Export JSON"),
-        el("button",{class:"btn druhy mini",onclick:()=>{
-          const vstup=el("input",{type:"file",accept:".json,application/json"});
-          vstup.addEventListener("change",async()=>{
-            const f=vstup.files[0]; if(!f) return;
-            try{
-              const pole=JSON.parse(await f.text());
-              let pridano=0;
-              (Array.isArray(pole)?pole:[]).forEach(z=>{
-                if(!z||typeof z!=="object") return;
-                S.citace.push(Object.assign(citacePrazdna(),z,{id:id(),zmeneno:z.zmeneno||Date.now()})); pridano++;
-              });
-              ulozit(); kresliSbirku(); hlas("Načteno citací: "+pridano);
-            }catch(e){ hlas("Import se nezdařil: "+e.message); }
-          });
-          vstup.click();
-        }},"Import JSON")),
+        el("button",{class:"btn druhy mini",onclick:()=>nactiZeSouboru(citaceZTabulky,zaznamy=>{
+          const cil=cilovka.cil();
+          (cil.obsah.polozky=cil.obsah.polozky||[]).push(...zaznamy);
+          zmena(cil); cilovka.obnov(); kresliSbirku();
+          hlas("Načteno citací: "+zaznamy.length+" do dlaždice „"+cil.nazev+"“");
+        })},"Import CSV, TSV nebo JSON"),
+        tlacitkaExportu(()=>"citace",
+          ()=>polozkyTypu("sbirka").filter(x=>citaceVyhovuje(x.p,hledat)).map(x=>x.p),citaceDoTabulky)),
       sbirka);
-    naplnFormular(); kresliSbirku();
+    naplnFormular();
+    if(citaceKPrevzeti){ nactiDoFormulare(citaceKPrevzeti); citaceKPrevzeti=null; }
+    kresliSbirku();
 
     const ta=el("textarea",{"aria-label":"Text k rozboru",placeholder:"Vložte text s citacemi…"});
     const rozbor=el("div",{});
@@ -3220,101 +3516,84 @@ Object.assign(NASTROJE,{
             k.append(el("div",{class:"pruh",style:"margin:8px 0 0"},
               m?el("button",{class:"btn druhy mini",onclick:()=>{
                 s=citacePrazdna(); s.cislo=m[1]+"/"+m[2]; s.nazev=PREDPISY[s.cislo]||"";
-                upravovane=null; naplnFormular(); hlas("Pramen vložen do formuláře");
+                upravovany=null; naplnFormular(); hlas("Pramen vložen do formuláře");
               }},"Vložit do formuláře"):null,
               x.url?el("a",{class:"btn druhy mini",href:x.url,target:"_blank",rel:"noopener"},"Otevřít předpis"):null));
             rozbor.append(k);
           });
         }},"Rozebrat a sjednotit")),rozbor);
   }},
-  glosar:{n:"Glosář pojmů",i:"📚",b:"#3aa1e2",w:720,v:640,f:(t)=>{
-    S.glosar=S.glosar||[];
-    let hledat="",oblast="";
+  glosar:{n:"Glosář pojmů",i:"📚",b:"#3aa1e2",w:720,v:660,f:(t)=>{
+    let hledat="", oblast="";
     const seznam=el("div",{});
-    const oblasti=()=>[...new Set(S.glosar.map(p=>(p.oblast||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"cs"));
-    const vyhovuje=p=>{
-      if(oblast&&(p.oblast||"")!==oblast) return false;
-      if(!hledat) return true;
-      const h=bezDiakritiky(hledat);
-      return [p.pojem,p.vyklad,p.oblast,p.odkaz].some(x=>bezDiakritiky(String(x||"")).includes(h));
-    };
-    const kresli=()=>{
-      seznam.innerHTML="";
-      const vse=S.glosar.filter(vyhovuje).sort((a,b)=>String(a.pojem||"").localeCompare(String(b.pojem||""),"cs"));
-      if(!S.glosar.length){
-        seznam.append(el("p",{class:"tichy"},"Glosář je prázdný. Přidejte vlastní pojem, nebo vložte ukázkovou sadu pojmů eGovernmentu."));
-      } else if(!vse.length) seznam.append(el("p",{class:"tichy"},"Hledání nic nenašlo."));
-      vse.forEach(p=>{
-        const k=el("div",{class:"karta"});
-        const pole=(popisek,klic,prvek)=>{
-          const i=el(prvek||"input",prvek?{"aria-label":popisek}:{type:"text","aria-label":popisek,value:p[klic]||""});
-          if(prvek) i.value=p[klic]||"";
-          i.addEventListener("input",()=>{p[klic]=i.value;p.zmeneno=Date.now();ulozit();});
-          return el("label",{class:"pole",style:"flex:1;min-width:140px"},el("span",{},popisek),i);
-        };
-        k.append(el("div",{class:"radek"},pole("Pojem nebo zkratka","pojem"),pole("Oblast","oblast"),
-          el("button",{class:"o-btn",style:"align-self:end;margin-bottom:12px","aria-label":"Smazat pojem "+(p.pojem||""),
-            onclick:()=>{ if(S.chovani.potvrzovatMazani&&!confirm("Smazat pojem „"+(p.pojem||"")+"“?")) return;
-              S.glosar=S.glosar.filter(x=>x!==p); ulozit(); kresli(); hlas("Pojem smazán"); }},"✕")),
-          pole("Výklad","vyklad","textarea"),
-          el("div",{class:"radek"},pole("Odkaz","odkaz"),
-            el("div",{class:"pruh",style:"margin:0 0 12px;align-self:end"},
-              el("button",{class:"btn druhy mini",onclick:()=>zkopirovat((p.pojem||"")+" — "+(p.vyklad||""))},"Zkopírovat"),
-              p.odkaz?el("a",{class:"btn druhy mini",href:p.odkaz,target:"_blank",rel:"noopener"},"Otevřít"):null)));
-        seznam.append(k);
-      });
-    };
-    const h=el("input",{type:"search","aria-label":"Hledat v glosáři",placeholder:"Hledat pojem, zkratku nebo výklad…"});
-    h.addEventListener("input",()=>{hledat=h.value.trim();kresli();});
+    const cilovka=vyberDlazdice("slovnik","Přidávat do dlaždice",()=>kresli());
+    const vsePolozky=()=>polozkyTypu("slovnik");
+    const oblasti=()=>[...new Set(vsePolozky().map(x=>(x.p.oblast||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"cs"));
     const ob=el("select",{"aria-label":"Oblast"});
     const naplnOblasti=()=>{ ob.innerHTML=""; ob.append(el("option",{value:""},"Všechny oblasti"));
       oblasti().forEach(o=>ob.append(el("option",{value:o,selected:o===oblast},o))); };
+    const kresli=()=>{
+      seznam.innerHTML="";
+      const vse=vsePolozky();
+      const dlazdic=dlazdiceTypu("slovnik").length;
+      if(!vse.length){
+        seznam.append(el("p",{class:"tichy"},dlazdic
+          ? "Slovník je zatím prázdný. Přidejte pojem nebo vložte ukázkovou sadu."
+          : "Zatím není žádná dlaždice Slovník pojmů — první přidaný pojem ji založí."));
+        return;
+      }
+      const v=vse.filter(x=>slovnikVyhovuje(x.p,hledat,oblast)).sort((a,b)=>slovnikRazeni(a.p,b.p));
+      seznam.append(el("p",{class:"tichy"},"Pojmů: "+vse.length+(dlazdic>1?" · dlaždic: "+dlazdic:"")+
+        ((hledat||oblast)?" · vyhovuje: "+v.length:"")));
+      if(!v.length){ seznam.append(el("p",{class:"tichy"},"Hledání nic nenašlo.")); return; }
+      v.forEach(({o,p})=>{
+        const k=slovnikKarta(p,()=>zmena(o),()=>{
+          if(S.chovani.potvrzovatMazani&&!confirm("Smazat pojem „"+(p.pojem||"")+"“?")) return;
+          o.obsah.polozky=o.obsah.polozky.filter(x=>x!==p);
+          zmena(o); naplnOblasti(); kresli(); hlas("Pojem smazán");
+        });
+        if(dlazdic>1) k.append(el("div",{class:"tichy"},"Dlaždice: "+o.nazev));
+        seznam.append(k);
+      });
+    };
+    const h=el("input",{type:"search","aria-label":"Hledat ve slovníku",placeholder:"Hledat pojem, zkratku nebo výklad…"});
+    h.addEventListener("input",()=>{hledat=h.value.trim();kresli();});
     ob.addEventListener("change",()=>{oblast=ob.value;kresli();});
     naplnOblasti();
-    const obnov=()=>{naplnOblasti();kresli();};
-    t.append(el("div",{class:"radek"},el("label",{class:"pole",style:"flex:1"},el("span",{},"Hledání"),h),
+    const obnov=()=>{ naplnOblasti(); cilovka.obnov(); kresli(); };
+    t.append(el("p",{class:"tichy"},"Pojmy se ukládají do dlaždic typu Slovník pojmů. Nástroj hledá napříč všemi."),
+      el("div",{class:"radek"},el("label",{class:"pole",style:"flex:1"},el("span",{},"Hledání"),h),
         el("label",{class:"pole",style:"flex:0 0 200px"},el("span",{},"Oblast"),ob)),
+      el("div",{class:"radek"},cilovka.prvek),
       el("div",{class:"pruh"},
         el("button",{class:"btn mini",onclick:()=>{
-          S.glosar.unshift({id:id(),pojem:"",vyklad:"",oblast:oblast||"",odkaz:"",zmeneno:Date.now()});
-          ulozit(); hledat=""; h.value=""; obnov();
+          const cil=cilovka.cil();
+          (cil.obsah.polozky=cil.obsah.polozky||[]).unshift({id:id(),pojem:"",vyklad:"",oblast:oblast||"",odkaz:"",zmeneno:Date.now()});
+          zmena(cil); hledat=""; h.value=""; obnov();
+          setTimeout(()=>$$("input[type=text]",seznam)[0]?.focus(),0);
         }},"＋ Přidat pojem"),
         el("button",{class:"btn druhy mini",onclick:()=>{
-          const nove=GLOSAR_UKAZKA.filter(u=>!S.glosar.some(p=>bezDiakritiky(p.pojem||"")===bezDiakritiky(u.pojem)));
-          if(!nove.length) return hlas("Ukázkové pojmy už v glosáři jsou");
-          nove.forEach(u=>S.glosar.push({id:id(),...u,zmeneno:Date.now()}));
-          ulozit(); obnov(); hlas("Vloženo pojmů: "+nove.length);
+          const cil=cilovka.cil();
+          cil.obsah.polozky=cil.obsah.polozky||[];
+          const nove=GLOSAR_UKAZKA.filter(u=>!vsePolozky().some(x=>bezDiakritiky(x.p.pojem||"")===bezDiakritiky(u.pojem)));
+          if(!nove.length) return hlas("Ukázkové pojmy už ve slovníku jsou");
+          nove.forEach(u=>cil.obsah.polozky.push(Object.assign({id:id(),zmeneno:Date.now()},u)));
+          zmena(cil); obnov(); hlas("Vloženo pojmů: "+nove.length);
         }},"Vložit ukázkovou sadu"),
+        el("button",{class:"btn druhy mini",onclick:()=>nactiZeSouboru(slovnikZTabulky,zaznamy=>{
+          const cil=cilovka.cil();
+          (cil.obsah.polozky=cil.obsah.polozky||[]).push(...zaznamy);
+          zmena(cil); obnov(); hlas("Načteno pojmů: "+zaznamy.length+" do dlaždice „"+cil.nazev+"“");
+        })},"Import CSV, TSV nebo JSON"),
+        tlacitkaExportu(()=>"slovnik",
+          ()=>vsePolozky().filter(x=>slovnikVyhovuje(x.p,hledat,oblast)).map(x=>x.p),slovnikDoTabulky),
         el("button",{class:"btn druhy mini",onclick:()=>{
-          const md=["# Glosář",""].concat(S.glosar.filter(vyhovuje)
-            .sort((a,b)=>String(a.pojem||"").localeCompare(String(b.pojem||""),"cs"))
-            .map(p=>"**"+(p.pojem||"")+"**"+(p.oblast?" *("+p.oblast+")*":"")+" — "+(p.vyklad||"")+(p.odkaz?" ["+p.odkaz+"]("+p.odkaz+")":""))).join("\n\n");
-          const o=vytvorit("markdown","Glosář",{text:md}); otevritObjekt(o.id);
-        }},"Jako dlaždici"),
-        el("button",{class:"btn druhy mini",onclick:()=>stahnout("glosar.json",JSON.stringify(S.glosar,null,2),"application/json")},"Export JSON"),
-        el("button",{class:"btn druhy mini",onclick:()=>{
-          const vstup=el("input",{type:"file",accept:".json,.csv,application/json,text/csv"});
-          vstup.addEventListener("change",async()=>{
-            const f=vstup.files[0]; if(!f) return;
-            try{
-              const text=await f.text();
-              let polozky;
-              if(/\.json$/i.test(f.name)||/^\s*\[/.test(text)) polozky=JSON.parse(text);
-              else{
-                const m=tabNacti(text,"auto").mrizka;
-                const hl=m[0].map(x=>bezDiakritiky(x));
-                const i=n=>hl.indexOf(n);
-                polozky=m.slice(1).map(r=>({pojem:r[Math.max(0,i("pojem"))]||r[0]||"",
-                  vyklad:r[i("vyklad")>=0?i("vyklad"):1]||"",oblast:r[i("oblast")>=0?i("oblast"):2]||"",odkaz:r[i("odkaz")>=0?i("odkaz"):3]||""}));
-              }
-              let pridano=0;
-              polozky.forEach(p=>{ if(!p||!p.pojem) return;
-                S.glosar.push({id:id(),pojem:String(p.pojem),vyklad:String(p.vyklad||""),oblast:String(p.oblast||""),odkaz:String(p.odkaz||""),zmeneno:Date.now()}); pridano++; });
-              ulozit(); obnov(); hlas("Načteno pojmů: "+pridano);
-            }catch(e){ hlas("Import se nezdařil: "+e.message); }
-          });
-          vstup.click();
-        }},"Import JSON nebo CSV")),
+          const v=vsePolozky().filter(x=>slovnikVyhovuje(x.p,hledat,oblast)).map(x=>x.p).sort(slovnikRazeni);
+          if(!v.length) return hlas("Není co uložit");
+          const md=["# Slovník pojmů",""].concat(v.map(p=>"**"+(p.pojem||"")+"**"+(p.oblast?" *("+p.oblast+")*":"")+
+            " — "+(p.vyklad||"")+(p.odkaz?" ["+p.odkaz+"]("+p.odkaz+")":""))).join("\n\n");
+          const o=vytvorit("markdown","Slovník pojmů",{text:md}); otevritObjekt(o.id);
+        }},"Jako Markdown dlaždici")),
       seznam);
     kresli();
   }},
