@@ -178,7 +178,7 @@ button{cursor:pointer;border:0;background:none}
 /* ---------- formuláře a obsah oken ---------- */
 .pole{display:block;margin-bottom:12px}
 .pole>span{display:block;font-size:12px;font-weight:650;margin-bottom:5px;color:var(--dlazdice-slaby)}
-input[type=text],input[type=url],input[type=number],input[type=date],input[type=time],input[type=password],select,textarea{
+input[type=text],input[type=url],input[type=number],input[type=date],input[type=time],input[type=password],input[type=search],select,textarea{
   width:100%;padding:9px 12px;border-radius:var(--r-maly);border:1px solid var(--ram);
   background:color-mix(in srgb,var(--okno) 92%,#000);
 }
@@ -453,7 +453,7 @@ function novyStav(){
       pismo:"'Segoe UI Variable Text','Segoe UI',system-ui,-apple-system,sans-serif",
       velikost:15, mezera:14, radaVyska:118, vzorTecek:false, panelStav:"plny"
     },
-    chovani:{potvrzovatMazani:true, otviratDvojklikem:false, ukazovatDatum:true, novaOknaKaskada:true},
+    chovani:{potvrzovatMazani:true, otviratDvojklikem:false, ukazovatDatum:true, novaOknaKaskada:true, otviratKeCteni:true},
     github:{repo:"",vetev:"main",cesta:"prostredi.json",token:"",autoUlozit:true},
     nastroje:null,
     stitkyBarvy:{},
@@ -462,6 +462,7 @@ function novyStav(){
     mereni:{zaznamy:[],bezi:null},
     sablony:[],
     glosar:[],
+    citace:[],
     plochy:[{id:"p1",nazev:"Plocha",ikona:"🏠"}],
     aktivni:"p1",
     objekty:[],
@@ -863,7 +864,7 @@ let hodinyTimer=null;
 function tikatHodiny(){
   clearInterval(hodinyTimer);
   const f=()=>$$("[data-hodiny]").forEach(e=>{
-    const o=objekt(e.closest(".dlazdice").dataset.id);
+    const o=objekt(e.dataset.hodinyId||e.closest(".dlazdice")?.dataset.id);
     e.textContent=new Date().toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:!(o?.obsah?.format24!==false)});
   });
   f(); if($("[data-hodiny]")) hodinyTimer=setInterval(f,1000);
@@ -1055,7 +1056,7 @@ function otevritObjekt(i){
   otevritOkno({klic:"obj-"+i,nazev:o.nazev,ikona:o.ikona,
     sirka:o.typ==="aplikace"||o.typ==="odkaz"?900:620, vyska:o.typ==="aplikace"||o.typ==="odkaz"?620:520,
     bezokraje:(o.typ==="aplikace"||o.typ==="odkaz"),
-    obsah:(t,w)=>editor(o,t,w)});
+    obsah:(t,w)=>oknoObjektu(o,t,w)});
 }
 function hlavicka(o,t){
   const h=el("div",{class:"radek"});
@@ -1075,6 +1076,193 @@ function akceDlazdice(o){
     ["⤓","Exportovat jako JSON",()=>stahnout(o.nazev+".json",JSON.stringify(o,null,2),"application/json")],
     ["🗑️","Smazat",()=>smazat(o.id)]
   ];
+}
+/* ---------- režim zobrazení ----------
+   Dlaždice se otevírají ke čtení: text je sazba, ne pole formuláře. Činné zůstává to,
+   co je práce s obsahem, ne jeho úprava — zaškrtávání, odkazy a počítadlo. Zbytek se
+   mění až po přepnutí na Upravit (tlačítko v liště okna nebo klávesa F4). */
+const BEZ_ZOBRAZENI=["aplikace","odkaz","slozka","sezeni"];
+const maZobrazeni=typ=>!BEZ_ZOBRAZENI.includes(typ);
+function oknoObjektu(o,t,w){
+  if(!maZobrazeni(o.typ)) return editor(o,t,w);
+  let rezim=S.chovani.otviratKeCteni===false?"upravy":"zobrazeni";
+  const lista=el("div",{class:"pruh",style:"align-items:flex-start;margin-bottom:14px"});
+  const telo=el("div",{});
+  const kresli=()=>{
+    const jeZobrazeni=rezim==="zobrazeni";
+    lista.innerHTML=""; telo.innerHTML="";
+    const prep=el("button",{class:"btn mini","data-prepinac-rezimu":"1",
+      "aria-label":(jeZobrazeni?"Přepnout na úpravy":"Přepnout na zobrazení")+" — klávesa F4",
+      title:"Přepnout režim, klávesa F4"},jeZobrazeni?"✏️ Upravit":"👁 Zobrazení");
+    prep.addEventListener("click",()=>{
+      rezim=jeZobrazeni?"upravy":"zobrazeni";
+      kresli();
+      hlas(rezim==="zobrazeni"?"Režim zobrazení":"Režim úprav");
+      $("[data-prepinac-rezimu]",lista)?.focus();
+    });
+    const dalsi=nabidkaTlacitko("Další akce",akceDlazdice(o));
+    dalsi.style.marginTop="0";
+    lista.append(prep,dalsi);
+    ozivitListu(lista,"Nástroje dlaždice "+o.nazev);
+    w.dataset.rezim=rezim;
+    if(jeZobrazeni) zobrazeni(o,telo); else editor(o,telo,w);
+  };
+  t.append(lista,telo);
+  kresli();
+}
+function prepnoutRezimOkna(){
+  const w=$(".okno.aktivni")||$(".okno:not(.min)");
+  const b=w&&$("[data-prepinac-rezimu]",w);
+  if(!b) return hlas("Toto okno režim zobrazení nemá");
+  b.click(); return true;
+}
+function zobrazeni(o,t){
+  const c=o.obsah||{};
+  const ulozP=()=>zmena(o);
+  const prazdno=text=>el("p",{class:"tichy"},text);
+  if((o.stitky||[]).length)
+    t.append(el("div",{class:"pruh","aria-label":"Štítky: "+o.stitky.join(", ")},
+      o.stitky.map(s=>el("span",{class:"stitek"},s))));
+  const skrtnout=(prvek,hotovo)=>{ prvek.style.textDecoration=hotovo?"line-through":"none"; prvek.style.opacity=hotovo?".6":"1"; };
+  switch(o.typ){
+    case "text":
+      t.append(c.text?el("div",{class:"karta",style:"white-space:pre-wrap"},c.text):prazdno("Poznámka je zatím prázdná."));
+      break;
+    case "markdown":
+      t.append(c.text?el("div",{class:"md karta",html:md(c.text)}):prazdno("Poznámka je zatím prázdná."));
+      break;
+    case "kod":
+      if(!c.kod){ t.append(prazdno("Zatím bez kódu.")); break; }
+      if(c.jazyk) t.append(el("div",{class:"tichy",style:"margin-bottom:6px"},c.jazyk));
+      t.append(el("pre",{class:"karta",style:"font-family:var(--pismo-mono);font-size:13px;overflow:auto;margin:0 0 10px"},c.kod),
+        el("button",{class:"btn druhy mini",onclick:()=>zkopirovat(c.kod,"Kód zkopírován")},"Zkopírovat kód"));
+      break;
+    case "seznam": {
+      const pol=c.polozky||[];
+      if(!pol.length){ t.append(prazdno("Seznam je prázdný.")); break; }
+      const stav=el("div",{class:"tichy",style:"margin-bottom:6px"});
+      const spocitat=()=>{ stav.textContent="Hotovo "+pol.filter(p=>p.hotovo).length+" z "+pol.length; };
+      const ul=el("ul",{class:"seznam"});
+      pol.forEach(p=>{
+        const ch=el("input",{type:"checkbox"}); ch.checked=!!p.hotovo;
+        const txt=el("span",{class:"rostouci"},p.text||"(bez textu)");
+        skrtnout(txt,p.hotovo);
+        ch.addEventListener("change",()=>{ p.hotovo=ch.checked; skrtnout(txt,ch.checked); spocitat(); ulozP(); });
+        ul.append(el("li",{},el("label",{class:"radek",style:"gap:10px;margin:0;flex:1;cursor:pointer"},ch,txt)));
+      });
+      spocitat(); t.append(stav,ul);
+      break;
+    }
+    case "napady": {
+      const pol=c.polozky||[];
+      if(!pol.length){ t.append(prazdno("Zatím žádný nápad.")); break; }
+      t.append(el("ul",{class:"seznam"},pol.map(p=>el("li",{},
+        el("span",{"aria-hidden":"true"},"💡"),el("span",{class:"rostouci"},p.text||"(bez textu)")))));
+      break;
+    }
+    case "ukoly": {
+      const uk=c.ukoly||[];
+      if(!uk.length){ t.append(prazdno("Žádné úkoly.")); break; }
+      const stav=el("div",{class:"tichy",style:"margin-bottom:6px"});
+      const spocitat=()=>{ stav.textContent="Splněno "+uk.filter(u=>u.hotovo).length+" z "+uk.length; };
+      const ul=el("ul",{class:"seznam"});
+      uk.forEach(u=>{
+        const ch=el("input",{type:"checkbox"}); ch.checked=!!u.hotovo;
+        const txt=el("span",{class:"rostouci"},u.text||"(bez názvu)");
+        const znacky=el("span",{class:"pruh",style:"margin:0;gap:6px;flex:0 0 auto"});
+        const poTerminu=u.termin&&!u.hotovo&&u.termin<dnes();
+        if(u.termin) znacky.append(el("span",{class:"stitek",
+          style:poTerminu?"background:color-mix(in srgb,#d4536b 20%,transparent);color:#a33049":""},
+          (poTerminu?"po termínu, ":"")+new Date(u.termin).toLocaleDateString("cs-CZ")));
+        if(u.priorita) znacky.append(el("span",{class:"stitek"},"priorita "+u.priorita));
+        skrtnout(txt,u.hotovo);
+        ch.addEventListener("change",()=>{ u.hotovo=ch.checked; skrtnout(txt,ch.checked); spocitat(); ulozP(); });
+        ul.append(el("li",{},el("label",{class:"radek",style:"gap:10px;margin:0;flex:1;cursor:pointer"},ch,txt),znacky));
+      });
+      spocitat(); t.append(stav,ul);
+      break;
+    }
+    case "odkazy": {
+      const od=c.odkazy||[];
+      if(!od.length){ t.append(prazdno("Zatím žádný odkaz.")); break; }
+      t.append(el("ul",{class:"seznam"},od.map(d=>el("li",{},
+        el("span",{"aria-hidden":"true"},"🔗"),
+        el("span",{class:"rostouci"},
+          d.url?el("a",{href:d.url,target:"_blank",rel:"noopener"},d.nazev||d.url)
+               :el("span",{},d.nazev||"(bez adresy)"),
+          d.nazev&&d.url?el("div",{class:"tichy",style:"font-size:11px;word-break:break-all"},d.url):null)))));
+      break;
+    }
+    case "tabulka": {
+      const hl=c.hlavicka||[], rd=c.radky||[];
+      const tab=el("table",{class:"mrizka-tab"},
+        el("thead",{},el("tr",{},hl.map(h=>el("th",{},h||"")))),
+        el("tbody",{},rd.map(r=>el("tr",{},hl.map((_,i)=>el("td",{},r[i]||""))))));
+      t.append(el("div",{style:"overflow-x:auto"},tab));
+      if(!rd.length) t.append(prazdno("Tabulka nemá žádné řádky."));
+      t.append(el("div",{class:"pruh",style:"margin-top:10px"},
+        el("button",{class:"btn druhy mini",onclick:()=>{
+          const csv=[hl,...rd].map(r=>r.map(x=>'"'+String(x||"").replace(/"/g,'""')+'"').join(";")).join("\n");
+          stahnout(o.nazev+".csv",csv,"text/csv");
+        }},"Stáhnout CSV")));
+      break;
+    }
+    case "denik": {
+      const z=c.zapisy||[];
+      if(!z.length){ t.append(prazdno("Deník je zatím prázdný.")); break; }
+      z.forEach(x=>t.append(el("div",{class:"karta"},
+        el("h3",{style:"margin:0 0 8px;font-size:14px"},
+          x.datum?new Date(x.datum).toLocaleDateString("cs-CZ",{day:"numeric",month:"long",year:"numeric"}):"Bez data"),
+        el("div",{style:"white-space:pre-wrap"},x.text||""))));
+      break;
+    }
+    case "citace": {
+      if(!c.text&&!c.zdroj){ t.append(prazdno("Výpisek je prázdný.")); break; }
+      t.append(el("div",{class:"karta"},
+        el("blockquote",{style:"margin:0;padding-left:14px;border-left:3px solid var(--akcent);white-space:pre-wrap"},c.text||""),
+        (c.zdroj||c.url)?el("div",{class:"tichy",style:"margin-top:10px"},"— "+(c.zdroj||"zdroj"),
+          c.url?el("a",{href:c.url,target:"_blank",rel:"noopener",style:"margin-left:8px"},"otevřít zdroj"):null):null));
+      break;
+    }
+    case "soubor": {
+      if(!c.nazevSouboru){ t.append(prazdno("Zatím bez souboru — přepněte na Upravit a nahrajte ho.")); break; }
+      t.append(el("div",{class:"karta"},el("strong",{},c.nazevSouboru),
+        el("div",{class:"tichy"},c.mime||"neznámý typ"),
+        el("div",{class:"pruh",style:"margin-top:10px"},
+          el("button",{class:"btn mini",onclick:()=>{
+            if(c.data){ const a=el("a",{href:c.data,download:c.nazevSouboru}); a.click(); }
+            else stahnout(c.nazevSouboru,c.text,c.mime||"text/plain");
+          }},"Stáhnout"))));
+      if(c.data&&/^image\//.test(c.mime))
+        t.append(el("img",{src:c.data,alt:c.nazevSouboru,style:"max-width:100%;border-radius:12px"}));
+      if(c.text) t.append(el("pre",{class:"karta",
+        style:"font-family:var(--pismo-mono);font-size:12.5px;overflow:auto;max-height:360px;white-space:pre-wrap"},c.text));
+      break;
+    }
+    case "hodiny":
+      t.append(el("div",{class:"hodiny-velke","data-hodiny":"1","data-hodiny-id":o.id},"--:--"),
+        el("div",{class:"tichy"},(c.format24!==false?"24hodinový":"12hodinový")+" formát"));
+      tikatHodiny();
+      break;
+    case "pocitadlo": {
+      const v=el("div",{class:"hodiny-velke",role:"status","aria-live":"polite"},String(c.hodnota||0));
+      const zmen=d=>{ c.hodnota=(c.hodnota||0)+d*(c.krok||1); v.textContent=c.hodnota; ulozP(); };
+      t.append(v,el("div",{class:"tichy",style:"margin-bottom:10px"},"Krok: "+(c.krok||1)),
+        el("div",{class:"pruh"},
+          el("button",{class:"btn",onclick:()=>zmen(1),"aria-label":"Přičíst "+(c.krok||1)},"＋ Přičíst"),
+          el("button",{class:"btn druhy",onclick:()=>zmen(-1),"aria-label":"Odečíst "+(c.krok||1)},"– Odečíst")));
+      break;
+    }
+    case "odpocet": {
+      if(!c.datum){ t.append(prazdno("Cílové datum není nastavené.")); break; }
+      const d=Math.ceil((new Date(c.datum)-new Date())/864e5);
+      t.append(el("div",{class:"hodiny-velke"},String(Math.abs(d))),
+        el("div",{class:"tichy"},(d>=0?"dní zbývá do ":"dní uplynulo od ")+
+          new Date(c.datum).toLocaleDateString("cs-CZ",{day:"numeric",month:"long",year:"numeric"})));
+      break;
+    }
+    default: t.append(prazdno("Tento typ se zobrazuje jen v režimu úprav."));
+  }
 }
 function editor(o,t,w){
   const c=o.obsah;
@@ -1301,8 +1489,6 @@ function editor(o,t,w){
       break;
     }
   }
-  if(o.typ==="aplikace"||o.typ==="odkaz") return;   // správa je v nastavení aplikace
-  t.append(nabidkaTlacitko("Další akce",akceDlazdice(o)));
 }
 
 /* ============================================================
@@ -1942,6 +2128,7 @@ const NASTROJE={
       ["F8","Další plocha"],["Shift + F8","Seznam ploch"],
       ["Ctrl + F6","Další otevřené okno (v maximalizovaném režimu přepíná celé okno)"],["Ctrl + Shift + F6","Předchozí otevřené okno"],
       ["F2","Přejmenovat vybranou dlaždici"],
+      ["F4","Přepnout okno dlaždice mezi zobrazením a úpravami"],
       ["Šipky","Pohyb mezi dlaždicemi podle jejich rozložení"],["Home / End","První / poslední dlaždice"],
       ["Tab","Pohyb mezi ovládacími prvky"],["Enter nebo mezerník","Otevřít vybranou dlaždici"],
       ["Alt + Enter","Nabídka vybrané dlaždice"],["Delete","Přesunout vybranou dlaždici do koše"],
@@ -1957,6 +2144,7 @@ const NASTROJE={
     const kde=[["Vytvořit poznámku, složku, odkaz nebo aplikaci","Boční panel → sekce Vytvořit, nebo tlačítko Nová dlaždice, nebo pravé tlačítko na volné ploše"],
       ["Správce souborů","Boční panel → Správce souborů: procházení ploch a složek, přejmenování, přesun, mazání"],
       ["Aplikace","Boční panel → Aplikace: katalog webových aplikací otevíraných v okně nebo v nové kartě"],
+      ["Úprava obsahu dlaždice","Okno dlaždice se otevírá ke čtení — tlačítko Upravit v liště okna nebo klávesa F4 přepne na úpravy"],
       ["Které nástroje se zobrazují","Nastavení → záložka Nástroje: zaškrtávací seznam"],
       ["Citace předpisů, glosář, převod tabulek, QR kód, šifrovaná poznámka","Nastavení → Nástroje: zapněte je v seznamu, pak se objeví v bočním panelu i v paletě"],
       ["Barvy, názvy, tvary, písmo","Nastavení → Názvy, Barvy, Tvary a písmo"],
@@ -2020,6 +2208,8 @@ const PREDPISY={
   "181/2014":"o kybernetické bezpečnosti","99/2019":"o přístupnosti internetových stránek a mobilních aplikací",
   "2016/679":"obecné nařízení o ochraně osobních údajů (GDPR)","910/2014":"nařízení eIDAS"
 };
+const citacePrazdna=()=>({typ:"zakon",cislo:"",nazev:"",jednotka:"§",cast:"",odst:"",pism:"",bod:"",
+  veta:"",priloha:"",zneni:true,text:"",poznamka:""});
 function citaceUstanoveni(s){
   const c=[];
   if(s.cast) c.push((s.jednotka==="čl."?"čl. ":"§ ")+s.cast);
@@ -2047,16 +2237,34 @@ function citaceOdkaz(s){
   return "https://www.zakonyprolidi.cz/cs/"+m[2]+"-"+m[1]+(kotva?"#"+kotva:"");
 }
 function citaceVarianty(s){
-  const ust=citaceUstanoveni(s), gen=citacePramen(s,"gen"), nom=citacePramen(s,"nom");
+  const ust=citaceUstanoveni(s);
+  /* bez čísla i názvu není co citovat — samotný typ pramene („zákon“) šablonu netvoří */
+  const maPramen=!!(String(s.cislo||"").trim()||String(s.nazev||"").trim());
+  const gen=maPramen?citacePramen(s,"gen"):"", nom=maPramen?citacePramen(s,"nom"):"";
   const dovetek=s.zneni&&PRAMENY[s.typ]&&PRAMENY[s.typ].sb?", ve znění pozdějších předpisů":"";
+  /* zkrácený tvar bez názvu; s ustanovením je pramen v druhém pádě, bez něj v prvním */
+  const kratka=[ust,((ust?gen:nom)||"").split(",")[0]].filter(Boolean).join(" ");
   const v=[];
   if(ust&&gen) v.push(["Plná citace",ust+" "+gen+dovetek]);
-  if(ust&&gen) v.push(["Zkrácená citace",ust+" "+gen.split(",")[0]]);
-  if(ust&&gen) v.push(["V závorce","("+ust+" "+gen.split(",")[0]+")"]);
+  if(ust&&gen) v.push(["Zkrácená citace",kratka]);
+  if(ust&&gen) v.push(["V závorce","("+kratka+")"]);
   if(nom) v.push(["Pramen samostatně",nom+dovetek]);
   if(ust) v.push(["Jen ustanovení",ust]);
   const url=citaceOdkaz(s);
-  if(url){ v.push(["Odkaz",url]); v.push(["Odkaz v Markdownu","["+(ust?ust+" ":"")+(gen||nom).split(",")[0]+"]("+url+")"]); }
+  if(url){ v.push(["Odkaz",url]); v.push(["Odkaz v Markdownu","["+kratka+"]("+url+")"]); }
+  const zneniText=String(s.text||"").trim();
+  if(zneniText){
+    const velke=t=>t?t[0].toUpperCase()+t.slice(1):t;
+    if(ust&&gen) v.push(["Citace se zněním za dvojtečkou",ust+" "+gen+": "+zneniText]);
+    /* bez ustanovení uzavírá čárka název pramene, aby věta držela pohromadě */
+    if(nom) v.push(["Pramen a znění ve větě",
+      velke(nom)+(ust?", "+ust:(nom.includes(",")?",":""))+" říká: \u201e"+zneniText+"\u201c"]);
+    if(ust) v.push(["Znění s ustanovením v závorce",zneniText+" ("+ust+")"]);
+    v.push(["Znění s citací v závorce","\u201e"+zneniText+"\u201c"+(kratka?" ("+kratka+")":"")]);
+    if(kratka) v.push(["Citace a znění pod ní",kratka+"\n\u201e"+zneniText+"\u201c"]);
+    v.push(["Blokový citát pro Markdown","> "+zneniText.split("\n").join("\n> ")+(kratka?"\n>\n> \u2014 "+kratka:"")]);
+    v.push(["Jen znění ustanovení",zneniText]);
+  }
   return v;
 }
 function citaceNormalizuj(x){
@@ -2823,44 +3031,119 @@ Object.assign(NASTROJE,{
         el("button",{class:"btn druhy",onclick:()=>{prezentacniRezim(false);zavritOkno("n-prezentace");}},"Vypnout")),
       el("div",{class:"karta"},"Stav: "+(zap?"zapnuto":"vypnuto")));
   }},
-  citace:{n:"Citace a odkazy",i:"❝",b:"#8a6cff",w:720,v:640,f:(t)=>{
-    const s={typ:"zakon",cislo:"",nazev:"",jednotka:"§",cast:"",odst:"",pism:"",bod:"",veta:"",priloha:"",zneni:true};
+  citace:{n:"Citace a odkazy",i:"❝",b:"#8a6cff",w:780,v:700,f:(t)=>{
+    S.citace=S.citace||[];
+    let s=citacePrazdna(), upravovane=null, hledat="";
+    const vstupy={}, sablony=el("div",{}), sbirka=el("div",{}), stavFormulare=el("div",{class:"tichy"});
     const dl=el("datalist",{id:"citace-predpisy"});
     Object.entries(PREDPISY).forEach(([c,n])=>dl.append(el("option",{value:c},n)));
-    const vys=el("div",{}), vstupy={};
+    const zapis=(klic,hodnota)=>{
+      s[klic]=hodnota;
+      if(klic==="cislo"&&PREDPISY[s.cislo]&&!s.nazev){ s.nazev=PREDPISY[s.cislo]; vstupy.nazev.value=s.nazev; }
+      kresliSablony();
+    };
     const pole=(popis,klic,sirka,extra)=>{
-      const i=el("input",Object.assign({type:"text",value:s[klic],"aria-label":popis},extra||{}));
+      const i=el("input",Object.assign({type:"text",value:s[klic]||"","aria-label":popis},extra||{}));
       vstupy[klic]=i;
-      i.addEventListener("input",()=>{
-        s[klic]=i.value.trim();
-        /* u známého předpisu se název doplní sám, dokud si ho uživatel nevyplní po svém */
-        if(klic==="cislo"&&PREDPISY[s.cislo]&&!s.nazev){ s.nazev=PREDPISY[s.cislo]; vstupy.nazev.value=s.nazev; }
-        kresli();
-      });
+      i.addEventListener("input",()=>zapis(klic,i.value.trim()));
       return el("label",{class:"pole",style:sirka?"flex:0 0 "+sirka:"flex:1;min-width:120px"},el("span",{},popis),i);
     };
-    const kresli=()=>{
-      vys.innerHTML="";
-      const v=citaceVarianty(s);
-      if(!v.length){ vys.append(el("p",{class:"tichy"},"Vyplňte alespoň číslo pramene nebo ustanovení.")); return; }
-      const ul=el("ul",{class:"seznam"});
-      v.forEach(([popis,text])=>{
-        const b=el("button",{class:"rostouci",style:"text-align:left;padding:8px 0",
-          title:"Kliknutím zkopírujete",onclick:()=>zkopirovat(text)},
-          el("div",{class:"tichy",style:"font-size:11px"},popis),
-          el("div",{style:"font-family:var(--pismo-mono);font-size:12.5px;word-break:break-word"},text));
-        ul.append(el("li",{style:"border-bottom:1px solid var(--ram)"},b));
-      });
-      vys.append(ul,el("p",{class:"tichy"},"Kliknutím na řádek se citace zkopíruje do schránky."));
+    const oblast=(popis,klic,napoveda)=>{
+      const i=el("textarea",{"aria-label":popis,placeholder:napoveda||""});
+      i.value=s[klic]||""; vstupy[klic]=i;
+      i.addEventListener("input",()=>zapis(klic,i.value));
+      return el("label",{class:"pole"},el("span",{},popis),i);
     };
+    const naplnFormular=()=>{
+      Object.entries(vstupy).forEach(([k,i])=>{ if(i.type==="checkbox") i.checked=!!s[k]; else i.value=s[k]==null?"":s[k]; });
+      kresliSablony(); kresliStav();
+    };
+    const kresliStav=()=>{
+      stavFormulare.textContent=upravovane
+        ? "Upravujete uloženou citaci — Uložit ji přepíše."
+        : "Nová citace, zatím neuložená.";
+    };
+    /* ---- šablony k vložení: samostatná tlačítka, ne seznam ---- */
+    const kresliSablony=()=>{
+      sablony.innerHTML="";
+      const v=citaceVarianty(s);
+      if(!v.length){ sablony.append(el("p",{class:"tichy"},"Vyplňte alespoň číslo pramene nebo ustanovení.")); return; }
+      v.forEach(([popis,text])=>sablony.append(el("button",{class:"btn druhy",
+        style:"display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:100%;text-align:left;padding:10px 14px;margin-bottom:8px;border-radius:var(--r-stredni)",
+        "aria-label":"Zkopírovat, "+popis+": "+text,
+        onclick:()=>zkopirovat(text,popis+" — zkopírováno")},
+        el("span",{class:"tichy",style:"font-size:11px"},popis),
+        el("span",{style:"font-family:var(--pismo-mono);font-size:12.5px;white-space:pre-wrap;word-break:break-word"},text))));
+      sablony.append(el("p",{class:"tichy"},"Kliknutím na šablonu se text zkopíruje do schránky."));
+    };
+    /* ---- sbírka citací ---- */
+    const vyhovuje=z=>{
+      if(!hledat) return true;
+      const h=bezDiakritiky(hledat);
+      const v=citaceVarianty(z).map(x=>x[1]).join(" ");
+      return bezDiakritiky([z.nazev,z.cislo,z.text,z.poznamka,v].join(" ")).includes(h);
+    };
+    const nactiDoFormulare=z=>{
+      s=Object.assign(citacePrazdna(),z); upravovane=z.id;
+      naplnFormular(); hlas("Citace načtena do formuláře");
+      vstupy.cislo.focus();
+    };
+    const kresliSbirku=()=>{
+      sbirka.innerHTML="";
+      if(!S.citace.length){ sbirka.append(el("p",{class:"tichy"},"Sbírka je zatím prázdná. Sestavte citaci a uložte ji tlačítkem Uložit do sbírky.")); return; }
+      const vse=S.citace.filter(vyhovuje).sort((a,b)=>(b.zmeneno||0)-(a.zmeneno||0));
+      sbirka.append(el("p",{class:"tichy"},"Uloženo citací: "+S.citace.length+(hledat?", vyhovuje hledání: "+vse.length:"")));
+      if(!vse.length){ sbirka.append(el("p",{class:"tichy"},"Hledání nic nenašlo.")); return; }
+      vse.forEach(z=>{
+        const v=citaceVarianty(z);
+        const plna=(v.find(x=>x[0]==="Plná citace")||v.find(x=>x[0]==="Pramen samostatně")||v[0]||["",""])[1];
+        const odkaz=citaceOdkaz(z);
+        const k=el("div",{class:"karta"},el("div",{style:"font-weight:650;word-break:break-word"},plna||"(bez citace)"));
+        if(z.text) k.append(el("blockquote",{style:"margin:8px 0 0;padding-left:12px;border-left:3px solid var(--akcent);white-space:pre-wrap"},z.text));
+        if(z.poznamka) k.append(el("div",{class:"tichy",style:"margin-top:8px"},z.poznamka));
+        k.append(el("div",{class:"pruh",style:"margin:10px 0 0"},
+          el("button",{class:"btn mini",onclick:()=>zkopirovat(plna)},"Zkopírovat citaci"),
+          z.text?el("button",{class:"btn druhy mini",onclick:()=>zkopirovat(z.text,"Text ustanovení zkopírován")},"Zkopírovat text"):null,
+          el("button",{class:"btn druhy mini",onclick:()=>nactiDoFormulare(z)},"Otevřít ve formuláři"),
+          odkaz?el("a",{class:"btn druhy mini",href:odkaz,target:"_blank",rel:"noopener"},"Otevřít předpis"):null,
+          el("button",{class:"btn druhy mini",onclick:()=>{
+            if(S.chovani.potvrzovatMazani&&!confirm("Smazat citaci ze sbírky?")) return;
+            S.citace=S.citace.filter(x=>x.id!==z.id);
+            if(upravovane===z.id){ upravovane=null; kresliStav(); }
+            ulozit(); kresliSbirku(); hlas("Citace smazána");
+          }},"Smazat")));
+        sbirka.append(k);
+      });
+    };
+    const ulozitCitaci=(jakoNovou)=>{
+      if(!citaceVarianty(s).length) return hlas("Nejdřív vyplňte citaci");
+      const zaznam=Object.assign({},s,{id:(!jakoNovou&&upravovane)||id(),zmeneno:Date.now()});
+      const n=S.citace.findIndex(x=>x.id===zaznam.id);
+      if(n>=0) S.citace[n]=zaznam; else S.citace.unshift(zaznam);
+      upravovane=zaznam.id;
+      ulozit(); kresliStav(); kresliSbirku();
+      hlas(n>=0?"Citace uložena":"Citace přidána do sbírky");
+    };
+    const doTabulky=()=>{
+      const hlavicka=["Citace","Pramen","Ustanovení","Text ustanovení","Poznámka","Odkaz","Změněno"];
+      const radky=S.citace.filter(vyhovuje).map(z=>{
+        const v=citaceVarianty(z), najdi=n=>(v.find(x=>x[0]===n)||["",""])[1];
+        return [najdi("Plná citace")||najdi("Pramen samostatně"),citacePramen(z,"nom"),citaceUstanoveni(z),
+          z.text||"",z.poznamka||"",citaceOdkaz(z),z.zmeneno?new Date(z.zmeneno).toISOString().slice(0,10):""];
+      });
+      return [hlavicka,...radky];
+    };
+    /* ---- sestavení okna ---- */
     const vyber=el("select",{"aria-label":"Typ pramene"});
-    Object.entries(PRAMENY).forEach(([k,p])=>vyber.append(el("option",{value:k,selected:k===s.typ},p.n)));
-    vyber.addEventListener("change",()=>{s.typ=vyber.value;kresli();});
+    Object.entries(PRAMENY).forEach(([k,p])=>vyber.append(el("option",{value:k},p.n)));
+    vyber.value=s.typ; vstupy.typ=vyber;
+    vyber.addEventListener("change",()=>zapis("typ",vyber.value));
     const jed=el("select",{"aria-label":"Označení ustanovení"});
     ["§","čl."].forEach(x=>jed.append(el("option",{value:x},x)));
-    jed.addEventListener("change",()=>{s.jednotka=jed.value;kresli();});
-    const zn=el("input",{type:"checkbox",checked:s.zneni});
-    zn.addEventListener("change",()=>{s.zneni=zn.checked;kresli();});
+    jed.value=s.jednotka; vstupy.jednotka=jed;
+    jed.addEventListener("change",()=>zapis("jednotka",jed.value));
+    const zn=el("input",{type:"checkbox",checked:s.zneni}); vstupy.zneni=zn;
+    zn.addEventListener("change",()=>zapis("zneni",zn.checked));
     t.append(dl,
       el("div",{class:"radek"},el("label",{class:"pole",style:"flex:0 0 200px"},el("span",{},"Typ pramene"),vyber),
         pole("Číslo (např. 111/2009)","cislo","180px",{list:"citace-predpisy"}),
@@ -2872,8 +3155,48 @@ Object.assign(NASTROJE,{
         pole("Bod","bod","80px"),pole("Věta","veta","110px"),pole("Příloha č.","priloha","100px")),
       el("label",{class:"radek",style:"gap:8px;align-items:center;margin-bottom:12px"},zn,
         el("span",{},"doplnit „ve znění pozdějších předpisů“")),
-      el("h3",{class:"nadpis"},"Varianty citace"),vys);
-    kresli();
+      oblast("Text ustanovení","text","Doslovné znění, které si chcete uchovat…"),
+      pole("Poznámka","poznamka"),
+      el("h3",{class:"nadpis"},"Šablony k vložení"),sablony,
+      el("h3",{class:"nadpis"},"Sbírka citací"),stavFormulare,
+      el("div",{class:"pruh",style:"margin-top:10px"},
+        el("button",{class:"btn mini",onclick:()=>ulozitCitaci(false)},"Uložit do sbírky"),
+        el("button",{class:"btn druhy mini",onclick:()=>ulozitCitaci(true)},"Uložit jako novou"),
+        el("button",{class:"btn druhy mini",onclick:()=>{ s=citacePrazdna(); upravovane=null; naplnFormular(); hlas("Formulář vyčištěn"); }},"Nová citace")));
+    const h=el("input",{type:"search","aria-label":"Hledat ve sbírce citací",placeholder:"Hledat v citacích, textu i poznámkách…"});
+    h.addEventListener("input",()=>{hledat=h.value.trim();kresliSbirku();});
+    t.append(el("label",{class:"pole"},el("span",{},"Hledání ve sbírce"),h),
+      el("div",{class:"pruh"},
+        el("button",{class:"btn druhy mini",onclick:()=>{
+          if(!S.citace.length) return hlas("Sbírka je prázdná");
+          stahnout("citace.csv",tabDoCsv(doTabulky(),";"),"text/csv");
+        }},"Export CSV"),
+        el("button",{class:"btn druhy mini",onclick:()=>{
+          if(!S.citace.length) return hlas("Sbírka je prázdná");
+          stahnout("citace.tsv",tabDoCsv(doTabulky(),"\t"),"text/tab-separated-values");
+        }},"Export TSV"),
+        el("button",{class:"btn druhy mini",onclick:()=>{
+          if(!S.citace.length) return hlas("Sbírka je prázdná");
+          stahnout("citace.json",JSON.stringify(S.citace,null,2),"application/json");
+        }},"Export JSON"),
+        el("button",{class:"btn druhy mini",onclick:()=>{
+          const vstup=el("input",{type:"file",accept:".json,application/json"});
+          vstup.addEventListener("change",async()=>{
+            const f=vstup.files[0]; if(!f) return;
+            try{
+              const pole=JSON.parse(await f.text());
+              let pridano=0;
+              (Array.isArray(pole)?pole:[]).forEach(z=>{
+                if(!z||typeof z!=="object") return;
+                S.citace.push(Object.assign(citacePrazdna(),z,{id:id(),zmeneno:z.zmeneno||Date.now()})); pridano++;
+              });
+              ulozit(); kresliSbirku(); hlas("Načteno citací: "+pridano);
+            }catch(e){ hlas("Import se nezdařil: "+e.message); }
+          });
+          vstup.click();
+        }},"Import JSON")),
+      sbirka);
+    naplnFormular(); kresliSbirku();
 
     const ta=el("textarea",{"aria-label":"Text k rozboru",placeholder:"Vložte text s citacemi…"});
     const rozbor=el("div",{});
@@ -2883,19 +3206,25 @@ Object.assign(NASTROJE,{
         el("button",{class:"btn mini",onclick:()=>{
           const n=citaceNormalizuj(ta.value);
           rozbor.innerHTML="";
-          const box=el("div",{class:"vysledek"},n);
-          const nalez=citaceNajdi(ta.value);
-          rozbor.append(box,el("div",{class:"pruh",style:"margin-top:10px"},
+          rozbor.append(el("div",{class:"vysledek"},n),el("div",{class:"pruh",style:"margin-top:10px"},
             el("button",{class:"btn mini",onclick:()=>zkopirovat(n)},"Zkopírovat text"),
             el("button",{class:"btn druhy mini",onclick:()=>{ta.value=n;}},"Použít na vstup")));
-          if(nalez.length){
-            const ul=el("ul",{class:"seznam"});
-            nalez.forEach(x=>ul.append(el("li",{style:"padding:4px 0"},
+          const nalez=citaceNajdi(ta.value);
+          if(!nalez.length){ rozbor.append(el("p",{class:"tichy"},"Žádná citace nenalezena.")); return; }
+          rozbor.append(el("h3",{class:"nadpis"},"Nalezené prameny a ustanovení"));
+          nalez.forEach(x=>{
+            const k=el("div",{class:"karta",style:"padding:10px 13px"},
               el("code",{style:"font-family:var(--pismo-mono)"},x.text),
-              x.nazev?el("span",{class:"tichy"}," — "+x.nazev):null,
-              x.url?el("a",{href:x.url,target:"_blank",rel:"noopener",style:"margin-left:8px"},"otevřít"):null)));
-            rozbor.append(el("h3",{class:"nadpis"},"Nalezené prameny a ustanovení"),ul);
-          } else rozbor.append(el("p",{class:"tichy"},"Žádná citace nenalezena."));
+              x.nazev?el("span",{class:"tichy"}," — "+x.nazev):null);
+            const m=/^č\. ?(\d+)\/(\d{4}) Sb\.$/.exec(x.text);
+            k.append(el("div",{class:"pruh",style:"margin:8px 0 0"},
+              m?el("button",{class:"btn druhy mini",onclick:()=>{
+                s=citacePrazdna(); s.cislo=m[1]+"/"+m[2]; s.nazev=PREDPISY[s.cislo]||"";
+                upravovane=null; naplnFormular(); hlas("Pramen vložen do formuláře");
+              }},"Vložit do formuláře"):null,
+              x.url?el("a",{class:"btn druhy mini",href:x.url,target:"_blank",rel:"noopener"},"Otevřít předpis"):null));
+            rozbor.append(k);
+          });
         }},"Rozebrat a sjednotit")),rozbor);
   }},
   glosar:{n:"Glosář pojmů",i:"📚",b:"#3aa1e2",w:720,v:640,f:(t)=>{
@@ -3350,6 +3679,7 @@ function nastaveniOkno(t){
       prep("Ptát se před smazáním dlaždice",S.chovani.potvrzovatMazani,x=>S.chovani.potvrzovatMazani=x);
       prep("Zobrazovat datum pod názvem plochy",S.chovani.ukazovatDatum,x=>S.chovani.ukazovatDatum=x);
       prep("Otevírat nová okna kaskádovitě",S.chovani.novaOknaKaskada,x=>S.chovani.novaOknaKaskada=x);
+      prep("Otevírat dlaždice v režimu zobrazení",S.chovani.otviratKeCteni!==false,x=>S.chovani.otviratKeCteni=x);
       obsah.append(el("p",{class:"tichy"},"Změny se ukládají okamžitě."));
     }
     if(akt==="data"){
@@ -3514,6 +3844,7 @@ function prikazy(){
     {n:"Zavřít všechna okna",i:"✕",f:()=>{$$(".okno").forEach(w=>w.remove());kreslitPanel();hlas("Okna zavřena");}},
     {n:"Uspořádat okna vedle sebe",i:"▦",f:rozlozitOkna}
   ];
+  p.push({n:"Přepnout dlaždici mezi zobrazením a úpravami",i:"👁",f:prepnoutRezimOkna});
   Object.entries(NASTROJE).forEach(([k,t])=>{ if(t.skryt||zapnuty(k)) p.push({n:"Nástroj: "+t.n,i:t.i,f:()=>otevritNastroj(k)}); });
   Object.entries(TYPY).forEach(([k,t])=>p.push({n:"Vytvořit: "+t.n,i:t.i,f:()=>zalozit(k)}));
   S.plochy.forEach((x,n)=>p.push({n:"Plocha: "+x.nazev,i:x.ikona||"🗂️",f:()=>{S.aktivni=x.id;ulozit();kreslitPlochu();kreslitPanel();}}));
@@ -3635,6 +3966,8 @@ document.addEventListener("keydown",e=>{
   if(e.key==="F9"){e.preventDefault(); e.shiftKey?prepnoutPanel():prepnoutFokus(); return;}
   if(e.key==="F10"&&e.ctrlKey){e.preventDefault();otevritNabidku();return;}
   if(e.key==="F8"){e.preventDefault(); e.shiftKey?seznamPloch():dalsiPlocha(1); return;}
+  if(e.key==="F4"){ const w=$(".okno.aktivni"); const b=w&&$("[data-prepinac-rezimu]",w);
+    if(b){ e.preventDefault(); b.click(); } return; }
   if(e.key==="F2"&&!vPoli){ const d=document.activeElement.closest?.(".dlazdice"); if(d){e.preventDefault();prejmenovat(d.dataset.id);} return; }
 });
 $("#tl-panel").addEventListener("click",prepnoutPanel);
