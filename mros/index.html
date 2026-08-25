@@ -178,7 +178,7 @@ button{cursor:pointer;border:0;background:none}
 /* ---------- formuláře a obsah oken ---------- */
 .pole{display:block;margin-bottom:12px}
 .pole>span{display:block;font-size:12px;font-weight:650;margin-bottom:5px;color:var(--dlazdice-slaby)}
-input[type=text],input[type=url],input[type=number],input[type=date],input[type=time],input[type=password],select,textarea{
+input[type=text],input[type=url],input[type=number],input[type=date],input[type=time],input[type=password],input[type=search],select,textarea{
   width:100%;padding:9px 12px;border-radius:var(--r-maly);border:1px solid var(--ram);
   background:color-mix(in srgb,var(--okno) 92%,#000);
 }
@@ -462,6 +462,7 @@ function novyStav(){
     mereni:{zaznamy:[],bezi:null},
     sablony:[],
     glosar:[],
+    citace:[],
     plochy:[{id:"p1",nazev:"Plocha",ikona:"🏠"}],
     aktivni:"p1",
     objekty:[],
@@ -2207,6 +2208,8 @@ const PREDPISY={
   "181/2014":"o kybernetické bezpečnosti","99/2019":"o přístupnosti internetových stránek a mobilních aplikací",
   "2016/679":"obecné nařízení o ochraně osobních údajů (GDPR)","910/2014":"nařízení eIDAS"
 };
+const citacePrazdna=()=>({typ:"zakon",cislo:"",nazev:"",jednotka:"§",cast:"",odst:"",pism:"",bod:"",
+  veta:"",priloha:"",zneni:true,text:"",poznamka:""});
 function citaceUstanoveni(s){
   const c=[];
   if(s.cast) c.push((s.jednotka==="čl."?"čl. ":"§ ")+s.cast);
@@ -2234,7 +2237,10 @@ function citaceOdkaz(s){
   return "https://www.zakonyprolidi.cz/cs/"+m[2]+"-"+m[1]+(kotva?"#"+kotva:"");
 }
 function citaceVarianty(s){
-  const ust=citaceUstanoveni(s), gen=citacePramen(s,"gen"), nom=citacePramen(s,"nom");
+  const ust=citaceUstanoveni(s);
+  /* bez čísla i názvu není co citovat — samotný typ pramene („zákon“) šablonu netvoří */
+  const maPramen=!!(String(s.cislo||"").trim()||String(s.nazev||"").trim());
+  const gen=maPramen?citacePramen(s,"gen"):"", nom=maPramen?citacePramen(s,"nom"):"";
   const dovetek=s.zneni&&PRAMENY[s.typ]&&PRAMENY[s.typ].sb?", ve znění pozdějších předpisů":"";
   const v=[];
   if(ust&&gen) v.push(["Plná citace",ust+" "+gen+dovetek]);
@@ -2244,6 +2250,14 @@ function citaceVarianty(s){
   if(ust) v.push(["Jen ustanovení",ust]);
   const url=citaceOdkaz(s);
   if(url){ v.push(["Odkaz",url]); v.push(["Odkaz v Markdownu","["+(ust?ust+" ":"")+(gen||nom).split(",")[0]+"]("+url+")"]); }
+  const zneniText=String(s.text||"").trim();
+  if(zneniText){
+    const kratka=[ust,(gen||nom).split(",")[0]].filter(Boolean).join(" ");
+    v.push(["Znění s citací v závorce","\u201e"+zneniText+"\u201c"+(kratka?" ("+kratka+")":"")]);
+    if(kratka) v.push(["Citace a znění pod ní",kratka+"\n\u201e"+zneniText+"\u201c"]);
+    v.push(["Blokový citát pro Markdown","> "+zneniText.split("\n").join("\n> ")+(kratka?"\n>\n> \u2014 "+kratka:"")]);
+    v.push(["Jen znění ustanovení",zneniText]);
+  }
   return v;
 }
 function citaceNormalizuj(x){
@@ -3010,44 +3024,119 @@ Object.assign(NASTROJE,{
         el("button",{class:"btn druhy",onclick:()=>{prezentacniRezim(false);zavritOkno("n-prezentace");}},"Vypnout")),
       el("div",{class:"karta"},"Stav: "+(zap?"zapnuto":"vypnuto")));
   }},
-  citace:{n:"Citace a odkazy",i:"❝",b:"#8a6cff",w:720,v:640,f:(t)=>{
-    const s={typ:"zakon",cislo:"",nazev:"",jednotka:"§",cast:"",odst:"",pism:"",bod:"",veta:"",priloha:"",zneni:true};
+  citace:{n:"Citace a odkazy",i:"❝",b:"#8a6cff",w:780,v:700,f:(t)=>{
+    S.citace=S.citace||[];
+    let s=citacePrazdna(), upravovane=null, hledat="";
+    const vstupy={}, sablony=el("div",{}), sbirka=el("div",{}), stavFormulare=el("div",{class:"tichy"});
     const dl=el("datalist",{id:"citace-predpisy"});
     Object.entries(PREDPISY).forEach(([c,n])=>dl.append(el("option",{value:c},n)));
-    const vys=el("div",{}), vstupy={};
+    const zapis=(klic,hodnota)=>{
+      s[klic]=hodnota;
+      if(klic==="cislo"&&PREDPISY[s.cislo]&&!s.nazev){ s.nazev=PREDPISY[s.cislo]; vstupy.nazev.value=s.nazev; }
+      kresliSablony();
+    };
     const pole=(popis,klic,sirka,extra)=>{
-      const i=el("input",Object.assign({type:"text",value:s[klic],"aria-label":popis},extra||{}));
+      const i=el("input",Object.assign({type:"text",value:s[klic]||"","aria-label":popis},extra||{}));
       vstupy[klic]=i;
-      i.addEventListener("input",()=>{
-        s[klic]=i.value.trim();
-        /* u známého předpisu se název doplní sám, dokud si ho uživatel nevyplní po svém */
-        if(klic==="cislo"&&PREDPISY[s.cislo]&&!s.nazev){ s.nazev=PREDPISY[s.cislo]; vstupy.nazev.value=s.nazev; }
-        kresli();
-      });
+      i.addEventListener("input",()=>zapis(klic,i.value.trim()));
       return el("label",{class:"pole",style:sirka?"flex:0 0 "+sirka:"flex:1;min-width:120px"},el("span",{},popis),i);
     };
-    const kresli=()=>{
-      vys.innerHTML="";
-      const v=citaceVarianty(s);
-      if(!v.length){ vys.append(el("p",{class:"tichy"},"Vyplňte alespoň číslo pramene nebo ustanovení.")); return; }
-      const ul=el("ul",{class:"seznam"});
-      v.forEach(([popis,text])=>{
-        const b=el("button",{class:"rostouci",style:"text-align:left;padding:8px 0",
-          title:"Kliknutím zkopírujete",onclick:()=>zkopirovat(text)},
-          el("div",{class:"tichy",style:"font-size:11px"},popis),
-          el("div",{style:"font-family:var(--pismo-mono);font-size:12.5px;word-break:break-word"},text));
-        ul.append(el("li",{style:"border-bottom:1px solid var(--ram)"},b));
-      });
-      vys.append(ul,el("p",{class:"tichy"},"Kliknutím na řádek se citace zkopíruje do schránky."));
+    const oblast=(popis,klic,napoveda)=>{
+      const i=el("textarea",{"aria-label":popis,placeholder:napoveda||""});
+      i.value=s[klic]||""; vstupy[klic]=i;
+      i.addEventListener("input",()=>zapis(klic,i.value));
+      return el("label",{class:"pole"},el("span",{},popis),i);
     };
+    const naplnFormular=()=>{
+      Object.entries(vstupy).forEach(([k,i])=>{ if(i.type==="checkbox") i.checked=!!s[k]; else i.value=s[k]==null?"":s[k]; });
+      kresliSablony(); kresliStav();
+    };
+    const kresliStav=()=>{
+      stavFormulare.textContent=upravovane
+        ? "Upravujete uloženou citaci — Uložit ji přepíše."
+        : "Nová citace, zatím neuložená.";
+    };
+    /* ---- šablony k vložení: samostatná tlačítka, ne seznam ---- */
+    const kresliSablony=()=>{
+      sablony.innerHTML="";
+      const v=citaceVarianty(s);
+      if(!v.length){ sablony.append(el("p",{class:"tichy"},"Vyplňte alespoň číslo pramene nebo ustanovení.")); return; }
+      v.forEach(([popis,text])=>sablony.append(el("button",{class:"btn druhy",
+        style:"display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:100%;text-align:left;padding:10px 14px;margin-bottom:8px;border-radius:var(--r-stredni)",
+        "aria-label":"Zkopírovat, "+popis+": "+text,
+        onclick:()=>zkopirovat(text,popis+" — zkopírováno")},
+        el("span",{class:"tichy",style:"font-size:11px"},popis),
+        el("span",{style:"font-family:var(--pismo-mono);font-size:12.5px;white-space:pre-wrap;word-break:break-word"},text))));
+      sablony.append(el("p",{class:"tichy"},"Kliknutím na šablonu se text zkopíruje do schránky."));
+    };
+    /* ---- sbírka citací ---- */
+    const vyhovuje=z=>{
+      if(!hledat) return true;
+      const h=bezDiakritiky(hledat);
+      const v=citaceVarianty(z).map(x=>x[1]).join(" ");
+      return bezDiakritiky([z.nazev,z.cislo,z.text,z.poznamka,v].join(" ")).includes(h);
+    };
+    const nactiDoFormulare=z=>{
+      s=Object.assign(citacePrazdna(),z); upravovane=z.id;
+      naplnFormular(); hlas("Citace načtena do formuláře");
+      vstupy.cislo.focus();
+    };
+    const kresliSbirku=()=>{
+      sbirka.innerHTML="";
+      if(!S.citace.length){ sbirka.append(el("p",{class:"tichy"},"Sbírka je zatím prázdná. Sestavte citaci a uložte ji tlačítkem Uložit do sbírky.")); return; }
+      const vse=S.citace.filter(vyhovuje).sort((a,b)=>(b.zmeneno||0)-(a.zmeneno||0));
+      sbirka.append(el("p",{class:"tichy"},"Uloženo citací: "+S.citace.length+(hledat?", vyhovuje hledání: "+vse.length:"")));
+      if(!vse.length){ sbirka.append(el("p",{class:"tichy"},"Hledání nic nenašlo.")); return; }
+      vse.forEach(z=>{
+        const v=citaceVarianty(z);
+        const plna=(v.find(x=>x[0]==="Plná citace")||v.find(x=>x[0]==="Pramen samostatně")||v[0]||["",""])[1];
+        const odkaz=citaceOdkaz(z);
+        const k=el("div",{class:"karta"},el("div",{style:"font-weight:650;word-break:break-word"},plna||"(bez citace)"));
+        if(z.text) k.append(el("blockquote",{style:"margin:8px 0 0;padding-left:12px;border-left:3px solid var(--akcent);white-space:pre-wrap"},z.text));
+        if(z.poznamka) k.append(el("div",{class:"tichy",style:"margin-top:8px"},z.poznamka));
+        k.append(el("div",{class:"pruh",style:"margin:10px 0 0"},
+          el("button",{class:"btn mini",onclick:()=>zkopirovat(plna)},"Zkopírovat citaci"),
+          z.text?el("button",{class:"btn druhy mini",onclick:()=>zkopirovat(z.text,"Text ustanovení zkopírován")},"Zkopírovat text"):null,
+          el("button",{class:"btn druhy mini",onclick:()=>nactiDoFormulare(z)},"Otevřít ve formuláři"),
+          odkaz?el("a",{class:"btn druhy mini",href:odkaz,target:"_blank",rel:"noopener"},"Otevřít předpis"):null,
+          el("button",{class:"btn druhy mini",onclick:()=>{
+            if(S.chovani.potvrzovatMazani&&!confirm("Smazat citaci ze sbírky?")) return;
+            S.citace=S.citace.filter(x=>x.id!==z.id);
+            if(upravovane===z.id){ upravovane=null; kresliStav(); }
+            ulozit(); kresliSbirku(); hlas("Citace smazána");
+          }},"Smazat")));
+        sbirka.append(k);
+      });
+    };
+    const ulozitCitaci=(jakoNovou)=>{
+      if(!citaceVarianty(s).length) return hlas("Nejdřív vyplňte citaci");
+      const zaznam=Object.assign({},s,{id:(!jakoNovou&&upravovane)||id(),zmeneno:Date.now()});
+      const n=S.citace.findIndex(x=>x.id===zaznam.id);
+      if(n>=0) S.citace[n]=zaznam; else S.citace.unshift(zaznam);
+      upravovane=zaznam.id;
+      ulozit(); kresliStav(); kresliSbirku();
+      hlas(n>=0?"Citace uložena":"Citace přidána do sbírky");
+    };
+    const doTabulky=()=>{
+      const hlavicka=["Citace","Pramen","Ustanovení","Text ustanovení","Poznámka","Odkaz","Změněno"];
+      const radky=S.citace.filter(vyhovuje).map(z=>{
+        const v=citaceVarianty(z), najdi=n=>(v.find(x=>x[0]===n)||["",""])[1];
+        return [najdi("Plná citace")||najdi("Pramen samostatně"),citacePramen(z,"nom"),citaceUstanoveni(z),
+          z.text||"",z.poznamka||"",citaceOdkaz(z),z.zmeneno?new Date(z.zmeneno).toISOString().slice(0,10):""];
+      });
+      return [hlavicka,...radky];
+    };
+    /* ---- sestavení okna ---- */
     const vyber=el("select",{"aria-label":"Typ pramene"});
-    Object.entries(PRAMENY).forEach(([k,p])=>vyber.append(el("option",{value:k,selected:k===s.typ},p.n)));
-    vyber.addEventListener("change",()=>{s.typ=vyber.value;kresli();});
+    Object.entries(PRAMENY).forEach(([k,p])=>vyber.append(el("option",{value:k},p.n)));
+    vyber.value=s.typ; vstupy.typ=vyber;
+    vyber.addEventListener("change",()=>zapis("typ",vyber.value));
     const jed=el("select",{"aria-label":"Označení ustanovení"});
     ["§","čl."].forEach(x=>jed.append(el("option",{value:x},x)));
-    jed.addEventListener("change",()=>{s.jednotka=jed.value;kresli();});
-    const zn=el("input",{type:"checkbox",checked:s.zneni});
-    zn.addEventListener("change",()=>{s.zneni=zn.checked;kresli();});
+    jed.value=s.jednotka; vstupy.jednotka=jed;
+    jed.addEventListener("change",()=>zapis("jednotka",jed.value));
+    const zn=el("input",{type:"checkbox",checked:s.zneni}); vstupy.zneni=zn;
+    zn.addEventListener("change",()=>zapis("zneni",zn.checked));
     t.append(dl,
       el("div",{class:"radek"},el("label",{class:"pole",style:"flex:0 0 200px"},el("span",{},"Typ pramene"),vyber),
         pole("Číslo (např. 111/2009)","cislo","180px",{list:"citace-predpisy"}),
@@ -3059,8 +3148,48 @@ Object.assign(NASTROJE,{
         pole("Bod","bod","80px"),pole("Věta","veta","110px"),pole("Příloha č.","priloha","100px")),
       el("label",{class:"radek",style:"gap:8px;align-items:center;margin-bottom:12px"},zn,
         el("span",{},"doplnit „ve znění pozdějších předpisů“")),
-      el("h3",{class:"nadpis"},"Varianty citace"),vys);
-    kresli();
+      oblast("Text ustanovení","text","Doslovné znění, které si chcete uchovat…"),
+      pole("Poznámka","poznamka"),
+      el("h3",{class:"nadpis"},"Šablony k vložení"),sablony,
+      el("h3",{class:"nadpis"},"Sbírka citací"),stavFormulare,
+      el("div",{class:"pruh",style:"margin-top:10px"},
+        el("button",{class:"btn mini",onclick:()=>ulozitCitaci(false)},"Uložit do sbírky"),
+        el("button",{class:"btn druhy mini",onclick:()=>ulozitCitaci(true)},"Uložit jako novou"),
+        el("button",{class:"btn druhy mini",onclick:()=>{ s=citacePrazdna(); upravovane=null; naplnFormular(); hlas("Formulář vyčištěn"); }},"Nová citace")));
+    const h=el("input",{type:"search","aria-label":"Hledat ve sbírce citací",placeholder:"Hledat v citacích, textu i poznámkách…"});
+    h.addEventListener("input",()=>{hledat=h.value.trim();kresliSbirku();});
+    t.append(el("label",{class:"pole"},el("span",{},"Hledání ve sbírce"),h),
+      el("div",{class:"pruh"},
+        el("button",{class:"btn druhy mini",onclick:()=>{
+          if(!S.citace.length) return hlas("Sbírka je prázdná");
+          stahnout("citace.csv",tabDoCsv(doTabulky(),";"),"text/csv");
+        }},"Export CSV"),
+        el("button",{class:"btn druhy mini",onclick:()=>{
+          if(!S.citace.length) return hlas("Sbírka je prázdná");
+          stahnout("citace.tsv",tabDoCsv(doTabulky(),"\t"),"text/tab-separated-values");
+        }},"Export TSV"),
+        el("button",{class:"btn druhy mini",onclick:()=>{
+          if(!S.citace.length) return hlas("Sbírka je prázdná");
+          stahnout("citace.json",JSON.stringify(S.citace,null,2),"application/json");
+        }},"Export JSON"),
+        el("button",{class:"btn druhy mini",onclick:()=>{
+          const vstup=el("input",{type:"file",accept:".json,application/json"});
+          vstup.addEventListener("change",async()=>{
+            const f=vstup.files[0]; if(!f) return;
+            try{
+              const pole=JSON.parse(await f.text());
+              let pridano=0;
+              (Array.isArray(pole)?pole:[]).forEach(z=>{
+                if(!z||typeof z!=="object") return;
+                S.citace.push(Object.assign(citacePrazdna(),z,{id:id(),zmeneno:z.zmeneno||Date.now()})); pridano++;
+              });
+              ulozit(); kresliSbirku(); hlas("Načteno citací: "+pridano);
+            }catch(e){ hlas("Import se nezdařil: "+e.message); }
+          });
+          vstup.click();
+        }},"Import JSON")),
+      sbirka);
+    naplnFormular(); kresliSbirku();
 
     const ta=el("textarea",{"aria-label":"Text k rozboru",placeholder:"Vložte text s citacemi…"});
     const rozbor=el("div",{});
@@ -3070,19 +3199,25 @@ Object.assign(NASTROJE,{
         el("button",{class:"btn mini",onclick:()=>{
           const n=citaceNormalizuj(ta.value);
           rozbor.innerHTML="";
-          const box=el("div",{class:"vysledek"},n);
-          const nalez=citaceNajdi(ta.value);
-          rozbor.append(box,el("div",{class:"pruh",style:"margin-top:10px"},
+          rozbor.append(el("div",{class:"vysledek"},n),el("div",{class:"pruh",style:"margin-top:10px"},
             el("button",{class:"btn mini",onclick:()=>zkopirovat(n)},"Zkopírovat text"),
             el("button",{class:"btn druhy mini",onclick:()=>{ta.value=n;}},"Použít na vstup")));
-          if(nalez.length){
-            const ul=el("ul",{class:"seznam"});
-            nalez.forEach(x=>ul.append(el("li",{style:"padding:4px 0"},
+          const nalez=citaceNajdi(ta.value);
+          if(!nalez.length){ rozbor.append(el("p",{class:"tichy"},"Žádná citace nenalezena.")); return; }
+          rozbor.append(el("h3",{class:"nadpis"},"Nalezené prameny a ustanovení"));
+          nalez.forEach(x=>{
+            const k=el("div",{class:"karta",style:"padding:10px 13px"},
               el("code",{style:"font-family:var(--pismo-mono)"},x.text),
-              x.nazev?el("span",{class:"tichy"}," — "+x.nazev):null,
-              x.url?el("a",{href:x.url,target:"_blank",rel:"noopener",style:"margin-left:8px"},"otevřít"):null)));
-            rozbor.append(el("h3",{class:"nadpis"},"Nalezené prameny a ustanovení"),ul);
-          } else rozbor.append(el("p",{class:"tichy"},"Žádná citace nenalezena."));
+              x.nazev?el("span",{class:"tichy"}," — "+x.nazev):null);
+            const m=/^č\. ?(\d+)\/(\d{4}) Sb\.$/.exec(x.text);
+            k.append(el("div",{class:"pruh",style:"margin:8px 0 0"},
+              m?el("button",{class:"btn druhy mini",onclick:()=>{
+                s=citacePrazdna(); s.cislo=m[1]+"/"+m[2]; s.nazev=PREDPISY[s.cislo]||"";
+                upravovane=null; naplnFormular(); hlas("Pramen vložen do formuláře");
+              }},"Vložit do formuláře"):null,
+              x.url?el("a",{class:"btn druhy mini",href:x.url,target:"_blank",rel:"noopener"},"Otevřít předpis"):null));
+            rozbor.append(k);
+          });
         }},"Rozebrat a sjednotit")),rozbor);
   }},
   glosar:{n:"Glosář pojmů",i:"📚",b:"#3aa1e2",w:720,v:640,f:(t)=>{

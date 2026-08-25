@@ -103,11 +103,17 @@ S = {
   vzorTecek, panelStav}, chovani{…, otviratKeCteni}, nastroje{klic:bool}|null, stitkyBarvy{},
   github{repo,vetev,cesta,token,autoUlozit}, plochy[], aktivni,
   objekty[], kos[], schranka[], pripominky[], zapisnik, navyky[],
-  mereni{zaznamy[],bezi}, sablony[], glosar[], zmeneno
+  mereni{zaznamy[],bezi}, sablony[], glosar[], citace[], zmeneno
 }
 
 `glosar[]` je `{ id, pojem, vyklad, oblast, odkaz, zmeneno }` — vlastní slovník pojmů
 uživatele. Ukázková sada (`GLOSAR_UKAZKA`) se vkládá jen na vyžádání tlačítkem.
+
+`citace[]` je sbírka citací: celý formulář nástroje *Citace a odkazy* plus `id`
+a `zmeneno`, tedy `{ id, typ, cislo, nazev, jednotka, cast, odst, pism, bod, veta,
+priloha, zneni, text, poznamka, zmeneno }`. `text` je doslovné znění ustanovení.
+Záznam se nikdy neukládá odvozený — citace se z něj skládá až při vykreslení
+(`citaceVarianty()`), takže změna sazby citací se projeví i na starých záznamech.
 ```
 
 Objekt (dlaždice):
@@ -227,7 +233,7 @@ Delší logika nástrojů žije v samostatných funkcích nad registrem, ne v `f
 
 | Oblast | Funkce | Poznámka |
 |---|---|---|
-| Citace | `citaceUstanoveni` `citacePramen` `citaceVarianty` `citaceOdkaz` `citaceNormalizuj` `citaceNajdi` | `PRAMENY` = typy pramenů se skloňováním, `PREDPISY` = našeptávání názvů |
+| Citace | `citacePrazdna` `citaceUstanoveni` `citacePramen` `citaceVarianty` `citaceOdkaz` `citaceNormalizuj` `citaceNajdi` | `PRAMENY` = typy pramenů se skloňováním, `PREDPISY` = našeptávání názvů; `citaceVarianty` vrací dvojice [popis, text] a přidává šablony se zněním, pokud je vyplněné |
 | Šifrování | `sifKlic` `sifZasifruj` `sifDesifruj` | AES-256-GCM, PBKDF2 (210 000 iterací), formát `MROS-AES-GCM-1:` + base64(sůl 16 B \| IV 12 B \| šifra) |
 | Tabulky | `tabNacti` `tabZCsv` `tabZMarkdownu` `tabZJson` `tabZHtml` `tabDo*` `tabTransponuj` | `tabNacti` rozpozná formát vstupu sám |
 | Text | `textTypografie` `textZPdf` `textNeviditelne` `textZalomit` `textExtrahuj` `textFrekvence` `textCtivost` `textMnozina` `textVety` `textSpojitOdstavce` | čisté funkce text → text, jdou použít i jinde |
