@@ -299,7 +299,7 @@ rozbijí regulární výrazy.
 | Hlavní nabídka (Ctrl+F10), nabídka dlaždice, „Další akce ▾" | `role="menu"` + `menuitem`, `ozivitMenu()` |
 | Lišta okna aplikace, ovládání okna, akce plochy, patička | `role="toolbar"`, `ozivitListu()` |
 | Okno | `article` + `aria-labelledby` → `h5` |
-| Dlaždice | `div role="button"`, `aria-label` = **typ, pak název**, pak štítky |
+| Dlaždice | `div role="button"`, `aria-label` = **typ, pak název**, pak stav a štítky |
 | Paleta příkazů | `role="dialog" aria-modal` (jediné modální místo) |
 | Přepínače velikosti dlaždice | tlačítka s `aria-pressed` v `role="group"` |
 
@@ -313,6 +313,12 @@ stromu. Fokus se před skrytím přesune na tlačítko pro zobrazení.
 
 Šipky na ploše hledají nejbližší dlaždici geometricky (`sousedniDlazdice()`), ne podle
 pořadí v DOM, kvůli různě velkým dlaždicím.
+
+Dlaždice **nemá obsluhu `contextmenu`** — Safari hlásí dlouhý dotyk jako kontextovou
+nabídku, takže se dlaždice místo otevření hádala o nabídku. Kliknutí ji vždy otevře;
+nabídka je pod tlačítkem ⋯ v rohu, pod Alt+Enter a v otevřeném okně pod *Další akce*.
+`-webkit-touch-callout:none` na `.dlazdice` brání systémové nabídce dlouhého dotyku.
+Pravé tlačítko zůstává na volné ploše (nová dlaždice) a na ploše v bočním panelu.
 
 ---
 
