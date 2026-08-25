@@ -199,6 +199,15 @@ Nový typ dlaždice proto potřebuje **tři** větve: `case` v `editor()`, `case
 v `zobrazeni()` a `case` v `nahled()` pro náhled na ploše. Když větev v zobrazení
 chybí, ukáže se hláška o režimu úprav.
 
+**Vkládání ze schránky** obsluhují `textNaPolozky()` (víceřádkový text → položky
+seznamu, rozezná odrážky, číslování i `[x]`) a `mdOdkaz()` s `vlozitMdOdkaz()`
+(odkaz v Markdownu → název a adresa). Obojí visí na události `paste` a zasáhne jen
+tehdy, když text odpovídá — jednořádkové vložení i obyčejná adresa projdou beze změny.
+
+**Ministatistiku** kontrolního seznamu a úkolů kreslí `postupHtml()` do náhledu
+dlaždice a `souhrnDlazdice()` ji přidává do `aria-label` dlaždice, aby ji přečetl
+i odečítač obrazovky. Proužek postupu je `.postup` s vnořeným `<i>` o šířce v procentech.
+
 **Pořadí položek** řeší `tlacitkaPoradi(pole, n, popis, box, ulozAKresli)` — vrací
 dvojici tlačítek ↑ a ↓, na krajích nedostupných. Po přesunu překreslí seznam a vrátí
 fokus na přesunutou položku podle `data-poradi` a `data-smer`, aby šlo pořadí měnit
