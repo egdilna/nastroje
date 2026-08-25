@@ -246,6 +246,11 @@ a přidá `#os.jenokno`. Pro odečítač i tabulátor zbyde jen to jedno okno. R
 obnovením velikosti, minimalizací, zavřením, uspořádáním oken i otevřením nového okna.
 **Když měníš cokoli kolem oken, volej `izolovatMaximalizovane()`.**
 
+Datum a čas jsou v bočním panelu nad plochami (`#sb-cas`, `kreslitCas()` a `tikatCas()`
+každých 15 s), řídí je `S.chovani.ukazovatDatum`. Lišta plochy má vedle palety tlačítko
+*🪟 Okna*, které otevře *Správce oken* a nese počet otevřených oken — aby byl seznam
+oken po ruce i se zavřeným panelem.
+
 `#sidebar` a `#plocha` mají v mřížce `#os` napevno `grid-column:1` a `grid-column:2`.
 Bez toho by se plocha při skrytém panelu (`sidebar.hidden`, i režim jednoho okna) přesunula
 do sloupce `auto`, zúžila se na šířku obsahu a maximalizované okno by byl jen pruh vlevo.
@@ -334,7 +339,7 @@ Alt+číslo ani Ctrl+písmeno. Vše ostatní jde přes paletu a nabídku.
 | Ctrl+F10 | hlavní nabídka (samotné F10 zůstává volné pro aplikace v oknech) |
 | F9 / Shift+F9 | skok do panelu a zpět / sbalit a rozbalit panel |
 | F8 / Shift+F8 | další plocha / seznam ploch |
-| Ctrl+F6 / Ctrl+Shift+F6 | další a předchozí otevřené okno (v maximalizovaném režimu přepíná celoobrazovkově) |
+| Ctrl+F6 / Ctrl+Shift+F6 | další a předchozí otevřené okno (v maximalizovaném režimu přepíná celoobrazovkově) — totéž dělá tlačítko *⇄ Další okno* v liště okna, které se ukazuje jen v režimu jednoho okna (`.jen-celoobrazovkove`) |
 | F2 | přejmenovat vybranou dlaždici |
 | F4 | přepnout okno dlaždice mezi zobrazením a úpravami |
 | šipky, Home, End | pohyb mezi dlaždicemi |
