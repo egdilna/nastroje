@@ -360,7 +360,7 @@ Alt+číslo ani Ctrl+písmeno. Vše ostatní jde přes paletu a nabídku.
 | Ctrl+F10 | hlavní nabídka (samotné F10 zůstává volné pro aplikace v oknech) |
 | F9 / Shift+F9 | skok do panelu a zpět / sbalit a rozbalit panel |
 | F8 / Shift+F8 | další plocha / seznam ploch |
-| Ctrl+F6 / Ctrl+Shift+F6 | další a předchozí otevřené okno (v maximalizovaném režimu přepíná celoobrazovkově) — totéž dělá tlačítko *⇄ Další okno* v liště okna, které se ukazuje jen v režimu jednoho okna (`.jen-celoobrazovkove`) |
+| Ctrl+F6 / Ctrl+Shift+F6 | další a předchozí otevřené okno (v maximalizovaném režimu přepíná celoobrazovkově) — totéž dělá tlačítko **⇄** mezi ovládacími prvky okna (za ▢, před ✕), které se ukazuje jen v režimu jednoho okna (`.jen-celoobrazovkove`) |
 | F2 | přejmenovat vybranou dlaždici |
 | F4 | přepnout okno dlaždice mezi zobrazením a úpravami |
 | Shift+F6 | seznam všech oken včetně minimalizovaných (*Správce oken*, totéž jako tlačítko 🪟 Okna) |
