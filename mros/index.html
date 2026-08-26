@@ -144,6 +144,7 @@ button{cursor:pointer;border:0;background:none}
 .d-telo .hotovo{text-decoration:line-through;opacity:.5}
 .d-telo pre{margin:0;font-family:var(--pismo-mono);font-size:11px;white-space:pre-wrap;overflow:hidden}
 .d-pata{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dlazdice-slaby)}
+select.stav-napadu{width:auto;min-width:64px;padding:4px 6px;font-size:13px;flex:0 0 auto}
 .postup{height:4px;border-radius:999px;margin:5px 0 7px;overflow:hidden;
   background:color-mix(in srgb,var(--dlazdice-text) 14%,transparent)}
 .postup i{display:block;height:100%;border-radius:999px;background:var(--akcent)}
@@ -309,7 +310,7 @@ body.prezentace #mrizka>li.soukrome{display:none}
       <div class="odsun" role="toolbar" aria-label="Akce plochy">
         <button class="tl" id="tl-hledat" title="Hledání ve všem">🔍 Hledat</button>
         <button class="tl" id="tl-paleta" title="Paleta příkazů (F1 nebo Ctrl+Shift+P)">⌨ Příkazy</button>
-        <button class="tl" id="tl-okna" title="Seznam otevřených oken">🪟 Okna</button>
+        <button class="tl" id="tl-okna" title="Seznam všech oken (Shift+F6)">🪟 Okna</button>
         <button class="tl hlavni" id="tl-nove">＋ Nová dlaždice</button>
       </div>
     </div>
@@ -761,7 +762,9 @@ function nahled(o){
       const p=c.polozky||[]; if(!p.length) return "<span class='tichy'>Zatím nic</span>";
       const hlavicka=o.typ==="seznam"?postupHtml(p.filter(x=>x.hotovo).length,p.length,"Hotovo"):
         `<div class="tichy">Nápadů: ${p.length}</div>`;
-      return hlavicka+"<ul>"+p.slice(0,5).map(x=>`<li class="${x.hotovo?"hotovo":""}">${esc(x.text)}</li>`).join("")+"</ul>"+(p.length>5?`<span class="tichy">a další ${p.length-5}</span>`:"");
+      return hlavicka+"<ul>"+p.slice(0,5).map(x=>`<li class="${x.hotovo?"hotovo":""}">${
+        o.typ==="napady"&&x.stav?esc(x.stav)+" ":""}${esc(x.text)}</li>`).join("")+"</ul>"
+        +(p.length>5?`<span class="tichy">a další ${p.length-5}</span>`:"");
     }
     case "ukoly": {
       const vse=c.ukoly||[]; if(!vse.length) return "<span class='tichy'>Žádné úkoly</span>";
@@ -1426,12 +1429,43 @@ function zobrazeni(o,t){
     case "markdown":
       t.append(c.text?el("div",{class:"md karta",html:md(c.text)}):prazdno("Poznámka je zatím prázdná."));
       break;
-    case "kod":
-      if(!c.kod){ t.append(prazdno("Zatím bez kódu.")); break; }
-      if(c.jazyk) t.append(el("div",{class:"tichy",style:"margin-bottom:6px"},c.jazyk));
-      t.append(el("pre",{class:"karta",style:"font-family:var(--pismo-mono);font-size:13px;overflow:auto;margin:0 0 10px"},c.kod),
-        el("button",{class:"btn druhy mini",onclick:()=>zkopirovat(c.kod,"Kód zkopírován")},"Zkopírovat kód"));
+    case "kod": {
+      const kodPre=el("pre",{style:"font-family:var(--pismo-mono);font-size:13px;overflow:auto;margin:10px 0 0;white-space:pre"});
+      const shrnuti=el("span",{});
+      const nahradni=el("div",{});
+      const obnov=()=>{
+        kodPre.textContent=c.kod||"";
+        const radku=(c.kod||"").split("\n").length;
+        shrnuti.textContent=(c.jazyk?c.jazyk+" · ":"")+(c.kod?radku+" "+(radku===1?"řádek":radku<5?"řádky":"řádků"):"zatím bez kódu");
+      };
+      const nahradit=text=>{
+        if(!text.trim()) return hlas("Schránka je prázdná");
+        c.kod=text; ulozP(); obnov(); hlas("Kód nahrazen obsahem schránky");
+      };
+      /* Firefox čtení schránky neumí a Safari se ptá — proto náhradní pole */
+      const nahradniVlozeni=()=>{
+        if(nahradni.childElementCount) return $("textarea",nahradni).focus();
+        const ta=el("textarea",{class:"kod","aria-label":"Nová verze kódu",
+          placeholder:"Prohlížeč nepustil čtení schránky — vložte kód sem (Ctrl+V) a potvrďte."});
+        nahradni.append(el("p",{class:"tichy",style:"margin-top:10px"},
+          "Prohlížeč nedovolil číst schránku. Vložte kód do pole a potvrďte."),ta,
+          el("button",{class:"btn mini",style:"margin-top:8px",onclick:()=>{ nahradit(ta.value); ta.value=""; }},"Použít vložený kód"));
+        ta.focus();
+      };
+      obnov();
+      t.append(el("details",{},el("summary",{style:"cursor:pointer;font-weight:650"},"Kód ",
+          el("span",{class:"tichy",style:"font-weight:400"},shrnuti)),kodPre),
+        el("div",{class:"pruh",style:"margin-top:10px"},
+          el("button",{class:"btn druhy mini",onclick:()=>zkopirovat(c.kod,"Kód zkopírován")},"Zkopírovat kód"),
+          el("button",{class:"btn druhy mini",onclick:async()=>{
+            try{
+              if(!navigator.clipboard||!navigator.clipboard.readText) throw new Error("bez čtení schránky");
+              nahradit(await navigator.clipboard.readText());
+            }catch(e){ nahradniVlozeni(); }
+          }},"Vložit ze schránky")),
+        nahradni);
       break;
+    }
     case "seznam": {
       const pol=c.polozky||[];
       if(!pol.length){ t.append(prazdno("Seznam je prázdný.")); break; }
@@ -1458,7 +1492,8 @@ function zobrazeni(o,t){
       const pol=c.polozky||[];
       if(!pol.length){ t.append(prazdno("Zatím žádný nápad.")); break; }
       t.append(el("ul",{class:"seznam"},pol.map(p=>el("li",{},
-        el("span",{"aria-hidden":"true"},"💡"),el("span",{class:"rostouci"},p.text||"(bez textu)")))));
+        vyberStavuNapadu(p,()=>ulozP()),
+        el("span",{class:"rostouci"},p.text||"(bez textu)")))));
       break;
     }
     case "ukoly": {
@@ -1614,6 +1649,20 @@ function zobrazeni(o,t){
     default: t.append(prazdno("Tento typ se zobrazuje jen v režimu úprav."));
   }
 }
+/* ---------- stavy nápadů ----------
+   Ikona u nápadu je jen pro oko — dá se přepnout i v režimu zobrazení, protože
+   označit nápad není jeho úprava, ale práce s ním. */
+const NAPAD_STAVY=[["","bez označení"],["✏️","rozpracováno"],["☑️","hotovo"],["🧠","promyslet"],
+  ["❓","otázka"],["❗️","důležité"],["🗑","k zahození"]];
+const napadPopis=stav=>(NAPAD_STAVY.find(x=>x[0]===stav)||NAPAD_STAVY[0])[1];
+function vyberStavuNapadu(p,poZmene){
+  const s=el("select",{class:"stav-napadu","aria-label":"Stav nápadu: "+(p.text||"bez textu")});
+  NAPAD_STAVY.forEach(([ik,popis])=>s.append(el("option",{value:ik,selected:(p.stav||"")===ik},
+    (ik?ik+" ":"")+popis)));
+  s.addEventListener("change",()=>{ p.stav=s.value; poZmene&&poZmene(); hlas("Stav nápadu: "+napadPopis(s.value)); });
+  return s;
+}
+
 /* ---------- vkládání ze schránky ----------
    Víceřádkový text se rozpadne na položky seznamu; rozeznají se odrážky, číslování
    i zaškrtnutí „[x]“. Odkaz v Markdownu se rozdělí na název a adresu. */
@@ -1705,9 +1754,16 @@ function editor(o,t,w){
             const ch=el("input",{type:"checkbox","aria-label":"Hotovo: "+p.text}); ch.checked=!!p.hotovo;
             ch.addEventListener("change",()=>{p.hotovo=ch.checked;ulozP();});
             li.append(ch);
-          } else li.append(el("span",{"aria-hidden":"true"},"💡"));
+          } else li.append(vyberStavuNapadu(p,()=>ulozP()));
           const inp=el("input",{type:"text",value:p.text,"aria-label":"Text položky"});
           inp.addEventListener("input",()=>{p.text=inp.value;ulozP();});
+          inp.addEventListener("keydown",e=>{
+            if(e.key!=="Enter"||e.shiftKey||e.ctrlKey||e.altKey) return;
+            e.preventDefault();
+            c.polozky.splice(n+1,0,o.typ==="seznam"?{text:"",hotovo:false}:{text:"",stav:""});
+            ulozP(); kresli();
+            $$("input[type=text]",box)[n+1]?.focus();
+          });
           inp.addEventListener("paste",e=>{
             const nove=textNaPolozky(zeSchranky(e));
             if(nove.length<2) return;                       /* jeden řádek necháme vložit běžně */
@@ -1744,6 +1800,13 @@ function editor(o,t,w){
           ch.addEventListener("change",()=>{u.hotovo=ch.checked;ulozP();kresli();});
           const tx=el("input",{type:"text",value:u.text,"aria-label":"Úkol"});
           tx.addEventListener("input",()=>{u.text=tx.value;ulozP();});
+          tx.addEventListener("keydown",e=>{
+            if(e.key!=="Enter"||e.shiftKey||e.ctrlKey||e.altKey) return;
+            e.preventDefault();
+            c.ukoly.splice(n+1,0,{text:"",hotovo:false,priorita:"střední"});
+            ulozP(); kresli();
+            $$("input[type=text]",box)[n+1]?.focus();
+          });
           tx.addEventListener("paste",e=>{
             const nove=textNaPolozky(zeSchranky(e));
             if(nove.length<2) return;
@@ -2641,6 +2704,7 @@ const NASTROJE={
       ["F9","Přeskočit do bočního panelu a zpět"],["Shift + F9","Sbalit nebo rozbalit boční panel"],
       ["F8","Další plocha"],["Shift + F8","Seznam ploch"],
       ["Ctrl + F6","Další otevřené okno (v maximalizovaném režimu přepíná celé okno)"],["Ctrl + Shift + F6","Předchozí otevřené okno"],
+      ["Shift + F6","Seznam všech oken včetně minimalizovaných (totéž jako tlačítko 🪟 Okna)"],
       ["F2","Přejmenovat vybranou dlaždici"],
       ["F4","Přepnout okno dlaždice mezi zobrazením a úpravami"],
       ["Šipky","Pohyb mezi dlaždicemi podle jejich rozložení"],["Home / End","První / poslední dlaždice"],
@@ -4317,6 +4381,7 @@ function prikazy(){
     {n:"Seznam ploch",i:"🗂️",z:"Shift+F8",f:seznamPloch},
     {n:"Nápověda a zkratky",i:"❓",z:"Shift+F1",f:()=>otevritNastroj("napoveda")},
     {n:"Přeskočit na další okno",i:"🪟",z:"Ctrl+F6",f:()=>dalsiOkno(1)},
+    {n:"Seznam všech oken",i:"▦",z:"Shift+F6",f:()=>otevritNastroj("spravceOken")},
     {n:"Uložit do GitHubu",i:"☁️",f:()=>otevritNastroj("github")},
     {n:"Stáhnout zálohu",i:"⤓",f:()=>stahnout("prostredi-"+dnes()+".json",kUlozeni(),"application/json")},
     {n:"Zavřít všechna okna",i:"✕",f:()=>{$$(".okno").forEach(w=>w.remove());kreslitPanel();hlas("Okna zavřena");}},
@@ -4441,6 +4506,7 @@ document.addEventListener("keydown",e=>{
   if((e.ctrlKey&&e.shiftKey&&e.key.toLowerCase()==="p")||(e.key==="F1"&&!e.shiftKey)){e.preventDefault();otevritPaletu();return;}
   if(e.key==="F1"&&e.shiftKey){e.preventDefault();otevritNastroj("napoveda");return;}
   if(e.key==="F6"&&e.ctrlKey){e.preventDefault();dalsiOkno(e.shiftKey?-1:1);return;}
+  if(e.key==="F6"&&e.shiftKey){e.preventDefault();otevritNastroj("spravceOken");return;}
   if(e.key==="F9"){e.preventDefault(); e.shiftKey?prepnoutPanel():prepnoutFokus(); return;}
   if(e.key==="F10"&&e.ctrlKey){e.preventDefault();otevritNabidku();return;}
   if(e.key==="F8"){e.preventDefault(); e.shiftKey?seznamPloch():dalsiPlocha(1); return;}

@@ -199,6 +199,19 @@ Nový typ dlaždice proto potřebuje **tři** větve: `case` v `editor()`, `case
 v `zobrazeni()` a `case` v `nahled()` pro náhled na ploše. Když větev v zobrazení
 chybí, ukáže se hláška o režimu úprav.
 
+**Enter v poli položky** kontrolního seznamu, nápadníku i úkolů založí další položku hned
+pod tou rozepsanou a přesune do ní fokus — seznam se tak píše bez sahání po myši.
+
+**Stav nápadu** (`NAPAD_STAVY`, `vyberStavuNapadu()`) je volitelná ikona u položky
+nápadníku: ✏️ ☑️ 🧠 ❓ ❗️ 🗑 nebo nic. Přepíná se **i v režimu zobrazení** — označit
+nápad není úprava obsahu, ale práce s ním — a ikona se propisuje i do náhledu dlaždice.
+
+**Útržek kódu v zobrazení** je sbalený v `<details>` (souhrn nese jazyk a počet řádků);
+tlačítka *Zkopírovat kód* a *Vložit ze schránky* jsou vedle něj, takže nahrání nové verze
+nevyžaduje režim úprav. Čtení schránky jde přes `navigator.clipboard.readText()`;
+když ho prohlížeč nepustí (Firefox ho neumí, Safari se ptá), nabídne se náhradní pole
+s tlačítkem *Použít vložený kód*.
+
 **Vkládání ze schránky** obsluhují `textNaPolozky()` (víceřádkový text → položky
 seznamu, rozezná odrážky, číslování i `[x]`) a `mdOdkaz()` s `vlozitMdOdkaz()`
 (odkaz v Markdownu → název a adresa). Obojí visí na události `paste` a zasáhne jen
@@ -350,6 +363,7 @@ Alt+číslo ani Ctrl+písmeno. Vše ostatní jde přes paletu a nabídku.
 | Ctrl+F6 / Ctrl+Shift+F6 | další a předchozí otevřené okno (v maximalizovaném režimu přepíná celoobrazovkově) — totéž dělá tlačítko *⇄ Další okno* v liště okna, které se ukazuje jen v režimu jednoho okna (`.jen-celoobrazovkove`) |
 | F2 | přejmenovat vybranou dlaždici |
 | F4 | přepnout okno dlaždice mezi zobrazením a úpravami |
+| Shift+F6 | seznam všech oken včetně minimalizovaných (*Správce oken*, totéž jako tlačítko 🪟 Okna) |
 | šipky, Home, End | pohyb mezi dlaždicemi |
 | Enter, mezerník | otevřít dlaždici |
 | Alt+Enter | nabídka dlaždice |
