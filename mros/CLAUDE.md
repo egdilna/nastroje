@@ -259,6 +259,12 @@ a přidá `#os.jenokno`. Pro odečítač i tabulátor zbyde jen to jedno okno. R
 obnovením velikosti, minimalizací, zavřením, uspořádáním oken i otevřením nového okna.
 **Když měníš cokoli kolem oken, volej `izolovatMaximalizovane()`.**
 
+Výběr okna a plochy jsou prostá menu (`rychleMenu()` staví okno s `role="menu"`
+přes `polozkaMenu()` a `ozivitMenu()`): položka se vybere, okno jde do popředí
+(skryté se nejdřív obnoví) nebo se přepne plocha, a nabídka se zavře. Správa oken
+(uspořádání, zavírání) zůstává v nástroji *Správce oken*, správa ploch v hlavní
+nabídce, v bočním panelu a v *Nastavení → Plochy*.
+
 Datum a čas jsou v bočním panelu nad plochami (`#sb-cas`, `kreslitCas()` a `tikatCas()`
 každých 15 s), řídí je `S.chovani.ukazovatDatum`. Lišta plochy má vedle palety tlačítko
 *🪟 Okna*, které otevře *Správce oken* a nese počet otevřených oken — aby byl seznam
@@ -359,11 +365,11 @@ Alt+číslo ani Ctrl+písmeno. Vše ostatní jde přes paletu a nabídku.
 | Shift+F1 | nápověda a zkratky |
 | Ctrl+F10 | hlavní nabídka (samotné F10 zůstává volné pro aplikace v oknech) |
 | F9 / Shift+F9 | skok do panelu a zpět / sbalit a rozbalit panel |
-| F8 / Shift+F8 | další plocha / seznam ploch |
+| F8 / Shift+F8 | další plocha / nabídka ploch (`nabidkaPloch()`) |
 | Ctrl+F6 / Ctrl+Shift+F6 | další a předchozí otevřené okno (v maximalizovaném režimu přepíná celoobrazovkově) — totéž dělá tlačítko **⇄** mezi ovládacími prvky okna (za ▢, před ✕), které se ukazuje jen v režimu jednoho okna (`.jen-celoobrazovkove`) |
 | F2 | přejmenovat vybranou dlaždici |
 | F4 | přepnout okno dlaždice mezi zobrazením a úpravami |
-| Shift+F6 | seznam všech oken včetně minimalizovaných (*Správce oken*, totéž jako tlačítko 🪟 Okna) |
+| Shift+F6 | nabídka všech oken včetně skrytých — výběrem jde okno do popředí (`nabidkaOken()`, totéž jako tlačítko Okna v liště) |
 | šipky, Home, End | pohyb mezi dlaždicemi |
 | Enter, mezerník | otevřít dlaždici |
 | Alt+Enter | nabídka dlaždice |
