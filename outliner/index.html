@@ -4572,12 +4572,14 @@ function exportDOCX(accepted) {
       const hm = tag.match(/^h([1-6])$/);
       if (hm) opts.heading = parseInt(hm[1], 10);
       else if (tag === "li") { opts.listLevel = Math.min(depth - 1, 8); }
-      // row type -> run formatting (inline) or extra indent (block)
+      // row type -> run formatting (inline) or extra indent (block).
+      // ins/del carry revision semantics: wrap the topic in CriticMarkup so the
+      // existing tracked-change machinery emits real <w:ins>/<w:del> (honoring
+      // the "accept changes" export option). strong/em/mark stay visual.
       const rt = rowTypeMeta(r.rowType);
       const rtFmt = {};
-      if (rt.id === "strong" || rt.id === "ins") rtFmt.b = 1;
+      if (rt.id === "strong") rtFmt.b = 1;
       if (rt.id === "em") rtFmt.i = 1;
-      if (rt.id === "del") rtFmt.strike = 1;
       if (rt.id === "mark") rtFmt.hl = 1;
       if (Object.keys(rtFmt).length) opts.runFmt = rtFmt;
       if (rt.kind === "block" && opts.listLevel == null) opts.indent = indent + 360; // blockquote/article/aside extra indent
@@ -4585,11 +4587,16 @@ function exportDOCX(accepted) {
       // (if any) renders as full block markdown after it.
       const topicStr = String(r.topic || "");
       const nlIdx = topicStr.indexOf("\n");
-      const firstLine = nlIdx === -1 ? topicStr : topicStr.slice(0, nlIdx);
+      let firstLine = nlIdx === -1 ? topicStr : topicStr.slice(0, nlIdx);
+      let rest = nlIdx === -1 ? "" : topicStr.slice(nlIdx + 1);
+      // wrap each part independently so CriticMarkup stays balanced per block
+      const wrapCM = (s) => { if (!s) return s; if (rt.id === "ins") return "{++" + s + "++}"; if (rt.id === "del") return "{--" + s + "--}"; return s; };
+      firstLine = wrapCM(firstLine);
       body += _para(firstLine, opts);
-      if (nlIdx !== -1) {
-        const rest = topicStr.slice(nlIdx + 1);
-        if (rest.trim()) body += _blocksToDocx(rest, { accepted, indent: indent });
+      if (rest.trim()) {
+        // wrap each non-empty line of the remainder
+        if (rt.id === "ins" || rt.id === "del") rest = rest.split("\n").map(ln => ln.trim() ? wrapCM(ln) : ln).join("\n");
+        body += _blocksToDocx(rest, { accepted, indent: indent });
       }
       if (r.note) body += _blocksToDocx(r.note, { accepted, indent: indent + 360 });
       // data columns (right of topic) as a simple labeled paragraph
@@ -5356,7 +5363,7 @@ function buildHelp() {
 <h3>Fulltextové hledání</h3>
 <p>Přes „Najít…" (nebo <kbd>Ctrl/Cmd</kbd>+<kbd>F</kbd>) prohledáš celý dokument — <strong>téma, poznámky i hodnoty sloupců</strong>. Výsledky se vypíšou jako seznam s úryvkem a informací, kde byl výraz nalezen; kliknutím (nebo Předchozí/Další) skočíš na daný řádek.</p>
 <h3>Typ řádku (sémantika)</h3>
-<p>V editoru řádku je select <strong>Typ řádku</strong>. Kromě „Normální" lze zvolit Zvýrazněné (strong), Důležité (emphasis), Vloženo (ins), Odstraněno (del), Zvýrazněno (mark), Citace (blockquote), Článek (article) a Poznámka (aside). Celý řádek (a ve výstupu celý prvek se vším všudy) se obalí příslušnou HTML značkou — přidáš tím dodatečnou sémantiku. Typ se promítá do HTML i DOCX exportu, dá se podle něj <strong>filtrovat</strong> (podmínka „Typ řádku") a odečítač ho <strong>ohlašuje</strong> při pohybu po osnově.</p>
+<p>V editoru řádku je select <strong>Typ řádku</strong>. Kromě „Normální" lze zvolit Zvýrazněné (strong), Důležité (emphasis), Vloženo (ins), Odstraněno (del), Zvýrazněno (mark), Citace (blockquote), Článek (article) a Poznámka (aside). Celý řádek (a ve výstupu celý prvek se vším všudy) se obalí příslušnou HTML značkou — přidáš tím dodatečnou sémantiku. Typ se promítá do HTML i DOCX exportu, dá se podle něj <strong>filtrovat</strong> (podmínka „Typ řádku") a odečítač ho <strong>ohlašuje</strong> při pohybu po osnově. V <strong>DOCX</strong> se typy <em>Vloženo</em> a <em>Odstraněno</em> převedou na <strong>skutečné sledované změny</strong> (vložení / smazání), stejně jako CriticMarkup — takže je ve Wordu uvidíš jako revize; při exportu s volbou „Sledované změny přijmout" se vložený text ponechá a odstraněný zmizí. <em>Zvýrazněno (mark)</em> se exportuje jako žluté zvýraznění (Word nemá „sledované zvýraznění").</p>
 <h3>Sloupce a souhrny</h3>
 <p>Vícesloupcová tabulka s typy: text (Markdown), číslo, datum, trvání, zaškrtávátko, pop-up seznam. Na rodičovských řádcích se počítají souhrny (součet, min, max, průměr listů, stav). Stav řádku (hotovo/nehotovo) je vestavěný sloupec „Stav (hotovo)", který lze v panelu Sloupce zobrazit nebo skrýt jako každý jiný.</p>
 <p>V panelu Sloupce mění pořadí šipky ← →. Pokud sloupec posuneš <strong>nalevo od tématu</strong>, jeho hodnota se stane prefixem nadpisu (např. kód „ABC" → nadpis „ABC Úvod") — a to i ve všech exportech (DOCX, HTML, Markdown). Takový sloupec se přestane zobrazovat jako samostatný a žije jen v nadpisu.</p>

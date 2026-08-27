@@ -371,6 +371,12 @@ body.theme-dark .task-quick-toggle { background: #2a2a2a; border-color: #444; }
 .checkbox-row { display: flex; gap: 1em; flex-wrap: wrap; align-items: center; }
 .checkbox-row label { font-weight: normal; cursor: pointer; }
 .md-field-actions { margin: 0.3em 0; min-height: 1px; }
+.rem-overdue { color: #b00; font-weight: 600; }
+.rem-today { color: #a60; font-weight: 600; }
+.rem-future { color: #060; }
+body.theme-dark .rem-overdue { color: #f88; }
+body.theme-dark .rem-today { color: #fc6; }
+body.theme-dark .rem-future { color: #8d8; }
 .md-field-actions button.md-del-done-tasks { padding: 0.2em 0.6em; font-size: 0.9em; }
 .md-selection-actions { margin-top: 0.3em; padding: 0.3em 0.5em; background: #fff8d8; border: 1px solid #d8c060; border-radius: 4px; display: flex; gap: 0.3em; align-items: center; flex-wrap: wrap; }
 body.theme-dark .md-selection-actions { background: #3a3010; border-color: #6a5a30; }
@@ -1119,6 +1125,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <li><button data-view="tasks">Úkoly <span class="count" id="count-tasks" aria-hidden="true"></span></button></li>
       <li><button data-view="calendar">Kalendář</button></li>
       <li><button data-view="tags">Tagy</button></li>
+      <li><button data-view="reminders" title="Připomenutí – vše s termínem zobrazení">🔔 Připomenutí</button></li>
       <li><button data-view="flags" id="nav-flags" hidden>🏳️‍🌈 Příznaky</button></li>
       <li><button data-view="timetracking" id="nav-timetracking" hidden>⏱ Sledování času</button></li>
       <li><button data-view="topics" id="nav-topics" hidden>Témata</button></li>
@@ -7111,6 +7118,7 @@ function render() {
     case 'calendar': renderCalendar(main); break;
     case 'search': renderSearch(main); break;
     case 'tags': renderTags(main); break;
+    case 'reminders': renderRemindersView(main); break;
     case 'flags': renderFlagsView(main); break;
     case 'trash': renderTrashView(main); break;
     case 'timetracking': renderTimeTrackingView(main); break;
@@ -7362,7 +7370,7 @@ function entityRowHtml(e) {
   const dateStr = date ? '<span class="meta">' + escapeHtml(fmtDate(date)) + '</span>' : '';
   const att = (e.attachments && e.attachments.length > 0) ? '<span class="meta" title="přílohy">📎' + e.attachments.length + '</span>' : '';
   return '<div class="entity-row">' +
-    '<div><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h5> ' + status + ' ' + dateStr + ' ' + att + '</div>' +
+    '<div><h6 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h6> ' + status + ' ' + dateStr + ' ' + att + '</div>' +
     '<div>' + aspects + ' ' + tags + '</div>' +
     '<div class="meta">Změněno ' + escapeHtml(fmtRelative(e.updated_at)) + '</div></div>';
 }
@@ -7427,6 +7435,79 @@ function openQuickTagEditor(entityId) {
   d.addEventListener('close', () => d.remove());
   d.showModal();
   setTimeout(() => { const inp = d.querySelector('#qte-input'); if (inp) inp.focus(); }, 50);
+}
+
+// Přehled všech připomenutí (entity s reminder_at), seřazeno podle data.
+function renderRemindersView(main) {
+  const todayKey = localDayKey(new Date());
+  const list = db.entities
+    .filter(e => !e.archived && e.attributes && e.attributes.reminder_at)
+    .map(e => ({ e: e, iso: String(e.attributes.reminder_at).slice(0, 10) }))
+    .sort((a, b) => a.iso.localeCompare(b.iso));
+
+  let h = '<h1>🔔 Připomenutí</h1>';
+  if (list.length === 0) {
+    h += '<p class="meta">Žádná entita nemá nastavené datum připomenutí.</p>';
+    main.innerHTML = h;
+    return;
+  }
+  h += '<p class="meta">' + list.length + ' ' + (list.length === 1 ? 'entita má' : (list.length >= 2 && list.length <= 4 ? 'entity mají' : 'entit má')) + ' termín připomenutí. Datum lze změnit přímo v poli, nebo připomenutí odstranit.</p>';
+  h += '<table><thead><tr><th scope="col">Entita</th><th scope="col">Datum připomenutí</th><th scope="col">Stav</th><th scope="col">Akce</th></tr></thead><tbody>';
+  list.forEach(item => {
+    const e = item.e;
+    let stav = '', stavCls = '';
+    if (item.iso < todayKey) { stav = 'Po termínu'; stavCls = 'rem-overdue'; }
+    else if (item.iso === todayKey) { stav = 'Dnes'; stavCls = 'rem-today'; }
+    else { stav = 'Budoucí'; stavCls = 'rem-future'; }
+    h += '<tr>' +
+      '<td><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></td>' +
+      '<td><input type="date" class="rem-date" data-rem-id="' + escapeHtml(e.id) + '" value="' + escapeHtml(item.iso) + '"></td>' +
+      '<td><span class="' + stavCls + '">' + stav + '</span></td>' +
+      '<td><button class="danger rem-remove" data-rem-id="' + escapeHtml(e.id) + '">Odstranit</button></td>' +
+      '</tr>';
+  });
+  h += '</tbody></table>';
+  main.innerHTML = h;
+
+  // Odkazy na entity
+  main.querySelectorAll('a[data-entity]').forEach(a => {
+    a.onclick = (ev) => { ev.preventDefault(); setView('detail', { detailId: a.dataset.entity, detailMode: 'read' }); };
+  });
+  // Změna data přímo v poli
+  main.querySelectorAll('input.rem-date').forEach(inp => {
+    inp.onchange = () => {
+      const e = findEntity(inp.dataset.remId);
+      if (!e) return;
+      if (!e.attributes) e.attributes = {};
+      const val = inp.value;
+      if (val) {
+        e.attributes.reminder_at = val;
+        e.updated_at = nowIso();
+        save();
+        if (typeof statusMsg === 'function') statusMsg('Připomenutí změněno na ' + fmtDate(val) + '.');
+        render();
+      } else {
+        delete e.attributes.reminder_at;
+        e.updated_at = nowIso();
+        save();
+        if (typeof statusMsg === 'function') statusMsg('Připomenutí odstraněno.');
+        render();
+      }
+    };
+  });
+  // Odstranění připomenutí
+  main.querySelectorAll('button.rem-remove').forEach(btn => {
+    btn.onclick = () => {
+      const e = findEntity(btn.dataset.remId);
+      if (!e) return;
+      delete e.attributes.reminder_at;
+      e.updated_at = nowIso();
+      save();
+      toast('Připomenutí odstraněno.');
+      if (typeof statusMsg === 'function') statusMsg('Připomenutí odstraněno u „' + getDisplayTitle(e) + '".');
+      render();
+    };
+  });
 }
 
 // Rychlý editor připomenutí (klávesa r)
@@ -7807,6 +7888,13 @@ function attachMarkdownTaskHandlers(root, entity) {
       const newTask = newEntity({ title: taskText, aspects: ['Task'], attributes: { status: checked ? 'done' : 'todo' } });
       // Vazba „je součástí" parent entity
       newTask.links = [{ to: entity.id, type: 'partOf' }];
+      // Zdědit projekty rodičovské entity (stejně jako u entity z wiki odkazu)
+      const parentProjects = getEntityParentProjects(entity);
+      parentProjects.forEach(p => {
+        if (p.id !== entity.id && !newTask.links.some(l => l.type === 'partOf' && l.to === p.id)) {
+          newTask.links.push({ to: p.id, type: 'partOf' });
+        }
+      });
       addEntity(newTask);
       // Nahradit řádek wiki linkem
       lines[lineIdx] = taskPrefix + '[' + (checked ? 'x' : ' ') + '] [[' + taskText + ']]';
@@ -7818,7 +7906,8 @@ function attachMarkdownTaskHandlers(root, entity) {
       }
       entity.updated_at = nowIso();
       save();
-      toast('Úkol „' + taskText + '" vytvořen jako entita a propojen vazbou „je součástí".', 5000);
+      const projMsg = parentProjects.length > 0 ? ' Zděděno projektů: ' + parentProjects.length + '.' : '';
+      toast('Úkol „' + taskText + '" vytvořen jako entita a propojen vazbou „je součástí".' + projMsg, 5000);
       render();
     };
   });
@@ -8321,7 +8410,7 @@ function renderEntityTableHtml(entities, sort, options) {
       h += '<td><input type="checkbox" class="bulk-select" data-entity-id="' + escapeHtml(e.id) + '"' +
         (isSel ? ' checked' : '') + ' aria-label="Vybrat ' + escapeHtml(getDisplayTitle(e)) + '"></td>';
     }
-    h += '<td><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h5></td>' +
+    h += '<td><h6 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h6></td>' +
       '<td>' + getEntityDetailsHtml(e) + '</td>' +
       '<td>' + (e.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + '</td>' +
       '<td>' + (e.tags || []).map(t => '<a href="#" class="tag" data-tag="' + escapeHtml(t) + '">' + escapeHtml(t) + '</a>').join(' ') + '</td>' +
@@ -9369,7 +9458,7 @@ function taskRowHtml(e, isOverdue) {
     '<label style="font-weight:normal;display:flex;gap:0.5em;align-items:start;">' +
     '<input type="checkbox" data-task-id="' + escapeHtml(e.id) + '"' + (done ? ' checked' : '') + ' aria-label="Hotovo: ' + escapeHtml(getDisplayTitle(e)) + '">' +
     '<span style="' + strike + '">' +
-    '<h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h5> ' +
+    '<h6 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h6> ' +
     pr + ' ' + dl + '</span></label>' +
     '<div class="task-row-meta">' + proj + ' ' + tags + '</div>' +
     '<div class="task-row-actions btn-group">' + statusSel +
@@ -9439,7 +9528,7 @@ function renderCalendar(main) {
     return '<div class="calendar-row">' +
       '<span class="cal-icon" aria-hidden="true">' + (it.icon || '') + '</span>' +
       '<span class="cal-kind">' + escapeHtml(it.key) + ':</span> ' +
-      '<h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(it.entity.id) + '">' + getDisplayTitleWithBadges(it.entity) + '</a></h5>' +
+      '<h6 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(it.entity.id) + '">' + getDisplayTitleWithBadges(it.entity) + '</a></h6>' +
       '<span class="meta cal-time">' + escapeHtml(fmtDateTime(it.iso)) + '</span>' +
       rescheduleBtns +
     '</div>';
@@ -9799,10 +9888,10 @@ function renderLinksView(main) {
             actions = '<span class="meta">Vazba v textu — upravte v entitě „z"</span>';
           }
           return '<tr>' +
-            '<td><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(l.from.id) + '">' + getDisplayTitleWithBadges(l.from) + '</a></h5>' +
+            '<td><h6 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(l.from.id) + '">' + getDisplayTitleWithBadges(l.from) + '</a></h6>' +
               (fromAspects ? ' <span class="meta">(' + escapeHtml(fromAspects) + ')</span>' : '') + '</td>' +
             '<td>' + escapeHtml(l.typeLabel) + noteTxt + '</td>' +
-            '<td><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(l.to.id) + '">' + getDisplayTitleWithBadges(l.to) + '</a></h5></td>' +
+            '<td><h6 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(l.to.id) + '">' + getDisplayTitleWithBadges(l.to) + '</a></h6></td>' +
             '<td>' + escapeHtml(toAspects) + '</td>' +
             '<td>' + actions + '</td>' +
           '</tr>';
@@ -10375,7 +10464,7 @@ function renderRelatedView(main) {
       '<table><thead><tr><th>Entita</th><th>Aspekty</th><th>Skóre</th><th>Důvody</th><th>Akce</th></tr></thead><tbody>' +
       r.results.map(x => {
         return '<tr>' +
-          '<td><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(x.entity.id) + '">' + getDisplayTitleWithBadges(x.entity) + '</a></h5></td>' +
+          '<td><h6 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(x.entity.id) + '">' + getDisplayTitleWithBadges(x.entity) + '</a></h6></td>' +
           '<td>' + (x.entity.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + '</td>' +
           '<td>' + x.score + '</td>' +
           '<td class="meta">' + escapeHtml(x.reasons.join('; ')) + '</td>' +
@@ -10588,7 +10677,7 @@ function renderReplaceView(main) {
       found.places.forEach((p, pi) => {
         const fieldLabel = p.field === 'title' ? 'Název' : (p.field === 'body' ? 'Tělo' : 'Komentář #' + (p.commentIdx + 1));
         h += '<tr>' +
-          '<td><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(found.entity.id) + '">' + getDisplayTitleWithBadges(found.entity) + '</a></h5></td>' +
+          '<td><h6 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(found.entity.id) + '">' + getDisplayTitleWithBadges(found.entity) + '</a></h6></td>' +
           '<td>' + fieldLabel + '</td>' +
           '<td>' + p.count + '</td>' +
           '<td><code>' + escapeHtml(p.preview) + '</code></td>' +
@@ -11066,7 +11155,7 @@ function renderTimeTrackingView(main) {
       const since = ttGetRunningSince(r);
       const secs = Math.floor((Date.now() - new Date(since).getTime()) / 1000);
       html += '<li>' +
-        '<h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(r.id) + '">' + getDisplayTitleWithBadges(r) + '</a></h5>' +
+        '<h6 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(r.id) + '">' + getDisplayTitleWithBadges(r) + '</a></h6>' +
         ' <span class="tt-live-duration" aria-live="off" data-tt-start="' + escapeHtml(since) + '">' + ttFmtDuration(secs) + '</span> ' +
         '<button type="button" class="danger ttv-stop" data-tt-entity="' + escapeHtml(r.id) + '">⏹ Zastavit</button>' +
       '</li>';
@@ -11111,7 +11200,7 @@ function renderTimeTrackingView(main) {
     perEntity.forEach(x => {
       const aspectLabels = (x.entity.aspects || []).map(a => aspectLabel(a)).join(', ');
       html += '<tr' + (x.running ? ' class="tt-row-running"' : '') + '>' +
-        '<td><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(x.entity.id) + '">' + getDisplayTitleWithBadges(x.entity) + '</a></h5>' +
+        '<td><h6 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(x.entity.id) + '">' + getDisplayTitleWithBadges(x.entity) + '</a></h6>' +
           (x.running ? ' <span class="tt-running-badge">aktivní</span>' : '') + '</td>' +
         '<td>' + escapeHtml(aspectLabels) + '</td>' +
         '<td>' + x.entryCount + '</td>' +
@@ -11175,7 +11264,7 @@ function renderTimeTrackingView(main) {
           togglCell = '<span class="meta" title="Toggl integrace není nakonfigurována – otevřete Nastavení">—</span>';
         }
         html += '<tr>' +
-          '<td><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(item.entity.id) + '">' + getDisplayTitleWithBadges(item.entity) + '</a></h5></td>' +
+          '<td><h6 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(item.entity.id) + '">' + getDisplayTitleWithBadges(item.entity) + '</a></h6></td>' +
           '<td>' + escapeHtml(sD.toLocaleTimeString('cs', {hour:'2-digit',minute:'2-digit'})) + '</td>' +
           '<td>' + escapeHtml(eD.toLocaleTimeString('cs', {hour:'2-digit',minute:'2-digit'})) + '</td>' +
           '<td>' + escapeHtml(ttFmtDuration(ttEntryDuration(en))) + '</td>' +
@@ -11364,7 +11453,7 @@ function renderFlagsView(main) {
       html += '<section class="flags-section"><h3>' + em + ' (' + entries.length + ' entit, ' + entries.reduce((s, x) => s + x.count, 0) + ' výskytů)</h3><ul class="entity-list">';
       entries.forEach(ent => {
         html += '<li>' +
-          '<h5 class="entity-row-heading"><a href="#" class="entity-link" data-entity="' + escapeHtml(ent.entity.id) + '">' + getDisplayTitleWithBadges(ent.entity) + '</a></h5>' +
+          '<h6 class="entity-row-heading"><a href="#" class="entity-link" data-entity="' + escapeHtml(ent.entity.id) + '">' + getDisplayTitleWithBadges(ent.entity) + '</a></h6>' +
           ' <span class="meta">(' + ent.count + '×)</span>' +
           '</li>';
       });
@@ -11554,7 +11643,9 @@ function renderSettings(main) {
     '<table><thead><tr><th scope="col">Aspekt</th><th scope="col">Počet</th></tr></thead><tbody>' +
     Object.entries(aspectCounts).sort((a,b) => b[1] - a[1]).map(([k,v]) =>
       '<tr><td>' + escapeHtml(aspectLabel(k)) + '</td><td>' + v + '</td></tr>').join('') +
-    '</tbody></table></details></section>' +
+    '</tbody></table></details>' +
+    '<div style="margin-top:1em;"><button type="button" id="biggest-entities-btn">\U0001F4CA Zobrazit 30 nejv\u011bt\u0161\xedch entit</button></div>' +
+    '<div id="biggest-entities-result" style="margin-top:0.6em;"></div></section>' +
 
     '<section aria-labelledby="dbinfo-h"><h3 id="dbinfo-h">Název a popis databáze</h3>' +
     '<p>Tyto údaje se zobrazují v záhlaví aplikace a v titulku okna prohlížeče.</p>' +
@@ -11709,6 +11800,48 @@ function renderSettings(main) {
   // === Správa tagů ===
   const tagsText = document.getElementById('tags-text');
   const tagsMeta = document.getElementById('tags-meta');
+  // === 30 největších entit (na vyžádání) ===
+  // Velikost = syrové tělo (BEZ rozbalení include) + hodnoty atributů + název.
+  // Include se nezapočítává, aby se cizí (vložený) obsah nepřičítal – měříme jen
+  // samotný objekt entity.
+  const bigBtn = document.getElementById('biggest-entities-btn');
+  if (bigBtn) {
+    bigBtn.onclick = () => {
+      const res = document.getElementById('biggest-entities-result');
+      if (!res) return;
+      const sized = db.entities.filter(e => !e.archived).map(e => {
+        let chars = 0;
+        chars += (e.title || '').length;
+        chars += (e.body || '').length;   // syrové tělo, include nerozbalujeme
+        const a = e.attributes || {};
+        Object.keys(a).forEach(k => {
+          const v = a[k];
+          if (typeof v === 'string') chars += v.length;
+          else if (Array.isArray(v)) chars += JSON.stringify(v).length; // např. db_records
+          else if (v && typeof v === 'object') chars += JSON.stringify(v).length;
+          else if (v != null) chars += String(v).length;
+        });
+        return { e: e, chars: chars };
+      }).sort((x, y) => y.chars - x.chars).slice(0, 30);
+
+      let h = '<table><thead><tr><th scope="col">#</th><th scope="col">Entita</th><th scope="col">Velikost (znaků)</th></tr></thead><tbody>';
+      sized.forEach((item, idx) => {
+        h += '<tr>' +
+          '<td>' + (idx + 1) + '</td>' +
+          '<td><a href="#" data-entity="' + escapeHtml(item.e.id) + '">' + getDisplayTitleWithBadges(item.e) + '</a></td>' +
+          '<td>' + item.chars.toLocaleString('cs') + '</td>' +
+          '</tr>';
+      });
+      h += '</tbody></table>';
+      h += '<p class="meta">Velikost = název + syrové tělo + hodnoty atributů. Vložený obsah přes {{include}} / {{database}} se nezapočítává, počítá se jen samotný objekt entity.</p>';
+      res.innerHTML = h;
+      res.querySelectorAll('a[data-entity]').forEach(a => {
+        a.onclick = (ev) => { ev.preventDefault(); setView('detail', { detailId: a.dataset.entity, detailMode: 'read' }); };
+      });
+      if (typeof statusMsg === 'function') statusMsg('Zobrazeno ' + sized.length + ' největších entit.');
+    };
+  }
+
   const tagsSaveBtn = document.getElementById('tags-save');
   const tagsResetBtn = document.getElementById('tags-reset');
   function loadTagsField() {
@@ -13970,7 +14103,7 @@ function renderDetailEdit(main, e) {
         '<table><thead><tr><th scope="col">Entita</th><th scope="col">Aspekty</th><th scope="col">Skóre</th><th scope="col">Důvody</th><th scope="col">Akce</th></tr></thead><tbody>' +
         results.map((x, idx) => {
           return '<tr>' +
-            '<td><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(x.entity.id) + '">' + getDisplayTitleWithBadges(x.entity) + '</a></h5></td>' +
+            '<td><h6 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(x.entity.id) + '">' + getDisplayTitleWithBadges(x.entity) + '</a></h6></td>' +
             '<td>' + (x.entity.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + '</td>' +
             '<td>' + x.score + '</td>' +
             '<td class="meta">' + escapeHtml(x.reasons.join('; ')) + '</td>' +
@@ -22839,6 +22972,7 @@ function buildMenuModel() {
   M.zobrazeni.push({ label: 'Úkoly', run: () => setView('tasks') });
   M.zobrazeni.push({ label: 'Kalendář', run: () => setView('calendar') });
   M.zobrazeni.push({ label: 'Tagy', run: () => setView('tags') });
+  M.zobrazeni.push({ label: '🔔 Připomenutí', run: () => setView('reminders') });
   if (getFlagEmojis().length > 0) M.zobrazeni.push({ label: '🏳️‍🌈 Příznaky', run: () => setView('flags') });
   if (db.entities.some(e => !e.archived && ttHasAspect(e))) M.zobrazeni.push({ label: '⏱ Sledování času', run: () => setView('timetracking') });
   if (db.entities.some(e => !e.archived && (e.aspects || []).includes('Topic'))) M.zobrazeni.push({ label: 'Témata', run: () => setView('topics') });
@@ -22849,6 +22983,8 @@ function buildMenuModel() {
   M.zobrazeni.push({ label: 'Všechny pohledy…', run: () => setView('views') });
 
   // --- Nástroje --- (zrcadlí kartu Nástroje)
+  M.nastroje.push({ label: '📋 Šablony', run: () => setView('templates') });
+  M.nastroje.push({ label: '👁️ Uložené pohledy', run: () => setView('views') });
   M.nastroje.push({ label: 'Vazby', run: () => setView('links') });
   M.nastroje.push({ label: 'Témata', run: () => setView('topics') });
   M.nastroje.push({ label: 'Komentáře', run: () => setView('comments') });
@@ -30886,7 +31022,7 @@ function entityRowHtml(e) {
   const dateStr = date ? '<span class="meta">' + escapeHtml(fmtDate(date)) + '</span>' : '';
   const att = (e.attachments && e.attachments.length > 0) ? '<span class="meta" title="přílohy">📎' + e.attachments.length + '</span>' : '';
   return '<div class="entity-row">' +
-    '<div><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h5> ' + status + ' ' + dateStr + ' ' + att + '</div>' +
+    '<div><h6 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h6> ' + status + ' ' + dateStr + ' ' + att + '</div>' +
     '<div>' + aspects + ' ' + tags + '</div>' +
     '<div class="meta">Změněno ' + escapeHtml(fmtRelative(e.updated_at)) + '</div></div>';
 }
@@ -31035,7 +31171,7 @@ function renderEntityTableHtml(entities, sort, options) {
       h += '<td><input type="checkbox" class="bulk-select" data-entity-id="' + escapeHtml(e.id) + '"' +
         (isSel ? ' checked' : '') + ' aria-label="Vybrat ' + escapeHtml(getDisplayTitle(e)) + '"></td>';
     }
-    h += '<td><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h5></td>' +
+    h += '<td><h6 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h6></td>' +
       '<td>' + getEntityDetailsHtml(e) + '</td>' +
       '<td>' + (e.aspects || []).map(a => escapeHtml(aspectLabel(a))).join(', ') + '</td>' +
       '<td>' + (e.tags || []).map(t => '<a href="#" class="tag" data-tag="' + escapeHtml(t) + '">' + escapeHtml(t) + '</a>').join(' ') + '</td>' +
@@ -31801,7 +31937,7 @@ function taskRowHtml(e) {
     '<input type="checkbox" data-task-id="' + escapeHtml(e.id) + '"' + (done ? ' checked' : '') +
     ' aria-label="Hotovo: ' + escapeHtml(getDisplayTitle(e)) + '">' +
     '<span style="' + (done ? 'text-decoration:line-through;color:#888;' : '') + '">' +
-    '<h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h5> ' + pr + ' ' + dl +
+    '<h6 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></h6> ' + pr + ' ' + dl +
     '</span></label><div>' + tags + '</div></div>';
 }
 
@@ -32010,10 +32146,10 @@ function renderLinksView(main) {
           const toAspects = (l.to.aspects || []).map(a => aspectLabel(a)).join(', ');
           const noteTxt = l.note ? ' <span class="meta">(' + escapeHtml(l.note) + ')</span>' : '';
           return '<tr>' +
-            '<td><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(l.from.id) + '">' + getDisplayTitleWithBadges(l.from) + '</a></h5>' +
+            '<td><h6 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(l.from.id) + '">' + getDisplayTitleWithBadges(l.from) + '</a></h6>' +
               (fromAspects ? ' <span class="meta">(' + escapeHtml(fromAspects) + ')</span>' : '') + '</td>' +
             '<td>' + escapeHtml(l.typeLabel) + noteTxt + '</td>' +
-            '<td><h5 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(l.to.id) + '">' + getDisplayTitleWithBadges(l.to) + '</a></h5></td>' +
+            '<td><h6 class="entity-row-heading"><a href="#" data-entity="' + escapeHtml(l.to.id) + '">' + getDisplayTitleWithBadges(l.to) + '</a></h6></td>' +
             '<td>' + escapeHtml(toAspects) + '</td>' +
           '</tr>';
         }).join('') +
