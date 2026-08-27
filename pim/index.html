@@ -12408,6 +12408,7 @@ function renderDetailRead(main, e) {
           '<button id="diag-copy-wiki" title="Zkopírovat jako DokuWiki obrázek"' + (haveEnc ? '' : ' disabled') + '>🌐 Wiki</button>' +
           '<button id="diag-dl-png" title="Stáhnout PNG soubor"' + (haveEnc ? '' : ' disabled') + '>⬇ PNG</button>' +
           '<button id="diag-dl-svg" title="Stáhnout SVG soubor"' + (haveEnc ? '' : ' disabled') + '>⬇ SVG</button>' +
+          (getEntityGhPngPath(e) ? '<button id="diag-gh-push-png" title="Uložit PNG do GitHubu na cestu ' + escapeHtml(getEntityGhPngPath(e)) + '"' + (haveEnc ? '' : ' disabled') + '>☁ Uložit PNG na GitHub</button>' : '') +
         '</div>' +
         '<figure class="diagram-figure">' +
           (haveEnc
@@ -19498,6 +19499,8 @@ function attachDiagramHandlers(entity) {
   if (btnDlPng) btnDlPng.onclick = () => dlBlob(pngUrl, 'png');
   const btnDlSvg = document.getElementById('diag-dl-svg');
   if (btnDlSvg) btnDlSvg.onclick = () => dlBlob(svgUrl, 'svg');
+  const btnGhPushPng = document.getElementById('diag-gh-push-png');
+  if (btnGhPushPng) btnGhPushPng.onclick = () => pushDiagramPngToGithub(entity);
 
   const img = document.getElementById('diag-img');
   const sizeEl = document.getElementById('diag-size');
@@ -24650,11 +24653,17 @@ function renderPlanAsMarkdown(entity) {
 
 // Vrací strukturovaný export model entity – formát-nezávislý.
 
-// ===== PUSH OBSAHU ENTITY NA GITHUB (atribut ghpath) =====
-// ghpath = "owner/repo/cesta/soubor.ext" (první dva segmenty = owner a repo, zbytek = cesta).
-// Zapisuje rozexpandované tělo entity do větve main. Používá stejný GH token jako sync.
+// ===== PUSH NA GITHUB (atributy ghpath a ghpngpath) =====
+// ghpath    = "owner/repo/cesta/soubor.ext" – zapíše rozexpandované tělo entity.
+// ghpngpath = "owner/repo/cesta/soubor.png" – zapíše PNG diagramu (aspekt Diagram).
+// První dva segmenty = owner a repo, zbytek = cesta. Zapisuje se do větve main,
+// existující soubor se přepíše. Používá stejný GH token jako sync.
 function getEntityGhPath(entity) {
   const p = entity && entity.attributes && entity.attributes.ghpath;
+  return (typeof p === 'string' && p.trim()) ? p.trim() : null;
+}
+function getEntityGhPngPath(entity) {
+  const p = entity && entity.attributes && entity.attributes.ghpngpath;
   return (typeof p === 'string' && p.trim()) ? p.trim() : null;
 }
 function parseGhPath(raw) {
@@ -24662,48 +24671,73 @@ function parseGhPath(raw) {
   if (parts.length < 3) return null; // potřebujeme owner + repo + aspoň 1 segment cesty
   return { owner: parts[0], repo: parts[1], path: parts.slice(2).join('/') };
 }
-async function pushEntityToGithub(entity) {
-  const raw = getEntityGhPath(entity);
-  if (!raw) { alertMsg('Entita nemá atribut ghpath.'); return; }
-  const parsed = parseGhPath(raw);
-  if (!parsed) { alertMsg('Neplatný ghpath. Očekává se owner/repo/cesta, např. egdilna/uilab/website.md'); return; }
-  if (!GH.getToken()) { alertMsg('Chybí GitHub token. Nastavte ho v nastavení GitHubu.'); return; }
-
-  // Obsah = rozexpandované tělo (direktivy, čítače, placeholdery) – stejně jako export.
-  const content = expandMarkdownIncludes(entity.body || '', { markIncluded: false, entity: entity, stripAnnotations: true });
+// Bajty → base64 (po blocích, kvůli paměti u větších souborů).
+function bytesToBase64(bytes) {
+  let bin = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  return btoa(bin);
+}
+// Zapíše soubor na cestu z ghpath/ghpngpath. Existující soubor přepíše (dohledá SHA).
+// Vrací true, pokud šlo o aktualizaci, false, pokud o nově vytvořený soubor.
+async function putFileToGhPath(parsed, base64, message) {
   const branch = 'main';
   const apiBase = '/repos/' + encodeURIComponent(parsed.owner) + '/' + encodeURIComponent(parsed.repo) +
                   '/contents/' + parsed.path.split('/').map(encodeURIComponent).join('/');
+  // 1) Zjistit SHA existujícího souboru (pokud existuje) – nutné pro update
+  let sha = null;
+  try {
+    const meta = await GH._api('GET', apiBase + '?ref=' + encodeURIComponent(branch));
+    if (meta && meta.sha) sha = meta.sha;
+  } catch (e) {
+    if (e.status !== 404) throw e; // 404 = soubor ještě neexistuje (vytvoříme nový)
+  }
+  // 2) PUT
+  const body = { message: message, content: base64, branch: branch };
+  if (sha) body.sha = sha;
+  await GH._api('PUT', apiBase, body);
+  return !!sha;
+}
+// Společná obálka: kontrola atributu a tokenu, průběžný toast, hlášení výsledku.
+// buildBase64 dostane parsed a vrací base64 obsahu k zápisu.
+async function pushToGhPath(entity, raw, attrName, message, buildBase64) {
+  if (!raw) { alertMsg('Entita nemá atribut ' + attrName + '.'); return; }
+  const parsed = parseGhPath(raw);
+  if (!parsed) { alertMsg('Neplatný ' + attrName + '. Očekává se owner/repo/cesta, např. egdilna/uilab/website.md'); return; }
+  if (!GH.getToken()) { alertMsg('Chybí GitHub token. Nastavte ho v nastavení GitHubu.'); return; }
 
   toast('Odesílám na GitHub…', 60000);
   try {
-    // 1) Zjistit SHA existujícího souboru (pokud existuje) – nutné pro update
-    let sha = null;
-    try {
-      const meta = await GH._api('GET', apiBase + '?ref=' + encodeURIComponent(branch));
-      if (meta && meta.sha) sha = meta.sha;
-    } catch (e) {
-      if (e.status !== 404) throw e; // 404 = soubor ještě neexistuje (vytvoříme nový)
-    }
-    // 2) Obsah → base64 (UTF-8 bezpečně)
-    const bytes = new TextEncoder().encode(content);
-    let bin = '';
-    const chunk = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-    const b64 = btoa(bin);
-    // 3) PUT
-    const body = {
-      message: 'PIM: ' + (getDisplayTitle(entity) || 'entita') + ' → ' + parsed.path,
-      content: b64,
-      branch: branch
-    };
-    if (sha) body.sha = sha;
-    await GH._api('PUT', apiBase, body);
-    toast('Uloženo na GitHub: ' + parsed.owner + '/' + parsed.repo + '/' + parsed.path + (sha ? ' (aktualizováno)' : ' (vytvořeno)'), 5000);
+    const base64 = await buildBase64(parsed);
+    const updated = await putFileToGhPath(parsed, base64, message(parsed));
+    toast('Uloženo na GitHub: ' + parsed.owner + '/' + parsed.repo + '/' + parsed.path +
+      (updated ? ' (aktualizováno)' : ' (vytvořeno)'), 5000);
     playSound('save');
   } catch (err) {
     alertMsg('Odeslání na GitHub selhalo: ' + (err.message || err));
   }
+}
+async function pushEntityToGithub(entity) {
+  await pushToGhPath(entity, getEntityGhPath(entity), 'ghpath',
+    parsed => 'PIM: ' + (getDisplayTitle(entity) || 'entita') + ' → ' + parsed.path,
+    async () => {
+      // Obsah = rozexpandované tělo (direktivy, čítače, placeholdery) – stejně jako export.
+      const content = expandMarkdownIncludes(entity.body || '', { markIncluded: false, entity: entity, stripAnnotations: true });
+      return bytesToBase64(new TextEncoder().encode(content));
+    });
+}
+// Uloží vyrenderované PNG diagramu (z PlantUML serveru) na cestu z atributu ghpngpath.
+async function pushDiagramPngToGithub(entity) {
+  const enc = entity && entity.attributes && entity.attributes.encoded;
+  if (!enc) { alertMsg('Diagram zatím není zakódovaný – počkejte na vykreslení a zkuste to znovu.'); return; }
+  await pushToGhPath(entity, getEntityGhPngPath(entity), 'ghpngpath',
+    parsed => 'PIM: ' + (getDisplayTitle(entity) || 'diagram') + ' (PNG) → ' + parsed.path,
+    async () => {
+      const res = await fetch(pumlPngUrl(enc));
+      if (!res.ok) throw new Error('PlantUML server vrátil HTTP ' + res.status);
+      const buf = await res.arrayBuffer();
+      return bytesToBase64(new Uint8Array(buf));
+    });
 }
 
 // Sesbírá úkoly projektu (děti s aspektem Task) seskupené do 4 kanban kategorií –

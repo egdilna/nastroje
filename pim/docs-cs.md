@@ -463,6 +463,21 @@ V Nastavení nastavte GitHub Personal Access Token (fine-grained) a cílový rep
 
 Také je k dispozici **statický prohlížeč** — generuje samostatný HTML soubor s vašimi entitami v read-only režimu, vhodný pro sdílení.
 
+### Ukládání jednotlivých souborů do repozitáře — `ghpath` a `ghpngpath`
+
+Kromě synchronizace celé databáze umí PIM uložit **konkrétní soubor na konkrétní místo** v libovolném repozitáři. Slouží k tomu dva vlastní atributy entity:
+
+| Atribut | Co uloží | Kde je tlačítko |
+|---|---|---|
+| `ghpath` | rozexpandované tělo entity (direktivy, placeholdery a čítače se vyhodnotí stejně jako při exportu) | **☁ Uložit na GitHub** pod obsahem entity |
+| `ghpngpath` | vyrenderované **PNG diagramu** (jen u entit s aspektem Diagram) | **☁ Uložit PNG na GitHub** v nástrojové liště diagramu |
+
+Hodnotou je cesta ve tvaru `owner/repo/cesta/soubor.ext` — první dva segmenty jsou vlastník a repozitář, zbytek cesta v něm. Například `egdilna/uilab/website.md` nebo `egdilna/uilab/img/architektura.png`.
+
+Ukládá se do větve `main` a **existující soubor se přepíše** (PIM si sám dohledá jeho SHA); pokud soubor ještě neexistuje, vytvoří se. Používá se stejný GitHub token jako pro synchronizaci.
+
+Oba atributy jsou nezávislé: entita může mít jen jeden z nich, nebo oba — pak se každým tlačítkem uloží jiný soubor na jiné místo.
+
 ## Časté otázky
 
 **Kde jsou moje data?** V `localStorage` prohlížeče pod klíčem `pim_db_v1::DEFAULT` (nebo `pim_db_v1::IDP_ID` pro projektové stránky).
