@@ -1,0 +1,104 @@
+# CLAUDE.md — DKM (Dynamický správce znalostí)
+
+## Co to je
+Nejrozsáhlejší nástroj repozitáře: jednosouborový **dynamický správce znalostí**
+(`index.html`, ~7086 řádků, ~506 kB, 316 top-level funkcí). Datový model si definuje sám
+uživatel — typy entit, aspekty, atributy a vazby — nad tím jsou pohledy (seznam, kanban,
+timeline, karty), filtry, hromadné operace, balíčkový import/export, generování PlantUML,
+DOCX/XLSX export a synchronizace s GitHubem.
+
+**Uživatelská dokumentace je `docs-cs.md` (51 kB) a `docs-en.md`.** Čti ji dřív, než sáhneš
+na koncepty (entita, typ, atribut, aspekt, vazba, vlastní atribut, komentáře, objekty),
+a při změně chování ji aktualizuj.
+
+## Klíčové koncepty (musíš je znát, než začneš)
+- **Entita** — základní záznam; má typ, aspekty, atributy, vazby, komentáře, objekty.
+- **Typ entity** definuje sadu atributů; **aspekt** je průřezová sada atributů, kterou lze
+  entitě přidat nezávisle na typu (`getAllAttrDefsForEntity` skládá obojí).
+- **Vazba** má rozsah (`RSCOPES = ['universal','from','to','specific']`), platnost kontroluje
+  `isRelApplicable(rt, fromId, toId)`.
+- Typy atributů: `ATYPES = ['text','textarea','date','url','select','yesno','relation','number']`;
+  kompatibilitu při konverzích řídí `ATTR_TYPE_COMPAT` (`attrTypesCompatible`).
+
+## Perzistence a synchronizace mezi záložkami
+| Klíč | Význam |
+|---|---|
+| `dkm-data-v1` (`SK_DATA`) | data projektu |
+| `dkm-session-data` (`SK_SESSION`) | **sessionStorage** — per-záložka, přežije refresh, zavření záložky ne |
+| `dkm-lang`, `dkm-autosave`, `dkm-debug` | nastavení |
+| `dkm-github-token` | GitHub PAT — **nikdy nelogovat, needovat do dat ani do URL** |
+| `dkm-handoff-…` (`SK_HANDOFF_PREFIX`) | předání entity do samostatného okna |
+
+Mezi záložkami běží **BroadcastChannel synchronizace** (`initBroadcastSync`,
+`broadcastDataChange`, `requestInitSync`, `showSyncBanner`, `ORIGIN_ID`). Každá změna dat
+musí projít cestou, která broadcast vyvolá — jinak se ostatní okna rozejdou.
+`isStandalone()` / `openEntityStandalone()` / `consumeHandoff()` obsluhují samostatné okno
+jedné entity (v něm se skrývá navigační chrome a vynucuje jednosloupcový layout).
+
+## Sledování změn a diff
+`snapshotBaseline()` / `hasBaseline()` / `computeDiff()` počítají rozdíl proti výchozímu stavu
+a `openDiffDialog()` ho ukazuje po sekcích (přidané / odstraněné / upravené, pole po poli).
+Porovnání **řadí klíče a přeskakuje `updatedAt`** — časové razítko není změna. Když přidáváš
+pole do entity, doplň ho do `normalizeEntity` a `diffEntityFields`, jinak z diffu vypadne.
+`setDirty(v)` + `smartSave()` řídí, co se uloží kam (soubor / GitHub / schránka).
+
+## Externí závislosti — jen líně
+Nic se nenačítá dopředu. `loadSheetJS()` stáhne SheetJS z CDN **až při exportu XLSX**;
+DOCX a ZIP se generují **ručně** (`buildDocxFile`, `makeZip`, `crc32`). Tuhle vlastnost drž —
+nástroj musí být použitelný offline.
+
+## Statický prohlížeč
+`VIEWER_TPL_B64` je base64 šablona samostatné HTML stránky, ze které `generateStaticViewer()`
+vyrábí offline prohlížeč dat. Když měníš strukturu dat, ověř, že vygenerovaný prohlížeč
+pořád funguje — je to snadno přehlédnutelná závislost.
+
+## Export do DOCX — netriviální část
+Vlastní generátor OOXML: `renderMarkdownBlocksToDocx`, `runsToParagraphXml`,
+`renderMarkdownTableToDocx`, `buildDocxFile`. Zvláštnosti popsané v komentářích:
+- CriticMarkup se převádí na **Word revize** — `<w:ins>` a `<w:del>` (mazaný text používá
+  `<w:delText>`, ne `<w:t>`), `nextRevId()` je globální čítač revizí.
+- Komentář `{>> <<}` se zatím vkládá jako inline „💬 [text]“ v poznámkové barvě — skutečný
+  DOCX komentář by vyžadoval `comments.xml`.
+- Za tabulkou se **musí** vložit prázdný odstavec, jinak Word slévá následující text s tabulkou.
+- Obrázky: EMU 914400/palec, 96 DPI → `px * 9525`, šířka omezená na ~600 px; nestažený obrázek
+  degraduje na odkaz.
+
+## Balíčky (package) — průvodce importem
+`bulkExportPackage` → `buildPackageObj` a osmikrokový průvodce importem
+(`renderPkgWizStep1`…`Step8`) s automatickým mapováním modelu (`autoMapModel`), detekcí
+konfliktů (`findEntityConflicts`), **simulací** (`simulateImport`) a zálohou před importem
+(`downloadBackupBeforeImport`). Import je destruktivní operace — zálohu ani simulaci
+nevyřazuj.
+
+## Filtry, pohledy, hromadné operace
+Pravidlový filtr (`evalRule`, `applyAttrFilters`, `opsForType`, `renderRuleRow`) s uloženými
+pohledy (`openSaveViewDialog`, `applySavedView`). Zobrazení: seznam / kanban
+(`renderKanbanEl`, `moveEntityKanban`) / timeline (`renderTimelineEl`) / karty.
+Hromadné akce `bulk*` (změna typu, aspekty, atributy, vazby, archivace, mazání, sloučení
+`bulkMerge`/`doMerge`, export balíčku). Sloučení má strategie řešení konfliktů — respektuj je.
+
+## Zpětné odkazy a wiki
+`countBacklinks` / `collectBacklinks` sbírají tři zdroje: klasické vazby, atributy typu
+`relation` a **wiki odkazy `[[Název]]` skenované v textech** (`scanForWikiLink`).
+Při změně názvu entity nebo formátu textových hodnot na to pamatuj.
+
+## Lokalizace
+`I18N = {cs:{…}, en:{…}}` s **578 klíči**, přístup přes `t(k, v)`, jazyk v `dkm-lang`.
+Každý nový text = klíč v obou jazycích. Do UI nikdy nepiš řetězec natvrdo.
+
+## Konvence
+- Pomocníci `esc(s)`, `uid(p)`, `toast(m)`, `announce(m)` (odečítač), `dbg(m, err)`.
+- Panely (`getPanelSnapshot`, `applyPanelSnapshot`, `addPanel`, `switchToPanel`) a navigace
+  přes hash (`parseHash`, `navigateTo`, `pushNav`, `goBackSkipEdits`) — nové pohledy zapoj sem.
+- Command palette (`openCommandPalette`, fuzzy hledání) a klávesové zkratky bez modifikátoru
+  (F, O, P, S, T, W, K…) — novou zkratku doplň do nápovědy v nastavení (`rsHelp`).
+- Seznam se ořezává na `MAX = 100` položek — při změně renderu tuto pojistku zachovej.
+- Při startu se odregistrovává Service Worker a čistí cache (pozůstatek starší verze).
+
+## Ověření změny
+Vytvoř typ, aspekt, atributy všech typů a vazbu → entity, vazby, komentáře, objekty →
+pravidlový filtr a uložený pohled → kanban (přetažení) a timeline → hromadné operace včetně
+sloučení → export balíčku a jeho import průvodcem do jiného projektu (ověř simulaci i zálohu) →
+export MD, DOCX (otevři ve Wordu, zkontroluj revize a tabulky), XLSX, PlantUML →
+statický prohlížeč → GitHub uložení/načtení → dvě záložky současně (BroadcastChannel) →
+samostatné okno entity → přepnutí CS/EN.
