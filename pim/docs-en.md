@@ -464,6 +464,21 @@ In Settings, set a GitHub Personal Access Token (fine-grained) and the target re
 
 There's also a **static viewer** — generates a standalone HTML file with your entities in read-only mode, suitable for sharing.
 
+### Saving individual files to a repository — `ghpath` and `ghpngpath`
+
+Besides syncing the whole database, PIM can save **a specific file to a specific location** in any repository. Two custom entity attributes do this:
+
+| Attribute | What it saves | Where the button is |
+|---|---|---|
+| `ghpath` | the expanded entity body (directives, placeholders and counters are evaluated just like in export) | **☁ Save to GitHub** below the entity body |
+| `ghpngpath` | the rendered **diagram PNG** (entities with the Diagram aspect only) | **☁ Save PNG to GitHub** in the diagram toolbar |
+
+The value is a path of the form `owner/repo/path/file.ext` — the first two segments are the owner and the repository, the rest is the path within it. For example `egdilna/uilab/website.md` or `egdilna/uilab/img/architecture.png`.
+
+Files are written to the `main` branch and an **existing file is overwritten** (PIM looks up its SHA itself); if the file does not exist yet, it is created. The same GitHub token as for sync is used.
+
+The two attributes are independent: an entity can have just one of them, or both — each button then saves a different file to a different location.
+
 ## FAQ
 
 **Where is my data?** In the browser's `localStorage` under the key `pim_db_v1::DEFAULT` (or `pim_db_v1::ID` for project pages).
