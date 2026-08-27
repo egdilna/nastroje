@@ -7,6 +7,8 @@ přehrávání celé stopy, střih na keyframech, posouvání střihové hranice
 export do MP4 **bez překódování**. Sesterský a záměrně velmi podobný nástroj je `../aed`
 (AudioEdit) — sdílejí model regionů, transport, i18n i přístupnostní vzorce.
 
+**Uživatelská dokumentace: `dokumentace.md` ve stejné složce (~17 kB).** Popisuje chování z pohledu uživatele — čti ji jako doplněk k tomuhle souboru a při změně chování ji aktualizuj spolu s kódem.
+
 ## Pozor: soubor obsahuje minifikované knihovny
 Struktura `<script>` bloků:
 | Řádek | Obsah |

@@ -1,13 +1,15 @@
 # CLAUDE.md — Outliner
 
 ## Co to je
-Jednosouborový **outliner se sloupci** (`index.html`, ~5628 řádků, ~280 kB, 260 top-level
+Jednosouborový **outliner se sloupci** (`index.html`, ~5634 řádků, ~284 kB, 260 top-level
 funkcí). Dokument je strom řádků, ke kterému lze přidávat datové sloupce (jako v tabulce),
 souhrny, číslování úrovní, styly, filtry, verze a exporty (HTML, Markdown, OPML, CSV, TXT, DOCX).
 Ukázkový dokument je `Ukázka.outline` ve složce — slouží jako referenční příklad formátu.
 
 **Žádné externí knihovny** — DOCX i ZIP se generují ručně (`buildZip`, `crc32`, `_blocksToDocx`).
 Nepřidávej CDN.
+
+**Uživatelská dokumentace: `dokumentace.md` ve stejné složce (~36 kB).** Popisuje chování z pohledu uživatele — čti ji jako doplněk k tomuhle souboru a při změně chování ji aktualizuj spolu s kódem.
 
 ## Datový model (`newDoc()`, ř. 910)
 ```js
@@ -30,7 +32,18 @@ Nepřidávej CDN.
 ## Typy řádků
 `ROW_TYPES`: `normal`, `strong`, `em`, `ins`, `del`, `mark` (inline) a `blockquote`, `article`,
 `aside` (blokové). Mapují se na skutečné HTML značky (`tag`, `kind`) — je to sémantika, ne jen
-vzhled; při exportu se z nich generují odpovídající elementy.
+vzhled; při exportu se z nich generují odpovídající elementy. Typ řádku se dá také filtrovat
+(podmínka „Typ řádku“) a odečítač ho ohlašuje při pohybu po osnově.
+
+**V DOCX mají `ins` a `del` revizní sémantiku, ne vizuální.** `exportDOCX` je nepřevádí na
+tučné / přeškrtnuté, ale obalí téma řádku CriticMarkupem (`{++ ++}` / `{-- --}`) a nechá
+existující aparát sledovaných změn vygenerovat skutečné `<w:ins>` / `<w:del>` — takže se
+ve Wordu chovají jako revize a respektují volbu „Sledované změny přijmout“ (`accepted`).
+Obaluje se **každá část zvlášť** (první řádek tématu i jednotlivé neprázdné řádky zbytku),
+aby CriticMarkup zůstal v každém bloku vyvážený; kdo to zjednoduší na jedno obalení celého
+textu, rozbije víceřádková témata.
+`strong`, `em` a `mark` zůstávají vizuální (`mark` → žluté zvýraznění, Word nezná „sledované
+zvýraznění“).
 
 ## Číslování
 `computeNumbering()` + `NUM_FORMATS` (`decimal`, `upper-alpha`, `lower-alpha`, `upper-roman`,
@@ -72,6 +85,7 @@ Import: OPML, Markdown, odsazený text, TSV (`importFromText` podle formátu).
 Export: HTML (statický i „dynamic“), Markdown, OPML, CSV, TXT a **DOCX**.
 DOCX generátor (`_para`, `_run`, `_runsFromNodes`, `_docxTable`, `exportDOCX(accepted)`)
 umí CriticMarkup jako Word revize — parametr `accepted` rozhoduje, zda se změny přijmou.
+Tudy jdou i typy řádku `ins`/`del` (viz výše), takže změna v této cestě ovlivní obojí.
 Vlastní Markdown renderer (`renderMarkdown`, `parseInline`, `parseList`, `parseTableRow`)
 je společný pro zobrazení i exporty; při jeho úpravě ověř všechny výstupy.
 

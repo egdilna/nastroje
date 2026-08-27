@@ -8,6 +8,8 @@ a CriticMarkupem. Celý blok se ukládá jako jeden soubor, do schránky nebo na
 
 Externí knihovny z cdnjs: `marked` (Markdown), `jszip` (DOCX/ZIP), `FileSaver.js` (stahování).
 
+**Uživatelská dokumentace: `dokumentace.md` ve stejné složce (~32 kB).** Popisuje chování z pohledu uživatele — čti ji jako doplněk k tomuhle souboru a při změně chování ji aktualizuj spolu s kódem.
+
 ## Typy poznámek — hlavní osa nástroje
 Volba typu je v dialogu nové poznámky (`dlg-ntype`):
 | Typ | Renderer | Include varianta |

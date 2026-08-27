@@ -9,6 +9,8 @@ Import a export je **XML podle NSESSS** (export ve verzi 4.0, některá pole odk
 Doména je normativní — než změníš chování skartačních polí nebo XML výstupu, ověř si pravidla
 NSESSS; formát je to, co ho dělá použitelným.
 
+**Uživatelská dokumentace: `dokumentace.md` ve stejné složce (~26 kB).** Popisuje chování z pohledu uživatele — čti ji jako doplněk k tomuhle souboru a při změně chování ji aktualizuj spolu s kódem.
+
 ## Struktura souboru
 Jeden `<script>`, členěný bannery `PROJECT STRUCTURE / NEW PROJECT / TREE RENDER /
 ITEM SELECTION & DETAIL / FIELD UPDATE + CHANGELOG / ADD & DELETE ITEMS / MOVE ITEMS /

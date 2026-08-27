@@ -6,6 +6,8 @@ Jednostopý webový audio editor (`index.html`, ~2288 řádků, ~83 kB). Projekt
 slučování, přeskládání, poznámky u regionů a export do WAV/MP3/OGG/M4A.
 Projekt se ukládá jako ZIP (`.aed`).
 
+**Uživatelská dokumentace: `dokumentace.md` ve stejné složce (~16 kB).** Popisuje chování z pohledu uživatele — čti ji jako doplněk k tomuhle souboru a při změně chování ji aktualizuj spolu s kódem.
+
 ## Externí závislosti
 `jszip` (projektový ZIP) a `lamejs` (MP3 enkodér) z cdnjs. Nic dalšího; CSS je inline
 („Dark studio aesthetic – warm amber accents on deep charcoal“ — drž se té palety).

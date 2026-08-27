@@ -6,6 +6,8 @@ Jednosouborová **dokumentová správa nad GitHub repozitářem** (`index.html`,
 v souboru `storage.json` v repozitáři; verze souborů se commitují jako binární soubory vedle něj.
 GitHub je jediné úložiště — aplikace nemá vlastní backend a **data si nedrží v localStorage**.
 
+**Uživatelská dokumentace: `dokumentace.md` ve stejné složce (~33 kB).** Popisuje chování z pohledu uživatele — čti ji jako doplněk k tomuhle souboru a při změně chování ji aktualizuj spolu s kódem.
+
 ## Externí závislosti
 Žádné natvrdo. JSZip se **načítá až na vyžádání** (`loadJSZip()`, `JSZIP_CDN_URL`) pro export
 do ZIP — bez exportu nástroj funguje offline.

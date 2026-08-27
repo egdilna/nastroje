@@ -2,7 +2,7 @@
 
 ## Co to je
 Největší nástroj repozitáře: jednosouborová **osobní znalostní báze / manažer informací**
-(`index.html`, **~41 700 řádků, ~2 MB, 930 top-level funkcí**). Entity s aspekty, vazby,
+(`index.html`, **~41 860 řádků, ~2 MB, přes 900 top-level funkcí**). Entity s aspekty, vazby,
 Markdown obsah s wiki odkazy a includy, úkoly, projekty a plány, deník, databáze, dokumenty,
 přílohy, šifrované atributy, statický prohlížeč, publikace webu a synchronizace s GitHubem.
 
@@ -20,10 +20,10 @@ nesynchronizuje). Předloha tohoto prohlížeče je uložená přímo v souboru 
 
 | Rozsah | Co to je |
 |---|---|
-| ř. 1643–27534 | živá aplikace — **sem patří změny funkčnosti** |
-| ř. 27535–36130 | `STATIC_VIEWER_TEMPLATE` — šablona generovaného prohlížeče (template literál) s místy `__VIEWER_EXTRA__` a `__PIM_DATA_PLACEHOLDER__` |
-| ř. 36130+ | `sanitizeDbForStaticViewer()` a zbytek aplikace |
-| ř. 36206+ | `VIEWER_EXTRA_JS` — doplňkový kód prohlížeče jako **escapovaný řetězec** |
+| ř. 1643–27670 | živá aplikace — **sem patří změny funkčnosti** |
+| ř. 27671–36266 | `STATIC_VIEWER_TEMPLATE` — šablona generovaného prohlížeče (template literál) s místy `__VIEWER_EXTRA__` a `__PIM_DATA_PLACEHOLDER__` |
+| ř. 36268+ | `sanitizeDbForStaticViewer()` a zbytek aplikace |
+| ř. 36342+ | `VIEWER_EXTRA_JS` — doplňkový kód prohlížeče jako **escapovaný řetězec** |
 
 Prohlížeč **není celá aplikace**: editační cesty, ukládání, GitHub modul i další funkce jsou
 v něm vypuštěné (`GITHUB MODUL (stripped in viewer)`, `window.__VIEWER_MODE = true`, `save()`
@@ -38,6 +38,12 @@ vždy si ověř, ve které části jsi, a u sdílené funkčnosti uprav obě. Ji
 prohlížeč rozejde s aplikací a data se v něm zobrazí jinak (nebo vůbec).
 
 Naopak čistě editační funkce do šablony nepatří — nepřenášej je tam jen kvůli symetrii.
+Živý příklad obojího: přechod nadpisů v řádcích entit z `h5` na `h6` (`.entity-row-heading`)
+se musel udělat na **13 místech v aplikaci i 5 místech v šabloně**, zatímco pohled
+Připomenutí (viz níže) zůstal jen v aplikaci.
+
+Řádková čísla v tabulce jsou orientační — soubor roste. Hranice si vždy ověř
+(`grep -n "const STATIC_VIEWER_TEMPLATE\|const VIEWER_EXTRA_JS\|sanitizeDbForStaticViewer" pim/index.html`).
 
 Uvnitř šablony platí zvláštní zápis: `</script>` se píše jako `<\/script>`, zpětné apostrofy
 a `${` se musí escapovat a ve `VIEWER_EXTRA_JS` (běžný řetězec, ne template literál) jsou
@@ -86,6 +92,11 @@ Vlastní renderer (`renderMarkdown`, `renderBlock`, `renderInline`, `renderListB
 Vkládání rich-textu ze schránky prochází konverzí **HTML → Markdown** (`htmlToMarkdown`,
 `mdRenderNode`, `pasteHtmlAsMarkdown`) — ne přímým vložením HTML.
 
+Úkol zapsaný v Markdownu lze povýšit na samostatnou entitu; nová entita se propojí vazbou
+`partOf` a navíc **zdědí projekty rodičovské entity** (`getEntityParentProjects`), stejně jako
+entita vzniklá z wiki odkazu. Zděděné vazby se nesmí duplikovat — kontroluj existující
+`partOf` před přidáním.
+
 ## České jazykové funkce
 - `parseNaturalDate(text)` / `natlangParseDateInText` — přirozené datum v češtině
   („zítra“, „v pátek“, „za 3 dny“) s `dayDelta`/`applyDelta` a zachováním času
@@ -110,17 +121,29 @@ Vkládání rich-textu ze schránky prochází konverzí **HTML → Markdown** (
 `pim_detect_ignored_v1` (ignorované návrhy detekce). Nastavení se ukládá lokálně
 (`saveSettingsLocal` / `loadSettingsLocal`), data přes `save()` / `saveDebounced()`.
 
+## Pohled Připomenutí (`reminders`)
+Přehled všech entit s atributem `reminder_at`, seřazený podle data — `renderRemindersView(main)`,
+tlačítko `data-view="reminders"` v navigaci, větev `case 'reminders':` v render routeru.
+Stav se počítá proti `localDayKey(new Date())` a barví se třídami `.rem-overdue` / `.rem-today` /
+`.rem-future` (mají i variantu pro tmavý motiv — nové stavové barvy dělej stejně).
+Datum jde změnit přímo v tabulce a připomenutí odstranit; obojí musí nastavit `updated_at`,
+zavolat `save()` a překreslit. Prázdná hodnota v poli znamená **smazat atribut**, ne uložit
+prázdný řetězec.
+Pohled je **jen v aplikaci, ne v šabloně prohlížeče** — `reminder_at` je ale v `GLOBAL_FIELDS`
+na obou místech.
+
 ## Orientace v kódu
-Sekční bannery, v tomto pořadí: `KONSTANTY (1645) / STAV (1992) / ŠIFROVÁNÍ (2007) /
-PERSISTENCE (2110) / AUTOSAVE NA GITHUB (2136) / UTILITY (2410) / HTML→Markdown (2460) /
-Přirozený parser data (2769) / MARKDOWN (3329) / STATUS CHIP (3711) / databasetext (4007) /
-database include (4220) / ENTITY API (4469) / STICKY (5617) / POKROČILÉ FILTRY (5852) /
-COMPOSED ATTRIBUTES (6099) / PŘÍZNAKOVÁ EMOJI (6245) / SEARCH (6506) / SAVED VIEWS (6559) /
-TEMPLATES (6738) / ATTACHMENTS (6773) / ROUTING (6886) / RENDER ROUTER (6985) /
-HISTORIE NAVIGACE (7000) / PANELY (7149) / KLÁVESOVÁ NAVIGACE (7370) /
-VIEW: NÁSTĚNKA (7826) / ÚKOLY (9138) / HLEDÁNÍ (9629) / VAZBY (9651) / TAGY (9850) /
-PŘÍZNAKY (10731) / VLASTNÍ POHLEDY (11387) / ŠABLONY (11473) / NASTAVENÍ (11533) /
-DETAIL (12178) / GITHUB MODUL (23696)`.
+Sekční bannery, v tomto pořadí: `KONSTANTY (1652) / STAV (1999) / ŠIFROVÁNÍ (2014) /
+PERSISTENCE (2117) / AUTOSAVE NA GITHUB (2143) / UTILITY (2417) / HTML→Markdown (2467) /
+Přirozený parser data (2776) / MARKDOWN (3336) / STATUS CHIP (3718) / databasetext (4014) /
+database include (4227) / ENTITY API (4476) / STICKY (5624) / POKROČILÉ FILTRY (5859) /
+COMPOSED ATTRIBUTES (6106) / PŘÍZNAKOVÁ EMOJI (6252) / SEARCH (6513) / SAVED VIEWS (6566) /
+TEMPLATES (6745) / ATTACHMENTS (6780) / ROUTING (6893) / RENDER ROUTER (6992) /
+HISTORIE NAVIGACE (7007) / PANELY (7157) / KLÁVESOVÁ NAVIGACE (7378) /
+VIEW: NÁSTĚNKA (7915) / PŘIPOMENUTÍ (7441) / ÚKOLY (9227) / HLEDÁNÍ (9718) / VAZBY (9740) /
+TAGY (9939) / PŘÍZNAKY (10820) / VLASTNÍ POHLEDY (11476) / ŠABLONY (11562) /
+NASTAVENÍ (11622) / DETAIL (12311) / GITHUB MODUL (23832)`.
+Čísla jsou orientační a s každou změnou se posouvají — ber je jako vodítko, ne jako adresu.
 Nová obrazovka = nový `VIEW:` blok + zapojení do routeru (`ROUTING`, `RENDER ROUTER`) a panelů.
 
 ## Limity, které jsou tam schválně
@@ -138,6 +161,7 @@ a čitelnostní pojistky — neruš je, případně zpřístupni v nastavení.
 ## Ověření změny
 Entity s různými aspekty → vazby a graf souvislostí → Markdown s wiki odkazem, statusem
 a database includem → úkoly, projekt s plánem, deník → databáze (filtry, řazení, import TSV/CSV) →
+pohled Připomenutí (změna data v tabulce, odstranění, stavy po termínu/dnes/budoucí) →
 příloha pod i nad 256 kB (ověř IndexedDB) → šifrovaný atribut: zamknout, odemknout, export
 (nesmí obsahovat plaintext) → uložení a načtení souboru → **offline prohlížeč** (vygeneruj
 a otevři — hlavní test toho, že šablona odpovídá aplikaci a že escapování v ní sedí;

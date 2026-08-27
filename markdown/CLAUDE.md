@@ -5,6 +5,8 @@ Jednosouborový **hierarchický** editor Markdownu (`index.html`, ~3870 řádků
 Dokument nechápe jako plochý text, ale jako strom sekcí podle úrovní nadpisů; nad ním pak
 staví filtrování, izolaci (hoist), náhled, export do DOCX a prezentační režim.
 
+**Uživatelská dokumentace: `dokumentace.md` ve stejné složce (~18 kB).** Popisuje chování z pohledu uživatele — čti ji jako doplněk k tomuhle souboru a při změně chování ji aktualizuj spolu s kódem.
+
 ## Struktura souboru
 | Rozsah | Obsah |
 |---|---|

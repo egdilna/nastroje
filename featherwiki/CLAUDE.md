@@ -7,6 +7,8 @@ HTML souboru. EGdílna k němu dodala **český překlad rozhraní** a **skripto
 (náhrada vestavěného Markdown parseru knihovnou marked.js). Web to popisuje jako
 „nástroj EGdílny jen tak napůl“.
 
+**Uživatelská dokumentace: `dokumentace.md` ve stejné složce (~21 kB).** Popisuje chování z pohledu uživatele — čti ji jako doplněk k tomuhle souboru a při změně chování ji aktualizuj spolu s kódem.
+
 ## Zásadní varování před úpravami
 `index.html` (~59 kB) je **minifikovaný upstream build**: 24 řádků, z toho jednotlivé řádky
 mají i 19 000 znaků. Není to zdrojový kód.

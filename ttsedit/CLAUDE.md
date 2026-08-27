@@ -6,6 +6,8 @@ text se rozdělí na **chunky**, ke každému se přes **ElevenLabs API** vygene
 uživatel je poslechne, opraví text, znovu vygeneruje a nakonec vše spojí a stáhne
 (ZIP jednotlivých MP3, nebo spojený WAV/MP3).
 
+**Uživatelská dokumentace: `dokumentace.md` ve stejné složce (~18 kB).** Popisuje chování z pohledu uživatele — čti ji jako doplněk k tomuhle souboru a při změně chování ji aktualizuj spolu s kódem.
+
 ## Externí závislosti
 `jszip` (ZIP se všemi MP3) a `lamejs` (spojený MP3) z cdnjs. Jinak vanilla JS, CSS inline.
 

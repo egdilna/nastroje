@@ -5,6 +5,10 @@ Jednosouborový hierarchický editor JSON (`index.html`, ~1830 řádků, ~74 kB)
 jako rozbalovatelný strom nadpisů, umožňuje editaci klíčů, typů a hodnot, hoisting (izolaci)
 podstromu, statistiky a sdílení dokumentu odkazem. Bez backendu, bez build kroku.
 
+**Popis nástroje pro uživatele: `info-cs.md` a `info-en.md` ve stejné složce** — na rozdíl od
+většiny ostatních nástrojů tu není `dokumentace.md`; při změně chování aktualizuj obě jazykové
+verze.
+
 ## Struktura souboru
 | Rozsah | Obsah |
 |---|---|

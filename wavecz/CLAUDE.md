@@ -5,6 +5,8 @@ Jednosouborový klient k **WAVE API od WebAIM** (`index.html`, ~1537 řádků, ~
 Uživatel zadá URL stránky, nástroj zavolá WAVE API a vykreslí výsledky **česky** —
 včetně vlastního českého katalogu popisů jednotlivých nálezů. Umí export do Markdownu a raw JSON.
 
+**Uživatelská dokumentace: `dokumentace.md` ve stejné složce (~17 kB).** Popisuje chování z pohledu uživatele — čti ji jako doplněk k tomuhle souboru a při změně chování ji aktualizuj spolu s kódem.
+
 ## Struktura souboru
 | Rozsah | Obsah |
 |---|---|

@@ -5,6 +5,8 @@ Jednosouborová "tab-lišta" (`index.html`, ~630 řádků), která otevírá jin
 v `<iframe>` a přepíná mezi nimi jako mezi záložkami. Slouží jako rozcestník/plocha nad
 ostatními nástroji EGdílny. Nemá backend, nic nikam neodesílá.
 
+**Uživatelská dokumentace: `dokumentace.md` ve stejné složce (~14 kB).** Popisuje chování z pohledu uživatele — čti ji jako doplněk k tomuhle souboru a při změně chování ji aktualizuj spolu s kódem.
+
 ## Struktura souboru
 | Rozsah | Obsah |
 |---|---|

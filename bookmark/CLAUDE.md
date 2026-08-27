@@ -6,6 +6,8 @@ Hierarchie je **Skupina → Složka → Záložka**, k tomu globální tagy, poz
 fulltext, import/export CSV a TSV a ukládání do souboru **nebo na GitHub** (i do privátních
 repozitářů). Bez vlastního backendu; aplikace startuje **prázdná** — žádná vzorová data.
 
+**Uživatelská dokumentace: `dokumentace.md` ve stejné složce (~21 kB).** Popisuje chování z pohledu uživatele — čti ji jako doplněk k tomuhle souboru a při změně chování ji aktualizuj spolu s kódem.
+
 ## Struktura souboru
 Jeden `<script>`, členěný bannery `===================== DATA / STATE / UTILS / VIEW URL PARAM /
 HEADER TITLE / RENDER / MANAGE MODE / SEARCH / TAGS / CRUD / DIALOGS / DIALOG SAVE HANDLERS /

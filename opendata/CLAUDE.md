@@ -6,6 +6,8 @@ Uživatel zadá **URL schématu** (JSON Schema) a **URL dat** (JSON nebo CSV); n
 postaví tabulku se sloupcovými filtry, hledáním, řazením, stránkováním a detailem záznamu.
 Sesterský nástroj `../rpp` je jeho specializovaná varianta pro Registr práv a povinností.
 
+**Uživatelská dokumentace: `dokumentace.md` ve stejné složce (~14 kB).** Popisuje chování z pohledu uživatele — čti ji jako doplněk k tomuhle souboru a při změně chování ji aktualizuj spolu s kódem.
+
 ## Struktura souboru
 | Rozsah | Obsah |
 |---|---|

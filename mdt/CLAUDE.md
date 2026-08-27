@@ -8,6 +8,8 @@ při změně syntaxe ho aktualizuj, slouží jako živá dokumentace.
 
 Jediná externí závislost: `docx@8.5.0` z unpkg (export do Wordu).
 
+**Uživatelská dokumentace: `dokumentace.md` ve stejné složce (~24 kB).** Popisuje chování z pohledu uživatele — čti ji jako doplněk k tomuhle souboru a při změně chování ji aktualizuj spolu s kódem.
+
 ## Formát MDT — syntaxe (to nejdůležitější)
 | Zápis | Význam |
 |---|---|

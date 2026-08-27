@@ -10,6 +10,8 @@ Export: JSON, HTML, Markdown, DOCX (vlastní generátor), tisk. Synchronizace s 
 **Žádné externí zdroje, žádné knihovny** — DOCX i ZIP se generují ručně (`zipStore`, `crc32`,
 `buildDocx`). Nepřidávej CDN.
 
+**Uživatelská dokumentace: `dokumentace.md` ve stejné složce (~37 kB).** Popisuje chování z pohledu uživatele — čti ji jako doplněk k tomuhle souboru a při změně chování ji aktualizuj spolu s kódem.
+
 ## Datový model (komentář na ř. 485)
 ```js
 nb   = { name, sections:[ {id,name,pages:[page]} ], settings:{}, flags:[…] }

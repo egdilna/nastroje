@@ -2,13 +2,15 @@
 
 ## Co to je
 Největší nástroj repozitáře podle počtu řádků: jednosouborový **strukturovaný editor
-PlantUML diagramů** (`index.html`, ~16 166 řádků, ~770 kB, 475 top-level funkcí).
+PlantUML diagramů** (`index.html`, ~16 211 řádků, ~788 kB, 475 top-level funkcí).
 Uživatel needituje text — edituje **model** (strom prvků a vazeb), z něhož nástroj generuje
 PlantUML zdroj, náhled z plantuml.com a navíc **souvislý textový popis diagramu** v češtině
 i angličtině (přístupná alternativa k obrázku).
 
 **Žádné externí knihovny** — vše je v souboru. Jediná síťová závislost je obrázkový server
 plantuml.com pro náhled.
+
+**Uživatelská dokumentace: `dokumentace.md` ve stejné složce (~46 kB).** Popisuje chování z pohledu uživatele — čti ji jako doplněk k tomuhle souboru a při změně chování ji aktualizuj spolu s kódem.
 
 ## Podporované typy diagramů (`TYPES`, ř. 2045)
 `activity`, `class`, `sequence`, `usecase`, `state`, `component`, `deployment`, `network`
@@ -74,6 +76,21 @@ Při generování nikdy nevkládej uživatelský text nezpracovaný.
 `parsePuml(source)` a dílčí `parseActivity` / `parseClass` / `parseSequence` / `parseUseCase`
 umí načíst zpět jen **část** typů. Když rozšiřuješ generátor, buď rozšiř i parser, nebo počítej
 s tím, že daný konstrukt nebude zpětně načtený — nesmí ale při importu shodit celý soubor.
+
+## Nastavení diagramu — volby platné jen pro některé typy
+`openDiagramSettings()` / `saveSettings()` zobrazují a ukládají volby **podmíněně podle typu
+diagramu** a uložené hodnoty žijí v `diagram.settings`. Vzor, kterým se řiď u každé nové volby:
+pole se zobrazí jen pro relevantní typy a **ukládá se jen pro ně** — jinak by v `settings`
+zůstal zastaralý stav z dřív otevřeného diagramu jiného typu.
+
+Dnes takto fungují:
+- `layoutDirection` — `class`, `usecase`, `component`, `deployment`, `state`, `activity`;
+- `hide` direktivy (`setClassHideWrap`) — jen `class`;
+- **`language`** (`#setLanguageWrap`, `#setDiagramLanguage`) — jen `gantt` a `timeline`.
+  Vygeneruje direktivu `language <kód>` (cs, sk, en, de, fr, es, it, pl, ru, nl, pt, ja, ko, zh)
+  a lokalizuje názvy měsíců a dnů v týdnu. **Direktiva musí být hned za `@startgantt` /
+  `@startchronology`**, jinak neovlivní následující obsah — v `genGantt()` a `genTimeline()`
+  se proto vypisuje jako první. Prázdná hodnota = žádná direktiva.
 
 ## Gantt — dopočet dat
 `solveGanttDates(model)` (+ `addDays`, `maxDate`, `dayNum`) řeší absolutní i relativní termíny
