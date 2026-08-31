@@ -635,7 +635,7 @@ Match is case-insensitive on full entity name.
 In entity detail, the **💬 Comments** section. Form on top:
 
 - Textarea (Markdown)
-- Author is automatically taken from **Settings → General → Your name for comments**
+- Author is automatically taken from **Settings → General → Your name for comments** (a browser setting, not project data)
 - **Add comment** button (or Ctrl+Enter in textarea)
 
 Comment list: each has author, date, Markdown content, "edited" label if edited, **✎ Edit** (inline editing) and **× Delete** buttons. Sorted newest-first.
@@ -1046,7 +1046,7 @@ Personal access token for GitHub API. Stored in the browser's localStorage (per 
 ### 27.9 General
 
 - **Language** (Čeština / English)
-- **Your name for comments** — used as author of new comments, saved with project data
+- **Your name for comments** — used as author of new comments. Stored **in this browser only** (key `dkm-username`, like the GitHub token), not in the project data — so several people can work on the same project and each signs their own comments. An older project that carried the name in its data adopts it into the browser once on load (if none is set there yet) and drops it from the data.
 - **Autosave** — automatic saving to sessionStorage (per tab)
 - **Debug** — enables a bottom panel with debug logs
 
@@ -1081,11 +1081,26 @@ Links to online documentation and repository.
 
 | Shortcut | Action |
 |----------|--------|
-| Alt+B | Back (in detail, editor, settings) |
-| Alt+L | Load |
 | i | Go to Inbox |
 | a | Go to All |
 | n | New entity (with type picker) |
+| q | Quick add to Inbox |
+| s | Save (file / GitHub) |
+
+### Access keys
+
+They work inside text fields too. The exact combination is up to the browser — usually **Alt+**,
+**Alt+Shift+** in Firefox, **Ctrl+Alt+** on macOS.
+
+| Key | Action |
+|-----|--------|
+| Alt+L | Load project from file |
+| Alt+S | Save |
+| Alt+N | New entity (list toolbar button) |
+| Alt+A | All tab |
+| Alt+B | Back (in detail, editor, settings) |
+| Alt+R | Add relation (in entity detail) |
+| Alt+U | Commit edit (in editor) |
 
 ### List
 
