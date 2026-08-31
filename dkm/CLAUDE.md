@@ -27,6 +27,7 @@ a při změně chování ji aktualizuj.
 | `dkm-session-data` (`SK_SESSION`) | **sessionStorage** — per-záložka, přežije refresh, zavření záložky ne |
 | `dkm-lang`, `dkm-autosave`, `dkm-debug` | nastavení |
 | `dkm-github-token` | GitHub PAT — **nikdy nelogovat, needovat do dat ani do URL** |
+| `dkm-username` (`SK_USERNAME`) | jméno autora komentářů — per prohlížeč, **ne** v datech projektu (`userName()` / `setUserName()`, migrace ze starých dat v `mergeEmpty`) |
 | `dkm-handoff-…` (`SK_HANDOFF_PREFIX`) | předání entity do samostatného okna |
 
 Mezi záložkami běží **BroadcastChannel synchronizace** (`initBroadcastSync`,
@@ -91,7 +92,10 @@ Každý nový text = klíč v obou jazycích. Do UI nikdy nepiš řetězec natvr
 - Panely (`getPanelSnapshot`, `applyPanelSnapshot`, `addPanel`, `switchToPanel`) a navigace
   přes hash (`parseHash`, `navigateTo`, `pushNav`, `goBackSkipEdits`) — nové pohledy zapoj sem.
 - Command palette (`openCommandPalette`, fuzzy hledání) a klávesové zkratky bez modifikátoru
-  (F, O, P, S, T, W, K…) — novou zkratku doplň do nápovědy v nastavení (`rsHelp`).
+  (F, O, P, S, T, W, K…) — novou zkratku doplň do nápovědy v nastavení (`rsHelp`) i do kap. 28 dokumentace.
+- Vedle nich běží **přístupové klávesy** (`accesskey`): L a S v hlavičce, N na tlačítku nové entity,
+  A na záložce „Vše", B na tlačítku Zpět, R u přidání vazby, U u uložení editace. Fungují i v polích —
+  novou vždy doplň i s titulkem ve tvaru `… (Alt+X, nebo X)` přes `t('keyAlt')` / `t('keyOr')`.
 - Seznam se ořezává na `MAX = 100` položek — při změně renderu tuto pojistku zachovej.
 - Při startu se odregistrovává Service Worker a čistí cache (pozůstatek starší verze).
 

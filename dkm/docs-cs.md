@@ -635,7 +635,7 @@ Match je case-insensitive přes plný název entity.
 V detailu entity sekce **💬 Komentáře**. Formulář nahoře:
 
 - Textarea (Markdown)
-- Autor se automaticky bere z **Nastavení → Obecné → Tvoje jméno pro komentáře**
+- Autor se automaticky bere z **Nastavení → Obecné → Tvoje jméno pro komentáře** (nastavení prohlížeče, ne dat projektu)
 - Tlačítko **Přidat komentář** (nebo Ctrl+Enter v textarea)
 
 Seznam komentářů: každý má autora, datum, Markdown obsah, štítek „upraveno" pokud editován, tlačítka **✎ Upravit** (inline editace) a **× Smazat**. Řazení od nejnovějšího.
@@ -1046,7 +1046,7 @@ Personal access token pro GitHub API. Uložený v localStorage prohlížeče (pe
 ### 27.9 Obecné
 
 - **Jazyk** (Čeština / English)
-- **Tvoje jméno pro komentáře** — bere se jako autor u nových komentářů, uloží se do dat projektu
+- **Tvoje jméno pro komentáře** — bere se jako autor u nových komentářů. Ukládá se **jen do tohoto prohlížeče** (klíč `dkm-username`, stejně jako GitHub token), ne do dat projektu — nad jedním projektem tak může pracovat víc lidí a každý se podepíše sám za sebe. Starší projekt, který jméno nesl v datech, ho při načtení jednorázově převezme do prohlížeče (pokud tam ještě žádné není) a z dat ho vypustí.
 - **Autosave** — automatické ukládání do sessionStorage (per záložka)
 - **Debug** — zapne panel s debug logy dole
 
@@ -1081,11 +1081,26 @@ Odkazy na online dokumentaci a repozitář.
 
 | Zkratka | Akce |
 |---------|------|
-| Alt+B | Zpět (v detailu, editoru, nastavení) |
-| Alt+L | Načíst |
 | i | Přejít na Inbox |
 | a | Přejít na Vše |
 | n | Nová entita (s výběrem typu) |
+| q | Rychlé přidání do Inboxu |
+| s | Uložit (soubor / GitHub) |
+
+### Přístupové klávesy (accesskey)
+
+Fungují i v textových polích. Konkrétní kombinaci určuje prohlížeč — obvykle **Alt+**,
+ve Firefoxu **Alt+Shift+**, na macOS **Ctrl+Alt+**.
+
+| Klávesa | Akce |
+|---------|------|
+| Alt+L | Načíst projekt ze souboru |
+| Alt+S | Uložit |
+| Alt+N | Nová entita (tlačítko v seznamu) |
+| Alt+A | Záložka Vše |
+| Alt+B | Zpět (v detailu, editoru, nastavení) |
+| Alt+R | Přidat vazbu (v detailu entity) |
+| Alt+U | Uložit editaci (v editoru) |
 
 ### Seznam
 
