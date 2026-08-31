@@ -187,8 +187,10 @@ Always on top. Contains:
 - **Snippet** — brief excerpt from the first textarea attribute
 - **Values of "Show in list" attributes** — if any are enabled
 - **Update date** and relation count
+- **🪟** on the right of the card header — opens the entity directly in a standalone window (see ch. 20), without going through the detail
 
-Clicking a card opens the detail.
+Clicking a card anywhere outside links and buttons opens the detail. The name itself is
+a real link, so middle-click or Ctrl+click opens it in a new tab.
 
 ### 4.4 Entity detail
 
@@ -718,6 +720,10 @@ Tab label updates automatically:
 - Settings → `⚙ Settings`
 - All comments → `💬 All comments`
 
+The type icon is shown at **every** occurrence of an entity name: in the list, on kanban cards,
+in the timeline, in the detail heading, on relations and backlinks, on values of "relation"
+attributes, in the entity picker, in the outline, in the comments overview and in the diff dialog.
+
 ### 18.3 Keyboard shortcuts
 
 - **Ctrl+T** — new panel (opens in Inbox)
@@ -774,7 +780,8 @@ Sometimes you want to separate work on a single entity into a **standalone brows
 
 ### 20.2 Opening
 
-In entity detail, click the **🪟 Standalone window** button. A new DKM instance opens in a separate browser window.
+Either from the entity detail with the **🪟 Standalone window** button, or straight from the list
+with the **🪟** button on the right of the card header. A new DKM instance opens in a separate browser window.
 
 ### 20.3 Standalone mode
 
