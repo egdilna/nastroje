@@ -96,6 +96,11 @@ Každý nový text = klíč v obou jazycích. Do UI nikdy nepiš řetězec natvr
 - Vedle nich běží **přístupové klávesy** (`accesskey`): L a S v hlavičce, N na tlačítku nové entity,
   A na záložce „Vše", B na tlačítku Zpět, R u přidání vazby, U u uložení editace. Fungují i v polích —
   novou vždy doplň i s titulkem ve tvaru `… (Alt+X, nebo X)` přes `t('keyAlt')` / `t('keyOr')`.
+- Název entity vypisuj **vždy** přes `appendEntityLabel(el, entita[, fallback])` — doplní emotikonu typu
+  a název. Nikdy nepiš `el.textContent = getTitle(e)`, jinak se ikona v novém pohledu ztratí.
+- Karta v seznamu (`renderCard`) je `<div>`, ne `<a>`: obsahuje odkazy a tlačítko samostatného okna,
+  klik kamkoliv jinam otevře detail. Nové interaktivní prvky uvnitř karty proto nemusí volat
+  `stopPropagation` jen kvůli navigaci — handler ignoruje `a, button, input, select, textarea`.
 - Seznam se ořezává na `MAX = 100` položek — při změně renderu tuto pojistku zachovej.
 - Při startu se odregistrovává Service Worker a čistí cache (pozůstatek starší verze).
 

@@ -187,8 +187,10 @@ Vždy nahoře. Obsahuje:
 - **Snippet** — krátký výtah z první textarea atributu
 - **Hodnoty atributů s „Zobrazit v seznamu"** — pokud jsou nějaké zapnuté
 - **Datum úpravy** a počet vazeb
+- **🪟** vpravo v záhlaví karty — otevře entitu rovnou v samostatném okně (viz kap. 20), bez zajížďky přes detail
 
-Kliknutí na kartu otevře detail.
+Kliknutí na kartu kdekoliv mimo odkazy a tlačítka otevře detail. Samotný název je navíc
+skutečný odkaz — jde otevřít prostředním tlačítkem nebo Ctrl+klikem v nové záložce.
 
 ### 4.4 Detail entity
 
@@ -711,6 +713,10 @@ Objevuje se nad hlavním obsahem, pokud máš víc než 1 panel. Každý panel =
 Label tabu se automaticky aktualizuje:
 
 - Detail entity → ikona typu + název
+
+Ikona typu se vypisuje u **každého** výskytu názvu entity: v seznamu, na kanban kartě, v timeline,
+v nadpisu detailu, u vazeb i zpětných odkazů, u hodnot atributů typu „vazba", ve výběru entit,
+v osnově, v přehledu komentářů i v dialogu změn.
 - Editor → `✎ Název`
 - Nová entita → `＋ Nová entita`
 - Seznam → ikona + název záložky
@@ -774,7 +780,8 @@ Někdy chceš odseparovat práci na jedné entitě do samostatného **okna prohl
 
 ### 20.2 Otevření
 
-V detailu entity klik na tlačítko **🪟 V samostatném okně**. Otevře se nová instance DKM v samostatném okně.
+Buď v detailu entity tlačítkem **🪟 V samostatném okně**, nebo rovnou ze seznamu tlačítkem **🪟**
+vpravo v záhlaví karty. Otevře se nová instance DKM v samostatném okně.
 
 ### 20.3 Standalone mode
 
