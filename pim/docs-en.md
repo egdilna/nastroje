@@ -346,6 +346,7 @@ Filters combine with **AND** logic.
 | Key | Action |
 |---|---|
 | `e` | Toggle edit ↔ read |
+| `Shift+E` | Toggle the advanced editor ↔ read (only on entities that have it enabled) |
 | `u` | In edit mode: save and return to read |
 | `r` | Add a link to an existing entity |
 | `Shift+R` | Create a new related entity (you can check the source entity's projects right away) |
@@ -457,6 +458,18 @@ For entities with the **Project** aspect, the dialog also offers a **Tasks by ca
 ### Link to a specific entity
 
 In the entity detail there is a **🔗 Copy link** button that copies a link pointing directly to this entity to the clipboard (it carries both the database and the specific entity via the `?id=…&e=…` parameters). Opening the link loads the database from GitHub and jumps straight to that entity. The address bar also keeps this link up to date as you open entities, so it can be copied straight from there.
+
+## Archived items in the detail view
+
+Archiving exists so that finished and outdated things disappear from everyday work while staying findable. In the entity detail, archived items are therefore **not shown in the regular sections**:
+
+- **Links** show only outgoing and incoming links to active entities,
+- the **project dashboard** (including the task kanban, goals, people and organizations) contains only active child entities,
+- **Meeting tasks** and **Meeting attendees** show only active items.
+
+Everything archived is collected instead into a single collapsed **🗄 Archive** section at the very bottom of the detail (above the technical Meta section). The count is in brackets; the section is split into **archived outgoing links** and **archived incoming links**, so you can see how each item relates to the entity — an archived project task shows as "is part of", an archived meeting attendee as "attends", and so on.
+
+You can archive and restore from here as anywhere else, and the remove-link button (×) works in the Archive section too.
 
 ## Data sync with GitHub
 

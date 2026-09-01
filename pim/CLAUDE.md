@@ -55,6 +55,20 @@ kopii, odstraňuje GitHub metadata a citlivé věci a umí filtrovat podle tagů
 nového pole do dat rozhodni, zda do prohlížeče patří** — všechno, co tudy projde, se dostane
 ven k příjemci vygenerovaného souboru.
 
+## Archivace: co kam patří
+Archivované entity (`e.archived`) se **nezobrazují v běžných sekcích detailu** — ve Vazbách,
+v dashboardu projektu (kanban, cíle, lidé a organizace) ani v úkolech a účastnících schůzky.
+Sesbírá je `renderDetailArchiveSection(e)` do jedné sbalené sekce „🗄 Archiv" na konci detailu,
+nad sekcí Meta. Zdroj dat jsou `buildOutgoingLinkItems(e)` a `buildInverseLinkItems(e)`:
+každá vrací položky i s protější entitou, takže se týmiž renderery vykreslí aktivní i archivovaná
+část (`renderLinksReadOnly(e, {archived:true})`). Buildery drží **původní index vazby** v `e.links`,
+protože na něj míří tlačítko odebrání vazby — při filtrování ho nikdy nepřepočítávej.
+
+Nová sekce detailu, která vypisuje související entity, tedy musí archivované vynechat; pokud mají
+zůstat dohledatelné, patří do sekce Archiv, ne do vlastní vedlejší sekce. Celý mechanismus je
+zobrazovací, takže je **v aplikaci i v šabloně prohlížeče** (šablona nemá `openInPanelBtnHtml`
+ani `invText.databaseFrom` — její kopie je o ně kratší).
+
 ## Datový model
 `SCHEMA_VERSION = 2`, data v `localStorage["pim_db_v1"]` (`STORAGE_KEY`).
 Entita má aspekty; `ASPECTS` (ř. 1653) definuje vestavěné (`Person`, `Organization`, `Place`,

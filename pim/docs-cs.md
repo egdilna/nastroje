@@ -345,6 +345,7 @@ Filtry se kombinují logikou **AND**.
 | Klávesa | Akce |
 |---|---|
 | `e` | Přepnout edit ↔ čtení |
+| `Shift+E` | Přepnout pokročilý editor ↔ čtení (jen u entit, které ho mají zapnutý) |
 | `u` | V edit módu: uložit a zpět na čtení |
 | `r` | Přidat vazbu na existující entitu |
 | `Shift+R` | Vytvořit novou související entitu (lze rovnou zaškrtnout projekty zdrojové entity) |
@@ -456,6 +457,18 @@ U entit s aspektem **Projekt** nabízí dialog navíc volbu **Úkoly po kategori
 ### Odkaz na konkrétní entitu
 
 V detailu entity je tlačítko **🔗 Kopírovat odkaz**, které do schránky uloží odkaz vedoucí přímo na tuto entitu (drží databázi i konkrétní entitu přes parametry `?id=…&e=…`). Po otevření odkazu se načte databáze z GitHubu a skočí se rovnou na danou entitu. Adresní řádek navíc tento odkaz průběžně udržuje aktuální podle otevřené entity, takže jde zkopírovat i přímo odtud.
+
+## Archivované položky v detailu
+
+Archivace slouží k tomu, aby hotové a neaktuální věci zmizely z každodenní práce, ale zůstaly dohledatelné. V detailu entity se proto archivované položky **nezobrazují v běžných sekcích**:
+
+- **Vazby** ukazují jen odchozí a příchozí vazby na aktivní entity,
+- **Dashboard projektu** (včetně kanbanu úkolů, cílů, lidí a organizací) obsahuje jen aktivní podřízené entity,
+- **Úkoly schůzky** a **Účastníci schůzky** ukazují jen aktivní položky.
+
+Všechno archivované se místo toho sesbírá do jediné sbalené sekce **🗄 Archiv** úplně na konci detailu (nad technickou sekcí Meta). V závorce je počet položek; sekce je rozdělená na **archivované odchozí vazby** a **archivované příchozí vazby**, takže je u každé položky vidět, jakým vztahem k entitě patří — archivovaný úkol projektu se ukáže jako „je součástí", archivovaný účastník schůzky jako „účastní se" a podobně.
+
+Archivovat a obnovovat se dá i odsud stejně jako odjinud; tlačítko pro odebrání vazby (×) funguje v sekci Archiv také.
 
 ## Datová synchronizace s GitHubem
 
