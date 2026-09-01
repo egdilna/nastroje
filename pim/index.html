@@ -97,6 +97,9 @@ body.theme-dark .toolbar { background: #222; }
 .entity-row { padding: 0.5em 0; border-bottom: 1px solid #eee; }
 /* H5 obal jen pro screen-reader navigaci po nadpisech – vizuálně se chová jako běžný text/odkaz. */
 .entity-row-heading { display: inline; margin: 0; padding: 0; font-size: inherit; font-weight: inherit; font-family: inherit; line-height: inherit; color: inherit; }
+.archive-section > summary { color: #666; }
+body.theme-dark .archive-section > summary { color: #999; }
+.archive-section[open] { opacity: 0.85; }
 .entity-row-heading a { font-weight: inherit; }
 .entity-row:last-child { border-bottom: none; }
 .entity-row a { color: #0066cc; text-decoration: none; font-weight: 500; }
@@ -1256,6 +1259,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <tr><td><kbd>p</kbd> nebo <kbd>Alt+Shift+P</kbd></td><td>Skok na první otevřený panel (tab)</td></tr>
       <tr><td><kbd>s</kbd></td><td>Uložit na GitHub</td></tr>
       <tr><td><kbd>e</kbd></td><td>V detailu: přepnout edit ↔ čtení</td></tr>
+      <tr><td><kbd>Shift</kbd>+<kbd>E</kbd></td><td><strong>Výjimka z navigace:</strong> v detailu přepnout pokročilý editor ↔ čtení (jen u entit, které ho mají zapnutý)</td></tr>
       <tr><td><kbd>F1</kbd></td><td>Otevřít nápovědu (klávesové zkratky)</td></tr>
       <tr><td><kbd>F2</kbd></td><td>V detailu: přejít do editu a fokus do názvu (přejmenovat)</td></tr>
       <tr><td><kbd>F3</kbd></td><td>V detailu: přejít do editu a fokus do těla</td></tr>
@@ -12761,6 +12765,7 @@ function renderDetailRead(main, e) {
       '<div id="neighborhood-content" class="meta">Načítám…</div>' +
     '</details>' +
     renderTimeTrackingSection(e) +
+    renderDetailArchiveSection(e) +
     '<details><summary>Meta</summary><dl class="read-attrs">' +
       '<dt>Důvěra</dt><dd>' + escapeHtml(CONFIDENCE_LEVELS[e.confidence] || e.confidence) + '</dd>' +
       (e.valid_from ? '<dt>Platnost od</dt><dd>' + escapeHtml(fmtDate(e.valid_from)) + '</dd>' : '') +
@@ -13626,10 +13631,32 @@ function extractCriticComments(text) {
   return out;
 }
 
-function renderLinksReadOnly(e) {
-  const links = e.links || [];
-  if (links.length === 0) return '';
-  return '<ul style="list-style:none;padding-left:0;">' + links.map((l, idx) => {
+// ===== ARCHIVOVANÉ POLOŽKY V DETAILU =====
+// Archivované entity se v běžných sekcích detailu (vazby, dashboard projektu, úkoly
+// a účastníci schůzky) nezobrazují. Sesbírají se do jediné sbalené sekce „Archiv" na konci
+// detailu – zůstanou tak dohledatelné, ale nezaneřáďují každodenní práci.
+function isArchivedEntity(x) { return !!(x && x.archived); }
+// Sekce „Archiv" na konci detailu. Vrací prázdný řetězec, pokud není co ukázat.
+function renderDetailArchiveSection(e) {
+  const outRows = buildOutgoingLinkItems(e).filter(it => isArchivedEntity(it.target));
+  const inRows = buildInverseLinkItems(e).filter(it => isArchivedEntity(it.from));
+  const total = outRows.length + inRows.length;
+  if (total === 0) return '';
+  const ul = rows => '<ul style="list-style:none;padding-left:0;">' + rows.map(r => r.html).join('') + '</ul>';
+  const nadpis = '🗄 Archiv (' + total + ')';
+  return '<details class="section-collapsible archive-section"><summary>' + nadpis + '</summary>' +
+    '<h3>' + nadpis + '</h3>' +
+    '<p class="meta">Archivované položky navázané na tuto entitu. V sekcích výše se záměrně nezobrazují, ' +
+      'aby zůstaly přehledné.</p>' +
+    (outRows.length ? '<p><strong>Archivované odchozí vazby (' + outRows.length + ')</strong></p>' + ul(outRows) : '') +
+    (inRows.length ? '<p style="margin-top:1em;"><strong>Archivované příchozí vazby (' + inRows.length + ')</strong></p>' + ul(inRows) : '') +
+  '</details>';
+}
+// Sestaví položky odchozích vazeb. Vrací i cílovou entitu, aby šly rozdělit
+// na aktivní a archivované; idx musí zůstat původní index v e.links, aby tlačítko
+// „odebrat vazbu" mířilo na správnou vazbu i po odfiltrování archivovaných.
+function buildOutgoingLinkItems(e) {
+  return (e.links || []).map((l, idx) => {
     const t = findEntity(l.to), ti = RELATION_TYPES[l.type];
     const lbl = ti ? ti.label : l.type;
     const tlbl = t ? getDisplayTitle(t) : '(smazáno)';
@@ -13637,70 +13664,67 @@ function renderLinksReadOnly(e) {
       ? ' <span class="meta">(' + escapeHtml(t.aspects.map(a => aspectLabel(a)).join(', ')) + ')</span>'
       : '';
     const note = l.note ? ' <span class="meta">(' + escapeHtml(l.note) + ')</span>' : '';
-    return '<li><strong>' + escapeHtml(lbl) + ':</strong> ' +
+    return { target: t, html: '<li><strong>' + escapeHtml(lbl) + ':</strong> ' +
       (t ? '<a href="#" data-entity="' + escapeHtml(l.to) + '">' + escapeHtml(tlbl) + '</a>' + openInPanelBtnHtml(l.to) : escapeHtml(tlbl)) +
       aspectsTxt + note +
       ' <button data-remove-link-read="' + idx + '" data-entity-id="' + escapeHtml(e.id) + '" title="Odebrat vazbu" style="padding:0.1em 0.5em;font-size:0.85em;">×</button>' +
-      '</li>';
-  }).join('') + '</ul>';
+      '</li>' };
+  });
 }
-function renderInverseLinksReadOnly(e) {
-  const inv = getInverseLinks(e.id);
-  const invRel = getInverseRelations(e.id);
-  const invText = getInverseTextReferences(e);
-  if (inv.length === 0 && invRel.length === 0 && invText.wikiFrom.length === 0 && invText.includeFrom.length === 0 && (!invText.statusFrom || invText.statusFrom.length === 0) && (!invText.databaseFrom || invText.databaseFrom.length === 0)) return '';
-  let h = '<ul style="list-style:none;padding-left:0;">';
-  inv.forEach(({from,link}) => {
+// opts.archived = true → jen vazby na archivované entity, jinak jen na aktivní.
+function renderLinksReadOnly(e, opts) {
+  const wantArchived = !!(opts && opts.archived);
+  const rows = buildOutgoingLinkItems(e).filter(it => isArchivedEntity(it.target) === wantArchived);
+  if (rows.length === 0) return '';
+  return '<ul style="list-style:none;padding-left:0;">' + rows.map(r => r.html).join('') + '</ul>';
+}
+// Sestaví položky příchozích vazeb (vazby, relace i textové odkazy) i s výchozí entitou,
+// aby šly rozdělit na aktivní a archivované.
+function buildInverseLinkItems(e) {
+  const items = [];
+  const push = (from, html) => items.push({ from: from, html: html });
+  const aspectsOf = (from) => (from.aspects || []).length > 0
+    ? ' <span class="meta">(' + escapeHtml((from.aspects || []).map(a => aspectLabel(a)).join(', ')) + ')</span>'
+    : '';
+  getInverseLinks(e.id).forEach(({ from, link }) => {
     const ti = RELATION_TYPES[link.type];
     const il = ti ? ti.inverseLabel : link.type;
-    const aspectsTxt = (from.aspects || []).length > 0
-      ? ' <span class="meta">(' + escapeHtml((from.aspects || []).map(a => aspectLabel(a)).join(', ')) + ')</span>'
-      : '';
-    h += '<li><strong>' + escapeHtml(il) + ':</strong> ' +
+    push(from, '<li><strong>' + escapeHtml(il) + ':</strong> ' +
       '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' + openInPanelBtnHtml(from.id) +
-      aspectsTxt +
-      (link.note ? ' <span class="meta">(' + escapeHtml(link.note) + ')</span>' : '') + '</li>';
+      aspectsOf(from) +
+      (link.note ? ' <span class="meta">(' + escapeHtml(link.note) + ')</span>' : '') + '</li>');
   });
-  invRel.forEach(({ from, fieldLabel, aspectLabel: alab }) => {
+  getInverseRelations(e.id).forEach(({ from, fieldLabel, aspectLabel: alab }) => {
     const ctx = alab ? '[' + escapeHtml(alab) + '] ' : '';
-    const aspectsTxt = (from.aspects || []).length > 0
-      ? ' <span class="meta">(' + escapeHtml((from.aspects || []).map(a => aspectLabel(a)).join(', ')) + ')</span>'
-      : '';
-    h += '<li>' + ctx + '<strong>' + escapeHtml(fieldLabel) + ':</strong> ' +
+    push(from, '<li>' + ctx + '<strong>' + escapeHtml(fieldLabel) + ':</strong> ' +
       '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' + openInPanelBtnHtml(from.id) +
-      aspectsTxt +
-      ' <span class="meta">(relace)</span></li>';
+      aspectsOf(from) +
+      ' <span class="meta">(relace)</span></li>');
   });
-  invText.wikiFrom.forEach(from => {
-    const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
-    h += '<li><strong>zmiňuje wiki:</strong> ' +
-      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' + openInPanelBtnHtml(from.id) +
-      (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
-      '</li>';
+  const invText = getInverseTextReferences(e);
+  const textKinds = [
+    { list: invText.wikiFrom, label: 'zmiňuje wiki' },
+    { list: invText.includeFrom, label: 'includuje' },
+    { list: invText.databaseFrom, label: 'zobrazeno v databázi' },
+    { list: invText.statusFrom, label: 'zobrazeno přes status' }
+  ];
+  textKinds.forEach(({ list, label }) => {
+    (list || []).forEach(from => {
+      const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
+      push(from, '<li><strong>' + escapeHtml(label) + ':</strong> ' +
+        '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' + openInPanelBtnHtml(from.id) +
+        (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
+        '</li>');
+    });
   });
-  invText.includeFrom.forEach(from => {
-    const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
-    h += '<li><strong>includuje:</strong> ' +
-      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' + openInPanelBtnHtml(from.id) +
-      (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
-      '</li>';
-  });
-  (invText.databaseFrom || []).forEach(from => {
-    const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
-    h += '<li><strong>zobrazeno v databázi:</strong> ' +
-      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' + openInPanelBtnHtml(from.id) +
-      (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
-      '</li>';
-  });
-  (invText.statusFrom || []).forEach(from => {
-    const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
-    h += '<li><strong>zobrazeno přes status:</strong> ' +
-      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' +
-      (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
-      '</li>';
-  });
-  h += '</ul>';
-  return h;
+  return items;
+}
+// opts.archived = true → jen vazby od archivovaných entit, jinak jen od aktivních.
+function renderInverseLinksReadOnly(e, opts) {
+  const wantArchived = !!(opts && opts.archived);
+  const rows = buildInverseLinkItems(e).filter(it => isArchivedEntity(it.from) === wantArchived);
+  if (rows.length === 0) return '';
+  return '<ul style="list-style:none;padding-left:0;">' + rows.map(r => r.html).join('') + '</ul>';
 }
 
 // Sekce „Odkazy" – URL, wiki-linky a include z těla a textových atributů.
@@ -17504,11 +17528,13 @@ function renderProjectDashboard(project) {
     });
   });
   db.entities.forEach(e => {
+    if (e.archived) return;
     if (has(e, 'Person', 'Organization')) {
       if ((e.links || []).some(l => l.to === project.id || children.some(c => c.id === l.to))) peopleOrgsSet.add(e.id);
     }
   });
-  const extraPeopleOrgs = [...peopleOrgsSet].map(findEntity).filter(Boolean);
+  // Archivované sem nepatří – ukazuje je sekce „Archiv" na konci detailu.
+  const extraPeopleOrgs = [...peopleOrgsSet].map(findEntity).filter(p => p && !p.archived);
 
   // === Konfigurovatelné skupiny ===
   const groups = getProjectGroups();
@@ -22822,6 +22848,15 @@ function setupKeyboard() {
       state.detailMode = state.detailMode === 'edit' ? 'read' : 'edit';
       render(); ev.preventDefault();
     }
+    // Shift+E přepíná pokročilý editor ↔ read – jen u entit, které ho mají zapnutý
+    else if ((ev.key === 'e' || ev.key === 'E') && ev.shiftKey && !ev.ctrlKey && !ev.metaKey && !ev.altKey
+             && state.view === 'detail') {
+      const _e = findEntity(state.detailId);
+      if (_e && _e.useAdvancedEditor) {
+        state.detailMode = state.detailMode === 'advEd' ? 'read' : 'advEd';
+        render(); ev.preventDefault();
+      }
+    }
     // D v detail read mode = zapnout/vypnout editaci sekcí a tabulek
     // (vyžaduje aspoň jeden nadpis NEBO tabulku NEBO seznam v těle)
     else if ((ev.key === 'd') && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey
@@ -27794,6 +27829,9 @@ body.theme-dark .toolbar { background: #222; }
 .entity-row { padding: 0.5em 0; border-bottom: 1px solid #eee; }
 /* H5 obal jen pro screen-reader navigaci po nadpisech – vizuálně se chová jako běžný text/odkaz. */
 .entity-row-heading { display: inline; margin: 0; padding: 0; font-size: inherit; font-weight: inherit; font-family: inherit; line-height: inherit; color: inherit; }
+.archive-section > summary { color: #666; }
+body.theme-dark .archive-section > summary { color: #999; }
+.archive-section[open] { opacity: 0.85; }
 .entity-row-heading a { font-weight: inherit; }
 .entity-row:last-child { border-bottom: none; }
 .entity-row a { color: #0066cc; text-decoration: none; font-weight: 500; }
@@ -32865,6 +32903,7 @@ function renderDetailRead(main, e) {
       return h;
     })() +
     renderTimeTrackingSection(e) +
+    renderDetailArchiveSection(e) +
     '<details><summary>Meta</summary><dl class="read-attrs">' +
       '<dt>Důvěra</dt><dd>' + escapeHtml(CONFIDENCE_LEVELS[e.confidence] || e.confidence) + '</dd>' +
       (e.valid_from ? '<dt>Platnost od</dt><dd>' + escapeHtml(fmtDate(e.valid_from)) + '</dd>' : '') +
@@ -33108,10 +33147,32 @@ function formatAttrValue(f, v, entityCtx) {
   }
   return escapeHtml(s);
 }
-function renderLinksReadOnly(e) {
-  const links = e.links || [];
-  if (links.length === 0) return '';
-  return '<ul style="list-style:none;padding-left:0;">' + links.map((l, idx) => {
+// ===== ARCHIVOVANÉ POLOŽKY V DETAILU =====
+// Archivované entity se v běžných sekcích detailu (vazby, dashboard projektu, úkoly
+// a účastníci schůzky) nezobrazují. Sesbírají se do jediné sbalené sekce „Archiv" na konci
+// detailu – zůstanou tak dohledatelné, ale nezaneřáďují každodenní práci.
+function isArchivedEntity(x) { return !!(x && x.archived); }
+// Sekce „Archiv" na konci detailu. Vrací prázdný řetězec, pokud není co ukázat.
+function renderDetailArchiveSection(e) {
+  const outRows = buildOutgoingLinkItems(e).filter(it => isArchivedEntity(it.target));
+  const inRows = buildInverseLinkItems(e).filter(it => isArchivedEntity(it.from));
+  const total = outRows.length + inRows.length;
+  if (total === 0) return '';
+  const ul = rows => '<ul style="list-style:none;padding-left:0;">' + rows.map(r => r.html).join('') + '</ul>';
+  const nadpis = '🗄 Archiv (' + total + ')';
+  return '<details class="section-collapsible archive-section"><summary>' + nadpis + '</summary>' +
+    '<h3>' + nadpis + '</h3>' +
+    '<p class="meta">Archivované položky navázané na tuto entitu. V sekcích výše se záměrně nezobrazují, ' +
+      'aby zůstaly přehledné.</p>' +
+    (outRows.length ? '<p><strong>Archivované odchozí vazby (' + outRows.length + ')</strong></p>' + ul(outRows) : '') +
+    (inRows.length ? '<p style="margin-top:1em;"><strong>Archivované příchozí vazby (' + inRows.length + ')</strong></p>' + ul(inRows) : '') +
+  '</details>';
+}
+// Sestaví položky odchozích vazeb. Vrací i cílovou entitu, aby šly rozdělit
+// na aktivní a archivované; idx musí zůstat původní index v e.links, aby tlačítko
+// „odebrat vazbu" mířilo na správnou vazbu i po odfiltrování archivovaných.
+function buildOutgoingLinkItems(e) {
+  return (e.links || []).map((l, idx) => {
     const t = findEntity(l.to), ti = RELATION_TYPES[l.type];
     const lbl = ti ? ti.label : l.type;
     const tlbl = t ? getDisplayTitle(t) : '(smazáno)';
@@ -33119,63 +33180,66 @@ function renderLinksReadOnly(e) {
       ? ' <span class="meta">(' + escapeHtml(t.aspects.map(a => aspectLabel(a)).join(', ')) + ')</span>'
       : '';
     const note = l.note ? ' <span class="meta">(' + escapeHtml(l.note) + ')</span>' : '';
-    return '<li><strong>' + escapeHtml(lbl) + ':</strong> ' +
+    return { target: t, html: '<li><strong>' + escapeHtml(lbl) + ':</strong> ' +
       (t ? '<a href="#" data-entity="' + escapeHtml(l.to) + '">' + escapeHtml(tlbl) + '</a>' : escapeHtml(tlbl)) +
       aspectsTxt + note +
       ' <button data-remove-link-read="' + idx + '" data-entity-id="' + escapeHtml(e.id) + '" title="Odebrat vazbu" style="padding:0.1em 0.5em;font-size:0.85em;">×</button>' +
-      '</li>';
-  }).join('') + '</ul>';
+      '</li>' };
+  });
 }
-function renderInverseLinksReadOnly(e) {
-  const inv = getInverseLinks(e.id);
-  const invRel = getInverseRelations(e.id);
-  const invText = getInverseTextReferences(e);
-  if (inv.length === 0 && invRel.length === 0 && invText.wikiFrom.length === 0 && invText.includeFrom.length === 0 && (!invText.statusFrom || invText.statusFrom.length === 0)) return '';
-  let h = '<ul style="list-style:none;padding-left:0;">';
-  inv.forEach(({from,link}) => {
+// opts.archived = true → jen vazby na archivované entity, jinak jen na aktivní.
+function renderLinksReadOnly(e, opts) {
+  const wantArchived = !!(opts && opts.archived);
+  const rows = buildOutgoingLinkItems(e).filter(it => isArchivedEntity(it.target) === wantArchived);
+  if (rows.length === 0) return '';
+  return '<ul style="list-style:none;padding-left:0;">' + rows.map(r => r.html).join('') + '</ul>';
+}
+// Sestaví položky příchozích vazeb (vazby, relace i textové odkazy) i s výchozí entitou,
+// aby šly rozdělit na aktivní a archivované.
+function buildInverseLinkItems(e) {
+  const items = [];
+  const push = (from, html) => items.push({ from: from, html: html });
+  const aspectsOf = (from) => (from.aspects || []).length > 0
+    ? ' <span class="meta">(' + escapeHtml((from.aspects || []).map(a => aspectLabel(a)).join(', ')) + ')</span>'
+    : '';
+  getInverseLinks(e.id).forEach(({ from, link }) => {
     const ti = RELATION_TYPES[link.type];
     const il = ti ? ti.inverseLabel : link.type;
-    const aspectsTxt = (from.aspects || []).length > 0
-      ? ' <span class="meta">(' + escapeHtml((from.aspects || []).map(a => aspectLabel(a)).join(', ')) + ')</span>'
-      : '';
-    h += '<li><strong>' + escapeHtml(il) + ':</strong> ' +
+    push(from, '<li><strong>' + escapeHtml(il) + ':</strong> ' +
       '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' +
-      aspectsTxt +
-      (link.note ? ' <span class="meta">(' + escapeHtml(link.note) + ')</span>' : '') + '</li>';
+      aspectsOf(from) +
+      (link.note ? ' <span class="meta">(' + escapeHtml(link.note) + ')</span>' : '') + '</li>');
   });
-  invRel.forEach(({ from, fieldLabel, aspectLabel: alab }) => {
+  getInverseRelations(e.id).forEach(({ from, fieldLabel, aspectLabel: alab }) => {
     const ctx = alab ? '[' + escapeHtml(alab) + '] ' : '';
-    const aspectsTxt = (from.aspects || []).length > 0
-      ? ' <span class="meta">(' + escapeHtml((from.aspects || []).map(a => aspectLabel(a)).join(', ')) + ')</span>'
-      : '';
-    h += '<li>' + ctx + '<strong>' + escapeHtml(fieldLabel) + ':</strong> ' +
+    push(from, '<li>' + ctx + '<strong>' + escapeHtml(fieldLabel) + ':</strong> ' +
       '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' +
-      aspectsTxt +
-      ' <span class="meta">(relace)</span></li>';
+      aspectsOf(from) +
+      ' <span class="meta">(relace)</span></li>');
   });
-  invText.wikiFrom.forEach(from => {
-    const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
-    h += '<li><strong>zmiňuje wiki:</strong> ' +
-      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' +
-      (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
-      '</li>';
+  const invText = getInverseTextReferences(e);
+  const textKinds = [
+    { list: invText.wikiFrom, label: 'zmiňuje wiki' },
+    { list: invText.includeFrom, label: 'includuje' },
+    { list: invText.statusFrom, label: 'zobrazeno přes status' }
+  ];
+  textKinds.forEach(({ list, label }) => {
+    (list || []).forEach(from => {
+      const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
+      push(from, '<li><strong>' + escapeHtml(label) + ':</strong> ' +
+        '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' +
+        (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
+        '</li>');
+    });
   });
-  invText.includeFrom.forEach(from => {
-    const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
-    h += '<li><strong>includuje:</strong> ' +
-      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' +
-      (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
-      '</li>';
-  });
-  (invText.statusFrom || []).forEach(from => {
-    const aspectsTxt = (from.aspects || []).map(a => aspectLabel(a)).join(', ');
-    h += '<li><strong>zobrazeno přes status:</strong> ' +
-      '<a href="#" data-entity="' + escapeHtml(from.id) + '">' + getDisplayTitleWithBadges(from) + '</a>' +
-      (aspectsTxt ? ' <span class="meta">(' + escapeHtml(aspectsTxt) + ')</span>' : '') +
-      '</li>';
-  });
-  h += '</ul>';
-  return h;
+  return items;
+}
+// opts.archived = true → jen vazby od archivovaných entit, jinak jen od aktivních.
+function renderInverseLinksReadOnly(e, opts) {
+  const wantArchived = !!(opts && opts.archived);
+  const rows = buildInverseLinkItems(e).filter(it => isArchivedEntity(it.from) === wantArchived);
+  if (rows.length === 0) return '';
+  return '<ul style="list-style:none;padding-left:0;">' + rows.map(r => r.html).join('') + '</ul>';
 }
 
 // Sekce „Odkazy" – URL, wiki-linky a include z těla a textových atributů.
@@ -34400,11 +34464,13 @@ function renderProjectDashboard(project) {
     });
   });
   db.entities.forEach(e => {
+    if (e.archived) return;
     if (has(e, 'Person', 'Organization')) {
       if ((e.links || []).some(l => l.to === project.id || children.some(c => c.id === l.to))) peopleOrgsSet.add(e.id);
     }
   });
-  const peopleOrgs = [...peopleOrgsSet].map(findEntity).filter(Boolean);
+  // Archivované sem nepatří – ukazuje je sekce „Archiv“ na konci detailu.
+  const peopleOrgs = [...peopleOrgsSet].map(findEntity).filter(p => p && !p.archived);
 
   // Ostatní = vše co neslepuje žádnou skupinu (Person/Organization se zobrazí v Lidé a organizace, ne v Ostatní)
   const grouped = new Set([...goals, ...tasks, ...questionsDecisions, ...docsResources, ...notesEtc].map(e => e.id));
