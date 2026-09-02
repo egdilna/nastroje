@@ -459,6 +459,16 @@ helpKeyboard:'Klávesy: S = uložit (na GitHub pokud nakonfigurován, jinak soub
 helpTsv:'Export TSV uloží aktuálně zobrazený seznam jako tabulku oddělenou tabulátorem.',
 projectCreated:'Nový projekt vytvořen.',
 customize:'Přizpůsobit',customizeHint:'Jazyk a grafický motiv',
+urlSection:'Načíst projekt z adresy (URL)',
+urlSectionHint:'Otevře projekt z libovolné adresy — statický hosting, intranet, GitHub Pages, raw.githubusercontent.com. Cílový server musí povolit čtení z jiné domény (CORS). Odkaz níž otevře projekt rovnou.',
+urlLoadBtn:'Načíst z URL',
+urlShareLink:'Odkaz, který projekt rovnou otevře',
+urlLoading:'Načítání z adresy…',
+urlLoaded:'Načteno z {host}',
+urlErrEmpty:'Zadej adresu.',
+urlErrProtocol:'Podporuje se jen https:// (a http:// mimo zabezpečenou stránku).',
+urlErrStatus:'Server odpověděl HTTP {status}.',
+urlErrFetch:'Soubor se nepodařilo stáhnout. Buď adresa neodpovídá, nebo server nepovoluje čtení z jiné domény (CORS).',
 themeLabel:'Motiv',
 themeLight:'Světlý',themeDark:'Tmavý',themePaper:'Papír',themeMatrix:'Matrix',
 themeHint:'Ukládá se jen do tohoto prohlížeče, stejně jako jazyk.',
@@ -1092,6 +1102,16 @@ projectStartEmpty:'Start empty project',
 confirmDiscardDirty:'Unsaved changes will be lost. Continue?',
 projectCreated:'New project created.',
 customize:'Customize',customizeHint:'Language and visual theme',
+urlSection:'Load project from a URL',
+urlSectionHint:'Opens a project from any address — static hosting, intranet, GitHub Pages, raw.githubusercontent.com. The target server must allow cross-origin reads (CORS). The link below opens the project directly.',
+urlLoadBtn:'Load from URL',
+urlShareLink:'Link that opens the project directly',
+urlLoading:'Loading from URL…',
+urlLoaded:'Loaded from {host}',
+urlErrEmpty:'Enter an address.',
+urlErrProtocol:'Only https:// is supported (and http:// outside a secure page).',
+urlErrStatus:'Server responded HTTP {status}.',
+urlErrFetch:'Could not download the file. Either the address does not respond, or the server does not allow cross-origin reads (CORS).',
 themeLabel:'Theme',
 themeLight:'Light',themeDark:'Dark',themePaper:'Paper',themeMatrix:'Matrix',
 themeHint:'Stored in this browser only, just like the language.',
@@ -1583,6 +1603,54 @@ const msg=err.message||String(err);toast(msg);dbg('GitHub save failed: '+msg,tru
 });
 }
 
+/* =============================================================
+   NAČTENÍ PROJEKTU Z LIBOVOLNÉ URL  (?open=…)
+   Vedle ?id=… (soubor v GitHub repozitáři přes API) umí DKM otevřít
+   projekt z jakékoliv adresy — statické hostingy, intranet, GitHub Pages,
+   raw.githubusercontent.com. Stahuje se prostým fetch, takže cílový server
+   musí povolit čtení z jiné domény (CORS).
+   ============================================================= */
+
+/* Adresa se řeší proti aktuální stránce, takže funguje i relativní zápis
+   (?open=data/model.dkmdata). Povolené je jen http(s) — nikdy javascript: ani data:. */
+function resolveOpenUrl(raw){
+let u;
+try{u=new URL(String(raw||'').trim(),location.href)}catch(e){return null}
+if(u.protocol!=='https:'&&u.protocol!=='http:')return null;
+/* Na https stránce by prohlížeč http požadavek stejně zablokoval jako mixed content. */
+if(u.protocol==='http:'&&location.protocol==='https:')return null;
+return u;
+}
+function openShareUrl(rawUrl){return location.origin+location.pathname+'?open='+encodeURIComponent(rawUrl)}
+
+function loadFromUrl(rawUrl){
+const u=resolveOpenUrl(rawUrl);
+if(!u){toast(t('urlErrProtocol'));dbg('Open URL rejected: '+rawUrl,true);return Promise.reject(new Error('bad url'))}
+toast(t('urlLoading'));dbg('Open URL GET '+u.href);
+return fetch(u.href,{credentials:'omit'}).then(res=>{
+if(!res.ok)throw new Error(t('urlErrStatus',{status:res.status}));
+return res.text();
+},()=>{
+/* fetch odmítne jak síťovou chybu, tak zablokované CORS — prohlížeč mezi nimi nerozliší. */
+throw new Error(t('urlErrFetch'));
+}).then(text=>{
+let p;
+try{p=JSON.parse(text)}catch(e){throw new Error(t('errLoadInvalid'))}
+if(!p||typeof p!=='object'||!Array.isArray(p.entities))throw new Error(t('errLoadInvalid'));
+state.data=mergeEmpty(p);
+state.ghSha=null;
+state.dirty=false;
+state.navHistory=[];
+saveLS();
+state.view={name:'list',tab:'inbox',entityId:null,settingsTab:'project',settingsItemId:null,edit:null,typeId:null};
+location.hash='';render();
+toast('✓ '+t('urlLoaded',{host:u.host||u.protocol}));
+dbg('Loaded from URL OK ('+text.length+' B)');
+}).catch(err=>{
+const msg=err.message||String(err);toast(msg);dbg('Open URL load failed: '+msg,true);throw err;
+});
+}
+
 function ghAutoLoadFromUrl(){
 try{
 const params=new URLSearchParams(location.search);
@@ -1591,9 +1659,22 @@ if(!idParam)return false;
 const ghPath=ghDecode(idParam);
 dbg('Auto-load from URL: '+ghPath);
 if(state.dirty&&!confirm(t('confirmDiscardDirty')))return false;
-loadFromGitHub(ghPath);
+loadFromGitHub(ghPath).catch(()=>{});
 return true;
 }catch(e){dbg('URL id decode failed: '+e.message,true);return false}
+}
+
+/* Otevře projekt podle parametrů v adrese: ?id=… (GitHub) má přednost před ?open=… */
+function autoLoadFromUrlParams(){
+if(ghAutoLoadFromUrl())return true;
+try{
+const raw=new URLSearchParams(location.search).get('open');
+if(!raw)return false;
+dbg('Auto-load from URL: '+raw);
+if(state.dirty&&!confirm(t('confirmDiscardDirty')))return false;
+loadFromUrl(raw).catch(()=>{});
+return true;
+}catch(e){dbg('URL open param failed: '+e.message,true);return false}
 }
 
 /* TSV EXPORT */
@@ -6446,6 +6527,7 @@ out.push({icon:'⚙',label:t('advFilter'),sublabel:t('cmdCatAction'),kbd:'Ctrl+F
 out.push({icon:'📋',label:t('clipLoad'),sublabel:t('cmdCatAction'),kbd:'Ctrl+Shift+O',score:0,action:loadProjectFromClipboard});
 out.push({icon:'📋',label:t('clipSave'),sublabel:t('cmdCatAction'),kbd:'Ctrl+Shift+S',score:0,action:copyProjectToClipboard});
 out.push({icon:'{ }',label:t('jsonExportTitle'),sublabel:t('cmdCatAction'),score:0,action:()=>openJsonExportDialog(null)});
+out.push({icon:'🌐',label:t('urlLoadBtn'),sublabel:t('cmdCatAction'),score:0,action:()=>{const v=prompt(t('urlSection'));if(!v||!v.trim())return;if(state.dirty&&!confirm(t('confirmDiscardDirty')))return;loadFromUrl(v.trim()).catch(()=>{})}});
 THEMES.forEach(v=>out.push({icon:'🎨',label:t('themeLabel')+': '+t(THEME_LBL[v]),sublabel:t('cmdCatAction'),score:0,action:()=>{setTheme(v);render()}}));
 out.push({icon:'🎨',label:t('plantumlTitle'),sublabel:t('cmdCatAction'),score:0,action:()=>openPlantumlDialog()});
 out.push({icon:'💬',label:t('viewAllComments'),sublabel:t('cmdCatNav'),score:0,action:()=>navigateTo({name:'allComments'})});
@@ -6906,6 +6988,40 @@ i2.addEventListener('input',()=>{state.data.projectDescription=i2.value;setDirty
 f2.appendChild(i2);
 sec.appendChild(f2);
 w.appendChild(sec);
+
+/* NAČTENÍ Z URL */
+const secU=document.createElement('section');secU.className='dsec';
+const shU=document.createElement('h3');shU.textContent=t('urlSection');secU.appendChild(shU);
+const hU=document.createElement('small');hU.className='fhint';hU.style.display='block';hU.style.marginBottom='.5rem';hU.textContent=t('urlSectionHint');secU.appendChild(hU);
+const rowU=document.createElement('div');rowU.style.display='flex';rowU.style.gap='.4rem';rowU.style.flexWrap='wrap';rowU.style.alignItems='center';
+const inU=document.createElement('input');inU.type='url';inU.id='pj-url';inU.placeholder='https://example.org/model.dkmdata';
+inU.style.flex='1';inU.style.minWidth='220px';inU.setAttribute('aria-label',t('urlSection'));
+rowU.appendChild(inU);
+const btU=document.createElement('button');btU.type='button';btU.className='btn btn-pri btn-sm';btU.textContent='⬇ '+t('urlLoadBtn');
+btU.addEventListener('click',()=>{
+const v=inU.value.trim();if(!v){toast(t('urlErrEmpty'));return}
+if(state.dirty&&!confirm(t('confirmDiscardDirty')))return;
+loadFromUrl(v).catch(()=>{});
+});
+rowU.appendChild(btU);
+secU.appendChild(rowU);
+/* Odkaz, kterým se projekt otevře rovnou — parametr se zakóduje, takže snese i & v adrese. */
+const rowL=document.createElement('div');rowL.style.display='flex';rowL.style.gap='.4rem';rowL.style.flexWrap='wrap';rowL.style.alignItems='center';rowL.style.marginTop='.4rem';
+const linkU=document.createElement('input');linkU.type='text';linkU.readOnly=true;linkU.style.flex='1';linkU.style.minWidth='220px';
+linkU.setAttribute('aria-label',t('urlShareLink'));linkU.placeholder=t('urlShareLink');
+const refreshOpenLink=()=>{const v=inU.value.trim();linkU.value=v&&resolveOpenUrl(v)?openShareUrl(v):''};
+inU.addEventListener('input',refreshOpenLink);
+rowL.appendChild(linkU);
+const cbU=document.createElement('button');cbU.type='button';cbU.className='btn btn-sm';cbU.textContent=t('ghCopyLink');
+cbU.addEventListener('click',()=>{
+if(!linkU.value){toast(t('urlErrEmpty'));return}
+linkU.select();
+try{navigator.clipboard.writeText(linkU.value).then(()=>toast(t('ghLinkCopied')),()=>{document.execCommand('copy');toast(t('ghLinkCopied'))})}
+catch(e){document.execCommand('copy');toast(t('ghLinkCopied'))}
+});
+rowL.appendChild(cbU);
+secU.appendChild(rowL);
+w.appendChild(secU);
 
 /* SESSION NOTICE */
 const sec2=document.createElement('section');sec2.className='dsec';
@@ -8085,7 +8201,7 @@ if(isStandalone())document.body.classList.add('standalone-mode');
 initBroadcastSync();
 setupEvents();
 render();
-if(!handoffApplied&&!isStandalone())ghAutoLoadFromUrl();
+if(!handoffApplied&&!isStandalone())autoLoadFromUrlParams();
 if(isStandalone())requestInitSync();
 }
 function setupEvents(){

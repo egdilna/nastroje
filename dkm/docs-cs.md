@@ -778,7 +778,7 @@ Stiskneš **Ctrl+P** (Cmd+P na Macu) → modal s textovým polem.
 - **Uložené pohledy**
 - **Aspekty** (klik → záložka aspektu)
 - **Typy entit** (klik → záložka typu)
-- **Akce**: Nová entita, Nastavení, Uložit, Načíst, Pokročilé filtry, Clipboard IO, PlantUML export, **Export dat do JSON**, **Motiv (všechny čtyři)**, Nový panel, Všechny komentáře, Inbox / Vše / Archiv
+- **Akce**: Nová entita, Nastavení, Uložit, Načíst, **Načíst z URL**, Pokročilé filtry, Clipboard IO, PlantUML export, **Export dat do JSON**, **Motiv (všechny čtyři)**, Nový panel, Všechny komentáře, Inbox / Vše / Archiv
 
 ### 19.3 Fuzzy match
 
@@ -858,25 +858,51 @@ Pak **Uložit** (Ctrl+S) uloží přímo do GitHubu (`Uložit lokálně` zůstá
 
 **Načíst z GitHubu** — tlačítko v Nastavení → Projekt.
 
-### 21.5 URL parametr pro autoload
+### 21.5 URL parametr pro autoload z GitHubu
 
-`?id={base64ghPath}` v URL → DKM při startu automaticky načte projekt z GitHubu. Šikovné pro sdílení odkazu nebo pro pinnutí do záložek prohlížeče.
+`?id={base64ghPath}` v URL → DKM při startu automaticky načte projekt z GitHubu přes API.
+Odkaz vygeneruje **Nastavení → GitHub → Odkaz**. Šikovné pro sdílení nebo pro záložku
+v prohlížeči. Na privátní repozitář je potřeba token uložený v prohlížeči.
 
-### 21.6 Uložení do schránky
+### 21.6 URL parametr pro načtení z libovolné adresy
+
+`?open={url}` v URL → DKM při startu stáhne projekt z té adresy. Na rozdíl od `?id=`
+**nejde přes GitHub API**, takže funguje kdekoliv: statický hosting, intranet, GitHub Pages,
+`raw.githubusercontent.com`, sdílený síťový disk vystavený přes HTTP.
+
+Adresa se **musí zakódovat** (kvůli `?` a `&` v ní) — proto ji nepiš ručně, ale nech si
+odkaz vyrobit v **Nastavení → Projekt → Načíst projekt z adresy (URL)**. Tamtéž je tlačítko,
+kterým projekt načteš rovnou, bez odkazu. Načtení nabízí i rychlá paleta (Ctrl+P).
+
+Pravidla:
+
+- povolené je jen `https://`, a `http://` jen tehdy, když DKM samo neběží na https
+  (jinak by požadavek prohlížeč zablokoval jako mixed content); `javascript:` a `data:` se odmítnou
+- funguje i **relativní cesta** — `?open=data/model.dkmdata` vezme soubor vedle `index.html`
+- cílový server musí povolit **čtení z jiné domény (CORS)**. Když to nedělá, prohlížeč
+  odpověď zahodí a DKM ohlásí, že soubor nešlo stáhnout. `raw.githubusercontent.com`
+  a GitHub Pages CORS povolují, běžný firemní web často ne.
+- když má `?id=` i `?open=`, vyhraje `?id=`
+- když máš neuložené změny, DKM se zeptá dřív, než je přepíše
+
+Načtený projekt **nemá nastavenou GitHub cestu**, pokud ji nenese sám soubor — Uložit tedy
+uloží do souboru, ne na GitHub.
+
+### 21.7 Uložení do schránky
 
 **📋⬆ Vložit do schránky** v hlavičce (Ctrl+Shift+S). Zkopíruje celý projekt jako JSON. Použitelné pro rychlé přenesení do jiné záložky nebo do jiné aplikace.
 
-### 21.7 Načtení ze schránky
+### 21.8 Načtení ze schránky
 
 **📋⬇ Načíst ze schránky** (Ctrl+Shift+O). Přečte projekt ze schránky, nahradí aktuální (s potvrzením pokud jsou neuložené změny). Když prohlížeč nedovolí přímý přístup, otevře se dialog s textarea pro ruční vložení.
 
-### 21.8 Autosave
+### 21.9 Autosave
 
 **Nastavení → Obecné → Autosave** — po každé změně se projekt automaticky ukládá do sessionStorage (aktuální záložky). Refresh přežije, zavření záložky ne.
 
 To NEZAHRNUJE ukládání do souboru ani na GitHub — pravidelně ukládej ručně přes Ctrl+S.
 
-### 21.9 Začít prázdný projekt
+### 21.10 Začít prázdný projekt
 
 **Nastavení → Projekt → 📄 Začít prázdný projekt**. Zahodí aktuální projekt (s potvrzením pokud jsou neuložené změny) a začne s prázdným.
 
@@ -1163,6 +1189,7 @@ Klik na Import provede two-pass:
 ### 28.1 Projekt
 
 - Název, popis
+- **Načíst projekt z adresy (URL)** — načte projekt z libovolné adresy a vyrobí odkaz `?open=…` (viz 21.6)
 - GitHub cesta
 - Statický prohlížeč (generování)
 - Přenos mezi projekty (import balíčku)
