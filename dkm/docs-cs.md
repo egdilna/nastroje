@@ -168,9 +168,31 @@ Vždy nahoře. Obsahuje:
 - **Export** — XLSX export aktuálně filtrovaných entit
 - **Import TSV** — nahraje entity z TSV / CSV / vložení ze schránky
 - **Nastavení** — projekt, typy, aspekty, vazby, seznamy, pohledy, obecné
+- **⚙ Přizpůsobit** — rozbalovací menu se dvěma sekcemi: **Jazyk** (Čeština / English) a **Motiv** (viz 4.2)
 - **● Neuložené změny** — klik otevře diff proti poslednímu uložení
 
-### 4.2 Toolbar nad seznamem
+### 4.2 Grafické motivy
+
+V menu **⚙ Přizpůsobit → Motiv** (nebo v Nastavení → Obecné, nebo přes rychlou paletu Ctrl+P):
+
+| Motiv | Jaký je |
+|---|---|
+| **Světlý** | výchozí, světlé pozadí, modrý akcent |
+| **Tmavý** | tmavě šedé pozadí, světlý text |
+| **Papír** | teplý sépiový list, hnědý inkoust, **serifové písmo** |
+| **Matrix** | zelený text na černé, **monospace písmo**, decentní záře |
+
+Volba se ukládá **jen do tohoto prohlížeče** (klíč `dkm-theme`), stejně jako jazyk —
+neputuje v datech projektu, takže si každý může nastavit svůj.
+
+Motiv se nastaví ještě než se stránka vykreslí, takže při načtení neproblikne výchozí vzhled.
+Když jsi motiv ještě nikdy nevybral, řídí se první spuštění nastavením systému (tmavý režim
+operačního systému = Tmavý), dál už platí jen tvoje volba.
+
+Motiv se týká aplikace. **Tisk, export do DOCX/PDF a statický prohlížeč zůstávají světlé** —
+jsou to výstupy pro někoho jiného, ne tvoje pracovní prostředí.
+
+### 4.3 Toolbar nad seznamem
 
 - **Záložky**: Inbox, Vše, jednotlivé typy entit, jednotlivé aspekty, připnuté uložené pohledy, Archiv. Klikem se přepneš na pohled, který obsahuje jen entity z dané kategorie.
 - **Hledání** — fulltext napříč jménem a textovými atributy
@@ -182,7 +204,7 @@ Vždy nahoře. Obsahuje:
 - **+ Nová entita**
 - **☑ Výběr** — zapne režim hromadných akcí
 
-### 4.3 Karta entity v seznamu
+### 4.4 Karta entity v seznamu
 
 - **Ikona typu** + **název entity** (např. 👤 *Pavel Novák*)
 - **Badge** s názvem typu, 📥 Inbox, 📦 Archiv a aspekty (◎ *VIP*)
@@ -194,7 +216,7 @@ Vždy nahoře. Obsahuje:
 Kliknutí na kartu kdekoliv mimo odkazy a tlačítka otevře detail. Samotný název je navíc
 skutečný odkaz — jde otevřít prostředním tlačítkem nebo Ctrl+klikem v nové záložce.
 
-### 4.4 Detail entity
+### 4.5 Detail entity
 
 - **← Zpět** (klávesa Alt+B) — vrátí se na předchozí zobrazenou stránku. Nikdy se nevrací do editace — přeskočí ji.
 - **▾ Historie navigace** — rozbalovátko vedle Zpět se seznamem posledních navštívených entit a pohledů v této session. U entit vidíš ikonu typu, název a typ.
@@ -212,7 +234,7 @@ skutečný odkaz — jde otevřít prostředním tlačítkem nebo Ctrl+klikem v 
 - **Strukturální pohled** — 🌳 hierarchický strom podle vazeb
 - **Metadata** — ID, vytvořeno, upraveno
 
-### 4.5 Editor entity
+### 4.6 Editor entity
 
 - **Název** — povinný
 - **Typ** — dá se změnit přes Změnit typ
@@ -223,7 +245,7 @@ skutečný odkaz — jde otevřít prostředním tlačítkem nebo Ctrl+klikem v 
 - **Vazby** — sekce s aktuálními vazbami, + Přidat vazbu
 - **Uložit / Zrušit** v zápatí (klávesa U uloží)
 
-### 4.6 Nastavení
+### 4.7 Nastavení
 
 Levý panel se sekcemi:
 
@@ -239,7 +261,7 @@ Levý panel se sekcemi:
 - **Statistiky** — počty entit, atributů, vazeb
 - **Nápověda** — odkazy na dokumentaci
 
-### 4.7 Panely
+### 4.8 Panely
 
 Nad hlavním obsahem se objevuje **panelová lišta**, pokud máš otevřených víc panelů. Každý panel je nezávislý pracovní kontext s vlastním pohledem, filtry a otevřenou entitou. Detail v kapitole 18.
 
@@ -1166,6 +1188,7 @@ Personal access token pro GitHub API. Uložený v localStorage prohlížeče (pe
 ### 27.9 Obecné
 
 - **Jazyk** (Čeština / English)
+- **Motiv** — Světlý / Tmavý / Papír / Matrix, totéž co v menu ⚙ Přizpůsobit
 - **Tvoje jméno pro komentáře** — bere se jako autor u nových komentářů. Ukládá se **jen do tohoto prohlížeče** (klíč `dkm-username`, stejně jako GitHub token), ne do dat projektu — nad jedním projektem tak může pracovat víc lidí a každý se podepíše sám za sebe. Starší projekt, který jméno nesl v datech, ho při načtení jednorázově převezme do prohlížeče (pokud tam ještě žádné není) a z dat ho vypustí.
 - **Autosave** — automatické ukládání do sessionStorage (per záložka)
 - **Debug** — zapne panel s debug logy dole
