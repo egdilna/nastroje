@@ -886,6 +886,9 @@ Rules:
 - when both `?id=` and `?open=` are present, `?id=` wins
 - with unsaved changes DKM asks before overwriting them
 
+A project loaded this way has **no GitHub path set** unless the file itself carries one — so
+Save writes to a file, not to GitHub.
+
 ### 21.7 Copy to clipboard
 
 **📋⬆ Copy to clipboard** in header (Ctrl+Shift+S). Copies the whole project as JSON. Useful for quick transfer to another tab or another app.
