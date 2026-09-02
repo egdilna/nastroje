@@ -20,6 +20,20 @@ a při změně chování ji aktualizuj.
 - Typy atributů: `ATYPES = ['text','textarea','date','url','select','yesno','relation','number']`;
   kompatibilitu při konverzích řídí `ATTR_TYPE_COMPAT` (`attrTypesCompatible`).
 
+## Otevření projektu z adresy
+Dvě cesty, obě řeší `autoLoadFromUrlParams()` při startu — `?id=` (base64 cesty v GitHub
+repozitáři, přes API, `loadFromGitHub`) má přednost před `?open=` (libovolná adresa přes
+prostý `fetch`, `loadFromUrl`).
+
+`resolveOpenUrl()` je jediná branka: adresu řeší proti `location.href` (funguje tedy
+i relativní zápis) a pouští jen `http(s)` — `javascript:` a `data:` nikdy, `http:` navíc jen
+mimo https stránku. Když přidáváš další zdroj, veď ho přes ni.
+
+`fetch` nerozliší síťovou chybu od zablokovaného CORS — obojí je odmítnutý příslib bez
+detailu, proto je hláška `urlErrFetch` úmyslně formulovaná pro obě možnosti. Odkaz nikdy
+neskládej ručně, na to je `openShareUrl()` (parametr se enkóduje, jinak `&` v cílové adrese
+rozbije parsování).
+
 ## Perzistence a synchronizace mezi záložkami
 | Klíč | Význam |
 |---|---|

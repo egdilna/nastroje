@@ -778,7 +778,7 @@ Press **Ctrl+P** (Cmd+P on Mac) → a modal with a text field.
 - **Saved views**
 - **Aspects** (click → aspect tab)
 - **Entity types** (click → type tab)
-- **Actions**: New entity, Settings, Save, Load, Advanced filters, Clipboard IO, PlantUML export, **Export data to JSON**, **Theme (all four)**, New panel, All comments, Inbox / All / Archive
+- **Actions**: New entity, Settings, Save, Load, **Load from URL**, Advanced filters, Clipboard IO, PlantUML export, **Export data to JSON**, **Theme (all four)**, New panel, All comments, Inbox / All / Archive
 
 ### 19.3 Fuzzy match
 
@@ -858,25 +858,49 @@ Then **Save** (Ctrl+S) saves directly to GitHub.
 
 **Load from GitHub** — button in Settings → Project.
 
-### 21.5 URL parameter for autoload
+### 21.5 URL parameter for GitHub autoload
 
-`?id={base64ghPath}` in the URL → DKM auto-loads the project from GitHub on startup. Handy for sharing a link or pinning to browser bookmarks.
+`?id={base64ghPath}` in the URL → DKM auto-loads the project from GitHub via the API on
+startup. **Settings → GitHub → Link** generates the link. Handy for sharing or for a browser
+bookmark. A private repo needs a token stored in the browser.
 
-### 21.6 Copy to clipboard
+### 21.6 URL parameter for loading from any address
+
+`?open={url}` in the URL → on startup DKM downloads the project from that address. Unlike
+`?id=` it does **not go through the GitHub API**, so it works anywhere: static hosting,
+intranet, GitHub Pages, `raw.githubusercontent.com`, a network share exposed over HTTP.
+
+The address **must be encoded** (because of `?` and `&` inside it) — so don't write it by
+hand, have the link built in **Settings → Project → Load project from a URL**. The same place
+has a button that loads the project right away, without a link. The command palette (Ctrl+P)
+offers loading too.
+
+Rules:
+
+- only `https://` is allowed, and `http://` only when DKM itself is not on https
+  (otherwise the browser blocks it as mixed content); `javascript:` and `data:` are rejected
+- a **relative path** works too — `?open=data/model.dkmdata` takes the file next to `index.html`
+- the target server must allow **cross-origin reads (CORS)**. If it doesn't, the browser
+  discards the response and DKM reports that the file could not be downloaded.
+  `raw.githubusercontent.com` and GitHub Pages do allow CORS, a typical corporate site often doesn't.
+- when both `?id=` and `?open=` are present, `?id=` wins
+- with unsaved changes DKM asks before overwriting them
+
+### 21.7 Copy to clipboard
 
 **📋⬆ Copy to clipboard** in header (Ctrl+Shift+S). Copies the whole project as JSON. Useful for quick transfer to another tab or another app.
 
-### 21.7 Load from clipboard
+### 21.8 Load from clipboard
 
 **📋⬇ Load from clipboard** (Ctrl+Shift+O). Reads project from clipboard, replaces current (with confirmation if unsaved changes). When the browser denies direct access, a textarea dialog opens for manual paste.
 
-### 21.8 Autosave
+### 21.9 Autosave
 
 **Settings → General → Autosave** — every change auto-saves to sessionStorage (current tab). Refresh survives, tab close doesn't.
 
 This does NOT include file or GitHub saves — save manually via Ctrl+S regularly.
 
-### 21.9 Start empty project
+### 21.10 Start empty project
 
 **Settings → Project → 📄 Start empty project**. Discards current project (with confirmation if unsaved changes) and starts fresh.
 
@@ -1165,6 +1189,7 @@ Clicking Import performs a two-pass:
 ### 28.1 Project
 
 - Name, description
+- **Load project from a URL** — loads a project from any address and builds an `?open=…` link (see 21.6)
 - GitHub path
 - Static viewer (generation)
 - Package transfer (import)
