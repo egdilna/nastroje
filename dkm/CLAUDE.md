@@ -80,10 +80,11 @@ Klíče lze zafixovat nepovinným polem **`jsonKey`** na typu, aspektu, atributu
 (`rsJsonKeyFld`) — jinak by přejmenování atributu změnilo klíč a rozbilo navazující import.
 Profily exportu žijí v `state.data.jsonExports`.
 
-**Pozor — nekonzistence v modelu:** výběrové atributy odkazují na číselník dvěma způsoby.
-Editor a formulář entity používají `a.listId` + `seznam.values`, kdežto kanban, pokročilé
-filtry a import/export balíčku `a.selectListId` + `seznam.options`. `jsonSelectValues` čte
-obojí; kdo sáhne na číselníky, ať to sjednotí.
+**Číselníky mají jeden kanonický tvar:** `seznam.values` + `atribut.listId`. Hodnoty čti
+**vždy** přes `attrSelectValues(a)` — nikdy si nesahej na `listId`/`values` sám. Starší data
+nesla `selectListId` + `options` (kanban, filtry a export balíčku kvůli tomu vycházely
+prázdné); `migrateSelectLists` v `mergeEmpty` je při načtení převede a starý tvar z dat
+odstraní, `attrSelectValues` ho navíc snese jako záchytnou síť.
 
 ## Balíčky (package) — průvodce importem
 `bulkExportPackage` → `buildPackageObj` a osmikrokový průvodce importem
