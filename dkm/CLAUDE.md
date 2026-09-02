@@ -67,6 +67,12 @@ nástroj musí být použitelný offline.
 vyrábí offline prohlížeč dat. Když měníš strukturu dat, ověř, že vygenerovaný prohlížeč
 pořád funguje — je to snadno přehlédnutelná závislost.
 
+Šablona je **samostatná aplikace s vlastními tokeny, vlastním I18N a vlastními motivy** —
+tokeny se jmenují jinak než v hlavní aplikaci (`--fg` místo `--tx`, `--ac-fg` místo `--acf`),
+takže se CSS mezi nimi kopírovat nedá. Motivy i jazyk si prohlížeč ukládá pod
+`dkm-viewer-theme` / `dkm-viewer-lang`, tedy do prohlížeče příjemce, ne do generovaného souboru.
+Editace: dekóduj base64 do souboru, uprav, zakóduj zpět a nahraď řetězec — nikdy needituj base64.
+
 ## Export do DOCX — netriviální část
 Vlastní generátor OOXML: `renderMarkdownBlocksToDocx`, `runsToParagraphXml`,
 `renderMarkdownTableToDocx`, `buildDocxFile`. Zvláštnosti popsané v komentářích:
