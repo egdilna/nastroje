@@ -64,6 +64,27 @@ Vlastní generátor OOXML: `renderMarkdownBlocksToDocx`, `runsToParagraphXml`,
 - Obrázky: EMU 914400/palec, 96 DPI → `px * 9525`, šířka omezená na ~600 px; nestažený obrázek
   degraduje na odkaz.
 
+## Export do datového JSON (`openJsonExportDialog`)
+Projekce dat ven: kolekce podle typu, klíče odvozené z názvů (`jsonSlug`, snake_case bez
+diakritiky), k tomu **JSON Schema jen pro to, co se v exportu objevilo**, `mapovani.json`
+a `README.md` — vše přes `makeZip`. Čtyřkrokový průvodce (`jsonWizStep1`…`Step4`).
+
+Železné pravidlo: **schéma musí validovat data, se kterými je zabalené.** Proto se před
+zabalením pouští vlastní `jsonValidate` (podmnožina draftu 2020-12 — přesně to, co
+generujeme) a všechno, co by schéma rozbilo, se změkčí a zapíše do `plan.warnings`:
+`required` jen u atributu vyplněného u všech entit, `enum` se rozšíří o hodnoty mimo
+číselník, `format` se doplní jen když sedí všechny hodnoty. Když měníš generátor,
+tuhle smyčku (`runJsonExport`) neobcházej.
+
+Klíče lze zafixovat nepovinným polem **`jsonKey`** na typu, aspektu, atributu i typu vazby
+(`rsJsonKeyFld`) — jinak by přejmenování atributu změnilo klíč a rozbilo navazující import.
+Profily exportu žijí v `state.data.jsonExports`.
+
+**Pozor — nekonzistence v modelu:** výběrové atributy odkazují na číselník dvěma způsoby.
+Editor a formulář entity používají `a.listId` + `seznam.values`, kdežto kanban, pokročilé
+filtry a import/export balíčku `a.selectListId` + `seznam.options`. `jsonSelectValues` čte
+obojí; kdo sáhne na číselníky, ať to sjednotí.
+
 ## Balíčky (package) — průvodce importem
 `bulkExportPackage` → `buildPackageObj` a osmikrokový průvodce importem
 (`renderPkgWizStep1`…`Step8`) s automatickým mapováním modelu (`autoMapModel`), detekcí
