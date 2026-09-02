@@ -26,6 +26,7 @@ a při změně chování ji aktualizuj.
 | `dkm-data-v1` (`SK_DATA`) | data projektu |
 | `dkm-session-data` (`SK_SESSION`) | **sessionStorage** — per-záložka, přežije refresh, zavření záložky ne |
 | `dkm-lang`, `dkm-autosave`, `dkm-debug` | nastavení |
+| `dkm-theme` (`SK_THEME`) | grafický motiv (`light`/`dark`/`paper`/`matrix`) — per prohlížeč |
 | `dkm-github-token` | GitHub PAT — **nikdy nelogovat, needovat do dat ani do URL** |
 | `dkm-username` (`SK_USERNAME`) | jméno autora komentářů — per prohlížeč, **ne** v datech projektu (`userName()` / `setUserName()`, migrace ze starých dat v `mergeEmpty`) |
 | `dkm-handoff-…` (`SK_HANDOFF_PREFIX`) | předání entity do samostatného okna |
@@ -42,6 +43,19 @@ a `openDiffDialog()` ho ukazuje po sekcích (přidané / odstraněné / upraven�
 Porovnání **řadí klíče a přeskakuje `updatedAt`** — časové razítko není změna. Když přidáváš
 pole do entity, doplň ho do `normalizeEntity` a `diffEntityFields`, jinak z diffu vypadne.
 `setDirty(v)` + `smartSave()` řídí, co se uloží kam (soubor / GitHub / schránka).
+
+## Grafické motivy
+Motivy jsou **jen sady CSS proměnných** na `:root[data-theme="…"]` (`THEMES`, `THEME_LBL`,
+`currentTheme`, `setTheme`). Papír a Matrix navíc přenastavují `--ff` (serif / monospace).
+Barvu **nikdy nepiš natvrdo** — vždycky přes token, jinak ti nový motiv rozbije kontrast;
+popředí na akcentní ploše má vlastní token `--acf` (kvůli `.btn-pri`).
+
+Motiv stanoví krátký skript v `<head>` **dřív, než se cokoliv vykreslí** — bez něj by
+probliklo výchozí téma. Ten skript je jediné místo, kde se čte `dkm-theme` mimo `setTheme`.
+Bez uložené volby se poprvé řídí `prefers-color-scheme`.
+
+Motiv se týká aplikace; tisk, DOCX/PDF a statický prohlížeč mají vlastní světlé styly —
+tak to má zůstat, jsou to výstupy pro někoho jiného.
 
 ## Externí závislosti — jen líně
 Nic se nenačítá dopředu. `loadSheetJS()` stáhne SheetJS z CDN **až při exportu XLSX**;

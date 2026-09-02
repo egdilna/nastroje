@@ -168,9 +168,31 @@ Always on top. Contains:
 - **Export** — XLSX export of currently filtered entities
 - **Import TSV** — loads entities from TSV / CSV / pasted clipboard
 - **Settings** — project, types, aspects, relations, lists, views, general
+- **⚙ Customize** — a dropdown with two sections: **Language** (Čeština / English) and **Theme** (see 4.2)
 - **● Unsaved changes** — clicking opens diff against last save
 
-### 4.2 Toolbar above the list
+### 4.2 Visual themes
+
+In the **⚙ Customize → Theme** menu (or Settings → General, or via the Ctrl+P command palette):
+
+| Theme | What it looks like |
+|---|---|
+| **Light** | default, light background, blue accent |
+| **Dark** | dark grey background, light text |
+| **Paper** | warm sepia sheet, brown ink, **serif type** |
+| **Matrix** | green on black, **monospace type**, a subtle glow |
+
+The choice is stored **in this browser only** (key `dkm-theme`), just like the language — it
+does not travel in the project data, so everyone can set their own.
+
+The theme is applied before the page renders, so the default look never flashes on load.
+If you have never picked a theme, the first run follows your system setting (OS dark mode =
+Dark); after that only your own choice counts.
+
+The theme applies to the app. **Print, DOCX/PDF export and the static viewer stay light** —
+those are outputs for someone else, not your working environment.
+
+### 4.3 Toolbar above the list
 
 - **Tabs**: Inbox, All, individual entity types, individual aspects, pinned saved views, Archive.
 - **Search** — fulltext across name and text attributes
@@ -182,7 +204,7 @@ Always on top. Contains:
 - **+ New entity**
 - **☑ Select** — enable bulk actions
 
-### 4.3 Entity card in list
+### 4.4 Entity card in list
 
 - **Type icon** + **entity name** (e.g. 👤 *Paul Newman*)
 - **Badge** with type name, 📥 Inbox, 📦 Archive, and aspects (◎ *VIP*)
@@ -194,7 +216,7 @@ Always on top. Contains:
 Clicking a card anywhere outside links and buttons opens the detail. The name itself is
 a real link, so middle-click or Ctrl+click opens it in a new tab.
 
-### 4.4 Entity detail
+### 4.5 Entity detail
 
 - **← Back** (Alt+B) — returns to previously shown page. Never returns into editing — skips edit states.
 - **▾ Navigation history** — dropdown next to Back with recently visited entities and views in this session. For entities you see type icon, name and type.
@@ -212,7 +234,7 @@ a real link, so middle-click or Ctrl+click opens it in a new tab.
 - **Structural view** — 🌳 hierarchical tree by relations
 - **Metadata** — ID, created, updated
 
-### 4.5 Entity editor
+### 4.6 Entity editor
 
 - **Name** — required
 - **Type** — changeable via Change type
@@ -223,7 +245,7 @@ a real link, so middle-click or Ctrl+click opens it in a new tab.
 - **Relations** — current relations, + Add relation
 - **Save / Cancel** at the bottom (U key also saves)
 
-### 4.6 Settings
+### 4.7 Settings
 
 Left panel with sections:
 
@@ -239,7 +261,7 @@ Left panel with sections:
 - **Statistics** — counts of entities, attributes, relations
 - **Help** — documentation links
 
-### 4.7 Panels
+### 4.8 Panels
 
 Above main content appears a **panel bar** when you have multiple panels open. Each panel is an independent working context with its own view, filters, opened entity. Details in chapter 18.
 
@@ -1168,6 +1190,7 @@ Personal access token for GitHub API. Stored in the browser's localStorage (per 
 ### 27.9 General
 
 - **Language** (Čeština / English)
+- **Theme** — Light / Dark / Paper / Matrix, same as in the ⚙ Customize menu
 - **Your name for comments** — used as author of new comments. Stored **in this browser only** (key `dkm-username`, like the GitHub token), not in the project data — so several people can work on the same project and each signs their own comments. An older project that carried the name in its data adopts it into the browser once on load (if none is set there yet) and drops it from the data.
 - **Autosave** — automatic saving to sessionStorage (per tab)
 - **Debug** — enables a bottom panel with debug logs
