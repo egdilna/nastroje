@@ -100,6 +100,10 @@ Speciální placeholdery:
 
 Pod každou markdown textarea je tlačítko **📎 Vložit…** otevírající dialog se všemi dostupnými placeholdery z entity, abyste je nemuseli psát ručně.
 
+Hodnota placeholderu se bere jako **údaj, ne jako zápis**: když datum `15. 3. 2026` nebo hodnota začínající na `- `, `# `, `>` či `|` stojí na začátku řádku, nezaloží odrážku, nadpis ani citaci. Formátování uvnitř řádku (například `**tučně**`) funguje dál a víceřádkové hodnoty vypočítaných polí se pořád vykreslují jako plnohodnotný Markdown.
+
+Placeholder, který PIM nezná, zůstane v textu tak, jak je napsaný — překlep v názvu pole tedy poznáte na první pohled. Totéž platí pro `((deník))` a `((dokument))` u entity, která příslušný aspekt nemá.
+
 ### Inline-select `(!a/b/|c!)`
 
 Šablona `(!ano/|ne/možná!)` se v read modu vyrenderuje jako `<select>` se žlutým chipem. Klik změní hodnotu → debounce save (přepíše `|` na novou pozici). Vedle selectu je tlačítko **🔒 Zafixovat výběr**, které vybraný text vloží jako prostý text (nahradí celé `(!...!)`).
@@ -116,7 +120,9 @@ Tělo entity je v markdownu s rozšířeními:
 
 - **CommonMark + GFM** — nadpisy H1–H6, tučně, kurzíva, ~~přeškrtnuté~~, ==zvýrazněné==, kód, citace, seznamy, tabulky, obrázky
 - **Wiki odkazy**: `[[Název entity]]` nebo `[[id:abc-123|popisek]]`
+- **Odkaz podle čísla entity**: `#42` — číslo najdete v sekci Meta v detailu entity
 - **Include (transkluze)**: `{{include:Název entity}}` — vloží obsah jiné entity (s rekurzivním placeholderem)
+  - Podle vnitřního ID: `{{include:id:<id entity>}}` — nerozbije se při přejmenování cílové entity
 - **Markdown úkoly**: `- [ ] úkol`, `- [x] hotovo` (s tlačítkem **→ Entita** v anotačním režimu pro převod na samostatný Task s vazbou `partOf`)
 - **CriticMarkup**: `{++přidat++}`, `{--smazat--}`, `{==zvýraznit==}`, `{>>poznámka<<}`, `{~~staré~>nové~~}` (substituce) — editor revizí s krok-za-krokem
 - **Private bloky**: `~~~private … ~~~` — viditelné jen v aplikaci, ne v exportu/include
@@ -124,6 +130,7 @@ Tělo entity je v markdownu s rozšířeními:
 - **Placeholdery**: `((Atribut))` — viz výše
 - **Automatické čítače**: `((#))` = úroveň 1, `((##))` = úroveň 2 atd.; `((#.##))` vypíše víceúrovňové číslo (např. `1.2`) — poslední úroveň se zvyšuje, vyšší se jen čtou, hlubší se při zvýšení vynulují. `((#jméno))` = pojmenovaný průběžný čítač pro celou entitu (každé jméno běží nezávisle)
 - **Vložení strukturovaného dokumentu**: `((dokument))` vloží na dané místo v těle obsah aspektu „Strukturovaný dokument" této entity (jako Markdown)
+- **Vložení deníku**: `((deník))` vloží na dané místo v těle deník této entity od nejstaršího záznamu (jen u aspektu „Deník")
 - **Inline-select**: `(!a/b/|c!)` — viz výše
 - **Inline anotace**: `(>text)` — zůstává ve zdroji, zobrazí se jako anotační bublina; do exportu/tisku/kopírování nejde (viz sekce Anotace)
 
