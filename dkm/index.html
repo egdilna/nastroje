@@ -663,7 +663,7 @@ pkgStep7Title:'Náhled změn před importem',
 pkgStep8Title:'Import dokončen',
 pkgActCreate:'Vytvořit nový',pkgActSkip:'Přeskočit',pkgAttrNew:'Vytvořit nový atribut',pkgAttrSkip:'Ignorovat hodnoty',
 pkgAttrMapHint:'Atributy z balíčku → atributy v cílovém typu/aspektu',
-pkgSLMerge:'Sloučit s',
+pkgSLMerge:'Sloučit s',pkgSLValueCount:'{n} hodnot',
 pkgNoTypesInPkg:'V balíčku nejsou žádné typy.',pkgNoAspectsInPkg:'V balíčku nejsou žádné aspekty.',pkgNoRTInPkg:'V balíčku nejsou žádné vazby.',pkgNoSLInPkg:'V balíčku nejsou žádné číselníky.',
 pkgNoConflicts:'Žádné konflikty — všechny entity dostanou nová ID nebo si zachovají ta z balíčku.',
 pkgConflictNewId:'Importovat jako novou (přidělit nové ID)',pkgConflictOverwrite:'Přepsat existující entitu v cíli',pkgConflictSkip:'Přeskočit (neimportovat)',
@@ -1024,7 +1024,7 @@ pkgStep7Title:'Preview before import',
 pkgStep8Title:'Import complete',
 pkgActCreate:'Create new',pkgActSkip:'Skip',pkgAttrNew:'Create new attribute',pkgAttrSkip:'Drop values',
 pkgAttrMapHint:'Package attributes → target type/aspect attributes',
-pkgSLMerge:'Merge with',
+pkgSLMerge:'Merge with',pkgSLValueCount:'{n} values',
 pkgNoTypesInPkg:'No types in the package.',pkgNoAspectsInPkg:'No aspects in the package.',pkgNoRTInPkg:'No relations in the package.',pkgNoSLInPkg:'No select lists in the package.',
 pkgNoConflicts:'No conflicts — all entities will get new IDs or keep those from the package.',
 pkgConflictNewId:'Import as new (assign new ID)',pkgConflictOverwrite:'Overwrite existing entity in target',pkgConflictSkip:'Skip (do not import)',
@@ -1125,6 +1125,25 @@ function findType(id){return state.data.entityTypes.find(e=>e.id===id)}
 function findAspect(id){return state.data.aspects.find(a=>a.id===id)}
 function findRT(id){return state.data.relationTypes.find(r=>r.id===id)}
 function findList(id){return state.data.selectLists.find(l=>l.id===id)}
+/* Přípustné hodnoty výběrového atributu. Kanonický tvar je `a.listId` + `seznam.values`;
+   starší data z importu balíčku nesou `a.selectListId` + `seznam.options` (a případně
+   hodnoty rovnou na atributu v `a.options`), proto se čte tolerantně. Nová data si
+   `mergeEmpty` převede na kanonický tvar, tahle tolerance je jen záchytná síť. */
+/* Přenese odkaz na číselník z balíčku na nově vytvořený atribut — v kanonickém tvaru. */
+function applyPkgAttrList(na,sa,slIdMap){
+if(sa.type!=='select')return;
+const src=sa.listId||sa.selectListId;
+if(src&&slIdMap[src])na.listId=slIdMap[src];
+if(Array.isArray(sa.options)&&sa.options.length)na.options=sa.options.slice();
+}
+function attrSelectValues(a){
+const out=[];
+if(!a)return out;
+const sl=findList(a.listId||a.selectListId);
+if(sl)(sl.values||sl.options||[]).forEach(v=>out.push(v));
+if(Array.isArray(a.options))a.options.forEach(v=>out.push(v));
+return out.filter((v,i,arr)=>v!=null&&v!==''&&arr.indexOf(v)===i);
+}
 
 /* Vloží do prvku emotikonu typu entity (pokud ji typ má) a její název.
    Používej všude, kde se název entity vypisuje — ať je odkaz poznat podle ikony stejně jako v seznamu. */
@@ -1248,9 +1267,27 @@ function clearSessionData(){try{sessionStorage.removeItem(SK_SESSION)}catch(e){}
 function userName(){return localStorage.getItem(SK_USERNAME)||''}
 function setUserName(v){v=(v||'').trim();if(v)localStorage.setItem(SK_USERNAME,v);else localStorage.removeItem(SK_USERNAME)}
 
+/* Sjednocení číselníků na kanonický tvar (`seznam.values`, `atribut.listId`).
+   Starší data z importu balíčku nesla `options` / `selectListId`, což editor ani
+   formulář entity nečetly — kanban, filtry a export balíčku kvůli tomu vycházely prázdné. */
+function migrateSelectLists(d){
+(d.selectLists||[]).forEach(sl=>{
+if(!Array.isArray(sl.values))sl.values=Array.isArray(sl.options)?sl.options.slice():[];
+delete sl.options;
+});
+const fixAttrs=o=>(o.attributes||[]).forEach(a=>{
+if(a.selectListId){if(!a.listId)a.listId=a.selectListId;delete a.selectListId}
+});
+(d.entityTypes||[]).forEach(fixAttrs);
+(d.aspects||[]).forEach(fixAttrs);
+(d.entities||[]).forEach(e=>{if(Array.isArray(e.customAttributes))fixAttrs({attributes:e.customAttributes})});
+return d;
+}
+
 function mergeEmpty(d){const b=emptyData();const st=Object.assign({},b.settings,d.settings||{});
 /* Migrace ze starších dat: jméno uložené v projektu převezmi do prohlížeče (jen když tam ještě žádné není) a z dat ho odstraň. */
 if('userName' in st){if(typeof st.userName==='string'&&st.userName.trim()&&!userName())setUserName(st.userName);delete st.userName}
+d=migrateSelectLists(d);
 return{version:d.version||1,projectName:typeof d.projectName==='string'?d.projectName:'',projectDescription:typeof d.projectDescription==='string'?d.projectDescription:'',ghPath:typeof d.ghPath==='string'?d.ghPath:'',settings:st,entityTypes:Array.isArray(d.entityTypes)?d.entityTypes:[],aspects:Array.isArray(d.aspects)?d.aspects:[],relationTypes:Array.isArray(d.relationTypes)?d.relationTypes:[],selectLists:Array.isArray(d.selectLists)?d.selectLists:[],savedViews:Array.isArray(d.savedViews)?d.savedViews:[],jsonExports:Array.isArray(d.jsonExports)?d.jsonExports:[],entities:Array.isArray(d.entities)?d.entities:[]}}
 function saveFile(){const data=JSON.stringify(state.data,null,2);const b=new Blob([data],{type:'application/json'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=(state.data.projectName?state.data.projectName.replace(/[^\w\u00C0-\u017F-]+/g,'_'):'dkm')+'-'+new Date().toISOString().slice(0,10)+'.dkmdata';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(u);setDirty(false);snapshotBaseline();toast(t('saved'))}
 function snapshotBaseline(){try{state.baseline=JSON.parse(JSON.stringify(state.data))}catch(e){dbg('Baseline snapshot failed: '+e.message,true)}}
@@ -2405,8 +2442,7 @@ state.data.aspects.forEach(asp=>{const o=document.createElement('option');o.valu
 s.addEventListener('change',()=>set(s.value));host.appendChild(s);return;
 }
 if(type==='select'){
-const def=resolveRuleAttr(rule);const opts=[];
-if(def){if(def.selectListId){const sl=(state.data.selectLists||[]).find(x=>x.id===def.selectListId);if(sl)opts.push(...sl.options)}if(def.options)opts.push(...def.options)}
+const opts=attrSelectValues(resolveRuleAttr(rule));
 const s=document.createElement('select');s.className='advf-val';
 const eo=document.createElement('option');eo.value='';eo.textContent='—';s.appendChild(eo);
 opts.forEach(o=>{const op=document.createElement('option');op.value=o;op.textContent=o;if(cur===o)op.selected=true;s.appendChild(op)});
@@ -2734,7 +2770,7 @@ function getColumnValuesForAttr(target){
 if(!target)return[];
 if(target.scope==='system'&&target.attrId==='typeId'){return state.data.entityTypes.map(ty=>({key:ty.id,label:(ty.icon?ty.icon+' ':'')+ty.name}))}
 if(target.type==='yesno'){return[{key:'true',label:t('yes')},{key:'false',label:t('no')}]}
-if(target.type==='select'){const a=target.def;const opts=[];if(a.selectListId){const sl=(state.data.selectLists||[]).find(x=>x.id===a.selectListId);if(sl)opts.push(...sl.options)}if(a.options)opts.push(...a.options);return opts.map(o=>({key:o,label:o}))}
+if(target.type==='select'){return attrSelectValues(target.def).map(o=>({key:o,label:o}))}
 return[];
 }
 function entityColumnKey(e,target){
@@ -3827,7 +3863,7 @@ case'textarea':{const ta=document.createElement('textarea');ta.id=lid;ta.value=c
 case'date':{const i=document.createElement('input');i.type='date';i.id=lid;i.value=cur||'';i.addEventListener('input',()=>sv(i.value));f.appendChild(i);break}
 case'url':{const i=document.createElement('input');i.type='url';i.id=lid;i.value=cur||'';i.addEventListener('input',()=>sv(i.value));f.appendChild(i);break}
 case'number':{const i=document.createElement('input');i.type='number';i.id=lid;i.value=cur!=null?cur:'';i.addEventListener('input',()=>sv(i.value===''?'':Number(i.value)));f.appendChild(i);break}
-case'select':{const list=findList(a.listId);if(!list||!list.values.length){const s=document.createElement('div');s.className='aempty';s.textContent=t('selectListEmpty');f.appendChild(s)}else{const sel=document.createElement('select');sel.id=lid;const e0=document.createElement('option');e0.value='';e0.textContent='— '+t('none')+' —';sel.appendChild(e0);list.values.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;if(cur===v)o.selected=true;sel.appendChild(o)});sel.addEventListener('change',()=>sv(sel.value));f.appendChild(sel)}break}
+case'select':{const vals=attrSelectValues(a);if(!vals.length){const s=document.createElement('div');s.className='aempty';s.textContent=t('selectListEmpty');f.appendChild(s)}else{const sel=document.createElement('select');sel.id=lid;const e0=document.createElement('option');e0.value='';e0.textContent='— '+t('none')+' —';sel.appendChild(e0);vals.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;if(cur===v)o.selected=true;sel.appendChild(o)});sel.addEventListener('change',()=>sv(sel.value));f.appendChild(sel)}break}
 case'yesno':{const w=document.createElement('div');w.style.display='flex';w.style.gap='1rem';['yes','no','none'].forEach(v=>{const id=lid+'-'+v;const lab=document.createElement('label');lab.style.display='inline-flex';lab.style.gap='.3rem';lab.style.alignItems='center';const r=document.createElement('input');r.type='radio';r.name=lid;r.id=id;r.checked=(v==='yes'&&cur===true)||(v==='no'&&cur===false)||(v==='none'&&cur==null);r.addEventListener('change',()=>sv(v==='yes'?true:v==='no'?false:''));lab.appendChild(r);const sp=document.createElement('span');sp.textContent=v==='yes'?t('yes'):v==='no'?t('no'):'—';lab.appendChild(sp);w.appendChild(lab)});f.appendChild(w);break}
 case'relation':{
 const tt=a.targetType;const multi=!!a.multi;
@@ -4563,8 +4599,8 @@ if(e.typeId)usedTypes.add(e.typeId);
 (e.relations||[]).forEach(r=>usedRT.add(r.relationTypeId));
 });
 /* Walk attribute defs of used types & aspects to find select lists used */
-state.data.entityTypes.forEach(ty=>{if(!usedTypes.has(ty.id))return;ty.attributes.forEach(a=>{if(a.type==='select'&&a.selectListId)usedSL.add(a.selectListId)})});
-state.data.aspects.forEach(asp=>{if(!usedAspects.has(asp.id))return;asp.attributes.forEach(a=>{if(a.type==='select'&&a.selectListId)usedSL.add(a.selectListId)})});
+state.data.entityTypes.forEach(ty=>{if(!usedTypes.has(ty.id))return;ty.attributes.forEach(a=>{const l=a.type==='select'&&(a.listId||a.selectListId);if(l)usedSL.add(l)})});
+state.data.aspects.forEach(asp=>{if(!usedAspects.has(asp.id))return;asp.attributes.forEach(a=>{const l=a.type==='select'&&(a.listId||a.selectListId);if(l)usedSL.add(l)})});
 /* Also relation target type filters reference type ids — leave alone, only carry types we use */
 const model={
 entityTypes:state.data.entityTypes.filter(ty=>usedTypes.has(ty.id)).map(ty=>JSON.parse(JSON.stringify(ty))),
@@ -4896,7 +4932,7 @@ pkg.model.selectLists.forEach(srcSl=>{
 const map=w.mapping.selectLists[srcSl.id];
 const wrap=document.createElement('div');wrap.className='map-row';
 const head=document.createElement('div');head.className='map-row-h';
-const ttl=document.createElement('b');ttl.textContent=srcSl.name+' ('+((srcSl.options||[]).length)+' hodnot)';head.appendChild(ttl);
+const ttl=document.createElement('b');ttl.textContent=srcSl.name+' ('+t('pkgSLValueCount',{n:(srcSl.values||srcSl.options||[]).length})+')';head.appendChild(ttl);
 const sel=document.createElement('select');sel.style.marginLeft='auto';
 const oNew=document.createElement('option');oNew.value='__new__';oNew.textContent='🆕 '+t('pkgActCreate');sel.appendChild(oNew);
 const oSkip=document.createElement('option');oSkip.value='__skip__';oSkip.textContent='❌ '+t('pkgActSkip');sel.appendChild(oSkip);
@@ -5047,8 +5083,9 @@ const log={added:0,overwritten:0,skipped:0,relKept:0,relDropped:0,attrsKept:0,at
 const slIdMap={};
 pkg.model.selectLists.forEach(srcSl=>{
 const m=mapping.selectLists[srcSl.id];if(!m||m.action==='skip')return;
-if(m.action==='create'){const ns={id:uid('sl'),name:srcSl.name,options:(srcSl.options||[]).slice()};state.data.selectLists=state.data.selectLists||[];state.data.selectLists.push(ns);slIdMap[srcSl.id]=ns.id;log.newSL++}
-else if(m.action==='merge'){const tgt=(state.data.selectLists||[]).find(x=>x.id===m.targetId);if(tgt){const have=new Set(tgt.options||[]);(srcSl.options||[]).forEach(o=>{if(!have.has(o))tgt.options.push(o)});slIdMap[srcSl.id]=tgt.id}}
+const srcVals=(srcSl.values||srcSl.options||[]).slice();
+if(m.action==='create'){const ns={id:uid('l'),name:srcSl.name,values:srcVals};state.data.selectLists=state.data.selectLists||[];state.data.selectLists.push(ns);slIdMap[srcSl.id]=ns.id;log.newSL++}
+else if(m.action==='merge'){const tgt=(state.data.selectLists||[]).find(x=>x.id===m.targetId);if(tgt){tgt.values=tgt.values||[];const have=new Set(tgt.values);srcVals.forEach(o=>{if(!have.has(o)){have.add(o);tgt.values.push(o)}});slIdMap[srcSl.id]=tgt.id}}
 });
 
 /* 2) Relation types */
@@ -5069,8 +5106,7 @@ const nty={id:uid('ty'),name:srcTy.name,icon:srcTy.icon||'',attributes:[]};
 const attrMap={};
 srcTy.attributes.forEach(sa=>{
 const na={id:uid('a'),name:sa.name,type:sa.type};
-if(sa.type==='select'&&sa.selectListId&&slIdMap[sa.selectListId])na.selectListId=slIdMap[sa.selectListId];
-if(sa.type==='select'&&sa.options)na.options=sa.options.slice();
+applyPkgAttrList(na,sa,slIdMap);
 if(sa.type==='relation'){if(sa.multi)na.multi=sa.multi;if(sa.relTypes)na.relTypes=sa.relTypes.slice()}
 nty.attributes.push(na);attrMap[sa.id]=na.id;
 });
@@ -5082,7 +5118,7 @@ const attrMap={};
 srcTy.attributes.forEach(sa=>{
 const mapped=m.attrMap[sa.id];
 if(mapped==='__skip__')return;
-if(mapped==='__new__'){const na={id:uid('a'),name:sa.name,type:sa.type};if(sa.type==='select'&&sa.selectListId&&slIdMap[sa.selectListId])na.selectListId=slIdMap[sa.selectListId];if(sa.type==='select'&&sa.options)na.options=sa.options.slice();tgt.attributes.push(na);attrMap[sa.id]=na.id;log.newAttrs++}
+if(mapped==='__new__'){const na={id:uid('a'),name:sa.name,type:sa.type};applyPkgAttrList(na,sa,slIdMap);tgt.attributes.push(na);attrMap[sa.id]=na.id;log.newAttrs++}
 else attrMap[sa.id]=mapped;
 });
 attrIdMapByTy[srcTy.id]=attrMap;
@@ -5097,7 +5133,7 @@ const m=mapping.aspects[srcAs.id];if(!m||m.action==='skip')return;
 if(m.action==='create'){
 const nas={id:uid('asp'),name:srcAs.name,attributes:[]};
 const attrMap={};
-srcAs.attributes.forEach(sa=>{const na={id:uid('a'),name:sa.name,type:sa.type};if(sa.type==='select'&&sa.selectListId&&slIdMap[sa.selectListId])na.selectListId=slIdMap[sa.selectListId];if(sa.type==='select'&&sa.options)na.options=sa.options.slice();nas.attributes.push(na);attrMap[sa.id]=na.id});
+srcAs.attributes.forEach(sa=>{const na={id:uid('a'),name:sa.name,type:sa.type};applyPkgAttrList(na,sa,slIdMap);nas.attributes.push(na);attrMap[sa.id]=na.id});
 state.data.aspects.push(nas);aspIdMap[srcAs.id]=nas.id;attrIdMapByAsp[srcAs.id]=attrMap;log.newAspects++;
 }else if(m.action==='reuse'){
 aspIdMap[srcAs.id]=m.targetId;
@@ -5106,7 +5142,7 @@ const attrMap={};
 srcAs.attributes.forEach(sa=>{
 const mapped=m.attrMap[sa.id];
 if(mapped==='__skip__')return;
-if(mapped==='__new__'){const na={id:uid('a'),name:sa.name,type:sa.type};if(sa.type==='select'&&sa.selectListId&&slIdMap[sa.selectListId])na.selectListId=slIdMap[sa.selectListId];if(sa.type==='select'&&sa.options)na.options=sa.options.slice();tgt.attributes.push(na);attrMap[sa.id]=na.id;log.newAttrs++}
+if(mapped==='__new__'){const na={id:uid('a'),name:sa.name,type:sa.type};applyPkgAttrList(na,sa,slIdMap);tgt.attributes.push(na);attrMap[sa.id]=na.id;log.newAttrs++}
 else attrMap[sa.id]=mapped;
 });
 attrIdMapByAsp[srcAs.id]=attrMap;
@@ -7146,15 +7182,6 @@ if(!used.has(k)){used.add(k);return k}
 let i=2;while(used.has(k+'_'+i))i++;
 const r=k+'_'+i;used.add(r);return r;
 }
-/* Hodnoty číselníku — čte obě varianty odkazu, které se v datech vyskytují
-   (editor používá listId/values, import balíčku selectListId/options). */
-function jsonSelectValues(a){
-const out=[];
-const lid=a.listId||a.selectListId;
-if(lid){const sl=(state.data.selectLists||[]).find(x=>x.id===lid);if(sl)(sl.values||sl.options||[]).forEach(v=>out.push(v))}
-if(Array.isArray(a.options))a.options.forEach(v=>out.push(v));
-return out.filter((v,i,arr)=>v!=null&&v!==''&&arr.indexOf(v)===i);
-}
 function jsonIsEmpty(v){
 if(v==null)return true;
 if(typeof v==='string')return v.trim()==='';
@@ -7390,7 +7417,7 @@ return s;
 }
 case'select':{
 const s=Object.assign(base,{type:'string'});
-const allowed=jsonSelectValues(a);
+const allowed=attrSelectValues(a);
 const actual=[];
 grp.ents.forEach(e=>{const v=e.attributes&&e.attributes[a.id];if(!jsonIsEmpty(v)&&actual.indexOf(String(v))<0)actual.push(String(v))});
 const extra=actual.filter(v=>allowed.indexOf(v)<0);
