@@ -778,7 +778,7 @@ Press **Ctrl+P** (Cmd+P on Mac) → a modal with a text field.
 - **Saved views**
 - **Aspects** (click → aspect tab)
 - **Entity types** (click → type tab)
-- **Actions**: New entity, Settings, Save, Load, Advanced filters, Clipboard IO, PlantUML export, New panel, All comments, Inbox / All / Archive
+- **Actions**: New entity, Settings, Save, Load, Advanced filters, Clipboard IO, PlantUML export, **Export data to JSON**, **Theme (all four)**, New panel, All comments, Inbox / All / Archive
 
 ### 19.3 Fuzzy match
 
@@ -1092,7 +1092,7 @@ repeated export into the same database always comes out the same.
 
 DKM can generate a **static HTML viewer** of project data — a single file you open for read-only access to all entities.
 
-### 25.1 Generating
+### 26.1 Generating
 
 **Settings → Project → Static viewer**. Click → downloads a file with embedded project data.
 
@@ -1110,19 +1110,30 @@ Useful for:
 - **Archive snapshot** of project state at a given date
 - **Publishing** on the web (e.g. GitHub Pages)
 
-### 25.2 Default entity
+### 26.2 Default entity
 
 In the generation dialog you can select the entity on which the viewer opens.
+
+### 26.3 Language and theme in the viewer
+
+The generated viewer has the same **⚙ Customize** menu in the top right as the app, with the
+same languages (Čeština / English) and themes (Light / Dark / Paper / Matrix).
+
+The choice is stored in the browser of whoever opened the file (keys `dkm-viewer-lang` and
+`dkm-viewer-theme`) — it is **not written into the generated file**. Every recipient sets
+their own without changing what you sent out, and it sticks the next time they open the same
+file. The language you generate the viewer in is only the default for someone who has not
+chosen yet; with no stored choice the theme first follows the system setting.
 
 ---
 
 ## 27. Moving parts between projects (packages)
 
-### 26.1 Package format
+### 27.1 Package format
 
 `.dkmpkg` is a JSON containing **a selection of entities + their data model** (only types, aspects, lists and relation types the selected entities need). Enables moving a slice of one project to another without extra.
 
-### 26.2 Package export
+### 27.2 Package export
 
 In bulk mode select entities, action **📦 Export package**. Wizard:
 
@@ -1132,7 +1143,7 @@ In bulk mode select entities, action **📦 Export package**. Wizard:
 
 Downloads a `.dkmpkg`.
 
-### 26.3 Package import
+### 27.3 Package import
 
 **Settings → Project → Move between projects → Import package**. Upload `.dkmpkg`. Wizard:
 
@@ -1151,7 +1162,7 @@ Clicking Import performs a two-pass:
 
 ## 28. Settings
 
-### 27.1 Project
+### 28.1 Project
 
 - Name, description
 - GitHub path
@@ -1159,35 +1170,38 @@ Clicking Import performs a two-pass:
 - Package transfer (import)
 - Project storage (info about session storage + Start empty project)
 
-### 27.2 Types
+### 28.2 Types
 
-List of types, click to open editor with attributes, icon, name.
+List of types, click to open editor with attributes, icon, name and an optional
+**JSON key** field (see ch. 25.7). Every attribute has the same field.
 
-### 27.3 Aspects
+### 28.3 Aspects
 
-Analogous for aspects.
+Analogous for aspects, including the **JSON key** field.
 
-### 27.4 Relations
+### 28.4 Relations
 
-Relation type definitions: name, inverse name, scope, allowed source / target types.
+Relation type definitions: name, inverse name, scope, allowed source / target types
+and **JSON key**.
 
-### 27.5 Lists
+### 28.5 Lists
 
-Select lists with value enumerations. Used in attributes of type select.
+Value lists with their enumerations. Used by "select" attributes — an attribute
+references a list in its own editor.
 
-### 27.6 Saved views
+### 28.6 Saved views
 
 Manage all saved views: rename, change icon, toggle pin, overwrite with current filter, delete.
 
-### 27.7 Tabs
+### 28.7 Tabs
 
 Which types and aspects appear as tabs in the main toolbar.
 
-### 27.8 GitHub
+### 28.8 GitHub
 
 Personal access token for GitHub API. Stored in the browser's localStorage (per origin).
 
-### 27.9 General
+### 28.9 General
 
 - **Language** (Čeština / English)
 - **Theme** — Light / Dark / Paper / Matrix, same as in the ⚙ Customize menu
@@ -1195,11 +1209,11 @@ Personal access token for GitHub API. Stored in the browser's localStorage (per 
 - **Autosave** — automatic saving to sessionStorage (per tab)
 - **Debug** — enables a bottom panel with debug logs
 
-### 27.10 Statistics
+### 28.10 Statistics
 
 Counts overview: entities, types, attributes, aspects, relations, comments.
 
-### 27.11 Help
+### 28.11 Help
 
 Links to online documentation and repository.
 
@@ -1289,11 +1303,11 @@ DKM is designed to work with screen readers.
 - **Keyboard navigation** (see chapter 29)
 - **Screen reader announcements** minimized — only brief action confirmations (Saved, Added), not re-render of fields
 
-### 29.1 Command palette
+### 30.1 Command palette
 
 Screen reader-compatible: ARIA combobox, listbox, aria-activedescendant, aria-selected on active item.
 
-### 29.2 Kanban
+### 30.2 Kanban
 
 Cards aren't drag-and-drop (inaccessible to screen readers). Instead a **Move to dropdown** per card.
 
@@ -1301,7 +1315,7 @@ Cards aren't drag-and-drop (inaccessible to screen readers). Instead a **Move to
 
 ## 31. Tips and tricks
 
-### 30.1 Quick workflow
+### 31.1 Quick workflow
 
 1. Open the app daily with `?id={ghPath}` (bookmark) — project auto-loads from GitHub
 2. Ctrl+P → type few letters of entity name → Enter — you're in the detail
@@ -1309,7 +1323,7 @@ Cards aren't drag-and-drop (inaccessible to screen readers). Instead a **Move to
 4. Key `u` — save edit
 5. Ctrl+S → push to GitHub
 
-### 30.2 Using panels
+### 31.2 Using panels
 
 - Panel 1 = project list (context)
 - Panel 2 = detail of in-progress entity
@@ -1317,15 +1331,15 @@ Cards aren't drag-and-drop (inaccessible to screen readers). Instead a **Move to
 
 Ctrl+T for new, click on tab to switch.
 
-### 30.3 Wiki-links instead of formal relations
+### 31.3 Wiki-links instead of formal relations
 
 If you don't want to bother creating a formal relation, just write `[[Entity name]]` in a textarea. In the Linked from section, the link automatically appears.
 
-### 30.4 Kanban for approval workflow
+### 31.4 Kanban for approval workflow
 
 Create an aspect "Approval" with attribute "Status" (select: New / In progress / Approved / Rejected). Assign the aspect to entities. Switch list to Kanban by "Status". Move cards via dropdown = change status. Save as pinned view 🔥 Approvals and have it in the toolbar with one click.
 
-### 30.5 PlantUML model documentation
+### 31.5 PlantUML model documentation
 
 For external data model documentation:
 
@@ -1335,7 +1349,7 @@ For external data model documentation:
 4. Download .puml
 5. Paste into PlantUML editor → image
 
-### 30.6 Diff before save
+### 31.6 Diff before save
 
 Before pressing Ctrl+S:
 
@@ -1343,7 +1357,7 @@ Before pressing Ctrl+S:
 2. Review the diff
 3. Verify the changes are what you intended
 
-### 30.7 Duplicate merge
+### 31.7 Duplicate merge
 
 When you find two entities that are actually the same thing:
 
@@ -1353,7 +1367,7 @@ When you find two entities that are actually the same thing:
 4. Pick target, conflict strategy
 5. Merge — all relations and attributes redirect automatically
 
-### 30.8 Quick project switching
+### 31.8 Quick project switching
 
 - In main window open project A
 - **Ctrl+Shift+S** — copy to clipboard
@@ -1366,13 +1380,13 @@ You have both projects at once, each in a different tab.
 
 ## 32. Common problems
 
-### 31.1 "I don't see my entities"
+### 32.1 "I don't see my entities"
 
 - Check toolbar filters — you may have an active filter hiding everything. Click Clear filters.
 - Check the Archive tab — they may be archived
 - Check advanced filters (⚙ Advanced filters) — you may have an invalid rule
 
-### 31.2 "I closed the tab and the project is gone"
+### 32.2 "I closed the tab and the project is gone"
 
 The project lives only in sessionStorage. For persistent storage:
 
@@ -1380,23 +1394,23 @@ The project lives only in sessionStorage. For persistent storage:
 - Set a GitHub path and Ctrl+S — save to GitHub
 - Bookmark the URL `?id={base64ghPath}` for fast autoload
 
-### 31.3 "Browser did not allow clipboard access"
+### 32.3 "Browser did not allow clipboard access"
 
 - Try again, focus may have been the issue
 - Or use the dialog fallback (DKM shows it automatically)
 
-### 31.4 "PlantUML export doesn't look good"
+### 32.4 "PlantUML export doesn't look good"
 
 - Check scope — you may have too many entities
 - Try a different style (Component / Use case are simpler)
 - Turn off attributes when there are many
 
-### 31.5 "Diff is empty but I have unsaved changes"
+### 32.5 "Diff is empty but I have unsaved changes"
 
 - Baseline is set only on save or load. If you haven't saved yet, diff has nothing to compare.
 - Save → from that moment changes are tracked against that point.
 
-### 31.6 "Standalone window won't open"
+### 32.6 "Standalone window won't open"
 
 - Browser is blocking popups — allow popups for DKM
 - Check the browser notification panel (usually right of the address bar)
@@ -1405,19 +1419,20 @@ The project lives only in sessionStorage. For persistent storage:
 
 ## 33. Technical background
 
-### 32.1 Data structure
+### 33.1 Data structure
 
 The project is one JSON document (see `dkmdata.json`):
 
 ```
 {
   version, projectName, projectDescription, ghPath,
-  settings: { visibleTypeTabs, visibleAspectTabs, userName },
-  entityTypes: [{ id, name, icon, attributes: [{ id, name, type, required, showInList, ... }] }],
-  aspects: [{ id, name, attributes: [...] }],
-  relationTypes: [{ id, name, inverseName, scope, fromTypes, toTypes }],
-  selectLists: [{ id, name, options }],
+  settings: { visibleTypeTabs, visibleAspectTabs },
+  entityTypes: [{ id, name, icon, jsonKey?, attributes: [{ id, name, type, required, showInList, listId?, jsonKey?, ... }] }],
+  aspects: [{ id, name, jsonKey?, attributes: [...] }],
+  relationTypes: [{ id, name, inverseName, scope, fromTypes, toTypes, jsonKey? }],
+  selectLists: [{ id, name, values }],
   savedViews: [{ id, name, icon, pinned, filter, sort, tab, displayMode, ... }],
+  jsonExports: [{ id, name, cfg }],
   entities: [{
     id, name, typeId, inInbox, archived,
     attributes: { attrId: value },
@@ -1431,20 +1446,35 @@ The project is one JSON document (see `dkmdata.json`):
 }
 ```
 
-### 32.2 Browser storage
+### 33.2 Browser storage
 
 - **sessionStorage['dkm-session-data']** — current project, per tab. Refresh survives, tab close doesn't.
-- **localStorage** — preferences (language, autosave, debug, GitHub token). Never holds project data.
 - **BroadcastChannel 'dkm-sync'** — live sync between open windows.
+- **localStorage** — preferences only, never project data:
 
-### 32.3 GitHub API
+| Key | What it holds |
+|---|---|
+| `dkm-lang` | interface language |
+| `dkm-theme` | visual theme |
+| `dkm-username` | comment author name |
+| `dkm-autosave`, `dkm-debug` | switches in Settings → General |
+| `dkm-github-token` | GitHub PAT (per origin) |
+| `dkm-handoff-…` | short-lived data handoff to a standalone window |
+| `dkm-viewer-lang`, `dkm-viewer-theme` | choices in a generated static viewer |
+
+### 33.3 GitHub API
 
 DKM uses Contents API for reading + Git Data API (blobs) for writing large files. The token is stored in `localStorage['dkm-github-token']` (per origin).
 
-### 32.4 Rendering
+### 33.4 Rendering
 
 Vanilla JavaScript, no framework. Templates as direct DOM manipulation. Full re-render on every state change (fast even for thousands of entities).
 
-### 32.5 Testing
+### 33.5 Testing
 
-Regression tests via jsdom (see `smoke_*.js` in the repository). Cover: advanced filters, saved views, export, backlinks, navigation history, clipboard, sessionStorage, load/save, wiki-links, diff, merge, PlantUML, mode switchers, comments, objects, panels, standalone window.
+There is no automated test suite in the repository — DKM is a single HTML file with no build
+step. Changes are verified by walking the app through the checklist in `dkm/CLAUDE.md`: types,
+aspects and attributes of every kind → entities, relations, comments, objects → rule filter and
+saved view → kanban and timeline → bulk operations including merge → package export and its
+import through the wizard → MD, DOCX, XLSX, PlantUML and data JSON export → static viewer →
+GitHub → two tabs at once → standalone window → CS/EN switch and all themes.

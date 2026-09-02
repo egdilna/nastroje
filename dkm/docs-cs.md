@@ -778,7 +778,7 @@ Stiskneš **Ctrl+P** (Cmd+P na Macu) → modal s textovým polem.
 - **Uložené pohledy**
 - **Aspekty** (klik → záložka aspektu)
 - **Typy entit** (klik → záložka typu)
-- **Akce**: Nová entita, Nastavení, Uložit, Načíst, Pokročilé filtry, Clipboard IO, PlantUML export, Nový panel, Všechny komentáře, Inbox / Vše / Archiv
+- **Akce**: Nová entita, Nastavení, Uložit, Načíst, Pokročilé filtry, Clipboard IO, PlantUML export, **Export dat do JSON**, **Motiv (všechny čtyři)**, Nový panel, Všechny komentáře, Inbox / Vše / Archiv
 
 ### 19.3 Fuzzy match
 
@@ -1090,7 +1090,7 @@ aby opakovaný export do stejné databáze dopadl vždycky stejně.
 
 DKM umí vygenerovat **statický HTML prohlížeč** dat projektu — jeden soubor, který otevřeš a máš read-only přístup ke všem entitám.
 
-### 25.1 Generování
+### 26.1 Generování
 
 **Nastavení → Projekt → Statický prohlížeč**. Klik → stáhne se soubor s vloženými daty projektu.
 
@@ -1108,19 +1108,30 @@ Použitelné pro:
 - **Archivní snímek** stavu projektu k danému datu
 - **Publikace** na web (třeba GitHub Pages)
 
-### 25.2 Výchozí entita
+### 26.2 Výchozí entita
 
 V dialogu generování můžeš zvolit entitu, na které se statický prohlížeč otevře.
+
+### 26.3 Jazyk a motiv v prohlížeči
+
+Vygenerovaný prohlížeč má vpravo nahoře stejné menu **⚙ Přizpůsobit** jako aplikace,
+se stejnou nabídkou jazyků (Čeština / English) a motivů (Světlý / Tmavý / Papír / Matrix).
+
+Volba se ukládá do prohlížeče toho, kdo soubor otevřel (klíče `dkm-viewer-lang`
+a `dkm-viewer-theme`) — **nezapisuje se do vygenerovaného souboru**. Každý příjemce si tedy
+nastaví svoje, aniž by tím měnil to, co jsi rozeslal, a při dalším otevření téhož souboru
+mu to zůstane. Jazyk, ve kterém prohlížeč generuješ, je jen výchozí hodnota pro toho,
+kdo si ještě nevybral; bez uložené volby se motiv poprvé řídí nastavením systému.
 
 ---
 
 ## 27. Přenos částí mezi projekty (balíčky)
 
-### 26.1 Formát balíčku
+### 27.1 Formát balíčku
 
 `.dkmpkg` je JSON, který obsahuje **výběr entit + jejich datový model** (jen ty typy, aspekty, seznamy a relační typy, které vybrané entity potřebují). Umožňuje přenést kus jednoho projektu do druhého bez zbytečnosti.
 
-### 26.2 Export balíčku
+### 27.2 Export balíčku
 
 V bulk režimu vybereš entity, akce **📦 Export balíčku**. Wizard:
 
@@ -1130,7 +1141,7 @@ V bulk režimu vybereš entity, akce **📦 Export balíčku**. Wizard:
 
 Stáhne se `.dkmpkg`.
 
-### 26.3 Import balíčku
+### 27.3 Import balíčku
 
 **Nastavení → Projekt → Přenos mezi projekty → Importovat balíček**. Nahraješ `.dkmpkg`. Wizard:
 
@@ -1149,7 +1160,7 @@ Klik na Import provede two-pass:
 
 ## 28. Nastavení
 
-### 27.1 Projekt
+### 28.1 Projekt
 
 - Název, popis
 - GitHub cesta
@@ -1157,35 +1168,38 @@ Klik na Import provede two-pass:
 - Přenos mezi projekty (import balíčku)
 - Úložiště projektu (info o session storage + Začít prázdný projekt)
 
-### 27.2 Typy
+### 28.2 Typy
 
-Seznam typů, klikem se otevře editor s atributy, ikonou, názvem.
+Seznam typů, klikem se otevře editor s atributy, ikonou, názvem a nepovinným
+polem **Klíč v JSON** (viz kap. 25.7). Totéž pole má i každý atribut.
 
-### 27.3 Aspekty
+### 28.3 Aspekty
 
-Analogicky pro aspekty.
+Analogicky pro aspekty, včetně pole **Klíč v JSON**.
 
-### 27.4 Vazby
+### 28.4 Vazby
 
-Definice relačních typů: název, opačný název, scope, povolené typy zdroje / cíle.
+Definice relačních typů: název, opačný název, scope, povolené typy zdroje / cíle
+a **Klíč v JSON**.
 
-### 27.5 Seznamy
+### 28.5 Seznamy
 
-Select listy s výčtem hodnot. Používají se v atributech typu select.
+Číselníky s výčtem hodnot. Používají se v atributech typu „výběr ze seznamu" —
+atribut se na číselník odkáže v jeho editoru.
 
-### 27.6 Uložené pohledy
+### 28.6 Uložené pohledy
 
 Správa všech uložených pohledů: přejmenovat, změnit ikonu, přepnout pin, přepsat aktuálním filtrem, smazat.
 
-### 27.7 Záložky
+### 28.7 Záložky
 
 Které typy a které aspekty se zobrazují jako záložka v hlavním toolbaru.
 
-### 27.8 GitHub
+### 28.8 GitHub
 
 Personal access token pro GitHub API. Uložený v localStorage prohlížeče (per-origin).
 
-### 27.9 Obecné
+### 28.9 Obecné
 
 - **Jazyk** (Čeština / English)
 - **Motiv** — Světlý / Tmavý / Papír / Matrix, totéž co v menu ⚙ Přizpůsobit
@@ -1193,11 +1207,11 @@ Personal access token pro GitHub API. Uložený v localStorage prohlížeče (pe
 - **Autosave** — automatické ukládání do sessionStorage (per záložka)
 - **Debug** — zapne panel s debug logy dole
 
-### 27.10 Statistiky
+### 28.10 Statistiky
 
 Přehled počtů: entit, typů, atributů, aspektů, vazeb, komentářů.
 
-### 27.11 Nápověda
+### 28.11 Nápověda
 
 Odkazy na online dokumentaci a repozitář.
 
@@ -1287,11 +1301,11 @@ DKM je navrženo tak, aby fungovalo se screen readerem.
 - **Klávesová navigace** (viz kap. 29)
 - **Screen reader announcements** minimalizované — jen krátká potvrzení akcí (Uloženo, Přidáno), ne re-render polí
 
-### 29.1 Rychlá paleta
+### 30.1 Rychlá paleta
 
 Screen reader-kompatibilní: ARIA combobox, listbox, aria-activedescendant, aria-selected na aktivní položce.
 
-### 29.2 Kanban
+### 30.2 Kanban
 
 Karty nejsou drag-and-drop (nedostupné pro screen reader). Místo toho **dropdown Přesunout do** pro každou kartu.
 
@@ -1299,7 +1313,7 @@ Karty nejsou drag-and-drop (nedostupné pro screen reader). Místo toho **dropdo
 
 ## 31. Tipy a triky
 
-### 30.1 Rychlý workflow
+### 31.1 Rychlý workflow
 
 1. Denně otevři aplikaci s `?id={ghPath}` (bookmark) — projekt se automaticky natáhne z GitHubu
 2. Ctrl+P → napiš pár písmen názvu entity → Enter — okamžitě jsi v detailu
@@ -1307,7 +1321,7 @@ Karty nejsou drag-and-drop (nedostupné pro screen reader). Místo toho **dropdo
 4. Klávesa `u` — uložení editace
 5. Ctrl+S → push na GitHub
 
-### 30.2 Použití panelů
+### 31.2 Použití panelů
 
 - Panel 1 = seznam projektu (kontext)
 - Panel 2 = detail rozpracované entity
@@ -1315,15 +1329,15 @@ Karty nejsou drag-and-drop (nedostupné pro screen reader). Místo toho **dropdo
 
 Ctrl+T pro nový, klik na tab pro přepnutí.
 
-### 30.3 Wiki-linky místo formálních vazeb
+### 31.3 Wiki-linky místo formálních vazeb
 
 Pokud se nechceš zdržovat vytvářením formální vazby, prostě napiš `[[Název entity]]` v textareu. V sekci Odkazuje sem se odkaz automaticky objeví.
 
-### 30.4 Kanban pro schvalovací workflow
+### 31.4 Kanban pro schvalovací workflow
 
 Vytvoř aspekt „Schvalování" s atributem „Status" (select: Nový / V řešení / Schválené / Zamítnuté). Přiřaď aspekt entitám. Přepneš seznam na Kanban podle „Status". Přesouváš karty přes dropdown = měníš status. Ulož jako připnutý pohled 🔥 Schvalování a máš ho v toolbaru na klik.
 
-### 30.5 PlantUML dokumentace modelu
+### 31.5 PlantUML dokumentace modelu
 
 Pro externí dokumentaci datového modelu:
 
@@ -1333,7 +1347,7 @@ Pro externí dokumentaci datového modelu:
 4. Stáhnout .puml
 5. Vlož do PlantUML editoru → obrázek
 
-### 30.6 Diff před uložením
+### 31.6 Diff před uložením
 
 Než klikneš Ctrl+S:
 
@@ -1341,7 +1355,7 @@ Než klikneš Ctrl+S:
 2. Prohlédni diff
 3. Zjistíš, jestli je změna přesně to, co jsi zamýšlel
 
-### 30.7 Sloučení duplicit
+### 31.7 Sloučení duplicit
 
 Když najdeš dvě entity, které jsou vlastně stejná věc:
 
@@ -1351,7 +1365,7 @@ Když najdeš dvě entity, které jsou vlastně stejná věc:
 4. Vyber cíl, strategii pro konflikty
 5. Sloučit — všechny vazby a atributy se přesměrují automaticky
 
-### 30.8 Rychlé přepnutí mezi projekty
+### 31.8 Rychlé přepnutí mezi projekty
 
 - V hlavním okně otevři projekt A
 - **Ctrl+Shift+S** — zkopíruj do schránky
@@ -1364,13 +1378,13 @@ Máš oba projekty naráz, každý v jiné záložce.
 
 ## 32. Časté problémy
 
-### 31.1 „Nevidím své entity"
+### 32.1 „Nevidím své entity"
 
 - Zkontroluj filtry v toolbaru — možná máš aktivní filtr, který skrývá vše. Klik na Vyčistit filtry.
 - Podívej se do záložky Archiv — možná jsou archivované
 - Zkontroluj pokročilé filtry (⚙ Pokročilé filtry) — možná mají neplatné pravidlo
 
-### 31.2 „Zavřel jsem záložku a projekt zmizel"
+### 32.2 „Zavřel jsem záložku a projekt zmizel"
 
 Projekt žije jen v sessionStorage. Pro trvalé uložení:
 
@@ -1378,23 +1392,23 @@ Projekt žije jen v sessionStorage. Pro trvalé uložení:
 - Nastavit GitHub cestu a Ctrl+S — uložit na GitHub
 - Bookmarknout URL `?id={base64ghPath}` pro rychlý autoload
 
-### 31.3 „Prohlížeč nedovolil přístup do schránky"
+### 32.3 „Prohlížeč nedovolil přístup do schránky"
 
 - Zkus znovu, možná byl focus problém
 - Nebo použij dialogový fallback (DKM ho ukáže automaticky)
 
-### 31.4 „PlantUML export nevypadá dobře"
+### 32.4 „PlantUML export nevypadá dobře"
 
 - Zkontroluj rozsah — možná máš moc entit
 - Zkus jiný styl (Component / Use case je jednodušší)
 - Vypni atributy, když je jich moc
 
-### 31.5 „Diff je prázdný, ale mám neuložené změny"
+### 32.5 „Diff je prázdný, ale mám neuložené změny"
 
 - Baseline se nastaví jen po uložení nebo načtení. Pokud jsi ještě neuložil, diff nemá s čím porovnat.
 - Uložit → od té chvíle se změny sledují proti tomu bodu.
 
-### 31.6 „Samostatné okno se neotevře"
+### 32.6 „Samostatné okno se neotevře"
 
 - Prohlížeč blokuje pop-upy — povol vyskakovací okna pro DKM
 - Zkontroluj panel oznámení prohlížeče (obvykle vpravo od adresního řádku)
@@ -1403,19 +1417,20 @@ Projekt žije jen v sessionStorage. Pro trvalé uložení:
 
 ## 33. Technické pozadí
 
-### 32.1 Datová struktura
+### 33.1 Datová struktura
 
 Projekt je jeden JSON dokument (viz `dkmdata.json`):
 
 ```
 {
   version, projectName, projectDescription, ghPath,
-  settings: { visibleTypeTabs, visibleAspectTabs, userName },
-  entityTypes: [{ id, name, icon, attributes: [{ id, name, type, required, showInList, ... }] }],
-  aspects: [{ id, name, attributes: [...] }],
-  relationTypes: [{ id, name, inverseName, scope, fromTypes, toTypes }],
-  selectLists: [{ id, name, options }],
+  settings: { visibleTypeTabs, visibleAspectTabs },
+  entityTypes: [{ id, name, icon, jsonKey?, attributes: [{ id, name, type, required, showInList, listId?, jsonKey?, ... }] }],
+  aspects: [{ id, name, jsonKey?, attributes: [...] }],
+  relationTypes: [{ id, name, inverseName, scope, fromTypes, toTypes, jsonKey? }],
+  selectLists: [{ id, name, values }],
   savedViews: [{ id, name, icon, pinned, filter, sort, tab, displayMode, ... }],
+  jsonExports: [{ id, name, cfg }],
   entities: [{
     id, name, typeId, inInbox, archived,
     attributes: { attrId: value },
@@ -1429,20 +1444,35 @@ Projekt je jeden JSON dokument (viz `dkmdata.json`):
 }
 ```
 
-### 32.2 Úložiště v prohlížeči
+### 33.2 Úložiště v prohlížeči
 
 - **sessionStorage['dkm-session-data']** — aktuální projekt, per záložka. Refresh přežije, zavření záložky ne.
-- **localStorage** — preference (jazyk, autosave, debug, GitHub token). Nikdy neobsahuje data projektu.
 - **BroadcastChannel 'dkm-sync'** — live synchronizace mezi otevřenými okny.
+- **localStorage** — jen předvolby, nikdy data projektu:
 
-### 32.3 GitHub API
+| Klíč | Co drží |
+|---|---|
+| `dkm-lang` | jazyk rozhraní |
+| `dkm-theme` | grafický motiv |
+| `dkm-username` | jméno autora komentářů |
+| `dkm-autosave`, `dkm-debug` | přepínače v Nastavení → Obecné |
+| `dkm-github-token` | GitHub PAT (per origin) |
+| `dkm-handoff-…` | krátkodobé předání dat do samostatného okna |
+| `dkm-viewer-lang`, `dkm-viewer-theme` | volby ve vygenerovaném statickém prohlížeči |
+
+### 33.3 GitHub API
 
 DKM používá Contents API pro čtení + Git Data API (blobs) pro zápis velkých souborů. Token je uložený v `localStorage['dkm-github-token']` (per origin).
 
-### 32.4 Rendering
+### 33.4 Rendering
 
 Vanilla JavaScript, žádný framework. Šablony jako přímé DOM manipulace. Full re-render při každé změně stavu (rychlé i pro tisíce entit).
 
-### 32.5 Testování
+### 33.5 Testování
 
-Regresní testy přes jsdom (viz `smoke_*.js` v repozitáři). Pokrývají: pokročilé filtry, uložené pohledy, export, backlinks, historie navigace, clipboard, sessionStorage, load/save, wiki-linky, diff, merge, PlantUML, mode přepínače, komentáře, objekty, panely, samostatné okno.
+V repozitáři není automatizovaná testovací sada — DKM je jeden HTML soubor bez build kroku.
+Změny se ověřují průchodem aplikace podle kontrolního seznamu v `dkm/CLAUDE.md`: typy, aspekty
+a atributy všech druhů → entity, vazby, komentáře, objekty → pravidlový filtr a uložený pohled →
+kanban a časová osa → hromadné operace včetně sloučení → export balíčku a jeho import průvodcem →
+export MD, DOCX, XLSX, PlantUML a datového JSON → statický prohlížeč → GitHub → dvě záložky
+současně → samostatné okno → přepnutí CS/EN a všechny motivy.
