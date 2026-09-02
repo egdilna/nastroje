@@ -34,14 +34,15 @@ Uživatelská příručka
 22. [Diff od posledního uložení](#22-diff-od-posledního-uložení)
 23. [Export a tisk entity](#23-export-a-tisk-entity)
 24. [Export do XLSX, TSV, PlantUML](#24-export-do-xlsx-tsv-plantuml)
-25. [Statický prohlížeč](#25-statický-prohlížeč)
-26. [Přenos částí mezi projekty (balíčky)](#26-přenos-částí-mezi-projekty-balíčky)
-27. [Nastavení](#27-nastavení)
-28. [Klávesové zkratky](#28-klávesové-zkratky)
-29. [Přístupnost](#29-přístupnost)
-30. [Tipy a triky](#30-tipy-a-triky)
-31. [Časté problémy](#31-časté-problémy)
-32. [Technické pozadí](#32-technické-pozadí)
+25. [Export do datového JSON se schématem](#25-export-do-datového-json-se-schématem)
+26. [Statický prohlížeč](#26-statický-prohlížeč)
+27. [Přenos částí mezi projekty (balíčky)](#27-přenos-částí-mezi-projekty-balíčky)
+28. [Nastavení](#28-nastavení)
+29. [Klávesové zkratky](#29-klávesové-zkratky)
+30. [Přístupnost](#30-přístupnost)
+31. [Tipy a triky](#31-tipy-a-triky)
+32. [Časté problémy](#32-časté-problémy)
+33. [Technické pozadí](#33-technické-pozadí)
 
 ---
 
@@ -177,6 +178,7 @@ Vždy nahoře. Obsahuje:
 - **Řazení** — podle data úpravy / názvu / data vytvoření
 - **⚙ Pokročilé filtry (N)** — panel pro filtrování podle libovolného atributu (viz kapitola 11)
 - **📋 / 📊 / 📅** — přepínač zobrazení: seznam / Kanban / časová osa (viz kapitola 12)
+- **`{ }`** — export zobrazeného seznamu do datového JSON se schématem (viz kapitola 25)
 - **+ Nová entita**
 - **☑ Výběr** — zapne režim hromadných akcí
 
@@ -546,7 +548,8 @@ Toolbar hromadných akcí ukazuje počet vybraných + dropdown akcí:
 - **↔ Přidat vazbu** — hromadně přidá vazbu ke všem
 - **⇢ Sloučit entity** — sloučí vybrané do jedné cílové (viz 13.1)
 - **🎨 PlantUML diagram** — vygeneruje PlantUML z vybraných (viz kap. 24)
-- **📦 Export balíčku** — zabalí vybrané do `.dkmpkg` (viz kap. 26)
+- **📦 Export balíčku** — zabalí vybrané do `.dkmpkg` (viz kap. 27)
+- **`{ }` Export do datového JSON** — data + JSON Schema v ZIPu (viz kap. 25)
 
 ### 13.1 Sloučení entit
 
@@ -951,7 +954,117 @@ Ideální pro dokumentaci datového modelu, ER diagramy, architektury.
 
 ---
 
-## 25. Statický prohlížeč
+## 25. Export do datového JSON se schématem
+
+### 25.1 K čemu to je
+
+`.dkmdata` je serializace nástroje — všechno stojí na interních ID, aby to šlo zase načíst.
+**Datový JSON** je opak: projekce dat ven, s klíči odvozenými z názvů typů a atributů, určená
+k importu do dynamických JSON databází a k předání komukoliv, kdo o DKM nic neví.
+
+Entita typu *Subjekt* skončí v kolekci `subjekt`, atribut *Příjmení* jako klíč `prijmeni`.
+K datům se generuje **JSON Schema**, které popisuje **právě tento výstup** — ne celý datový
+model projektu. Vše se stahuje jako jeden ZIP.
+
+Export je **jednosměrný**. Na přenos mezi projekty DKM slouží balíčky (kap. 27).
+
+### 25.2 Kde se spouští
+
+- tlačítko **`{ }`** v panelu seznamu (exportuje aktuálně zobrazený seznam podle filtrů)
+- hromadná akce **`{ }` Export do datového JSON** nad vybranými entitami
+- rychlá paleta (Ctrl+P) → *Export dat do JSON*
+
+### 25.3 Průvodce
+
+**Krok 1 — Rozsah.** Vybrané entity / aktuálně zobrazený seznam / celý projekt (bez archivu),
+plus zaškrtání typů. Entity bez typu (Inbox) se dají přibrat do kolekce `_bez_typu`.
+Nahoře se dá načíst uložený **profil exportu**.
+
+**Krok 2 — Klíče.** Styl klíčů (`snake_case` výchozí, nebo `camelCase`) a jazyk systémových
+polí (česky `nazev`/`typ`/`vazby`, nebo anglicky `name`/`type`/`relations`). Pod tím tabulka
+všech odvozených klíčů k ručnímu přepsání. Zaškrtávátko **Uložit klíče do modelu** je zapíše
+natrvalo (viz 25.7).
+
+**Krok 3 — Obsah.** Režim vazeb, vlastní atributy, komentáře, objekty, nevyplněné atributy,
+prázdné hodnoty jako `null`, soubor na kolekci.
+
+**Krok 4 — Náhled a kontrola.** Souhrn, výsledek validace, upozornění a náhled `data.json`
+i `schema.json`. Odsud se stahuje ZIP nebo ukládá profil.
+
+### 25.4 Tvar výstupu
+
+```json
+{
+  "$schema": "schema.json",
+  "_meta": { "projekt": "Registr", "exportovano": "…", "verze_formatu": 1, "pocty": {...} },
+  "subjekt": [
+    {
+      "id": "e_k3n1",
+      "typ": "subjekt",
+      "nazev": "Jan Novák",
+      "prijmeni": "Novák",
+      "datum_narozeni": "1980-04-12",
+      "aspekty": ["gdpr"],
+      "souhlas_platny_do": "2027-01-01",
+      "vazby": { "pouziva": [ {"ref": "e_a91", "typ": "dokument", "nazev": "Smlouva"} ] }
+    }
+  ]
+}
+```
+
+Atributy **aspektů** se vlévají do objektu naplocho vedle atributů typu; entita navíc nese
+seznam `aspekty`. Když se klíč aspektového atributu potká s klíčem atributu typu, dostane
+prefix slugem aspektu (`gdpr_prijmeni`).
+
+### 25.5 Vazby
+
+| Režim | Výstup |
+|---|---|
+| **Odkaz** (výchozí) | `{"ref": "…", "typ": "…", "nazev": "…"}` — čitelné bez joinu |
+| Jen ID | `["e_a91"]` |
+| Vnořený objekt | celý objekt cíle, hloubka 1, bez jeho vlastních vazeb |
+
+Atributy typu „vazba" mají stejný tvar jako sekce `vazby`. Vazby na neexistující entitu se
+vynechají a nahlásí. Zpětné odkazy se neexportují — jsou odvozené.
+
+### 25.6 Schéma — jen to, co se použilo
+
+Řídící pravidlo: **schéma musí validovat data, se kterými je zabalené.** Proto:
+
+- do schématu jde jen typ, který má v exportu aspoň jednu entitu
+- vlastnost jen tehdy, když je aspoň u jedné entity vyplněná (dá se přepnout)
+- `required` jen u atributu vyplněného **u všech** exportovaných entit toho typu; jinak je
+  nepovinný a průvodce to napíše mezi upozornění
+- `enum` u výběrových atributů = hodnoty číselníku; hodnota v datech mimo číselník enum
+  rozšíří a nahlásí se
+- `format: date` / `format: uri` se doplní jen tehdy, když **všechny** hodnoty odpovídají
+
+Před zabalením se spustí vestavěný validátor a jeho výsledek jde i do `README.md`.
+
+### 25.7 Stabilita klíčů
+
+Klíč se odvozuje z názvu, takže přejmenování atributu by změnilo klíč a rozbilo navazující
+import. Proto má každý typ, aspekt, atribut i typ vazby nepovinné pole **Klíč v JSON**
+(v nastavení u dané položky). Prázdné = odvodí se z názvu. Vyplněné = platí napevno.
+Zaškrtávátko v kroku 2 průvodce vyplní tato pole podle aktuálně odvozených klíčů.
+
+### 25.8 Obsah ZIPu
+
+| Soubor | Co je uvnitř |
+|---|---|
+| `data.json` | data, kolekce podle typu (nebo `data/<typ>.json` při volbě soubor na kolekci) |
+| `schema.json` | JSON Schema draft 2020-12 pro tento výstup |
+| `mapovani.json` | převod interních ID na klíče — pro ladění a navazující nástroje |
+| `README.md` | lidský popis: co je uvnitř, tabulka mapování, upozornění, výsledek validace |
+
+### 25.9 Profily exportu
+
+Nastavení průvodce se dá uložit jako pojmenovaný **profil** (drží se v datech projektu),
+aby opakovaný export do stejné databáze dopadl vždycky stejně.
+
+---
+
+## 26. Statický prohlížeč
 
 DKM umí vygenerovat **statický HTML prohlížeč** dat projektu — jeden soubor, který otevřeš a máš read-only přístup ke všem entitám.
 
@@ -979,7 +1092,7 @@ V dialogu generování můžeš zvolit entitu, na které se statický prohlíže
 
 ---
 
-## 26. Přenos částí mezi projekty (balíčky)
+## 27. Přenos částí mezi projekty (balíčky)
 
 ### 26.1 Formát balíčku
 
@@ -1012,7 +1125,7 @@ Klik na Import provede two-pass:
 
 ---
 
-## 27. Nastavení
+## 28. Nastavení
 
 ### 27.1 Projekt
 
@@ -1067,7 +1180,7 @@ Odkazy na online dokumentaci a repozitář.
 
 ---
 
-## 28. Klávesové zkratky
+## 29. Klávesové zkratky
 
 ### Globální
 
@@ -1140,7 +1253,7 @@ ve Firefoxu **Alt+Shift+**, na macOS **Ctrl+Alt+**.
 
 ---
 
-## 29. Přístupnost
+## 30. Přístupnost
 
 DKM je navrženo tak, aby fungovalo se screen readerem.
 
@@ -1148,7 +1261,7 @@ DKM je navrženo tak, aby fungovalo se screen readerem.
 - **Žádné treeview** (`role=tree/treeitem`) — hierarchie jsou nested `<ul>/<li>`
 - **Žádné position: sticky / fixed** na velkých oblastech
 - **ARIA labels** na nezřejmých interaktivních prvcích
-- **Klávesová navigace** (viz kap. 28)
+- **Klávesová navigace** (viz kap. 29)
 - **Screen reader announcements** minimalizované — jen krátká potvrzení akcí (Uloženo, Přidáno), ne re-render polí
 
 ### 29.1 Rychlá paleta
@@ -1161,7 +1274,7 @@ Karty nejsou drag-and-drop (nedostupné pro screen reader). Místo toho **dropdo
 
 ---
 
-## 30. Tipy a triky
+## 31. Tipy a triky
 
 ### 30.1 Rychlý workflow
 
@@ -1226,7 +1339,7 @@ Máš oba projekty naráz, každý v jiné záložce.
 
 ---
 
-## 31. Časté problémy
+## 32. Časté problémy
 
 ### 31.1 „Nevidím své entity"
 
@@ -1265,7 +1378,7 @@ Projekt žije jen v sessionStorage. Pro trvalé uložení:
 
 ---
 
-## 32. Technické pozadí
+## 33. Technické pozadí
 
 ### 32.1 Datová struktura
 

@@ -34,14 +34,15 @@ User guide
 22. [Diff since last save](#22-diff-since-last-save)
 23. [Export and print entity](#23-export-and-print-entity)
 24. [Export to XLSX, TSV, PlantUML](#24-export-to-xlsx-tsv-plantuml)
-25. [Static viewer](#25-static-viewer)
-26. [Moving parts between projects (packages)](#26-moving-parts-between-projects-packages)
-27. [Settings](#27-settings)
-28. [Keyboard shortcuts](#28-keyboard-shortcuts)
-29. [Accessibility](#29-accessibility)
-30. [Tips and tricks](#30-tips-and-tricks)
-31. [Common problems](#31-common-problems)
-32. [Technical background](#32-technical-background)
+25. [Data JSON export with a schema](#25-data-json-export-with-a-schema)
+26. [Static viewer](#26-static-viewer)
+27. [Moving parts between projects (packages)](#27-moving-parts-between-projects-packages)
+28. [Settings](#28-settings)
+29. [Keyboard shortcuts](#29-keyboard-shortcuts)
+30. [Accessibility](#30-accessibility)
+31. [Tips and tricks](#31-tips-and-tricks)
+32. [Common problems](#32-common-problems)
+33. [Technical background](#33-technical-background)
 
 ---
 
@@ -177,6 +178,7 @@ Always on top. Contains:
 - **Sort** — by update date / name / creation date
 - **⚙ Advanced filters (N)** — panel to filter by any attribute (see chapter 11)
 - **📋 / 📊 / 📅** — display mode switcher: list / Kanban / timeline (see chapter 12)
+- **`{ }`** — export the displayed list to data JSON with a schema (see chapter 25)
 - **+ New entity**
 - **☑ Select** — enable bulk actions
 
@@ -546,7 +548,8 @@ Bulk toolbar shows count selected + action dropdown:
 - **↔ Add relation** — bulk-adds relation to all
 - **⇢ Merge entities** — merges selected into one target (see 13.1)
 - **🎨 PlantUML diagram** — generates PlantUML from selected (see chapter 24)
-- **📦 Export package** — bundles selected into a `.dkmpkg` (see chapter 26)
+- **📦 Export package** — bundles selected into a `.dkmpkg` (see chapter 27)
+- **`{ }` Export to data JSON** — data + JSON Schema in a ZIP (see chapter 25)
 
 ### 13.1 Merging entities
 
@@ -951,7 +954,119 @@ Ideal for data model documentation, ER diagrams, architecture.
 
 ---
 
-## 25. Static viewer
+## 25. Data JSON export with a schema
+
+### 25.1 What it's for
+
+`.dkmdata` is the tool's own serialization — everything rests on internal IDs so it can be
+loaded back. **Data JSON** is the opposite: a projection of the data outwards, with keys
+derived from type and attribute names, meant for importing into dynamic JSON databases and
+for handing to anyone who knows nothing about DKM.
+
+An entity of type *Subjekt* ends up in the `subjekt` collection, the attribute *Příjmení* as
+the key `prijmeni`. A **JSON Schema** is generated alongside, describing **exactly this
+output** — not the whole project model. Everything downloads as a single ZIP.
+
+The export is **one-way**. For moving data between DKM projects use packages (ch. 27).
+
+### 25.2 Where to start it
+
+- the **`{ }`** button in the list toolbar (exports the currently displayed list by filters)
+- the bulk action **`{ }` Export to data JSON** over selected entities
+- command palette (Ctrl+P) → *Export data to JSON*
+
+### 25.3 The wizard
+
+**Step 1 — Scope.** Selected entities / currently displayed list / whole project (without
+archive), plus type checkboxes. Untyped entities (Inbox) can be added into the `_bez_typu`
+collection. A saved **export profile** can be loaded at the top.
+
+**Step 2 — Keys.** Key style (`snake_case` by default, or `camelCase`) and the language of
+system fields (Czech `nazev`/`typ`/`vazby`, or English `name`/`type`/`relations`). Below that
+a table of all derived keys for manual overriding. The **Save keys into the model** checkbox
+writes them permanently (see 25.7).
+
+**Step 3 — Content.** Relation mode, custom attributes, comments, objects, unfilled
+attributes, empty values as `null`, one file per collection.
+
+**Step 4 — Preview and check.** Summary, validation result, warnings and a preview of both
+`data.json` and `schema.json`. The ZIP is downloaded — or a profile saved — from here.
+
+### 25.4 Output shape
+
+```json
+{
+  "$schema": "schema.json",
+  "_meta": { "projekt": "Registr", "exportovano": "…", "verze_formatu": 1, "pocty": {...} },
+  "subjekt": [
+    {
+      "id": "e_k3n1",
+      "typ": "subjekt",
+      "nazev": "Jan Novák",
+      "prijmeni": "Novák",
+      "datum_narozeni": "1980-04-12",
+      "aspekty": ["gdpr"],
+      "souhlas_platny_do": "2027-01-01",
+      "vazby": { "pouziva": [ {"ref": "e_a91", "typ": "dokument", "nazev": "Smlouva"} ] }
+    }
+  ]
+}
+```
+
+**Aspect** attributes are flattened into the object next to the type's own attributes; the
+entity also carries an `aspekty` list. When an aspect attribute's key meets a type
+attribute's key, it gets the aspect slug as a prefix (`gdpr_prijmeni`).
+
+### 25.5 Relations
+
+| Mode | Output |
+|---|---|
+| **Reference** (default) | `{"ref": "…", "typ": "…", "nazev": "…"}` — readable without a join |
+| ID only | `["e_a91"]` |
+| Embedded object | the whole target object, depth 1, without its own relations |
+
+Attributes of type "relation" have the same shape as the `vazby` section. Relations to a
+non-existent entity are skipped and reported. Backlinks are not exported — they are derived.
+
+### 25.6 The schema — only what was used
+
+The governing rule: **the schema must validate the data it ships with.** Therefore:
+
+- only a type with at least one entity in the export enters the schema
+- a property only when at least one entity has it filled (switchable)
+- `required` only for an attribute filled on **every** exported entity of that type;
+  otherwise it is optional and the wizard says so among the warnings
+- `enum` for select attributes = the list's values; a value in the data outside the list
+  extends the enum and is reported
+- `format: date` / `format: uri` is added only when **all** values match
+
+Before packaging, a built-in validator runs and its result also goes into `README.md`.
+
+### 25.7 Key stability
+
+The key is derived from the name, so renaming an attribute would change the key and break a
+downstream import. That is why every type, aspect, attribute and relation type has an
+optional **JSON key** field (in settings, on the item itself). Empty = derived from the name.
+Filled in = fixed. The checkbox in step 2 of the wizard fills these fields with the currently
+derived keys.
+
+### 25.8 ZIP contents
+
+| File | What's inside |
+|---|---|
+| `data.json` | data, collections by type (or `data/<type>.json` with one file per collection) |
+| `schema.json` | JSON Schema draft 2020-12 for this output |
+| `mapovani.json` | internal ID to key mapping — for debugging and downstream tools |
+| `README.md` | human description: what's inside, mapping table, warnings, validation result |
+
+### 25.9 Export profiles
+
+The wizard's settings can be saved as a named **profile** (kept in the project data), so a
+repeated export into the same database always comes out the same.
+
+---
+
+## 26. Static viewer
 
 DKM can generate a **static HTML viewer** of project data — a single file you open for read-only access to all entities.
 
@@ -979,7 +1094,7 @@ In the generation dialog you can select the entity on which the viewer opens.
 
 ---
 
-## 26. Moving parts between projects (packages)
+## 27. Moving parts between projects (packages)
 
 ### 26.1 Package format
 
@@ -1012,7 +1127,7 @@ Clicking Import performs a two-pass:
 
 ---
 
-## 27. Settings
+## 28. Settings
 
 ### 27.1 Project
 
@@ -1067,7 +1182,7 @@ Links to online documentation and repository.
 
 ---
 
-## 28. Keyboard shortcuts
+## 29. Keyboard shortcuts
 
 ### Global
 
@@ -1140,7 +1255,7 @@ They work inside text fields too. The exact combination is up to the browser —
 
 ---
 
-## 29. Accessibility
+## 30. Accessibility
 
 DKM is designed to work with screen readers.
 
@@ -1148,7 +1263,7 @@ DKM is designed to work with screen readers.
 - **No treeview** (`role=tree/treeitem`) — hierarchies are nested `<ul>/<li>`
 - **No position: sticky / fixed** on large areas
 - **ARIA labels** on non-obvious interactive elements
-- **Keyboard navigation** (see chapter 28)
+- **Keyboard navigation** (see chapter 29)
 - **Screen reader announcements** minimized — only brief action confirmations (Saved, Added), not re-render of fields
 
 ### 29.1 Command palette
@@ -1161,7 +1276,7 @@ Cards aren't drag-and-drop (inaccessible to screen readers). Instead a **Move to
 
 ---
 
-## 30. Tips and tricks
+## 31. Tips and tricks
 
 ### 30.1 Quick workflow
 
@@ -1226,7 +1341,7 @@ You have both projects at once, each in a different tab.
 
 ---
 
-## 31. Common problems
+## 32. Common problems
 
 ### 31.1 "I don't see my entities"
 
@@ -1265,7 +1380,7 @@ The project lives only in sessionStorage. For persistent storage:
 
 ---
 
-## 32. Technical background
+## 33. Technical background
 
 ### 32.1 Data structure
 
