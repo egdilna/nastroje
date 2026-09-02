@@ -101,6 +101,10 @@ Special placeholders:
 
 Below every markdown textarea is a **📎 Insert…** button that opens a dialog with all available placeholders from the entity, so you don't have to type them manually.
 
+A placeholder's value is treated as **data, not markup**: when a date like `15. 3. 2026`, or a value starting with `- `, `# `, `>` or `|`, sits at the start of a line, it does not start a list, heading or quote. Inline formatting (for example `**bold**`) still works, and multi-line values of computed fields are still rendered as full Markdown.
+
+A placeholder PIM does not recognise is left in the text exactly as written — so a typo in a field name is immediately visible. The same goes for `((deník))` and `((document))` on an entity without the matching aspect.
+
 ### Inline select `(!a/b/|c!)`
 
 The template `(!yes/|no/maybe!)` renders in read mode as a `<select>` with a yellow chip. Click changes the value → debounced save (rewrites `|` to the new position). Next to the select is a **🔒 Fix selection** button that inserts the selected text as plain text (replacing the whole `(!...!)`).
@@ -117,7 +121,9 @@ The entity body uses markdown with extensions:
 
 - **CommonMark + GFM** — headings H1–H6, bold, italic, ~~strikethrough~~, ==highlight==, code, blockquotes, lists, tables, images
 - **Wiki links**: `[[Entity title]]` or `[[id:abc-123|label]]`
+- **Link by entity number**: `#42` — the number is in the Meta section of the entity detail
 - **Include (transclusion)**: `{{include:Entity title}}` — embeds the content of another entity (with recursive placeholder evaluation)
+  - By internal ID: `{{include:id:<entity id>}}` — does not break when the target entity is renamed
 - **Markdown tasks**: `- [ ] task`, `- [x] done` (with **→ Entity** button in annotation mode to convert to a standalone Task with `partOf` link)
 - **CriticMarkup**: `{++add++}`, `{--delete--}`, `{==highlight==}`, `{>>note<<}`, `{~~old~>new~~}` (substitution) — revision editor with step-by-step accept/reject
 - **Private blocks**: `~~~private … ~~~` — visible only in-app, not in export/include
@@ -125,6 +131,7 @@ The entity body uses markdown with extensions:
 - **Placeholders**: `((Attribute))` — see above
 - **Automatic counters**: `((#))` = level 1, `((##))` = level 2, etc.; `((#.##))` prints a multi-level number (e.g. `1.2`) — the deepest level increments, higher ones are read-only, deeper ones reset when a higher one increments. `((#name))` = a named running counter for the whole entity (each name runs independently)
 - **Insert structured document**: `((document))` inserts the content of this entity's "Structured document" aspect at that point in the body (as Markdown)
+- **Insert journal**: `((deník))` (or `((denik))` — this one has no English spelling) inserts this entity's journal at that point in the body, oldest entry first (only on entities with the "Journal" aspect)
 - **Inline select**: `(!a/b/|c!)` — see above
 - **Inline annotation**: `(>text)` — stays in the source, renders as an annotation bubble; never reaches export/print/copy (see Annotations section)
 
