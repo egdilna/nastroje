@@ -13,6 +13,9 @@ Osobně moje favority jsou: [ArchiMate editor](#archimate), [PIM information man
 
 ## Novinky k našim nástrojům
 
+2.9.2026: Skvělé zprávy pro všechny datysty. Nástroj [DKM manažer](#dkm) pro modelování datových modelů i správu ostrých dat nyní umí validní export dat do json včetně schémat a JSX popisů. Je to kompatibilní s požadavky správy dat pro import. Výsledkem je, že můžete data z DKM exportovat buď jako popis dat, nebo jako datové balíčky v ZIP se schématem a popisem v readme. Na tohle jsme se těšili a je to tady.
+
+
 28.7.2026: Abyste neřekli, že vám taky nic nedopřeju, pamatujete si na Feather wiki? Malý jednosouborový wiki systém? Tak jsem konečně dodělal český překlad a českou skriptovou mutaci. Najdete to tady na https://nastroje.egdilna.cz/featherwiki ale je to nástroj EGdílny jen tak napůl.
 
 
@@ -290,6 +293,7 @@ K dispozici je kompletní [[uživatelská příručka v češtině]](https://nas
 
 | Datum | Typ | Popis |
 | --- | --- | --- |
+| 2. 9. 2026 | Funkce | Úplný export do schématického JSON. Po průvodci exportem se vytvoří datový json a json schéma soubor a vše se podá jako kompletně zdokumentovaný ZIP valíček i s detailním popisem v readme.md. Export je kompatibilní se standardy JSX a JSONscheme a validní i pro otevřená a dynamická data a splňuje i požadavky na popis dat pro import. |
 | 3. 7. 2026 | Funkce | Konečně máme pokročilé a dynamické filtry. Nově jsou v pohledech možnosti přidávat a měnit pokročilé filtry, které jsou chytré jak podle typu atributu, tak i podle jejich kombinací (to si musíte vyzkoušet). A navíc se dá vymazlený filtr uložit jako nový pohled, což přináší ohromné možnosti filtrace a hledání přes celý projekt. |
 | 3. 7. 2026 | Funkce | Další dnešní novinka a to je export a tisk entity jako dokumentu. Můźete si vybrat, co chcete, aby tam bylo a nebylo a export je buď do Markdown, do HTML a nebo do DOCX. |
 | 2. 7. 2026 | Funkce | Nová možnost pracovat s daty projektu přes schránku. Nová tlačítka pro načtení ze schránky (CTRL+SHIFT+O) a uložit do schránky (CTRL+SHIFT+S). |
