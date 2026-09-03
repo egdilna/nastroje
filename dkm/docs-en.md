@@ -858,6 +858,8 @@ Then **Save** (Ctrl+S) saves directly to GitHub.
 
 **Load from GitHub** — button in Settings → Project.
 
+Saving comes with **sound feedback** — a short rising tone on success, a darker falling one on failure (missing path, missing token, a GitHub rejection or a network error). It can be switched off in Settings → General.
+
 ### 21.5 URL parameter for GitHub autoload
 
 `?id={base64ghPath}` in the URL → DKM auto-loads the project from GitHub via the API on
@@ -1234,6 +1236,7 @@ Personal access token for GitHub API. Stored in the browser's localStorage (per 
 - **Language** (Čeština / English)
 - **Theme** — Light / Dark / Paper / Matrix, same as in the ⚙ Customize menu
 - **Your name for comments** — used as author of new comments. Stored **in this browser only** (key `dkm-username`, like the GitHub token), not in the project data — so several people can work on the same project and each signs their own comments. An older project that carried the name in its data adopts it into the browser once on load (if none is set there yet) and drops it from the data.
+- **Sound feedback for GitHub saves** — a short rising tone after a successful save, a darker falling one after a failure. The tones are generated in the browser via the Web Audio API, nothing is downloaded, so it works offline too. Next to the checkbox are buttons to hear both. Stored in this browser only (key `dkm-sound`).
 - **Autosave** — automatic saving to sessionStorage (per tab)
 - **Debug** — enables a bottom panel with debug logs
 
@@ -1485,7 +1488,7 @@ The project is one JSON document (see `dkmdata.json`):
 | `dkm-lang` | interface language |
 | `dkm-theme` | visual theme |
 | `dkm-username` | comment author name |
-| `dkm-autosave`, `dkm-debug` | switches in Settings → General |
+| `dkm-autosave`, `dkm-debug`, `dkm-sound` | switches in Settings → General |
 | `dkm-github-token` | GitHub PAT (per origin) |
 | `dkm-handoff-…` | short-lived data handoff to a standalone window |
 | `dkm-viewer-lang`, `dkm-viewer-theme` | choices in a generated static viewer |

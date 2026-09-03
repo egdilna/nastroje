@@ -858,6 +858,8 @@ Pak **Uložit** (Ctrl+S) uloží přímo do GitHubu (`Uložit lokálně` zůstá
 
 **Načíst z GitHubu** — tlačítko v Nastavení → Projekt.
 
+Uložení doprovází **zvuková odezva** — po úspěchu krátký stoupavý tón, po neúspěchu temnější klesavý (chybějící cesta, chybějící token, zamítnutí GitHubu i síťová chyba). Dá se vypnout v Nastavení → Obecné.
+
 ### 21.5 URL parametr pro autoload z GitHubu
 
 `?id={base64ghPath}` v URL → DKM při startu automaticky načte projekt z GitHubu přes API.
@@ -1231,6 +1233,7 @@ Personal access token pro GitHub API. Uložený v localStorage prohlížeče (pe
 - **Jazyk** (Čeština / English)
 - **Motiv** — Světlý / Tmavý / Papír / Matrix, totéž co v menu ⚙ Přizpůsobit
 - **Tvoje jméno pro komentáře** — bere se jako autor u nových komentářů. Ukládá se **jen do tohoto prohlížeče** (klíč `dkm-username`, stejně jako GitHub token), ne do dat projektu — nad jedním projektem tak může pracovat víc lidí a každý se podepíše sám za sebe. Starší projekt, který jméno nesl v datech, ho při načtení jednorázově převezme do prohlížeče (pokud tam ještě žádné není) a z dat ho vypustí.
+- **Zvuková odezva u ukládání na GitHub** — krátký stoupavý tón po úspěšném uložení, temnější klesavý po neúspěchu. Tóny se generují přímo v prohlížeči přes Web Audio API, nic se nestahuje, takže to funguje i offline. Vedle zaškrtávátka jsou tlačítka, kterými si oba zvuky poslechneš. Ukládá se jen do tohoto prohlížeče (klíč `dkm-sound`).
 - **Autosave** — automatické ukládání do sessionStorage (per záložka)
 - **Debug** — zapne panel s debug logy dole
 
@@ -1482,7 +1485,7 @@ Projekt je jeden JSON dokument (viz `dkmdata.json`):
 | `dkm-lang` | jazyk rozhraní |
 | `dkm-theme` | grafický motiv |
 | `dkm-username` | jméno autora komentářů |
-| `dkm-autosave`, `dkm-debug` | přepínače v Nastavení → Obecné |
+| `dkm-autosave`, `dkm-debug`, `dkm-sound` | přepínače v Nastavení → Obecné |
 | `dkm-github-token` | GitHub PAT (per origin) |
 | `dkm-handoff-…` | krátkodobé předání dat do samostatného okna |
 | `dkm-viewer-lang`, `dkm-viewer-theme` | volby ve vygenerovaném statickém prohlížeči |
