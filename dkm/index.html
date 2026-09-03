@@ -459,6 +459,9 @@ helpKeyboard:'Klávesy: S = uložit (na GitHub pokud nakonfigurován, jinak soub
 helpTsv:'Export TSV uloží aktuálně zobrazený seznam jako tabulku oddělenou tabulátorem.',
 projectCreated:'Nový projekt vytvořen.',
 customize:'Přizpůsobit',customizeHint:'Jazyk a grafický motiv',
+generalSound:'Zvuková odezva u ukládání na GitHub',
+generalSoundHint:'Krátký tón po úspěšném uložení a varovný po neúspěchu. Tóny se generují v prohlížeči, nic se nestahuje. Ukládá se jen do tohoto prohlížeče.',
+soundTestOk:'Zkusit úspěch',soundTestFail:'Zkusit selhání',
 urlSection:'Načíst projekt z adresy (URL)',
 urlSectionHint:'Otevře projekt z libovolné adresy — statický hosting, intranet, GitHub Pages, raw.githubusercontent.com. Cílový server musí povolit čtení z jiné domény (CORS). Odkaz níž otevře projekt rovnou.',
 urlLoadBtn:'Načíst z URL',
@@ -1102,6 +1105,9 @@ projectStartEmpty:'Start empty project',
 confirmDiscardDirty:'Unsaved changes will be lost. Continue?',
 projectCreated:'New project created.',
 customize:'Customize',customizeHint:'Language and visual theme',
+generalSound:'Sound feedback for GitHub saves',
+generalSoundHint:'A short tone after a successful save and a warning one after a failure. The tones are generated in the browser, nothing is downloaded. Stored in this browser only.',
+soundTestOk:'Test success',soundTestFail:'Test failure',
 urlSection:'Load project from a URL',
 urlSectionHint:'Opens a project from any address — static hosting, intranet, GitHub Pages, raw.githubusercontent.com. The target server must allow cross-origin reads (CORS). The link below opens the project directly.',
 urlLoadBtn:'Load from URL',
@@ -1144,7 +1150,7 @@ ghShowToken:'Show',ghHideToken:'Hide'
 }};
 
 /* STATE */
-const SK_DATA='dkm-data-v1',SK_LANG='dkm-lang',SK_AS='dkm-autosave',SK_DBG='dkm-debug',SK_GHTOKEN='dkm-github-token',SK_USERNAME='dkm-username',SK_THEME='dkm-theme';
+const SK_DATA='dkm-data-v1',SK_LANG='dkm-lang',SK_AS='dkm-autosave',SK_DBG='dkm-debug',SK_GHTOKEN='dkm-github-token',SK_USERNAME='dkm-username',SK_THEME='dkm-theme',SK_SOUND='dkm-sound';
 const THEMES=['light','dark','paper','matrix'];
 const THEME_LBL={light:'themeLight',dark:'themeDark',paper:'themePaper',matrix:'themeMatrix'};
 const ATYPES=['text','textarea','date','url','select','yesno','relation','number'];
@@ -1528,6 +1534,54 @@ state.theme=v;
 document.documentElement.setAttribute('data-theme',v);
 try{localStorage.setItem(SK_THEME,v)}catch(e){dbg('Theme save failed: '+e.message,true)}
 }
+/* =============================================================
+   ZVUKOVÁ ODEZVA
+   Tóny se syntetizují přes Web Audio API — nic se nestahuje,
+   nástroj zůstane použitelný offline i bez zvukových souborů.
+   ============================================================= */
+let audioCtx=null;
+function soundEnabled(){return localStorage.getItem(SK_SOUND)!=='false'}
+function setSoundEnabled(v){try{localStorage.setItem(SK_SOUND,v?'true':'false')}catch(e){dbg('Sound pref save failed: '+e.message,true)}}
+function ensureAudio(){
+if(audioCtx)return audioCtx;
+const AC=window.AudioContext||window.webkitAudioContext;
+if(!AC)return null;
+try{audioCtx=new AC()}catch(e){dbg('Audio init failed: '+e.message,true);return null}
+return audioCtx;
+}
+/* Prohlížeč zvuk povolí až po interakci uživatele. Uložení na GitHub je asynchronní,
+   takže v okamžiku přehrání už gesto „nedrží“ — kontext proto probouzíme při prvním
+   kliknutí nebo stisku klávesy, dávno předtím. */
+function primeAudio(){
+const ctx=ensureAudio();
+if(ctx&&ctx.state==='suspended')ctx.resume().catch(()=>{});
+}
+/* Tón = [frekvence v Hz, začátek v s, délka v s, hlasitost, průběh]. */
+function playTones(tones){
+if(!soundEnabled())return;
+const ctx=ensureAudio();
+if(!ctx)return;
+if(ctx.state==='suspended')ctx.resume().catch(()=>{});
+try{
+const t0=ctx.currentTime;
+tones.forEach(([freq,start,dur,gain,type])=>{
+const osc=ctx.createOscillator(),g=ctx.createGain();
+osc.type=type||'sine';osc.frequency.value=freq;
+const s=t0+start,e=s+dur;
+/* Náběh a doznění přes exponenciálu — skokové hlasitosti lupou. */
+g.gain.setValueAtTime(0.0001,s);
+g.gain.exponentialRampToValueAtTime(gain,s+0.012);
+g.gain.exponentialRampToValueAtTime(0.0001,e);
+osc.connect(g);g.connect(ctx.destination);
+osc.start(s);osc.stop(e+0.02);
+});
+}catch(e){dbg('Sound playback failed: '+e.message,true)}
+}
+/* Uloženo: stoupavá kvinta A5 → E6, krátká a nevtíravá. */
+function soundSaved(){playTones([[880,0,0.12,0.16],[1318.5,0.10,0.20,0.14]])}
+/* Selhalo: klesavá malá tercie Es4 → B3 v trojúhelníku, temnější a delší. */
+function soundFailed(){playTones([[311.1,0,0.18,0.17,'triangle'],[233.1,0.16,0.34,0.17,'triangle']])}
+
 function ghToken(){return localStorage.getItem(SK_GHTOKEN)||''}
 function ghSetToken(v){if(v)localStorage.setItem(SK_GHTOKEN,v);else localStorage.removeItem(SK_GHTOKEN)}
 function ghHeaders(){const h={'Accept':'application/vnd.github.v3+json'};const tk=ghToken();if(tk)h['Authorization']='token '+tk;return h}
@@ -1572,10 +1626,10 @@ const msg=err.message||String(err);toast(msg);dbg('GitHub load failed: '+msg,tru
 
 function saveToGitHub(){
 const ghPath=state.data.ghPath;
-if(!ghPath){toast(t('ghErrNoPath'));return Promise.reject(new Error('no path'))}
-if(!ghToken()){toast(t('ghErrNoToken'));return Promise.reject(new Error('no token'))}
+if(!ghPath){toast(t('ghErrNoPath'));soundFailed();return Promise.reject(new Error('no path'))}
+if(!ghToken()){toast(t('ghErrNoToken'));soundFailed();return Promise.reject(new Error('no token'))}
 const parsed=parseGhPath(ghPath);
-if(!parsed){toast(t('ghErrInvalidPath'));return Promise.reject(new Error('invalid path'))}
+if(!parsed){toast(t('ghErrInvalidPath'));soundFailed();return Promise.reject(new Error('invalid path'))}
 const apiUrl='https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/contents/'+parsed.path;
 toast(t('ghSaving'));dbg('GitHub PUT '+apiUrl);
 const json=JSON.stringify(state.data,null,2);
@@ -1596,10 +1650,10 @@ return res.json();
 state.ghSha=result.content&&result.content.sha;
 state.dirty=false;saveLS();snapshotBaseline();
 const ind=document.getElementById('ind');if(ind)ind.hidden=true;
-toast('✓ '+t('ghSaved'));dbg('GitHub save OK');
+toast('✓ '+t('ghSaved'));dbg('GitHub save OK');soundSaved();
 return result;
 }).catch(err=>{
-const msg=err.message||String(err);toast(msg);dbg('GitHub save failed: '+msg,true);throw err;
+const msg=err.message||String(err);toast(msg);dbg('GitHub save failed: '+msg,true);soundFailed();throw err;
 });
 }
 
@@ -7236,6 +7290,21 @@ fUn.appendChild(iUn);
 const hUn=document.createElement('small');hUn.className='fhint';hUn.textContent=t('generalUserNameHint');fUn.appendChild(hUn);
 w.appendChild(fUn);
 
+const fSn=document.createElement('div');fSn.className='fld';
+const lSn=document.createElement('label');lSn.className='cb';
+const cbSn=document.createElement('input');cbSn.type='checkbox';cbSn.checked=soundEnabled();
+cbSn.addEventListener('change',()=>{setSoundEnabled(cbSn.checked);if(cbSn.checked)soundSaved()});
+lSn.appendChild(cbSn);const spSn=document.createElement('span');spSn.textContent=t('generalSound');lSn.appendChild(spSn);
+fSn.appendChild(lSn);
+const tr=document.createElement('div');tr.style.display='flex';tr.style.gap='.4rem';tr.style.marginTop='.3rem';
+const tb1=document.createElement('button');tb1.type='button';tb1.className='btn btn-sm';tb1.textContent='▶ '+t('soundTestOk');
+tb1.addEventListener('click',()=>{primeAudio();soundSaved()});
+const tb2=document.createElement('button');tb2.type='button';tb2.className='btn btn-sm';tb2.textContent='▶ '+t('soundTestFail');
+tb2.addEventListener('click',()=>{primeAudio();soundFailed()});
+tr.appendChild(tb1);tr.appendChild(tb2);fSn.appendChild(tr);
+const hSn=document.createElement('small');hSn.className='fhint';hSn.textContent=t('generalSoundHint');fSn.appendChild(hSn);
+w.appendChild(fSn);
+
 const f2=document.createElement('div');f2.className='fld';
 const lc=document.createElement('label');lc.className='cb';
 const cb=document.createElement('input');cb.type='checkbox';cb.checked=state.autosave;
@@ -8215,6 +8284,8 @@ document.getElementById('b-exp').addEventListener('click',exportXLSX);
 document.getElementById('b-imp').addEventListener('click',openImportTSVDialog);
 document.getElementById('b-set').addEventListener('click',()=>navigateTo({name:'settings',settingsTab:state.view.settingsTab||'project'}));
 initCustomizeMenu();
+document.addEventListener('pointerdown',primeAudio,{once:true});
+document.addEventListener('keydown',primeAudio,{once:true});
 document.getElementById('dbg-x').addEventListener('click',()=>{state.showDebug=false;localStorage.setItem(SK_DBG,'false');document.getElementById('dbg').hidden=true});
 document.getElementById('dbg-clr').addEventListener('click',()=>{document.getElementById('dbg-c').innerHTML=''});
 document.addEventListener('keydown',ev=>{
