@@ -152,6 +152,9 @@ Při změně názvu entity nebo formátu textových hodnot na to pamatuj.
 ## Lokalizace
 `I18N = {cs:{…}, en:{…}}` s **578 klíči**, přístup přes `t(k, v)`, jazyk v `dkm-lang`.
 Každý nový text = klíč v obou jazycích. Do UI nikdy nepiš řetězec natvrdo.
+Řetězce jsou **prostý text, ne HTML** — vkládej je přes `textContent`. `importTSVDesc` byl
+psaný se značkami a nasazovaný přes `innerHTML=esc(...)`, takže se `<br>` a `<b>` uživateli
+ukazovaly jako text; strukturu dělej DOM prvky, ne značkami v překladu.
 
 ## Konvence
 - Pomocníci `esc(s)`, `uid(p)`, `toast(m)`, `announce(m)` (odečítač), `dbg(m, err)`.
