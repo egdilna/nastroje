@@ -494,11 +494,13 @@ Přes *Soubor → Export…* (nebo `Alt+E`) vybereš formát:
 |--------|-------|
 | **Microsoft Word (.docx)** | Kompletní OOXML — nadpisy, tabulky, prefixy, sledované změny (CriticMarkup jako `w:ins`/`w:del`), komentáře (`w:comment`), hyperlinky. Volitelné „Sledované změny přijmout“ vyexportuje čistou finální verzi. |
 | **HTML (sémantické nadpisy)** | Statické HTML s `<h1>–<h6>`, `<p>`, `<li>`, `<blockquote>`, `<article>`, `<aside>`, definičním seznamem `<dl>` pro sloupce, vizuálním odsazením a stylováním CriticMarkup i typů řádků. |
-| **Dynamické HTML** | Totéž, ale větve jsou v `<details>` — kliknutím se rozbalí/sbalí. |
+| **Dynamické HTML** | Totéž, ale větve jsou v `<details>` — kliknutím se rozbalí/sbalí. **Ve výchozím stavu jsou všechny větve sbalené** a nahoře je lepicí panel s hledáním (viz níže). |
 | **Markdown (.md)** | Nadpisy `#…######`, listy `-`, poznámky jako `>` citace, sloupce jako pod-odrážky. Inline typy řádků se převedou na Markdown značky; blokové na HTML obalení. |
 | **OPML** | Vnořené `<outline>` s tématem a poznámkou. |
 | **CSV** | Sloupce: `Úroveň`, pak všechny sloupce dokumentu; jeden řádek na výstupní řádek. |
 | **Prostý text (odsazený)** | Odsazení tabulátory; každý řádek = téma, případná poznámka o úroveň hlouběji. |
+
+**Hledání v dynamickém HTML:** vyexportovaná stránka má nahoře pole *Hledat* a tlačítka *Zrušit*, *Rozbalit vše* a *Sbalit vše*. Po zadání textu zůstanou vidět jen řádky, které ho obsahují (v tématu, poznámce i ve sloupcích), spolu s celou cestou nadřazených řádků — ta se automaticky rozbalí. Nalezený text se zvýrazní žlutě a vedle pole se ukáže počet shod. Hledá se bez ohledu na velikost písmen a na diakritiku (*„vetv“* najde *„větvemi“*). Prázdné pole (nebo `Esc` v poli, případně tlačítko *Zrušit*) obnoví výchozí stav — všechno viditelné a sbalené. Stránka je stále jeden soubor bez externích knihoven.
 
 **Export podle aktuálního zobrazení:** když je osnova filtrovaná (rychlým filtrem, stavem, pokročilými podmínkami) nebo zaměřená hoistem, **export zahrne jen to, co je právě vidět**. Naopak **uložení do `.outline`** a **vložení do schránky** vždy uloží celý dokument bez ohledu na filtr.
 
