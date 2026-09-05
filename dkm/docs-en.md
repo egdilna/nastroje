@@ -858,6 +858,8 @@ Then **Save** (Ctrl+S) saves directly to GitHub.
 
 **Load from GitHub** — button in Settings → Project.
 
+Saving comes with **sound feedback** — a short rising tone on success, a darker falling one on failure (missing path, missing token, a GitHub rejection or a network error). It can be switched off in Settings → General.
+
 ### 21.5 URL parameter for GitHub autoload
 
 `?id={base64ghPath}` in the URL → DKM auto-loads the project from GitHub via the API on
@@ -974,9 +976,75 @@ In entity detail the **🖨 Export / print** button. Opens a dialog with section
 
 **Export** button in header. Creates an `.xlsx` with currently filtered entities. Columns: name, type, type attributes, main data. Useful for sharing outside DKM.
 
-### 24.2 TSV import
+### 24.2 TSV / CSV import
 
-**Import TSV** button. Loads a table from Excel / TSV / clipboard paste. You can map columns to attributes and create entities in bulk.
+The **Import TSV** button in the header. Takes a file (Excel → *Save as* TSV/CSV) or rows
+pasted from the clipboard. The delimiter is detected automatically — TAB, semicolon or comma,
+whichever is most frequent in the first line.
+
+**The first row is the header** and decides everything. Columns the import does not understand
+are silently ignored.
+
+#### System columns
+
+| Column | What it does | Also accepts |
+|---|---|---|
+| **Název** | required, entity name | Name, Title, Jméno, Titul |
+| **Typ** | entity type name | Type, Kategorie, Category |
+| **Aspekty** | aspect names, several separated by `;` or `,` | Aspects, Aspekt, Aspect |
+| **ID** | internal ID for matching an existing entity | Identifikátor |
+| **Archiv** | `1` / `true` / `ano` / `yes` / `x` → archive | Archive, Archived, Archivováno |
+| **Inbox** | the same for putting it in the Inbox | Schránka |
+
+Without a **Typ** column the entity ends up in the Inbox with no type.
+
+#### Attribute columns
+
+The column name is the attribute name. To make clear which type or aspect the attribute
+belongs to, write it as **`Type name / Attribute name`** or **`Aspect name / Attribute name`**.
+
+Example — entities of type *Vlastnost* with the *Data* aspect and its *Concept type* and
+*Data type* fields:
+
+```
+Název	Typ	Aspekty	Data / Concept type	Data / Data type
+Rodné číslo	Vlastnost	Data	Identifikátor	string
+Datum narození	Vlastnost	Data	Atribut	date
+```
+
+The prefix is optional but **worth writing**. Without it the import looks for the attribute on
+the entity's type first and only then on its aspects — if the *Vlastnost* type also has a
+*Concept type* attribute, an unprefixed value lands on the type, not the aspect. With
+`Data / Concept type` it is unambiguous. The split happens at the **first** slash, so an
+attribute with a slash in its name cannot be written this way.
+
+> **Watch out for a missing Aspekty column.** Leave it out and the values are still stored in
+> the data, but the entity does not get the aspect — and since the entity detail only shows
+> attributes of its type and its **assigned** aspects, you will see nothing. The data would sit
+> there unseen. So the `Aspekty` column with the aspect name on every row is not optional.
+
+#### Values by attribute type
+
+- **yes/no** — `1`, `true`, `ano`, `yes`, `x` = yes; `0`, `false`, `ne`, `no` = no
+- **number** — decimal comma or dot; anything unparseable is skipped
+- **relation** — target entity names separated by `;`; unmatched ones are skipped, a
+  single-value relation takes the first match
+- **everything else** — text as it is; an empty cell is skipped (it does not clear an existing value)
+
+#### Creates or updates?
+
+The entity is looked up by the **ID** column, and when that is missing, by the **Typ + Název**
+pair. On a match the row **updates** it — importing the same table twice does not create
+duplicates. Aspects are only **added** on update, never removed.
+
+#### Round trip through the XLSX export
+
+The XLSX export produces a header in exactly this shape (`ID`, `Název`, `Typ`, `Inbox`,
+`Archiv`, `Aspekty`, then `Type / Attribute` and `Aspect / Attribute`), so you can export,
+edit in Excel and import back. Two exceptions: the `Vazby`, `Vytvořeno` and `Upraveno` columns
+are ignored on import, and **custom attributes** (marked `* Name` in the export) are not
+recreated — the asterisk is stripped and the name is looked up among type and aspect
+attributes; when it is not there, the column is dropped.
 
 ### 24.3 PlantUML export of relations
 
@@ -1234,6 +1302,7 @@ Personal access token for GitHub API. Stored in the browser's localStorage (per 
 - **Language** (Čeština / English)
 - **Theme** — Light / Dark / Paper / Matrix, same as in the ⚙ Customize menu
 - **Your name for comments** — used as author of new comments. Stored **in this browser only** (key `dkm-username`, like the GitHub token), not in the project data — so several people can work on the same project and each signs their own comments. An older project that carried the name in its data adopts it into the browser once on load (if none is set there yet) and drops it from the data.
+- **Sound feedback for GitHub saves** — a short rising tone after a successful save, a darker falling one after a failure. The tones are generated in the browser via the Web Audio API, nothing is downloaded, so it works offline too. Next to the checkbox are buttons to hear both. Stored in this browser only (key `dkm-sound`).
 - **Autosave** — automatic saving to sessionStorage (per tab)
 - **Debug** — enables a bottom panel with debug logs
 
@@ -1485,7 +1554,7 @@ The project is one JSON document (see `dkmdata.json`):
 | `dkm-lang` | interface language |
 | `dkm-theme` | visual theme |
 | `dkm-username` | comment author name |
-| `dkm-autosave`, `dkm-debug` | switches in Settings → General |
+| `dkm-autosave`, `dkm-debug`, `dkm-sound` | switches in Settings → General |
 | `dkm-github-token` | GitHub PAT (per origin) |
 | `dkm-handoff-…` | short-lived data handoff to a standalone window |
 | `dkm-viewer-lang`, `dkm-viewer-theme` | choices in a generated static viewer |

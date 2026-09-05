@@ -71,6 +71,16 @@ Bez uložené volby se poprvé řídí `prefers-color-scheme`.
 Motiv se týká aplikace; tisk, DOCX/PDF a statický prohlížeč mají vlastní světlé styly —
 tak to má zůstat, jsou to výstupy pro někoho jiného.
 
+## Zvuková odezva
+`playTones()` syntetizuje tóny přes Web Audio API — **nikdy nepřidávej zvukový soubor**,
+nástroj musí zůstat jeden HTML soubor použitelný offline. `soundSaved()` a `soundFailed()`
+visí na ukládání na GitHub (všechny čtyři cesty selhání, včetně předčasných návratů).
+
+Prohlížeč zvuk povolí až po interakci uživatele a ukládání je asynchronní, takže v okamžiku
+přehrání už gesto „nedrží“ — proto `primeAudio()` na prvním `pointerdown`/`keydown`.
+Bez toho by první tón po načtení stránky spolkl autoplay. Hlasitost drž kolem 0.16 a náběh
+i doznění veď exponenciálou, skoková hlasitost lupe.
+
 ## Externí závislosti — jen líně
 Nic se nenačítá dopředu. `loadSheetJS()` stáhne SheetJS z CDN **až při exportu XLSX**;
 DOCX a ZIP se generují **ručně** (`buildDocxFile`, `makeZip`, `crc32`). Tuhle vlastnost drž —
@@ -142,6 +152,9 @@ Při změně názvu entity nebo formátu textových hodnot na to pamatuj.
 ## Lokalizace
 `I18N = {cs:{…}, en:{…}}` s **578 klíči**, přístup přes `t(k, v)`, jazyk v `dkm-lang`.
 Každý nový text = klíč v obou jazycích. Do UI nikdy nepiš řetězec natvrdo.
+Řetězce jsou **prostý text, ne HTML** — vkládej je přes `textContent`. `importTSVDesc` byl
+psaný se značkami a nasazovaný přes `innerHTML=esc(...)`, takže se `<br>` a `<b>` uživateli
+ukazovaly jako text; strukturu dělej DOM prvky, ne značkami v překladu.
 
 ## Konvence
 - Pomocníci `esc(s)`, `uid(p)`, `toast(m)`, `announce(m)` (odečítač), `dbg(m, err)`.

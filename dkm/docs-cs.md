@@ -858,6 +858,8 @@ Pak **Uložit** (Ctrl+S) uloží přímo do GitHubu (`Uložit lokálně` zůstá
 
 **Načíst z GitHubu** — tlačítko v Nastavení → Projekt.
 
+Uložení doprovází **zvuková odezva** — po úspěchu krátký stoupavý tón, po neúspěchu temnější klesavý (chybějící cesta, chybějící token, zamítnutí GitHubu i síťová chyba). Dá se vypnout v Nastavení → Obecné.
+
 ### 21.5 URL parametr pro autoload z GitHubu
 
 `?id={base64ghPath}` v URL → DKM při startu automaticky načte projekt z GitHubu přes API.
@@ -973,9 +975,71 @@ V detailu entity tlačítko **🖨 Export / tisk**. Otevře dialog se zaškrtáv
 
 Tlačítko **Export** v hlavičce. Vytvoří `.xlsx` s aktuálně filtrovanými entitami. Sloupce: název, typ, atributy typu, hlavní údaje. Použitelné pro sdílení mimo DKM.
 
-### 24.2 TSV import
+### 24.2 TSV / CSV import
 
-Tlačítko **Import TSV**. Nahraje tabulku z Excelu / TSV / vloženého schránky. Můžeš namapovat sloupce na atributy a vytvořit entity hromadně.
+Tlačítko **Import TSV** v hlavičce. Bere soubor (Excel → *Uložit jako* TSV/CSV) nebo řádky
+vložené ze schránky. Oddělovač se detekuje sám — TAB, středník nebo čárka, podle toho, čeho
+je v prvním řádku nejvíc.
+
+**První řádek je hlavička** a rozhoduje o všem. Sloupce, kterým import nerozumí, tiše ignoruje.
+
+#### Systémové sloupce
+
+| Sloupec | Co dělá | Přijímá také |
+|---|---|---|
+| **Název** | povinný, název entity | Name, Title, Jméno, Titul |
+| **Typ** | název typu entity | Type, Kategorie, Category |
+| **Aspekty** | názvy aspektů, víc oddělených `;` nebo `,` | Aspects, Aspekt, Aspect |
+| **ID** | interní ID pro spárování s existující entitou | Identifikátor |
+| **Archiv** | `1` / `true` / `ano` / `yes` / `x` → archivovat | Archive, Archived, Archivováno |
+| **Inbox** | totéž pro zařazení do Inboxu | Schránka |
+
+Bez sloupce **Typ** entita skončí v Inboxu bez typu.
+
+#### Sloupce s atributy
+
+Název sloupce = název atributu. Aby bylo jasné, ke kterému typu či aspektu atribut patří,
+zapiš ho ve tvaru **`Název typu / Název atributu`** nebo **`Název aspektu / Název atributu`**.
+
+Příklad — entity typu *Vlastnost* s aspektem *Data* a jeho poli *Concept type* a *Data type*:
+
+```
+Název	Typ	Aspekty	Data / Concept type	Data / Data type
+Rodné číslo	Vlastnost	Data	Identifikátor	string
+Datum narození	Vlastnost	Data	Atribut	date
+```
+
+Prefix je nepovinný, ale **vyplatí se ho psát**. Bez něj import hledá atribut nejdřív u typu
+entity a teprve pak u jejích aspektů — když má typ *Vlastnost* taky atribut *Concept type*,
+hodnota bez prefixu skončí u typu, ne u aspektu. S prefixem `Data / Concept type` je to
+jednoznačné. Dělí se na **prvním** lomítku, takže atribut s lomítkem v názvu takhle zapsat nejde.
+
+> **Pozor na chybějící sloupec Aspekty.** Když ho vynecháš, hodnoty se do dat uloží, ale entita
+> aspekt nedostane — a protože detail entity zobrazuje jen atributy svého typu a **přiřazených**
+> aspektů, uvidíš prázdno. Data ti tam budou ležet naslepo. Sloupec `Aspekty` s názvem aspektu
+> u každého řádku tedy není volitelný.
+
+#### Hodnoty podle typu atributu
+
+- **ano/ne** — `1`, `true`, `ano`, `yes`, `x` = ano; `0`, `false`, `ne`, `no` = ne
+- **číslo** — desetinná čárka i tečka; co nejde převést, se přeskočí
+- **vazba** — názvy cílových entit oddělené `;`; nenalezené se přeskočí, u jednohodnotové
+  vazby se použije první nalezená
+- **ostatní** — text tak, jak je; prázdná buňka se přeskočí (existující hodnotu nepřepíše)
+
+#### Zakládá, nebo aktualizuje?
+
+Entita se hledá podle sloupce **ID**, a když chybí, podle dvojice **Typ + Název**. Když se
+najde, řádek ji **aktualizuje** — druhý import téže tabulky tedy nezaloží duplikáty.
+Aspekty se při aktualizaci jen **přidávají**, nikdy neodebírají.
+
+#### Kolečko přes XLSX export
+
+Export do XLSX vyrábí hlavičku přesně v tomhle tvaru (`ID`, `Název`, `Typ`, `Inbox`, `Archiv`,
+`Aspekty`, pak `Typ / Atribut` a `Aspekt / Atribut`), takže se dá exportovat, upravit v Excelu
+a naimportovat zpět. Dvě výjimky: sloupce `Vazby`, `Vytvořeno` a `Upraveno` import ignoruje
+a **vlastní atributy** (v exportu značené `* Název`) se zpátky nevytvoří — hvězdička se odřízne
+a název se hledá mezi atributy typů a aspektů; když tam není, sloupec propadne.
 
 ### 24.3 PlantUML export vazeb
 
@@ -1231,6 +1295,7 @@ Personal access token pro GitHub API. Uložený v localStorage prohlížeče (pe
 - **Jazyk** (Čeština / English)
 - **Motiv** — Světlý / Tmavý / Papír / Matrix, totéž co v menu ⚙ Přizpůsobit
 - **Tvoje jméno pro komentáře** — bere se jako autor u nových komentářů. Ukládá se **jen do tohoto prohlížeče** (klíč `dkm-username`, stejně jako GitHub token), ne do dat projektu — nad jedním projektem tak může pracovat víc lidí a každý se podepíše sám za sebe. Starší projekt, který jméno nesl v datech, ho při načtení jednorázově převezme do prohlížeče (pokud tam ještě žádné není) a z dat ho vypustí.
+- **Zvuková odezva u ukládání na GitHub** — krátký stoupavý tón po úspěšném uložení, temnější klesavý po neúspěchu. Tóny se generují přímo v prohlížeči přes Web Audio API, nic se nestahuje, takže to funguje i offline. Vedle zaškrtávátka jsou tlačítka, kterými si oba zvuky poslechneš. Ukládá se jen do tohoto prohlížeče (klíč `dkm-sound`).
 - **Autosave** — automatické ukládání do sessionStorage (per záložka)
 - **Debug** — zapne panel s debug logy dole
 
@@ -1482,7 +1547,7 @@ Projekt je jeden JSON dokument (viz `dkmdata.json`):
 | `dkm-lang` | jazyk rozhraní |
 | `dkm-theme` | grafický motiv |
 | `dkm-username` | jméno autora komentářů |
-| `dkm-autosave`, `dkm-debug` | přepínače v Nastavení → Obecné |
+| `dkm-autosave`, `dkm-debug`, `dkm-sound` | přepínače v Nastavení → Obecné |
 | `dkm-github-token` | GitHub PAT (per origin) |
 | `dkm-handoff-…` | krátkodobé předání dat do samostatného okna |
 | `dkm-viewer-lang`, `dkm-viewer-theme` | volby ve vygenerovaném statickém prohlížeči |

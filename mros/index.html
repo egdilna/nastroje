@@ -714,11 +714,17 @@ function vychoziObsah(typ){
     default: return {text:""};
   }
 }
+/* čerstvě založené dlaždice se otevírají rovnou k úpravám — kdo dlaždici právě
+   vytvořil, chce do ní psát. Platí jen pro prázdné novinky: co vzniklo s hotovým
+   obsahem (výstup nástroje, vložení ze schránky), se otevře ke čtení.
+   Držíme to mimo stav S — je to jednorázová informace, ne data k uložení. */
+const noveDlazdice=new Set();
 function vytvorit(typ,nazev,obsah,rodic){
   const t=TYPY[typ];
   const o={id:id(),typ,nazev:nazev||t.n,ikona:t.i,barva:t.b,plocha:S.aktivni,rodic:rodic||null,
     poradi:(naPlose(S.aktivni).length?Math.max(...naPlose(S.aktivni).map(x=>x.poradi))+1:0),
     w:1,h:1,stitky:[],obsah:obsah||vychoziObsah(typ),vytvoreno:Date.now(),zmeneno:Date.now()};
+  if(!obsah) noveDlazdice.add(o.id);
   S.objekty.push(o); ulozit(); kreslitPlochu(); kreslitPanel();
   log("Vytvořen objekt",typ+" / "+o.nazev);
   return o;
@@ -739,6 +745,7 @@ function postupHtml(hotovo,celkem,popis,dovetek){
   return `<div class="tichy">${popis} ${hotovo} z ${celkem} · ${pct}\u00a0%${dovetek||""}</div>`
     +`<div class="postup" role="img" aria-label="${popis} ${pct} procent"><i style="width:${pct}%"></i></div>`;
 }
+const sklonovanePolozky=n=>n===1?"položka":n<5?"položky":"položek";
 /* stručný stav do popisku dlaždice, aby ho odečítač obrazovky přečetl spolu s názvem */
 function souhrnDlazdice(o){
   const c=o.obsah||{};
@@ -748,6 +755,7 @@ function souhrnDlazdice(o){
     const poTerminu=c.ukoly.filter(x=>!x.hotovo&&x.termin&&x.termin<dnes()).length;
     return ", splněno "+c.ukoly.filter(x=>x.hotovo).length+" z "+c.ukoly.length+(poTerminu?", po termínu "+poTerminu:"");
   }
+  if(o.typ==="slozka"){ const n=deti(o.id).length; return n?", "+n+" "+sklonovanePolozky(n):", prázdná"; }
   return "";
 }
 function nahled(o){
@@ -795,7 +803,7 @@ function nahled(o){
     case "odkaz": case "aplikace":
       return c.url?"":"<span class='tichy'>Bez adresy — otevřete a doplňte</span>";
     case "soubor": return `<span class="tichy">${esc(c.nazevSouboru||"Bez souboru")}</span>`;
-    case "slozka": return `<span class="tichy">${deti(o.id).length} položek</span>`;
+    case "slozka": { const n=deti(o.id).length; return `<span class="tichy">${n?n+" "+sklonovanePolozky(n):"prázdná složka"}</span>`; }
     case "sezeni": return `<span class="tichy">${(c.okna||[]).length} oken v sezení</span>`;
     case "hodiny": return `<div class="hodiny-velke" data-hodiny="1">--:--</div>`;
     case "pocitadlo": return `<div class="hodiny-velke">${c.hodnota||0}</div>`;
@@ -834,7 +842,7 @@ function kreslitPlochu(){
     if(o.stitky.some(x=>bezDiakritiky(x)==="soukrome")) li.classList.add("soukrome");
     const b=el("div",{class:"dlazdice",role:"button",tabindex:"0",draggable:"true","data-id":o.id,
       "aria-label":TYPY[o.typ].n+": "+o.nazev+souhrnDlazdice(o)+(o.stitky.length?", štítky "+o.stitky.join(", "):""),
-      "aria-describedby":"popis-"+o.id, title:TYPY[o.typ].n});
+      title:TYPY[o.typ].n});
     b.innerHTML=`
       <span class="d-hlava">
         <span class="d-ikona" style="background:${esc(o.barva||TYPY[o.typ].b)}" aria-hidden="true">${esc(o.ikona||TYPY[o.typ].i)}</span>
@@ -842,8 +850,7 @@ function kreslitPlochu(){
       </span>
       <span class="d-telo">${nahled(o)}</span>
       ${o.stitky.length?`<span class="d-pata">${o.stitky.map(s=>{const b=barvaStitku(klicStitku(s));
-        return `<span class="stitek"${b?` style="background:${esc(b)}22;color:${esc(b)}"`:""}>${esc(s)}</span>`;}).join("")}</span>`:""}
-      <span class="jenproctecku" id="popis-${o.id}">Otevřete klávesou Enter, nabídku vyvoláte Alt s Enter, smazání klávesou Delete.</span>`;
+        return `<span class="stitek"${b?` style="background:${esc(b)}22;color:${esc(b)}"`:""}>${esc(s)}</span>`;}).join("")}</span>`:""}`;
     /* kliknutí dlaždici vždy otevře; nabídka je pod tlačítkem ⋯, Alt+Enter
        a v otevřeném okně pod Další akce. Safari na dotykové obrazovce hlásil
        i běžný dotyk jako contextmenu, takže se dlaždice místo otevření hádala o nabídku. */
@@ -1183,7 +1190,12 @@ function akceDlazdice(o){
    dlaždice, takže existuje jediné úložiště — plocha. */
 const dlazdiceTypu=typ=>S.objekty.filter(o=>o.typ===typ);
 const polozkyTypu=typ=>dlazdiceTypu(typ).flatMap(o=>((o.obsah.polozky=o.obsah.polozky||[])).map(p=>({o,p})));
-const cilovaDlazdice=typ=>dlazdiceTypu(typ)[0]||vytvorit(typ,TYPY[typ].n);
+/* dlaždici sbírky zakládáme i sami, když do ní má nástroj co uložit — taková dlaždice
+   vzniká s hotovým obsahem, ne rukou uživatele, a proto se otevře ke čtení */
+const cilovaDlazdice=typ=>{
+  const d=dlazdiceTypu(typ)[0]; if(d) return d;
+  const nova=vytvorit(typ,TYPY[typ].n); noveDlazdice.delete(nova.id); return nova;
+};
 function vyberDlazdice(typ,popisek,pozmene){
   const s=el("select",{"aria-label":popisek});
   const obnov=()=>{
@@ -1387,6 +1399,11 @@ const maZobrazeni=typ=>!BEZ_ZOBRAZENI.includes(typ);
 /* v režimu jednoho okna se hodí přeskočit na další okno bez klávesnice;
    tlačítko se ukazuje jen tam (CSS .jen-celoobrazovkove) */
 /* nabídka dlaždice a přeskok mezi okny — do lišty okna u typů, které nemají režim zobrazení */
+/* režim, ve kterém se okno otevře: čerstvá dlaždice k úpravám, jinak podle nastavení */
+function vychoziRezim(o){
+  if(noveDlazdice.delete(o.id)) return "upravy";
+  return S.chovani.otviratKeCteni===false?"upravy":"zobrazeni";
+}
 function listaDlazdice(o){
   const dalsi=nabidkaTlacitko("Další akce",akceDlazdice(o));
   dalsi.style.marginTop="0";
@@ -1400,7 +1417,7 @@ function tlacitkoDalsiOkno(){
 }
 function oknoObjektu(o,t,w){
   if(!maZobrazeni(o.typ)) return editor(o,t,w);
-  let rezim=S.chovani.otviratKeCteni===false?"upravy":"zobrazeni";
+  let rezim=vychoziRezim(o);
   const lista=el("div",{class:"pruh",style:"align-items:flex-start;margin-bottom:14px"});
   const telo=el("div",{});
   const kresli=()=>{
@@ -1495,14 +1512,31 @@ function zobrazeni(o,t){
         postup.setAttribute("role","img"); postup.setAttribute("aria-label","Hotovo "+pct+" procent");
       };
       const ul=el("ul",{class:"seznam"});
-      pol.forEach(p=>{
-        const ch=el("input",{type:"checkbox"}); ch.checked=!!p.hotovo;
-        const txt=el("span",{class:"rostouci"},p.text||"(bez textu)");
-        skrtnout(txt,p.hotovo);
-        ch.addEventListener("change",()=>{ p.hotovo=ch.checked; skrtnout(txt,ch.checked); spocitat(); ulozP(); });
-        ul.append(el("li",{},el("label",{class:"radek",style:"gap:10px;margin:0;flex:1;cursor:pointer"},ch,txt)));
-      });
-      spocitat(); t.append(stav,postup,ul);
+      const lista=el("div",{class:"pruh",style:"margin:8px 0 0"});
+      const kresli=(fokusNa)=>{
+        ul.innerHTML=""; lista.innerHTML="";
+        const b=tlacitkoSkrytHotove(c,pol.filter(p=>p.hotovo).length,
+          ()=>{ ulozP(); kresli(); $("[data-skryt-hotove]",lista)?.focus(); },"hotové");
+        if(b) lista.append(b);
+        pol.forEach((p,n)=>{
+          if(c.skryvatHotove&&p.hotovo) return;
+          const ch=el("input",{type:"checkbox","data-poradi":n}); ch.checked=!!p.hotovo;
+          const txt=el("span",{class:"rostouci"},p.text||"(bez textu)");
+          skrtnout(txt,p.hotovo);
+          ch.addEventListener("change",()=>{
+            p.hotovo=ch.checked; skrtnout(txt,ch.checked); spocitat(); ulozP();
+            if(c.skryvatHotove&&ch.checked) kresli(n); else kresli();
+          });
+          ul.append(el("li",{},el("label",{class:"radek",style:"gap:10px;margin:0;flex:1;cursor:pointer"},ch,txt)));
+        });
+        spocitat();
+        if(fokusNa!=null){
+          const dalsi=[...ul.querySelectorAll("input[type=checkbox]")].find(x=>Number(x.dataset.poradi)>fokusNa)
+            ||[...ul.querySelectorAll("input[type=checkbox]")].pop();
+          (dalsi||$("[data-skryt-hotove]",lista))?.focus();
+        }
+      };
+      kresli(); t.append(stav,postup,lista,ul);
       break;
     }
     case "napady": {
@@ -1526,20 +1560,39 @@ function zobrazeni(o,t){
         postup.setAttribute("role","img"); postup.setAttribute("aria-label","Splněno "+pct+" procent");
       };
       const ul=el("ul",{class:"seznam"});
-      uk.forEach(u=>{
-        const ch=el("input",{type:"checkbox"}); ch.checked=!!u.hotovo;
-        const txt=el("span",{class:"rostouci"},u.text||"(bez názvu)");
-        const znacky=el("span",{class:"pruh",style:"margin:0;gap:6px;flex:0 0 auto"});
-        const poTerminu=u.termin&&!u.hotovo&&u.termin<dnes();
-        if(u.termin) znacky.append(el("span",{class:"stitek",
-          style:poTerminu?"background:color-mix(in srgb,#d4536b 20%,transparent);color:#a33049":""},
-          (poTerminu?"po termínu, ":"")+new Date(u.termin).toLocaleDateString("cs-CZ")));
-        if(u.priorita) znacky.append(el("span",{class:"stitek"},"priorita "+u.priorita));
-        skrtnout(txt,u.hotovo);
-        ch.addEventListener("change",()=>{ u.hotovo=ch.checked; skrtnout(txt,ch.checked); spocitat(); ulozP(); });
-        ul.append(el("li",{},el("label",{class:"radek",style:"gap:10px;margin:0;flex:1;cursor:pointer"},ch,txt),znacky));
-      });
-      spocitat(); t.append(stav,postup,ul);
+      const lista=el("div",{class:"pruh",style:"margin:8px 0 0"});
+      const kresli=(fokusNa)=>{
+        ul.innerHTML=""; lista.innerHTML="";
+        const hotovych=uk.filter(u=>u.hotovo).length;
+        const b=tlacitkoSkrytHotove(c,hotovych,()=>{ ulozP(); kresli(); $("[data-skryt-hotove]",lista)?.focus(); });
+        if(b) lista.append(b);
+        uk.forEach((u,n)=>{
+          if(c.skryvatHotove&&u.hotovo) return;
+          const ch=el("input",{type:"checkbox","data-poradi":n}); ch.checked=!!u.hotovo;
+          const txt=el("span",{class:"rostouci"},u.text||"(bez názvu)");
+          const znacky=el("span",{class:"pruh",style:"margin:0;gap:6px;flex:0 0 auto"});
+          const poTerminu=u.termin&&!u.hotovo&&u.termin<dnes();
+          if(u.termin) znacky.append(el("span",{class:"stitek",
+            style:poTerminu?"background:color-mix(in srgb,#d4536b 20%,transparent);color:#a33049":""},
+            (poTerminu?"po termínu, ":"")+new Date(u.termin).toLocaleDateString("cs-CZ")));
+          if(u.priorita) znacky.append(el("span",{class:"stitek"},"priorita "+u.priorita));
+          skrtnout(txt,u.hotovo);
+          ch.addEventListener("change",()=>{
+            u.hotovo=ch.checked; skrtnout(txt,ch.checked); spocitat(); ulozP();
+            /* při skrývání splněný úkol zmizí — fokus musí zůstat v seznamu */
+            if(c.skryvatHotove&&ch.checked) kresli(n);
+            else kresli();
+          });
+          ul.append(el("li",{},el("label",{class:"radek",style:"gap:10px;margin:0;flex:1;cursor:pointer"},ch,txt),znacky));
+        });
+        spocitat();
+        if(fokusNa!=null){
+          const dalsi=[...ul.querySelectorAll("input[type=checkbox]")].find(x=>Number(x.dataset.poradi)>fokusNa)
+            ||[...ul.querySelectorAll("input[type=checkbox]")].pop();
+          (dalsi||$("[data-skryt-hotove]",lista))?.focus();
+        }
+      };
+      kresli(); t.append(stav,postup,lista,ul);
       break;
     }
     case "odkazy": {
@@ -1715,6 +1768,16 @@ function vlozitMdOdkaz(poleNazev,poleUrl,pouzit){
   poleUrl.addEventListener("paste",obsluha);
 }
 
+/* skrývání splněných úkolů — volba se drží v dlaždici, platí pro čtení i úpravy */
+function tlacitkoSkrytHotove(c,hotovych,poZmene,slovo){
+  if(!hotovych) return null;
+  const s=slovo||"splněné", skryto=!!c.skryvatHotove;
+  return el("button",{class:"btn druhy mini","data-skryt-hotove":"1","aria-pressed":String(skryto),
+    onclick:()=>{ c.skryvatHotove=!skryto; poZmene();
+      hlas(skryto?"Zobrazeno vše":"Skryto "+s+", zobrazují se jen nehotové položky"); }},
+    (skryto?"Zobrazit "+s+" (":"Skrýt "+s+" (")+hotovych+")");
+}
+
 /* ---------- pořadí položek v editorech ----------
    Dvojice tlačítek pro posun položky. Po přesunu se seznam překreslí a fokus zůstane
    na přesunuté položce, aby šlo pořadí měnit i z klávesnice. `box` je překreslovaný obal. */
@@ -1764,8 +1827,14 @@ function editor(o,t,w){
       const box=el("div",{}); t.append(box);
       const kresli=()=>{
         box.innerHTML="";
+        if(o.typ==="seznam"){
+          const b=tlacitkoSkrytHotove(c,(c.polozky||[]).filter(p=>p.hotovo).length,
+            ()=>{ ulozP(); kresli(); $("[data-skryt-hotove]",box)?.focus(); },"hotové");
+          if(b) box.append(el("div",{class:"pruh"},b));
+        }
         const ul=el("ul",{class:"seznam"});
         (c.polozky||[]).forEach((p,n)=>{
+          if(o.typ==="seznam"&&c.skryvatHotove&&p.hotovo) return;
           const li=el("li",{});
           if(o.typ==="seznam"){
             const ch=el("input",{type:"checkbox","aria-label":"Hotovo: "+p.text}); ch.checked=!!p.hotovo;
@@ -1810,11 +1879,16 @@ function editor(o,t,w){
       const box=el("div",{}); t.append(box);
       const kresli=()=>{
         box.innerHTML="";
+        const hotovych=(c.ukoly||[]).filter(u=>u.hotovo).length;
+        const b=tlacitkoSkrytHotove(c,hotovych,()=>{ ulozP(); kresli(); $("[data-skryt-hotove]",box)?.focus(); });
+        if(b) box.append(el("div",{class:"pruh"},b));
         (c.ukoly||[]).forEach((u,n)=>{
+          if(c.skryvatHotove&&u.hotovo) return;
           const k=el("div",{class:"karta"});
           const r1=el("div",{class:"radek"});
           const ch=el("input",{type:"checkbox","aria-label":"Hotovo"}); ch.checked=!!u.hotovo;
-          ch.addEventListener("change",()=>{u.hotovo=ch.checked;ulozP();kresli();});
+          ch.addEventListener("change",()=>{u.hotovo=ch.checked;ulozP();kresli();
+            if(c.skryvatHotove&&ch.checked) $("[data-skryt-hotove]",box)?.focus();});
           const tx=el("input",{type:"text",value:u.text,"aria-label":"Úkol"});
           tx.addEventListener("input",()=>{u.text=tx.value;ulozP();});
           tx.addEventListener("keydown",e=>{
@@ -2148,13 +2222,49 @@ function presunNaPlochu(o){
   }});
 }
 function otevritSlozku(o){
-  otevritOkno({klic:"obj-"+o.id,nazev:o.nazev,ikona:o.ikona,sirka:620,vyska:520,obsah:t=>{
-    t.append(el("div",{class:"pruh",style:"align-items:flex-start"},listaDlazdice(o)));
-    hlavicka(o,t);
-    const box=el("div",{}); t.append(el("h3",{class:"nadpis"},"Obsah složky"),box);
+  otevritOkno({klic:"obj-"+o.id,nazev:o.nazev,ikona:o.ikona,sirka:620,vyska:520,obsah:(t,w)=>{
+    /* Složka se otevírá k obsahu — název a štítky jsou pole formuláře, která by v cestě
+       jen překážela, a ukážou se až po přepnutí na Upravit (tlačítko nebo klávesa F4). */
+    let rezim=vychoziRezim(o);
+    const lista=el("div",{class:"pruh",style:"align-items:flex-start"});
+    const hlava=el("div",{});
+    const box=el("div",{});
+    const pata=el("div",{class:"pruh",style:"margin-top:16px"});
+    const kresliListu=()=>{
+      const jeZobrazeni=rezim==="zobrazeni";
+      lista.innerHTML=""; hlava.innerHTML=""; pata.innerHTML="";
+      const prep=el("button",{class:"btn mini","data-prepinac-rezimu":"1",
+        "aria-label":(jeZobrazeni?"Přepnout na úpravy":"Přepnout na zobrazení")+" — klávesa F4",
+        title:"Přepnout režim, klávesa F4"},jeZobrazeni?"✏️ Upravit":"👁 Zobrazení");
+      prep.addEventListener("click",()=>{
+        rezim=jeZobrazeni?"upravy":"zobrazeni";
+        kresliListu();
+        hlas(rezim==="zobrazeni"?"Režim zobrazení":"Režim úprav");
+        $("[data-prepinac-rezimu]",lista)?.focus();
+      });
+      lista.append(prep,listaDlazdice(o));
+      ozivitListu(lista,"Nástroje složky "+o.nazev);
+      if(w) w.dataset.rezim=rezim;
+      if(jeZobrazeni){
+        if((o.stitky||[]).length)
+          hlava.append(el("div",{class:"pruh","aria-label":"Štítky: "+o.stitky.join(", ")},
+            o.stitky.map(x=>el("span",{class:"stitek"},x))));
+      }else{
+        hlavicka(o,hlava);
+        pata.append(
+          el("button",{class:"btn druhy mini",onclick:()=>vzhledDlazdice(o)},"Vzhled"),
+          el("button",{class:"btn druhy mini",onclick:()=>otevritNastroj("soubory")},"Otevřít ve správci souborů"),
+          el("button",{class:"btn nebezpecny mini",onclick:()=>{
+            if(!confirm("Smazat složku? Dlaždice uvnitř se vrátí na plochu.")) return;
+            deti(o.id).forEach(x=>{x.rodic=null;});
+            smazat(o.id,true); zavritOkno("obj-"+o.id);
+          }},"Smazat složku"));
+      }
+    };
     const kresli=()=>{
       box.innerHTML="";
       const d=deti(o.id);
+      box.append(el("h3",{class:"nadpis"},"Obsah složky — "+(d.length?d.length+" "+sklonovanePolozky(d.length):"prázdná")));
       if(!d.length) box.append(el("p",{class:"tichy"},"Složka je prázdná. Vytvořte v ní novou dlaždici nebo do ní přesuňte existující."));
       const ul=el("ul",{class:"seznam"});
       d.forEach(x=>ul.append(el("li",{},el("span",{class:"ikonka"},x.ikona),
@@ -2174,15 +2284,8 @@ function otevritSlozku(o){
       box.append(el("div",{class:"radek"},el("label",{class:"pole"},el("span",{},"Nová dlaždice ve složce"),sel),
         el("label",{class:"pole"},el("span",{},"Vložit existující"),sel2)));
     };
-    kresli();
-    t.append(el("div",{class:"pruh",style:"margin-top:16px"},
-      el("button",{class:"btn druhy mini",onclick:()=>vzhledDlazdice(o)},"Vzhled"),
-      el("button",{class:"btn druhy mini",onclick:()=>otevritNastroj("soubory")},"Otevřít ve správci souborů"),
-      el("button",{class:"btn nebezpecny mini",onclick:()=>{
-        if(!confirm("Smazat složku? Dlaždice uvnitř se vrátí na plochu.")) return;
-        deti(o.id).forEach(x=>{x.rodic=null;});
-        smazat(o.id,true); zavritOkno("obj-"+o.id);
-      }},"Smazat složku")));
+    kresliListu(); kresli();
+    t.append(lista,hlava,box,pata);
   }});
 }
 function spustitSezeni(o){
@@ -2742,7 +2845,7 @@ const NASTROJE={
     const kde=[["Vytvořit poznámku, složku, odkaz nebo aplikaci","Boční panel → sekce Vytvořit, nebo tlačítko Nová dlaždice, nebo pravé tlačítko na volné ploše"],
       ["Správce souborů","Boční panel → Správce souborů: procházení ploch a složek, přejmenování, přesun, mazání"],
       ["Aplikace","Boční panel → Aplikace: katalog webových aplikací otevíraných v okně nebo v nové kartě"],
-      ["Úprava obsahu dlaždice","Okno dlaždice se otevírá ke čtení — tlačítko Upravit v liště okna nebo klávesa F4 přepne na úpravy"],
+      ["Úprava obsahu dlaždice","Nově založená dlaždice se otevře rovnou k úpravám, později ke čtení — tlačítko Upravit v liště okna nebo klávesa F4 přepne režim. Platí i pro složku, kde se v úpravách objeví název a štítky"],
       ["Otevřít několik dlaždic najednou","Nová dlaždice → Objekty → Uložené sezení: vyberte dlaždice a spusťte je jedním tlačítkem, volitelně se okna rovnou uspořádají vedle sebe"],
       ["Které nástroje se zobrazují","Nastavení → záložka Nástroje: zaškrtávací seznam"],
       ["Citace předpisů, glosář, převod tabulek, QR kód, šifrovaná poznámka","Nastavení → Nástroje: zapněte je v seznamu, pak se objeví v bočním panelu i v paletě"],
@@ -4237,7 +4340,7 @@ function nastaveniOkno(t){
       prep("Ptát se před smazáním dlaždice",S.chovani.potvrzovatMazani,x=>S.chovani.potvrzovatMazani=x);
       prep("Zobrazovat datum a čas v bočním panelu",S.chovani.ukazovatDatum,x=>S.chovani.ukazovatDatum=x);
       prep("Otevírat nová okna kaskádovitě",S.chovani.novaOknaKaskada,x=>S.chovani.novaOknaKaskada=x);
-      prep("Otevírat dlaždice v režimu zobrazení",S.chovani.otviratKeCteni!==false,x=>S.chovani.otviratKeCteni=x);
+      prep("Otevírat dlaždice v režimu zobrazení (nově založené vždy k úpravám)",S.chovani.otviratKeCteni!==false,x=>S.chovani.otviratKeCteni=x);
       obsah.append(el("p",{class:"tichy"},"Změny se ukládají okamžitě."));
     }
     if(akt==="data"){
