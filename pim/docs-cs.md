@@ -497,6 +497,18 @@ Odeslat jde i klávesou `Ctrl+Enter` z pole se zadáním.
 
 **Co se neodesílá:** entity s aspektem **Zabezpečené** (ani odemčené) a bloky `~~~private`, které se ze vstupu vyříznou — okno pak napíše, kolik jich bylo. Před každým odesláním si můžete v náhledu ověřit, co přesně odchází.
 
+### Chat nad vybranými entitami
+
+V kterémkoli seznamu zapněte režim hromadného výběru (klávesa `x`), zaškrtněte entity a klikněte na **💬 Chat s vybranými**.
+
+Otevře se pohled s konverzací. Obsah vybraných entit se přiloží jako **podklady k první otázce** — v dalších kolech už se neposílá znovu, pokračuje se historií konverzace. Odpověď se **vypisuje průběžně**, jak přichází ze služby, takže nemusíte čekat na celý text.
+
+- Podklady jsou nahoře jako odkazy a jde je jednotlivě odebrat křížkem; rozbalovátko **Co se odešle jako podklady** ukáže přesný text.
+- **Nová konverzace** zahodí zprávy a nechá podklady.
+- **💾 Uložit jako entitu** založí entitu s přepisem konverzace a vazbami `mentions` na podklady. Bez toho se konverzace **nikam neukládá** — žije jen do zavření stránky, aby databáze nerostla.
+
+Zabezpečené entity se mezi podklady nedostanou vůbec (aplikace to při otevření oznámí) a soukromé bloky `~~~private` se z obsahu vyříznou.
+
 Model je předvolený; pole **Model** v nastavení ho umí přepsat, když je potřeba. Tlačítkem **Ověřit spojení** si nastavení otestujete. Funkce je jen v aplikaci — vygenerovaný offline prohlížeč ji neobsahuje a klíč se nedostane do exportu, do synchronizace na GitHub ani do statického prohlížeče.
 
 ## Datová synchronizace s GitHubem

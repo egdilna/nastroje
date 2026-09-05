@@ -97,6 +97,20 @@ body.theme-dark .toolbar { background: #222; }
 .entity-row { padding: 0.5em 0; border-bottom: 1px solid #eee; }
 /* H5 obal jen pro screen-reader navigaci po nadpisech – vizuálně se chová jako běžný text/odkaz. */
 .entity-row-heading { display: inline; margin: 0; padding: 0; font-size: inherit; font-weight: inherit; font-family: inherit; line-height: inherit; color: inherit; }
+.ai-chat-context { border: 1px solid #ddd; border-radius: 6px; padding: 0.6em; margin-bottom: 0.8em; }
+body.theme-dark .ai-chat-context { border-color: #444; }
+.ai-chat-chips { list-style: none; padding: 0; margin: 0.4em 0 0; display: flex; flex-wrap: wrap; gap: 0.4em; }
+.ai-chat-chips li { background: #f0f0f0; border-radius: 12px; padding: 0.15em 0.5em; font-size: 0.9em; }
+body.theme-dark .ai-chat-chips li { background: #2a2a2a; }
+.ai-chat-remove { border: 0; background: none; cursor: pointer; padding: 0 0 0 0.3em; }
+.ai-chat-messages { max-height: 55vh; overflow-y: auto; padding: 0.3em; }
+.ai-chat-msg { margin: 0.6em 0; padding: 0.5em 0.7em; border-radius: 8px; }
+.ai-chat-user { background: #eef4fb; margin-left: 2em; }
+.ai-chat-model { background: #f6f6f6; margin-right: 2em; }
+body.theme-dark .ai-chat-user { background: #23303d; }
+body.theme-dark .ai-chat-model { background: #262626; }
+.ai-chat-who { font-weight: 600; margin-bottom: 0.2em; }
+.ai-chat-input textarea { width: 100%; font-family: inherit; }
 .ai-dialog { max-width: 46em; width: 92vw; }
 .ai-dialog textarea { width: 100%; font-family: inherit; }
 .ai-source-details { margin: 0.4em 0 0.8em; }
@@ -1379,6 +1393,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
   <p>Označte text v obsahu a stiskněte <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> (nebo použijte tlačítko <strong>✨ Umělá inteligence…</strong> v liště nad označeným textem). Otevře se okno, kam napíšete, co se má s textem udělat — vaše zadání se pošle spolu s označeným textem.</p>
   <p>Tlačítko <strong>✨ Umělá inteligence…</strong> pod obsahem entity pracuje stejně, jen místo výběru pošle <strong>celý vyrenderovaný obsah</strong>: s vloženými <code>{{include:…}}</code>, doplněnými placeholdery a čítači, bez anotací — tedy přesně to, co jde do exportu.</p>
   <p>Odpověď se objeví v okně v textovém poli, kde ji můžete ještě upravit, a pak si vyberete: <strong>📋 Zkopírovat</strong>, <strong>📤 Jako nová entita</strong>, nebo <strong>↩ Nahradit označený text</strong> (jen když jste vyšli z výběru). Obsah pole se změní až tímhle tlačítkem, nic se nepřepisuje samo.</p>
+  <p><strong>Chat nad vybranými entitami:</strong> v seznamu zapněte režim výběru (klávesa <kbd>x</kbd>), zaškrtněte entity a klikněte na <strong>💬 Chat s vybranými</strong>. Otevře se konverzace, do které se jako podklady přiloží obsah vybraných entit — u první otázky. Odpověď se vypisuje průběžně, jak přichází. Podklady jde v pohledu ubírat, konverzaci zahodit tlačítkem <strong>Nová konverzace</strong> nebo si ji nechat přes <strong>💾 Uložit jako entitu</strong> (uloží se přepis a vazby na podklady). Sama od sebe se konverzace nikam neukládá.</p>
   <p class="meta">Klíč zadáte v Nastavení a zůstává jen ve vašem prohlížeči. Zabezpečené entity se neodesílají vůbec a soukromé bloky <code>~~~private</code> se ze vstupu vyříznou; okno vždycky ukáže, co přesně se odešle. Bez zadaného klíče se tlačítka nezobrazují.</p>
   <h3>Ikony u názvu entity</h3>
   <p class="meta">Tyto emoji se automaticky přidávají před název entity v seznamech, dlaždicích a vazbách, podle jejich aspektů, stavu a atributů.</p>
@@ -7074,6 +7089,201 @@ function goBack() {
   render();
 }
 
+// =============================================================================
+// VIEW: CHAT S UMĚLOU INTELIGENCÍ NAD VYBRANÝMI ENTITAMI
+// =============================================================================
+// Konverzace žije jen v paměti sezení – db se tím nezvětšuje (localStorage má limit
+// a data jdou přes GitHub). Kdo si ji chce nechat, uloží ji tlačítkem jako entitu.
+const _aiChat = { entityIds: [], zpravy: [], bezi: false, vynechano: [] };
+
+// Podklady pro konverzaci: název, aspekty a rozexpandovaný obsah každé entity.
+// Zabezpečené entity se vynechají, soukromé bloky se vyříznou.
+function aiChatSestavKontext() {
+  const casti = [];
+  const vynechano = [];
+  _aiChat.entityIds.forEach(id => {
+    const e = findEntity(id);
+    if (!e) return;
+    if (!aiEntitaPovolena(e)) { vynechano.push(getDisplayTitle(e)); return; }
+    const telo = expandMarkdownIncludes(e.body || '', { markIncluded: false, entity: e, stripAnnotations: true });
+    const ocisteno = aiOcistiVstup(telo);
+    const aspekty = (e.aspects || []).map(a => aspectLabel(a)).join(', ');
+    casti.push('## ' + getDisplayTitle(e) + (aspekty ? ' (' + aspekty + ')' : '') + '\n\n' + (ocisteno.text || '(bez obsahu)'));
+  });
+  _aiChat.vynechano = vynechano;
+  return casti.join('\n\n---\n\n');
+}
+
+function aiChatOtevri(entity_ids) {
+  if (!AI.isConfigured()) { alertMsg('Není nastavený klíč k umělé inteligenci. Doplňte ho v Nastavení.'); return; }
+  // Zabezpečené entity se mezi podklady nedostanou vůbec – aby v seznamu podkladů
+  // nevisely jako by se posílaly a aby na ně neodkazovala ani uložená konverzace.
+  const vsechny = (entity_ids || []).map(findEntity).filter(Boolean);
+  const zabezpecene = vsechny.filter(e => !aiEntitaPovolena(e));
+  if (zabezpecene.length) {
+    toast('🔒 Vynecháno jako zabezpečené: ' + zabezpecene.map(getDisplayTitle).join(', '), 6000);
+  }
+  const povolene = vsechny.filter(aiEntitaPovolena);
+  if (povolene.length === 0) { alertMsg('Není z čeho vycházet – všechny vybrané entity jsou zabezpečené.'); return; }
+  _aiChat.entityIds = povolene.map(e => e.id);
+  _aiChat.zpravy = [];
+  _aiChat.bezi = false;
+  _bulk.active = false;
+  _bulk.selected.clear();
+  setView('aiChat');
+}
+
+function renderAiChatView(main) {
+  const kontext = aiChatSestavKontext();
+  const entity = _aiChat.entityIds.map(findEntity).filter(e => e && aiEntitaPovolena(e));
+
+  let h = '<h1>💬 Chat nad entitami</h1>';
+  h += '<div class="ai-chat-context">' +
+    '<strong>Podklady (' + entity.length + ')</strong> ' +
+    '<span class="meta">' + kontext.length + ' znaků</span>' +
+    '<ul class="ai-chat-chips">' +
+      entity.map(e => '<li><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a>' +
+        '<button type="button" class="ai-chat-remove" data-remove-id="' + escapeHtml(e.id) + '" title="Odebrat z podkladů" aria-label="Odebrat z podkladů">✕</button></li>').join('') +
+    '</ul>';
+  if (_aiChat.vynechano.length > 0) {
+    h += '<p class="meta">🔒 Vynecháno jako zabezpečené: ' + escapeHtml(_aiChat.vynechano.join(', ')) + '</p>';
+  }
+  h += '<details class="ai-source-details"><summary>Co se odešle jako podklady</summary>' +
+    '<pre class="ai-source-preview">' + escapeHtml(kontext) + '</pre></details>';
+  h += '</div>';
+
+  h += '<div class="ai-chat-messages" id="ai-chat-messages">' +
+    (_aiChat.zpravy.length === 0
+      ? '<p class="meta">Zatím tu nic není. Zeptejte se na cokoli k podkladům výše – ty se přiloží k první otázce.</p>'
+      : _aiChat.zpravy.map((z, i) => aiChatZpravaHtml(z, i)).join('')) +
+    '</div>';
+
+  h += '<div class="ai-chat-input">' +
+    '<label class="sr-only" for="ai-chat-text">Zpráva</label>' +
+    '<textarea id="ai-chat-text" rows="3" placeholder="Zeptejte se… (Ctrl+Enter odešle)"' + (_aiChat.bezi ? ' disabled' : '') + '></textarea>' +
+    '<div class="btn-group">' +
+      '<button type="button" class="primary" id="ai-chat-send"' + (_aiChat.bezi ? ' disabled' : '') + '>Odeslat</button>' +
+      '<button type="button" id="ai-chat-new">Nová konverzace</button>' +
+      '<button type="button" id="ai-chat-save"' + (_aiChat.zpravy.length === 0 ? ' disabled' : '') + '>💾 Uložit jako entitu</button>' +
+    '</div>' +
+  '</div>';
+
+  main.innerHTML = h;
+
+  main.querySelectorAll('button.ai-chat-remove').forEach(btn => {
+    btn.onclick = () => {
+      _aiChat.entityIds = _aiChat.entityIds.filter(x => x !== btn.dataset.removeId);
+      render();
+    };
+  });
+  const ta = document.getElementById('ai-chat-text');
+  const send = document.getElementById('ai-chat-send');
+  if (send) send.onclick = () => aiChatOdesli();
+  if (ta) {
+    ta.onkeydown = (ev) => {
+      if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); aiChatOdesli(); }
+    };
+    if (!_aiChat.bezi) ta.focus();
+  }
+  const nova = document.getElementById('ai-chat-new');
+  if (nova) nova.onclick = () => {
+    if (_aiChat.zpravy.length === 0) return;
+    confirmDialog('Zahodit tuhle konverzaci a začít znovu? Podklady zůstanou.', () => {
+      _aiChat.zpravy = [];
+      render();
+    });
+  };
+  const ulozit = document.getElementById('ai-chat-save');
+  if (ulozit) ulozit.onclick = () => aiChatUlozJakoEntitu();
+  aiChatScrollDolu();
+}
+
+function aiChatZpravaHtml(z, i) {
+  const kdo = z.role === 'user' ? 'Vy' : 'Umělá inteligence';
+  const telo = z.role === 'user'
+    ? '<p>' + escapeHtml(z.text).replace(/\n/g, '<br>') + '</p>'
+    : renderMarkdown(z.text || '', { ctx: { depth: 0, includeStack: new Set() } });
+  return '<div class="ai-chat-msg ai-chat-' + (z.role === 'user' ? 'user' : 'model') + '" data-msg="' + i + '">' +
+    '<div class="ai-chat-who meta">' + kdo + '</div>' +
+    '<div class="ai-chat-body markdown">' + telo + '</div>' +
+  '</div>';
+}
+
+function aiChatScrollDolu() {
+  const box = document.getElementById('ai-chat-messages');
+  if (box) box.scrollTop = box.scrollHeight;
+}
+
+async function aiChatOdesli() {
+  if (_aiChat.bezi) return;
+  const ta = document.getElementById('ai-chat-text');
+  const dotaz = ta ? ta.value.trim() : '';
+  if (!dotaz) { toast('Napište zprávu.'); return; }
+
+  // Podklady se přikládají k první otázce – další kola už jedou jen na historii.
+  const prvni = _aiChat.zpravy.length === 0;
+  const kontext = prvni ? aiChatSestavKontext() : '';
+  const proSluzbu = prvni && kontext
+    ? 'Níže jsou podklady. Odpovídej na jejich základě.\n\n' + kontext + '\n\n---\n\n' + dotaz
+    : dotaz;
+
+  _aiChat.zpravy.push({ role: 'user', text: dotaz, proSluzbu: proSluzbu });
+  _aiChat.zpravy.push({ role: 'model', text: '' });
+  _aiChat.bezi = true;
+  if (ta) ta.value = '';
+  render();
+
+  const idx = _aiChat.zpravy.length - 1;
+  const elBody = () => {
+    const el = document.querySelector('.ai-chat-msg[data-msg="' + idx + '"] .ai-chat-body');
+    return el;
+  };
+  const prubezny = elBody();
+  if (prubezny) prubezny.innerHTML = '<p class="meta">⏳ Odpovídám…</p>';
+
+  try {
+    const proOdeslani = _aiChat.zpravy.slice(0, -1).map(z => ({
+      role: z.role, text: z.proSluzbu || z.text
+    }));
+    await AI.askChat(proOdeslani, (kus, cely) => {
+      _aiChat.zpravy[idx].text = cely;
+      const el = elBody();
+      // Během psaní jen prostý text – Markdown se vykreslí až po dopsání, ať se
+      // neblikají napůl rozepsané značky.
+      if (el) { el.textContent = cely; aiChatScrollDolu(); }
+    });
+  } catch (err) {
+    _aiChat.zpravy[idx].text = '';
+    _aiChat.zpravy[idx].chyba = (err && err.message) || 'Dotaz se nepodařilo vyřídit.';
+    alertMsg(_aiChat.zpravy[idx].chyba);
+  } finally {
+    _aiChat.bezi = false;
+    if (!_aiChat.zpravy[idx].text) _aiChat.zpravy.splice(idx - 1, 2); // neúspěšné kolo zahodit
+    render();
+  }
+}
+
+function aiChatUlozJakoEntitu() {
+  if (_aiChat.zpravy.length === 0) return;
+  const entity = _aiChat.entityIds.map(findEntity).filter(e => e && aiEntitaPovolena(e));
+  const prvniOtazka = (_aiChat.zpravy.find(z => z.role === 'user') || {}).text || 'Konverzace';
+  const nazev = ('Chat: ' + prvniOtazka.replace(/\s+/g, ' ').trim()).slice(0, 80);
+  const telo = _aiChat.zpravy.map(z =>
+    (z.role === 'user' ? '**Otázka:** ' : '**Odpověď:**\n\n') + z.text).join('\n\n');
+  const podklady = entity.length
+    ? '\n\n---\n\n**Podklady:** ' + entity.map(e => '[[' + getDisplayTitle(e) + ']]').join(', ')
+    : '';
+  const nova = {
+    id: uuid(), title: nazev, aspects: [], attributes: {}, tags: [],
+    body: telo + podklady, links: [], attachments: [], comments: [],
+    created_at: nowIso(), updated_at: nowIso()
+  };
+  entity.forEach(e => nova.links.push({ to: e.id, type: 'mentions', note: '' }));
+  db.entities.push(nova);
+  save();
+  toast('Konverzace uložena jako „' + nazev + '".', 5000);
+}
+
 // ==== RENDER ROUTER ====
 function updateNavCounts() {
   try {
@@ -7104,6 +7314,7 @@ function historyEntryLabel(h) {
   const names = {
     dashboard: 'Přehled', inbox: 'Inbox', all: 'Vše', tasks: 'Úkoly', calendar: 'Kalendář',
     search: 'Hledání', tags: 'Tagy', flags: 'Příznaky', trash: 'Koš', timetracking: 'Sledování času',
+    aiChat: 'Chat nad entitami',
     topics: 'Témata', tools: 'Nástroje', links: 'Vazby', views: 'Pohledy', comments: 'Komentáře',
     replace: 'Nahrazování', related: 'Související', 'data-io': 'Data', templates: 'Šablony',
     settings: 'Nastavení', outline: 'Osnova'
@@ -7204,6 +7415,7 @@ function render() {
     case 'search': renderSearch(main); break;
     case 'tags': renderTags(main); break;
     case 'reminders': renderRemindersView(main); break;
+    case 'aiChat': renderAiChatView(main); break;
     case 'flags': renderFlagsView(main); break;
     case 'trash': renderTrashView(main); break;
     case 'timetracking': renderTimeTrackingView(main); break;
@@ -8530,6 +8742,7 @@ function bulkRenderToolbarHtml() {
         '<button id="bulk-remove-tag">Odebrat tag</button>' +
         '<button id="bulk-add-link">Přidat vazbu</button>' +
         '<button id="bulk-set-attr">Změnit atribut</button>' +
+        (AI.isConfigured() ? '<button id="bulk-ai-chat">💬 Chat s vybranými</button>' : '') +
         '<button id="bulk-archive">Archivovat</button>' +
         '<button id="bulk-delete" class="danger">Smazat</button>'
       : '<span class="meta">Vyberte entity zaškrtnutím v tabulce.</span>') +
@@ -8584,6 +8797,8 @@ function bulkAttachHandlers(container) {
   if (addLinkBtn) addLinkBtn.onclick = () => bulkAddLink();
   const setAttrBtn = container.querySelector('#bulk-set-attr');
   if (setAttrBtn) setAttrBtn.onclick = () => bulkSetAttribute();
+  const aiChatBtn = container.querySelector('#bulk-ai-chat');
+  if (aiChatBtn) aiChatBtn.onclick = () => aiChatOtevri(bulkSelectedEntities().map(e => e.id));
   const archBtn = container.querySelector('#bulk-archive');
   if (archBtn) archBtn.onclick = () => bulkArchive();
   const delBtn = container.querySelector('#bulk-delete');
@@ -20442,47 +20657,106 @@ const AI = {
   },
   isConfigured() { return !!this.getKey(); },
 
-  // Pošle dotaz a vrátí text odpovědi. Chyby hlásí česky a bez značky poskytovatele;
-  // syrový text chyby jde jen do ladicí konzole.
-  async ask(text) {
+  // Společné odeslání. Chyby hlásí česky a bez značky poskytovatele; syrový text jde do
+  // ladicí konzole. stream=true → odpověď se čte po kouscích a každý kus jde do onDelta.
+  async _posli(contents, stream, onDelta) {
     const key = this.getKey();
     if (!key) throw new Error('Chybí klíč k umělé inteligenci. Zadejte ho v Nastavení.');
     const model = this.getModel() || AI_DEFAULT_MODEL;
-    const url = AI_ENDPOINT_BASE + encodeURIComponent(model) + ':generateContent';
+    const url = AI_ENDPOINT_BASE + encodeURIComponent(model) +
+      (stream ? ':streamGenerateContent?alt=sse' : ':generateContent');
     let res;
     try {
       res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify({ contents: [{ parts: [{ text: text }] }] })
+        body: JSON.stringify({ contents: contents })
       });
     } catch (e) {
       if (typeof debug === 'function') debug('AI fetch selhal: ' + (e && e.message));
       throw new Error('Službu se nepodařilo kontaktovat. Zkontrolujte připojení k internetu.');
     }
-    const data = await res.json().catch(() => null);
     if (!res.ok) {
-      const detail = (data && data.error && data.error.message) || ('HTTP ' + res.status);
-      if (typeof debug === 'function') debug('AI chyba: ' + detail);
-      if (res.status === 400 && /API key/i.test(detail)) throw new Error('Klíč není platný. Zkontrolujte ho v Nastavení.');
-      if (res.status === 403) throw new Error('Klíč nemá k této službě přístup.');
-      if (res.status === 404) throw new Error('Zvolený model není dostupný. Zkuste ho změnit v Nastavení.');
-      if (res.status === 429) throw new Error('Vyčerpaný limit dotazů. Zkuste to za chvíli.');
-      throw new Error('Služba odpověděla chybou (' + res.status + '). Podrobnosti jsou v ladicí konzoli.');
+      const data = await res.json().catch(() => null);
+      throw this._chyba(res.status, (data && data.error && data.error.message) || ('HTTP ' + res.status));
     }
+    return stream ? await this._ctiStream(res, onDelta) : await this._ctiCele(res);
+  },
+
+  _chyba(status, detail) {
+    if (typeof debug === 'function') debug('AI chyba: ' + detail);
+    if (status === 400 && /API key/i.test(detail)) return new Error('Klíč není platný. Zkontrolujte ho v Nastavení.');
+    if (status === 403) return new Error('Klíč nemá k této službě přístup.');
+    if (status === 404) return new Error('Zvolený model není dostupný. Zkuste ho změnit v Nastavení.');
+    if (status === 429) return new Error('Vyčerpaný limit dotazů. Zkuste to za chvíli.');
+    return new Error('Služba odpověděla chybou (' + status + '). Podrobnosti jsou v ladicí konzoli.');
+  },
+
+  // Vytáhne text z jedné odpovědi (nebo jednoho kousku streamu).
+  _text(data) {
+    const cand = data && data.candidates && data.candidates[0];
+    const parts = (cand && cand.content && cand.content.parts) || [];
+    return parts.map(p => (p && p.text) ? p.text : '').join('');
+  },
+
+  async _ctiCele(res) {
+    const data = await res.json().catch(() => null);
     const blok = data && data.promptFeedback && data.promptFeedback.blockReason;
     if (blok) {
       if (typeof debug === 'function') debug('AI odmítla vstup: ' + blok);
       throw new Error('Služba odmítla text zpracovat.');
     }
-    const cand = data && data.candidates && data.candidates[0];
-    const parts = (cand && cand.content && cand.content.parts) || [];
-    const out = parts.map(p => p && p.text ? p.text : '').join('').trim();
+    const out = this._text(data).trim();
     if (!out) {
       if (typeof debug === 'function') debug('AI vrátila prázdnou odpověď: ' + JSON.stringify(data || {}).slice(0, 500));
       throw new Error('Odpověď dorazila prázdná. Zkuste dotaz přeformulovat.');
     }
     return out;
+  },
+
+  // Čte odpověď po kouscích (server-sent events). Každý kousek pošle do onDelta,
+  // aby se text objevoval postupně; na konci vrátí celou odpověď.
+  async _ctiStream(res, onDelta) {
+    if (!res.body || !res.body.getReader) {   // prohlížeč bez streamů → přečti najednou
+      const cely = await this._ctiCele(res);
+      if (typeof onDelta === 'function') onDelta(cely, cely);
+      return cely;
+    }
+    const reader = res.body.getReader();
+    const dekoder = new TextDecoder();
+    let zbytek = '', cely = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      zbytek += dekoder.decode(value, { stream: true });
+      const bloky = zbytek.split('\n\n');
+      zbytek = bloky.pop();
+      bloky.forEach(blok => {
+        blok.split('\n').forEach(radek => {
+          if (radek.indexOf('data:') !== 0) return;
+          const telo = radek.slice(5).trim();
+          if (!telo || telo === '[DONE]') return;
+          let data = null;
+          try { data = JSON.parse(telo); } catch (e) { return; }
+          const kus = this._text(data);
+          if (kus) { cely += kus; if (typeof onDelta === 'function') onDelta(kus, cely); }
+        });
+      });
+    }
+    cely = cely.trim();
+    if (!cely) throw new Error('Odpověď dorazila prázdná. Zkuste dotaz přeformulovat.');
+    return cely;
+  },
+
+  // Jednorázový dotaz (okno nad textem).
+  async ask(text) {
+    return await this._posli([{ parts: [{ text: text }] }], false);
+  },
+
+  // Vícekolová konverzace se streamováním. zpravy = [{ role:'user'|'model', text }]
+  async askChat(zpravy, onDelta) {
+    const contents = zpravy.map(z => ({ role: z.role, parts: [{ text: z.text }] }));
+    return await this._posli(contents, true, onDelta);
   }
 };
 
