@@ -499,16 +499,6 @@ You can also send with `Ctrl+Enter` from the instruction field.
 
 **What is never sent:** entities with the **Secured** aspect (not even unlocked ones) and `~~~private` blocks, which are cut out of the input — the dialog then reports how many. Before every send you can check in the preview exactly what is going out.
 
-### Usage
-
-Settings shows a table of token usage per month (requests, input, output, total) and a reset button. PIM adds the numbers up itself from what each response reports — for thinking models, thinking tokens are counted towards the output.
-
-The API reports neither spend nor remaining credit — these are **tokens PIM counted itself**. Below the table there is a **Rates for the price estimate** disclosure: enter the price per million tokens separately for input and output (pre-filled from the default model's price list) and the exchange rate for the dollar. Once a rate is filled in, an **Estimate** column in your currency appears in the table.
-
-The estimate is indicative: it doesn't know about the cached-content discount or any other line items, and **only the provider's invoice is binding**. PIM does not fetch the exchange rate itself, so it never shows figures from a source that may be stale; rewrite the rates whenever the price list changes.
-
-**The billing period is the calendar month** and rolls over on the 1st — so PIM's counter is split the same way as the provider's. History is kept for 12 months.
-
 ### Chat over selected entities
 
 In any list, turn on bulk-selection mode (the `x` key), tick the entities and click **💬 Chat with selected**.
