@@ -168,12 +168,13 @@ Když píšete v markdownovém poli (tělo entity, sekce, odkládací prostor), 
 | `Ctrl+-` | Označené jako Critic odstranění `{--…--}` |
 | `Ctrl+.` | Označené jako Critic náhrada `{~~…~>…~~}` |
 | `Ctrl+=` | Označené jako zvýraznění `{==…==}` |
-| `Ctrl+Shift+W` | Vložit wiki odkaz na entitu |
+| `Ctrl+Shift+K` | Vložit wiki odkaz na entitu |
 | `Ctrl+Shift+E` | Vložit include `{{include:…}}` |
 | `Ctrl+Shift+S` | Vložit status `{{status:…}}` |
 | `Ctrl+Shift+I` | Vložit příznak (nabídka emoji) |
-| `Ctrl+Shift+N` | Z označeného textu vytvořit novou entitu |
+| `Ctrl+Shift+M` | Z označeného textu vytvořit novou entitu |
 | `Ctrl+Shift+A` | Přejít na lištu akcí s označeným textem |
+| `Ctrl+Shift+G` | Označený text poslat umělé inteligenci s vlastním zadáním |
 
 ### Skrytí hotových úkolů
 
@@ -476,6 +477,27 @@ Archivace slouží k tomu, aby hotové a neaktuální věci zmizely z každodenn
 Všechno archivované se místo toho sesbírá do jediné sbalené sekce **🗄 Archiv** úplně na konci detailu (nad technickou sekcí Meta). V závorce je počet položek; sekce je rozdělená na **archivované odchozí vazby** a **archivované příchozí vazby**, takže je u každé položky vidět, jakým vztahem k entitě patří — archivovaný úkol projektu se ukáže jako „je součástí", archivovaný účastník schůzky jako „účastní se" a podobně.
 
 Archivovat a obnovovat se dá i odsud stejně jako odjinud; tlačítko pro odebrání vazby (×) funguje v sekci Archiv také.
+
+## Umělá inteligence
+
+Volitelná funkce: umožní poslat text jazykovému modelu s vlastním zadáním. Klíč zadáte v **Nastavení → Umělá inteligence** a ukládá se pouze ve vašem prohlížeči (`localStorage`, klíč `pim_ai_key`). Dokud klíč nezadáte, tlačítka se nikde nezobrazují.
+
+**Dvě cesty, kudy text poslat:**
+
+- **Označený text** — v editaci obsahu označte text a stiskněte `Ctrl+Shift+G`, nebo použijte tlačítko **✨ Umělá inteligence…** v liště nad označeným textem.
+- **Celý obsah entity** — tlačítko **✨ Umělá inteligence…** pod obsahem entity. Pošle vyrenderovaný obsah: s vloženými `{{include:…}}`, doplněnými placeholdery a čítači a bez anotací — tedy přesně ten text, který jde do exportu a na GitHub přes `ghpath`.
+
+**Okno** má pole na zadání (co se má s textem udělat), rozbalovací náhled **Co se odešle** a po odeslání textové pole s odpovědí. Odpověď si v něm můžete ještě upravit a pak zvolit:
+
+- **📋 Zkopírovat** — do schránky,
+- **📤 Jako nová entita** — založí novou entitu, název se odvodí z prvního řádku odpovědi,
+- **↩ Nahradit označený text** — jen u varianty s výběrem; obsah pole se přepíše až tímhle tlačítkem, samo se nic nemění.
+
+Odeslat jde i klávesou `Ctrl+Enter` z pole se zadáním.
+
+**Co se neodesílá:** entity s aspektem **Zabezpečené** (ani odemčené) a bloky `~~~private`, které se ze vstupu vyříznou — okno pak napíše, kolik jich bylo. Před každým odesláním si můžete v náhledu ověřit, co přesně odchází.
+
+Model je předvolený; pole **Model** v nastavení ho umí přepsat, když je potřeba. Tlačítkem **Ověřit spojení** si nastavení otestujete. Funkce je jen v aplikaci — vygenerovaný offline prohlížeč ji neobsahuje a klíč se nedostane do exportu, do synchronizace na GitHub ani do statického prohlížeče.
 
 ## Datová synchronizace s GitHubem
 

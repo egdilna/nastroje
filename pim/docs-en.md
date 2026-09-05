@@ -169,12 +169,13 @@ When typing in a Markdown field (entity body, sections, scratchpad), these short
 | `Ctrl+-` | Selection as Critic delete `{--…--}` |
 | `Ctrl+.` | Selection as Critic replace `{~~…~>…~~}` |
 | `Ctrl+=` | Selection as highlight `{==…==}` |
-| `Ctrl+Shift+W` | Insert wiki link to an entity |
+| `Ctrl+Shift+K` | Insert wiki link to an entity |
 | `Ctrl+Shift+E` | Insert include `{{include:…}}` |
 | `Ctrl+Shift+S` | Insert status `{{status:…}}` |
 | `Ctrl+Shift+I` | Insert flag (emoji picker) |
-| `Ctrl+Shift+N` | Create a new entity from the selected text |
+| `Ctrl+Shift+M` | Create a new entity from the selected text |
 | `Ctrl+Shift+A` | Jump to the action toolbar for the selected text |
+| `Ctrl+Shift+G` | Send the selected text to the artificial intelligence with your own instruction |
 
 ### Hiding completed tasks
 
@@ -477,6 +478,27 @@ Archiving exists so that finished and outdated things disappear from everyday wo
 Everything archived is collected instead into a single collapsed **🗄 Archive** section at the very bottom of the detail (above the technical Meta section). The count is in brackets; the section is split into **archived outgoing links** and **archived incoming links**, so you can see how each item relates to the entity — an archived project task shows as "is part of", an archived meeting attendee as "attends", and so on.
 
 You can archive and restore from here as anywhere else, and the remove-link button (×) works in the Archive section too.
+
+## Artificial intelligence
+
+An optional feature: it lets you send text to a language model with your own instruction. You enter the key in **Settings → Artificial intelligence** and it is stored only in your browser (`localStorage`, key `pim_ai_key`). Until a key is set, none of the buttons appear.
+
+**Two ways to send text:**
+
+- **Selected text** — while editing content, select text and press `Ctrl+Shift+G`, or use the **✨ Artificial intelligence…** button in the toolbar above the selection.
+- **The whole entity body** — the **✨ Artificial intelligence…** button below the entity body. It sends the rendered content: `{{include:…}}` expanded, placeholders and counters evaluated, annotations removed — exactly the text that goes into an export and to GitHub via `ghpath`.
+
+**The dialog** has a field for your instruction, a collapsible **What will be sent** preview, and after sending a text area with the answer. You can still edit the answer there and then choose:
+
+- **📋 Copy** — to the clipboard,
+- **📤 As a new entity** — creates a new entity, the title is derived from the first line of the answer,
+- **↩ Replace the selected text** — only for the selection variant; the field is rewritten only by this button, nothing changes on its own.
+
+You can also send with `Ctrl+Enter` from the instruction field.
+
+**What is never sent:** entities with the **Secured** aspect (not even unlocked ones) and `~~~private` blocks, which are cut out of the input — the dialog then reports how many. Before every send you can check in the preview exactly what is going out.
+
+The model has a default; the **Model** field in settings can override it when needed. The **Verify connection** button tests the setup. The feature lives in the application only — the generated offline viewer does not contain it, and the key never reaches an export, the GitHub sync or the static viewer.
 
 ## Data sync with GitHub
 
