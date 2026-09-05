@@ -487,15 +487,26 @@ Volitelná funkce: umožní poslat text jazykovému modelu s vlastním zadáním
 - **Označený text** — v editaci obsahu označte text a stiskněte `Ctrl+Shift+G`, nebo použijte tlačítko **✨ Umělá inteligence…** v liště nad označeným textem.
 - **Celý obsah entity** — tlačítko **✨ Umělá inteligence…** pod obsahem entity. Pošle vyrenderovaný obsah: s vloženými `{{include:…}}`, doplněnými placeholdery a čítači a bez anotací — tedy přesně ten text, který jde do exportu a na GitHub přes `ghpath`.
 
-**Okno** má pole na zadání (co se má s textem udělat), rozbalovací náhled **Co se odešle** a po odeslání textové pole s odpovědí. Odpověď si v něm můžete ještě upravit a pak zvolit:
+**Okno** má pole na zadání (co se má s textem udělat), rozbalovací náhled **Co se odešle** a po odeslání odpověď — ta se ukáže **vysázená jako Markdown**. Tlačítkem **✏ Upravit** se přepnete do textového pole a stejným tlačítkem zpět na náhled. Pak zvolíte:
 
 - **📋 Zkopírovat** — do schránky,
 - **📤 Jako nová entita** — založí novou entitu, název se odvodí z prvního řádku odpovědi,
+- **↻ Pokračovat s odpovědí** — vezme odpověď (i s vašimi ručními úpravami) jako nový vstup a čeká na další zadání. Text se tak dá dopilovat na několikrát; nahrazení výběru zůstává dostupné a pořád míří na tentýž úsek.
 - **↩ Nahradit označený text** — jen u varianty s výběrem; obsah pole se přepíše až tímhle tlačítkem, samo se nic nemění.
 
 Odeslat jde i klávesou `Ctrl+Enter` z pole se zadáním.
 
 **Co se neodesílá:** entity s aspektem **Zabezpečené** (ani odemčené) a bloky `~~~private`, které se ze vstupu vyříznou — okno pak napíše, kolik jich bylo. Před každým odesláním si můžete v náhledu ověřit, co přesně odchází.
+
+### Spotřeba
+
+V nastavení je tabulka spotřebovaných tokenů po měsících (dotazů, vstup, výstup, celkem) a tlačítko na vynulování. Čísla si PIM sčítá sám z údajů, které vrací každá odpověď — u přemýšlivých modelů se do výstupu započítávají i přemýšlecí tokeny.
+
+API nesděluje ani útratu, ani zbývající kredit — tohle jsou **tokeny, které si PIM spočítal sám**. Pod tabulkou je proto rozbalovátko **Sazby pro odhad ceny**: zadáte cenu za milion tokenů zvlášť pro vstup a výstup (předvyplněné podle ceníku výchozího modelu) a kurz dolaru. Jakmile je vyplněný kurz, přibude v tabulce sloupec **Odhad** v korunách.
+
+Odhad je orientační: nezná slevu za obsah ze vyrovnávací paměti ani případné další položky a **závaznou částku má jen vyúčtování u poskytovatele**. Kurz PIM sám nezjišťuje, aby nezobrazoval čísla ze zdroje, který nemusí být aktuální; sazby si přepište, kdykoli se ceník změní.
+
+**Zúčtovací období je kalendářní měsíc** a překlápí se prvního dne — počítadlo v PIM je tedy dělené stejně jako u poskytovatele. Historie se drží 12 měsíců zpět.
 
 ### Chat nad vybranými entitami
 
