@@ -498,16 +498,6 @@ Odeslat jde i klávesou `Ctrl+Enter` z pole se zadáním.
 
 **Co se neodesílá:** entity s aspektem **Zabezpečené** (ani odemčené) a bloky `~~~private`, které se ze vstupu vyříznou — okno pak napíše, kolik jich bylo. Před každým odesláním si můžete v náhledu ověřit, co přesně odchází.
 
-### Spotřeba
-
-V nastavení je tabulka spotřebovaných tokenů po měsících (dotazů, vstup, výstup, celkem) a tlačítko na vynulování. Čísla si PIM sčítá sám z údajů, které vrací každá odpověď — u přemýšlivých modelů se do výstupu započítávají i přemýšlecí tokeny.
-
-API nesděluje ani útratu, ani zbývající kredit — tohle jsou **tokeny, které si PIM spočítal sám**. Pod tabulkou je proto rozbalovátko **Sazby pro odhad ceny**: zadáte cenu za milion tokenů zvlášť pro vstup a výstup (předvyplněné podle ceníku výchozího modelu) a kurz dolaru. Jakmile je vyplněný kurz, přibude v tabulce sloupec **Odhad** v korunách.
-
-Odhad je orientační: nezná slevu za obsah ze vyrovnávací paměti ani případné další položky a **závaznou částku má jen vyúčtování u poskytovatele**. Kurz PIM sám nezjišťuje, aby nezobrazoval čísla ze zdroje, který nemusí být aktuální; sazby si přepište, kdykoli se ceník změní.
-
-**Zúčtovací období je kalendářní měsíc** a překlápí se prvního dne — počítadlo v PIM je tedy dělené stejně jako u poskytovatele. Historie se drží 12 měsíců zpět.
-
 ### Chat nad vybranými entitami
 
 V kterémkoli seznamu zapněte režim hromadného výběru (klávesa `x`), zaškrtněte entity a klikněte na **💬 Chat s vybranými**.
