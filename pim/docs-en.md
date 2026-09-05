@@ -498,6 +498,18 @@ You can also send with `Ctrl+Enter` from the instruction field.
 
 **What is never sent:** entities with the **Secured** aspect (not even unlocked ones) and `~~~private` blocks, which are cut out of the input — the dialog then reports how many. Before every send you can check in the preview exactly what is going out.
 
+### Chat over selected entities
+
+In any list, turn on bulk-selection mode (the `x` key), tick the entities and click **💬 Chat with selected**.
+
+A conversation view opens. The content of the selected entities is attached as **background material to the first question** — later turns don't send it again and continue from the conversation history. The answer is **printed as it arrives** from the service, so you don't wait for the whole text.
+
+- The background entities are listed at the top as links and can be removed one by one with the ✕; the **What will be sent as background** disclosure shows the exact text.
+- **New conversation** discards the messages and keeps the background.
+- **💾 Save as entity** creates an entity with a transcript of the conversation and `mentions` links to the background entities. Without that the conversation is **not stored anywhere** — it lives only until you close the page, so the database doesn't grow.
+
+Secured entities never make it into the background material (the app says so when the chat opens) and `~~~private` blocks are cut out of the content.
+
 The model has a default; the **Model** field in settings can override it when needed. The **Verify connection** button tests the setup. The feature lives in the application only — the generated offline viewer does not contain it, and the key never reaches an export, the GitHub sync or the static viewer.
 
 ## Data sync with GitHub

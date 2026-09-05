@@ -137,6 +137,17 @@ při přidávání nového úložiště klíčů to musí zůstat tak.
 Celý modul, dialog `#dialog-ai` i sekce v Nastavení jsou **jen v aplikaci**, ne ve
 `STATIC_VIEWER_TEMPLATE` — prohlížeč needituje a klíč do něj nepatří.
 
+Pohled `aiChat` (`renderAiChatView`, stav `_aiChat`) je chat nad vybranými entitami; otevírá
+se z lišty hromadného výběru. Podklady se přikládají **jen k první otázce**, další kola jedou
+na historii — v `_aiChat.zpravy` proto zpráva nese jak `text` (co vidí uživatel), tak volitelně
+`proSluzbu` (co se opravdu odeslalo). Konverzace **se neukládá do `db`**; kdo si ji chce nechat,
+uloží ji tlačítkem jako entitu. Zabezpečené entity se do podkladů nepustí už při otevření, aby
+na ně neodkazovala ani uložená konverzace.
+
+Odpověď chatu se čte streamovaně (`AI.askChat` → `_ctiStream`, koncový bod `:streamGenerateContent?alt=sse`).
+Během psaní se do bubliny sype **prostý text**; Markdown se vykreslí až po dopsání, aby se
+neblikaly rozepsané značky.
+
 ## Integrace
 - **GitHub** (`GH_API`, token v `localStorage["pim_gh_token"]`, modul od ř. 23696) včetně
   **autosave na GitHub** (`scheduleAutosaveGh`, `toggleAutosaveGh`, `updateAutosaveButton`).
