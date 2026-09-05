@@ -121,6 +121,22 @@ entita vzniklá z wiki odkazu. Zděděné vazby se nesmí duplikovat — kontrol
   Jsou to volání třetí strany — musí zůstat volitelná, nesmí posílat citlivý obsah bez
   vědomí uživatele a jejich výpadek nesmí shodit editor.
 
+## Umělá inteligence: v GUI bez značky
+Modul `AI` (konstanty `AI_KEY_STORAGE`, `AI_MODEL_STORAGE`, `AI_DEFAULT_MODEL`, `AI_ENDPOINT_BASE`)
+volá jazykový model přímo z prohlížeče — služba povoluje CORS, takže **není potřeba proxy**
+jako u Toggl. V uživatelském rozhraní se o tom mluví vždycky jen jako o **„umělé inteligenci"**;
+název poskytovatele nesmí být vidět nikde v GUI, v nápovědě ani v dokumentaci — jen v komentáři
+u modulu a v konstantě s modelem. Platí to i pro chybové hlášky: uživateli jde česká věta,
+syrová odpověď služby jde do `debug()`.
+
+Vstup vždycky prochází `aiOcistiVstup()` (vyřízne bloky `~~~private`) a `aiEntitaPovolena()`
+(zabezpečené entity se neodesílají ani odemčené). Okno před odesláním ukazuje přesný text.
+Klíč žije v `localStorage` mimo `db`, takže se nedostane do exportu ani do synchronizace —
+při přidávání nového úložiště klíčů to musí zůstat tak.
+
+Celý modul, dialog `#dialog-ai` i sekce v Nastavení jsou **jen v aplikaci**, ne ve
+`STATIC_VIEWER_TEMPLATE` — prohlížeč needituje a klíč do něj nepatří.
+
 ## Integrace
 - **GitHub** (`GH_API`, token v `localStorage["pim_gh_token"]`, modul od ř. 23696) včetně
   **autosave na GitHub** (`scheduleAutosaveGh`, `toggleAutosaveGh`, `updateAutosaveButton`).
