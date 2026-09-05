@@ -885,7 +885,7 @@
 (function () {
 "use strict";
 
-const BUILD = 1;
+const BUILD = 2;
 
 /* ---------- Debug (on-page only, never console) ---------- */
 const dbgEl = document.getElementById("debug-out");
@@ -4153,6 +4153,126 @@ function renderTopicExport(topic, tag, mode, leadHtml) {
   // paragraph level: lead prefix then full block markdown
   return (lead ? "<p>" + lead + "</p>\n" : "") + renderMarkdown(text, mode);
 }
+/* ---------- Hledání v dynamickém HTML exportu ---------- */
+// Panel, styly a skript se do výstupu vkládají jen u dynamického exportu.
+const DYNAMIC_CSS = `
+.hledani{position:sticky;top:0;background:#fff;border-bottom:1px solid #ddd;padding:.5rem 0;margin:0 0 .6rem;display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;z-index:5}
+.hledani label{font-weight:600}
+.hledani input{flex:1 1 12rem;min-width:8rem;padding:.35rem .5rem;border:1px solid #bbb;border-radius:4px;font:inherit}
+.hledani button{padding:.35rem .6rem;border:1px solid #bbb;border-radius:4px;background:#f4f4f4;font:inherit;cursor:pointer}
+.hledani button:hover{background:#e9e9e9}
+.hledani .stav{color:#555;font-size:.9em}
+.lvl[hidden]{display:none}
+mark.hl{background:#ffe680;color:inherit}`;
+
+const DYNAMIC_TOOLBAR = `<div class="hledani" role="search">
+<label for="hledat">Hledat</label>
+<input id="hledat" type="search" placeholder="Zadejte hledaný text…" autocomplete="off">
+<button type="button" id="btn-zrusit">Zrušit</button>
+<button type="button" id="btn-rozbalit">Rozbalit vše</button>
+<button type="button" id="btn-sbalit">Sbalit vše</button>
+<span class="stav" id="stav-hledani" role="status" aria-live="polite"></span>
+</div>`;
+
+const DYNAMIC_SCRIPT = `
+<script>
+(function(){
+  var vstup=document.getElementById("hledat"), stav=document.getElementById("stav-hledani");
+  var radky=Array.prototype.slice.call(document.querySelectorAll(".lvl"));
+  // Normalizace zachovává délku řetězce (znak za znak), aby seděly indexy pro zvýraznění.
+  function normZnak(c){
+    var n=c.normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").toLowerCase();
+    return n.length===1?n:(n.charAt(0)||" ");
+  }
+  function norm(s){var o="";for(var i=0;i<s.length;i++)o+=normZnak(s.charAt(i));return o;}
+  // Textové uzly patřící přímo řádku (bez vnořených podřádků).
+  function vlastniUzly(radek){
+    var out=[],w=document.createTreeWalker(radek,NodeFilter.SHOW_TEXT,{acceptNode:function(n){
+      var p=n.parentNode;
+      while(p&&p!==radek){
+        if(p.classList&&p.classList.contains("lvl"))return NodeFilter.FILTER_REJECT;
+        p=p.parentNode;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    }});
+    var n;while((n=w.nextNode()))out.push(n);
+    return out;
+  }
+  radky.forEach(function(r){
+    r._text=norm(vlastniUzly(r).map(function(n){return n.data;}).join(" "));
+  });
+  function zrusZvyrazneni(){
+    Array.prototype.forEach.call(document.querySelectorAll("mark.hl"),function(m){
+      var rodic=m.parentNode;
+      rodic.replaceChild(document.createTextNode(m.textContent),m);
+      rodic.normalize();
+    });
+  }
+  function zvyrazni(radek,dotaz){
+    vlastniUzly(radek).forEach(function(n){
+      var s=n.data,low=norm(s),i=low.indexOf(dotaz);
+      if(i<0)return;
+      var frag=document.createDocumentFragment(),pos=0;
+      while(i>=0){
+        if(i>pos)frag.appendChild(document.createTextNode(s.slice(pos,i)));
+        var m=document.createElement("mark");
+        m.className="hl";m.textContent=s.slice(i,i+dotaz.length);
+        frag.appendChild(m);
+        pos=i+dotaz.length;i=low.indexOf(dotaz,pos);
+      }
+      if(pos<s.length)frag.appendChild(document.createTextNode(s.slice(pos)));
+      n.parentNode.replaceChild(frag,n);
+    });
+  }
+  function vsechnyDetaily(otevrit){
+    Array.prototype.forEach.call(document.querySelectorAll("details"),function(d){d.open=otevrit;});
+  }
+  function pocetShod(n){
+    if(n===0)return "Nic nenalezeno";
+    if(n===1)return "1 shoda";
+    if(n<5)return n+" shody";
+    return n+" shod";
+  }
+  function hledej(){
+    var dotaz=norm(vstup.value.trim());
+    zrusZvyrazneni();
+    if(!dotaz){
+      radky.forEach(function(r){r.hidden=false;});
+      vsechnyDetaily(false);
+      stav.textContent="";
+      return;
+    }
+    radky.forEach(function(r){r._potomek=false;});
+    var shod=0;
+    for(var i=radky.length-1;i>=0;i--){
+      var r=radky[i],sam=r._text.indexOf(dotaz)>=0,vidi=sam||r._potomek;
+      r.hidden=!vidi;
+      if(sam)shod++;
+      if(vidi){
+        var rodic=r.parentNode&&r.parentNode.closest?r.parentNode.closest(".lvl"):null;
+        if(rodic)rodic._potomek=true;
+      }
+    }
+    radky.forEach(function(r){
+      if(r.hidden)return;
+      var d=r.querySelector("details");
+      if(d)d.open=true;
+      if(r._text.indexOf(dotaz)>=0)zvyrazni(r,dotaz);
+    });
+    stav.textContent=pocetShod(shod);
+  }
+  var timer=null;
+  vstup.addEventListener("input",function(){clearTimeout(timer);timer=setTimeout(hledej,120);});
+  vstup.addEventListener("keydown",function(e){
+    if(e.key==="Escape"){vstup.value="";hledej();}
+    else if(e.key==="Enter"){clearTimeout(timer);hledej();}
+  });
+  document.getElementById("btn-zrusit").addEventListener("click",function(){vstup.value="";hledej();vstup.focus();});
+  document.getElementById("btn-rozbalit").addEventListener("click",function(){vsechnyDetaily(true);});
+  document.getElementById("btn-sbalit").addEventListener("click",function(){vsechnyDetaily(false);});
+})();
+<\/script>`;
+
 function exportHTML(dynamic, accepted) {
   const mode = accepted ? "accepted" : "review";
   const nb = computeNumbering();
@@ -4170,7 +4290,7 @@ function exportHTML(dynamic, accepted) {
       body += "<div class='lvl lvl-" + depth + "' style='margin-left:" + indentPx + "px'>\n";
       if (rt.tag) body += "<" + rt.tag + " class='rowtype rowtype-" + rt.id + "'>\n";
       if (dynamic && hasChildren) {
-        body += "<details open><summary>";
+        body += "<details><summary>";
         // in summary keep it compact: first line only as heading/inline
         const firstLine = String(r.topic || "").split("\n")[0];
         if (/^h[1-6]$/.test(tag)) body += "<" + tag + " style='display:inline'>" + lead + renderMarkdownInline(firstLine, mode) + "</" + tag + ">";
@@ -4226,11 +4346,13 @@ del.rowtype{background:#f7d6d6}
 dl.cols{margin:.2rem 0 .6rem;font-size:.92em}dl.cols dt{font-weight:600;color:#555}dl.cols dd{margin:0 0 .3rem 1rem}
 code{font-family:Menlo,Consolas,monospace;background:#f0f0f0;padding:0 3px;border-radius:3px}
 summary{cursor:pointer}
+${dynamic ? DYNAMIC_CSS : ""}
 </style></head>
 <body>
+${dynamic ? DYNAMIC_TOOLBAR : ""}
 <h1>${title}</h1>
 ${doc.meta.description ? "<p><em>" + escapeHtml(doc.meta.description) + "</em></p>" : ""}
-${body}</body></html>`;
+${body}${dynamic ? DYNAMIC_SCRIPT : ""}</body></html>`;
 }
 function formatCellForExport(r, col) {
   const v = cellValue(r, col);
