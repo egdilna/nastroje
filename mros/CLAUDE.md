@@ -217,6 +217,12 @@ seznamu, rozezná odrážky, číslování i `[x]`) a `mdOdkaz()` s `vlozitMdOdk
 (odkaz v Markdownu → název a adresa). Obojí visí na události `paste` a zasáhne jen
 tehdy, když text odpovídá — jednořádkové vložení i obyčejná adresa projdou beze změny.
 
+**Skrývání splněných úkolů** řeší `tlacitkoSkrytHotove()`. Volba se drží v obsahu
+dlaždice (`obsah.skryvatHotove`), takže platí pro čtení i úpravy a přežije zavření okna;
+statistika, proužek i náhled na ploše počítají dál se všemi úkoly. Když se při zapnutém
+skrývání úkol zaškrtne, zmizí ze seznamu — fokus proto přeskočí na další úkol podle
+`data-poradi`, ne do prázdna.
+
 **Ministatistiku** kontrolního seznamu a úkolů kreslí `postupHtml()` do náhledu
 dlaždice a `souhrnDlazdice()` ji přidává do `aria-label` dlaždice, aby ji přečetl
 i odečítač obrazovky. Proužek postupu je `.postup` s vnořeným `<i>` o šířce v procentech.
