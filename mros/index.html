@@ -1526,20 +1526,39 @@ function zobrazeni(o,t){
         postup.setAttribute("role","img"); postup.setAttribute("aria-label","Splněno "+pct+" procent");
       };
       const ul=el("ul",{class:"seznam"});
-      uk.forEach(u=>{
-        const ch=el("input",{type:"checkbox"}); ch.checked=!!u.hotovo;
-        const txt=el("span",{class:"rostouci"},u.text||"(bez názvu)");
-        const znacky=el("span",{class:"pruh",style:"margin:0;gap:6px;flex:0 0 auto"});
-        const poTerminu=u.termin&&!u.hotovo&&u.termin<dnes();
-        if(u.termin) znacky.append(el("span",{class:"stitek",
-          style:poTerminu?"background:color-mix(in srgb,#d4536b 20%,transparent);color:#a33049":""},
-          (poTerminu?"po termínu, ":"")+new Date(u.termin).toLocaleDateString("cs-CZ")));
-        if(u.priorita) znacky.append(el("span",{class:"stitek"},"priorita "+u.priorita));
-        skrtnout(txt,u.hotovo);
-        ch.addEventListener("change",()=>{ u.hotovo=ch.checked; skrtnout(txt,ch.checked); spocitat(); ulozP(); });
-        ul.append(el("li",{},el("label",{class:"radek",style:"gap:10px;margin:0;flex:1;cursor:pointer"},ch,txt),znacky));
-      });
-      spocitat(); t.append(stav,postup,ul);
+      const lista=el("div",{class:"pruh",style:"margin:8px 0 0"});
+      const kresli=(fokusNa)=>{
+        ul.innerHTML=""; lista.innerHTML="";
+        const hotovych=uk.filter(u=>u.hotovo).length;
+        const b=tlacitkoSkrytHotove(c,hotovych,()=>{ ulozP(); kresli(); $("[data-skryt-hotove]",lista)?.focus(); });
+        if(b) lista.append(b);
+        uk.forEach((u,n)=>{
+          if(c.skryvatHotove&&u.hotovo) return;
+          const ch=el("input",{type:"checkbox","data-poradi":n}); ch.checked=!!u.hotovo;
+          const txt=el("span",{class:"rostouci"},u.text||"(bez názvu)");
+          const znacky=el("span",{class:"pruh",style:"margin:0;gap:6px;flex:0 0 auto"});
+          const poTerminu=u.termin&&!u.hotovo&&u.termin<dnes();
+          if(u.termin) znacky.append(el("span",{class:"stitek",
+            style:poTerminu?"background:color-mix(in srgb,#d4536b 20%,transparent);color:#a33049":""},
+            (poTerminu?"po termínu, ":"")+new Date(u.termin).toLocaleDateString("cs-CZ")));
+          if(u.priorita) znacky.append(el("span",{class:"stitek"},"priorita "+u.priorita));
+          skrtnout(txt,u.hotovo);
+          ch.addEventListener("change",()=>{
+            u.hotovo=ch.checked; skrtnout(txt,ch.checked); spocitat(); ulozP();
+            /* při skrývání splněný úkol zmizí — fokus musí zůstat v seznamu */
+            if(c.skryvatHotove&&ch.checked) kresli(n);
+            else kresli();
+          });
+          ul.append(el("li",{},el("label",{class:"radek",style:"gap:10px;margin:0;flex:1;cursor:pointer"},ch,txt),znacky));
+        });
+        spocitat();
+        if(fokusNa!=null){
+          const dalsi=[...ul.querySelectorAll("input[type=checkbox]")].find(x=>Number(x.dataset.poradi)>fokusNa)
+            ||[...ul.querySelectorAll("input[type=checkbox]")].pop();
+          (dalsi||$("[data-skryt-hotove]",lista))?.focus();
+        }
+      };
+      kresli(); t.append(stav,postup,lista,ul);
       break;
     }
     case "odkazy": {
@@ -1715,6 +1734,16 @@ function vlozitMdOdkaz(poleNazev,poleUrl,pouzit){
   poleUrl.addEventListener("paste",obsluha);
 }
 
+/* skrývání splněných úkolů — volba se drží v dlaždici, platí pro čtení i úpravy */
+function tlacitkoSkrytHotove(c,hotovych,poZmene){
+  if(!hotovych) return null;
+  const skryto=!!c.skryvatHotove;
+  const b=el("button",{class:"btn druhy mini","data-skryt-hotove":"1","aria-pressed":String(skryto),
+    onclick:()=>{ c.skryvatHotove=!skryto; poZmene(); hlas(skryto?"Splněné úkoly zobrazeny":"Splněné úkoly skryty"); }},
+    (skryto?"Zobrazit splněné (":"Skrýt splněné (")+hotovych+")");
+  return b;
+}
+
 /* ---------- pořadí položek v editorech ----------
    Dvojice tlačítek pro posun položky. Po přesunu se seznam překreslí a fokus zůstane
    na přesunuté položce, aby šlo pořadí měnit i z klávesnice. `box` je překreslovaný obal. */
@@ -1810,11 +1839,16 @@ function editor(o,t,w){
       const box=el("div",{}); t.append(box);
       const kresli=()=>{
         box.innerHTML="";
+        const hotovych=(c.ukoly||[]).filter(u=>u.hotovo).length;
+        const b=tlacitkoSkrytHotove(c,hotovych,()=>{ ulozP(); kresli(); $("[data-skryt-hotove]",box)?.focus(); });
+        if(b) box.append(el("div",{class:"pruh"},b));
         (c.ukoly||[]).forEach((u,n)=>{
+          if(c.skryvatHotove&&u.hotovo) return;
           const k=el("div",{class:"karta"});
           const r1=el("div",{class:"radek"});
           const ch=el("input",{type:"checkbox","aria-label":"Hotovo"}); ch.checked=!!u.hotovo;
-          ch.addEventListener("change",()=>{u.hotovo=ch.checked;ulozP();kresli();});
+          ch.addEventListener("change",()=>{u.hotovo=ch.checked;ulozP();kresli();
+            if(c.skryvatHotove&&ch.checked) $("[data-skryt-hotove]",box)?.focus();});
           const tx=el("input",{type:"text",value:u.text,"aria-label":"Úkol"});
           tx.addEventListener("input",()=>{u.text=tx.value;ulozP();});
           tx.addEventListener("keydown",e=>{
