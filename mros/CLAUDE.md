@@ -191,9 +191,22 @@ režimu a nabídkou *Další akce*, pod ní obsah v jednom ze dvou režimů:
 
 Přepíná se tlačítkem v liště, klávesou **F4** nebo příkazem v paletě
 (`prepnoutRezimOkna()` hledá `[data-prepinac-rezimu]` v aktivním okně).
-Výchozí režim řídí `S.chovani.otviratKeCteni` (*Nastavení → Chování*).
-`BEZ_ZOBRAZENI` vyjmenovává typy, které režim nemají: aplikace a odkaz jsou samy
-o sobě zobrazením, složka a sezení se do editoru vůbec nedostanou.
+Výchozí režim vrací `vychoziRezim(o)`: **čerstvě založená dlaždice se otevře rovnou
+k úpravám**, jinak rozhoduje `S.chovani.otviratKeCteni` (*Nastavení → Chování*).
+Za čerstvou se považuje ta, kterou `vytvorit()` dostal bez obsahu — evidenci drží
+běhová množina `noveDlazdice` (mimo stav `S`, je to jednorázová informace) a `vychoziRezim()`
+z ní záznam rovnou maže, takže podruhé se okno otevře podle nastavení. Dlaždice, které
+vzniknou s hotovým obsahem (výstup nástroje, vložení ze schránky), i sbírky zakládané
+přes `cilovaDlazdice()` se otevírají ke čtení — tam uživatel nic nedopisuje.
+
+`BEZ_ZOBRAZENI` vyjmenovává typy, které tuhle dvojici režimů nemají: aplikace a odkaz
+jsou samy o sobě zobrazením, sezení se do editoru vůbec nedostane. **Složka má režimy
+vlastní** (`otevritSlozku()` staví lištu se stejným `data-prepinac-rezimu`, takže funguje
+i F4): ve čtení jde hned o obsah — seznam dlaždic ve složce, štítky jen jako text —
+a teprve v úpravách přibude `hlavicka()` s polem názvu a editorem štítků a patička
+s tlačítky *Vzhled*, *Správce souborů* a *Smazat složku*. Práce s obsahem složky
+(otevřít, vyjmout na plochu, smazat, vytvořit v ní novou dlaždici) je dostupná v obou
+režimech — to není úprava složky, ale práce v ní.
 
 Nový typ dlaždice proto potřebuje **tři** větve: `case` v `editor()`, `case`
 v `zobrazeni()` a `case` v `nahled()` pro náhled na ploše. Když větev v zobrazení
@@ -228,6 +241,13 @@ na další položku podle `data-poradi`, ne do prázdna.
 **Ministatistiku** kontrolního seznamu a úkolů kreslí `postupHtml()` do náhledu
 dlaždice a `souhrnDlazdice()` ji přidává do `aria-label` dlaždice, aby ji přečetl
 i odečítač obrazovky. Proužek postupu je `.postup` s vnořeným `<i>` o šířce v procentech.
+Složka do popisku hlásí počet položek (`sklonovanePolozky()` skloňuje: položka / položky /
+položek), prázdná řekne „prázdná“.
+
+**Dlaždice nepopisuje ovládání.** Dřív měla `aria-describedby` se skrytou větou
+o Enteru, Alt+Enter a Delete — odečítač ji předčítal u každé ikony na ploše a byla to
+jen omáčka navíc. Popisek dlaždice nese název, typ a stav, nic jiného; klávesy patří
+do nápovědy.
 
 **Pořadí položek** řeší `tlacitkaPoradi(pole, n, popis, box, ulozAKresli)` — vrací
 dvojici tlačítek ↑ a ↓, na krajích nedostupných. Po přesunu překreslí seznam a vrátí
