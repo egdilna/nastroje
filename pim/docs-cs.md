@@ -482,16 +482,18 @@ Archivovat a obnovovat se dá i odsud stejně jako odjinud; tlačítko pro odebr
 
 Volitelná funkce: umožní poslat text jazykovému modelu s vlastním zadáním. Klíč zadáte v **Nastavení → Umělá inteligence** a ukládá se pouze ve vašem prohlížeči (`localStorage`, klíč `pim_ai_key`). Dokud klíč nezadáte, tlačítka se nikde nezobrazují.
 
-**Dvě cesty, kudy text poslat:**
+**Tři cesty, kudy text poslat:**
 
 - **Označený text** — v editaci obsahu označte text a stiskněte `Ctrl+Shift+G`, nebo použijte tlačítko **✨ Umělá inteligence…** v liště nad označeným textem.
 - **Celý obsah entity** — tlačítko **✨ Umělá inteligence…** pod obsahem entity. Pošle vyrenderovaný obsah: s vloženými `{{include:…}}`, doplněnými placeholdery a čítači a bez anotací — tedy přesně ten text, který jde do exportu a na GitHub přes `ghpath`.
+- **Vybraný export** — tlačítko **✨ Umělá inteligence…** v okně **🖨 Export / tisk**. Zaškrtáte si, co má být součástí výstupu, a pošle se přesně ten Markdown, který by se jinak zkopíroval nebo stáhl. Takhle jde zpracovat i atributy, vazby, komentáře nebo úkoly schůzky, ne jen samotný obsah.
 
 **Okno** má pole na zadání (co se má s textem udělat), rozbalovací náhled **Co se odešle** a po odeslání odpověď — ta se ukáže **vysázená jako Markdown**. Tlačítkem **✏ Upravit** se přepnete do textového pole a stejným tlačítkem zpět na náhled. Pak zvolíte:
 
 - **📋 Zkopírovat** — do schránky,
 - **📤 Jako nová entita** — založí novou entitu, název se odvodí z prvního řádku odpovědi,
 - **↻ Pokračovat s odpovědí** — vezme odpověď (i s vašimi ručními úpravami) jako nový vstup a čeká na další zadání. Text se tak dá dopilovat na několikrát; nahrazení výběru zůstává dostupné a pořád míří na tentýž úsek.
+- **⤵ Na konec obsahu** — připojí odpověď za stávající text. Když jste vyšli z rozepsaného pole v editaci, připojí se na konec toho pole (aby se to při uložení editace nepřepsalo); jinde rovnou na konec obsahu entity a uloží se.
 - **↩ Nahradit označený text** — jen u varianty s výběrem; obsah pole se přepíše až tímhle tlačítkem, samo se nic nemění.
 
 Odeslat jde i klávesou `Ctrl+Enter` z pole se zadáním.

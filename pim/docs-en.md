@@ -483,16 +483,18 @@ You can archive and restore from here as anywhere else, and the remove-link butt
 
 An optional feature: it lets you send text to a language model with your own instruction. You enter the key in **Settings → Artificial intelligence** and it is stored only in your browser (`localStorage`, key `pim_ai_key`). Until a key is set, none of the buttons appear.
 
-**Two ways to send text:**
+**Three ways to send text:**
 
 - **Selected text** — while editing content, select text and press `Ctrl+Shift+G`, or use the **✨ Artificial intelligence…** button in the toolbar above the selection.
 - **The whole entity body** — the **✨ Artificial intelligence…** button below the entity body. It sends the rendered content: `{{include:…}}` expanded, placeholders and counters evaluated, annotations removed — exactly the text that goes into an export and to GitHub via `ghpath`.
+- **A selected export** — the **✨ Artificial intelligence…** button in the **🖨 Export / print** dialog. You tick what the output should contain and exactly that Markdown is sent — the same one that would otherwise be copied or downloaded. This way attributes, links, comments or meeting tasks can be processed too, not just the body.
 
 **The dialog** has a field for your instruction, a collapsible **What will be sent** preview, and after sending the answer — shown **rendered as Markdown**. The **✏ Edit** button switches to a text area and the same button switches back to the preview. Then you choose:
 
 - **📋 Copy** — to the clipboard,
 - **📤 As a new entity** — creates a new entity, the title is derived from the first line of the answer,
 - **↻ Continue with the answer** — takes the answer (including your own edits) as the new input and waits for another instruction. You can refine text in several passes; replacing the selection stays available and still points at the same range.
+- **⤵ Append to the content** — adds the answer after the existing text. If you started from a field being edited, it is appended to the end of that field (so an editing save can't overwrite it); elsewhere straight to the end of the entity body, and saved.
 - **↩ Replace the selected text** — only for the selection variant; the field is rewritten only by this button, nothing changes on its own.
 
 You can also send with `Ctrl+Enter` from the instruction field.
