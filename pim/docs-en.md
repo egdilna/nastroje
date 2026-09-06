@@ -479,6 +479,14 @@ Everything archived is collected instead into a single collapsed **🗄 Archive*
 
 You can archive and restore from here as anywhere else, and the remove-link button (×) works in the Archive section too.
 
+## Bulk operations
+
+In lists, the `x` key turns on **bulk-selection mode** — checkboxes appear next to the entities and a toolbar shows up with actions: add aspect, add/remove tag, add link, change attribute, archive, delete, 💬 chat with selected and **📤 Export**.
+
+**📤 Export** opens the usual export dialog with the **selection pre-filled** — exactly the entities you ticked. The format (a JSON package for transfer between bases, or Excel) and the other options are still yours to choose, you just skip picking the entities by hand. The **Include linked entities** option works as usual.
+
+Inside the dialog the selection is kept independently of the list, so it survives filtering and the fact that the list is capped at two hundred items; a counter below shows how many are selected and **Clear selection** empties it.
+
 ## Artificial intelligence
 
 An optional feature: it lets you send text to a language model with your own instruction. You enter the key in **Settings → Artificial intelligence** and it is stored only in your browser (`localStorage`, key `pim_ai_key`). Until a key is set, none of the buttons appear.
