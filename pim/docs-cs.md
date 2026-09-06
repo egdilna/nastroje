@@ -478,6 +478,14 @@ Všechno archivované se místo toho sesbírá do jediné sbalené sekce **🗄 
 
 Archivovat a obnovovat se dá i odsud stejně jako odjinud; tlačítko pro odebrání vazby (×) funguje v sekci Archiv také.
 
+## Hromadné operace
+
+V seznamech se klávesou `x` zapíná **režim hromadného výběru** — u entit se objeví zaškrtávátka a nahoře lišta s akcemi: přidat aspekt, přidat/odebrat tag, přidat vazbu, změnit atribut, archivovat, smazat, 💬 chat s vybranými a **📤 Exportovat**.
+
+**📤 Exportovat** otevře běžný dialog exportu s **předvyplněným výběrem** — přesně ty entity, které jste zaškrtl. Formát (JSON balíček pro přenos mezi bázemi, nebo Excel) i ostatní volby zůstávají na vás, jen odpadá ruční vybírání v dialogu. Volba **Zahrnout také navazované entity** funguje jako jindy.
+
+Výběr se v dialogu drží nezávisle na seznamu, takže vydrží filtrování i to, že se seznam zobrazuje po dvou stech položkách; kolik je vybráno, ukazuje počitadlo pod ním a tlačítkem **Zrušit výběr** se vyprázdní.
+
 ## Umělá inteligence
 
 Volitelná funkce: umožní poslat text jazykovému modelu s vlastním zadáním. Klíč zadáte v **Nastavení → Umělá inteligence** a ukládá se pouze ve vašem prohlížeči (`localStorage`, klíč `pim_ai_key`). Dokud klíč nezadáte, tlačítka se nikde nezobrazují.

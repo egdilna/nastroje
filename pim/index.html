@@ -8824,6 +8824,7 @@ function bulkRenderToolbarHtml() {
         '<button id="bulk-add-link">Přidat vazbu</button>' +
         '<button id="bulk-set-attr">Změnit atribut</button>' +
         (AI.isConfigured() ? '<button id="bulk-ai-chat">💬 Chat s vybranými</button>' : '') +
+        '<button id="bulk-export">📤 Exportovat</button>' +
         '<button id="bulk-archive">Archivovat</button>' +
         '<button id="bulk-delete" class="danger">Smazat</button>'
       : '<span class="meta">Vyberte entity zaškrtnutím v tabulce.</span>') +
@@ -8880,6 +8881,12 @@ function bulkAttachHandlers(container) {
   if (setAttrBtn) setAttrBtn.onclick = () => bulkSetAttribute();
   const aiChatBtn = container.querySelector('#bulk-ai-chat');
   if (aiChatBtn) aiChatBtn.onclick = () => aiChatOtevri(bulkSelectedEntities().map(e => e.id));
+  const expBtn = container.querySelector('#bulk-export');
+  if (expBtn) expBtn.onclick = () => {
+    // Otevře běžný dialog exportu s předvybranými entitami – formát a volby zůstávají
+    // na uživateli, ať se logika exportu neduplikuje.
+    openExportDialog({ predvybrane: bulkSelectedEntities().map(e => e.id) });
+  };
   const archBtn = container.querySelector('#bulk-archive');
   if (archBtn) archBtn.onclick = () => bulkArchive();
   const delBtn = container.querySelector('#bulk-delete');
@@ -28268,9 +28275,13 @@ async function downloadXlsxExport(opts) {
 // EXPORT/IMPORT DIALOGS
 // =============================================================================
 
-function openExportDialog() {
+function openExportDialog(opts) {
   const d = document.getElementById('export-dialog');
   if (!d) return;
+  opts = opts || {};
+  // Výběr entit se drží tady, ne v zaškrtávátkách: seznam se překresluje při filtrování
+  // a je oříznutý na 200 položek, takže by se zaškrtnuté položky mimo výřez ztrácely.
+  const vybraneId = new Set((opts.predvybrane || []).filter(id => findEntity(id)));
   // Spočítat počty
   const allCount = db.entities.length;
   const viewEntities = getCurrentScopeEntities();
@@ -28284,10 +28295,10 @@ function openExportDialog() {
     '</fieldset>' +
 
     '<fieldset><legend>Co exportovat</legend>' +
-      '<label><input type="radio" name="exp-scope" value="full" checked> Celá databáze (' + allCount + ' entit)</label><br>' +
+      '<label><input type="radio" name="exp-scope" value="full"' + (vybraneId.size ? '' : ' checked') + '> Celá databáze (' + allCount + ' entit)</label><br>' +
       '<label><input type="radio" name="exp-scope" value="view"' + (viewCount === 0 ? ' disabled' : '') + '> Aktuální pohled (' + viewCount + ' entit)</label><br>' +
       '<label><input type="radio" name="exp-scope" value="tags"> Podle tagů (musí mít všechny zaškrtnuté)…</label><br>' +
-      '<label><input type="radio" name="exp-scope" value="selected"> Vybrané entity ručně…</label>' +
+      '<label><input type="radio" name="exp-scope" value="selected"' + (vybraneId.size ? ' checked' : '') + '> Vybrané entity ručně…</label>' +
     '</fieldset>' +
 
     '<div id="exp-tags-area" style="display:none;"></div>' +
@@ -28306,6 +28317,7 @@ function openExportDialog() {
     '<label for="exp-search">Filtr: </label>' +
     '<input type="search" id="exp-search" placeholder="Hledat název…" style="margin-bottom:0.5em;width:100%;">' +
     '<div id="exp-entity-list" style="max-height:200px;overflow:auto;border:1px solid #ccc;padding:0.3em;"></div>' +
+    '<p class="meta"><span id="exp-sel-count"></span> <button type="button" id="exp-sel-none">Zrušit výběr</button></p>' +
     '<p class="meta"><label><input type="checkbox" id="exp-include-related"> Zahrnout také navazované entity</label></p>' +
     '</fieldset>';
 
@@ -28346,18 +28358,35 @@ function openExportDialog() {
   }
 
   // Naplnit list entit
+  function updateSelCount() {
+    const el = document.getElementById('exp-sel-count');
+    if (el) el.textContent = 'Vybráno: ' + vybraneId.size + ' entit.';
+  }
   function refreshEntityList(filter) {
     const wrap = document.getElementById('exp-entity-list');
     const filterLow = (filter || '').toLowerCase();
+    // Vybrané dát nahoru, ať jsou vidět i při oříznutí seznamu.
     const list = db.entities
       .filter(e => !filterLow || getDisplayTitle(e).toLowerCase().includes(filterLow))
+      .sort((a, b) => (vybraneId.has(b.id) ? 1 : 0) - (vybraneId.has(a.id) ? 1 : 0))
       .slice(0, 200);
     wrap.innerHTML = list.map(e =>
-      '<label style="display:block;"><input type="checkbox" name="exp-eid" value="' + escapeHtml(e.id) + '"> ' +
+      '<label style="display:block;"><input type="checkbox" name="exp-eid" value="' + escapeHtml(e.id) + '"' +
+      (vybraneId.has(e.id) ? ' checked' : '') + '> ' +
       escapeHtml(getDisplayTitle(e)) + ' <span class="meta">(' + (e.aspects || []).map(a => aspectLabel(a)).join(', ') + ')</span></label>'
     ).join('');
+    wrap.querySelectorAll('input[name="exp-eid"]').forEach(cb => {
+      cb.onchange = () => {
+        if (cb.checked) vybraneId.add(cb.value); else vybraneId.delete(cb.value);
+        updateSelCount();
+      };
+    });
+    updateSelCount();
   }
   refreshEntityList('');
+  if (vybraneId.size) selArea.style.display = 'block';
+  { const _b = document.getElementById('exp-sel-none');
+    if (_b) _b.onclick = () => { vybraneId.clear(); refreshEntityList(document.getElementById('exp-search').value); }; }
   document.getElementById('exp-search').oninput = (ev) => refreshEntityList(ev.target.value);
 
   // Reagovat na změnu scope
@@ -28436,7 +28465,7 @@ function openExportDialog() {
 
     if (fmt === 'json') {
       if (scope === 'selected') {
-        const ids = [...document.querySelectorAll('input[name="exp-eid"]:checked')].map(c => c.value);
+        const ids = [...vybraneId];
         if (ids.length === 0) { alertMsg('Vyber alespoň jednu entitu.'); return; }
         const includeRelated = document.getElementById('exp-include-related').checked;
         downloadJsonExport('selected', { entityIds: ids, includeRelated });
@@ -28459,7 +28488,7 @@ function openExportDialog() {
         if (tags.length === 0) { alertMsg('Vyber alespoň jeden tag.'); return; }
         entities = db.entities.filter(e => !e.archived && (e.tags || []).some(t => tags.includes(t)));
       } else if (scope === 'selected') {
-        const ids = [...document.querySelectorAll('input[name="exp-eid"]:checked')].map(c => c.value);
+        const ids = [...vybraneId];
         if (ids.length === 0) { alertMsg('Vyber alespoň jednu entitu.'); return; }
         entities = db.entities.filter(e => ids.includes(e.id));
         if (document.getElementById('exp-include-related').checked) {
