@@ -524,7 +524,9 @@ A conversation view opens. The content of the selected entities is attached as *
 
 - The background entities are listed at the top as links and can be removed one by one with the ✕; the **What will be sent as background** disclosure shows the exact text.
 - **New conversation** discards the messages and keeps the background.
-- **💾 Save as entity** creates an entity with a transcript of the conversation and `mentions` links to the background entities. Without that the conversation is **not stored anywhere** — it lives only until you close the page, so the database doesn't grow.
+- **💾 Save as entity** opens a dialog: you enter a **title** (pre-filled from the first question) and tick the **projects** the conversation should belong to — the ones the background entities belong to are offered. An entity is created with a Markdown transcript of the conversation, `mentions` links to the background entities and `partOf` links to the ticked projects. Without that the conversation is **not stored anywhere** — it lives only until you close the page, so the database doesn't grow.
+
+A saved conversation can be **picked as background material for another chat**. Its content (the transcript) is then attached to the first question of the new chat, so the model knows what you discussed. It is not a continuation of the same conversation, though: it is a new chat into which the transcript enters as background, and **the content of the original source entities is not sent with it** — tick them again if you want those too.
 
 Secured entities never make it into the background material (the app says so when the chat opens) and `~~~private` blocks are cut out of the content.
 

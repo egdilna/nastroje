@@ -523,7 +523,9 @@ Otevře se pohled s konverzací. Obsah vybraných entit se přiloží jako **pod
 
 - Podklady jsou nahoře jako odkazy a jde je jednotlivě odebrat křížkem; rozbalovátko **Co se odešle jako podklady** ukáže přesný text.
 - **Nová konverzace** zahodí zprávy a nechá podklady.
-- **💾 Uložit jako entitu** založí entitu s přepisem konverzace a vazbami `mentions` na podklady. Bez toho se konverzace **nikam neukládá** — žije jen do zavření stránky, aby databáze nerostla.
+- **💾 Uložit jako entitu** otevře dialog: zadáte **název** (předvyplněný z první otázky) a zaškrtnete **projekty**, do kterých se má konverzace zařadit — nabídnou se ty, do kterých patří podklady. Založí se entita s přepisem konverzace v Markdownu, vazbami `mentions` na podklady a `partOf` na zaškrtnuté projekty. Bez toho se konverzace **nikam neukládá** — žije jen do zavření stránky, aby databáze nerostla.
+
+Uloženou konverzaci lze **vybrat jako podklad pro další chat**. Její obsah (přepis) se pak přiloží k první otázce nového chatu, takže model ví, co jste probírali. Není to ale pokračování téže konverzace: jde o nový chat, do kterého přepis vstupuje jako podklad, a **obsah původních zdrojových entit se s ním neposílá** — pokud ho chcete taky, zaškrtněte je při výběru znovu.
 
 Zabezpečené entity se mezi podklady nedostanou vůbec (aplikace to při otevření oznámí) a soukromé bloky `~~~private` se z obsahu vyříznou.
 
