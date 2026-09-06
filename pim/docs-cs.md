@@ -500,6 +500,21 @@ Odeslat jde i klávesou `Ctrl+Enter` z pole se zadáním.
 
 **Co se neodesílá:** entity s aspektem **Zabezpečené** (ani odemčené) a bloky `~~~private`, které se ze vstupu vyříznou — okno pak napíše, kolik jich bylo. Před každým odesláním si můžete v náhledu ověřit, co přesně odchází.
 
+### Návrh atributů
+
+Když okno otevřete nad entitou, je v něm rozbalovátko **Atributy entity** se dvěma sloupci zaškrtávátek:
+
+- **Poslat** — hodnota atributu se přiloží k textu jako kontext. Zaškrtnout jde jen u vyplněných polí. Posílejte jen to, co je potřeba: každý atribut navíc prodlužuje (a prodražuje) dotaz.
+- **Navrhnout** — umělá inteligence pro tenhle atribut navrhne hodnotu.
+
+Nic není předzaškrtnuté — u aspektu s deseti poli by se jinak model ptal na všechna prázdná. Vybíráte si vždycky sami.
+
+Tlačítkem **✨ Navrhnout atributy** se místo běžné odpovědi vrátí tabulka *atribut – stávající hodnota – návrh*. Návrh jde přepsat a zaškrtnout; teprve **Zapsat vybrané** ho uloží do entity. Prázdný návrh se zapsat nedá a nic se nepřepíše samo. Do pole se zadáním můžete přidat vlastní pokyn („shrnutí max tři věty", „piš úředně").
+
+Typický postup: označíte odstavec v obsahu, vlevo přiložíte třeba Stav a Termín jako kontext, vpravo zaškrtnete Předmět, Shrnutí a Poznámky autora — a necháte si je navrhnout.
+
+Nabízejí se pole ze všech aspektů entity, globální pole i vlastní pole entity, takže to funguje i pro aspekty, které si vytvoříte sami. Vynechaná jsou počítaná pole (mají vlastní vzorec), skrytá, technická a vazby na jiné entity. U výběrů dostane služba seznam povolených hodnot, takže nemůže vrátit nesmysl.
+
 ### Chat nad vybranými entitami
 
 V kterémkoli seznamu zapněte režim hromadného výběru (klávesa `x`), zaškrtněte entity a klikněte na **💬 Chat s vybranými**.
