@@ -144,6 +144,15 @@ na historii — v `_aiChat.zpravy` proto zpráva nese jak `text` (co vidí uživ
 uloží ji tlačítkem jako entitu. Zabezpečené entity se do podkladů nepustí už při otevření, aby
 na ně neodkazovala ani uložená konverzace.
 
+Okno umí i **návrh hodnot atributů**: `aiPolePro(entity)` posbírá pole z aspektů,
+`GLOBAL_FIELDS` i `entity.customFields` a přes `AI_POUZITELNE_TYPY` odfiltruje, co nedává
+smysl (composed, hidden, relace, interní prefixy). `AI.navrhniAtributy()` posílá
+`generationConfig` s `responseMimeType: application/json` a `responseSchema`, takže odpověď
+nejde dolovat z volného textu; u `select` se do schématu dá `enum` s povolenými hodnotami.
+Zpátky na hodnotu pole se text převádí přes `aiPreved()`. **Do entity se nezapisuje nic,
+dokud uživatel nepotvrdí**, a nic se nepředzaškrtává — u aspektu s deseti poli by se model
+jinak ptal na všechna prázdná.
+
 Odpověď chatu se čte streamovaně (`AI.askChat` → `_ctiStream`, koncový bod `:streamGenerateContent?alt=sse`).
 Během psaní se do bubliny sype **prostý text**; Markdown se vykreslí až po dopsání, aby se
 neblikaly rozepsané značky.

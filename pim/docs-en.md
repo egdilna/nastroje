@@ -501,6 +501,21 @@ You can also send with `Ctrl+Enter` from the instruction field.
 
 **What is never sent:** entities with the **Secured** aspect (not even unlocked ones) and `~~~private` blocks, which are cut out of the input — the dialog then reports how many. Before every send you can check in the preview exactly what is going out.
 
+### Attribute suggestions
+
+When the dialog is opened over an entity, it contains an **Entity attributes** disclosure with two columns of checkboxes:
+
+- **Send** — the attribute's value is attached to the text as context. Only available for fields that have a value. Send only what is needed: every extra attribute makes the request longer (and pricier).
+- **Suggest** — the artificial intelligence proposes a value for this attribute.
+
+Nothing is pre-ticked — with a ten-field aspect the model would otherwise be asked about every empty one. You always choose yourself.
+
+The **✨ Suggest attributes** button returns a table of *attribute – current value – suggestion* instead of the usual answer. A suggestion can be rewritten and ticked; only **Write selected** saves it into the entity. An empty suggestion cannot be written and nothing is overwritten on its own. You can add your own instruction in the prompt field ("summary in three sentences at most", "keep it formal").
+
+A typical flow: select a paragraph in the body, attach for example Status and Deadline as context on the left, tick Subject, Summary and Author's notes on the right — and have them proposed.
+
+Fields from all of the entity's aspects, global fields and the entity's own custom fields are offered, so it works for aspects you create yourself too. Computed fields (they have their own formula), hidden and technical fields and links to other entities are left out. For choice fields the service is given the list of allowed values, so it cannot return nonsense.
+
 ### Chat over selected entities
 
 In any list, turn on bulk-selection mode (the `x` key), tick the entities and click **💬 Chat with selected**.
