@@ -1408,7 +1408,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
   <p><strong>⤵ Na konec obsahu</strong> připojí odpověď za stávající text. Když jste vyšli z rozepsaného pole v editaci, připojí se na konec toho pole; jinde rovnou na konec obsahu entity a uloží se.</p>
   <p>Tlačítko <strong>✨ Umělá inteligence…</strong> je i v okně <strong>🖨 Export / tisk</strong>. Zaškrtáte si tam, co má být součástí výstupu, a tímhle tlačítkem pošlete přesně ten Markdown, který by se jinak zkopíroval nebo stáhl — takže lze zpracovat i atributy, vazby, komentáře nebo úkoly schůzky, ne jen samotný obsah.</p>
   <p><strong>↻ Pokračovat s odpovědí</strong> vezme odpověď — i s úpravami, které jste v ní udělali — jako nový vstup a čeká na další zadání. Dá se tak text dopilovávat na několikrát („zkrať to", pak „přidej závěr", pak „uhlaď sloh"). Nahrazení označeného textu zůstává dostupné celou dobu a pořád míří na tentýž úsek, ze kterého jste vyšli.</p>
-  <p><strong>Chat nad vybranými entitami:</strong> v seznamu zapněte režim výběru (klávesa <kbd>x</kbd>), zaškrtněte entity a klikněte na <strong>💬 Chat s vybranými</strong>. Otevře se konverzace, do které se jako podklady přiloží obsah vybraných entit — u první otázky. Odpověď se vypisuje průběžně, jak přichází. Podklady jde v pohledu ubírat, konverzaci zahodit tlačítkem <strong>Nová konverzace</strong> nebo si ji nechat přes <strong>💾 Uložit jako entitu</strong> (uloží se přepis a vazby na podklady). Sama od sebe se konverzace nikam neukládá.</p>
+  <p><strong>Chat nad vybranými entitami:</strong> v seznamu zapněte režim výběru (klávesa <kbd>x</kbd>), zaškrtněte entity a klikněte na <strong>💬 Chat s vybranými</strong>. Otevře se konverzace, do které se jako podklady přiloží obsah vybraných entit — u první otázky. Odpověď se vypisuje průběžně, jak přichází. Podklady jde v pohledu ubírat, konverzaci zahodit tlačítkem <strong>Nová konverzace</strong> nebo si ji nechat přes <strong>💾 Uložit jako entitu</strong>. Ta se zeptá na název (předvyplní ho z první otázky) a nabídne projekty, do kterých patří podklady; uloží přepis konverzace v Markdownu i vazby na podklady. Sama od sebe se konverzace nikam neukládá.</p>
   <p><strong>Práce s atributy.</strong> Když okno otevřete nad entitou, je v něm rozbalovátko <strong>Atributy entity</strong> se dvěma sloupci zaškrtávátek. Vlevo vyberete, co se má poslat <strong>jako kontext</strong> spolu s textem (jen u vyplněných polí — posílejte jen to, co je opravdu potřeba, kratší dotaz je levnější). Vpravo vyberete, co má umělá inteligence <strong>navrhnout</strong>.</p>
   <p>Tlačítkem <strong>✨ Navrhnout atributy</strong> se pak místo běžné odpovědi vrátí tabulka <em>atribut – stávající hodnota – návrh</em>. Každý návrh jde přepsat a zaškrtnout; teprve <strong>Zapsat vybrané</strong> je uloží do entity. Prázdné návrhy se zapsat nedají a nic se nepřepíše samo. Nabízejí se pole ze všech aspektů entity, globální i vlastní — počítaná, skrytá a technická ne.</p>
   <p class="meta">Klíč zadáte v Nastavení a zůstává jen ve vašem prohlížeči. Zabezpečené entity se neodesílají vůbec a soukromé bloky <code>~~~private</code> se ze vstupu vyříznou; okno vždycky ukáže, co přesně se odešle. Bez zadaného klíče se tlačítka nezobrazují.</p>
@@ -7315,21 +7315,54 @@ function aiChatUlozJakoEntitu() {
   if (_aiChat.zpravy.length === 0) return;
   const entity = _aiChat.entityIds.map(findEntity).filter(e => e && aiEntitaPovolena(e));
   const prvniOtazka = (_aiChat.zpravy.find(z => z.role === 'user') || {}).text || 'Konverzace';
-  const nazev = ('Chat: ' + prvniOtazka.replace(/\s+/g, ' ').trim()).slice(0, 80);
-  const telo = _aiChat.zpravy.map(z =>
-    (z.role === 'user' ? '**Otázka:** ' : '**Odpověď:**\n\n') + z.text).join('\n\n');
-  const podklady = entity.length
-    ? '\n\n---\n\n**Podklady:** ' + entity.map(e => '[[' + getDisplayTitle(e) + ']]').join(', ')
+  const navrhNazvu = ('Chat: ' + prvniOtazka.replace(/\s+/g, ' ').trim()).slice(0, 80);
+
+  // Projekty, do kterých patří podklady – nabídnou se k zaškrtnutí, ať konverzace
+  // nespadne mimo projekt, ke kterému se vztahuje.
+  const projekty = [];
+  const videno = new Set();
+  entity.forEach(e => getEntityParentProjects(e).forEach(p => {
+    if (!videno.has(p.id)) { videno.add(p.id); projekty.push(p); }
+  }));
+
+  const projektyHtml = projekty.length
+    ? '<fieldset style="margin:0.6em 0;"><legend>Přidat do projektů</legend>' +
+        projekty.map(p => '<label style="display:block;"><input type="checkbox" class="ai-chat-proj" value="' +
+          escapeHtml(p.id) + '" checked> ' + escapeHtml(getDisplayTitle(p)) + '</label>').join('') +
+      '</fieldset>'
     : '';
-  const nova = {
-    id: uuid(), title: nazev, aspects: [], attributes: {}, tags: [],
-    body: telo + podklady, links: [], attachments: [], comments: [],
-    created_at: nowIso(), updated_at: nowIso()
-  };
-  entity.forEach(e => nova.links.push({ to: e.id, type: 'mentions', note: '' }));
-  db.entities.push(nova);
-  save();
-  toast('Konverzace uložena jako „' + nazev + '".', 5000);
+
+  promptDialogCustom({
+    title: 'Uložit konverzaci jako entitu',
+    bodyHtml: '<label for="ai-chat-nazev">Název entity</label>' +
+      '<input type="text" id="ai-chat-nazev" value="' + escapeHtml(navrhNazvu) + '">' +
+      projektyHtml +
+      '<p class="meta">Obsahem bude přepis konverzace v Markdownu. Podklady se propojí vazbou „zmiňuje".</p>',
+    onConfirm: (root) => {
+      const nazev = (root.querySelector('#ai-chat-nazev').value || '').trim() || navrhNazvu;
+      const telo = _aiChat.zpravy.map(z =>
+        (z.role === 'user' ? '**Otázka:** ' : '**Odpověď:**\n\n') + z.text).join('\n\n');
+      const podklady = entity.length
+        ? '\n\n---\n\n**Podklady:** ' + entity.map(e => '[[' + getDisplayTitle(e) + ']]').join(', ')
+        : '';
+      const nova = {
+        id: uuid(), title: nazev, aspects: [], attributes: {}, tags: [],
+        body: telo + podklady, links: [], attachments: [], comments: [],
+        created_at: nowIso(), updated_at: nowIso()
+      };
+      entity.forEach(e => nova.links.push({ to: e.id, type: 'mentions', note: '' }));
+      root.querySelectorAll('.ai-chat-proj:checked').forEach(cb => {
+        if (cb.value && !nova.links.some(l => l.type === 'partOf' && l.to === cb.value)) {
+          nova.links.push({ to: cb.value, type: 'partOf', note: '' });
+        }
+      });
+      db.entities.push(nova);
+      save();
+      const kolikProj = nova.links.filter(l => l.type === 'partOf').length;
+      toast('Konverzace uložena jako „' + nazev + '"' +
+        (kolikProj ? ' (v ' + kolikProj + ' projektech)' : '') + '.', 5000);
+    }
+  });
 }
 
 // ==== RENDER ROUTER ====
