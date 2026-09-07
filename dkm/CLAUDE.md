@@ -81,6 +81,22 @@ přehrání už gesto „nedrží“ — proto `primeAudio()` na prvním `pointe
 Bez toho by první tón po načtení stránky spolkl autoplay. Hlasitost drž kolem 0.16 a náběh
 i doznění veď exponenciálou, skoková hlasitost lupe.
 
+## AI asistent
+Poskytovatelé jsou v registru `AI_PROVIDERS` — každý má `listModels()` a `send()`, takže
+přidání dalšího je jeden objekt. **Model se nikdy nehardkóduje do nabídky**: seznam se tahá
+z API poskytovatele, protože co je aktuální dnes, nemusí platit zítra. Výchozí `defaultModel`
+je jen předvyplněná hodnota textového pole.
+
+Klíč (`dkm-ai-key`) se chová jako GitHub token — jen v prohlížeči, nikdy v datech projektu
+a **nikdy v `dbg()`**; log smí nést poskytovatele, model a velikost kontextu, ne klíč.
+
+Kontext pro model **není vlastní serializace** — skládá ho `renderBulkExportMd()` ze stejného
+`sel`, jaký používá export. Uživatel tedy posílá přesně to, co by si vyexportoval, a může si
+to předem prohlédnout. Kontext se staví při **každém** odeslání znovu (jde do
+`systemInstruction`), takže změna zaškrtávátek uprostřed rozhovoru platí od další zprávy.
+
+Rozhovory drží `aiChats` v paměti stránky, klíčované id entit — do dat projektu nepatří.
+
 ## Externí závislosti — jen líně
 Nic se nenačítá dopředu. `loadSheetJS()` stáhne SheetJS z CDN **až při exportu XLSX**;
 DOCX a ZIP se generují **ručně** (`buildDocxFile`, `makeZip`, `crc32`). Tuhle vlastnost drž —

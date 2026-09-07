@@ -43,6 +43,7 @@ Uživatelská příručka
 31. [Tipy a triky](#31-tipy-a-triky)
 32. [Časté problémy](#32-časté-problémy)
 33. [Technické pozadí](#33-technické-pozadí)
+34. [AI asistent](#34-ai-asistent)
 
 ---
 
@@ -573,6 +574,7 @@ Toolbar hromadných akcí ukazuje počet vybraných + dropdown akcí:
 - **📦 Export balíčku** — zabalí vybrané do `.dkmpkg` (viz kap. 27)
 - **`{ }` Export do datového JSON** — data + JSON Schema v ZIPu (viz kap. 25)
 - **🖨 Export / tisk výběru** — vybrané entity do jednoho dokumentu (MD, DOCX, tisk; viz kap. 23.4)
+- **🤖 Zeptat se AI** — poslat výběr jazykovému modelu (viz kap. 34)
 
 ### 13.1 Sloučení entit
 
@@ -1611,6 +1613,7 @@ Projekt je jeden JSON dokument (viz `dkmdata.json`):
 | `dkm-theme` | grafický motiv |
 | `dkm-username` | jméno autora komentářů |
 | `dkm-autosave`, `dkm-debug`, `dkm-sound`, `dkm-wiki-suggest` | přepínače v Nastavení → Obecné |
+| `dkm-ai-provider`, `dkm-ai-key`, `dkm-ai-model` | napojení na AI (viz kap. 34) |
 | `dkm-github-token` | GitHub PAT (per origin) |
 | `dkm-handoff-…` | krátkodobé předání dat do samostatného okna |
 | `dkm-viewer-lang`, `dkm-viewer-theme` | volby ve vygenerovaném statickém prohlížeči |
@@ -1631,3 +1634,63 @@ a atributy všech druhů → entity, vazby, komentáře, objekty → pravidlový
 kanban a časová osa → hromadné operace včetně sloučení → export balíčku a jeho import průvodcem →
 export MD, DOCX, XLSX, PlantUML a datového JSON → statický prohlížeč → GitHub → dvě záložky
 současně → samostatné okno → přepnutí CS/EN a všechny motivy.
+
+---
+
+## 34. AI asistent
+
+### 34.1 K čemu to je
+
+DKM umí poslat obsah entity (nebo celého výběru) jazykovému modelu a povídat si o něm —
+shrnutí, hledání rozporů, návrh struktury, cokoliv. Výsledek je Markdown, který si zkopíruješ
+nebo z něj rovnou založíš entitu v Inboxu.
+
+### 34.2 Nastavení
+
+**Nastavení → AI**:
+
+- **Poskytovatel** — zatím Google Gemini
+- **API klíč** — uloží se **jen do tohoto prohlížeče** (klíč `dkm-ai-key`), stejně jako
+  GitHub token. Neputuje v datech projektu a nikde se nevypisuje, ani do debug logu.
+- **Model** — název modelu. Tlačítkem **⟳ Načíst modely** si necháš vypsat modely, které
+  tvůj klíč skutečně umí použít, a vybereš z nabídky. Nemusíš tedy hádat, jak se právě
+  teď model jmenuje.
+- **Vyzkoušet spojení** — pošle jednu krátkou zprávu a ukáže, co se vrátilo
+
+### 34.3 Co se posílá ven
+
+Do služby poskytovatele odchází **jen to, co si zaškrtneš**, a text tvých zpráv. Nikdy se
+neposílá celý projekt ani GitHub token. Tlačítkem **Zobrazit, co se odešle** si obsah
+prohlédneš přesně tak, jak půjde ven.
+
+### 34.4 Dotaz nad jednou entitou
+
+V detailu entity tlačítko **🤖 Zeptat se AI**. V dialogu:
+
+- sbalená sekce **Co se pošle jako kontext** — stejná zaškrtávátka jako u exportu, tedy
+  atributy typu, atributy aspektů, vlastní atributy, vazby, zpětné odkazy a komentáře;
+  vedle je vidět velikost kontextu ve znacích
+- pole se zadáním dole, **Ctrl+Enter odesílá**
+- rozhovor nad ním — tvoje zprávy i odpovědi modelu vykreslené jako Markdown
+
+**Zaškrtnutí platí pro každou odeslanou zprávu.** Když je během rozhovoru změníš, další
+zpráva půjde s novým kontextem — dá se tak modelu doplnit něco, co jsi zprvu neposlal.
+
+### 34.5 Dotaz nad výběrem
+
+V seznamu přepni do režimu výběru (klávesa V) a zvol hromadnou akci **🤖 Zeptat se AI**.
+Kontext se skládá ze všech vybraných entit v pořadí, v jakém jsou v seznamu, a sekce
+zaškrtávátek se nabízejí po typech a aspektech, které se ve výběru vyskytly — stejně jako
+u exportu výběru (kap. 23.4).
+
+### 34.6 Co s odpovědí
+
+Pod každou odpovědí jsou dvě tlačítka:
+
+- **📋 Kopírovat MD** — odpověď do schránky jako Markdown
+- **📥 Založit do Inboxu** — vytvoří novou entitu v Inboxu; název se nabídne podle prvního
+  nadpisu odpovědi a text se uloží jako vlastní atribut
+
+Rozhovor **přežije zavření dialogu** v rámci načtené stránky — omylem zavřený dialog tedy
+neznamená ztrátu konverzace. Do dat projektu se ale neukládá a s obnovením stránky zmizí.
+Tlačítko **Nový rozhovor** ho vymaže dřív.

@@ -43,6 +43,7 @@ User guide
 31. [Tips and tricks](#31-tips-and-tricks)
 32. [Common problems](#32-common-problems)
 33. [Technical background](#33-technical-background)
+34. [AI assistant](#34-ai-assistant)
 
 ---
 
@@ -573,6 +574,7 @@ Bulk toolbar shows count selected + action dropdown:
 - **📦 Export package** — bundles selected into a `.dkmpkg` (see chapter 27)
 - **`{ }` Export to data JSON** — data + JSON Schema in a ZIP (see chapter 25)
 - **🖨 Export / print selection** — selected entities into one document (MD, DOCX, print; see ch. 23.4)
+- **🤖 Ask AI** — send the selection to a language model (see ch. 34)
 
 ### 13.1 Merging entities
 
@@ -1617,6 +1619,7 @@ The project is one JSON document (see `dkmdata.json`):
 | `dkm-theme` | visual theme |
 | `dkm-username` | comment author name |
 | `dkm-autosave`, `dkm-debug`, `dkm-sound`, `dkm-wiki-suggest` | switches in Settings → General |
+| `dkm-ai-provider`, `dkm-ai-key`, `dkm-ai-model` | AI connection (see ch. 34) |
 | `dkm-github-token` | GitHub PAT (per origin) |
 | `dkm-handoff-…` | short-lived data handoff to a standalone window |
 | `dkm-viewer-lang`, `dkm-viewer-theme` | choices in a generated static viewer |
@@ -1637,3 +1640,63 @@ aspects and attributes of every kind → entities, relations, comments, objects 
 saved view → kanban and timeline → bulk operations including merge → package export and its
 import through the wizard → MD, DOCX, XLSX, PlantUML and data JSON export → static viewer →
 GitHub → two tabs at once → standalone window → CS/EN switch and all themes.
+
+---
+
+## 34. AI assistant
+
+### 34.1 What it's for
+
+DKM can send the content of an entity (or a whole selection) to a language model and let you
+talk about it — a summary, finding contradictions, proposing a structure, whatever. The result
+is Markdown you can copy or turn straight into an entity in the Inbox.
+
+### 34.2 Settings
+
+**Settings → AI**:
+
+- **Provider** — Google Gemini for now
+- **API key** — stored **in this browser only** (key `dkm-ai-key`), just like the GitHub
+  token. It does not travel in the project data and is never printed anywhere, not even in
+  the debug log.
+- **Model** — the model name. The **⟳ Load models** button lists the models your key can
+  actually use and lets you pick one, so you don't have to guess the current naming.
+- **Test connection** — sends one short message and shows what came back
+
+### 34.3 What leaves the browser
+
+Only **what you tick** and the text of your messages goes to the provider. The whole project
+or the GitHub token is never sent. The **Show what will be sent** button shows you the payload
+exactly as it will go out.
+
+### 34.4 Asking about one entity
+
+The **🤖 Ask AI** button in the entity detail. In the dialog:
+
+- a collapsed **What is sent as context** section — the same checkboxes as the export, i.e.
+  type attributes, aspect attributes, custom attributes, relations, backlinks and comments;
+  next to it the context size in characters
+- an instruction field at the bottom, **Ctrl+Enter sends**
+- the conversation above it — your messages and the model's answers rendered as Markdown
+
+**The ticks apply to every message sent.** Change them mid-conversation and the next message
+goes with the new context — handy for adding something you did not send at first.
+
+### 34.5 Asking about a selection
+
+In the list switch to selection mode (V key) and choose the bulk action **🤖 Ask AI**. The
+context is built from all selected entities in the order they appear in the list, and the
+checkbox sections are offered per type and aspect occurring in the selection — just like the
+selection export (ch. 23.4).
+
+### 34.6 What to do with the answer
+
+Under every answer there are two buttons:
+
+- **📋 Copy MD** — the answer to the clipboard as Markdown
+- **📥 Create in Inbox** — creates a new entity in the Inbox; the name is suggested from the
+  answer's first heading and the text is stored as a custom attribute
+
+The conversation **survives closing the dialog** within the loaded page, so closing it by
+accident does not lose the conversation. It is not stored in the project data though, and a
+page reload clears it. The **New conversation** button clears it sooner.
