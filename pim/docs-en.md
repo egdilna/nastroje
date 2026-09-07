@@ -361,6 +361,8 @@ Filters combine with **AND** logic.
 | `c` | Add a comment |
 | `d` | (read, if it has headings) Toggle section-edit mode |
 | `a` | (read) Toggle annotation mode |
+| `x` / `Alt+Shift+X` | (read) Open Export / print |
+| `Alt+Shift+G` | (read) Send the entity body to the artificial intelligence (only with a key set) |
 | `z` | (entity with "Time tracking" aspect) Start/stop timer |
 | `Shift+Z` | Add "Time tracking" aspect (if missing) and start the timer right away |
 | `Esc` | Back to read mode (saves quick annotations and changes) |
