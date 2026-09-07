@@ -144,6 +144,16 @@ pohledy (`openSaveViewDialog`, `applySavedView`). Zobrazení: seznam / kanban
 Hromadné akce `bulk*` (změna typu, aspekty, atributy, vazby, archivace, mazání, sloučení
 `bulkMerge`/`doMerge`, export balíčku). Sloučení má strategie řešení konfliktů — respektuj je.
 
+## Nabídka wiki odkazů při uložení
+`commitEdit()` se dělí na kontrolu a `finishCommitEdit()`; mezi ně se vklíní
+`findWikiCandidates()` + `openWikiSuggestDialog()`. Uživatel rozhoduje vždy — nic se nepřepisuje
+samo, a „Zpět k editaci" nechá entitu rozeditovanou.
+
+Hledání stojí na dvou pojistkách, které neobcházej: `wikiProtectedRanges()` vyřízne existující
+`[[…]]`, kód, markdown odkazy, HTML značky a URL (bez toho by druhé uložení zanořovalo odkazy
+do sebe), a delší názvy se zpracovávají první, aby si zabraly rozsah dřív než jejich podřetězce.
+Hranice slova se testuje přes `\p{L}` — `\b` by na diakritice selhalo. Nahrazuje se odzadu kvůli indexům.
+
 ## Zpětné odkazy a wiki
 `countBacklinks` / `collectBacklinks` sbírají tři zdroje: klasické vazby, atributy typu
 `relation` a **wiki odkazy `[[Název]]` skenované v textech** (`scanForWikiLink`).

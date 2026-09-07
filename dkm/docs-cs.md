@@ -653,6 +653,35 @@ Příklad: v poznámce k jedné entitě napíšeš „Návaznost na [[Vyhláška
 
 Match je case-insensitive přes plný název entity.
 
+### 15.4 Nabídka odkazů při uložení
+
+Psát `[[…]]` ručně je otrava, takže **při uložení entity projde DKM její víceřádkové (Markdown)
+atributy** a hledá v nich názvy jiných entit napsané prostým textem. Co najde, ukáže v dialogu
+se zaškrtávátky — vybereš, z čeho má být odkaz, a potvrdíš. **Nic se nemění samo**, rozhodnutí
+je vždy na tobě.
+
+U každé nabídky je název cílové entity s ikonou typu, počet výskytů a výřez textu se zvýrazněným
+místem, ať víš, o který výskyt jde. Tlačítka **Vybrat vše** / **Nevybrat nic** urychlí hromadné
+rozhodnutí, dole je pak trojice:
+
+- **🔗 Vytvořit odkazy a uložit** — zabalí zaškrtnuté výskyty do `[[…]]` a uloží
+- **Uložit bez odkazů** — uloží text tak, jak je
+- **Zpět k editaci** — zavře dialog a nechá tě v editoru
+
+Pravidla, podle kterých se hledá:
+
+- jen **víceřádkové** atributy (typu, aspektu i vlastní); jednořádkový text se neprohledává
+- název musí stát jako **samostatné slovo** — „Rodné číslostí" se netrefí
+- porovnává se **bez ohledu na velikost písmen** a původní psaní zůstává (`[[rodné číslo]]`
+  se dohledá stejně dobře jako `[[Rodné číslo]]`)
+- **delší název má přednost** — v textu „Rodné číslo" se nabídne *Rodné číslo*, ne *Číslo*
+- nesahá se do **existujících odkazů `[[…]]`, kódu (`` ` `` i ohraničených bloků), markdown
+  odkazů `[text](url)`, HTML značek a URL** — díky tomu druhé uložení téže entity už nic nenabízí
+- názvy kratší než tři znaky se přeskakují, jinak by se trefovala půlka textu
+- archivované entity a entita samotná se nenabízejí
+
+Vypnout to jde v **Nastavení → Obecné → Nabízet wiki odkazy při uložení entity**.
+
 ---
 
 ## 16. Komentáře
@@ -1295,6 +1324,7 @@ Personal access token pro GitHub API. Uložený v localStorage prohlížeče (pe
 - **Jazyk** (Čeština / English)
 - **Motiv** — Světlý / Tmavý / Papír / Matrix, totéž co v menu ⚙ Přizpůsobit
 - **Tvoje jméno pro komentáře** — bere se jako autor u nových komentářů. Ukládá se **jen do tohoto prohlížeče** (klíč `dkm-username`, stejně jako GitHub token), ne do dat projektu — nad jedním projektem tak může pracovat víc lidí a každý se podepíše sám za sebe. Starší projekt, který jméno nesl v datech, ho při načtení jednorázově převezme do prohlížeče (pokud tam ještě žádné není) a z dat ho vypustí.
+- **Nabízet wiki odkazy při uložení entity** — po uložení nabídne názvy jiných entit nalezené ve víceřádkových atributech k převodu na `[[odkaz]]` (viz 15.4). Ukládá se jen do tohoto prohlížeče (klíč `dkm-wiki-suggest`).
 - **Zvuková odezva u ukládání na GitHub** — krátký stoupavý tón po úspěšném uložení, temnější klesavý po neúspěchu. Tóny se generují přímo v prohlížeči přes Web Audio API, nic se nestahuje, takže to funguje i offline. Vedle zaškrtávátka jsou tlačítka, kterými si oba zvuky poslechneš. Ukládá se jen do tohoto prohlížeče (klíč `dkm-sound`).
 - **Autosave** — automatické ukládání do sessionStorage (per záložka)
 - **Debug** — zapne panel s debug logy dole
@@ -1547,7 +1577,7 @@ Projekt je jeden JSON dokument (viz `dkmdata.json`):
 | `dkm-lang` | jazyk rozhraní |
 | `dkm-theme` | grafický motiv |
 | `dkm-username` | jméno autora komentářů |
-| `dkm-autosave`, `dkm-debug`, `dkm-sound` | přepínače v Nastavení → Obecné |
+| `dkm-autosave`, `dkm-debug`, `dkm-sound`, `dkm-wiki-suggest` | přepínače v Nastavení → Obecné |
 | `dkm-github-token` | GitHub PAT (per origin) |
 | `dkm-handoff-…` | krátkodobé předání dat do samostatného okna |
 | `dkm-viewer-lang`, `dkm-viewer-theme` | volby ve vygenerovaném statickém prohlížeči |
