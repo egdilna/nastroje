@@ -360,6 +360,8 @@ Filtry se kombinují logikou **AND**.
 | `c` | Přidat komentář |
 | `d` | (read, pokud má nadpisy) Přepnout režim editace sekcí |
 | `a` | (read) Přepnout anotační režim |
+| `x` / `Alt+Shift+X` | (read) Otevřít Export / tisk |
+| `Alt+Shift+G` | (read) Poslat obsah entity umělé inteligenci (jen s nastaveným klíčem) |
 | `z` | (u entity s aspektem „Sledování času") Spustit/zastavit timer |
 | `Shift+Z` | Přidat aspekt „Sledování času" (pokud chybí) a rovnou spustit timer |
 | `Esc` | Zpět na read mode (uloží quick anotace a změny) |
