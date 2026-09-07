@@ -32,7 +32,7 @@ Uživatelská příručka
 20. [Samostatná okna](#20-samostatná-okna)
 21. [Ukládání dat](#21-ukládání-dat)
 22. [Diff od posledního uložení](#22-diff-od-posledního-uložení)
-23. [Export a tisk entity](#23-export-a-tisk-entity)
+23. [Export a tisk entit](#23-export-a-tisk-entit)
 24. [Export do XLSX, TSV, PlantUML](#24-export-do-xlsx-tsv-plantuml)
 25. [Export do datového JSON se schématem](#25-export-do-datového-json-se-schématem)
 26. [Statický prohlížeč](#26-statický-prohlížeč)
@@ -572,6 +572,7 @@ Toolbar hromadných akcí ukazuje počet vybraných + dropdown akcí:
 - **🎨 PlantUML diagram** — vygeneruje PlantUML z vybraných (viz kap. 24)
 - **📦 Export balíčku** — zabalí vybrané do `.dkmpkg` (viz kap. 27)
 - **`{ }` Export do datového JSON** — data + JSON Schema v ZIPu (viz kap. 25)
+- **🖨 Export / tisk výběru** — vybrané entity do jednoho dokumentu (MD, DOCX, tisk; viz kap. 23.4)
 
 ### 13.1 Sloučení entit
 
@@ -968,7 +969,7 @@ Klik na entity → zavře dialog a skočí na detail.
 
 ---
 
-## 23. Export a tisk entity
+## 23. Export a tisk entit
 
 V detailu entity tlačítko **🖨 Export / tisk**. Otevře dialog se zaškrtávátky pro sekce:
 
@@ -995,6 +996,38 @@ V detailu entity tlačítko **🖨 Export / tisk**. Otevře dialog se zaškrtáv
 - Archivované cílové entity vazeb se vyloučí
 - Objekty entity se **nikdy neexportují** (ani do MD, DOCX, PDF, formátovaného copy)
 - Textarea atributy v HTML / DOCX se rendrují jako Markdown (bold, listy, CriticMarkup)
+
+### 23.4 Export výběru entit do jednoho dokumentu
+
+Totéž pro víc entit najednou: v seznamu přepni do **režimu výběru** (klávesa V), zaškrtej
+entity a zvol hromadnou akci **🖨 Export / tisk výběru**. Vznikne **jeden dokument** ve
+stejných formátech jako u jedné entity.
+
+**Pořadí je takové, v jakém jsou entity v seznamu** — ne v jakém jsi je naklikal. Řídí se
+tedy aktivním řazením a filtry. Kdyby ve výběru zůstala entita, která v aktuálním seznamu
+není (přepnul jsi mezitím záložku), připojí se na konec. V dialogu je pořadí vypsané, ať to
+vidíš předem.
+
+#### Titulek dokumentu
+
+Nepovinné pole nahoře, předvyplněné názvem projektu. Když ho vyplníš, stane se z něj hlavní
+nadpis a **nadpisy entit se posunou o úroveň níž** — dokument má tedy jednu H1 a entity jsou
+H2, což je to, co čeká Word i navigační panel. Prázdný titulek = entity jdou rovnou za sebou,
+každá jako H1, oddělené vodorovnou čarou (v DOCX zalomením stránky).
+
+#### Výběr obsahu u smíšeného výběru
+
+Když máš vybrané entity různých typů, dialog nabídne **sekci pro každý typ a každý aspekt,
+které se ve výběru vyskytly**. U každého atributu je navíc vidět, **u kolika entit je vůbec
+vyplněný** (`vyplněno u 2 z 5`) — poznáš tak, co má smysl zahrnout, a nemusíš to hádat.
+Zaškrtnutí platí pro všechny entity daného typu či aspektu; entita, která atribut nemá,
+ho prostě přeskočí.
+
+Zbytek (vlastní atributy, vazby, zpětné odkazy, komentáře, metadata) je společný a u každé
+položky je součet přes celý výběr, ať víš, kolik toho přibude.
+
+Ostatní pravidla z 23.3 platí beze změny — prázdné hodnoty se přeskakují, objekty se
+neexportují nikdy.
 
 ---
 

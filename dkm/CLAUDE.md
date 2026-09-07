@@ -97,6 +97,20 @@ takže se CSS mezi nimi kopírovat nedá. Motivy i jazyk si prohlížeč uklád�
 `dkm-viewer-theme` / `dkm-viewer-lang`, tedy do prohlížeče příjemce, ne do generovaného souboru.
 Editace: dekóduj base64 do souboru, uprav, zakóduj zpět a nahraď řetězec — nikdy needituj base64.
 
+## Export výběru entit (`openBulkExportDialog`)
+Staví na exportu jedné entity a nemění ho: `buildExportModel(entity, sel)` čte jen atributy
+daného typu a jeho aspektů, takže **jeden `sel` jako sjednocení všech typů a aspektů ve výběru
+projde beze změny** — id atributů jsou jedinečná. Dialog proto jen vypisuje sekce podle toho,
+co se ve výběru vyskytlo, a u atributů ukazuje, u kolika entit je vyplněný.
+
+Pořadí dává `bulkExportOrdered()` podle `getList()`, ne podle `state.bulk.selected` (to je
+pořadí klikání). Entity mimo aktuální seznam se připojují na konec.
+
+Renderery jsou sdílené: `emitEntityDocxParas(model, paras, rels, off)` a `printExportHtmlDoc()`
+vznikly vytažením z jednoentitních funkcí, ty je teď volají taky. Při titulku dokumentu se
+nadpisy entit posouvají o úroveň (`shiftMdHeadings`, `shiftHtmlHeadings`, parametr `off`
+u DOCX), aby dokument měl jedinou H1 — kdo přidá další formát, ať to udělá stejně.
+
 ## Export do DOCX — netriviální část
 Vlastní generátor OOXML: `renderMarkdownBlocksToDocx`, `runsToParagraphXml`,
 `renderMarkdownTableToDocx`, `buildDocxFile`. Zvláštnosti popsané v komentářích:
