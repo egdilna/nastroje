@@ -32,7 +32,7 @@ User guide
 20. [Standalone windows](#20-standalone-windows)
 21. [Data storage](#21-data-storage)
 22. [Diff since last save](#22-diff-since-last-save)
-23. [Export and print entity](#23-export-and-print-entity)
+23. [Export and print entities](#23-export-and-print-entities)
 24. [Export to XLSX, TSV, PlantUML](#24-export-to-xlsx-tsv-plantuml)
 25. [Data JSON export with a schema](#25-data-json-export-with-a-schema)
 26. [Static viewer](#26-static-viewer)
@@ -572,6 +572,7 @@ Bulk toolbar shows count selected + action dropdown:
 - **🎨 PlantUML diagram** — generates PlantUML from selected (see chapter 24)
 - **📦 Export package** — bundles selected into a `.dkmpkg` (see chapter 27)
 - **`{ }` Export to data JSON** — data + JSON Schema in a ZIP (see chapter 25)
+- **🖨 Export / print selection** — selected entities into one document (MD, DOCX, print; see ch. 23.4)
 
 ### 13.1 Merging entities
 
@@ -969,7 +970,7 @@ Click on entities → closes dialog and jumps to detail.
 
 ---
 
-## 23. Export and print entity
+## 23. Export and print entities
 
 In entity detail the **🖨 Export / print** button. Opens a dialog with section checkboxes:
 
@@ -996,6 +997,37 @@ In entity detail the **🖨 Export / print** button. Opens a dialog with section
 - Archived relation targets are excluded
 - Entity's objects are **never exported** (not to MD, DOCX, PDF, formatted copy)
 - Textarea attributes render as Markdown in HTML / DOCX (bold, lists, CriticMarkup)
+
+### 23.4 Exporting a selection of entities into one document
+
+The same for several entities at once: in the list switch to **selection mode** (V key), tick
+the entities and choose the bulk action **🖨 Export / print selection**. The result is **one
+document** in the same formats as for a single entity.
+
+**The order is the one the entities have in the list** — not the order you clicked them. So it
+follows the active sorting and filters. If the selection still holds an entity that is not in
+the current list (you switched tabs meanwhile), it is appended at the end. The dialog prints
+the order so you see it up front.
+
+#### Document title
+
+An optional field at the top, prefilled with the project name. When filled in it becomes the
+main heading and **entity headings shift one level down** — the document then has a single H1
+with entities as H2, which is what Word and its navigation pane expect. An empty title means
+entities follow each other directly, each as an H1, separated by a rule (a page break in DOCX).
+
+#### Choosing content for a mixed selection
+
+When the selection spans several types, the dialog offers **a section for every type and every
+aspect that actually occurs in it**. Each attribute also shows **on how many entities it is
+filled at all** (`filled on 2 of 5`), so you can see what is worth including instead of
+guessing. A tick applies to all entities of that type or aspect; an entity that does not have
+the attribute simply skips it.
+
+The rest (custom attributes, relations, backlinks, comments, metadata) is shared and each item
+shows a total across the whole selection, so you know how much it adds.
+
+The other rules from 23.3 apply unchanged — empty values are skipped, objects are never exported.
 
 ---
 
