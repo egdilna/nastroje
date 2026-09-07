@@ -366,7 +366,9 @@ Typ se promítá do HTML i DOCX exportu, do Markdown exportu (inline se převede
     - Pop-up: = , ≠, má hodnotu, je prázdné.
     - Typ řádku: = , ≠.
   - Podmínky se kombinují logickým **A** (musí platit všechny).
-  - **Rekurzivně** — když zapnuto, u vyhovujícího řádku se zobrazí i jeho rodiče (jako kontext, zešednutí). Když vypnuto, zobrazí se jen samotné vyhovující řádky.
+  - **Rekurzivně** — když zapnuto, u vyhovujícího řádku se zobrazí i jeho rodiče (jako kontext, zešednutí), takže je vidět, kde v osnově řádek leží.
+    Když vypnuto, zobrazí se **jen samotné vyhovující řádky** jako plochý seznam — nevyhovující rodiče zmizí i s odsazením. Volba se promítne i do klávesové
+    navigace (skryté řádky se přeskakují) a do exportů: v nerekurzivním režimu se do výstupu dostanou jen vyhovující řádky.
   - **Použít** aplikuje filtr hned, **Uložit** ho uloží pod jménem (do souboru `.outline`) a použije.
 
 ---
@@ -495,7 +497,7 @@ Přes *Soubor → Export…* (nebo `Alt+E`) vybereš formát:
 | **Microsoft Word (.docx)** | Kompletní OOXML — nadpisy, tabulky, prefixy, sledované změny (CriticMarkup jako `w:ins`/`w:del`), komentáře (`w:comment`), hyperlinky. Volitelné „Sledované změny přijmout“ vyexportuje čistou finální verzi. |
 | **HTML (sémantické nadpisy)** | Statické HTML s `<h1>–<h6>`, `<p>`, `<li>`, `<blockquote>`, `<article>`, `<aside>`, definičním seznamem `<dl>` pro sloupce, vizuálním odsazením a stylováním CriticMarkup i typů řádků. |
 | **Dynamické HTML** | Totéž, ale větve jsou v `<details>` — kliknutím se rozbalí/sbalí. **Ve výchozím stavu jsou všechny větve sbalené** a nahoře je lepicí panel s hledáním (viz níže). |
-| **Markdown (.md)** | Nadpisy `#…######`, listy `-`, poznámky jako `>` citace, sloupce jako pod-odrážky. Inline typy řádků se převedou na Markdown značky; blokové na HTML obalení. |
+| **Markdown (.md)** | Nadpisy `#…######`, listy `-`, poznámky jako `>` citace, sloupce jako pod-odrážky. Inline typy řádků se převedou na Markdown značky; blokové na HTML obalení. Bloky odděluje prázdný řádek, položky seznamu jdou těsně za sebou a poznámky, sloupce i pokračování víceřádkového tématu se odsazují pod svou odrážku — výstup je tak platný Markdown i u hluboko vnořených osnov. |
 | **OPML** | Vnořené `<outline>` s tématem a poznámkou. |
 | **CSV** | Sloupce: `Úroveň`, pak všechny sloupce dokumentu; jeden řádek na výstupní řádek. |
 | **Prostý text (odsazený)** | Odsazení tabulátory; každý řádek = téma, případná poznámka o úroveň hlouběji. |

@@ -235,6 +235,11 @@
   .trow.ancestor-of-match { opacity: 0.92; }
   li.outline-item.filter-match > .trow { background: var(--row-hover); }
   li.outline-item.filter-context > .trow { opacity: 0.6; }
+  /* Nerekurzivní filtr: nevyhovující rodič zmizí i s odsazením, takže zůstane
+     plochý seznam jen vyhovujících řádků. */
+  li.outline-item.filter-flat > ul.outline-list {
+    margin-left: 0; border-left: 0; padding-left: 0;
+  }
   .filter-cond-row {
     display: flex; gap: 6px; align-items: center;
     margin-bottom: 6px; flex-wrap: wrap;
@@ -885,7 +890,7 @@
 (function () {
 "use strict";
 
-const BUILD = 2;
+const BUILD = 3;
 
 /* ---------- Debug (on-page only, never console) ---------- */
 const dbgEl = document.getElementById("debug-out");
@@ -1315,9 +1320,12 @@ function flatVisible() {
     const f = findRow(focusRootId);
     if (f) rootRows = f.row.children;
   }
+  const filtruje = filtersActive();
   function rec(rows, depth) {
     for (const r of rows) {
-      list.push({ row: r, depth });
+      // skryté řádky nejsou dosažitelné ani klávesnicí
+      if (filtruje && !subtreeVisible(r)) continue;
+      if (!filtruje || activeRecursive || rowSelfMatches(r)) list.push({ row: r, depth });
       if (!r.collapsed && r.children.length) rec(r.children, depth + 1);
     }
   }
@@ -3769,10 +3777,9 @@ function rowSelfMatches(r) {
 // are still shown as context so the tree stays navigable, but greyed).
 function subtreeVisible(r) {
   if (rowSelfMatches(r)) return true;
-  if (!activeRecursive) {
-    // still show ancestors that lead to a matching descendant, as context
-    return r.children.some(subtreeVisible);
-  }
+  // Podstrom se zpracovává v obou režimech; jestli se nevyhovující rodič
+  // opravdu ukáže, rozhoduje activeRecursive v applyFilterVisibility,
+  // flatVisible a exportSourceRows.
   return r.children.some(subtreeVisible);
 }
 function filtersActive() { return !!searchTerm || statusFilter !== "all" || activeConditions.length > 0; }
@@ -3793,6 +3800,12 @@ function exportSourceRows() {
     const out = [];
     for (const r of rows) {
       if (filtering && !subtreeVisible(r)) continue;
+      // nerekurzivně: nevyhovující rodič se do exportu nedostane, jeho
+      // vyhovující potomci se posunou o úroveň výš
+      if (filtering && !activeRecursive && !rowSelfMatches(r)) {
+        out.push(...build(r.children));
+        continue;
+      }
       const copy = Object.assign({}, r);
       if (isMirror(r)) {
         // take the source's displayable content; keep own id/position/children
@@ -3816,7 +3829,7 @@ function exportSourceRows() {
 function applyFilterVisibility() {
   if (!filtersActive()) {
     document.querySelectorAll("li.outline-item").forEach(li => {
-      li.style.display = ""; li.classList.remove("filter-match", "filter-context");
+      li.style.display = ""; li.classList.remove("filter-match", "filter-context", "filter-flat");
       const t = li.querySelector(":scope > .trow"); if (t) t.style.display = "";
       const n = li.querySelector(":scope > .note-row"); if (n) n.style.display = "";
     });
@@ -3830,11 +3843,11 @@ function applyFilterVisibility() {
       const visible = subtreeVisible(r); // subtree contains a match somewhere
       if (li) {
         li.style.display = visible ? "" : "none";
-        li.classList.remove("filter-match", "filter-context");
+        li.classList.remove("filter-match", "filter-context", "filter-flat");
         const rowContent = li.querySelector(":scope > .trow");
         const noteRow = li.querySelector(":scope > .note-row");
         if (visible) {
-          shown++;
+          if (selfMatch || activeRecursive) shown++; // počítá jen skutečně zobrazené řádky
           if (selfMatch) {
             matched++;
             li.classList.add("filter-match");
@@ -3848,8 +3861,9 @@ function applyFilterVisibility() {
               if (rowContent) rowContent.style.display = "";
               if (noteRow) noteRow.style.display = "";
             } else {
-              // non-recursive: hide the non-matching row's own content,
-              // but keep the <li> so matching descendants still render
+              // nerekurzivně: řádek zmizí úplně (i s odsazením svých potomků),
+              // <li> zůstává jen jako nosič vyhovujících potomků
+              li.classList.add("filter-flat");
               if (rowContent) rowContent.style.display = "none";
               if (noteRow) noteRow.style.display = "none";
             }
@@ -4373,44 +4387,79 @@ function formatCellForExport(r, col) {
 }
 
 /* ---------- Markdown export ---------- */
+// Markdown potřebuje mezi bloky prázdný řádek, ale položky seznamu musí jít
+// těsně za sebou. Držíme si proto stav „poslední byl řádek seznamu“ a stav
+// „uvnitř položky skončil blok“ — podle toho se prázdné řádky doplňují.
 function exportMarkdown() {
   let out = doc.meta.title ? "# " + doc.meta.title + "\n\n" : "";
   const nb = computeNumbering();
+  let vSeznamu = false, poBlokuVPolozce = false;
+  function ukonciSeznam() {
+    if (vSeznamu || poBlokuVPolozce) out += "\n";
+    vSeznamu = false; poBlokuVPolozce = false;
+  }
+  // samostatný blok (nadpis, odstavec, citace, HTML obal)
+  function blok(text) { ukonciSeznam(); out += text + "\n\n"; }
+  // řádek seznamu (položka osnovy nebo odrážka sloupce)
+  function radekSeznamu(text) {
+    if (poBlokuVPolozce) { out += "\n"; poBlokuVPolozce = false; }
+    out += text + "\n";
+    vSeznamu = true;
+  }
+  // blok uvnitř položky seznamu: prázdný řádek a odsazení pod odrážku
+  function blokVPolozce(text, odsazeni) {
+    out += "\n" + text.split("\n").map(l => l.trim() ? odsazeni + l : "").join("\n") + "\n";
+    vSeznamu = true; poBlokuVPolozce = true;
+  }
   function rec(rows, depth) {
     for (const r of rows) {
       const tag = doc.levelHeadingMap[Math.min(depth, 6)] || "p";
+      const jeSeznam = tag === "li";
+      const odsazeni = jeSeznam ? "  ".repeat(Math.max(0, depth - 1)) : "";
+      const odsazeniBloku = jeSeznam ? odsazeni + "  " : "";
       const num = doc.numbering.enabled && nb[r.id] ? nb[r.id] + " " : "";
       const pfx = topicPrefixExport(r);
       const rt = rowTypeMeta(r.rowType);
-      // apply inline emphasis directly in Markdown; block types get a raw HTML wrap
-      let topicText = r.topic;
-      if (rt.id === "strong") topicText = "**" + topicText + "**";
-      else if (rt.id === "em") topicText = "*" + topicText + "*";
-      else if (rt.id === "del") topicText = "~~" + topicText + "~~";
-      else if (rt.id === "ins") topicText = "<ins>" + topicText + "</ins>";
-      else if (rt.id === "mark") topicText = "<mark>" + topicText + "</mark>";
+      // inline typy řádku se obalují po částech, aby značky zůstaly vyvážené
+      // i u víceřádkových témat (stejně jako v DOCX exportu)
+      const obal = (t) => {
+        if (!t) return t;
+        if (rt.id === "strong") return "**" + t + "**";
+        if (rt.id === "em") return "*" + t + "*";
+        if (rt.id === "del") return "~~" + t + "~~";
+        if (rt.id === "ins") return "<ins>" + t + "</ins>";
+        if (rt.id === "mark") return "<mark>" + t + "</mark>";
+        return t;
+      };
+      const obalRadky = (t) => t.split("\n").map(l => l.trim() ? obal(l) : l).join("\n");
+      const rawTopic = String(r.topic == null ? "" : r.topic);
+      const nl = rawTopic.indexOf("\n");
+      const prvni = nl === -1 ? rawTopic : rawTopic.slice(0, nl);
+      const zbytek = (nl === -1 ? "" : rawTopic.slice(nl + 1)).replace(/\s+$/, "");
+      // víceřádkové téma: první řádek je nadpis / položka, zbytek navazuje jako blok
+      const pridejBlok = (text) => jeSeznam ? blokVPolozce(text, odsazeniBloku) : blok(text);
       const blockTag = (rt.kind === "block") ? rt.tag : null;
-      if (blockTag) out += "<" + blockTag + ">\n\n";
+      if (blockTag) pridejBlok("<" + blockTag + ">");
       if (/^h([1-6])$/.test(tag)) {
         const lvl = parseInt(tag[1], 10);
-        out += "#".repeat(lvl) + " " + num + pfx + topicText + "\n\n";
-      } else if (tag === "li") {
-        out += "  ".repeat(Math.max(0, depth - 1)) + "- " + num + pfx + topicText + "\n";
+        blok("#".repeat(lvl) + " " + num + pfx + obal(prvni));
+      } else if (jeSeznam) {
+        radekSeznamu(odsazeni + "- " + num + pfx + obal(prvni));
       } else {
-        out += num + pfx + topicText + "\n\n";
+        blok(num + pfx + obal(prvni));
       }
-      if (r.note) out += "> " + r.note.replace(/\n/g, "\n> ") + "\n\n";
-      const dataCols = rightDataColumns();
-      for (const c of dataCols) {
+      if (zbytek.trim()) pridejBlok(obalRadky(zbytek));
+      if (r.note) pridejBlok("> " + r.note.replace(/\n/g, "\n> "));
+      for (const c of rightDataColumns()) {
         const v = exportCellPlain(r, c);
-        if (v) out += "  - **" + c.title + ":** " + v + "\n";
+        if (v) radekSeznamu(odsazeniBloku + "- **" + c.title + ":** " + v);
       }
       rec(r.children, depth + 1);
-      if (blockTag) out += "</" + blockTag + ">\n\n";
+      if (blockTag) pridejBlok("</" + blockTag + ">");
     }
   }
   const __er = exportSourceRows(); rec(__er, 1);
-  return out;
+  return out.replace(/\s+$/, "") + "\n";
 }
 
 /* ---------- OPML export ---------- */
