@@ -168,12 +168,13 @@ Když píšete v markdownovém poli (tělo entity, sekce, odkládací prostor), 
 | `Ctrl+-` | Označené jako Critic odstranění `{--…--}` |
 | `Ctrl+.` | Označené jako Critic náhrada `{~~…~>…~~}` |
 | `Ctrl+=` | Označené jako zvýraznění `{==…==}` |
-| `Ctrl+Shift+W` | Vložit wiki odkaz na entitu |
+| `Ctrl+Shift+K` | Vložit wiki odkaz na entitu |
 | `Ctrl+Shift+E` | Vložit include `{{include:…}}` |
 | `Ctrl+Shift+S` | Vložit status `{{status:…}}` |
 | `Ctrl+Shift+I` | Vložit příznak (nabídka emoji) |
-| `Ctrl+Shift+N` | Z označeného textu vytvořit novou entitu |
+| `Ctrl+Shift+M` | Z označeného textu vytvořit novou entitu |
 | `Ctrl+Shift+A` | Přejít na lištu akcí s označeným textem |
+| `Ctrl+Shift+G` | Označený text poslat umělé inteligenci s vlastním zadáním |
 
 ### Skrytí hotových úkolů
 
@@ -359,6 +360,8 @@ Filtry se kombinují logikou **AND**.
 | `c` | Přidat komentář |
 | `d` | (read, pokud má nadpisy) Přepnout režim editace sekcí |
 | `a` | (read) Přepnout anotační režim |
+| `x` / `Alt+Shift+X` | (read) Otevřít Export / tisk |
+| `Alt+Shift+G` | (read) Poslat obsah entity umělé inteligenci (jen s nastaveným klíčem) |
 | `z` | (u entity s aspektem „Sledování času") Spustit/zastavit timer |
 | `Shift+Z` | Přidat aspekt „Sledování času" (pokud chybí) a rovnou spustit timer |
 | `Esc` | Zpět na read mode (uloží quick anotace a změny) |
@@ -476,6 +479,67 @@ Archivace slouží k tomu, aby hotové a neaktuální věci zmizely z každodenn
 Všechno archivované se místo toho sesbírá do jediné sbalené sekce **🗄 Archiv** úplně na konci detailu (nad technickou sekcí Meta). V závorce je počet položek; sekce je rozdělená na **archivované odchozí vazby** a **archivované příchozí vazby**, takže je u každé položky vidět, jakým vztahem k entitě patří — archivovaný úkol projektu se ukáže jako „je součástí", archivovaný účastník schůzky jako „účastní se" a podobně.
 
 Archivovat a obnovovat se dá i odsud stejně jako odjinud; tlačítko pro odebrání vazby (×) funguje v sekci Archiv také.
+
+## Hromadné operace
+
+V seznamech se klávesou `x` zapíná **režim hromadného výběru** — u entit se objeví zaškrtávátka a nahoře lišta s akcemi: přidat aspekt, přidat/odebrat tag, přidat vazbu, změnit atribut, archivovat, smazat, 💬 chat s vybranými a **📤 Exportovat**.
+
+**📤 Exportovat** otevře běžný dialog exportu s **předvyplněným výběrem** — přesně ty entity, které jste zaškrtl. Formát (JSON balíček pro přenos mezi bázemi, nebo Excel) i ostatní volby zůstávají na vás, jen odpadá ruční vybírání v dialogu. Volba **Zahrnout také navazované entity** funguje jako jindy.
+
+Výběr se v dialogu drží nezávisle na seznamu, takže vydrží filtrování i to, že se seznam zobrazuje po dvou stech položkách; kolik je vybráno, ukazuje počitadlo pod ním a tlačítkem **Zrušit výběr** se vyprázdní.
+
+## Umělá inteligence
+
+Volitelná funkce: umožní poslat text jazykovému modelu s vlastním zadáním. Klíč zadáte v **Nastavení → Umělá inteligence** a ukládá se pouze ve vašem prohlížeči (`localStorage`, klíč `pim_ai_key`). Dokud klíč nezadáte, tlačítka se nikde nezobrazují.
+
+**Tři cesty, kudy text poslat:**
+
+- **Označený text** — v editaci obsahu označte text a stiskněte `Ctrl+Shift+G`, nebo použijte tlačítko **✨ Umělá inteligence…** v liště nad označeným textem.
+- **Celý obsah entity** — tlačítko **✨ Umělá inteligence…** pod obsahem entity. Pošle vyrenderovaný obsah: s vloženými `{{include:…}}`, doplněnými placeholdery a čítači a bez anotací — tedy přesně ten text, který jde do exportu a na GitHub přes `ghpath`.
+- **Vybraný export** — tlačítko **✨ Umělá inteligence…** v okně **🖨 Export / tisk**. Zaškrtáte si, co má být součástí výstupu, a pošle se přesně ten Markdown, který by se jinak zkopíroval nebo stáhl. Takhle jde zpracovat i atributy, vazby, komentáře nebo úkoly schůzky, ne jen samotný obsah.
+
+**Okno** má pole na zadání (co se má s textem udělat), rozbalovací náhled **Co se odešle** a po odeslání odpověď — ta se ukáže **vysázená jako Markdown**. Tlačítkem **✏ Upravit** se přepnete do textového pole a stejným tlačítkem zpět na náhled. Pak zvolíte:
+
+- **📋 Zkopírovat** — do schránky,
+- **📤 Jako nová entita** — založí novou entitu, název se odvodí z prvního řádku odpovědi,
+- **↻ Pokračovat s odpovědí** — vezme odpověď (i s vašimi ručními úpravami) jako nový vstup a čeká na další zadání. Text se tak dá dopilovat na několikrát; nahrazení výběru zůstává dostupné a pořád míří na tentýž úsek.
+- **⤵ Na konec obsahu** — připojí odpověď za stávající text. Když jste vyšli z rozepsaného pole v editaci, připojí se na konec toho pole (aby se to při uložení editace nepřepsalo); jinde rovnou na konec obsahu entity a uloží se.
+- **↩ Nahradit označený text** — jen u varianty s výběrem; obsah pole se přepíše až tímhle tlačítkem, samo se nic nemění.
+
+Odeslat jde i klávesou `Ctrl+Enter` z pole se zadáním.
+
+**Co se neodesílá:** entity s aspektem **Zabezpečené** (ani odemčené) a bloky `~~~private`, které se ze vstupu vyříznou — okno pak napíše, kolik jich bylo. Před každým odesláním si můžete v náhledu ověřit, co přesně odchází.
+
+### Návrh atributů
+
+Když okno otevřete nad entitou, je v něm rozbalovátko **Atributy entity** se dvěma sloupci zaškrtávátek:
+
+- **Poslat** — hodnota atributu se přiloží k textu jako kontext. Zaškrtnout jde jen u vyplněných polí. Posílejte jen to, co je potřeba: každý atribut navíc prodlužuje (a prodražuje) dotaz.
+- **Navrhnout** — umělá inteligence pro tenhle atribut navrhne hodnotu.
+
+Nic není předzaškrtnuté — u aspektu s deseti poli by se jinak model ptal na všechna prázdná. Vybíráte si vždycky sami.
+
+Tlačítkem **✨ Navrhnout atributy** se místo běžné odpovědi vrátí tabulka *atribut – stávající hodnota – návrh*. Návrh jde přepsat a zaškrtnout; teprve **Zapsat vybrané** ho uloží do entity. Prázdný návrh se zapsat nedá a nic se nepřepíše samo. Do pole se zadáním můžete přidat vlastní pokyn („shrnutí max tři věty", „piš úředně").
+
+Typický postup: označíte odstavec v obsahu, vlevo přiložíte třeba Stav a Termín jako kontext, vpravo zaškrtnete Předmět, Shrnutí a Poznámky autora — a necháte si je navrhnout.
+
+Nabízejí se pole ze všech aspektů entity, globální pole i vlastní pole entity, takže to funguje i pro aspekty, které si vytvoříte sami. Vynechaná jsou počítaná pole (mají vlastní vzorec), skrytá, technická a vazby na jiné entity. U výběrů dostane služba seznam povolených hodnot, takže nemůže vrátit nesmysl.
+
+### Chat nad vybranými entitami
+
+V kterémkoli seznamu zapněte režim hromadného výběru (klávesa `x`), zaškrtněte entity a klikněte na **💬 Chat s vybranými**.
+
+Otevře se pohled s konverzací. Obsah vybraných entit se přiloží jako **podklady k první otázce** — v dalších kolech už se neposílá znovu, pokračuje se historií konverzace. Odpověď se **vypisuje průběžně**, jak přichází ze služby, takže nemusíte čekat na celý text.
+
+- Podklady jsou nahoře jako odkazy a jde je jednotlivě odebrat křížkem; rozbalovátko **Co se odešle jako podklady** ukáže přesný text.
+- **Nová konverzace** zahodí zprávy a nechá podklady.
+- **💾 Uložit jako entitu** otevře dialog: zadáte **název** (předvyplněný z první otázky) a zaškrtnete **projekty**, do kterých se má konverzace zařadit — nabídnou se ty, do kterých patří podklady. Založí se entita s přepisem konverzace v Markdownu, vazbami `mentions` na podklady a `partOf` na zaškrtnuté projekty. Bez toho se konverzace **nikam neukládá** — žije jen do zavření stránky, aby databáze nerostla.
+
+Uloženou konverzaci lze **vybrat jako podklad pro další chat**. Její obsah (přepis) se pak přiloží k první otázce nového chatu, takže model ví, co jste probírali. Není to ale pokračování téže konverzace: jde o nový chat, do kterého přepis vstupuje jako podklad, a **obsah původních zdrojových entit se s ním neposílá** — pokud ho chcete taky, zaškrtněte je při výběru znovu.
+
+Zabezpečené entity se mezi podklady nedostanou vůbec (aplikace to při otevření oznámí) a soukromé bloky `~~~private` se z obsahu vyříznou.
+
+Model je předvolený; pole **Model** v nastavení ho umí přepsat, když je potřeba. Tlačítkem **Ověřit spojení** si nastavení otestujete. Funkce je jen v aplikaci — vygenerovaný offline prohlížeč ji neobsahuje a klíč se nedostane do exportu, do synchronizace na GitHub ani do statického prohlížeče.
 
 ## Datová synchronizace s GitHubem
 

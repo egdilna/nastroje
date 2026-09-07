@@ -169,12 +169,13 @@ When typing in a Markdown field (entity body, sections, scratchpad), these short
 | `Ctrl+-` | Selection as Critic delete `{--…--}` |
 | `Ctrl+.` | Selection as Critic replace `{~~…~>…~~}` |
 | `Ctrl+=` | Selection as highlight `{==…==}` |
-| `Ctrl+Shift+W` | Insert wiki link to an entity |
+| `Ctrl+Shift+K` | Insert wiki link to an entity |
 | `Ctrl+Shift+E` | Insert include `{{include:…}}` |
 | `Ctrl+Shift+S` | Insert status `{{status:…}}` |
 | `Ctrl+Shift+I` | Insert flag (emoji picker) |
-| `Ctrl+Shift+N` | Create a new entity from the selected text |
+| `Ctrl+Shift+M` | Create a new entity from the selected text |
 | `Ctrl+Shift+A` | Jump to the action toolbar for the selected text |
+| `Ctrl+Shift+G` | Send the selected text to the artificial intelligence with your own instruction |
 
 ### Hiding completed tasks
 
@@ -360,6 +361,8 @@ Filters combine with **AND** logic.
 | `c` | Add a comment |
 | `d` | (read, if it has headings) Toggle section-edit mode |
 | `a` | (read) Toggle annotation mode |
+| `x` / `Alt+Shift+X` | (read) Open Export / print |
+| `Alt+Shift+G` | (read) Send the entity body to the artificial intelligence (only with a key set) |
 | `z` | (entity with "Time tracking" aspect) Start/stop timer |
 | `Shift+Z` | Add "Time tracking" aspect (if missing) and start the timer right away |
 | `Esc` | Back to read mode (saves quick annotations and changes) |
@@ -477,6 +480,67 @@ Archiving exists so that finished and outdated things disappear from everyday wo
 Everything archived is collected instead into a single collapsed **🗄 Archive** section at the very bottom of the detail (above the technical Meta section). The count is in brackets; the section is split into **archived outgoing links** and **archived incoming links**, so you can see how each item relates to the entity — an archived project task shows as "is part of", an archived meeting attendee as "attends", and so on.
 
 You can archive and restore from here as anywhere else, and the remove-link button (×) works in the Archive section too.
+
+## Bulk operations
+
+In lists, the `x` key turns on **bulk-selection mode** — checkboxes appear next to the entities and a toolbar shows up with actions: add aspect, add/remove tag, add link, change attribute, archive, delete, 💬 chat with selected and **📤 Export**.
+
+**📤 Export** opens the usual export dialog with the **selection pre-filled** — exactly the entities you ticked. The format (a JSON package for transfer between bases, or Excel) and the other options are still yours to choose, you just skip picking the entities by hand. The **Include linked entities** option works as usual.
+
+Inside the dialog the selection is kept independently of the list, so it survives filtering and the fact that the list is capped at two hundred items; a counter below shows how many are selected and **Clear selection** empties it.
+
+## Artificial intelligence
+
+An optional feature: it lets you send text to a language model with your own instruction. You enter the key in **Settings → Artificial intelligence** and it is stored only in your browser (`localStorage`, key `pim_ai_key`). Until a key is set, none of the buttons appear.
+
+**Three ways to send text:**
+
+- **Selected text** — while editing content, select text and press `Ctrl+Shift+G`, or use the **✨ Artificial intelligence…** button in the toolbar above the selection.
+- **The whole entity body** — the **✨ Artificial intelligence…** button below the entity body. It sends the rendered content: `{{include:…}}` expanded, placeholders and counters evaluated, annotations removed — exactly the text that goes into an export and to GitHub via `ghpath`.
+- **A selected export** — the **✨ Artificial intelligence…** button in the **🖨 Export / print** dialog. You tick what the output should contain and exactly that Markdown is sent — the same one that would otherwise be copied or downloaded. This way attributes, links, comments or meeting tasks can be processed too, not just the body.
+
+**The dialog** has a field for your instruction, a collapsible **What will be sent** preview, and after sending the answer — shown **rendered as Markdown**. The **✏ Edit** button switches to a text area and the same button switches back to the preview. Then you choose:
+
+- **📋 Copy** — to the clipboard,
+- **📤 As a new entity** — creates a new entity, the title is derived from the first line of the answer,
+- **↻ Continue with the answer** — takes the answer (including your own edits) as the new input and waits for another instruction. You can refine text in several passes; replacing the selection stays available and still points at the same range.
+- **⤵ Append to the content** — adds the answer after the existing text. If you started from a field being edited, it is appended to the end of that field (so an editing save can't overwrite it); elsewhere straight to the end of the entity body, and saved.
+- **↩ Replace the selected text** — only for the selection variant; the field is rewritten only by this button, nothing changes on its own.
+
+You can also send with `Ctrl+Enter` from the instruction field.
+
+**What is never sent:** entities with the **Secured** aspect (not even unlocked ones) and `~~~private` blocks, which are cut out of the input — the dialog then reports how many. Before every send you can check in the preview exactly what is going out.
+
+### Attribute suggestions
+
+When the dialog is opened over an entity, it contains an **Entity attributes** disclosure with two columns of checkboxes:
+
+- **Send** — the attribute's value is attached to the text as context. Only available for fields that have a value. Send only what is needed: every extra attribute makes the request longer (and pricier).
+- **Suggest** — the artificial intelligence proposes a value for this attribute.
+
+Nothing is pre-ticked — with a ten-field aspect the model would otherwise be asked about every empty one. You always choose yourself.
+
+The **✨ Suggest attributes** button returns a table of *attribute – current value – suggestion* instead of the usual answer. A suggestion can be rewritten and ticked; only **Write selected** saves it into the entity. An empty suggestion cannot be written and nothing is overwritten on its own. You can add your own instruction in the prompt field ("summary in three sentences at most", "keep it formal").
+
+A typical flow: select a paragraph in the body, attach for example Status and Deadline as context on the left, tick Subject, Summary and Author's notes on the right — and have them proposed.
+
+Fields from all of the entity's aspects, global fields and the entity's own custom fields are offered, so it works for aspects you create yourself too. Computed fields (they have their own formula), hidden and technical fields and links to other entities are left out. For choice fields the service is given the list of allowed values, so it cannot return nonsense.
+
+### Chat over selected entities
+
+In any list, turn on bulk-selection mode (the `x` key), tick the entities and click **💬 Chat with selected**.
+
+A conversation view opens. The content of the selected entities is attached as **background material to the first question** — later turns don't send it again and continue from the conversation history. The answer is **printed as it arrives** from the service, so you don't wait for the whole text.
+
+- The background entities are listed at the top as links and can be removed one by one with the ✕; the **What will be sent as background** disclosure shows the exact text.
+- **New conversation** discards the messages and keeps the background.
+- **💾 Save as entity** opens a dialog: you enter a **title** (pre-filled from the first question) and tick the **projects** the conversation should belong to — the ones the background entities belong to are offered. An entity is created with a Markdown transcript of the conversation, `mentions` links to the background entities and `partOf` links to the ticked projects. Without that the conversation is **not stored anywhere** — it lives only until you close the page, so the database doesn't grow.
+
+A saved conversation can be **picked as background material for another chat**. Its content (the transcript) is then attached to the first question of the new chat, so the model knows what you discussed. It is not a continuation of the same conversation, though: it is a new chat into which the transcript enters as background, and **the content of the original source entities is not sent with it** — tick them again if you want those too.
+
+Secured entities never make it into the background material (the app says so when the chat opens) and `~~~private` blocks are cut out of the content.
+
+The model has a default; the **Model** field in settings can override it when needed. The **Verify connection** button tests the setup. The feature lives in the application only — the generated offline viewer does not contain it, and the key never reaches an export, the GitHub sync or the static viewer.
 
 ## Data sync with GitHub
 
