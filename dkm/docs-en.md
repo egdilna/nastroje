@@ -653,6 +653,35 @@ Example: in a note on one entity you write "Follow-up on [[Regulation 409/2025]]
 
 Match is case-insensitive on full entity name.
 
+### 15.4 Link suggestions on save
+
+Typing `[[…]]` by hand is tedious, so **when you save an entity DKM scans its multi-line
+(Markdown) attributes** for names of other entities written as plain text. Whatever it finds is
+listed in a dialog with checkboxes — you pick what should become a link and confirm. **Nothing
+changes on its own**, the decision is always yours.
+
+Each suggestion shows the target entity name with its type icon, the number of occurrences and a
+snippet of the text with the spot highlighted, so you know which occurrence it is. The
+**Select all** / **Select none** buttons speed up bulk decisions, and at the bottom there are three:
+
+- **🔗 Create links and save** — wraps the ticked occurrences in `[[…]]` and saves
+- **Save without links** — saves the text as it is
+- **Back to editing** — closes the dialog and leaves you in the editor
+
+The rules it searches by:
+
+- only **multi-line** attributes (of the type, of aspects, and custom ones); single-line text is not scanned
+- the name must stand as a **whole word** — "Rodné číslostí" is not a hit
+- matching is **case-insensitive** and the original spelling is kept (`[[rodné číslo]]` resolves
+  just as well as `[[Rodné číslo]]`)
+- **the longer name wins** — in the text "Rodné číslo" it offers *Rodné číslo*, not *Číslo*
+- it never touches **existing `[[…]]` links, code (inline and fenced), markdown links `[text](url)`,
+  HTML tags and URLs** — which is why saving the same entity a second time offers nothing
+- names shorter than three characters are skipped, otherwise half the text would match
+- archived entities and the entity itself are not offered
+
+You can switch it off in **Settings → General → Suggest wiki links when saving an entity**.
+
 ---
 
 ## 16. Comments
@@ -1302,6 +1331,7 @@ Personal access token for GitHub API. Stored in the browser's localStorage (per 
 - **Language** (Čeština / English)
 - **Theme** — Light / Dark / Paper / Matrix, same as in the ⚙ Customize menu
 - **Your name for comments** — used as author of new comments. Stored **in this browser only** (key `dkm-username`, like the GitHub token), not in the project data — so several people can work on the same project and each signs their own comments. An older project that carried the name in its data adopts it into the browser once on load (if none is set there yet) and drops it from the data.
+- **Suggest wiki links when saving an entity** — after saving it offers names of other entities found in multi-line attributes for conversion into a `[[link]]` (see 15.4). Stored in this browser only (key `dkm-wiki-suggest`).
 - **Sound feedback for GitHub saves** — a short rising tone after a successful save, a darker falling one after a failure. The tones are generated in the browser via the Web Audio API, nothing is downloaded, so it works offline too. Next to the checkbox are buttons to hear both. Stored in this browser only (key `dkm-sound`).
 - **Autosave** — automatic saving to sessionStorage (per tab)
 - **Debug** — enables a bottom panel with debug logs
@@ -1554,7 +1584,7 @@ The project is one JSON document (see `dkmdata.json`):
 | `dkm-lang` | interface language |
 | `dkm-theme` | visual theme |
 | `dkm-username` | comment author name |
-| `dkm-autosave`, `dkm-debug`, `dkm-sound` | switches in Settings → General |
+| `dkm-autosave`, `dkm-debug`, `dkm-sound`, `dkm-wiki-suggest` | switches in Settings → General |
 | `dkm-github-token` | GitHub PAT (per origin) |
 | `dkm-handoff-…` | short-lived data handoff to a standalone window |
 | `dkm-viewer-lang`, `dkm-viewer-theme` | choices in a generated static viewer |
