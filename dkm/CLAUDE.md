@@ -294,8 +294,18 @@ nevyřazuj.
 
 **Entity si v balíčku nesou svoje `id`**, takže opakovaný import se pozná. `findEntityConflicts`
 kromě kolize počítá i `diff` (podle názvů atributů, ne podle id — mapování je věc průvodce)
-a z něj **výchozí akci**: `skip`, když je to identické, jinak `merge`. Nikdy nedávej výchozí
-`newId` — přesně tím vznikaly duplikáty při druhém importu.
+a z něj **výchozí akci**. Nikdy nedávej výchozí `newId` — přesně tím vznikaly duplikáty
+při druhém importu.
+
+**Výchozí akce se liší podle režimu**, protože easy krok s konflikty vůbec nezobrazuje
+(`renderPkgWizStep6` se v něm přeskakuje) — tam tedy vyhrává balíček (`overwrite`), zatímco
+v podrobném režimu, kde uživatel rozhoduje, je opatrnější `merge`. Identické entity se
+přeskakují v obou — přepis týmiž hodnotami by jen zbytečně hnul `updatedAt` u všeho.
+
+**Párování podle názvu** (`opts.byName`, jen podrobný režim) je pro balíčky z cizího projektu.
+Konflikt pak nese `tgtId` **jiné než `srcId`** — `applyImport` proto cíl bere z `conf.tgtId`,
+ne z `findEntity(srcE.id)`. Cíl, který si vzala shoda podle id, si nesmí vzít ještě shoda podle
+názvu, a **dvojznačné názvy se nepárují vůbec** (radši nic než špatně).
 
 Akce v `applyImport`: `merge` **doplňuje, nepřepisuje** (prázdné atributy, sjednocení aspektů
 a vlastních atributů podle názvu, vazby se ve druhém průchodu deduplikují přes
@@ -344,10 +354,14 @@ ukazovaly jako text; strukturu dělej DOM prvky, ne značkami v překladu.
   novou vždy doplň i s titulkem ve tvaru `… (Alt+X, nebo X)` přes `t('keyAlt')` / `t('keyOr')`.
 - Název entity vypisuj **vždy** přes `appendEntityLabel(el, entita[, fallback])` — doplní emotikonu typu
   a název. Nikdy nepiš `el.textContent = getTitle(e)`, jinak se ikona v novém pohledu ztratí.
-- **Barvu ber jen z existujícího tokenu.** `--bg-t` **neexistuje** (plocha je `--sf`) a na pár
-  místech se přesto používá — nekopíruj to. `--dg` je v tmavém i Matrix motivu **světlá**, takže
-  se nehodí jako plocha pod bílý text; tónovaná plocha pro nebezpečí je `--dgb`. Kontrast měř,
-  neodhaduj.
+- **Barvu ber jen z existujícího tokenu a ověř, že token existuje.** Nedefinovaný token v `var()`
+  tiše propadne na dědění, takže se nic nerozbije — jen to nevypadá, jak má. Takhle se v CSS
+  nasbíralo pět neexistujících jmen ve 38 výskytech (`--bg-t`→`--acb`, `--er`→`--dg`, `--fg`→`--tx`,
+  `--ac-fg`→`--acf`, `--wn-bg`); lišta hromadného výběru třeba vůbec neměla podbarvení.
+  Kontrola je jednořádková: posbírej `var(--x)` a odečti definice na `:root`.
+- `--dg` je v tmavém i Matrix motivu **světlá**, takže se nehodí jako plocha pod bílý text;
+  tónovaná plocha pro nebezpečí je `--dgb`. Kontrast měř, neodhaduj — a měř proti **skutečně
+  vykreslenému** pozadí, ne proti tomu, které si myslíš, že tam je.
 - Odebrání vazby v editaci je `.rel-x` — dřív to bylo průhledné `×` v barvě odkazu bez `title`,
   takže ho uživatel nenašel. Ovládací prvek musí vypadat jako ovládací prvek.
 - Karta v seznamu (`renderCard`) je `<div>`, ne `<a>`: obsahuje odkazy a tlačítko samostatného okna,

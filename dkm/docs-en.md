@@ -1438,10 +1438,48 @@ Downloads a `.dkmpkg`.
 - Change preview
 - Backup before import (checkbox on by default — downloads current project as `.dkmdata` before import)
 
+#### When the entity is already in the project
+
+Entities carry **their own IDs** in the package, so re-importing the same data recognises them.
+The *Conflicts* step lists every such entity and **what differs** from what the project already
+has — or that it is unchanged.
+
+The action is pre-filled accordingly, and it **depends on the wizard mode**:
+
+| Situation | Easy | Detailed |
+|---|---|---|
+| The project has the same | Skip | Skip |
+| Something differs | **Overwrite** — the package wins | **Fill into the existing one** |
+
+Easy never shows the conflicts step, so it does what people expect there: **the package data
+wins**. The detailed mode lists them and lets you decide, which is why its default is the careful
+one that does not overwrite your edits. Entities that are completely identical are skipped in
+both modes — overwriting them with the same values would only churn the update date.
+
+The available actions:
+
+- **⊕ Fill into the existing one** — the entity stays as it is. Only **what is missing** gets
+  filled in: empty attributes, missing aspects, relations that are not there yet. Your edits stay.
+- **♻ Overwrite** — the package content replaces what the project has
+- **❌ Skip** — the entity is not imported at all
+- **🆕 Create a new one** — a copy with a new ID. Use it only when you really want two records.
+
+There is also **Set all at once** at the top, so a large package does not mean clicking one by one.
+
+#### A package from a foreign project
+
+When the package does not come from this project, its entities have different IDs and matching by
+ID finds nothing — everything would be imported as new. For that case the detailed mode has the
+**Also match by name when the IDs differ** checkbox. It matches an entity with the same name
+(ignoring case and diacritics) and says so for each such pair. **Ambiguous names are skipped** —
+when the project has two entities called "Jan", the wizard has no way to tell which one is meant,
+so it matches neither. Easy mode never matches by name.
+
 Clicking Import performs a two-pass:
 
-1. Entities are created with new IDs
-2. Relations and relation attributes are remapped to new IDs
+1. Entities are created, filled or overwritten according to the chosen action
+2. Relations and relation attributes are remapped to the target IDs; when filling, **the same
+   relation is not created twice**
 
 ---
 
