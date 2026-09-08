@@ -34,7 +34,7 @@ Uživatelská příručka
 22. [Diff od posledního uložení](#22-diff-od-posledního-uložení)
 23. [Co všechno jde z DKM dostat ven](#23-co-všechno-jde-z-dkm-dostat-ven)
 24. [Export a tisk entit](#24-export-a-tisk-entit)
-25. [Export do XLSX, TSV, PlantUML](#25-export-do-xlsx-tsv-plantuml)
+25. [Export do tabulky, PlantUML a GraphML](#25-export-do-tabulky-plantuml-a-graphml)
 26. [Export do datového JSON se schématem](#26-export-do-datového-json-se-schématem)
 27. [Statický prohlížeč](#27-statický-prohlížeč)
 28. [Přenos částí mezi projekty (balíčky)](#28-přenos-částí-mezi-projekty-balíčky)
@@ -167,8 +167,7 @@ Vždy nahoře. Obsahuje:
 - **Načíst** (klávesa Alt+L) — otevře soubor `.dkmdata` jako aktuální projekt
 - **Uložit** (klávesa Ctrl+S) — uloží aktuální projekt (na disk nebo GitHub, podle nastavení)
 - **📋⬇ Načíst ze schránky** (Ctrl+Shift+O) — nahradí projekt daty ze schránky (s potvrzením)
-- **📋⬆ Vložit do schránky** (Ctrl+Shift+S) — zkopíruje celý projekt jako JSON do schránky
-- **Export** — XLSX export aktuálně filtrovaných entit
+- **📤 Export** — otevře dialog Export dat: rozsah, cíl a formát na jednom místě (kap. 23)
 - **Import TSV** — nahraje entity z TSV / CSV / vložení ze schránky
 - **Nastavení** — projekt, typy, aspekty, vazby, seznamy, pohledy, obecné
 - **⚙ Přizpůsobit** — rozbalovací menu se dvěma sekcemi: **Jazyk** (Čeština / English) a **Motiv** (viz 4.2)
@@ -812,7 +811,7 @@ Stiskneš **Ctrl+P** (Cmd+P na Macu) → modal s textovým polem.
 - **Uložené pohledy**
 - **Aspekty** (klik → záložka aspektu)
 - **Typy entit** (klik → záložka typu)
-- **Akce**: Nová entita, Nastavení, Uložit, Načíst, **Načíst z URL**, Pokročilé filtry, Clipboard IO, PlantUML export, **Export dat do JSON**, **Motiv (všechny čtyři)**, Nový panel, Všechny komentáře, Inbox / Vše / Archiv
+- **Akce**: Nová entita, Nastavení, Uložit, Načíst, **Načíst z URL**, Pokročilé filtry, načtení ze schránky, **📤 Export dat**, **Motiv (všechny čtyři)**, Nový panel, Všechny komentáře, Inbox / Vše / Archiv
 
 ### 19.3 Fuzzy match
 
@@ -926,7 +925,7 @@ uloží do souboru, ne na GitHub.
 
 ### 21.7 Uložení do schránky
 
-**📋⬆ Vložit do schránky** v hlavičce (Ctrl+Shift+S). Zkopíruje celý projekt jako JSON. Použitelné pro rychlé přenesení do jiné záložky nebo do jiné aplikace.
+Klávesa **Ctrl+Shift+S**, nebo v dialogu **📤 Export dat** cíl **Projekt do schránky**. Zkopíruje celý projekt jako JSON. Použitelné pro rychlé přenesení do jiné záložky nebo do jiné aplikace.
 
 ### 21.8 Načtení ze schránky
 
@@ -988,17 +987,27 @@ Většina exportů níže je datová. Model se exportuje z jednoho místa — **
 
 ### 23.2 Exporty dat
 
-| Co | Formát | Kde to najdeš | K čemu |
-|---|---|---|---|
-| Celý projekt | `.dkmdata` (JSON) | hlavička **Uložit** | záloha, přenos, GitHub (kap. 21) |
-| Jedna entita | MD do souboru i do schránky, formátovaný text do schránky, DOCX, tisk / PDF | detail entity → **🖨 Export / tisk** | dokument o jedné věci (kap. 24) |
-| Výběr entit | totéž, ale do **jednoho** dokumentu | seznam → režim výběru → **🖨 Export / tisk výběru** | zpráva, přehled, podklad (kap. 24.4) |
-| Zobrazený seznam | XLSX | hlavička **Export** | tabulka do Excelu (kap. 25.1) |
-| Vybrané entity | PlantUML | rychlá paleta nebo hromadná akce | diagram vazeb (kap. 25.3) |
-| Data po typech | ZIP: `data.json`, `schema.json`, `mapovani.json`, README | **Export dat do JSON** | strojové zpracování, import jinam (kap. 26) |
-| Celý projekt k prohlížení | jeden HTML soubor | Nastavení → Projekt → Statický prohlížeč | poslat někomu, kdo DKM nemá (kap. 27) |
-| Část projektu | `.dkmpkg` (balíček) | hromadná akce **Export balíčku** | přenos výseku do jiného projektu (kap. 28) |
-| Kontext pro jazykový model | Markdown | **🤖 Zeptat se AI** → Zobrazit, co se odešle | zadání pro AI (kap. 35.3) |
+**Všechno kromě uložení projektu vede jedním tlačítkem: 📤 Export dat.** Otevřeš ho tlačítkem
+**Export** v hlavičce, hromadnou akcí **📤 Export dat** nad výběrem, nebo z rychlé palety.
+V dialogu si vybereš **rozsah** (vybrané entity / zobrazený seznam / celý projekt) a **cíl**:
+
+| Cíl | Formáty | K čemu |
+|---|---|---|
+| **Dokument** | Markdown, DOCX, tisk / PDF, formátovaný text do schránky | zpráva, přehled, podklad ke čtení (kap. 24) |
+| **Tabulka** | XLSX, CSV, TSV — s výběrem sloupců | Excel, úprava a import zpět (kap. 25.1) |
+| **Data se schématem** | JSON + JSON Schema, XML + XSD | strojové zpracování, integrace (kap. 26) |
+| **Diagram nebo graf** | PlantUML, GraphML | obrázek vazeb, nebo graf do Gephi a yEd (kap. 25.3) |
+| **Balíček** | `.dkmpkg` | přenos výseku do jiného DKM projektu (kap. 28) |
+| **Statický prohlížeč** | jeden HTML soubor | poslat někomu, kdo DKM nemá (kap. 27) |
+| **Projekt do schránky** | JSON | rychlý přesun mezi záložkami (Ctrl+Shift+S) |
+
+Mimo ten dialog zůstávají tři věci, a to schválně:
+
+| Co | Kde | Proč zvlášť |
+|---|---|---|
+| Celý projekt jako `.dkmdata` | hlavička **Uložit** (Ctrl+S) | není to export, ale uložení projektu — má GitHub, zvukovou odezvu a vlastní klávesu (kap. 21) |
+| Jedna entita | detail entity → **🖨 Export / tisk** | je to o jedné konkrétní věci, kterou máš zrovna otevřenou (kap. 24) |
+| Kontext pro jazykový model | **🤖 Zeptat se AI** → Zobrazit, co se odešle | nejde o soubor, ale o zadání pro AI (kap. 35.3) |
 
 ### 23.3 Exporty modelu
 
@@ -1009,18 +1018,20 @@ Všech sedm najdeš na jednom místě — **Nastavení → Model** (kap. 36), je
 | `model.md` | Markdown | čitelná dokumentace modelu pro lidi |
 | `openapi.yaml` | OpenAPI 3.1 | zadání REST API nad modelem |
 | `schema.json` | JSON Schema 2020-12 | validace dat, generování kódu |
+| `schema.xsd` | XSD (XML Schema) | validace XML, integrace, generování tříd |
 | `model.sql` | SQL DDL (PostgreSQL) | založení databáze |
 | `model.ttl` | RDFS/OWL + SKOS | ontologie, propojená data |
 | `shapes.ttl` | SHACL | validace RDF dat proti modelu |
 | `model.xmi` | XMI 2.1 (UML) | Enterprise Architect a jiné CASE nástroje |
 
-### 23.4 Který export si vybrat
+### 23.4 Který cíl si vybrat
 
-- **Chci to jen uschovat nebo přenést na jiný počítač** → `.dkmdata` (kap. 21)
-- **Chci to někomu poslat, ať si to přečte** → statický prohlížeč (kap. 27) nebo DOCX / PDF (kap. 24)
-- **Chci s tím počítat v Excelu** → XLSX (kap. 25.1)
-- **Chce to strojově zpracovat kolega nebo skript** → datový JSON se schématem (kap. 26)
-- **Chci část předat do jiného DKM projektu** → balíček (kap. 28)
+- **Chci to jen uschovat nebo přenést na jiný počítač** → **Uložit** (kap. 21)
+- **Chci to někomu poslat, ať si to přečte** → Statický prohlížeč (kap. 27) nebo Dokument (kap. 24)
+- **Chci s tím počítat v Excelu** → Tabulka (kap. 25.1)
+- **Chci graf proměřit, ne nakreslit** → Diagram nebo graf → GraphML (kap. 25.3)
+- **Chce to strojově zpracovat kolega nebo skript** → Data se schématem (kap. 26)
+- **Chci část předat do jiného DKM projektu** → Balíček (kap. 28)
 - **Chci předat, jak je to postavené, ne co v tom je** → export modelu (kap. 36)
 
 ### 23.5 Co ven nikdy nejde
@@ -1095,11 +1106,33 @@ neexportují nikdy.
 
 ---
 
-## 25. Export do XLSX, TSV, PlantUML
+## 25. Export do tabulky, PlantUML a GraphML
 
-### 25.1 XLSX
+### 25.1 Tabulkový export — XLSX, CSV, TSV
 
-Tlačítko **Export** v hlavičce. Vytvoří `.xlsx` s aktuálně filtrovanými entitami. Sloupce: název, typ, atributy typu, hlavní údaje. Použitelné pro sdílení mimo DKM.
+V dialogu **📤 Export dat** (kap. 23) zvol cíl **Tabulka**. Formát a **sloupce** si vybereš
+rovnou tam — nedostaneš tedy všechno, ale právě to, co potřebuješ.
+
+**Formát**
+
+- **XLSX** — sešit pro Excel. Zamrzlá hlavička, automatický filtr, spočítané šířky sloupců,
+  víceřádkové texty se zalamují. Volitelně **list na každý typ entity** — na listu typu pak
+  zůstanou jen sloupce, které k němu patří.
+- **CSV** — oddělovač si vybereš: **středník** (sedne českému Excelu) nebo **čárka**
+  (standardní CSV). K tomu volba **desetinné čárky**, opět kvůli Excelu.
+- **TSV** — oddělené tabulátorem. Čísla vždy s tečkou.
+
+CSV i TSV začínají značkou BOM, jinak by Excel rozhodil diakritiku. **Import TSV** v DKM ji
+umí přeskočit, takže kolečko *export → úprava v Excelu → import zpět* drží; ke spárování
+s existujícími entitami stačí nechat ve výstupu sloupec **ID** (viz 25.2).
+
+**Sloupce** jsou rozdělené do skupin — základní údaje, každý typ zvlášť, každý aspekt zvlášť,
+vlastní atributy, a vazby s metadaty. U každého sloupce je vidět, **u kolika entit je
+vyplněný**, a zaškrtávátkem **Jen vyplněné sloupce** schováš ty prázdné. Tlačítka Vše / Nic
+platí na to, co je zrovna vidět.
+
+Vlastní atributy se sdružují **podle názvu** — tři entity s vlastním atributem „Poznámka"
+dají jeden sloupec, ne tři.
 
 ### 25.2 TSV / CSV import
 
@@ -1167,28 +1200,29 @@ a naimportovat zpět. Dvě výjimky: sloupce `Vazby`, `Vytvořeno` a `Upraveno` 
 a **vlastní atributy** (v exportu značené `* Název`) se zpátky nevytvoří — hvězdička se odřízne
 a název se hledá mezi atributy typů a aspektů; když tam není, sloupec propadne.
 
-### 25.3 PlantUML export vazeb
+### 25.3 Diagram a graf — PlantUML a GraphML
 
-Přístupný přes:
+V dialogu **📤 Export dat** (kap. 23) zvol cíl **Diagram nebo graf**. Naváže dialog s:
 
-- **Rychlá paleta (Ctrl+P)** → akce „PlantUML export"
-- **Bulk akce** → „🎨 PlantUML diagram" (v selection režimu)
-
-Dialog:
-
-- **Rozsah**: aktuální seznam, výběr (v bulk režimu), všechny, typ, aspekt
+- **Rozsahem**: aktuální seznam, výběr, všechny, typ, aspekt
 - **Styl**: Class diagram (třídy s atributy), Component, Use case
 - **Volby**: zahrnout atributy jako pole tříd, zobrazit vazby z atributů-relací (přerušovanou čarou), zahrnout externí cíle mimo rozsah (šedě)
-- **Živý náhled** PlantUML kódu
+- **Formát**: PlantUML, nebo **GraphML**
+- **Živý náhled** vygenerovaného kódu
 
 Výstup:
 
 - **📋 Kopírovat** — do schránky
-- **📥 Stáhnout .puml** — soubor pro externí PlantUML nástroj
+- **📥 Stáhnout** — `.puml` pro PlantUML, nebo `.graphml`
 
-Escape názvů, aliasing ID na E0/E1/…, stereotypy podle typu (`<<Osoba>>`), attribute-relations jako `..>` čárkované.
+**PlantUML** je zdroj obrázku: escapované názvy, aliasy E0/E1/…, stereotypy podle typu
+(`<<Osoba>>`), vazby z atributů čárkovaně. Hodí se na dokumentaci modelu a architektury.
 
-Ideální pro dokumentaci datového modelu, ER diagramy, architektury.
+**GraphML** je tentýž graf, ale ke zpracování, ne k obrázku. Otevřeš ho v **Gephi, yEd nebo
+Cytoscape** a můžeš s ním počítat — centralita, komunity, shluky, cesty. Entity jsou uzly
+(nesou název, typ, aspekty a volitelně hodnoty atributů), vazby jsou hrany (nesou název,
+opačný název a údaj, jestli pocházejí z vazby nebo z atributu). Volba stylu diagramu se
+u GraphML schová — ta patří PlantUML.
 
 ---
 
@@ -1209,8 +1243,8 @@ Export je **jednosměrný**. Na přenos mezi projekty DKM slouží balíčky (ka
 ### 26.2 Kde se spouští
 
 - tlačítko **`{ }`** v panelu seznamu (exportuje aktuálně zobrazený seznam podle filtrů)
-- hromadná akce **`{ }` Export do datového JSON** nad vybranými entitami
-- rychlá paleta (Ctrl+P) → *Export dat do JSON*
+V dialogu **📤 Export dat** (kap. 23) zvol cíl **Data se schématem**. Rozsah už padl tam,
+průvodce se na něj tedy podruhé neptá a začne rovnou volbou typů.
 
 ### 26.3 Průvodce
 
@@ -1286,16 +1320,39 @@ import. Proto má každý typ, aspekt, atribut i typ vazby nepovinné pole **Kl�
 (v nastavení u dané položky). Prázdné = odvodí se z názvu. Vyplněné = platí napevno.
 Zaškrtávátko v kroku 2 průvodce vyplní tato pole podle aktuálně odvozených klíčů.
 
-### 26.8 Obsah ZIPu
+### 26.8 XML a XSD
+
+Ve volbách průvodce si vybereš **formát souborů**: JSON + JSON Schema, XML + XSD, nebo obojí.
+XML není druhá serializace — staví se **z téhož, už zvalidovaného JSON objektu** a prochází
+se podle stejného schématu, ze kterého vzniká XSD. Pořadí prvků i omezení proto sedí
+z principu, ne shodou okolností.
+
+Pravidla převodu jsou jednoduchá:
+
+| JSON | XML |
+|---|---|
+| objekt | prvek s podprvky |
+| pole | prvek se stejným názvem se opakuje |
+| skalár | textový obsah |
+| `null` (při volbě „zahrnout prázdné") | `xsi:nil="true"` |
+| vlastní atributy | vždy `<polozka klic="…">` — jejich názvy si píšeš ty a nemusí být platné XML jméno |
+
+XSD není tolerantní: odmítne neznámý prvek, chybějící `id`, hodnotu mimo číselník, číslo
+zapsané textem, špatný tvar data, cizí hodnotu u pevného `typ` i prohozené pořadí prvků.
+
+`schema.json` zůstává v balíčku vždy — popisuje tentýž obsah a hodí se ke křížové kontrole.
+
+### 26.9 Obsah ZIPu
 
 | Soubor | Co je uvnitř |
 |---|---|
 | `data.json` | data, kolekce podle typu (nebo `data/<typ>.json` při volbě soubor na kolekci) |
 | `schema.json` | JSON Schema draft 2020-12 pro tento výstup |
+| `data.xml` + `schema.xsd` | při formátu XML — tatáž data a XSD, které je validuje |
 | `mapovani.json` | převod interních ID na klíče — pro ladění a navazující nástroje |
 | `README.md` | lidský popis: co je uvnitř, tabulka mapování, upozornění, výsledek validace |
 
-### 26.9 Profily exportu
+### 26.10 Profily exportu
 
 Nastavení průvodce se dá uložit jako pojmenovaný **profil** (drží se v datech projektu),
 aby opakovaný export do stejné databáze dopadl vždycky stejně.
@@ -1308,7 +1365,9 @@ DKM umí vygenerovat **statický HTML prohlížeč** dat projektu — jeden soub
 
 ### 27.1 Generování
 
-**Nastavení → Projekt → Statický prohlížeč**. Klik → stáhne se soubor s vloženými daty projektu.
+V dialogu **📤 Export dat** (kap. 23) zvol cíl **Statický prohlížeč**. Stáhne se soubor
+s vloženými daty projektu. Bere vždycky celý projekt, rozsah se na něj nevztahuje.
+V **Nastavení → Projekt** je na totéž zkratka.
 
 Statický prohlížeč má:
 
@@ -1569,7 +1628,7 @@ Vytvoř aspekt „Schvalování" s atributem „Status" (select: Nový / V řeš
 Pro externí dokumentaci datového modelu:
 
 1. Vyber entity (nebo použij aspekt)
-2. Ctrl+P → „PlantUML export"
+2. Tlačítko **Export** → cíl **Diagram nebo graf**
 3. Class diagram + zahrnout atributy
 4. Stáhnout .puml
 5. Vlož do PlantUML editoru → obrázek
@@ -1834,6 +1893,7 @@ Přepínačem si vybereš formát, hned pod ním vidíš náhled výstupu.
 | `model.md` | Dokumentace (MD) | Čitelný popis modelu pro lidi — typy, atributy, aspekty, vazby, číselníky |
 | `openapi.yaml` | OpenAPI 3.1 | Popis REST API nad modelem: schémata plus cesty `list/create/get/update/delete` pro každý typ |
 | `schema.json` | JSON Schema 2020-12 | Validační schéma; aspekty jsou samostatná `$defs` skládaná přes `allOf` |
+| `schema.xsd` | XSD (XML Schema) | Totéž pro XML; aspekt je `xs:group`, protože tak se v XSD skládá do typu |
 | `model.sql` | SQL DDL | PostgreSQL: tabulka `entita`, tabulka na každý typ i aspekt, tabulky číselníků, `typ_vazby` + `vazba` a spojovací tabulky pro relační atributy |
 | `model.ttl` | RDFS/OWL + SKOS | Ontologie v Turtle: třídy, vlastnosti, k tomu číselníky jako SKOS koncepty |
 | `shapes.ttl` | SHACL | Tvary odpovídající třídám z OWL — validace RDF dat proti modelu |
@@ -1891,6 +1951,7 @@ Každý formát prochází skutečným nástrojem svého světa, ne jen kontrolo
 |---|---|
 | `openapi.yaml` | oficiální validátor OpenAPI 3.1 |
 | `schema.json` | metaschéma draftu 2020-12; k tomu se proti němu validuje ukázková entita a kontroluje se, že chybějící povinný atribut, hodnota mimo číselník i neznámý klíč **neprojdou** |
+| `schema.xsd` | validátor XML Schema (libxml2) |
 | `model.sql` | parser PostgreSQL |
 | `model.ttl` | RDF parser; navíc se hlídá, že žádná vlastnost nemá dvě domény a že každý obor je deklarovaná třída nebo XSD typ |
 | `shapes.ttl` | reálná SHACL validace: platná data projdou, kdežto chybějící povinný atribut, hodnota mimo číselník, číslo zapsané textem i vazba na špatný typ jsou odmítnuty |
