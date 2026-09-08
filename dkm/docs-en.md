@@ -32,19 +32,20 @@ User guide
 20. [Standalone windows](#20-standalone-windows)
 21. [Data storage](#21-data-storage)
 22. [Diff since last save](#22-diff-since-last-save)
-23. [Export and print entities](#23-export-and-print-entities)
-24. [Export to XLSX, TSV, PlantUML](#24-export-to-xlsx-tsv-plantuml)
-25. [Data JSON export with a schema](#25-data-json-export-with-a-schema)
-26. [Static viewer](#26-static-viewer)
-27. [Moving parts between projects (packages)](#27-moving-parts-between-projects-packages)
-28. [Settings](#28-settings)
-29. [Keyboard shortcuts](#29-keyboard-shortcuts)
-30. [Accessibility](#30-accessibility)
-31. [Tips and tricks](#31-tips-and-tricks)
-32. [Common problems](#32-common-problems)
-33. [Technical background](#33-technical-background)
-34. [AI assistant](#34-ai-assistant)
-35. [The data model and its export](#35-the-data-model-and-its-export)
+23. [Everything you can get out of DKM](#23-everything-you-can-get-out-of-dkm)
+24. [Export and print entities](#24-export-and-print-entities)
+25. [Export to XLSX, TSV, PlantUML](#25-export-to-xlsx-tsv-plantuml)
+26. [Data JSON export with a schema](#26-data-json-export-with-a-schema)
+27. [Static viewer](#27-static-viewer)
+28. [Moving parts between projects (packages)](#28-moving-parts-between-projects-packages)
+29. [Settings](#29-settings)
+30. [Keyboard shortcuts](#30-keyboard-shortcuts)
+31. [Accessibility](#31-accessibility)
+32. [Tips and tricks](#32-tips-and-tricks)
+33. [Common problems](#33-common-problems)
+34. [Technical background](#34-technical-background)
+35. [AI assistant](#35-ai-assistant)
+36. [The data model and its export](#36-the-data-model-and-its-export)
 
 ---
 
@@ -574,8 +575,8 @@ Bulk toolbar shows count selected + action dropdown:
 - **🎨 PlantUML diagram** — generates PlantUML from selected (see chapter 24)
 - **📦 Export package** — bundles selected into a `.dkmpkg` (see chapter 27)
 - **`{ }` Export to data JSON** — data + JSON Schema in a ZIP (see chapter 25)
-- **🖨 Export / print selection** — selected entities into one document (MD, DOCX, print; see ch. 23.4)
-- **🤖 Ask AI** — send the selection to a language model (see ch. 34)
+- **🖨 Export / print selection** — selected entities into one document (MD, DOCX, print; see ch. 24.4)
+- **🤖 Ask AI** — send the selection to a language model (see ch. 35)
 
 ### 13.1 Merging entities
 
@@ -973,11 +974,72 @@ Click on entities → closes dialog and jumps to detail.
 
 ---
 
-## 23. Export and print entities
+## 23. Everything you can get out of DKM
+
+### 23.1 Two levels: data and model
+
+DKM exports at two levels, and it pays not to mix them up:
+
+- **Data** — the actual entities, their values, relations and comments. The content.
+- **Model** — types, aspects, attributes, lists and relations. The description of how the
+  project is built, without a single entity.
+
+Most of the exports below are data exports. The model is exported from one place —
+**Settings → Model** (ch. 36) — and it goes elsewhere: to a developer, an architect or a
+database.
+
+### 23.2 Data exports
+
+| What | Format | Where to find it | What for |
+|---|---|---|---|
+| The whole project | `.dkmdata` (JSON) | header **Save** | backup, transfer, GitHub (ch. 21) |
+| A single entity | MD as a file or to the clipboard, formatted text to the clipboard, DOCX, print / PDF | entity detail → **🖨 Export / print** | a document about one thing (ch. 24) |
+| A selection of entities | the same, but into **one** document | list → selection mode → **🖨 Export / print selection** | a report, an overview, a briefing (ch. 24.4) |
+| The displayed list | XLSX | header **Export** | a table for Excel (ch. 25.1) |
+| Selected entities | PlantUML | command palette or a bulk action | a relation diagram (ch. 25.3) |
+| Data by type | ZIP: `data.json`, `schema.json`, `mapovani.json`, README | **Export data to JSON** | machine processing, import elsewhere (ch. 26) |
+| The whole project to browse | a single HTML file | Settings → Project → Static viewer | send it to someone without DKM (ch. 27) |
+| Part of the project | `.dkmpkg` (a package) | bulk action **Export package** | move a slice into another project (ch. 28) |
+| Context for a language model | Markdown | **🤖 Ask AI** → Show what will be sent | the prompt for the AI (ch. 35.3) |
+
+### 23.3 Model exports
+
+All seven live in one place — **Settings → Model** (ch. 36), individually or in a ZIP:
+
+| File | Format | What for |
+|---|---|---|
+| `model.md` | Markdown | readable documentation of the model for people |
+| `openapi.yaml` | OpenAPI 3.1 | the brief for a REST API over the model |
+| `schema.json` | JSON Schema 2020-12 | data validation, code generation |
+| `model.sql` | SQL DDL (PostgreSQL) | creating the database |
+| `model.ttl` | RDFS/OWL + SKOS | an ontology, linked data |
+| `shapes.ttl` | SHACL | validating RDF data against the model |
+| `model.xmi` | XMI 2.1 (UML) | Enterprise Architect and other CASE tools |
+
+### 23.4 Which export to pick
+
+- **I just want to keep it or move it to another computer** → `.dkmdata` (ch. 21)
+- **I want to send it to someone to read** → the static viewer (ch. 27) or DOCX / PDF (ch. 24)
+- **I want to do arithmetic in Excel** → XLSX (ch. 25.1)
+- **A colleague or a script needs to process it** → the data JSON with its schema (ch. 26)
+- **I want to hand a part over to another DKM project** → a package (ch. 28)
+- **I want to hand over how it is built, not what is in it** → the model export (ch. 36)
+
+### 23.5 What never leaves
+
+- **Entity objects** (attachments) never go into document exports — not into MD, DOCX, PDF,
+  nor the formatted text on the clipboard (ch. 24.3)
+- The **GitHub token**, the **AI API key** and **your name for comments** live in the browser
+  only. They are not in the project data, and therefore not in any export.
+- Only **what you tick** goes to the AI — never the whole project (ch. 35.3)
+
+---
+
+## 24. Export and print entities
 
 In entity detail the **🖨 Export / print** button. Opens a dialog with section checkboxes:
 
-### 23.1 Optional sections
+### 24.1 Optional sections
 
 - **Header** — name, type icon, type badge, aspect badges, status badges
 - **Type attributes** — individual (checkbox), All / None buttons
@@ -986,22 +1048,22 @@ In entity detail the **🖨 Export / print** button. Opens a dialog with section
 - **Relations** — outgoing, linked from
 - **Metadata** — Entity type, Created, Updated, ID
 
-### 23.2 Output formats
+### 24.2 Output formats
 
 - **📋 Copy MD** — raw Markdown to clipboard
 - **✨ Copy formatted** — via ClipboardItem with HTML + plain text. Pasting into Word, Outlook, Gmail keeps headings, bold, italic, lists.
 - **📥 Download MD** — file `EntityName.md`
-- **📄 Download DOCX** — Word file via docx.js (lazy-loaded from CDN), Calibri font, heading hierarchy, bullet lists for relations
+- **📄 Download DOCX** — a Word file. DKM builds it itself, nothing is downloaded, so the export works offline too. Calibri, heading hierarchy, bullets for relations, CriticMarkup as Word revisions.
 - **🖨 Print / PDF** — new window with rendered HTML + auto `window.print()`. Through browser you print on paper or save as PDF.
 
-### 23.3 Rules
+### 24.3 Rules
 
 - Empty values are skipped (even if attribute is checked)
 - Archived relation targets are excluded
 - Entity's objects are **never exported** (not to MD, DOCX, PDF, formatted copy)
 - Textarea attributes render as Markdown in HTML / DOCX (bold, lists, CriticMarkup)
 
-### 23.4 Exporting a selection of entities into one document
+### 24.4 Exporting a selection of entities into one document
 
 The same for several entities at once: in the list switch to **selection mode** (V key), tick
 the entities and choose the bulk action **🖨 Export / print selection**. The result is **one
@@ -1034,13 +1096,13 @@ The other rules from 23.3 apply unchanged — empty values are skipped, objects 
 
 ---
 
-## 24. Export to XLSX, TSV, PlantUML
+## 25. Export to XLSX, TSV, PlantUML
 
-### 24.1 XLSX
+### 25.1 XLSX
 
 **Export** button in header. Creates an `.xlsx` with currently filtered entities. Columns: name, type, type attributes, main data. Useful for sharing outside DKM.
 
-### 24.2 TSV / CSV import
+### 25.2 TSV / CSV import
 
 The **Import TSV** button in the header. Takes a file (Excel → *Save as* TSV/CSV) or rows
 pasted from the clipboard. The delimiter is detected automatically — TAB, semicolon or comma,
@@ -1110,7 +1172,7 @@ are ignored on import, and **custom attributes** (marked `* Name` in the export)
 recreated — the asterisk is stripped and the name is looked up among type and aspect
 attributes; when it is not there, the column is dropped.
 
-### 24.3 PlantUML export of relations
+### 25.3 PlantUML export of relations
 
 Accessible via:
 
@@ -1135,9 +1197,9 @@ Ideal for data model documentation, ER diagrams, architecture.
 
 ---
 
-## 25. Data JSON export with a schema
+## 26. Data JSON export with a schema
 
-### 25.1 What it's for
+### 26.1 What it's for
 
 `.dkmdata` is the tool's own serialization — everything rests on internal IDs so it can be
 loaded back. **Data JSON** is the opposite: a projection of the data outwards, with keys
@@ -1148,15 +1210,15 @@ An entity of type *Subjekt* ends up in the `subjekt` collection, the attribute *
 the key `prijmeni`. A **JSON Schema** is generated alongside, describing **exactly this
 output** — not the whole project model. Everything downloads as a single ZIP.
 
-The export is **one-way**. For moving data between DKM projects use packages (ch. 27).
+The export is **one-way**. For moving data between DKM projects use packages (ch. 28).
 
-### 25.2 Where to start it
+### 26.2 Where to start it
 
 - the **`{ }`** button in the list toolbar (exports the currently displayed list by filters)
 - the bulk action **`{ }` Export to data JSON** over selected entities
 - command palette (Ctrl+P) → *Export data to JSON*
 
-### 25.3 The wizard
+### 26.3 The wizard
 
 **Step 1 — Scope.** Selected entities / currently displayed list / whole project (without
 archive), plus type checkboxes. Untyped entities (Inbox) can be added into the `_bez_typu`
@@ -1165,7 +1227,7 @@ collection. A saved **export profile** can be loaded at the top.
 **Step 2 — Keys.** Key style (`snake_case` by default, or `camelCase`) and the language of
 system fields (Czech `nazev`/`typ`/`vazby`, or English `name`/`type`/`relations`). Below that
 a table of all derived keys for manual overriding. The **Save keys into the model** checkbox
-writes them permanently (see 25.7).
+writes them permanently (see 26.7).
 
 **Step 3 — Content.** Relation mode, custom attributes, comments, objects, unfilled
 attributes, empty values as `null`, one file per collection.
@@ -1173,7 +1235,7 @@ attributes, empty values as `null`, one file per collection.
 **Step 4 — Preview and check.** Summary, validation result, warnings and a preview of both
 `data.json` and `schema.json`. The ZIP is downloaded — or a profile saved — from here.
 
-### 25.4 Output shape
+### 26.4 Output shape
 
 ```json
 {
@@ -1198,7 +1260,7 @@ attributes, empty values as `null`, one file per collection.
 entity also carries an `aspekty` list. When an aspect attribute's key meets a type
 attribute's key, it gets the aspect slug as a prefix (`gdpr_prijmeni`).
 
-### 25.5 Relations
+### 26.5 Relations
 
 | Mode | Output |
 |---|---|
@@ -1209,7 +1271,7 @@ attribute's key, it gets the aspect slug as a prefix (`gdpr_prijmeni`).
 Attributes of type "relation" have the same shape as the `vazby` section. Relations to a
 non-existent entity are skipped and reported. Backlinks are not exported — they are derived.
 
-### 25.6 The schema — only what was used
+### 26.6 The schema — only what was used
 
 The governing rule: **the schema must validate the data it ships with.** Therefore:
 
@@ -1223,7 +1285,7 @@ The governing rule: **the schema must validate the data it ships with.** Therefo
 
 Before packaging, a built-in validator runs and its result also goes into `README.md`.
 
-### 25.7 Key stability
+### 26.7 Key stability
 
 The key is derived from the name, so renaming an attribute would change the key and break a
 downstream import. That is why every type, aspect, attribute and relation type has an
@@ -1231,7 +1293,7 @@ optional **JSON key** field (in settings, on the item itself). Empty = derived f
 Filled in = fixed. The checkbox in step 2 of the wizard fills these fields with the currently
 derived keys.
 
-### 25.8 ZIP contents
+### 26.8 ZIP contents
 
 | File | What's inside |
 |---|---|
@@ -1240,18 +1302,18 @@ derived keys.
 | `mapovani.json` | internal ID to key mapping — for debugging and downstream tools |
 | `README.md` | human description: what's inside, mapping table, warnings, validation result |
 
-### 25.9 Export profiles
+### 26.9 Export profiles
 
 The wizard's settings can be saved as a named **profile** (kept in the project data), so a
 repeated export into the same database always comes out the same.
 
 ---
 
-## 26. Static viewer
+## 27. Static viewer
 
 DKM can generate a **static HTML viewer** of project data — a single file you open for read-only access to all entities.
 
-### 26.1 Generating
+### 27.1 Generating
 
 **Settings → Project → Static viewer**. Click → downloads a file with embedded project data.
 
@@ -1269,11 +1331,11 @@ Useful for:
 - **Archive snapshot** of project state at a given date
 - **Publishing** on the web (e.g. GitHub Pages)
 
-### 26.2 Default entity
+### 27.2 Default entity
 
 In the generation dialog you can select the entity on which the viewer opens.
 
-### 26.3 Language and theme in the viewer
+### 27.3 Language and theme in the viewer
 
 The generated viewer has the same **⚙ Customize** menu in the top right as the app, with the
 same languages (Čeština / English) and themes (Light / Dark / Paper / Matrix).
@@ -1286,13 +1348,13 @@ chosen yet; with no stored choice the theme first follows the system setting.
 
 ---
 
-## 27. Moving parts between projects (packages)
+## 28. Moving parts between projects (packages)
 
-### 27.1 Package format
+### 28.1 Package format
 
 `.dkmpkg` is a JSON containing **a selection of entities + their data model** (only types, aspects, lists and relation types the selected entities need). Enables moving a slice of one project to another without extra.
 
-### 27.2 Package export
+### 28.2 Package export
 
 In bulk mode select entities, action **📦 Export package**. Wizard:
 
@@ -1302,7 +1364,7 @@ In bulk mode select entities, action **📦 Export package**. Wizard:
 
 Downloads a `.dkmpkg`.
 
-### 27.3 Package import
+### 28.3 Package import
 
 **Settings → Project → Move between projects → Import package**. Upload `.dkmpkg`. Wizard:
 
@@ -1319,9 +1381,9 @@ Clicking Import performs a two-pass:
 
 ---
 
-## 28. Settings
+## 29. Settings
 
-### 28.1 Project
+### 29.1 Project
 
 - Name, description
 - **Load project from a URL** — loads a project from any address and builds an `?open=…` link (see 21.6)
@@ -1330,46 +1392,46 @@ Clicking Import performs a two-pass:
 - Package transfer (import)
 - Project storage (info about session storage + Start empty project)
 
-### 28.2 Types
+### 29.2 Types
 
 List of types, click to open editor with attributes, icon, name and an optional
-**JSON key** field (see ch. 25.7). Every attribute has the same field.
+**JSON key** field (see ch. 26.7). Every attribute has the same field.
 
-### 28.3 Aspects
+### 29.3 Aspects
 
 Analogous for aspects, including the **JSON key** field.
 
-### 28.4 Relations
+### 29.4 Relations
 
 Relation type definitions: name, inverse name, scope, allowed source / target types
 and **JSON key**.
 
-### 28.5 Lists
+### 29.5 Lists
 
 Value lists with their enumerations. Used by "select" attributes — an attribute
 references a list in its own editor.
 
-### 28.6 Saved views
+### 29.6 Saved views
 
 Manage all saved views: rename, change icon, toggle pin, overwrite with current filter, delete.
 
-### 28.7 Tabs
+### 29.7 Tabs
 
 Which types and aspects appear as tabs in the main toolbar.
 
-### 28.8 GitHub
+### 29.8 GitHub
 
 Personal access token for GitHub API. Stored in the browser's localStorage (per origin).
 
-### 28.9 AI
+### 29.9 AI
 
-Provider, API key and model for the AI assistant — see ch. 34.2.
+Provider, API key and model for the AI assistant — see ch. 35.2.
 
-### 28.10 Model
+### 29.10 Model
 
-The data model overview and its export into standard formats — see ch. 35.
+The data model overview and its export into standard formats — see ch. 36.
 
-### 28.11 General
+### 29.11 General
 
 - **Language** (Čeština / English)
 - **Theme** — Light / Dark / Paper / Matrix, same as in the ⚙ Customize menu
@@ -1379,17 +1441,17 @@ The data model overview and its export into standard formats — see ch. 35.
 - **Autosave** — automatic saving to sessionStorage (per tab)
 - **Debug** — enables a bottom panel with debug logs
 
-### 28.12 Statistics
+### 29.12 Statistics
 
 Counts overview: entities, types, attributes, aspects, relations, comments.
 
-### 28.13 Help
+### 29.13 Help
 
 Links to online documentation and repository.
 
 ---
 
-## 29. Keyboard shortcuts
+## 30. Keyboard shortcuts
 
 ### Global
 
@@ -1462,7 +1524,7 @@ They work inside text fields too. The exact combination is up to the browser —
 
 ---
 
-## 30. Accessibility
+## 31. Accessibility
 
 DKM is designed to work with screen readers.
 
@@ -1473,19 +1535,19 @@ DKM is designed to work with screen readers.
 - **Keyboard navigation** (see chapter 29)
 - **Screen reader announcements** minimized — only brief action confirmations (Saved, Added), not re-render of fields
 
-### 30.1 Command palette
+### 31.1 Command palette
 
 Screen reader-compatible: ARIA combobox, listbox, aria-activedescendant, aria-selected on active item.
 
-### 30.2 Kanban
+### 31.2 Kanban
 
 Cards aren't drag-and-drop (inaccessible to screen readers). Instead a **Move to dropdown** per card.
 
 ---
 
-## 31. Tips and tricks
+## 32. Tips and tricks
 
-### 31.1 Quick workflow
+### 32.1 Quick workflow
 
 1. Open the app daily with `?id={ghPath}` (bookmark) — project auto-loads from GitHub
 2. Ctrl+P → type few letters of entity name → Enter — you're in the detail
@@ -1493,7 +1555,7 @@ Cards aren't drag-and-drop (inaccessible to screen readers). Instead a **Move to
 4. Key `u` — save edit
 5. Ctrl+S → push to GitHub
 
-### 31.2 Using panels
+### 32.2 Using panels
 
 - Panel 1 = project list (context)
 - Panel 2 = detail of in-progress entity
@@ -1501,15 +1563,15 @@ Cards aren't drag-and-drop (inaccessible to screen readers). Instead a **Move to
 
 Ctrl+T for new, click on tab to switch.
 
-### 31.3 Wiki-links instead of formal relations
+### 32.3 Wiki-links instead of formal relations
 
 If you don't want to bother creating a formal relation, just write `[[Entity name]]` in a textarea. In the Linked from section, the link automatically appears.
 
-### 31.4 Kanban for approval workflow
+### 32.4 Kanban for approval workflow
 
 Create an aspect "Approval" with attribute "Status" (select: New / In progress / Approved / Rejected). Assign the aspect to entities. Switch list to Kanban by "Status". Move cards via dropdown = change status. Save as pinned view 🔥 Approvals and have it in the toolbar with one click.
 
-### 31.5 PlantUML model documentation
+### 32.5 PlantUML model documentation
 
 For external data model documentation:
 
@@ -1519,7 +1581,7 @@ For external data model documentation:
 4. Download .puml
 5. Paste into PlantUML editor → image
 
-### 31.6 Diff before save
+### 32.6 Diff before save
 
 Before pressing Ctrl+S:
 
@@ -1527,7 +1589,7 @@ Before pressing Ctrl+S:
 2. Review the diff
 3. Verify the changes are what you intended
 
-### 31.7 Duplicate merge
+### 32.7 Duplicate merge
 
 When you find two entities that are actually the same thing:
 
@@ -1537,7 +1599,7 @@ When you find two entities that are actually the same thing:
 4. Pick target, conflict strategy
 5. Merge — all relations and attributes redirect automatically
 
-### 31.8 Quick project switching
+### 32.8 Quick project switching
 
 - In main window open project A
 - **Ctrl+Shift+S** — copy to clipboard
@@ -1548,15 +1610,15 @@ You have both projects at once, each in a different tab.
 
 ---
 
-## 32. Common problems
+## 33. Common problems
 
-### 32.1 "I don't see my entities"
+### 33.1 "I don't see my entities"
 
 - Check toolbar filters — you may have an active filter hiding everything. Click Clear filters.
 - Check the Archive tab — they may be archived
 - Check advanced filters (⚙ Advanced filters) — you may have an invalid rule
 
-### 32.2 "I closed the tab and the project is gone"
+### 33.2 "I closed the tab and the project is gone"
 
 The project lives only in sessionStorage. For persistent storage:
 
@@ -1564,32 +1626,32 @@ The project lives only in sessionStorage. For persistent storage:
 - Set a GitHub path and Ctrl+S — save to GitHub
 - Bookmark the URL `?id={base64ghPath}` for fast autoload
 
-### 32.3 "Browser did not allow clipboard access"
+### 33.3 "Browser did not allow clipboard access"
 
 - Try again, focus may have been the issue
 - Or use the dialog fallback (DKM shows it automatically)
 
-### 32.4 "PlantUML export doesn't look good"
+### 33.4 "PlantUML export doesn't look good"
 
 - Check scope — you may have too many entities
 - Try a different style (Component / Use case are simpler)
 - Turn off attributes when there are many
 
-### 32.5 "Diff is empty but I have unsaved changes"
+### 33.5 "Diff is empty but I have unsaved changes"
 
 - Baseline is set only on save or load. If you haven't saved yet, diff has nothing to compare.
 - Save → from that moment changes are tracked against that point.
 
-### 32.6 "Standalone window won't open"
+### 33.6 "Standalone window won't open"
 
 - Browser is blocking popups — allow popups for DKM
 - Check the browser notification panel (usually right of the address bar)
 
 ---
 
-## 33. Technical background
+## 34. Technical background
 
-### 33.1 Data structure
+### 34.1 Data structure
 
 The project is one JSON document (see `dkmdata.json`):
 
@@ -1616,7 +1678,7 @@ The project is one JSON document (see `dkmdata.json`):
 }
 ```
 
-### 33.2 Browser storage
+### 34.2 Browser storage
 
 - **sessionStorage['dkm-session-data']** — current project, per tab. Refresh survives, tab close doesn't.
 - **BroadcastChannel 'dkm-sync'** — live sync between open windows.
@@ -1628,20 +1690,20 @@ The project is one JSON document (see `dkmdata.json`):
 | `dkm-theme` | visual theme |
 | `dkm-username` | comment author name |
 | `dkm-autosave`, `dkm-debug`, `dkm-sound`, `dkm-wiki-suggest` | switches in Settings → General |
-| `dkm-ai-provider`, `dkm-ai-key`, `dkm-ai-model` | AI connection (see ch. 34) |
+| `dkm-ai-provider`, `dkm-ai-key`, `dkm-ai-model` | AI connection (see ch. 35) |
 | `dkm-github-token` | GitHub PAT (per origin) |
 | `dkm-handoff-…` | short-lived data handoff to a standalone window |
 | `dkm-viewer-lang`, `dkm-viewer-theme` | choices in a generated static viewer |
 
-### 33.3 GitHub API
+### 34.3 GitHub API
 
 DKM uses Contents API for reading + Git Data API (blobs) for writing large files. The token is stored in `localStorage['dkm-github-token']` (per origin).
 
-### 33.4 Rendering
+### 34.4 Rendering
 
 Vanilla JavaScript, no framework. Templates as direct DOM manipulation. Full re-render on every state change (fast even for thousands of entities).
 
-### 33.5 Testing
+### 34.5 Testing
 
 There is no automated test suite in the repository — DKM is a single HTML file with no build
 step. Changes are verified by walking the app through the checklist in `dkm/CLAUDE.md`: types,
@@ -1652,15 +1714,15 @@ GitHub → two tabs at once → standalone window → CS/EN switch and all theme
 
 ---
 
-## 34. AI assistant
+## 35. AI assistant
 
-### 34.1 What it's for
+### 35.1 What it's for
 
 DKM can send the content of an entity (or a whole selection) to a language model and let you
 talk about it — a summary, finding contradictions, proposing a structure, whatever. The result
 is Markdown you can copy or turn straight into an entity in the Inbox.
 
-### 34.2 Settings
+### 35.2 Settings
 
 **Settings → AI**:
 
@@ -1672,13 +1734,13 @@ is Markdown you can copy or turn straight into an entity in the Inbox.
   actually use and lets you pick one, so you don't have to guess the current naming.
 - **Test connection** — sends one short message and shows what came back
 
-### 34.3 What leaves the browser
+### 35.3 What leaves the browser
 
 Only **what you tick** and the text of your messages goes to the provider. The whole project
 or the GitHub token is never sent. The **Show what will be sent** button shows you the payload
 exactly as it will go out.
 
-### 34.4 Asking about one entity
+### 35.4 Asking about one entity
 
 The **🤖 Ask AI** button in the entity detail. In the dialog:
 
@@ -1691,14 +1753,14 @@ The **🤖 Ask AI** button in the entity detail. In the dialog:
 **The ticks apply to every message sent.** Change them mid-conversation and the next message
 goes with the new context — handy for adding something you did not send at first.
 
-### 34.5 Asking about a selection
+### 35.5 Asking about a selection
 
 In the list switch to selection mode (V key) and choose the bulk action **🤖 Ask AI**. The
 context is built from all selected entities in the order they appear in the list, and the
 checkbox sections are offered per type and aspect occurring in the selection — just like the
-selection export (ch. 23.4).
+selection export (ch. 24.4).
 
-### 34.6 What to do with the answer
+### 35.6 What to do with the answer
 
 Under every answer there are two buttons:
 
@@ -1712,9 +1774,9 @@ page reload clears it. The **New conversation** button clears it sooner.
 
 ---
 
-## 35. The data model and its export
+## 36. The data model and its export
 
-### 35.1 What it is for
+### 36.1 What it is for
 
 **Settings → Model** shows the whole project schema in one place — types, aspects,
 attributes, lists and relations — and exports it into standard formats other tools can
@@ -1727,7 +1789,7 @@ leaves, not even its name. What leaves is a description of how the project is bu
 It comes in handy when you need to hand the model to a developer or an architect, load it
 into Enterprise Architect, or have a database created from it.
 
-### 35.2 Model overview
+### 36.2 Model overview
 
 The upper part of the tab is a readable listing of the model:
 
@@ -1746,7 +1808,7 @@ The upper part of the tab is a readable listing of the model:
 Warnings block nothing — the export runs anyway. They mark the spots where the model left
 something unsaid and the generator had to fill in the blank.
 
-### 35.3 Base IRI
+### 36.3 Base IRI
 
 The RDF outputs (OWL, SKOS, SHACL) need a namespace. The **Base IRI** field is stored
 **in the project data** (unlike language or theme) so that everyone who exports the model
@@ -1754,9 +1816,16 @@ gets the same identifiers. Leave it empty and it is derived from the project nam
 for a first pass, but set your own for anything meant to be published
 (e.g. `https://company.com/model/`).
 
-### 35.4 Keys
+Below it sits the **OWL 2 DL compatibility** checkbox. A date is naturally written as
+`xsd:date` in RDF — except that datatype lies outside the OWL 2 DL datatype map, so
+reasoners like HermiT refuse to load such an ontology. Tick it and both OWL and SHACL use
+`xsd:dateTime`, and the ontology passes a reasoner. Unticked is semantically more precise
+and matches the data export and the JSON Schema, where a date is a date. The switch changes
+**both** RDF outputs at once, so they can never contradict each other.
 
-Keys (`like_this`) are derived **exactly as in the data export** (ch. 25.7): snake_case,
+### 36.4 Keys
+
+Keys (`like_this`) are derived **exactly as in the data export** (ch. 26.7): snake_case,
 no diacritics, overridable through the optional **JSON key** field on a type, aspect,
 attribute or relation type. Because of that the generated OpenAPI and JSON Schema fit what
 actually comes out of the data export — one can be used to validate the other.
@@ -1764,7 +1833,7 @@ actually comes out of the data export — one can be used to validate the other.
 Rename an attribute and its key changes. That is exactly why it pays to pin the keys of a
 model you have already sent somewhere.
 
-### 35.5 Formats
+### 36.5 Formats
 
 Pick a format with the switcher; the preview right below shows the output.
 
@@ -1778,7 +1847,7 @@ Pick a format with the switcher; the preview right below shows the output.
 | `shapes.ttl` | SHACL | Shapes matching the classes from the OWL output — validate RDF data against the model |
 | `model.xmi` | XMI (UML) | A UML model for Enterprise Architect and other CASE tools: classes, attributes, associations, enumerations |
 
-### 35.6 Downloading
+### 36.6 Downloading
 
 - **📋 Copy** — the currently shown format to the clipboard
 - **📥 Download file** — just that one file
@@ -1788,7 +1857,7 @@ Pick a format with the switcher; the preview right below shows the output.
 The on-screen preview is truncated for large models, but copying and downloading always
 take the full content.
 
-### 35.7 How the model is translated
+### 36.7 How the model is translated
 
 A few things in the DKM data model have no direct counterpart in the target formats. It is
 worth knowing how they are handled:
@@ -1810,12 +1879,39 @@ worth knowing how they are handled:
   behave accordingly.
 - **Custom attributes** (the ones you add on a single entity) are not part of the model —
   they are not schema, they are data.
+- **The `Entita` class is the common ancestor.** In SQL it is the `entita` table, in OWL the
+  `:entita` class the types are `rdfs:subClassOf`, in UML the class the types inherit from.
+  It carries what every entity has regardless of type: `id`, `nazev`, `inbox`, `archiv`,
+  `vytvoreno`, `zmeneno`.
+- **A universal relation is drawn once** in UML, between `Entita` and `Entita`. Spelled out
+  over every pair of types, eight types would give you 64 associations and an unreadable
+  diagram.
+- **List values are SKOS concepts in RDF**, not strings. SHACL says the same (`sh:in` with
+  the concept IRIs), so OWL and SHACL describe the same data. If one talked about strings and
+  the other about concepts, no dataset could satisfy both.
+- **The XMI defines its own primitive types.** UML 2.1 only knows `String`, `Boolean`,
+  `Integer` and `UnlimitedNatural` — a reference to `Date` or `Real` in the standard library
+  would resolve in no tool. The file is therefore self-contained.
+- **Association ends always spell out their multiplicity.** Without it UML reads `1..1`,
+  which would mean every entity must have that relation — and the model does not say that.
 
-### 35.8 What has not been verified
+### 36.8 How the outputs are verified
 
-The outputs are validated: `openapi.yaml` passes the official OpenAPI 3.1 validator,
-`schema.json` conforms to the draft 2020-12 meta-schema (and instances really do validate
-and fail against it as they should), `model.ttl` and `shapes.ttl` load in an RDF parser and
-`model.xmi` is well-formed XML. **The Enterprise Architect import, however, has not been
-tried**; the XMI follows UML 2.1 / XMI 2.1 and structurally matches what CASE tools expect,
-but if your tool insists on something, say so — it can be tuned.
+Every format goes through a real tool from its own world, not just a "looks reasonable" check:
+
+| File | Verified by |
+|---|---|
+| `openapi.yaml` | the official OpenAPI 3.1 validator |
+| `schema.json` | the draft 2020-12 meta-schema; on top of that a sample entity is validated against it and a missing required attribute, a value outside the list and an unknown key are all checked to **fail** |
+| `model.sql` | a PostgreSQL parser |
+| `model.ttl` | an RDF parser; plus a check that no property has two domains and that every range is a declared class or an XSD datatype |
+| `shapes.ttl` | real SHACL validation: valid data passes, while a missing required attribute, a value outside the list, a number written as text and a relation to the wrong type are all rejected |
+| both `.ttl` together | a cross-check that the shapes talk about the same classes, properties and concepts the ontology declares |
+| `model.xmi` | a structural XMI 2.1 check: unique `xmi:id`s, every reference resolved, every association with two ends pointing back at it, and every end with a type and a multiplicity |
+
+With **OWL 2 DL compatibility** ticked (ch. 36.3) the HermiT reasoner additionally loads the
+ontology and pronounces it consistent.
+
+**What has not been verified: the Enterprise Architect import.** The XMI follows
+UML 2.1 / XMI 2.1 and structurally matches what CASE tools expect, but it has not been tried
+in EA itself. If it insists on something, say so — it can be tuned.

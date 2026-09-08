@@ -32,19 +32,20 @@ Uživatelská příručka
 20. [Samostatná okna](#20-samostatná-okna)
 21. [Ukládání dat](#21-ukládání-dat)
 22. [Diff od posledního uložení](#22-diff-od-posledního-uložení)
-23. [Export a tisk entit](#23-export-a-tisk-entit)
-24. [Export do XLSX, TSV, PlantUML](#24-export-do-xlsx-tsv-plantuml)
-25. [Export do datového JSON se schématem](#25-export-do-datového-json-se-schématem)
-26. [Statický prohlížeč](#26-statický-prohlížeč)
-27. [Přenos částí mezi projekty (balíčky)](#27-přenos-částí-mezi-projekty-balíčky)
-28. [Nastavení](#28-nastavení)
-29. [Klávesové zkratky](#29-klávesové-zkratky)
-30. [Přístupnost](#30-přístupnost)
-31. [Tipy a triky](#31-tipy-a-triky)
-32. [Časté problémy](#32-časté-problémy)
-33. [Technické pozadí](#33-technické-pozadí)
-34. [AI asistent](#34-ai-asistent)
-35. [Datový model a jeho export](#35-datový-model-a-jeho-export)
+23. [Co všechno jde z DKM dostat ven](#23-co-všechno-jde-z-dkm-dostat-ven)
+24. [Export a tisk entit](#24-export-a-tisk-entit)
+25. [Export do XLSX, TSV, PlantUML](#25-export-do-xlsx-tsv-plantuml)
+26. [Export do datového JSON se schématem](#26-export-do-datového-json-se-schématem)
+27. [Statický prohlížeč](#27-statický-prohlížeč)
+28. [Přenos částí mezi projekty (balíčky)](#28-přenos-částí-mezi-projekty-balíčky)
+29. [Nastavení](#29-nastavení)
+30. [Klávesové zkratky](#30-klávesové-zkratky)
+31. [Přístupnost](#31-přístupnost)
+32. [Tipy a triky](#32-tipy-a-triky)
+33. [Časté problémy](#33-časté-problémy)
+34. [Technické pozadí](#34-technické-pozadí)
+35. [AI asistent](#35-ai-asistent)
+36. [Datový model a jeho export](#36-datový-model-a-jeho-export)
 
 ---
 
@@ -571,11 +572,11 @@ Toolbar hromadných akcí ukazuje počet vybraných + dropdown akcí:
 - **◎ Přidat aspekt / Odebrat aspekt**
 - **↔ Přidat vazbu** — hromadně přidá vazbu ke všem
 - **⇢ Sloučit entity** — sloučí vybrané do jedné cílové (viz 13.1)
-- **🎨 PlantUML diagram** — vygeneruje PlantUML z vybraných (viz kap. 24)
-- **📦 Export balíčku** — zabalí vybrané do `.dkmpkg` (viz kap. 27)
-- **`{ }` Export do datového JSON** — data + JSON Schema v ZIPu (viz kap. 25)
-- **🖨 Export / tisk výběru** — vybrané entity do jednoho dokumentu (MD, DOCX, tisk; viz kap. 23.4)
-- **🤖 Zeptat se AI** — poslat výběr jazykovému modelu (viz kap. 34)
+- **🎨 PlantUML diagram** — vygeneruje PlantUML z vybraných (viz kap. 25)
+- **📦 Export balíčku** — zabalí vybrané do `.dkmpkg` (viz kap. 28)
+- **`{ }` Export do datového JSON** — data + JSON Schema v ZIPu (viz kap. 26)
+- **🖨 Export / tisk výběru** — vybrané entity do jednoho dokumentu (MD, DOCX, tisk; viz kap. 24.4)
+- **🤖 Zeptat se AI** — poslat výběr jazykovému modelu (viz kap. 35)
 
 ### 13.1 Sloučení entit
 
@@ -972,11 +973,71 @@ Klik na entity → zavře dialog a skočí na detail.
 
 ---
 
-## 23. Export a tisk entit
+## 23. Co všechno jde z DKM dostat ven
+
+### 23.1 Dvě roviny: data a model
+
+DKM umí exportovat ve dvou rovinách a stojí za to je nezaměňovat:
+
+- **Data** — konkrétní entity, jejich hodnoty, vazby a komentáře. To je obsah.
+- **Model** — typy, aspekty, atributy, číselníky a vazby. To je popis toho, jak je projekt
+  postavený, bez jediné entity.
+
+Většina exportů níže je datová. Model se exportuje z jednoho místa — **Nastavení → Model**
+(kap. 36) — a míří jinam: do rukou vývojáře, architekta nebo databáze.
+
+### 23.2 Exporty dat
+
+| Co | Formát | Kde to najdeš | K čemu |
+|---|---|---|---|
+| Celý projekt | `.dkmdata` (JSON) | hlavička **Uložit** | záloha, přenos, GitHub (kap. 21) |
+| Jedna entita | MD do souboru i do schránky, formátovaný text do schránky, DOCX, tisk / PDF | detail entity → **🖨 Export / tisk** | dokument o jedné věci (kap. 24) |
+| Výběr entit | totéž, ale do **jednoho** dokumentu | seznam → režim výběru → **🖨 Export / tisk výběru** | zpráva, přehled, podklad (kap. 24.4) |
+| Zobrazený seznam | XLSX | hlavička **Export** | tabulka do Excelu (kap. 25.1) |
+| Vybrané entity | PlantUML | rychlá paleta nebo hromadná akce | diagram vazeb (kap. 25.3) |
+| Data po typech | ZIP: `data.json`, `schema.json`, `mapovani.json`, README | **Export dat do JSON** | strojové zpracování, import jinam (kap. 26) |
+| Celý projekt k prohlížení | jeden HTML soubor | Nastavení → Projekt → Statický prohlížeč | poslat někomu, kdo DKM nemá (kap. 27) |
+| Část projektu | `.dkmpkg` (balíček) | hromadná akce **Export balíčku** | přenos výseku do jiného projektu (kap. 28) |
+| Kontext pro jazykový model | Markdown | **🤖 Zeptat se AI** → Zobrazit, co se odešle | zadání pro AI (kap. 35.3) |
+
+### 23.3 Exporty modelu
+
+Všech sedm najdeš na jednom místě — **Nastavení → Model** (kap. 36), jednotlivě nebo v ZIPu:
+
+| Soubor | Formát | K čemu |
+|---|---|---|
+| `model.md` | Markdown | čitelná dokumentace modelu pro lidi |
+| `openapi.yaml` | OpenAPI 3.1 | zadání REST API nad modelem |
+| `schema.json` | JSON Schema 2020-12 | validace dat, generování kódu |
+| `model.sql` | SQL DDL (PostgreSQL) | založení databáze |
+| `model.ttl` | RDFS/OWL + SKOS | ontologie, propojená data |
+| `shapes.ttl` | SHACL | validace RDF dat proti modelu |
+| `model.xmi` | XMI 2.1 (UML) | Enterprise Architect a jiné CASE nástroje |
+
+### 23.4 Který export si vybrat
+
+- **Chci to jen uschovat nebo přenést na jiný počítač** → `.dkmdata` (kap. 21)
+- **Chci to někomu poslat, ať si to přečte** → statický prohlížeč (kap. 27) nebo DOCX / PDF (kap. 24)
+- **Chci s tím počítat v Excelu** → XLSX (kap. 25.1)
+- **Chce to strojově zpracovat kolega nebo skript** → datový JSON se schématem (kap. 26)
+- **Chci část předat do jiného DKM projektu** → balíček (kap. 28)
+- **Chci předat, jak je to postavené, ne co v tom je** → export modelu (kap. 36)
+
+### 23.5 Co ven nikdy nejde
+
+- **Objekty entity** (přílohy) se do dokumentových exportů nedávají nikdy — ani do MD,
+  DOCX, PDF, ani do formátovaného textu ve schránce (kap. 24.3)
+- **GitHub token**, **API klíč k AI** a **tvoje jméno pro komentáře** žijí jen v prohlížeči.
+  Nejsou v datech projektu, a tedy ani v žádném exportu.
+- Do AI odchází **jen to, co si zaškrtneš** — nikdy celý projekt (kap. 35.3)
+
+---
+
+## 24. Export a tisk entit
 
 V detailu entity tlačítko **🖨 Export / tisk**. Otevře dialog se zaškrtávátky pro sekce:
 
-### 23.1 Volitelné sekce
+### 24.1 Volitelné sekce
 
 - **Záhlaví** — název, ikona typu, badge typu, badges aspektů, badges stavu
 - **Atributy typu** — každý samostatně (checkbox), tlačítka Vše / Nic
@@ -985,22 +1046,22 @@ V detailu entity tlačítko **🖨 Export / tisk**. Otevře dialog se zaškrtáv
 - **Vazby** — vazby ven, odkazuje sem
 - **Metadata** — Typ entity, Vytvořeno, Upraveno, ID
 
-### 23.2 Formáty výstupu
+### 24.2 Formáty výstupu
 
 - **📋 Kopírovat MD** — surový Markdown do schránky
 - **✨ Kopírovat formátované** — přes ClipboardItem s HTML + plain text. Vložení do Wordu, Outlooku, Gmailu zachová nadpisy, tučné, kurzívu, seznamy.
 - **📥 Stáhnout MD** — soubor `NázevEntity.md`
-- **📄 Stáhnout DOCX** — Word soubor přes docx.js (lazy-loaded z CDN), Calibri font, hierarchie nadpisů, bullet listy pro vazby
+- **📄 Stáhnout DOCX** — Word soubor. Skládá ho DKM samo, nic se nestahuje, takže export funguje i offline. Calibri, hierarchie nadpisů, odrážky u vazeb, CriticMarkup jako wordovské revize.
 - **🖨 Tisk / PDF** — nové okno s vyrenderovaným HTML + auto `window.print()`. Přes prohlížeč tiskneš na papír nebo uložíš jako PDF.
 
-### 23.3 Pravidla
+### 24.3 Pravidla
 
 - Prázdné hodnoty se přeskočí (i když je atribut zaškrtnutý)
 - Archivované cílové entity vazeb se vyloučí
 - Objekty entity se **nikdy neexportují** (ani do MD, DOCX, PDF, formátovaného copy)
 - Textarea atributy v HTML / DOCX se rendrují jako Markdown (bold, listy, CriticMarkup)
 
-### 23.4 Export výběru entit do jednoho dokumentu
+### 24.4 Export výběru entit do jednoho dokumentu
 
 Totéž pro víc entit najednou: v seznamu přepni do **režimu výběru** (klávesa V), zaškrtej
 entity a zvol hromadnou akci **🖨 Export / tisk výběru**. Vznikne **jeden dokument** ve
@@ -1034,13 +1095,13 @@ neexportují nikdy.
 
 ---
 
-## 24. Export do XLSX, TSV, PlantUML
+## 25. Export do XLSX, TSV, PlantUML
 
-### 24.1 XLSX
+### 25.1 XLSX
 
 Tlačítko **Export** v hlavičce. Vytvoří `.xlsx` s aktuálně filtrovanými entitami. Sloupce: název, typ, atributy typu, hlavní údaje. Použitelné pro sdílení mimo DKM.
 
-### 24.2 TSV / CSV import
+### 25.2 TSV / CSV import
 
 Tlačítko **Import TSV** v hlavičce. Bere soubor (Excel → *Uložit jako* TSV/CSV) nebo řádky
 vložené ze schránky. Oddělovač se detekuje sám — TAB, středník nebo čárka, podle toho, čeho
@@ -1106,7 +1167,7 @@ a naimportovat zpět. Dvě výjimky: sloupce `Vazby`, `Vytvořeno` a `Upraveno` 
 a **vlastní atributy** (v exportu značené `* Název`) se zpátky nevytvoří — hvězdička se odřízne
 a název se hledá mezi atributy typů a aspektů; když tam není, sloupec propadne.
 
-### 24.3 PlantUML export vazeb
+### 25.3 PlantUML export vazeb
 
 Přístupný přes:
 
@@ -1131,9 +1192,9 @@ Ideální pro dokumentaci datového modelu, ER diagramy, architektury.
 
 ---
 
-## 25. Export do datového JSON se schématem
+## 26. Export do datového JSON se schématem
 
-### 25.1 K čemu to je
+### 26.1 K čemu to je
 
 `.dkmdata` je serializace nástroje — všechno stojí na interních ID, aby to šlo zase načíst.
 **Datový JSON** je opak: projekce dat ven, s klíči odvozenými z názvů typů a atributů, určená
@@ -1143,15 +1204,15 @@ Entita typu *Subjekt* skončí v kolekci `subjekt`, atribut *Příjmení* jako k
 K datům se generuje **JSON Schema**, které popisuje **právě tento výstup** — ne celý datový
 model projektu. Vše se stahuje jako jeden ZIP.
 
-Export je **jednosměrný**. Na přenos mezi projekty DKM slouží balíčky (kap. 27).
+Export je **jednosměrný**. Na přenos mezi projekty DKM slouží balíčky (kap. 28).
 
-### 25.2 Kde se spouští
+### 26.2 Kde se spouští
 
 - tlačítko **`{ }`** v panelu seznamu (exportuje aktuálně zobrazený seznam podle filtrů)
 - hromadná akce **`{ }` Export do datového JSON** nad vybranými entitami
 - rychlá paleta (Ctrl+P) → *Export dat do JSON*
 
-### 25.3 Průvodce
+### 26.3 Průvodce
 
 **Krok 1 — Rozsah.** Vybrané entity / aktuálně zobrazený seznam / celý projekt (bez archivu),
 plus zaškrtání typů. Entity bez typu (Inbox) se dají přibrat do kolekce `_bez_typu`.
@@ -1160,7 +1221,7 @@ Nahoře se dá načíst uložený **profil exportu**.
 **Krok 2 — Klíče.** Styl klíčů (`snake_case` výchozí, nebo `camelCase`) a jazyk systémových
 polí (česky `nazev`/`typ`/`vazby`, nebo anglicky `name`/`type`/`relations`). Pod tím tabulka
 všech odvozených klíčů k ručnímu přepsání. Zaškrtávátko **Uložit klíče do modelu** je zapíše
-natrvalo (viz 25.7).
+natrvalo (viz 26.7).
 
 **Krok 3 — Obsah.** Režim vazeb, vlastní atributy, komentáře, objekty, nevyplněné atributy,
 prázdné hodnoty jako `null`, soubor na kolekci.
@@ -1168,7 +1229,7 @@ prázdné hodnoty jako `null`, soubor na kolekci.
 **Krok 4 — Náhled a kontrola.** Souhrn, výsledek validace, upozornění a náhled `data.json`
 i `schema.json`. Odsud se stahuje ZIP nebo ukládá profil.
 
-### 25.4 Tvar výstupu
+### 26.4 Tvar výstupu
 
 ```json
 {
@@ -1193,7 +1254,7 @@ Atributy **aspektů** se vlévají do objektu naplocho vedle atributů typu; ent
 seznam `aspekty`. Když se klíč aspektového atributu potká s klíčem atributu typu, dostane
 prefix slugem aspektu (`gdpr_prijmeni`).
 
-### 25.5 Vazby
+### 26.5 Vazby
 
 | Režim | Výstup |
 |---|---|
@@ -1204,7 +1265,7 @@ prefix slugem aspektu (`gdpr_prijmeni`).
 Atributy typu „vazba" mají stejný tvar jako sekce `vazby`. Vazby na neexistující entitu se
 vynechají a nahlásí. Zpětné odkazy se neexportují — jsou odvozené.
 
-### 25.6 Schéma — jen to, co se použilo
+### 26.6 Schéma — jen to, co se použilo
 
 Řídící pravidlo: **schéma musí validovat data, se kterými je zabalené.** Proto:
 
@@ -1218,14 +1279,14 @@ vynechají a nahlásí. Zpětné odkazy se neexportují — jsou odvozené.
 
 Před zabalením se spustí vestavěný validátor a jeho výsledek jde i do `README.md`.
 
-### 25.7 Stabilita klíčů
+### 26.7 Stabilita klíčů
 
 Klíč se odvozuje z názvu, takže přejmenování atributu by změnilo klíč a rozbilo navazující
 import. Proto má každý typ, aspekt, atribut i typ vazby nepovinné pole **Klíč v JSON**
 (v nastavení u dané položky). Prázdné = odvodí se z názvu. Vyplněné = platí napevno.
 Zaškrtávátko v kroku 2 průvodce vyplní tato pole podle aktuálně odvozených klíčů.
 
-### 25.8 Obsah ZIPu
+### 26.8 Obsah ZIPu
 
 | Soubor | Co je uvnitř |
 |---|---|
@@ -1234,18 +1295,18 @@ Zaškrtávátko v kroku 2 průvodce vyplní tato pole podle aktuálně odvozený
 | `mapovani.json` | převod interních ID na klíče — pro ladění a navazující nástroje |
 | `README.md` | lidský popis: co je uvnitř, tabulka mapování, upozornění, výsledek validace |
 
-### 25.9 Profily exportu
+### 26.9 Profily exportu
 
 Nastavení průvodce se dá uložit jako pojmenovaný **profil** (drží se v datech projektu),
 aby opakovaný export do stejné databáze dopadl vždycky stejně.
 
 ---
 
-## 26. Statický prohlížeč
+## 27. Statický prohlížeč
 
 DKM umí vygenerovat **statický HTML prohlížeč** dat projektu — jeden soubor, který otevřeš a máš read-only přístup ke všem entitám.
 
-### 26.1 Generování
+### 27.1 Generování
 
 **Nastavení → Projekt → Statický prohlížeč**. Klik → stáhne se soubor s vloženými daty projektu.
 
@@ -1263,11 +1324,11 @@ Použitelné pro:
 - **Archivní snímek** stavu projektu k danému datu
 - **Publikace** na web (třeba GitHub Pages)
 
-### 26.2 Výchozí entita
+### 27.2 Výchozí entita
 
 V dialogu generování můžeš zvolit entitu, na které se statický prohlížeč otevře.
 
-### 26.3 Jazyk a motiv v prohlížeči
+### 27.3 Jazyk a motiv v prohlížeči
 
 Vygenerovaný prohlížeč má vpravo nahoře stejné menu **⚙ Přizpůsobit** jako aplikace,
 se stejnou nabídkou jazyků (Čeština / English) a motivů (Světlý / Tmavý / Papír / Matrix).
@@ -1280,13 +1341,13 @@ kdo si ještě nevybral; bez uložené volby se motiv poprvé řídí nastavení
 
 ---
 
-## 27. Přenos částí mezi projekty (balíčky)
+## 28. Přenos částí mezi projekty (balíčky)
 
-### 27.1 Formát balíčku
+### 28.1 Formát balíčku
 
 `.dkmpkg` je JSON, který obsahuje **výběr entit + jejich datový model** (jen ty typy, aspekty, seznamy a relační typy, které vybrané entity potřebují). Umožňuje přenést kus jednoho projektu do druhého bez zbytečnosti.
 
-### 27.2 Export balíčku
+### 28.2 Export balíčku
 
 V bulk režimu vybereš entity, akce **📦 Export balíčku**. Wizard:
 
@@ -1296,7 +1357,7 @@ V bulk režimu vybereš entity, akce **📦 Export balíčku**. Wizard:
 
 Stáhne se `.dkmpkg`.
 
-### 27.3 Import balíčku
+### 28.3 Import balíčku
 
 **Nastavení → Projekt → Přenos mezi projekty → Importovat balíček**. Nahraješ `.dkmpkg`. Wizard:
 
@@ -1313,9 +1374,9 @@ Klik na Import provede two-pass:
 
 ---
 
-## 28. Nastavení
+## 29. Nastavení
 
-### 28.1 Projekt
+### 29.1 Projekt
 
 - Název, popis
 - **Načíst projekt z adresy (URL)** — načte projekt z libovolné adresy a vyrobí odkaz `?open=…` (viz 21.6)
@@ -1324,46 +1385,46 @@ Klik na Import provede two-pass:
 - Přenos mezi projekty (import balíčku)
 - Úložiště projektu (info o session storage + Začít prázdný projekt)
 
-### 28.2 Typy
+### 29.2 Typy
 
 Seznam typů, klikem se otevře editor s atributy, ikonou, názvem a nepovinným
-polem **Klíč v JSON** (viz kap. 25.7). Totéž pole má i každý atribut.
+polem **Klíč v JSON** (viz kap. 26.7). Totéž pole má i každý atribut.
 
-### 28.3 Aspekty
+### 29.3 Aspekty
 
 Analogicky pro aspekty, včetně pole **Klíč v JSON**.
 
-### 28.4 Vazby
+### 29.4 Vazby
 
 Definice relačních typů: název, opačný název, scope, povolené typy zdroje / cíle
 a **Klíč v JSON**.
 
-### 28.5 Seznamy
+### 29.5 Seznamy
 
 Číselníky s výčtem hodnot. Používají se v atributech typu „výběr ze seznamu" —
 atribut se na číselník odkáže v jeho editoru.
 
-### 28.6 Uložené pohledy
+### 29.6 Uložené pohledy
 
 Správa všech uložených pohledů: přejmenovat, změnit ikonu, přepnout pin, přepsat aktuálním filtrem, smazat.
 
-### 28.7 Záložky
+### 29.7 Záložky
 
 Které typy a které aspekty se zobrazují jako záložka v hlavním toolbaru.
 
-### 28.8 GitHub
+### 29.8 GitHub
 
 Personal access token pro GitHub API. Uložený v localStorage prohlížeče (per-origin).
 
-### 28.9 AI
+### 29.9 AI
 
-Poskytovatel, API klíč a model pro AI asistenta — viz kap. 34.2.
+Poskytovatel, API klíč a model pro AI asistenta — viz kap. 35.2.
 
-### 28.10 Model
+### 29.10 Model
 
-Přehled datového modelu a jeho export do standardních formátů — viz kap. 35.
+Přehled datového modelu a jeho export do standardních formátů — viz kap. 36.
 
-### 28.11 Obecné
+### 29.11 Obecné
 
 - **Jazyk** (Čeština / English)
 - **Motiv** — Světlý / Tmavý / Papír / Matrix, totéž co v menu ⚙ Přizpůsobit
@@ -1373,17 +1434,17 @@ Přehled datového modelu a jeho export do standardních formátů — viz kap. 
 - **Autosave** — automatické ukládání do sessionStorage (per záložka)
 - **Debug** — zapne panel s debug logy dole
 
-### 28.12 Statistiky
+### 29.12 Statistiky
 
 Přehled počtů: entit, typů, atributů, aspektů, vazeb, komentářů.
 
-### 28.13 Nápověda
+### 29.13 Nápověda
 
 Odkazy na online dokumentaci a repozitář.
 
 ---
 
-## 29. Klávesové zkratky
+## 30. Klávesové zkratky
 
 ### Globální
 
@@ -1456,7 +1517,7 @@ ve Firefoxu **Alt+Shift+**, na macOS **Ctrl+Alt+**.
 
 ---
 
-## 30. Přístupnost
+## 31. Přístupnost
 
 DKM je navrženo tak, aby fungovalo se screen readerem.
 
@@ -1464,22 +1525,22 @@ DKM je navrženo tak, aby fungovalo se screen readerem.
 - **Žádné treeview** (`role=tree/treeitem`) — hierarchie jsou nested `<ul>/<li>`
 - **Žádné position: sticky / fixed** na velkých oblastech
 - **ARIA labels** na nezřejmých interaktivních prvcích
-- **Klávesová navigace** (viz kap. 29)
+- **Klávesová navigace** (viz kap. 30)
 - **Screen reader announcements** minimalizované — jen krátká potvrzení akcí (Uloženo, Přidáno), ne re-render polí
 
-### 30.1 Rychlá paleta
+### 31.1 Rychlá paleta
 
 Screen reader-kompatibilní: ARIA combobox, listbox, aria-activedescendant, aria-selected na aktivní položce.
 
-### 30.2 Kanban
+### 31.2 Kanban
 
 Karty nejsou drag-and-drop (nedostupné pro screen reader). Místo toho **dropdown Přesunout do** pro každou kartu.
 
 ---
 
-## 31. Tipy a triky
+## 32. Tipy a triky
 
-### 31.1 Rychlý workflow
+### 32.1 Rychlý workflow
 
 1. Denně otevři aplikaci s `?id={ghPath}` (bookmark) — projekt se automaticky natáhne z GitHubu
 2. Ctrl+P → napiš pár písmen názvu entity → Enter — okamžitě jsi v detailu
@@ -1487,7 +1548,7 @@ Karty nejsou drag-and-drop (nedostupné pro screen reader). Místo toho **dropdo
 4. Klávesa `u` — uložení editace
 5. Ctrl+S → push na GitHub
 
-### 31.2 Použití panelů
+### 32.2 Použití panelů
 
 - Panel 1 = seznam projektu (kontext)
 - Panel 2 = detail rozpracované entity
@@ -1495,15 +1556,15 @@ Karty nejsou drag-and-drop (nedostupné pro screen reader). Místo toho **dropdo
 
 Ctrl+T pro nový, klik na tab pro přepnutí.
 
-### 31.3 Wiki-linky místo formálních vazeb
+### 32.3 Wiki-linky místo formálních vazeb
 
 Pokud se nechceš zdržovat vytvářením formální vazby, prostě napiš `[[Název entity]]` v textareu. V sekci Odkazuje sem se odkaz automaticky objeví.
 
-### 31.4 Kanban pro schvalovací workflow
+### 32.4 Kanban pro schvalovací workflow
 
 Vytvoř aspekt „Schvalování" s atributem „Status" (select: Nový / V řešení / Schválené / Zamítnuté). Přiřaď aspekt entitám. Přepneš seznam na Kanban podle „Status". Přesouváš karty přes dropdown = měníš status. Ulož jako připnutý pohled 🔥 Schvalování a máš ho v toolbaru na klik.
 
-### 31.5 PlantUML dokumentace modelu
+### 32.5 PlantUML dokumentace modelu
 
 Pro externí dokumentaci datového modelu:
 
@@ -1513,7 +1574,7 @@ Pro externí dokumentaci datového modelu:
 4. Stáhnout .puml
 5. Vlož do PlantUML editoru → obrázek
 
-### 31.6 Diff před uložením
+### 32.6 Diff před uložením
 
 Než klikneš Ctrl+S:
 
@@ -1521,7 +1582,7 @@ Než klikneš Ctrl+S:
 2. Prohlédni diff
 3. Zjistíš, jestli je změna přesně to, co jsi zamýšlel
 
-### 31.7 Sloučení duplicit
+### 32.7 Sloučení duplicit
 
 Když najdeš dvě entity, které jsou vlastně stejná věc:
 
@@ -1531,7 +1592,7 @@ Když najdeš dvě entity, které jsou vlastně stejná věc:
 4. Vyber cíl, strategii pro konflikty
 5. Sloučit — všechny vazby a atributy se přesměrují automaticky
 
-### 31.8 Rychlé přepnutí mezi projekty
+### 32.8 Rychlé přepnutí mezi projekty
 
 - V hlavním okně otevři projekt A
 - **Ctrl+Shift+S** — zkopíruj do schránky
@@ -1542,15 +1603,15 @@ Máš oba projekty naráz, každý v jiné záložce.
 
 ---
 
-## 32. Časté problémy
+## 33. Časté problémy
 
-### 32.1 „Nevidím své entity"
+### 33.1 „Nevidím své entity"
 
 - Zkontroluj filtry v toolbaru — možná máš aktivní filtr, který skrývá vše. Klik na Vyčistit filtry.
 - Podívej se do záložky Archiv — možná jsou archivované
 - Zkontroluj pokročilé filtry (⚙ Pokročilé filtry) — možná mají neplatné pravidlo
 
-### 32.2 „Zavřel jsem záložku a projekt zmizel"
+### 33.2 „Zavřel jsem záložku a projekt zmizel"
 
 Projekt žije jen v sessionStorage. Pro trvalé uložení:
 
@@ -1558,32 +1619,32 @@ Projekt žije jen v sessionStorage. Pro trvalé uložení:
 - Nastavit GitHub cestu a Ctrl+S — uložit na GitHub
 - Bookmarknout URL `?id={base64ghPath}` pro rychlý autoload
 
-### 32.3 „Prohlížeč nedovolil přístup do schránky"
+### 33.3 „Prohlížeč nedovolil přístup do schránky"
 
 - Zkus znovu, možná byl focus problém
 - Nebo použij dialogový fallback (DKM ho ukáže automaticky)
 
-### 32.4 „PlantUML export nevypadá dobře"
+### 33.4 „PlantUML export nevypadá dobře"
 
 - Zkontroluj rozsah — možná máš moc entit
 - Zkus jiný styl (Component / Use case je jednodušší)
 - Vypni atributy, když je jich moc
 
-### 32.5 „Diff je prázdný, ale mám neuložené změny"
+### 33.5 „Diff je prázdný, ale mám neuložené změny"
 
 - Baseline se nastaví jen po uložení nebo načtení. Pokud jsi ještě neuložil, diff nemá s čím porovnat.
 - Uložit → od té chvíle se změny sledují proti tomu bodu.
 
-### 32.6 „Samostatné okno se neotevře"
+### 33.6 „Samostatné okno se neotevře"
 
 - Prohlížeč blokuje pop-upy — povol vyskakovací okna pro DKM
 - Zkontroluj panel oznámení prohlížeče (obvykle vpravo od adresního řádku)
 
 ---
 
-## 33. Technické pozadí
+## 34. Technické pozadí
 
-### 33.1 Datová struktura
+### 34.1 Datová struktura
 
 Projekt je jeden JSON dokument (viz `dkmdata.json`):
 
@@ -1610,7 +1671,7 @@ Projekt je jeden JSON dokument (viz `dkmdata.json`):
 }
 ```
 
-### 33.2 Úložiště v prohlížeči
+### 34.2 Úložiště v prohlížeči
 
 - **sessionStorage['dkm-session-data']** — aktuální projekt, per záložka. Refresh přežije, zavření záložky ne.
 - **BroadcastChannel 'dkm-sync'** — live synchronizace mezi otevřenými okny.
@@ -1622,20 +1683,20 @@ Projekt je jeden JSON dokument (viz `dkmdata.json`):
 | `dkm-theme` | grafický motiv |
 | `dkm-username` | jméno autora komentářů |
 | `dkm-autosave`, `dkm-debug`, `dkm-sound`, `dkm-wiki-suggest` | přepínače v Nastavení → Obecné |
-| `dkm-ai-provider`, `dkm-ai-key`, `dkm-ai-model` | napojení na AI (viz kap. 34) |
+| `dkm-ai-provider`, `dkm-ai-key`, `dkm-ai-model` | napojení na AI (viz kap. 35) |
 | `dkm-github-token` | GitHub PAT (per origin) |
 | `dkm-handoff-…` | krátkodobé předání dat do samostatného okna |
 | `dkm-viewer-lang`, `dkm-viewer-theme` | volby ve vygenerovaném statickém prohlížeči |
 
-### 33.3 GitHub API
+### 34.3 GitHub API
 
 DKM používá Contents API pro čtení + Git Data API (blobs) pro zápis velkých souborů. Token je uložený v `localStorage['dkm-github-token']` (per origin).
 
-### 33.4 Rendering
+### 34.4 Rendering
 
 Vanilla JavaScript, žádný framework. Šablony jako přímé DOM manipulace. Full re-render při každé změně stavu (rychlé i pro tisíce entit).
 
-### 33.5 Testování
+### 34.5 Testování
 
 V repozitáři není automatizovaná testovací sada — DKM je jeden HTML soubor bez build kroku.
 Změny se ověřují průchodem aplikace podle kontrolního seznamu v `dkm/CLAUDE.md`: typy, aspekty
@@ -1646,15 +1707,15 @@ současně → samostatné okno → přepnutí CS/EN a všechny motivy.
 
 ---
 
-## 34. AI asistent
+## 35. AI asistent
 
-### 34.1 K čemu to je
+### 35.1 K čemu to je
 
 DKM umí poslat obsah entity (nebo celého výběru) jazykovému modelu a povídat si o něm —
 shrnutí, hledání rozporů, návrh struktury, cokoliv. Výsledek je Markdown, který si zkopíruješ
 nebo z něj rovnou založíš entitu v Inboxu.
 
-### 34.2 Nastavení
+### 35.2 Nastavení
 
 **Nastavení → AI**:
 
@@ -1666,13 +1727,13 @@ nebo z něj rovnou založíš entitu v Inboxu.
   teď model jmenuje.
 - **Vyzkoušet spojení** — pošle jednu krátkou zprávu a ukáže, co se vrátilo
 
-### 34.3 Co se posílá ven
+### 35.3 Co se posílá ven
 
 Do služby poskytovatele odchází **jen to, co si zaškrtneš**, a text tvých zpráv. Nikdy se
 neposílá celý projekt ani GitHub token. Tlačítkem **Zobrazit, co se odešle** si obsah
 prohlédneš přesně tak, jak půjde ven.
 
-### 34.4 Dotaz nad jednou entitou
+### 35.4 Dotaz nad jednou entitou
 
 V detailu entity tlačítko **🤖 Zeptat se AI**. V dialogu:
 
@@ -1685,14 +1746,14 @@ V detailu entity tlačítko **🤖 Zeptat se AI**. V dialogu:
 **Zaškrtnutí platí pro každou odeslanou zprávu.** Když je během rozhovoru změníš, další
 zpráva půjde s novým kontextem — dá se tak modelu doplnit něco, co jsi zprvu neposlal.
 
-### 34.5 Dotaz nad výběrem
+### 35.5 Dotaz nad výběrem
 
 V seznamu přepni do režimu výběru (klávesa V) a zvol hromadnou akci **🤖 Zeptat se AI**.
 Kontext se skládá ze všech vybraných entit v pořadí, v jakém jsou v seznamu, a sekce
 zaškrtávátek se nabízejí po typech a aspektech, které se ve výběru vyskytly — stejně jako
-u exportu výběru (kap. 23.4).
+u exportu výběru (kap. 24.4).
 
-### 34.6 Co s odpovědí
+### 35.6 Co s odpovědí
 
 Pod každou odpovědí jsou dvě tlačítka:
 
@@ -1706,9 +1767,9 @@ Tlačítko **Nový rozhovor** ho vymaže dřív.
 
 ---
 
-## 35. Datový model a jeho export
+## 36. Datový model a jeho export
 
-### 35.1 K čemu to je
+### 36.1 K čemu to je
 
 **Nastavení → Model** ukazuje na jednom místě celé schéma projektu — typy, aspekty,
 atributy, číselníky a vazby — a umí ho vyexportovat do standardních formátů, ve kterých
@@ -1721,7 +1782,7 @@ Ven jde popis toho, jak je projekt postavený.
 Hodí se, když model potřebuješ předat vývojáři, architektovi, do Enterprise Architectu,
 nebo si z něj chceš nechat založit databázi.
 
-### 35.2 Přehled modelu
+### 36.2 Přehled modelu
 
 Horní část karty je čitelný výpis modelu:
 
@@ -1740,7 +1801,7 @@ Horní část karty je čitelný výpis modelu:
 Varování nic neblokují — export proběhne. Jsou to místa, kde model něco nedopověděl a
 generátor musel něco domyslet.
 
-### 35.3 Základní IRI
+### 36.3 Základní IRI
 
 RDF výstupy (OWL, SKOS, SHACL) potřebují jmenný prostor. Pole **Základní IRI** se ukládá
 **do dat projektu** (na rozdíl od jazyka nebo motivu), aby všem, kdo model exportují,
@@ -1748,9 +1809,15 @@ vycházely stejné identifikátory. Když ho necháš prázdné, odvodí se z n�
 na první pokus to stačí, ale pro cokoliv, co se má publikovat, si nastav vlastní
 (např. `https://firma.cz/model/`).
 
-### 35.4 Klíče
+Pod ním je zaškrtávátko **Kompatibilita s OWL 2 DL**. Datum se v RDF přirozeně zapisuje jako
+`xsd:date` — jenže ten leží mimo datovou mapu OWL 2 DL, takže reasonery typu HermiT takovou
+ontologii odmítnou načíst. Zaškrtnutím se v OWL i SHACL použije `xsd:dateTime` a ontologie
+projde reasonerem. Nezaškrtnuté je sémanticky přesnější a sedí na export dat i na JSON Schema,
+kde je datum datum. Přepínač mění **oba** RDF výstupy najednou, aby si nikdy neodporovaly.
 
-Klíče (`kod_takto`) se odvozují **úplně stejně jako u exportu dat** (kap. 25.7): snake_case
+### 36.4 Klíče
+
+Klíče (`kod_takto`) se odvozují **úplně stejně jako u exportu dat** (kap. 26.7): snake_case
 bez diakritiky, s možností přepsat je nepovinným polem **Klíč v JSON** u typu, aspektu,
 atributu i typu vazby. Díky tomu vygenerované OpenAPI a JSON Schema sedí na to, co
 skutečně vyleze z exportu dat — jedno se dá použít k validaci druhého.
@@ -1758,7 +1825,7 @@ skutečně vyleze z exportu dat — jedno se dá použít k validaci druhého.
 Když atribut přejmenuješ, klíč se změní. Právě proto se u modelu, který už někam odešel,
 vyplatí klíče zafixovat.
 
-### 35.5 Formáty
+### 36.5 Formáty
 
 Přepínačem si vybereš formát, hned pod ním vidíš náhled výstupu.
 
@@ -1772,7 +1839,7 @@ Přepínačem si vybereš formát, hned pod ním vidíš náhled výstupu.
 | `shapes.ttl` | SHACL | Tvary odpovídající třídám z OWL — validace RDF dat proti modelu |
 | `model.xmi` | XMI (UML) | UML model pro Enterprise Architect a další CASE nástroje: třídy, atributy, asociace, výčty |
 
-### 35.6 Stažení
+### 36.6 Stažení
 
 - **📋 Kopírovat** — aktuálně zobrazený formát do schránky
 - **📥 Stáhnout soubor** — jen ten jeden soubor
@@ -1781,7 +1848,7 @@ Přepínačem si vybereš formát, hned pod ním vidíš náhled výstupu.
 
 Náhled v okně je u velkých modelů zkrácený, ale kopírování i stažení berou celý obsah.
 
-### 35.7 Jak se model překládá
+### 36.7 Jak se model překládá
 
 Datový model DKM má pár věcí, které v cílových formátech přímý protějšek nemají. Stojí za
 to vědět, jak se to řeší:
@@ -1802,12 +1869,37 @@ to vědět, jak se to řeší:
   výstupech se to tak i chová.
 - **Vlastní atributy** (ty, které si přidáš jen na jedné entitě) do modelu nepatří —
   nejsou součástí schématu, jsou to data.
+- **Třída `Entita` je společný předek.** V SQL je to tabulka `entita`, v OWL třída `:entita`,
+  ke které jsou typy `rdfs:subClassOf`, v UML třída, ze které typy dědí. Nese to, co má každá
+  entita bez ohledu na typ: `id`, `nazev`, `inbox`, `archiv`, `vytvoreno`, `zmeneno`.
+- **Univerzální vazba se v UML kreslí jednou**, mezi `Entita` a `Entita`. Kdyby se rozepsala
+  na všechny dvojice typů, dostaneš z osmi typů 64 asociací a diagram se nedá číst.
+- **Hodnoty číselníku jsou v RDF koncepty SKOS**, ne řetězce. SHACL to říká stejně
+  (`sh:in` s IRI konceptů), takže OWL a SHACL popisují tatáž data. Kdyby jeden mluvil
+  o řetězcích a druhý o konceptech, neexistoval by dataset, který projde oběma.
+- **XMI si primitivní typy definuje samo.** UML 2.1 zná jen `String`, `Boolean`, `Integer`
+  a `UnlimitedNatural` — odkaz na `Date` nebo `Real` do standardní knihovny by se v žádném
+  nástroji nerozřešil. Soubor je proto samonosný.
+- **Konce asociací mají vždy vypsanou násobnost.** Bez ní UML rozumí `1..1`, což by
+  znamenalo, že každá entita tu vazbu mít musí — a to model neříká.
 
-### 35.8 Co ověřeno není
+### 36.8 Jak jsou výstupy ověřené
 
-Výstupy jsou ověřené: `openapi.yaml` projde oficiálním validátorem OpenAPI 3.1,
-`schema.json` odpovídá metaschématu draftu 2020-12 (a instance proti němu skutečně validují
-i padají, jak mají), `model.ttl` i `shapes.ttl` se načtou RDF parserem a `model.xmi` je
-well-formed XML. **Import do Enterprise Architectu ale odzkoušený není**; XMI je
-psané podle UML 2.1 / XMI 2.1 a strukturou odpovídá tomu, co CASE nástroje čekají, ale
-pokud tvůj nástroj bude na něčem trvat, dej vědět — doladit se to dá.
+Každý formát prochází skutečným nástrojem svého světa, ne jen kontrolou „vypadá to rozumně":
+
+| Soubor | Čím je ověřený |
+|---|---|
+| `openapi.yaml` | oficiální validátor OpenAPI 3.1 |
+| `schema.json` | metaschéma draftu 2020-12; k tomu se proti němu validuje ukázková entita a kontroluje se, že chybějící povinný atribut, hodnota mimo číselník i neznámý klíč **neprojdou** |
+| `model.sql` | parser PostgreSQL |
+| `model.ttl` | RDF parser; navíc se hlídá, že žádná vlastnost nemá dvě domény a že každý obor je deklarovaná třída nebo XSD typ |
+| `shapes.ttl` | reálná SHACL validace: platná data projdou, kdežto chybějící povinný atribut, hodnota mimo číselník, číslo zapsané textem i vazba na špatný typ jsou odmítnuty |
+| oba `.ttl` společně | křížová kontrola, že tvary mluví o týchž třídách, vlastnostech a konceptech, jaké deklaruje ontologie |
+| `model.xmi` | kontrola struktury XMI 2.1: jedinečná `xmi:id`, všechny odkazy rozřešené, každá asociace se dvěma konci, které ukazují zpět na ni, a každý konec s typem i násobností |
+
+Se zaškrtnutou **kompatibilitou s OWL 2 DL** (kap. 36.3) navíc ontologii načte a prohlásí
+za konzistentní reasoner HermiT.
+
+**Co ověřené není: import do Enterprise Architectu.** XMI je psané podle UML 2.1 / XMI 2.1
+a strukturou odpovídá tomu, co CASE nástroje čekají, ale v samotném EA vyzkoušené nebylo.
+Kdyby na něčem trval, dej vědět — doladit se to dá.

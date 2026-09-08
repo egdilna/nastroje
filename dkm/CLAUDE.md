@@ -183,6 +183,23 @@ Modelovací rozhodnutí, která nejsou samozřejmá:
 - **Prázdné `fromTypes`/`toTypes` znamená „cokoliv"**, ne „nic" — v IR se to rozvine na
   `types.slice()`. Platí i pro scope `from`/`to`.
 - **SQL neumí scope vazby** → zapíše se komentářem na konec DDL (`modelSqlScopeNote`).
+- **`entita` je společný předek ve všech třech světech**: tabulka v SQL, `:entita`
+  s `rdfs:subClassOf` v OWL, třída s `uml:Generalization` v XMI. Sloupce drž shodné
+  (`id`, `nazev`, `inbox`, `archiv`, `vytvoreno`, `zmeneno`), jinak se výstupy rozejdou.
+- **Univerzální vazba se v XMI kreslí jednou** mezi `entita`—`entita`. Rozpis na dvojice typů
+  je kartézský součin — osm typů = 64 asociací a nečitelný diagram.
+
+**OWL a SHACL musí popisovat tatáž data.** Hodnota číselníku je v OWL `skos:Concept`, takže
+`sh:in` musí nést **IRI konceptů**, ne řetězce (jednou už si odporovaly a žádný dataset
+nemohl projít oběma). Typ ber vždy přes `modelXsd(a)` — přepínač `owlDlDates` mění `xsd:date`
+na `xsd:dateTime` a **musí** dopadnout na oba výstupy naráz. (`xsd:date` leží mimo datovou
+mapu OWL 2 DL, HermiT ontologii s ním nenačte.)
+
+**XMI je samonosné.** UML 2.1 zná jen `String`, `Boolean`, `Integer` a `UnlimitedNatural`,
+takže `href` na `#Date` nebo `#Real` se nikde nerozřeší — primitivní typy si soubor definuje
+jako vlastní `uml:PrimitiveType`. Konce asociací **vždy** s `lowerValue`/`upperValue`; bez
+nich UML rozumí `1..1`, tedy povinnou vazbu. Stereotyp bez profilu jde jen přes
+`xmi:Extension` pro EA.
 
 `baseIri` je jediné nastavení modelu, které patří **do dat projektu**
 (`state.data.settings.baseIri`) — všem, kdo model exportují, musí vyjít stejná IRI.
@@ -191,9 +208,16 @@ Varování (`ir.warnings`) nikdy neblokují export; jsou to místa, kde generát
 domyslet. Kolize klíčů hlídej **jen aspekt × typ** — kolize typ × typ žádná není, klíče se
 v exportu dat počítají per kolekce.
 
-Ověřování: `openapi.yaml` musí projít validátorem OpenAPI 3.1, `schema.json` metaschématem
-draftu 2020-12, oba `.ttl` RDF parserem, `model.xmi` `DOMParser`em. `toYaml` je vlastní —
-pozor na blokové uzly v poli (pomlčka nahrazuje odsazení prvního řádku), tam se to už
+Ověřování se nedělá od oka — každý formát projde nástrojem svého světa: `openapi.yaml`
+validátorem OpenAPI 3.1, `schema.json` metaschématem draftu 2020-12 **a validací instancí**
+(platná projde, chybějící povinný atribut / hodnota mimo číselník / neznámý klíč padnou),
+`model.sql` parserem PostgreSQL, `.ttl` RDF parserem **a reálnou SHACL validací nad daty**,
+`model.xmi` strukturní kontrolou XMI (jedinečná id, rozřešené odkazy, konce asociací s typem
+i násobností), k tomu křížová kontrola OWL ↔ SHACL. Well-formed XML ani „vygenerovalo se to
+a má to rozumnou délku“ **ověření nejsou** — na to se tu už jednou spolehlo a prošla kvůli
+tomu neplatná YAML.
+
+`toYaml` je vlastní — pozor na blokové uzly v poli (pomlčka nahrazuje odsazení prvního řádku), tam se to už
 jednou rozbilo. **Import do Enterprise Architectu ověřený není.**
 
 ## Balíčky (package) — průvodce importem
