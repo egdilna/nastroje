@@ -527,6 +527,9 @@ modelDocKeysNote:'Klíče (`kod_takto`) jsou tytéž, jaké používá export da
 modelDocNoAttrs:'Bez atributů.',
 modelDocNote:'Poznámka',
 modelDocFrom:'Ze zdroje',modelDocInverse:'Opačný název',
+modelEntityNote:'Společný předek všech entit — nese identifikátor, název a stav. Odpovídá tabulce entita v SQL.',
+modelOwlDl:'Kompatibilita s OWL 2 DL',
+modelOwlDlHint:'OWL 2 DL nezná xsd:date, takže reasonery typu HermiT ontologii s ním odmítnou načíst. Zaškrtnuté použije v OWL i SHACL xsd:dateTime. Nezaškrtnuté je sémanticky přesnější a sedí na export dat i na JSON Schema.',
 modelDocTo:'Na cíl',
 modelDocAspectsNote:'Aspekt je průřezová sada atributů — dá se přidat k entitě libovolného typu nezávisle na jejím typu.',
 modelSqlNote:'Aspekty jsou samostatné tabulky navázané na entita, protože je lze přidat k entitě libovolného typu.',
@@ -1281,6 +1284,9 @@ modelDocKeysNote:'The keys (`like_this`) are the same ones the JSON data export 
 modelDocNoAttrs:'No attributes.',
 modelDocNote:'Note',
 modelDocFrom:'From',modelDocInverse:'Inverse name',
+modelEntityNote:'The common ancestor of all entities — it carries the identifier, the name and the state. Matches the entita table in SQL.',
+modelOwlDl:'OWL 2 DL compatibility',
+modelOwlDlHint:'OWL 2 DL does not know xsd:date, so reasoners like HermiT refuse to load an ontology using it. Ticked, both OWL and SHACL use xsd:dateTime. Unticked is semantically more precise and matches the data export and the JSON Schema.',
 modelDocTo:'To',
 modelDocAspectsNote:'An aspect is a cross-cutting attribute set — it can be added to an entity of any type, independently of its type.',
 modelSqlNote:'Aspects are separate tables linked to entita, because they can be attached to an entity of any type.',
@@ -7704,13 +7710,24 @@ date:     {json:{type:'string',format:'date'},         xsd:'xsd:date',    sql:'d
 url:      {json:{type:'string',format:'uri'},          xsd:'xsd:anyURI',  sql:'text',             uml:'String'},
 select:   {json:{type:'string'},                       xsd:'xsd:string',  sql:'text',             uml:'String'},
 yesno:    {json:{type:'boolean'},                      xsd:'xsd:boolean', sql:'boolean',          uml:'Boolean'},
-number:   {json:{type:'number'},                       xsd:'xsd:decimal', sql:'numeric',          uml:'Double'},
+number:   {json:{type:'number'},                       xsd:'xsd:decimal', sql:'numeric',          uml:'Real'},
 relation: {json:{type:'string'},                       xsd:'xsd:anyURI',  sql:'text',             uml:'String'}
 };
 
 function modelBaseIri(){
 const v=(state.data.settings&&state.data.settings.baseIri||'').trim();
 return v||('https://example.org/'+(jsonSlug(state.data.projectName,'snake')||'dkm')+'#');
+}
+/* xsd:date je sémanticky správně, ale leží mimo datovou mapu OWL 2 DL. */
+function modelOwlDl(){return !!(state.data.settings&&state.data.settings.owlDlDates)}
+function modelSetOwlDl(v){
+state.data.settings=state.data.settings||{};
+if(v)state.data.settings.owlDlDates=true;else delete state.data.settings.owlDlDates;
+setDirty(true);
+}
+function modelXsd(a){
+const x=a.map.xsd;
+return (x==='xsd:date'&&modelOwlDl())?'xsd:dateTime':x;
 }
 function modelSetBaseIri(v){
 state.data.settings=state.data.settings||{};
@@ -8141,13 +8158,18 @@ L.push('  dct:title '+ttlStr(ir.project)+lang+' ;');
 if(ir.description)L.push('  dct:description '+ttlStr(ir.description)+lang+' ;');
 L.push('  dct:created '+ttlStr(ir.generated)+'^^xsd:dateTime .');
 L.push('');
-function cls(key,name,note){
+function cls(key,name,note,parent){
+const out=[];
+out.push('  rdfs:label '+ttlStr(name)+lang);
+if(parent)out.push('  rdfs:subClassOf :'+ttlName(parent));
+if(note)out.push('  rdfs:comment '+ttlStr(note)+lang);
 L.push(':'+ttlName(key)+' a owl:Class ;');
-L.push('  rdfs:label '+ttlStr(name)+lang+(note?' ;':' .'));
-if(note)L.push('  rdfs:comment '+ttlStr(note)+lang+' .');
+L.push(out.join(' ;\n')+' .');
 L.push('');
 }
-ir.types.forEach(ty=>cls(ty.key,ty.name,''));
+/* Společný předek — stejná role jako tabulka entita v SQL a třída Entita v UML. */
+cls('entita','Entita',t('modelEntityNote'));
+ir.types.forEach(ty=>cls(ty.key,ty.name,'','entita'));
 ir.aspects.forEach(asp=>cls('aspekt_'+asp.key,asp.name,t('modelOwlAspectNote')));
 /* Číselníky */
 ir.lists.forEach(l=>{
@@ -8180,7 +8202,7 @@ L.push('  rdfs:range skos:Concept .');
 L.push(p+' a owl:DatatypeProperty ;');
 L.push('  rdfs:label '+ttlStr(a.name)+lang+' ;');
 L.push('  rdfs:domain '+domainOf(owner,isAspect)+' ;');
-L.push('  rdfs:range '+a.map.xsd+' .');
+L.push('  rdfs:range '+modelXsd(a)+' .');
 }
 L.push('');
 });
@@ -8192,8 +8214,8 @@ ir.rels.forEach(r=>{
 const p=':'+ttlName('vazba_'+r.key);
 L.push(p+' a owl:ObjectProperty ;');
 L.push('  rdfs:label '+ttlStr(r.name)+lang+' ;');
-if(r.from.length&&r.from.length<ir.types.length)L.push('  rdfs:domain '+unionOf(r.from)+' ;');
-if(r.to.length&&r.to.length<ir.types.length)L.push('  rdfs:range '+unionOf(r.to)+' ;');
+L.push('  rdfs:domain '+(r.from.length&&r.from.length<ir.types.length?unionOf(r.from):':entita')+' ;');
+L.push('  rdfs:range '+(r.to.length&&r.to.length<ir.types.length?unionOf(r.to):':entita')+' ;');
 L.push('  rdfs:isDefinedBy <'+ir.baseIri.replace(/[#/]$/,'')+'> .');
 if(r.inverseName){
 const ip=':'+ttlName('vazba_'+(r.inverseKey||(r.key+'_inv')));
@@ -8228,14 +8250,36 @@ if(a.type==='relation'){
 out.push(pad+'  sh:nodeKind sh:IRI ;');
 if(a.targetType){const tt=ir.types.find(x=>x.id===a.targetType);if(tt)out.push(pad+'  sh:class :'+ttlName(tt.key)+' ;')}
 if(!a.multi)out.push(pad+'  sh:maxCount 1 ;');
-}else if(a.type==='select'&&a.values.length){
-out.push(pad+'  sh:in ( '+a.values.map(v=>ttlStr(v)).join(' ')+' ) ;');
+}else if(a.type==='select'&&a.values.length&&a.list){
+/* OWL dělá z hodnot číselníku skos:Concept — tvar musí mluvit o týchž IRI, ne o řetězcích. */
+out.push(pad+'  sh:nodeKind sh:IRI ;');
+out.push(pad+'  sh:class skos:Concept ;');
+out.push(pad+'  sh:in ( '+a.values.map(v=>':'+ttlName('ciselnik_'+a.list.key+'_'+jsonSlug(v,'snake'))).join(' ')+' ) ;');
+out.push(pad+'  sh:maxCount 1 ;');
+}else if(a.type==='number'){
+/* sh:datatype je přesný — "2"^^xsd:integer není xsd:decimal, i když je to totéž číslo. */
+out.push(pad+'  sh:or ( [ sh:datatype xsd:decimal ] [ sh:datatype xsd:integer ] [ sh:datatype xsd:double ] ) ;');
 out.push(pad+'  sh:maxCount 1 ;');
 }else{
-out.push(pad+'  sh:datatype '+a.map.xsd+' ;');
+out.push(pad+'  sh:datatype '+modelXsd(a)+' ;');
 out.push(pad+'  sh:maxCount 1 ;');
 }
 if(a.required)out.push(pad+'  sh:minCount 1 ;');
+out[out.length-1]=out[out.length-1].replace(/ ;$/,'');
+out.push(pad+'] ;');
+return out;
+}
+function relShape(r,pad){
+const out=[];
+out.push(pad+'sh:property [');
+out.push(pad+'  sh:path :'+ttlName('vazba_'+r.key)+' ;');
+out.push(pad+'  sh:name '+ttlStr(r.name)+lang+' ;');
+out.push(pad+'  sh:nodeKind sh:IRI ;');
+/* Omezení na :entita by po datovém grafu chtělo znát hierarchii tříd — mlčíme raději. */
+if(r.to.length&&r.to.length<ir.types.length){
+out.push(pad+'  '+(r.to.length===1?'sh:class :'+ttlName(r.to[0].key)
+  :'sh:or ( '+r.to.map(x=>'[ sh:class :'+ttlName(x.key)+' ]').join(' ')+' )')+' ;');
+}
 out[out.length-1]=out[out.length-1].replace(/ ;$/,'');
 out.push(pad+'] ;');
 return out;
@@ -8245,6 +8289,7 @@ L.push(':'+ttlName(ty.key)+'Shape a sh:NodeShape ;');
 L.push('  sh:targetClass :'+ttlName(ty.key)+' ;');
 L.push('  sh:name '+ttlStr(ty.name)+lang+' ;');
 ty.attrs.forEach(a=>propShape(a,'  ').forEach(x=>L.push(x)));
+modelRelsFrom(ir,ty).forEach(r=>relShape(r,'  ').forEach(x=>L.push(x)));
 L[L.length-1]=L[L.length-1].replace(/ ;$/,' .');
 L.push('');
 });
@@ -8261,18 +8306,25 @@ return L.join('\n')+'\n';
 }
 
 /* ---------- XMI 2.1 (UML) pro Enterprise Architect ---------- */
-/* Aspekt je modelovaný jako třída se stereotypem, kterou typ realizuje —
-   EA to zobrazí jako závislost, což odpovídá tomu, že aspekt je průřezový. */
+/* Soubor je samonosný: primitivní typy si definuje sám, protože UML 2.1 zná jen
+   String, Boolean, Integer a UnlimitedNatural — odkaz na #Date nebo #Real by se
+   v žádném CASE nástroji nerozřešil. Aspekt je samostatná třída navázaná na
+   Entitu, stejně jako je v SQL samostatná tabulka. */
 function modelToXmi(ir){
 let seq=0;
 const idOf={};
 function xid(k){if(!idOf[k])idOf[k]='EAID_'+(++seq)+'_'+ttlName(k);return idOf[k]}
 const L=[];
+const stereo=[];/* pro rozšíření Enterprise Architectu */
 L.push('<?xml version="1.0" encoding="UTF-8"?>');
 L.push('<xmi:XMI xmi:version="2.1" xmlns:uml="http://schema.omg.org/spec/UML/2.1" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1">');
 L.push('  <xmi:Documentation exporter="DKM" exporterVersion="1"/>');
-L.push('  <uml:Model xmi:type="uml:Model" name="'+xmlEsc(ir.project)+'" xmi:id="'+xid('__model')+'">');
-L.push('    <packagedElement xmi:type="uml:Package" xmi:id="'+xid('__pkg')+'" name="'+xmlEsc(ir.project)+'">');
+L.push('  <uml:Model xmi:type="uml:Model" name="'+xmlEsc(ir.project)+'" xmi:id="'+xid('model')+'">');
+L.push('    <packagedElement xmi:type="uml:Package" xmi:id="'+xid('pkg')+'" name="'+xmlEsc(ir.project)+'">');
+
+/* Primitivní typy */
+['String','Boolean','Integer','Real','Date','DateTime'].forEach(x=>
+L.push('      <packagedElement xmi:type="uml:PrimitiveType" xmi:id="'+xid('pt_'+x)+'" name="'+x+'"/>'));
 
 /* Číselníky jako výčty */
 ir.lists.forEach(l=>{
@@ -8281,57 +8333,99 @@ l.values.forEach(v=>L.push('        <ownedLiteral xmi:type="uml:EnumerationLiter
 L.push('      </packagedElement>');
 });
 
+function mult(pad,key,lo,up){
+L.push(pad+'<lowerValue xmi:type="uml:LiteralInteger" xmi:id="'+xid('lo_'+key)+'" value="'+lo+'"/>');
+L.push(pad+'<upperValue xmi:type="uml:LiteralUnlimitedNatural" xmi:id="'+xid('up_'+key)+'" value="'+up+'"/>');
+}
+function attrXml(pad,key,name,typeId,lo,up){
+L.push(pad+'<ownedAttribute xmi:type="uml:Property" xmi:id="'+xid('attr_'+key)+'" name="'+xmlEsc(name)+'">');
+L.push(pad+'  <type xmi:idref="'+typeId+'"/>');
+mult(pad+'  ','attr_'+key,lo,up);
+L.push(pad+'</ownedAttribute>');
+}
 function attrsXml(o,pad){
 o.attrs.forEach(a=>{
 if(a.type==='relation')return;/* vazby jsou asociace, ne atributy */
-L.push(pad+'<ownedAttribute xmi:type="uml:Property" xmi:id="'+xid('attr_'+o.key+'_'+a.key)+'" name="'+xmlEsc(a.name)+'">');
-if(a.type==='select'&&a.list)L.push(pad+'  <type xmi:idref="'+xid('enum_'+a.list.key)+'"/>');
-else L.push(pad+'  <type xmi:type="uml:PrimitiveType" href="http://schema.omg.org/spec/UML/2.1/uml.xml#'+a.map.uml+'"/>');
-L.push(pad+'  <lowerValue xmi:type="uml:LiteralInteger" xmi:id="'+xid('lo_'+o.key+'_'+a.key)+'" value="'+(a.required?1:0)+'"/>');
-L.push(pad+'  <upperValue xmi:type="uml:LiteralUnlimitedNatural" xmi:id="'+xid('up_'+o.key+'_'+a.key)+'" value="1"/>');
-L.push(pad+'</ownedAttribute>');
+const ty=(a.type==='select'&&a.list)?xid('enum_'+a.list.key):xid('pt_'+a.map.uml);
+attrXml(pad,o.key+'_'+a.key,a.name,ty,a.required?1:0,1);
 });
 }
+
+/* Společný předek — sloupce odpovídají tabulce entita v SQL exportu. */
+const entId=xid('cls_entita');
+L.push('      <packagedElement xmi:type="uml:Class" xmi:id="'+entId+'" name="Entita">');
+L.push('        <ownedComment xmi:type="uml:Comment" xmi:id="'+xid('cmt_entita')+'" body="'+xmlEsc(t('modelEntityNote'))+'"/>');
+[['id','String',1],['nazev','String',1],['inbox','Boolean',1],['archiv','Boolean',1],
+ ['vytvoreno','DateTime',0],['zmeneno','DateTime',0]].forEach(([n,ty,req])=>
+attrXml('        ','entita_'+n,n,xid('pt_'+ty),req,1));
+L.push('      </packagedElement>');
+
 ir.types.forEach(ty=>{
 L.push('      <packagedElement xmi:type="uml:Class" xmi:id="'+xid('cls_'+ty.key)+'" name="'+xmlEsc(ty.name)+'">');
+L.push('        <generalization xmi:type="uml:Generalization" xmi:id="'+xid('gen_'+ty.key)+'" general="'+entId+'"/>');
 attrsXml(ty,'        ');
 L.push('      </packagedElement>');
 });
 ir.aspects.forEach(asp=>{
-L.push('      <packagedElement xmi:type="uml:Class" xmi:id="'+xid('cls_aspekt_'+asp.key)+'" name="'+xmlEsc('«aspekt» '+asp.name)+'" isAbstract="true">');
+const aid=xid('cls_aspekt_'+asp.key);
+L.push('      <packagedElement xmi:type="uml:Class" xmi:id="'+aid+'" name="'+xmlEsc(asp.name)+'">');
+L.push('        <ownedComment xmi:type="uml:Comment" xmi:id="'+xid('cmt_aspekt_'+asp.key)+'" body="'+xmlEsc(t('modelOwlAspectNote'))+'"/>');
 attrsXml(asp,'        ');
 L.push('      </packagedElement>');
+stereo.push({id:aid,name:asp.name,stereotype:'aspekt'});
 });
 
-/* Asociace z typů vazeb — pro každou dvojici povolených typů jedna. */
-ir.rels.forEach(r=>{
-r.from.forEach(f=>r.to.forEach(to=>{
-const aid=xid('assoc_'+r.key+'_'+f.key+'_'+to.key);
-const e1=xid('end1_'+r.key+'_'+f.key+'_'+to.key);
-const e2=xid('end2_'+r.key+'_'+f.key+'_'+to.key);
-L.push('      <packagedElement xmi:type="uml:Association" xmi:id="'+aid+'" name="'+xmlEsc(r.name)+'">');
-L.push('        <memberEnd xmi:idref="'+e1+'"/>');
-L.push('        <memberEnd xmi:idref="'+e2+'"/>');
-L.push('        <ownedEnd xmi:type="uml:Property" xmi:id="'+e1+'" name="'+xmlEsc(r.inverseName||'')+'" type="'+xid('cls_'+f.key)+'" association="'+aid+'"/>');
-L.push('        <ownedEnd xmi:type="uml:Property" xmi:id="'+e2+'" name="'+xmlEsc(r.name)+'" type="'+xid('cls_'+to.key)+'" association="'+aid+'"/>');
+/* Asociace. Konce vždy s explicitní násobností — bez ní UML rozumí 1..1,
+   což by znamenalo, že vazba je povinná. */
+function assoc(key,name,e1Id,e1Name,e1Lo,e1Up,e2Id,e2Name,e2Lo,e2Up){
+const aid=xid('assoc_'+key);
+const k1='end1_'+key,k2='end2_'+key;
+const i1=xid(k1),i2=xid(k2);
+L.push('      <packagedElement xmi:type="uml:Association" xmi:id="'+aid+'" name="'+xmlEsc(name)+'">');
+L.push('        <memberEnd xmi:idref="'+i1+'"/>');
+L.push('        <memberEnd xmi:idref="'+i2+'"/>');
+[[i1,k1,e1Id,e1Name,e1Lo,e1Up],[i2,k2,e2Id,e2Name,e2Lo,e2Up]].forEach(([i,k,cls,nm,lo,up])=>{
+L.push('        <ownedEnd xmi:type="uml:Property" xmi:id="'+i+'"'+(nm?' name="'+xmlEsc(nm)+'"':'')+' association="'+aid+'">');
+L.push('          <type xmi:idref="'+cls+'"/>');
+mult('          ',k,lo,up);
+L.push('        </ownedEnd>');
+});
 L.push('      </packagedElement>');
-}));
+}
+
+/* Aspekt visí na entitě — nejvýš jednou, nezávisle na typu. */
+ir.aspects.forEach(asp=>assoc('aspekt_'+asp.key,asp.name,
+  entId,'',1,1, xid('cls_aspekt_'+asp.key),asp.key,0,1));
+
+/* Typy vazeb. Neomezená strana se váže na Entitu — jinak by z univerzální vazby
+   vznikl kartézský součin všech typů a model by se v nástroji nedal číst. */
+ir.rels.forEach(r=>{
+const froms=(!r.from.length||r.from.length===ir.types.length)?[{key:'entita',cid:entId}]:r.from.map(x=>({key:x.key,cid:xid('cls_'+x.key)}));
+const tos=(!r.to.length||r.to.length===ir.types.length)?[{key:'entita',cid:entId}]:r.to.map(x=>({key:x.key,cid:xid('cls_'+x.key)}));
+froms.forEach(f=>tos.forEach(to=>assoc(r.key+'_'+f.key+'_'+to.key,r.name,
+  f.cid,r.inverseName||'',0,'*', to.cid,r.name,0,'*')));
 });
 /* Atributy typu „vazba" jako asociace na cílový typ */
 ir.types.forEach(ty=>ty.attrs.filter(a=>a.type==='relation'&&a.targetType).forEach(a=>{
 const tt=ir.types.find(x=>x.id===a.targetType);if(!tt)return;
-const aid=xid('aassoc_'+ty.key+'_'+a.key);
-const e1=xid('aend1_'+ty.key+'_'+a.key),e2=xid('aend2_'+ty.key+'_'+a.key);
-L.push('      <packagedElement xmi:type="uml:Association" xmi:id="'+aid+'" name="'+xmlEsc(a.name)+'">');
-L.push('        <memberEnd xmi:idref="'+e1+'"/>');
-L.push('        <memberEnd xmi:idref="'+e2+'"/>');
-L.push('        <ownedEnd xmi:type="uml:Property" xmi:id="'+e1+'" name="" type="'+xid('cls_'+ty.key)+'" association="'+aid+'"/>');
-L.push('        <ownedEnd xmi:type="uml:Property" xmi:id="'+e2+'" name="'+xmlEsc(a.key)+'" type="'+xid('cls_'+tt.key)+'" association="'+aid+'"/>');
-L.push('      </packagedElement>');
+assoc('attr_'+ty.key+'_'+a.key,a.name,
+  xid('cls_'+ty.key),'',0,'*', xid('cls_'+tt.key),a.name,0,a.multi?'*':1);
 }));
 
 L.push('    </packagedElement>');
 L.push('  </uml:Model>');
+if(stereo.length){
+/* Stereotyp bez profilu se v XMI jinak předat nedá; ostatní nástroje blok ignorují. */
+L.push('  <xmi:Extension extender="Enterprise Architect" extenderID="6.5">');
+L.push('    <elements>');
+stereo.forEach(x=>{
+L.push('      <element xmi:idref="'+x.id+'" xmi:type="uml:Class" name="'+xmlEsc(x.name)+'">');
+L.push('        <properties stereotype="'+xmlEsc(x.stereotype)+'"/>');
+L.push('      </element>');
+});
+L.push('    </elements>');
+L.push('  </xmi:Extension>');
+}
 L.push('</xmi:XMI>');
 return L.join('\n')+'\n';
 }
@@ -8460,6 +8554,15 @@ iI.addEventListener('change',()=>{modelSetBaseIri(iI.value);render()});
 fI.appendChild(iI);
 const hI=document.createElement('small');hI.className='fhint';hI.textContent=t('modelBaseIriHint');fI.appendChild(hI);
 secE.appendChild(fI);
+
+const fD=document.createElement('div');fD.className='fld';
+const lD=document.createElement('label');lD.className='cb';
+const cbD=document.createElement('input');cbD.type='checkbox';cbD.checked=modelOwlDl();
+cbD.addEventListener('change',()=>{modelSetOwlDl(cbD.checked);render()});
+lD.appendChild(cbD);const spD=document.createElement('span');spD.textContent=t('modelOwlDl');lD.appendChild(spD);
+fD.appendChild(lD);
+const hD=document.createElement('small');hD.className='fhint';hD.textContent=t('modelOwlDlHint');fD.appendChild(hD);
+secE.appendChild(fD);
 
 let current=MODEL_FORMATS[0];
 const tabs=document.createElement('div');tabs.className='mdl-fmt';
