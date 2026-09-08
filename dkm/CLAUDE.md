@@ -138,6 +138,26 @@ Vlastní generátor OOXML: `renderMarkdownBlocksToDocx`, `runsToParagraphXml`,
 - Obrázky: EMU 914400/palec, 96 DPI → `px * 9525`, šířka omezená na ~600 px; nestažený obrázek
   degraduje na odkaz.
 
+## Tabulkový export (`openTableExportDialog`)
+XLSX, CSV i TSV berou **tytéž sloupce z `tableColumns()` a tytéž hodnoty z `tableCellValue()`** —
+nikdy nepočítej sloupce zvlášť pro jeden formát. Liší se jen zápis (`toDelimited`, `exportTableXlsx`).
+
+Vlastní atributy se sdružují **podle názvu** (`cattr:<název>`), ne podle id — id je u nich per
+entita, takže by padesát entit dalo padesát sloupců.
+
+CSV a TSV nesou **BOM**, jinak Excel rozhodí diakritiku; `processTSVImport` ho proto na začátku
+přeskakuje — bez toho by se první sloupec z vlastního exportu nespároval a kolečko
+export → úprava → import by se rozbilo. Desetinná čárka platí jen pro CSV; TSV zůstává strojové.
+
+SheetJS se v tomhle sandboxu nestáhne (CDN je blokované), takže XLSX se ověřuje **podvrženým
+`window.XLSX`** — `loadSheetJS()` ho vrátí, když už existuje.
+
+## GraphML (`buildGraphml`)
+Sdílí dialog i rozsah s PlantUML (`collectPumlEntities`), ale je to jiný svět: PlantUML je zdroj
+obrázku, GraphML se otevírá v Gephi/yEd/Cytoscape a počítá se nad ním. Klíče se **musí deklarovat
+dopředu** (`<key for="node|edge">`) a id hran nesmí kolidovat s id uzlů — uzly nesou id entit,
+proto hrany `hrana1`, `hrana2`…
+
 ## Export do datového JSON (`openJsonExportDialog`)
 Projekce dat ven: kolekce podle typu, klíče odvozené z názvů (`jsonSlug`, snake_case bez
 diakritiky), k tomu **JSON Schema jen pro to, co se v exportu objevilo**, `mapovani.json`
@@ -150,6 +170,13 @@ generujeme) a všechno, co by schéma rozbilo, se změkčí a zapíše do `plan.
 číselník, `format` se doplní jen když sedí všechny hodnoty. Když měníš generátor,
 tuhle smyčku (`runJsonExport`) neobcházej.
 
+**XML není druhá serializace.** `buildXmlData` bere **hotový a zvalidovaný `data` objekt** a
+prochází ho **podle téhož schématu**, ze kterého `buildXsd` generuje XSD — pořadí prvků i omezení
+proto sedí z principu. Kdo by XML stavěl znovu z entit, tuhle záruku zahodí. Převod: objekt →
+prvek s podprvky, pole → opakovaný prvek, skalár → text, `null` → `xsi:nil`. Otevřený objekt
+(`additionalProperties:true`, tedy vlastní atributy) jde **vždy** jako `<polozka klic="…">`,
+protože ty názvy píše uživatel; XSD to zrcadlí větví `polozkaElem`.
+
 Klíče lze zafixovat nepovinným polem **`jsonKey`** na typu, aspektu, atributu i typu vazby
 (`rsJsonKeyFld`) — jinak by přejmenování atributu změnilo klíč a rozbilo navazující import.
 Profily exportu žijí v `state.data.jsonExports`.
@@ -161,8 +188,8 @@ prázdné); `migrateSelectLists` v `mergeEmpty` je při načtení převede a sta
 odstraní, `attrSelectValues` ho navíc snese jako záchytnou síť.
 
 ## Export datového modelu (`rsModel`, Nastavení → Model)
-Ven jde **schéma, ne data** — typy, aspekty, atributy, číselníky a vazby. Sedm formátů:
-`model.md`, `openapi.yaml`, `schema.json`, `model.sql`, `model.ttl`, `shapes.ttl`,
+Ven jde **schéma, ne data** — typy, aspekty, atributy, číselníky a vazby. Osm formátů:
+`model.md`, `openapi.yaml`, `schema.json`, `schema.xsd`, `model.sql`, `model.ttl`, `shapes.ttl`,
 `model.xmi` (+ `README.md` v ZIPu).
 
 Všechno stojí na jednom mezistupni: **`buildModelIR()`**. Generátory čtou **jen IR**, nikdy
@@ -188,6 +215,9 @@ Modelovací rozhodnutí, která nejsou samozřejmá:
   (`id`, `nazev`, `inbox`, `archiv`, `vytvoreno`, `zmeneno`), jinak se výstupy rozejdou.
 - **Univerzální vazba se v XMI kreslí jednou** mezi `entita`—`entita`. Rozpis na dvojice typů
   je kartézský součin — osm typů = 64 asociací a nečitelný diagram.
+- **Aspekt je v XSD `xs:group`** — tak se v XSD 1.0 skládá do typu, stejně jako ho JSON Schema
+  skládá přes `allOf`. Modelový `schema.xsd` popisuje schéma; export dat si veze **vlastní,
+  přesné** XSD pro to, co vyexportoval. Nezaměňuj je.
 
 **OWL a SHACL musí popisovat tatáž data.** Hodnota číselníku je v OWL `skos:Concept`, takže
 `sh:in` musí nést **IRI konceptů**, ne řetězce (jednou už si odporovaly a žádný dataset
@@ -212,8 +242,11 @@ Ověřování se nedělá od oka — každý formát projde nástrojem svého sv
 validátorem OpenAPI 3.1, `schema.json` metaschématem draftu 2020-12 **a validací instancí**
 (platná projde, chybějící povinný atribut / hodnota mimo číselník / neznámý klíč padnou),
 `model.sql` parserem PostgreSQL, `.ttl` RDF parserem **a reálnou SHACL validací nad daty**,
-`model.xmi` strukturní kontrolou XMI (jedinečná id, rozřešené odkazy, konce asociací s typem
-i násobností), k tomu křížová kontrola OWL ↔ SHACL. Well-formed XML ani „vygenerovalo se to
+`schema.xsd` validátorem XML Schema (libxml2) **a validací dokumentu proti němu** (platný projde,
+neznámý prvek / chybějící `id` / hodnota mimo číselník / číslo textem / špatné datum / prohozené
+pořadí padnou), `model.xmi` strukturní kontrolou XMI (jedinečná id, rozřešené odkazy, konce
+asociací s typem i násobností) a GraphML kontrolou klíčů, id a koncových uzlů hran, k tomu
+křížová kontrola OWL ↔ SHACL. Well-formed XML ani „vygenerovalo se to
 a má to rozumnou délku“ **ověření nejsou** — na to se tu už jednou spolehlo a prošla kvůli
 tomu neplatná YAML.
 
@@ -250,13 +283,16 @@ Hranice slova se testuje přes `\p{L}` — `\b` by na diakritice selhalo. Nahraz
 Při změně názvu entity nebo formátu textových hodnot na to pamatuj.
 
 ## Lokalizace
-`I18N = {cs:{…}, en:{…}}` s **578 klíči**, přístup přes `t(k, v)`, jazyk v `dkm-lang`.
+`I18N = {cs:{…}, en:{…}}` s **915 klíči**, přístup přes `t(k, v)`, jazyk v `dkm-lang`.
 Každý nový text = klíč v obou jazycích. Do UI nikdy nepiš řetězec natvrdo.
 Řetězce jsou **prostý text, ne HTML** — vkládej je přes `textContent`. `importTSVDesc` byl
 psaný se značkami a nasazovaný přes `innerHTML=esc(...)`, takže se `<br>` a `<b>` uživateli
 ukazovaly jako text; strukturu dělej DOM prvky, ne značkami v překladu.
 
 ## Konvence
+- **Dialog se staví do odpojeného `<div>`.** Dokud ho `showDialog()` nevloží do stránky, `document
+  .querySelector`/`getElementById` na jeho prvky **vrací null**. Drž si na ně odkazy — `bulkExportPackage`
+  na tomhle dlouho tiše padal a export balíčku vůbec neotevřel dialog. Platí i pro první výpočet náhledu.
 - Pomocníci `esc(s)`, `uid(p)`, `toast(m)`, `announce(m)` (odečítač), `dbg(m, err)`.
 - Panely (`getPanelSnapshot`, `applyPanelSnapshot`, `addPanel`, `switchToPanel`) a navigace
   přes hash (`parseHash`, `navigateTo`, `pushNav`, `goBackSkipEdits`) — nové pohledy zapoj sem.

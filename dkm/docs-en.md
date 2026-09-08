@@ -34,7 +34,7 @@ User guide
 22. [Diff since last save](#22-diff-since-last-save)
 23. [Everything you can get out of DKM](#23-everything-you-can-get-out-of-dkm)
 24. [Export and print entities](#24-export-and-print-entities)
-25. [Export to XLSX, TSV, PlantUML](#25-export-to-xlsx-tsv-plantuml)
+25. [Export to a table, PlantUML and GraphML](#25-export-to-a-table-plantuml-and-graphml)
 26. [Data JSON export with a schema](#26-data-json-export-with-a-schema)
 27. [Static viewer](#27-static-viewer)
 28. [Moving parts between projects (packages)](#28-moving-parts-between-projects-packages)
@@ -995,9 +995,10 @@ database.
 | The whole project | `.dkmdata` (JSON) | header **Save** | backup, transfer, GitHub (ch. 21) |
 | A single entity | MD as a file or to the clipboard, formatted text to the clipboard, DOCX, print / PDF | entity detail → **🖨 Export / print** | a document about one thing (ch. 24) |
 | A selection of entities | the same, but into **one** document | list → selection mode → **🖨 Export / print selection** | a report, an overview, a briefing (ch. 24.4) |
-| The displayed list | XLSX | header **Export** | a table for Excel (ch. 25.1) |
-| Selected entities | PlantUML | command palette or a bulk action | a relation diagram (ch. 25.3) |
-| Data by type | ZIP: `data.json`, `schema.json`, `mapovani.json`, README | **Export data to JSON** | machine processing, import elsewhere (ch. 26) |
+| A selection, the list or the whole project | XLSX, CSV, TSV — with a column picker | header **Export** | a table for Excel, edit and import back (ch. 25.1) |
+| Selected entities | PlantUML | command palette or a bulk action | a picture of the relation diagram (ch. 25.3) |
+| Selected entities | GraphML | the same place, via the format switch | a graph for Gephi, yEd, Cytoscape — centrality, communities (ch. 25.3) |
+| Data by type | ZIP: `data.json` + `schema.json`, or `data.xml` + `schema.xsd` | **Export data to JSON** | machine processing, integration, import elsewhere (ch. 26) |
 | The whole project to browse | a single HTML file | Settings → Project → Static viewer | send it to someone without DKM (ch. 27) |
 | Part of the project | `.dkmpkg` (a package) | bulk action **Export package** | move a slice into another project (ch. 28) |
 | Context for a language model | Markdown | **🤖 Ask AI** → Show what will be sent | the prompt for the AI (ch. 35.3) |
@@ -1011,6 +1012,7 @@ All seven live in one place — **Settings → Model** (ch. 36), individually or
 | `model.md` | Markdown | readable documentation of the model for people |
 | `openapi.yaml` | OpenAPI 3.1 | the brief for a REST API over the model |
 | `schema.json` | JSON Schema 2020-12 | data validation, code generation |
+| `schema.xsd` | XSD (XML Schema) | XML validation, integration, class generation |
 | `model.sql` | SQL DDL (PostgreSQL) | creating the database |
 | `model.ttl` | RDFS/OWL + SKOS | an ontology, linked data |
 | `shapes.ttl` | SHACL | validating RDF data against the model |
@@ -1020,7 +1022,8 @@ All seven live in one place — **Settings → Model** (ch. 36), individually or
 
 - **I just want to keep it or move it to another computer** → `.dkmdata` (ch. 21)
 - **I want to send it to someone to read** → the static viewer (ch. 27) or DOCX / PDF (ch. 24)
-- **I want to do arithmetic in Excel** → XLSX (ch. 25.1)
+- **I want to do arithmetic in Excel** → XLSX, CSV or TSV (ch. 25.1)
+- **I want to measure the graph, not draw it** → GraphML (ch. 25.3)
 - **A colleague or a script needs to process it** → the data JSON with its schema (ch. 26)
 - **I want to hand a part over to another DKM project** → a package (ch. 28)
 - **I want to hand over how it is built, not what is in it** → the model export (ch. 36)
@@ -1096,11 +1099,37 @@ The other rules from 23.3 apply unchanged — empty values are skipped, objects 
 
 ---
 
-## 25. Export to XLSX, TSV, PlantUML
+## 25. Export to a table, PlantUML and GraphML
 
-### 25.1 XLSX
+### 25.1 Table export — XLSX, CSV, TSV
 
-**Export** button in header. Creates an `.xlsx` with currently filtered entities. Columns: name, type, type attributes, main data. Useful for sharing outside DKM.
+The **Export** button in the header opens a dialog where you pick the scope, the format and
+the **columns** — so you get exactly what you need instead of everything.
+
+**Scope** — the selected entities (when you are in selection mode), the currently displayed
+list, or the whole project without the archive. When the displayed list is empty, the whole
+project is offered straight away.
+
+**Format**
+
+- **XLSX** — a workbook for Excel. Frozen header, auto filter, computed column widths,
+  multi-line text wraps. Optionally **a sheet per entity type** — a type's sheet then keeps
+  only the columns that belong to it.
+- **CSV** — pick the separator: **semicolon** (suits a localized Excel) or **comma**
+  (standard CSV). Plus a **decimal comma** option, again for Excel's sake.
+- **TSV** — tab separated. Numbers always use a dot.
+
+CSV and TSV start with a BOM, without which Excel mangles the diacritics. DKM's **TSV import**
+skips it, so the round trip *export → edit in Excel → import back* holds; keep the **ID**
+column in the output to match existing entities (see 25.2).
+
+**Columns** are grouped — the basics, each type separately, each aspect separately, custom
+attributes, and relations with metadata. Every column shows **how many entities have it
+filled in**, and the **Only columns with data** checkbox hides the empty ones. All / None
+apply to whatever is currently visible.
+
+Custom attributes are grouped **by name** — three entities with a "Note" custom attribute
+give you one column, not three.
 
 ### 25.2 TSV / CSV import
 
@@ -1172,7 +1201,7 @@ are ignored on import, and **custom attributes** (marked `* Name` in the export)
 recreated — the asterisk is stripped and the name is looked up among type and aspect
 attributes; when it is not there, the column is dropped.
 
-### 25.3 PlantUML export of relations
+### 25.3 Diagram and graph — PlantUML and GraphML
 
 Accessible via:
 
@@ -1184,16 +1213,24 @@ Dialog:
 - **Scope**: current list, selection (bulk mode), all, type, aspect
 - **Style**: Class diagram (classes with attributes), Component, Use case
 - **Options**: include attributes as class fields, include attribute-based relations (dashed lines), include external targets outside scope (gray)
-- **Live preview** of PlantUML code
+- **Format**: PlantUML, or **GraphML**
+- **Live preview** of the generated code
 
 Output:
 
 - **📋 Copy** — to clipboard
-- **📥 Download .puml** — file for external PlantUML tool
+- **📥 Download** — `.puml` for PlantUML, or `.graphml`
 
-Name escaping, ID aliasing to E0/E1/…, stereotypes by type (`<<Person>>`), attribute-relations as dashed `..>`.
+**PlantUML** is the source of a picture: escaped names, E0/E1/… aliases, stereotypes by type
+(`<<Person>>`), attribute-based relations dashed. Good for documenting the model and the
+architecture.
 
-Ideal for data model documentation, ER diagrams, architecture.
+**GraphML** is the same graph, but for processing rather than for a picture. Open it in
+**Gephi, yEd or Cytoscape** and you can compute on it — centrality, communities, clusters,
+paths. Entities are nodes (carrying the name, type, aspects and optionally attribute values),
+relations are edges (carrying the name, the inverse name and whether they come from a
+relation or from an attribute). The diagram style selector hides for GraphML — it belongs to
+PlantUML.
 
 ---
 
@@ -1293,16 +1330,41 @@ optional **JSON key** field (in settings, on the item itself). Empty = derived f
 Filled in = fixed. The checkbox in step 2 of the wizard fills these fields with the currently
 derived keys.
 
-### 26.8 ZIP contents
+### 26.8 XML and XSD
+
+In the wizard's options step you pick the **file format**: JSON + JSON Schema, XML + XSD, or
+both. XML is not a second serializer — it is built **from the same, already validated JSON
+object** and walked according to the same schema the XSD is generated from, so the element
+order and the constraints match by construction.
+
+The conversion rules are simple:
+
+| JSON | XML |
+|---|---|
+| object | an element with child elements |
+| array | the element with that name repeats |
+| scalar | text content |
+| `null` (with "include empty") | `xsi:nil="true"` |
+| custom attributes | always `<polozka klic="…">` — their names are written by you and need not be valid XML names |
+
+The XSD is exact, not permissive: it rejects an unknown element, a missing `id`, a value
+outside a code list, a number written as text, a malformed date, a foreign value for the
+fixed `typ` and even a wrong element order.
+
+The `schema.json` stays in the package either way — it describes the same content and is
+handy for a cross-check.
+
+### 26.9 ZIP contents
 
 | File | What's inside |
 |---|---|
 | `data.json` | data, collections by type (or `data/<type>.json` with one file per collection) |
 | `schema.json` | JSON Schema draft 2020-12 for this output |
+| `data.xml` + `schema.xsd` | with the XML format — the same data and an XSD that validates it |
 | `mapovani.json` | internal ID to key mapping — for debugging and downstream tools |
 | `README.md` | human description: what's inside, mapping table, warnings, validation result |
 
-### 26.9 Export profiles
+### 26.10 Export profiles
 
 The wizard's settings can be saved as a named **profile** (kept in the project data), so a
 repeated export into the same database always comes out the same.
@@ -1842,6 +1904,7 @@ Pick a format with the switcher; the preview right below shows the output.
 | `model.md` | Documentation (MD) | A human-readable description of the model — types, attributes, aspects, relations, lists |
 | `openapi.yaml` | OpenAPI 3.1 | A REST API over the model: schemas plus `list/create/get/update/delete` paths for every type |
 | `schema.json` | JSON Schema 2020-12 | A validation schema; aspects are separate `$defs` composed through `allOf` |
+| `schema.xsd` | XSD (XML Schema) | The same for XML; an aspect is an `xs:group`, which is how XSD composes it into a type |
 | `model.sql` | SQL DDL | PostgreSQL: an `entita` table, one table per type and per aspect, list tables, `typ_vazby` + `vazba` and junction tables for relation attributes |
 | `model.ttl` | RDFS/OWL + SKOS | An ontology in Turtle: classes, properties, plus the lists as SKOS concepts |
 | `shapes.ttl` | SHACL | Shapes matching the classes from the OWL output — validate RDF data against the model |
@@ -1903,6 +1966,7 @@ Every format goes through a real tool from its own world, not just a "looks reas
 |---|---|
 | `openapi.yaml` | the official OpenAPI 3.1 validator |
 | `schema.json` | the draft 2020-12 meta-schema; on top of that a sample entity is validated against it and a missing required attribute, a value outside the list and an unknown key are all checked to **fail** |
+| `schema.xsd` | an XML Schema validator (libxml2) |
 | `model.sql` | a PostgreSQL parser |
 | `model.ttl` | an RDF parser; plus a check that no property has two domains and that every range is a declared class or an XSD datatype |
 | `shapes.ttl` | real SHACL validation: valid data passes, while a missing required attribute, a value outside the list, a number written as text and a relation to the wrong type are all rejected |
