@@ -311,6 +311,28 @@ Akce v `applyImport`: `merge` **doplňuje, nepřepisuje** (prázdné atributy, s
 a vlastních atributů podle názvu, vazby se ve druhém průchodu deduplikují přes
 `typVazby:cíl`), `overwrite` nahrazuje, `skip` přeskočí, `newId` založí kopii.
 
+## Pohledy na data
+Pět režimů v `state.view.displayMode`: `list` (**výchozí a musí jím zůstat**), `table`,
+`kanban`, `calendar`, `timeline`; dispatch je v `renderListEl`. Nový režim přidej tam
+a do pole `modes` v liště, ne jako další stránku.
+
+**Tabulka se needituje** — je to pohled, ne formulář. Sloupce bere `tableColumns()`, tedy týž
+zdroj jako export do tabulky; když to změníš, změní se obojí naráz, a to je záměr. Výběr
+sloupců drží `state.view.tableCols`, řazení `state.view.tableSort` (klik cykluje asc → desc →
+zpět na řazení z lišty).
+
+**Sekce** (`state.view.groupBy`) staví na `collectColumnAttrCandidates` a `entityColumnKey` —
+tytéž funkce jako kanban, jen do `<details>` místo sloupců.
+
+**Náhled** (`state.view.preview`) je režim: `previewOn()` mění chování kliku na entitu
+v kartě, v tabulce i v kalendáři. `renderDetail(id,{embedded:true})` vynechá navigaci zpět.
+Detail má vlastní dvousloupcový layout (`.detail-grid`), který se v úzkém panelu **musí**
+složit do jednoho sloupce — jinak hlavní sloupec spadne na nulovou šířku a hodnoty se lámou
+po písmenech. Kdo přidá další úzké místo, ať na to myslí.
+
+Všechny nové volby se ukládají do pohledu (`openSaveViewDialog` i `applySavedView`) — když
+přidáš další, doplň je na obě místa, jinak se uložený pohled bude chovat jinak než živý.
+
 ## Filtry, pohledy, hromadné operace
 Pravidlový filtr (`evalRule`, `applyAttrFilters`, `opsForType`, `renderRuleRow`) s uloženými
 pohledy (`openSaveViewDialog`, `applySavedView`). Zobrazení: seznam / kanban
