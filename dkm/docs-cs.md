@@ -1650,11 +1650,30 @@ DKM je navrženo tak, aby fungovalo se screen readerem.
 - **Klávesová navigace** (viz kap. 30)
 - **Screen reader announcements** minimalizované — jen krátká potvrzení akcí (Uloženo, Přidáno), ne re-render polí
 
-### 31.1 Rychlá paleta
+### 31.1 Pole s vazbou
+
+Atribut typu **vazba** není jedno pole, ale skupina: filtr typu, filtr textu, seznam na výběr
+a tlačítko pro potvrzení. Aby bylo při procházení formuláře pořád jasné, který atribut
+vyplňuješ, **nese název atributu každý prvek té skupiny** — přečteš si tedy „Používá systémy —
+filtr typu", „Používá systémy — výběr" a tak dál, ne jen „filtr typu". Skupina jako celek je
+`role="group"` se jménem atributu.
+
+Totéž řeší **ano/ne** (skupina přepínačů `role="radiogroup"` se jménem atributu) a **výběr ze
+seznamu bez přiřazeného číselníku** — ten je teď zakázané pole s vysvětlením, ne jen text,
+takže má jméno i stav. Atribut, který nemá vyplněný název, se ohlásí jako *Atribut bez názvu*
+místo ničeho.
+
+### 31.2 Kam jde focus po odebrání
+
+Když odebereš vybranou entitu nebo vazbu křížkem, tlačítko, na kterém stojíš, tím okamžikem
+zmizí. Focus proto **přeskočí na další křížek** v řadě, a když žádný nezbyl, na seznam na výběr
+(u vazby na tlačítko Přidat vazbu). Nikdy nespadne na začátek stránky.
+
+### 31.3 Rychlá paleta
 
 Screen reader-kompatibilní: ARIA combobox, listbox, aria-activedescendant, aria-selected na aktivní položce.
 
-### 31.2 Kanban
+### 31.4 Kanban
 
 Karty nejsou drag-and-drop (nedostupné pro screen reader). Místo toho **dropdown Přesunout do** pro každou kartu.
 

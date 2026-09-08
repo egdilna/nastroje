@@ -1658,11 +1658,31 @@ DKM is designed to work with screen readers.
 - **Keyboard navigation** (see chapter 29)
 - **Screen reader announcements** minimized — only brief action confirmations (Saved, Added), not re-render of fields
 
-### 31.1 Command palette
+### 31.1 The relation field
+
+A **relation** attribute is not one field but a group: the type filter, the text filter, the
+list of choices and the confirm button. So that you always know which attribute you are filling
+in while moving through the form, **every control in that group carries the attribute name** —
+you hear "Uses systems — type filter", "Uses systems — choices" and so on, not just "type
+filter". The group itself is a `role="group"` named after the attribute.
+
+The same is handled for **yes/no** (a `role="radiogroup"` named after the attribute) and for a
+**select attribute with no list assigned** — that one is now a disabled field with an
+explanation instead of plain text, so it has a name and a state. An attribute with no name of
+its own is announced as *Unnamed attribute* rather than nothing.
+
+### 31.2 Where focus goes after a removal
+
+When you remove a selected entity or a relation with the ×, the button you are standing on
+disappears at that moment. Focus therefore **moves to the next × in the row**, and when none is
+left, to the list of choices (for a relation, to the Add relation button). It never falls back
+to the top of the page.
+
+### 31.3 Command palette
 
 Screen reader-compatible: ARIA combobox, listbox, aria-activedescendant, aria-selected on active item.
 
-### 31.2 Kanban
+### 31.4 Kanban
 
 Cards aren't drag-and-drop (inaccessible to screen readers). Instead a **Move to dropdown** per card.
 
