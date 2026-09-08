@@ -160,6 +160,42 @@ nesla `selectListId` + `options` (kanban, filtry a export balíčku kvůli tomu 
 prázdné); `migrateSelectLists` v `mergeEmpty` je při načtení převede a starý tvar z dat
 odstraní, `attrSelectValues` ho navíc snese jako záchytnou síť.
 
+## Export datového modelu (`rsModel`, Nastavení → Model)
+Ven jde **schéma, ne data** — typy, aspekty, atributy, číselníky a vazby. Sedm formátů:
+`model.md`, `openapi.yaml`, `schema.json`, `model.sql`, `model.ttl`, `shapes.ttl`,
+`model.xmi` (+ `README.md` v ZIPu).
+
+Všechno stojí na jednom mezistupni: **`buildModelIR()`**. Generátory čtou **jen IR**, nikdy
+`state.data` — když přidáváš formát, přidej ho do `MODEL_FORMATS` a ber IR. Když do modelu
+přibude pojem, přidej ho do IR a promítni do všech generátorů, ne jen do toho svého.
+
+**Klíče se počítají přes `jsonSlug` + `jsonKey`**, tedy stejně jako u exportu dat. Tím
+vygenerované OpenAPI a JSON Schema sedí na to, co vyleze z exportu dat — to je smysl celé
+věci, neobcházej to vlastním sluggerem.
+
+Modelovací rozhodnutí, která nejsou samozřejmá:
+- **Aspekt je průřezový** → v SQL samostatná tabulka navázaná na `entita`, v JSON Schema
+  `$defs` skládané přes `allOf` + `unevaluatedProperties:false`, v OWL/UML vlastní třída.
+  Nikdy ne sloupce v tabulce typu — aspekt může viset na entitě libovolného typu.
+- **Vlastnosti jsou v RDF vlastněné typem** (`ty.key+'_'+a.key`, aspekty `aspekt_…`). Kdyby
+  dva typy se stejně pojmenovaným atributem sdílely jednu vlastnost, dva `rdfs:domain` by
+  v OWL znamenaly **průnik**, ne sjednocení — sémanticky špatně. SHACL to zrcadlí v `sh:path`.
+- **Prázdné `fromTypes`/`toTypes` znamená „cokoliv"**, ne „nic" — v IR se to rozvine na
+  `types.slice()`. Platí i pro scope `from`/`to`.
+- **SQL neumí scope vazby** → zapíše se komentářem na konec DDL (`modelSqlScopeNote`).
+
+`baseIri` je jediné nastavení modelu, které patří **do dat projektu**
+(`state.data.settings.baseIri`) — všem, kdo model exportují, musí vyjít stejná IRI.
+
+Varování (`ir.warnings`) nikdy neblokují export; jsou to místa, kde generátor musel něco
+domyslet. Kolize klíčů hlídej **jen aspekt × typ** — kolize typ × typ žádná není, klíče se
+v exportu dat počítají per kolekce.
+
+Ověřování: `openapi.yaml` musí projít validátorem OpenAPI 3.1, `schema.json` metaschématem
+draftu 2020-12, oba `.ttl` RDF parserem, `model.xmi` `DOMParser`em. `toYaml` je vlastní —
+pozor na blokové uzly v poli (pomlčka nahrazuje odsazení prvního řádku), tam se to už
+jednou rozbilo. **Import do Enterprise Architectu ověřený není.**
+
 ## Balíčky (package) — průvodce importem
 `bulkExportPackage` → `buildPackageObj` a osmikrokový průvodce importem
 (`renderPkgWizStep1`…`Step8`) s automatickým mapováním modelu (`autoMapModel`), detekcí

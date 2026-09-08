@@ -44,6 +44,7 @@ User guide
 32. [Common problems](#32-common-problems)
 33. [Technical background](#33-technical-background)
 34. [AI assistant](#34-ai-assistant)
+35. [The data model and its export](#35-the-data-model-and-its-export)
 
 ---
 
@@ -1360,7 +1361,15 @@ Which types and aspects appear as tabs in the main toolbar.
 
 Personal access token for GitHub API. Stored in the browser's localStorage (per origin).
 
-### 28.9 General
+### 28.9 AI
+
+Provider, API key and model for the AI assistant — see ch. 34.2.
+
+### 28.10 Model
+
+The data model overview and its export into standard formats — see ch. 35.
+
+### 28.11 General
 
 - **Language** (Čeština / English)
 - **Theme** — Light / Dark / Paper / Matrix, same as in the ⚙ Customize menu
@@ -1370,11 +1379,11 @@ Personal access token for GitHub API. Stored in the browser's localStorage (per 
 - **Autosave** — automatic saving to sessionStorage (per tab)
 - **Debug** — enables a bottom panel with debug logs
 
-### 28.10 Statistics
+### 28.12 Statistics
 
 Counts overview: entities, types, attributes, aspects, relations, comments.
 
-### 28.11 Help
+### 28.13 Help
 
 Links to online documentation and repository.
 
@@ -1700,3 +1709,113 @@ Under every answer there are two buttons:
 The conversation **survives closing the dialog** within the loaded page, so closing it by
 accident does not lose the conversation. It is not stored in the project data though, and a
 page reload clears it. The **New conversation** button clears it sooner.
+
+---
+
+## 35. The data model and its export
+
+### 35.1 What it is for
+
+**Settings → Model** shows the whole project schema in one place — types, aspects,
+attributes, lists and relations — and exports it into standard formats other tools can
+read: OpenAPI, JSON Schema, SQL, RDF/OWL, SHACL, XMI.
+
+Don't confuse it with chapter 25. That one exports **data** (entities) with a schema
+attached so the data can be validated. This one exports **the schema only** — no entity
+leaves, not even its name. What leaves is a description of how the project is built.
+
+It comes in handy when you need to hand the model to a developer or an architect, load it
+into Enterprise Architect, or have a database created from it.
+
+### 35.2 Model overview
+
+The upper part of the tab is a readable listing of the model:
+
+- **Summary** — how many types, aspects, relations, lists and attributes there are
+- **Types** — expand one and you see its attributes (name, key, data type, required flag,
+  linked list) and the relations leading out of it. The type line also shows **how many
+  entities** actually use it — a good way to spot a type you once created and never used.
+- **Aspects** — the aspect's attributes and the number of entities carrying it
+- **Relations** — from → to, the inverse name and how many times the relation is actually
+  used in the data. Where there is no restriction to specific types, it says "any".
+- **Lists** — the values and the number of attributes using the list
+- **Warnings** — anything that could complicate the export: an attribute with no name, a
+  select attribute with no list assigned, an empty or unused list, a key collision between
+  an aspect and a type, a project with no type at all
+
+Warnings block nothing — the export runs anyway. They mark the spots where the model left
+something unsaid and the generator had to fill in the blank.
+
+### 35.3 Base IRI
+
+The RDF outputs (OWL, SKOS, SHACL) need a namespace. The **Base IRI** field is stored
+**in the project data** (unlike language or theme) so that everyone who exports the model
+gets the same identifiers. Leave it empty and it is derived from the project name — fine
+for a first pass, but set your own for anything meant to be published
+(e.g. `https://company.com/model/`).
+
+### 35.4 Keys
+
+Keys (`like_this`) are derived **exactly as in the data export** (ch. 25.7): snake_case,
+no diacritics, overridable through the optional **JSON key** field on a type, aspect,
+attribute or relation type. Because of that the generated OpenAPI and JSON Schema fit what
+actually comes out of the data export — one can be used to validate the other.
+
+Rename an attribute and its key changes. That is exactly why it pays to pin the keys of a
+model you have already sent somewhere.
+
+### 35.5 Formats
+
+Pick a format with the switcher; the preview right below shows the output.
+
+| File | Format | What for |
+|---|---|---|
+| `model.md` | Documentation (MD) | A human-readable description of the model — types, attributes, aspects, relations, lists |
+| `openapi.yaml` | OpenAPI 3.1 | A REST API over the model: schemas plus `list/create/get/update/delete` paths for every type |
+| `schema.json` | JSON Schema 2020-12 | A validation schema; aspects are separate `$defs` composed through `allOf` |
+| `model.sql` | SQL DDL | PostgreSQL: an `entita` table, one table per type and per aspect, list tables, `typ_vazby` + `vazba` and junction tables for relation attributes |
+| `model.ttl` | RDFS/OWL + SKOS | An ontology in Turtle: classes, properties, plus the lists as SKOS concepts |
+| `shapes.ttl` | SHACL | Shapes matching the classes from the OWL output — validate RDF data against the model |
+| `model.xmi` | XMI (UML) | A UML model for Enterprise Architect and other CASE tools: classes, attributes, associations, enumerations |
+
+### 35.6 Downloading
+
+- **📋 Copy** — the currently shown format to the clipboard
+- **📥 Download file** — just that one file
+- **📦 Download all (ZIP)** — all seven files plus a `README.md` with the overview, the
+  generation date, the base IRI and any warnings
+
+The on-screen preview is truncated for large models, but copying and downloading always
+take the full content.
+
+### 35.7 How the model is translated
+
+A few things in the DKM data model have no direct counterpart in the target formats. It is
+worth knowing how they are handled:
+
+- **An aspect is cross-cutting** — it can be added to an entity of any type. In SQL it
+  therefore becomes a separate table linked to `entita`, not columns in the type's table.
+  In JSON Schema it becomes a `$defs` composed into the type through `allOf` +
+  `unevaluatedProperties: false`. In OWL and UML it is a class of its own.
+- **An identically named attribute on two types is a different property in RDF.** Merging
+  them would put `rdfs:domain` on both classes, which in OWL means the *intersection* —
+  "only an entity that is both" — and that is not what the model says. Properties therefore
+  carry the owner's key (`:subjekt_stav`, `:system_stav`), and SHACL mirrors that in
+  `sh:path`.
+- **Restricting a relation to certain types** (scope) cannot be expressed in SQL — a
+  junction table does foreign keys, not "only from these types". The restriction is written
+  at the end of the DDL as a comment noting that the application or a trigger has to
+  enforce it. In OpenAPI, OWL and SHACL it becomes a range / `sh:class`.
+- **An empty list of allowed types means "any"**, not "none" — the overview and the outputs
+  behave accordingly.
+- **Custom attributes** (the ones you add on a single entity) are not part of the model —
+  they are not schema, they are data.
+
+### 35.8 What has not been verified
+
+The outputs are validated: `openapi.yaml` passes the official OpenAPI 3.1 validator,
+`schema.json` conforms to the draft 2020-12 meta-schema (and instances really do validate
+and fail against it as they should), `model.ttl` and `shapes.ttl` load in an RDF parser and
+`model.xmi` is well-formed XML. **The Enterprise Architect import, however, has not been
+tried**; the XMI follows UML 2.1 / XMI 2.1 and structurally matches what CASE tools expect,
+but if your tool insists on something, say so — it can be tuned.
