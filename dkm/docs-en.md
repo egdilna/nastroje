@@ -413,6 +413,11 @@ In entity detail → **+ Add relation** → dialog:
 
 The relation appears immediately in the Relations section.
 
+**Deleting a relation:** in edit mode there is an **×** pill after the name of the linked
+entity. Clicking it removes the relation from the form; it reaches the data **only when you
+save the entity**. You cannot delete from the *Backlinks* section — the relation belongs to the
+entity it leads from, so delete it there.
+
 ### 9.3 Backlinks ("Linked from")
 
 The **Linked from** section at an entity **automatically includes three kinds of links**:
@@ -1490,7 +1495,28 @@ Provider, API key and model for the AI assistant — see ch. 35.2.
 
 The data model overview and its export into standard formats — see ch. 36.
 
-### 29.11 General
+### 29.11 Duplicates
+
+Finds entities that share a **name**, shows them side by side and offers a resolution.
+
+**Name match** — either loose (the default: case, diacritics and extra spaces do not matter, so
+"Praha", "praha" and "Praha " are the same thing) or exact, character by character. Each group
+says which case it is.
+
+**Checkboxes** — search within one type only, include the archive, show rows that are empty
+for all of them.
+
+**The comparison** is a table: rows are fields, columns are the individual entities. It lists
+the name, type, aspects, every attribute at least one of them has filled in, custom attributes,
+relations, the number of backlinks and comments, the update date and the ID. **Rows where the
+entities differ are highlighted** — so you see at a glance what is different.
+
+**Resolving** — each entity has *Open* and *Rename*; below the table there is **Merge entities**.
+Merging goes through the same path as the bulk operation (ch. 13.1): you pick which entity stays
+and what to do with differing values, and relations pointing at the removed entities are
+redirected. After a merge or a rename you stay on the Duplicates tab and the list is recomputed.
+
+### 29.12 General
 
 - **Language** (Čeština / English)
 - **Theme** — Light / Dark / Paper / Matrix, same as in the ⚙ Customize menu
@@ -1500,11 +1526,11 @@ The data model overview and its export into standard formats — see ch. 36.
 - **Autosave** — automatic saving to sessionStorage (per tab)
 - **Debug** — enables a bottom panel with debug logs
 
-### 29.12 Statistics
+### 29.13 Statistics
 
 Counts overview: entities, types, attributes, aspects, relations, comments.
 
-### 29.13 Help
+### 29.14 Help
 
 Links to online documentation and repository.
 

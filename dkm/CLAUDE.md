@@ -275,12 +275,31 @@ tomu neplatná YAML.
 `toYaml` je vlastní — pozor na blokové uzly v poli (pomlčka nahrazuje odsazení prvního řádku), tam se to už
 jednou rozbilo. **Import do Enterprise Architectu ověřený není.**
 
+## Duplicity (`rsDupes`, Nastavení → Duplicity)
+`findDuplicates` seskupuje podle `dupeKey` — volně (lowercase, bez diakritiky, sražené mezery)
+nebo přesně. `dupeRows` staví porovnání: systémové údaje + **sjednocení atributů celé skupiny**
+(`getAllAttrDefsForEntity` přes všechny entity), hodnoty přes `xlsxAttrVal`, řádky s rozdílem
+dostanou `.dup-diff`.
+
+**Slučuje se `bulkMerge` → `doMerge`, nikdy vlastní cestou** — jsou tam strategie konfliktů,
+přesměrování příchozích vazeb i relačních atributů. `doMerge(ents,id,strategy,after)` má
+nepovinné `after`: bez něj skočí na detail sloučené entity, s ním zůstaneš, kde jsi byl.
+
 ## Balíčky (package) — průvodce importem
 `bulkExportPackage` → `buildPackageObj` a osmikrokový průvodce importem
 (`renderPkgWizStep1`…`Step8`) s automatickým mapováním modelu (`autoMapModel`), detekcí
 konfliktů (`findEntityConflicts`), **simulací** (`simulateImport`) a zálohou před importem
 (`downloadBackupBeforeImport`). Import je destruktivní operace — zálohu ani simulaci
 nevyřazuj.
+
+**Entity si v balíčku nesou svoje `id`**, takže opakovaný import se pozná. `findEntityConflicts`
+kromě kolize počítá i `diff` (podle názvů atributů, ne podle id — mapování je věc průvodce)
+a z něj **výchozí akci**: `skip`, když je to identické, jinak `merge`. Nikdy nedávej výchozí
+`newId` — přesně tím vznikaly duplikáty při druhém importu.
+
+Akce v `applyImport`: `merge` **doplňuje, nepřepisuje** (prázdné atributy, sjednocení aspektů
+a vlastních atributů podle názvu, vazby se ve druhém průchodu deduplikují přes
+`typVazby:cíl`), `overwrite` nahrazuje, `skip` přeskočí, `newId` založí kopii.
 
 ## Filtry, pohledy, hromadné operace
 Pravidlový filtr (`evalRule`, `applyAttrFilters`, `opsForType`, `renderRuleRow`) s uloženými
@@ -325,6 +344,12 @@ ukazovaly jako text; strukturu dělej DOM prvky, ne značkami v překladu.
   novou vždy doplň i s titulkem ve tvaru `… (Alt+X, nebo X)` přes `t('keyAlt')` / `t('keyOr')`.
 - Název entity vypisuj **vždy** přes `appendEntityLabel(el, entita[, fallback])` — doplní emotikonu typu
   a název. Nikdy nepiš `el.textContent = getTitle(e)`, jinak se ikona v novém pohledu ztratí.
+- **Barvu ber jen z existujícího tokenu.** `--bg-t` **neexistuje** (plocha je `--sf`) a na pár
+  místech se přesto používá — nekopíruj to. `--dg` je v tmavém i Matrix motivu **světlá**, takže
+  se nehodí jako plocha pod bílý text; tónovaná plocha pro nebezpečí je `--dgb`. Kontrast měř,
+  neodhaduj.
+- Odebrání vazby v editaci je `.rel-x` — dřív to bylo průhledné `×` v barvě odkazu bez `title`,
+  takže ho uživatel nenašel. Ovládací prvek musí vypadat jako ovládací prvek.
 - Karta v seznamu (`renderCard`) je `<div>`, ne `<a>`: obsahuje odkazy a tlačítko samostatného okna,
   klik kamkoliv jinam otevře detail. Nové interaktivní prvky uvnitř karty proto nemusí volat
   `stopPropagation` jen kvůli navigaci — handler ignoruje `a, button, input, select, textarea`.
