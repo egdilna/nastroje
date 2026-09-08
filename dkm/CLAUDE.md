@@ -138,8 +138,30 @@ Vlastní generátor OOXML: `renderMarkdownBlocksToDocx`, `runsToParagraphXml`,
 - Obrázky: EMU 914400/palec, 96 DPI → `px * 9525`, šířka omezená na ~600 px; nestažený obrázek
   degraduje na odkaz.
 
-## Tabulkový export (`openTableExportDialog`)
-XLSX, CSV i TSV berou **tytéž sloupce z `tableColumns()` a tytéž hodnoty z `tableCellValue()`** —
+## Export dat — jedno místo (`openExportHub`)
+**Všechno, co jde z dat ven, vede jedním dialogem.** Cíle jsou v registru `EXPORT_TARGETS`
+(skupiny `EXPORT_GROUPS`); dialog sbírá **rozsah** (`exportScopeEntities`) a **cíl**. Nový cíl
+přidávej **jen sem** — nikdy jako další tlačítko do hlavičky, položku hromadných akcí ani
+záznam v paletě. Přesně tak vznikl chaos, který tenhle dialog nahradil: dvanáct ovládacích
+prvků na pěti místech, dva z nich duplicitní v paletě, export balíčku v akcích a jeho import
+v nastavení.
+
+Cíl má buď `panel(ctx,box)` (volby se kreslí rovnou v dialogu, vrací `{run}`), nebo `run(ctx)`
+plus `next:true` (naváže vlastní dialog s předvyplněným rozsahem). `whole:true` znamená, že cíl
+bere vždy celý projekt — rozsah se zamkne a napíše se to.
+
+Vstupy: tlačítko `b-exp` v hlavičce, hromadná akce `export`, rychlá paleta. Vždy týž dialog,
+liší se jen předvyplněný rozsah.
+
+**Mimo dialog zůstávají tři věci schválně:** `smartSave` (uložení projektu, ne export),
+export jedné entity v jejím detailu (`openExportDialog`) a kontext pro AI. Nepřidávej je tam.
+
+Průvodce JSON/XML se z dialogu volá s `fromHub=true` a pak **skrývá svůj krok s rozsahem** —
+jinak by se na totéž ptal dvakrát.
+
+## Tabulkový export (`tableExportPanel`)
+Panel se kreslí do dialogu Export. XLSX, CSV i TSV berou **tytéž sloupce z `tableColumns()`
+a tytéž hodnoty z `tableCellValue()`** —
 nikdy nepočítej sloupce zvlášť pro jeden formát. Liší se jen zápis (`toDelimited`, `exportTableXlsx`).
 
 Vlastní atributy se sdružují **podle názvu** (`cattr:<název>`), ne podle id — id je u nich per

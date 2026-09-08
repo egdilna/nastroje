@@ -411,7 +411,6 @@ document.documentElement.setAttribute('data-theme',v);
 <button class="btn btn-sm" id="b-load" type="button" accesskey="l"></button>
 <button class="btn btn-sm" id="b-save" type="button" accesskey="s"></button>
 <button class="btn btn-sm" id="b-clip-in" type="button"></button>
-<button class="btn btn-sm" id="b-clip-out" type="button"></button>
 <button class="btn btn-sm" id="b-exp" type="button"></button>
 <button class="btn btn-sm" id="b-imp" type="button"></button>
 <button class="btn btn-sm" id="b-set" type="button"></button>
@@ -891,6 +890,17 @@ tblSep:'Oddělovač',tblSepSemi:'Středník — sedne českému Excelu',tblSepCo
 tblDecComma:'Desetinná čárka',
 tblDecCommaHint:'Českému Excelu sedí čárka, strojovému zpracování tečka. TSV vypisuje čísla vždy s tečkou.',
 tblNoCols:'Vyber aspoň jeden sloupec.',
+expHubTitle:'Export dat',
+expTarget:'Kam to má jít',expRun:'Exportovat',
+expScopeWhole:'Tenhle cíl bere vždycky celý projekt, rozsah se na něj nevztahuje.',
+expGrpDocument:'Dokument',expGrpTable:'Tabulka',expGrpData:'Data pro stroj',expGrpGraph:'Graf',expGrpTransfer:'Přenos',
+expTgtDoc:'Dokument',expTgtDocHint:'Markdown, DOCX, tisk nebo PDF, formátovaný text do schránky. Vybereš si, které sekce entit se vypíšou.',
+expTgtTable:'Tabulka',expTgtTableHint:'XLSX pro Excel, CSV nebo TSV. S výběrem sloupců.',
+expTgtData:'Data se schématem',expTgtDataHint:'JSON + JSON Schema, nebo XML + XSD. Pro strojové zpracování a integrace.',
+expTgtGraph:'Diagram nebo graf',expTgtGraphHint:'PlantUML jako zdroj obrázku, GraphML pro Gephi, yEd a Cytoscape.',
+expTgtPkg:'Balíček pro jiný projekt',expTgtPkgHint:'Soubor .dkmpkg — vybrané entity i s kouskem modelu, který potřebují.',
+expTgtViewer:'Statický prohlížeč',expTgtViewerHint:'Jeden HTML soubor s celým projektem k prohlížení. Pro toho, kdo DKM nemá.',
+expTgtClip:'Projekt do schránky',expTgtClipHint:'Celý projekt jako JSON do schránky — rychlý přenos mezi záložkami nebo počítači.',
 graphmlFormat:'GraphML (graf)',
 graphmlHint:'PlantUML je zdroj obrázku. GraphML otevřeš v Gephi, yEd nebo Cytoscape a můžeš s grafem počítat — centralita, komunity, shluky.',
 graphmlEdgeSource:'Odkud hrana pochází',
@@ -1271,6 +1281,17 @@ tblSep:'Separator',tblSepSemi:'Semicolon — suits a localized Excel',tblSepComm
 tblDecComma:'Decimal comma',
 tblDecCommaHint:'A localized Excel wants a comma, machine processing wants a dot. TSV always writes numbers with a dot.',
 tblNoCols:'Pick at least one column.',
+expHubTitle:'Export data',
+expTarget:'Where it should go',expRun:'Export',
+expScopeWhole:'This target always takes the whole project; the scope does not apply to it.',
+expGrpDocument:'Document',expGrpTable:'Table',expGrpData:'Data for machines',expGrpGraph:'Graph',expGrpTransfer:'Transfer',
+expTgtDoc:'Document',expTgtDocHint:'Markdown, DOCX, print or PDF, formatted text to the clipboard. You pick which entity sections appear.',
+expTgtTable:'Table',expTgtTableHint:'XLSX for Excel, CSV or TSV. With a column picker.',
+expTgtData:'Data with a schema',expTgtDataHint:'JSON + JSON Schema, or XML + XSD. For machine processing and integrations.',
+expTgtGraph:'Diagram or graph',expTgtGraphHint:'PlantUML as the source of a picture, GraphML for Gephi, yEd and Cytoscape.',
+expTgtPkg:'Package for another project',expTgtPkgHint:'A .dkmpkg file — the selected entities plus the slice of the model they need.',
+expTgtViewer:'Static viewer',expTgtViewerHint:'A single HTML file with the whole project to browse. For someone who does not have DKM.',
+expTgtClip:'Project to the clipboard',expTgtClipHint:'The whole project as JSON on the clipboard — a quick move between tabs or computers.',
 graphmlFormat:'GraphML (graph)',
 graphmlHint:'PlantUML is the source of a picture. GraphML opens in Gephi, yEd or Cytoscape, where you can actually compute on the graph — centrality, communities, clusters.',
 graphmlEdgeSource:'Where the edge comes from',
@@ -2228,64 +2249,52 @@ toast('XLSX ✓ ('+cfg.entities.length+')');
 }).catch(err=>{toast(t('xlsxFail')+': '+err.message);dbg('XLSX export failed: '+err.message,true)});
 }
 
-/* ---------- Dialog ---------- */
-
-function openTableExportDialog(preselected){
-const body=document.createElement('div');
-const cfg={format:'xlsx',sep:';',decimalComma:true,sheetPerType:false,onlyFilled:false};
-/* Když je zobrazený seznam prázdný, výchozí „aktuální seznam" by dialog nechal bez sloupců. */
-let scope=(preselected&&preselected.length)?'selection':(getList().length?'view':'all');
-let cols=[],chosen=new Set();
-
-const fScope=document.createElement('div');fScope.className='fld';
-const lScope=document.createElement('label');lScope.textContent=t('jsonScope');fScope.appendChild(lScope);
-const selScope=document.createElement('select');
-const so=[];
-if(preselected&&preselected.length)so.push(['selection',t('jsonScopeSelected',{n:preselected.length})]);
-so.push(['view',t('jsonScopeFiltered')],['all',t('jsonScopeAll')]);
-so.forEach(([v,l])=>{const o=document.createElement('option');o.value=v;o.textContent=l;if(v===scope)o.selected=true;selScope.appendChild(o)});
-fScope.appendChild(selScope);body.appendChild(fScope);
+/* ---------- Panel tabulkového exportu (kreslí se do společného dialogu) ---------- */
+function tableExportPanel(ctx,box){
+const list=ctx.entities;
+const cfg={format:'xlsx',sep:';',decimalComma:true,sheetPerType:false};
+const cols=tableColumns(list);
+const chosen=new Set(cols.filter(c=>c.group!=='meta'||c.id==='__updated').map(c=>c.id));
 
 const fFmt=document.createElement('div');fFmt.className='fld';
-const lFmt=document.createElement('label');lFmt.textContent=t('tblFormat');fFmt.appendChild(lFmt);
-const selFmt=document.createElement('select');
+const lFmt=document.createElement('label');lFmt.htmlFor='tbl-fmt';lFmt.textContent=t('tblFormat');fFmt.appendChild(lFmt);
+const selFmt=document.createElement('select');selFmt.id='tbl-fmt';
 TABLE_FORMATS.forEach(f=>{const o=document.createElement('option');o.value=f.id;o.textContent=t(f.label);selFmt.appendChild(o)});
-fFmt.appendChild(selFmt);body.appendChild(fFmt);
+fFmt.appendChild(selFmt);box.appendChild(fFmt);
 
-/* Volby závislé na formátu */
-const fOpt=document.createElement('div');fOpt.className='fld';body.appendChild(fOpt);
+const fSheet=document.createElement('div');fSheet.className='fld';
+const lSheet=document.createElement('label');lSheet.className='cb';
+const iSheet=document.createElement('input');iSheet.type='checkbox';
+iSheet.addEventListener('change',()=>{cfg.sheetPerType=iSheet.checked});
+lSheet.appendChild(iSheet);const sSheet=document.createElement('span');sSheet.textContent=t('tblSheetPerType');lSheet.appendChild(sSheet);
+fSheet.appendChild(lSheet);box.appendChild(fSheet);
+
 const fSep=document.createElement('div');fSep.className='fld';
-const lSep=document.createElement('label');lSep.textContent=t('tblSep');fSep.appendChild(lSep);
-const selSep=document.createElement('select');
+const lSep=document.createElement('label');lSep.htmlFor='tbl-sep';lSep.textContent=t('tblSep');fSep.appendChild(lSep);
+const selSep=document.createElement('select');selSep.id='tbl-sep';
 [[';',t('tblSepSemi')],[',',t('tblSepComma')]].forEach(([v,l])=>{const o=document.createElement('option');o.value=v;o.textContent=l;selSep.appendChild(o)});
 selSep.addEventListener('change',()=>{cfg.sep=selSep.value});
 fSep.appendChild(selSep);
-const cbDec=document.createElement('label');cbDec.className='cb';
+const lDec=document.createElement('label');lDec.className='cb';
 const iDec=document.createElement('input');iDec.type='checkbox';iDec.checked=true;
 iDec.addEventListener('change',()=>{cfg.decimalComma=iDec.checked});
-cbDec.appendChild(iDec);const sDec=document.createElement('span');sDec.textContent=t('tblDecComma');cbDec.appendChild(sDec);
-fSep.appendChild(cbDec);
+lDec.appendChild(iDec);const sDec=document.createElement('span');sDec.textContent=t('tblDecComma');lDec.appendChild(sDec);
+fSep.appendChild(lDec);
 const hDec=document.createElement('small');hDec.className='fhint';hDec.textContent=t('tblDecCommaHint');fSep.appendChild(hDec);
-body.appendChild(fSep);
-const cbSheet=document.createElement('label');cbSheet.className='cb';
-const iSheet=document.createElement('input');iSheet.type='checkbox';
-iSheet.addEventListener('change',()=>{cfg.sheetPerType=iSheet.checked});
-cbSheet.appendChild(iSheet);const sSheet=document.createElement('span');sSheet.textContent=t('tblSheetPerType');cbSheet.appendChild(sSheet);
-fOpt.appendChild(cbSheet);
+box.appendChild(fSep);
 
-/* Sloupce */
 const fCols=document.createElement('div');fCols.className='fld';
 const hCols=document.createElement('h4');hCols.style.margin='.2rem 0';fCols.appendChild(hCols);
 const bar=document.createElement('div');bar.style.display='flex';bar.style.gap='.4rem';bar.style.margin='.2rem 0 .4rem';bar.style.flexWrap='wrap';
 const bAll=document.createElement('button');bAll.type='button';bAll.className='btn btn-sm';bAll.textContent=t('expSelectAll');
 const bNone=document.createElement('button');bNone.type='button';bNone.className='btn btn-sm';bNone.textContent=t('expSelectNone');
-const cbFilled=document.createElement('label');cbFilled.className='cb';
+const lFilled=document.createElement('label');lFilled.className='cb';
 const iFilled=document.createElement('input');iFilled.type='checkbox';
-cbFilled.appendChild(iFilled);const sFilled=document.createElement('span');sFilled.textContent=t('tblOnlyFilled');cbFilled.appendChild(sFilled);
-bar.appendChild(bAll);bar.appendChild(bNone);bar.appendChild(cbFilled);
+lFilled.appendChild(iFilled);const sFilled=document.createElement('span');sFilled.textContent=t('tblOnlyFilled');lFilled.appendChild(sFilled);
+bar.appendChild(bAll);bar.appendChild(bNone);bar.appendChild(lFilled);
 fCols.appendChild(bar);
-const colBox=document.createElement('div');colBox.style.maxHeight='16rem';colBox.style.overflow='auto';
-fCols.appendChild(colBox);body.appendChild(fCols);
+const colBox=document.createElement('div');colBox.style.maxHeight='14rem';colBox.style.overflow='auto';
+fCols.appendChild(colBox);box.appendChild(fCols);
 
 function groupLabel(g){
 if(g==='sys')return t('tblGroupSys');
@@ -2295,61 +2304,138 @@ if(g.indexOf('type:')===0){const ty=findType(g.slice(5));return t('type')+': '+(
 if(g.indexOf('aspect:')===0){const a=findAspect(g.slice(7));return t('detailAspects')+': ◎ '+(a?a.name:'?')}
 return g;
 }
+function count(){hCols.textContent=t('tblColumns')+' ('+chosen.size+'/'+cols.length+')'}
 function renderCols(){
 colBox.textContent='';
-const total=collect().length;
-hCols.textContent=t('tblColumns')+' ('+chosen.size+'/'+cols.length+')';
-const order=[];
-cols.forEach(c=>{if(order.indexOf(c.group)<0)order.push(c.group)});
+const order=[];cols.forEach(c=>{if(order.indexOf(c.group)<0)order.push(c.group)});
 order.forEach(g=>{
 const items=cols.filter(c=>c.group===g&&(!iFilled.checked||c.filled>0));
 if(!items.length)return;
-const h=document.createElement('div');h.className='mdl-grp';
-const hh=document.createElement('h4');hh.textContent=groupLabel(g);h.appendChild(hh);
+const grp=document.createElement('div');grp.className='mdl-grp';
+const h=document.createElement('h4');h.textContent=groupLabel(g);grp.appendChild(h);
 items.forEach(c=>{
 const l=document.createElement('label');l.className='cb';l.style.display='flex';l.style.gap='.4rem';l.style.alignItems='center';
 const cb=document.createElement('input');cb.type='checkbox';cb.checked=chosen.has(c.id);
-cb.addEventListener('change',()=>{if(cb.checked)chosen.add(c.id);else chosen.delete(c.id);hCols.textContent=t('tblColumns')+' ('+chosen.size+'/'+cols.length+')'});
+cb.addEventListener('change',()=>{if(cb.checked)chosen.add(c.id);else chosen.delete(c.id);count()});
 l.appendChild(cb);
 const sp=document.createElement('span');sp.textContent=c.label;l.appendChild(sp);
-const n=document.createElement('span');n.className='mdl-note';n.textContent=t('bulkExpFilled',{n:c.filled,total:total});l.appendChild(n);
-h.appendChild(l);
+const n=document.createElement('span');n.className='mdl-note';n.textContent=t('bulkExpFilled',{n:c.filled,total:list.length});l.appendChild(n);
+grp.appendChild(l);
 });
-colBox.appendChild(h);
+colBox.appendChild(grp);
 });
-}
-function collect(){
-if(scope==='selection'&&preselected)return preselected.slice();
-if(scope==='all')return state.data.entities.filter(e=>!e.archived);
-return getList();
-}
-function rebuild(){
-cols=tableColumns(collect());
-chosen=new Set(cols.filter(c=>c.group!=='meta'||c.id==='__updated').map(c=>c.id));
-renderCols();
+count();
 }
 function syncFmt(){
 cfg.format=selFmt.value;
-fSep.style.display=(cfg.format==='csv')?'':'none';
-cbSheet.style.display=(cfg.format==='xlsx')?'':'none';
+fSep.style.display=cfg.format==='csv'?'':'none';
+fSheet.style.display=cfg.format==='xlsx'?'':'none';
 }
-selScope.addEventListener('change',()=>{scope=selScope.value;rebuild()});
 selFmt.addEventListener('change',syncFmt);
 iFilled.addEventListener('change',renderCols);
 bAll.addEventListener('click',()=>{cols.forEach(c=>{if(!iFilled.checked||c.filled>0)chosen.add(c.id)});renderCols()});
 bNone.addEventListener('click',()=>{chosen.clear();renderCols()});
-rebuild();syncFmt();
+renderCols();syncFmt();
 
-showDialog('📊 '+t('tblExportTitle'),body,[
-{label:t('cancel'),action:closeDialog},
-{label:'📥 '+t('jsonDownload'),primary:true,action:()=>{
-const list=collect();
+return{run:()=>{
 const ordered=cols.filter(c=>chosen.has(c.id));
-if(!ordered.length){toast(t('tblNoCols'));return}
-closeDialog();
+if(!ordered.length){toast(t('tblNoCols'));return false}
 runTableExport(Object.assign({},cfg,{entities:list,columns:ordered}));
+return true;
+}};
+}
+
+/* ============================================================
+   EXPORT — jedno místo pro všechno, co jde z dat ven.
+   Dialog sbírá rozsah a cíl. Tabulka má volby rovnou tady;
+   cíle s bohatším nastavením si otevřou svůj dialog s už
+   předvyplněným rozsahem. Nový cíl přidávej do EXPORT_TARGETS,
+   nikdy ne jako další tlačítko do hlavičky.
+   ============================================================ */
+
+function exportScopeEntities(scope,preselected){
+if(scope==='selection'&&preselected&&preselected.length)return preselected.slice();
+if(scope==='all')return state.data.entities.filter(e=>!e.archived);
+return getList();
+}
+
+const EXPORT_TARGETS=[
+{id:'doc',group:'document',label:'expTgtDoc',hint:'expTgtDocHint',next:true,run:ctx=>openBulkExportDialog(ctx.entities)},
+{id:'table',group:'table',label:'expTgtTable',hint:'expTgtTableHint',panel:tableExportPanel},
+{id:'data',group:'data',label:'expTgtData',hint:'expTgtDataHint',next:true,run:ctx=>openJsonExportDialog(ctx.entities,true)},
+{id:'graph',group:'graph',label:'expTgtGraph',hint:'expTgtGraphHint',next:true,run:ctx=>openPlantumlDialog(ctx.entities)},
+{id:'pkg',group:'transfer',label:'expTgtPkg',hint:'expTgtPkgHint',next:true,run:ctx=>bulkExportPackage(ctx.entities)},
+{id:'viewer',group:'transfer',label:'expTgtViewer',hint:'expTgtViewerHint',whole:true,run:()=>generateStaticViewer()},
+{id:'clip',group:'transfer',label:'expTgtClip',hint:'expTgtClipHint',whole:true,run:()=>copyProjectToClipboard()}
+];
+const EXPORT_GROUPS=[['document','expGrpDocument'],['table','expGrpTable'],['data','expGrpData'],['graph','expGrpGraph'],['transfer','expGrpTransfer']];
+
+function openExportHub(preselected){
+const body=document.createElement('div');
+const has=!!(preselected&&preselected.length);
+let target=EXPORT_TARGETS[0];
+let panel=null;
+
+const fScope=document.createElement('div');fScope.className='fld';
+const lScope=document.createElement('label');lScope.htmlFor='exp-scope';lScope.textContent=t('jsonScope');fScope.appendChild(lScope);
+const selScope=document.createElement('select');selScope.id='exp-scope';
+const def=has?'selection':(getList().length?'view':'all');
+const so=[];
+if(has)so.push(['selection',t('jsonScopeSelected',{n:preselected.length})]);
+so.push(['view',t('jsonScopeFiltered')],['all',t('jsonScopeAll')]);
+so.forEach(([v,l])=>{const o=document.createElement('option');o.value=v;o.textContent=l;if(v===def)o.selected=true;selScope.appendChild(o)});
+fScope.appendChild(selScope);
+const nScope=document.createElement('small');nScope.className='fhint';fScope.appendChild(nScope);
+body.appendChild(fScope);
+
+const tgtWrap=document.createElement('div');tgtWrap.className='fld';
+const lTgt=document.createElement('label');lTgt.textContent=t('expTarget');tgtWrap.appendChild(lTgt);
+EXPORT_GROUPS.forEach(([g,lbl])=>{
+const items=EXPORT_TARGETS.filter(x=>x.group===g);
+if(!items.length)return;
+const grp=document.createElement('div');grp.className='mdl-grp';
+const h=document.createElement('h4');h.textContent=t(lbl);grp.appendChild(h);
+items.forEach(x=>{
+const r=document.createElement('label');r.className='cb';r.style.display='flex';r.style.gap='.4rem';r.style.alignItems='flex-start';
+const inp=document.createElement('input');inp.type='radio';inp.name='exp-target';inp.value=x.id;inp.style.marginTop='.25rem';
+if(x===target)inp.checked=true;
+inp.addEventListener('change',()=>{if(inp.checked){target=x;refresh()}});
+r.appendChild(inp);
+const sp=document.createElement('span');
+const b=document.createElement('b');b.textContent=t(x.label);sp.appendChild(b);
+const hh=document.createElement('span');hh.className='mdl-note';hh.style.display='block';hh.textContent=t(x.hint);sp.appendChild(hh);
+r.appendChild(sp);grp.appendChild(r);
+});
+tgtWrap.appendChild(grp);
+});
+body.appendChild(tgtWrap);
+
+const optBox=document.createElement('div');body.appendChild(optBox);
+
+function primaryBtn(){const f=document.getElementById('dlg-foot');return f?f.lastElementChild:null}
+function refresh(){
+optBox.textContent='';panel=null;
+selScope.disabled=!!target.whole;
+nScope.textContent=target.whole?t('expScopeWhole'):'';
+if(target.panel)panel=target.panel({entities:exportScopeEntities(selScope.value,preselected)},optBox);
+const b=primaryBtn();
+if(b)b.textContent=target.next?(t('jsonNext')+' →'):('📥 '+t('expRun'));
+}
+selScope.addEventListener('change',refresh);
+
+showDialog('📤 '+t('expHubTitle'),body,[
+{label:t('cancel'),action:closeDialog},
+{label:'📥 '+t('expRun'),primary:true,action:()=>{
+if(!target.whole){
+const ents=exportScopeEntities(selScope.value,preselected);
+if(!ents.length){toast(t('emptyList'));return}
+if(panel){if(panel.run()===false)return;closeDialog();return}
+closeDialog();target.run({entities:ents});return;
+}
+closeDialog();target.run({entities:[]});
 }}
 ]);
+refresh();
 }
 
 function xlsxAttrVal(a,v){
@@ -2808,10 +2894,6 @@ const clipIn=document.getElementById('b-clip-in');
 clipIn.textContent='📋⬇';
 clipIn.title=t('clipLoad')+' (Ctrl+Shift+O)';
 clipIn.setAttribute('aria-label',t('clipLoad'));
-const clipOut=document.getElementById('b-clip-out');
-clipOut.textContent='📋⬆';
-clipOut.title=t('clipSave')+' (Ctrl+Shift+S)';
-clipOut.setAttribute('aria-label',t('clipSave'));
 const sb=document.getElementById('b-save');
 const ghMode=state.data.ghPath&&parseGhPath(state.data.ghPath)&&ghToken();
 sb.textContent=(ghMode?'⬆ ':'')+t('btnSave');
@@ -3433,10 +3515,7 @@ out.push({id:'setAttr',label:'✎ '+t('bulkSetAttr')});
 out.push({id:'clearAttr',label:'⌫ '+t('bulkClearAttr')});
 out.push({id:'addRelation',label:'↔ '+t('bulkAddRelation')});
 out.push({id:'merge',label:'⇢ '+t('bulkMerge')});
-out.push({id:'plantuml',label:'🎨 '+t('bulkPlantuml')});
-out.push({id:'exportPkg',label:'📦 '+t('bulkExportPkg')});
-out.push({id:'exportJson',label:'{ } '+t('bulkExportJson')});
-out.push({id:'exportDoc',label:'🖨 '+t('bulkExportDoc')});
+out.push({id:'export',label:'📤 '+t('expHubTitle')});
 out.push({id:'ai',label:'🤖 '+t('aiAsk')});
 if(state.view.tab==='archive')out.push({id:'restore',label:'♻ '+t('restore')});
 else{
@@ -4723,10 +4802,10 @@ case'setAttr':bulkSetAttr(ents,false);break;
 case'clearAttr':bulkSetAttr(ents,true);break;
 case'addRelation':bulkAddRelation(ents);break;
 case'merge':bulkMerge(ents);break;
-case'plantuml':openPlantumlDialog(ents);break;
-case'exportPkg':bulkExportPackage(ents);break;
-case'exportJson':openJsonExportDialog(ents);break;
-case'exportDoc':openBulkExportDialog(ents);break;
+case'export':openExportHub(ents);break;
+
+
+
 case'ai':openAiDialog(ents);break;
 case'toInbox':bulkSimple(ents,e=>{e.inInbox=true});break;
 case'fromInbox':bulkSimple(ents,e=>{e.inInbox=false});break;
@@ -7255,12 +7334,12 @@ out.push({icon:'📂',label:t('btnLoad'),sublabel:t('cmdCatAction'),kbd:'Alt+L',
 out.push({icon:'⚙',label:t('advFilter'),sublabel:t('cmdCatAction'),kbd:'Ctrl+F',score:0,action:()=>{if(state.view.name!=='list')navigateTo({name:'list',tab:'all'});state.view.advFilterOpen=true;render()}});
 out.push({icon:'📋',label:t('clipLoad'),sublabel:t('cmdCatAction'),kbd:'Ctrl+Shift+O',score:0,action:loadProjectFromClipboard});
 out.push({icon:'📋',label:t('clipSave'),sublabel:t('cmdCatAction'),kbd:'Ctrl+Shift+S',score:0,action:copyProjectToClipboard});
-out.push({icon:'{ }',label:t('jsonExportTitle'),sublabel:t('cmdCatAction'),score:0,action:()=>openJsonExportDialog(null)});
+out.push({icon:'📤',label:t('expHubTitle'),sublabel:t('cmdCatAction'),score:0,action:()=>openExportHub(bulkSelectedEntities())});
 out.push({icon:'🗂',label:t('settingsModel'),sublabel:t('cmdCatNav'),score:0,action:()=>navigateTo({name:'settings',settingsTab:'model'})});
 out.push({icon:'🤖',label:t('settingsAi'),sublabel:t('cmdCatNav'),score:0,action:()=>navigateTo({name:'settings',settingsTab:'ai'})});
 out.push({icon:'🌐',label:t('urlLoadBtn'),sublabel:t('cmdCatAction'),score:0,action:()=>{const v=prompt(t('urlSection'));if(!v||!v.trim())return;if(state.dirty&&!confirm(t('confirmDiscardDirty')))return;loadFromUrl(v.trim()).catch(()=>{})}});
 THEMES.forEach(v=>out.push({icon:'🎨',label:t('themeLabel')+': '+t(THEME_LBL[v]),sublabel:t('cmdCatAction'),score:0,action:()=>{setTheme(v);render()}}));
-out.push({icon:'🎨',label:t('plantumlTitle'),sublabel:t('cmdCatAction'),score:0,action:()=>openPlantumlDialog()});
+
 out.push({icon:'💬',label:t('viewAllComments'),sublabel:t('cmdCatNav'),score:0,action:()=>navigateTo({name:'allComments'})});
 /* Types → jump to their tab */
 state.data.entityTypes.forEach(ty=>out.push({icon:ty.icon||'',label:ty.name,sublabel:t('cmdCatType'),score:0,action:()=>navigateTo({name:'list',tab:ty.id})}));
@@ -9521,7 +9600,7 @@ const sec3=document.createElement('section');sec3.className='dsec';
 const sh3=document.createElement('h3');sh3.textContent=t('viewerGen');sec3.appendChild(sh3);
 const dh3=document.createElement('p');dh3.style.color='var(--mu)';dh3.style.fontSize='.9rem';dh3.textContent=t('viewerGenDesc');sec3.appendChild(dh3);
 const gb=document.createElement('button');gb.className='btn btn-pri';gb.type='button';gb.textContent='⬇ '+t('viewerGenBtn');
-gb.addEventListener('click',generateStaticViewer);
+gb.addEventListener('click',()=>openExportHub(null));
 sec3.appendChild(gb);
 w.appendChild(sec3);
 
@@ -10583,10 +10662,11 @@ document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeOb
 
 let jsonWiz=null;
 
-function openJsonExportDialog(preset){
+function openJsonExportDialog(preset,fromHub){
 const cfg=defaultJsonExportCfg();
 if(preset&&preset.length)cfg.scope='selected';
-jsonWiz={step:1,cfg:cfg,preset:preset||null,res:null};
+/* Rozsah už padl ve společném dialogu Export — neptej se na něj podruhé. */
+jsonWiz={step:1,cfg:cfg,preset:preset||null,res:null,fromHub:!!fromHub};
 renderJsonWiz();
 }
 function jsonWizFld(labelText){
@@ -10608,7 +10688,8 @@ function renderJsonWiz(){
 const w=jsonWiz;if(!w)return;
 const body=document.createElement('div');
 const nav=document.createElement('p');nav.style.color='var(--mu)';nav.style.fontSize='.85rem';nav.style.margin='0 0 .6rem';
-nav.textContent=t('jsonStepOf',{n:w.step,total:4})+' · '+t('jsonStep'+w.step);
+/* Když rozsah padl už v dialogu Export, krok 1 je jen o typech. */
+nav.textContent=t('jsonStepOf',{n:w.step,total:4})+' · '+((w.step===1&&w.fromHub)?t('jsonTypes'):t('jsonStep'+w.step));
 body.appendChild(nav);
 const buttons=[];
 if(w.step===1)jsonWizStep1(body,buttons);
@@ -10637,7 +10718,9 @@ profs.forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textCo
 ps.addEventListener('change',()=>{const p=profs.find(x=>x.id===ps.value);if(!p)return;jsonWiz.cfg=Object.assign(defaultJsonExportCfg(),p.cfg,{keyOverrides:Object.assign({},p.cfg.keyOverrides||{})});renderJsonWiz()});
 pf.appendChild(ps);body.appendChild(pf);
 }
+const skipScope=jsonWiz.fromHub;
 const sf=jsonWizFld(t('jsonScope'));
+if(skipScope)sf.style.display='none';
 const opts=[['filtered',t('jsonScopeFiltered')],['all',t('jsonScopeAll')]];
 if(jsonWiz.preset&&jsonWiz.preset.length)opts.unshift(['selected',t('jsonScopeSelected',{n:jsonWiz.preset.length})]);
 opts.forEach(([v,l])=>{
@@ -10912,10 +10995,9 @@ function setupEvents(){
 document.getElementById('b-load').addEventListener('click',()=>{document.getElementById('fin').click()});
 document.getElementById('ind').addEventListener('click',openDiffDialog);
 document.getElementById('b-clip-in').addEventListener('click',loadProjectFromClipboard);
-document.getElementById('b-clip-out').addEventListener('click',copyProjectToClipboard);
 document.getElementById('fin').addEventListener('change',ev=>{const f=ev.target.files&&ev.target.files[0];if(!f)return;loadFile(f);ev.target.value=''});
 document.getElementById('b-save').addEventListener('click',smartSave);
-document.getElementById('b-exp').addEventListener('click',()=>openTableExportDialog(bulkSelectedEntities()));
+document.getElementById('b-exp').addEventListener('click',()=>openExportHub(bulkSelectedEntities()));
 document.getElementById('b-imp').addEventListener('click',openImportTSVDialog);
 document.getElementById('b-set').addEventListener('click',()=>navigateTo({name:'settings',settingsTab:state.view.settingsTab||'project'}));
 initCustomizeMenu();

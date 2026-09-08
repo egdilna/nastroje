@@ -167,7 +167,7 @@ Always on top. Contains:
 - **Load** (Alt+L) — opens a `.dkmdata` file as the current project
 - **Save** (Ctrl+S) — saves the current project (to disk or GitHub, per configuration)
 - **📋⬇ Load from clipboard** (Ctrl+Shift+O) — replaces the project with data from clipboard (with confirmation)
-- **📋⬆ Copy to clipboard** (Ctrl+Shift+S) — copies the whole project as JSON to clipboard
+- **📤 Export** — opens the Export data dialog: scope, target and format in one place (ch. 23)
 - **Export** — XLSX export of currently filtered entities
 - **Import TSV** — loads entities from TSV / CSV / pasted clipboard
 - **Settings** — project, types, aspects, relations, lists, views, general
@@ -812,7 +812,7 @@ Press **Ctrl+P** (Cmd+P on Mac) → a modal with a text field.
 - **Saved views**
 - **Aspects** (click → aspect tab)
 - **Entity types** (click → type tab)
-- **Actions**: New entity, Settings, Save, Load, **Load from URL**, Advanced filters, Clipboard IO, PlantUML export, **Export data to JSON**, **Theme (all four)**, New panel, All comments, Inbox / All / Archive
+- **Actions**: New entity, Settings, Save, Load, **Load from URL**, Advanced filters, load from clipboard, **📤 Export data**, **Theme (all four)**, New panel, All comments, Inbox / All / Archive
 
 ### 19.3 Fuzzy match
 
@@ -927,7 +927,7 @@ Save writes to a file, not to GitHub.
 
 ### 21.7 Copy to clipboard
 
-**📋⬆ Copy to clipboard** in header (Ctrl+Shift+S). Copies the whole project as JSON. Useful for quick transfer to another tab or another app.
+**Ctrl+Shift+S**, or the **Project to the clipboard** target in the **📤 Export data** dialog. Copies the whole project as JSON. Useful for quick transfer to another tab or another app.
 
 ### 21.8 Load from clipboard
 
@@ -1203,14 +1203,9 @@ attributes; when it is not there, the column is dropped.
 
 ### 25.3 Diagram and graph — PlantUML and GraphML
 
-Accessible via:
+In the **📤 Export data** dialog (ch. 23) pick the **Diagram or graph** target. A dialog follows with:
 
-- **Command palette (Ctrl+P)** → "PlantUML export" action
-- **Bulk action** → "🎨 PlantUML diagram" (in selection mode)
-
-Dialog:
-
-- **Scope**: current list, selection (bulk mode), all, type, aspect
+- **Scope**: current list, selection, all, type, aspect
 - **Style**: Class diagram (classes with attributes), Component, Use case
 - **Options**: include attributes as class fields, include attribute-based relations (dashed lines), include external targets outside scope (gray)
 - **Format**: PlantUML, or **GraphML**
@@ -1252,8 +1247,8 @@ The export is **one-way**. For moving data between DKM projects use packages (ch
 ### 26.2 Where to start it
 
 - the **`{ }`** button in the list toolbar (exports the currently displayed list by filters)
-- the bulk action **`{ }` Export to data JSON** over selected entities
-- command palette (Ctrl+P) → *Export data to JSON*
+In the **📤 Export data** dialog (ch. 23) pick the **Data with a schema** target. The scope was
+already chosen there, so the wizard does not ask again and starts with the type selection.
 
 ### 26.3 The wizard
 
@@ -1377,7 +1372,9 @@ DKM can generate a **static HTML viewer** of project data — a single file you 
 
 ### 27.1 Generating
 
-**Settings → Project → Static viewer**. Click → downloads a file with embedded project data.
+In the **📤 Export data** dialog (ch. 23) pick the **Static viewer** target. A file with the
+embedded project data is downloaded. It always takes the whole project; the scope does not
+apply to it. **Settings → Project** has a shortcut to the same thing.
 
 The static viewer has:
 
