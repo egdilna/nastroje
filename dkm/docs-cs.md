@@ -1436,12 +1436,17 @@ Entity si v balíčku **nesou svoje ID**, takže opakovaný import týchž dat j
 *Konflikty* vypíše každou takovou entitu a u ní, **co se liší** proti tomu, co už v projektu
 je — nebo že je beze změny.
 
-Podle toho se předvyplní akce:
+Podle toho se předvyplní akce — a **liší se to podle režimu průvodce**:
 
-| Situace | Výchozí akce |
-|---|---|
-| V projektu je totéž | **Přeskočit** — není co importovat |
-| Něco se liší | **Doplnit do existující** |
+| Situace | Easy | Podrobný |
+|---|---|---|
+| V projektu je totéž | Přeskočit | Přeskočit |
+| Něco se liší | **Přepsat** — vyhrává balíček | **Doplnit do existující** |
+
+Easy krok s konflikty vůbec neukazuje, takže tam platí, co člověk čeká: **data z balíčku
+vyhrávají**. Podrobný režim ti je vypíše a nechá rozhodnout, proto je tam opatrnější výchozí
+volba, která tvoje úpravy nepřepíše. Entity, které jsou úplně stejné, se přeskočí v obou
+režimech — přepisovat je čím, když je to totéž, by jen zbytečně změnilo datum úpravy.
 
 Nabízené akce:
 
@@ -1452,6 +1457,15 @@ Nabízené akce:
 - **🆕 Vytvořit novou** — vznikne kopie s novým ID. Použij, jen když opravdu chceš dva záznamy.
 
 Nahoře je i **Nastavit všem najednou**, ať u velkého balíčku neklikáš po jedné.
+
+#### Balíček z cizího projektu
+
+Když balíček nepochází z tohoto projektu, entity mají jiná ID a shoda podle ID nic nenajde —
+všechno by se naimportovalo jako nové. Pro ten případ je v podrobném režimu zaškrtávátko
+**Spárovat i podle názvu, když nesedí ID**. Páruje na entitu se shodným názvem (bez ohledu na
+velikost písmen a diakritiku) a u takové dvojice to i napíše. **Nejednoznačné názvy se
+přeskočí** — když je v projektu „Jan" dvakrát, nemá průvodce jak poznat, který z nich je ten
+pravý, a raději nespáruje nic. V easy režimu se podle názvu nepáruje.
 
 Klik na Import provede dvouprůchod:
 
