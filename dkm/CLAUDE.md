@@ -352,6 +352,17 @@ ukazovaly jako text; strukturu dělej DOM prvky, ne značkami v překladu.
 - Vedle nich běží **přístupové klávesy** (`accesskey`): L a S v hlavičce, N na tlačítku nové entity,
   A na záložce „Vše", B na tlačítku Zpět, R u přidání vazby, U u uložení editace. Fungují i v polích —
   novou vždy doplň i s titulkem ve tvaru `… (Alt+X, nebo X)` přes `t('keyAlt')` / `t('keyOr')`.
+- **Každý ovládací prvek musí mít jméno a `label[for]` musí na něco ukazovat.** Nedefinované
+  `for` je horší než žádný label — pole pak nemá jméno vůbec. Nesedělo to u vazby, ano/ne
+  a výběru bez číselníku (ty nevyrábějí jeden prvek s předaným `lid`), proto `buildField`
+  visící `for` odstraní a jméno nese skupina (`role=group` / `radiogroup` s `aria-label`).
+  Kontrola je skript: projdi pohledy a dialogy a vypiš prvky bez přístupného jména.
+- **Skupina prvků potřebuje jméno na každém prvku.** U vazby by odečítač jinak řekl jen
+  „Filtr typu" a uživatel netuší, který atribut vyplňuje — proto `buildEntitySelector` bere
+  `opts.label` a předřazuje ho do `aria-label` všech svých prvků.
+- **Když překreslíš kus DOMu, focus v něm zemře a spadne na `<body>`.** Po odebrání křížkem
+  proto focus vždy někam pošli (další křížek, jinak seznam nebo tlačítko). Platí pro
+  `refreshCur` i `rebuildRels`.
 - Název entity vypisuj **vždy** přes `appendEntityLabel(el, entita[, fallback])` — doplní emotikonu typu
   a název. Nikdy nepiš `el.textContent = getTitle(e)`, jinak se ikona v novém pohledu ztratí.
 - **Barvu ber jen z existujícího tokenu a ověř, že token existuje.** Nedefinovaný token v `var()`
