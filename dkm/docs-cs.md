@@ -412,6 +412,10 @@ V detailu entity → **+ Přidat vazbu** → dialog:
 
 Vazba se okamžitě zobrazí v sekci Vazby.
 
+**Smazání vazby:** v režimu úprav je za názvem navázané entity kolečko **×**. Klik ji odebere
+z formuláře; do dat se to propíše **až uložením entity**. Ze sekce *Odkazuje sem* mazat nejde —
+vazba patří té entitě, ze které vede, tak ji smaž tam.
+
 ### 9.3 Zpětné odkazy („Odkazuje sem")
 
 Sekce **Odkazuje sem** u entity **automaticky zahrnuje tři typy odkazů**:
@@ -1426,10 +1430,34 @@ Stáhne se `.dkmpkg`.
 - Preview změn
 - Backup před importem (checkbox default zapnutý — stáhne se aktuální projekt jako `.dkmdata` před importem)
 
-Klik na Import provede two-pass:
+#### Když už entita v projektu je
 
-1. Entity se vytvoří s novými ID
-2. Vazby a relační atributy se přemapují na nová ID
+Entity si v balíčku **nesou svoje ID**, takže opakovaný import týchž dat je pozná. Krok
+*Konflikty* vypíše každou takovou entitu a u ní, **co se liší** proti tomu, co už v projektu
+je — nebo že je beze změny.
+
+Podle toho se předvyplní akce:
+
+| Situace | Výchozí akce |
+|---|---|
+| V projektu je totéž | **Přeskočit** — není co importovat |
+| Něco se liší | **Doplnit do existující** |
+
+Nabízené akce:
+
+- **⊕ Doplnit do existující** — entita zůstane, jak je. Doplní se **jen to, co v ní chybí**:
+  prázdné atributy, chybějící aspekty, vazby, které tam ještě nejsou. Tvoje úpravy zůstanou.
+- **♻ Přepsat** — obsah z balíčku nahradí to, co v projektu je
+- **❌ Přeskočit** — entita se neimportuje vůbec
+- **🆕 Vytvořit novou** — vznikne kopie s novým ID. Použij, jen když opravdu chceš dva záznamy.
+
+Nahoře je i **Nastavit všem najednou**, ať u velkého balíčku neklikáš po jedné.
+
+Klik na Import provede dvouprůchod:
+
+1. Entity se založí, doplní nebo přepíšou podle zvolené akce
+2. Vazby a relační atributy se přemapují na cílová ID; při doplňování se **tatáž vazba
+   nezaloží podruhé**
 
 ---
 
@@ -1483,7 +1511,28 @@ Poskytovatel, API klíč a model pro AI asistenta — viz kap. 35.2.
 
 Přehled datového modelu a jeho export do standardních formátů — viz kap. 36.
 
-### 29.11 Obecné
+### 29.11 Duplicity
+
+Najde entity, které mají **stejný název**, ukáže je vedle sebe a nabídne řešení.
+
+**Shoda názvu** — buď volná (výchozí: nezáleží na velikosti písmen, diakritice ani mezerách
+navíc, takže „Praha", „praha" i „Praha " jsou totéž), nebo přesná znak po znaku. U každé
+skupiny je vidět, o který případ jde.
+
+**Zaškrtávátka** — hledat jen v rámci jednoho typu, zahrnout archiv, ukázat i řádky, které
+jsou u všech prázdné.
+
+**Porovnání** je tabulka: řádky jsou údaje, sloupce jednotlivé entity. Vypíšou se název, typ,
+aspekty, všechny atributy, které má aspoň jedna z nich vyplněné, vlastní atributy, vazby,
+počet zpětných odkazů a komentářů, datum úpravy a ID. **Řádky, ve kterých se entity liší, jsou
+podbarvené** — na první pohled tak vidíš, co je jinak.
+
+**Řešení** — u každé entity tlačítka *Otevřít* a *Přejmenovat*, pod tabulkou **Sloučit entity**.
+Slučuje se stejnou cestou jako hromadná operace (kap. 13.1): vybereš, která entita zůstane a co
+udělat s odlišnými hodnotami, vazby vedoucí na zrušené entity se přesměrují. Po sloučení
+i přejmenování zůstaneš na kartě Duplicity a seznam se přepočítá.
+
+### 29.12 Obecné
 
 - **Jazyk** (Čeština / English)
 - **Motiv** — Světlý / Tmavý / Papír / Matrix, totéž co v menu ⚙ Přizpůsobit
@@ -1493,11 +1542,11 @@ Přehled datového modelu a jeho export do standardních formátů — viz kap. 
 - **Autosave** — automatické ukládání do sessionStorage (per záložka)
 - **Debug** — zapne panel s debug logy dole
 
-### 29.12 Statistiky
+### 29.13 Statistiky
 
 Přehled počtů: entit, typů, atributů, aspektů, vazeb, komentářů.
 
-### 29.13 Nápověda
+### 29.14 Nápověda
 
 Odkazy na online dokumentaci a repozitář.
 
