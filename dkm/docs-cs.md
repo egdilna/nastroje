@@ -44,6 +44,7 @@ Uživatelská příručka
 32. [Časté problémy](#32-časté-problémy)
 33. [Technické pozadí](#33-technické-pozadí)
 34. [AI asistent](#34-ai-asistent)
+35. [Datový model a jeho export](#35-datový-model-a-jeho-export)
 
 ---
 
@@ -1354,7 +1355,15 @@ Které typy a které aspekty se zobrazují jako záložka v hlavním toolbaru.
 
 Personal access token pro GitHub API. Uložený v localStorage prohlížeče (per-origin).
 
-### 28.9 Obecné
+### 28.9 AI
+
+Poskytovatel, API klíč a model pro AI asistenta — viz kap. 34.2.
+
+### 28.10 Model
+
+Přehled datového modelu a jeho export do standardních formátů — viz kap. 35.
+
+### 28.11 Obecné
 
 - **Jazyk** (Čeština / English)
 - **Motiv** — Světlý / Tmavý / Papír / Matrix, totéž co v menu ⚙ Přizpůsobit
@@ -1364,11 +1373,11 @@ Personal access token pro GitHub API. Uložený v localStorage prohlížeče (pe
 - **Autosave** — automatické ukládání do sessionStorage (per záložka)
 - **Debug** — zapne panel s debug logy dole
 
-### 28.10 Statistiky
+### 28.12 Statistiky
 
 Přehled počtů: entit, typů, atributů, aspektů, vazeb, komentářů.
 
-### 28.11 Nápověda
+### 28.13 Nápověda
 
 Odkazy na online dokumentaci a repozitář.
 
@@ -1694,3 +1703,111 @@ Pod každou odpovědí jsou dvě tlačítka:
 Rozhovor **přežije zavření dialogu** v rámci načtené stránky — omylem zavřený dialog tedy
 neznamená ztrátu konverzace. Do dat projektu se ale neukládá a s obnovením stránky zmizí.
 Tlačítko **Nový rozhovor** ho vymaže dřív.
+
+---
+
+## 35. Datový model a jeho export
+
+### 35.1 K čemu to je
+
+**Nastavení → Model** ukazuje na jednom místě celé schéma projektu — typy, aspekty,
+atributy, číselníky a vazby — a umí ho vyexportovat do standardních formátů, ve kterých
+si ho přečtou jiné nástroje: OpenAPI, JSON Schema, SQL, RDF/OWL, SHACL, XMI.
+
+Nepleť si to s kapitolou 25. Tam se exportují **data** (entity) a schéma je jen přiložené,
+aby se dala ověřit. Tady jde **jen o schéma** — žádná entita ven nejde, ani její název.
+Ven jde popis toho, jak je projekt postavený.
+
+Hodí se, když model potřebuješ předat vývojáři, architektovi, do Enterprise Architectu,
+nebo si z něj chceš nechat založit databázi.
+
+### 35.2 Přehled modelu
+
+Horní část karty je čitelný výpis modelu:
+
+- **Souhrn** — kolik je typů, aspektů, vazeb, číselníků a atributů celkem
+- **Typy** — každý rozklikneš a uvidíš jeho atributy (název, klíč, datový typ, povinnost,
+  navázaný číselník) a vazby, které z něj vedou. V řádku typu je i to, **kolik entit** ho
+  reálně používá — dobře se tím pozná typ, který jsi kdysi založil a nikdy nepoužil.
+- **Aspekty** — atributy aspektu a počet entit, které aspekt nesou
+- **Vazby** — odkud → kam, opačný název a kolikrát je vazba v datech skutečně použita.
+  Kde není omezení na konkrétní typy, stojí „libovolný".
+- **Číselníky** — hodnoty a počet atributů, které číselník používají
+- **Varování** — co by mohlo export zkomplikovat: atribut bez názvu, atribut typu výběr
+  bez přiřazeného číselníku, prázdný nebo nepoužívaný číselník, kolize klíče mezi aspektem
+  a typem, projekt bez jediného typu
+
+Varování nic neblokují — export proběhne. Jsou to místa, kde model něco nedopověděl a
+generátor musel něco domyslet.
+
+### 35.3 Základní IRI
+
+RDF výstupy (OWL, SKOS, SHACL) potřebují jmenný prostor. Pole **Základní IRI** se ukládá
+**do dat projektu** (na rozdíl od jazyka nebo motivu), aby všem, kdo model exportují,
+vycházely stejné identifikátory. Když ho necháš prázdné, odvodí se z názvu projektu —
+na první pokus to stačí, ale pro cokoliv, co se má publikovat, si nastav vlastní
+(např. `https://firma.cz/model/`).
+
+### 35.4 Klíče
+
+Klíče (`kod_takto`) se odvozují **úplně stejně jako u exportu dat** (kap. 25.7): snake_case
+bez diakritiky, s možností přepsat je nepovinným polem **Klíč v JSON** u typu, aspektu,
+atributu i typu vazby. Díky tomu vygenerované OpenAPI a JSON Schema sedí na to, co
+skutečně vyleze z exportu dat — jedno se dá použít k validaci druhého.
+
+Když atribut přejmenuješ, klíč se změní. Právě proto se u modelu, který už někam odešel,
+vyplatí klíče zafixovat.
+
+### 35.5 Formáty
+
+Přepínačem si vybereš formát, hned pod ním vidíš náhled výstupu.
+
+| Soubor | Formát | K čemu |
+|---|---|---|
+| `model.md` | Dokumentace (MD) | Čitelný popis modelu pro lidi — typy, atributy, aspekty, vazby, číselníky |
+| `openapi.yaml` | OpenAPI 3.1 | Popis REST API nad modelem: schémata plus cesty `list/create/get/update/delete` pro každý typ |
+| `schema.json` | JSON Schema 2020-12 | Validační schéma; aspekty jsou samostatná `$defs` skládaná přes `allOf` |
+| `model.sql` | SQL DDL | PostgreSQL: tabulka `entita`, tabulka na každý typ i aspekt, tabulky číselníků, `typ_vazby` + `vazba` a spojovací tabulky pro relační atributy |
+| `model.ttl` | RDFS/OWL + SKOS | Ontologie v Turtle: třídy, vlastnosti, k tomu číselníky jako SKOS koncepty |
+| `shapes.ttl` | SHACL | Tvary odpovídající třídám z OWL — validace RDF dat proti modelu |
+| `model.xmi` | XMI (UML) | UML model pro Enterprise Architect a další CASE nástroje: třídy, atributy, asociace, výčty |
+
+### 35.6 Stažení
+
+- **📋 Kopírovat** — aktuálně zobrazený formát do schránky
+- **📥 Stáhnout soubor** — jen ten jeden soubor
+- **📦 Stáhnout vše (ZIP)** — všech sedm souborů plus `README.md` s přehledem, datem
+  vygenerování, základním IRI a případnými varováními
+
+Náhled v okně je u velkých modelů zkrácený, ale kopírování i stažení berou celý obsah.
+
+### 35.7 Jak se model překládá
+
+Datový model DKM má pár věcí, které v cílových formátech přímý protějšek nemají. Stojí za
+to vědět, jak se to řeší:
+
+- **Aspekt je průřezový**, dá se přidat k entitě libovolného typu. V SQL je proto z aspektu
+  samostatná tabulka navázaná na `entita`, ne sloupce v tabulce typu. V JSON Schema je
+  z něj `$defs` skládané do typu přes `allOf` + `unevaluatedProperties: false`. V OWL a UML
+  je to samostatná třída.
+- **Stejně pojmenovaný atribut u dvou typů je v RDF jiná vlastnost.** Kdyby se sloučily,
+  `rdfs:domain` u obou tříd by v OWL znamenal *průnik* — tedy „jen entita, která je obojí" —
+  což je něco jiného, než co model říká. Vlastnosti proto nesou klíč vlastníka
+  (`:subjekt_stav`, `:system_stav`) a SHACL to zrcadlí v `sh:path`.
+- **Omezení vazby na typy** (scope) se v SQL vyjádřit nedá — spojovací tabulka umí
+  cizí klíče, ne „jen z těchto typů". Omezení se proto zapíše na konec DDL jako komentář
+  s poznámkou, že to musí hlídat aplikace nebo trigger. V OpenAPI, OWL a SHACL se omezení
+  promítne do rozsahu / `sh:class`.
+- **Prázdný seznam povolených typů znamená „libovolný"**, ne „žádný" — v přehledu i ve
+  výstupech se to tak i chová.
+- **Vlastní atributy** (ty, které si přidáš jen na jedné entitě) do modelu nepatří —
+  nejsou součástí schématu, jsou to data.
+
+### 35.8 Co ověřeno není
+
+Výstupy jsou ověřené: `openapi.yaml` projde oficiálním validátorem OpenAPI 3.1,
+`schema.json` odpovídá metaschématu draftu 2020-12 (a instance proti němu skutečně validují
+i padají, jak mají), `model.ttl` i `shapes.ttl` se načtou RDF parserem a `model.xmi` je
+well-formed XML. **Import do Enterprise Architectu ale odzkoušený není**; XMI je
+psané podle UML 2.1 / XMI 2.1 a strukturou odpovídá tomu, co CASE nástroje čekají, ale
+pokud tvůj nástroj bude na něčem trvat, dej vědět — doladit se to dá.
