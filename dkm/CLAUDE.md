@@ -311,6 +311,29 @@ Akce v `applyImport`: `merge` **doplňuje, nepřepisuje** (prázdné atributy, s
 a vlastních atributů podle názvu, vazby se ve druhém průchodu deduplikují přes
 `typVazby:cíl`), `overwrite` nahrazuje, `skip` přeskočí, `newId` založí kopii.
 
+## Souborové formáty a jejich schémata
+Vedle aplikace leží `dkm/dkmdata-scheme.json` (celý projekt) a `dkm/dkmpkg-scheme.json`
+(přenosný balíček) — JSON Schema 2020-12, závazný popis obou formátů pro cizí nástroje
+a pro AI. Kapitola 37 dokumentace na ně navazuje slovním popisem toho, co schéma
+zachytit neumí (referenční integrita, identita při importu, tvar hodnoty podle typu
+atributu).
+
+**Když měníš tvar dat, uprav obě schémata i kapitolu 37.** Kanonickým zdrojem pravdy
+je `mergeEmpty` — co projde jím, to je platný `.dkmdata`.
+
+Dvě věci na nich nerozbíjej:
+- **Jsou samonosná.** Neodkazují na sebe navzájem ani na síť, aby se dalo jedno
+  zkopírovat celé a validovat offline nebo vložit AI do rozhovoru. Sdílené definice
+  jsou proto v obou souborech duplicitně a **musí zůstat totožné**.
+- **`additionalProperties` má na každé úrovni jiný smysl, a je to záměr.** Na nejvyšší
+  úrovni `.dkmdata` je `false`, protože `mergeEmpty` neznámé klíče doopravdy zahodí.
+  Uvnitř entit je `true`, protože ty projdou načtením i uložením beze změny. Schéma
+  tím popisuje skutečné chování čtečky, ne přání.
+
+Ověřuj je proti skutečným souborům z aplikace (`state.data` a `buildPackageObj`),
+oběma validátory (python `jsonschema` i `ajv` ve strict režimu) a **vždy i negativně** —
+že vadná data opravdu propadnou. Samotné „nula chyb" nedokazuje nic.
+
 ## Pohledy na data
 Pět režimů v `state.view.displayMode`: `list` (**výchozí a musí jím zůstat**), `table`,
 `kanban`, `calendar`, `timeline`; dispatch je v `renderListEl`. Nový režim přidej tam

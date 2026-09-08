@@ -46,6 +46,7 @@ User guide
 34. [Technical background](#34-technical-background)
 35. [AI assistant](#35-ai-assistant)
 36. [The data model and its export](#36-the-data-model-and-its-export)
+37. [The `.dkmdata` and `.dkmpkg` file formats](#37-the-dkmdata-and-dkmpkg-file-formats)
 
 ---
 
@@ -1839,7 +1840,8 @@ The project lives only in sessionStorage. For persistent storage:
 
 ### 34.1 Data structure
 
-The project is one JSON document (see `dkmdata.json`):
+The project is one JSON document. Here is its outline; the normative description of
+both formats, machine-readable schemas included, is in chapter 37:
 
 ```
 {
@@ -2103,3 +2105,169 @@ ontology and pronounces it consistent.
 **What has not been verified: the Enterprise Architect import.** The XMI follows
 UML 2.1 / XMI 2.1 and structurally matches what CASE tools expect, but it has not been tried
 in EA itself. If it insists on something, say so — it can be tuned.
+
+---
+
+## 37. The `.dkmdata` and `.dkmpkg` file formats
+
+This chapter is for anyone who wants to work with DKM data from the outside: with
+their own script, another tool, or through an AI. It describes both file formats
+normatively — what is in them, what has to be in them, and what a reader may expect.
+
+### 37.1 Two formats and the difference between them
+
+| | `.dkmdata` | `.dkmpkg` |
+|---|---|---|
+| What it holds | **the whole project** — model, all entities, saved views and settings | **a slice** — selected entities plus only the part of the model they need |
+| What it is for | saving and backing up a project, moving it between devices, GitHub | moving data between two projects |
+| How it is produced | Save (Ctrl+S), clipboard, GitHub | Settings → Packages, or a bulk action on a selection (ch. 28) |
+| Marker | none — recognised by extension and content | mandatory key `"format": "dkmpkg"` |
+| How it is read | replaces the whole project | goes through the import wizard, which maps the model onto the target project |
+
+Both are plain UTF‑8 JSON, uncompressed and unwrapped. `.dkmdata` is literally
+`JSON.stringify` of the application's internal state — nothing is added or removed.
+
+### 37.2 Machine-readable schemas
+
+Two JSON Schema documents (draft 2020-12) sit next to the application:
+
+- **<https://nastroje.egdilna.cz/dkm/dkmdata-scheme.json>** — the whole project
+- **<https://nastroje.egdilna.cz/dkm/dkmpkg-scheme.json>** — the portable package
+
+In the source they are `dkm/dkmdata-scheme.json` and `dkm/dkmpkg-scheme.json`.
+
+Both schemas are **self-contained**: they reference neither each other nor anything on
+the network, so one file can be copied whole and validated offline — or pasted into a
+conversation with an AI. The shared definitions (entity, attribute definition, entity
+type, aspect, relation type, select list, relation, comment, object, custom attribute,
+attribute value) are deliberately identical in both files. Every property carries a
+description that states not just its shape but its meaning.
+
+Checking in Python:
+
+```python
+import json
+from jsonschema import Draft202012Validator
+
+schema = json.load(open('dkmdata-scheme.json'))
+data   = json.load(open('project.dkmdata'))
+
+v = Draft202012Validator(schema, format_checker=Draft202012Validator.FORMAT_CHECKER)
+for e in sorted(v.iter_errors(data), key=lambda e: list(e.path)):
+    print('/' + '/'.join(map(str, e.path)), '→', e.message)
+```
+
+`format_checker` has to be passed explicitly — without it most validators merely record
+the `format` keyword and never check the timestamps. In JavaScript the same needs
+`ajv-formats` alongside `ajv`.
+
+### 37.3 What the schema cannot check: references inside the file
+
+JSON Schema can check shape, not that a reference leads anywhere. This is on the reader
+and on whoever produces the file:
+
+| Reference | Must point to |
+|---|---|
+| `entities[].typeId` | `entityTypes[].id`, or `null` |
+| `entities[].aspects[]` | `aspects[].id` |
+| a key in `entities[].attributes` | the `id` of an attribute definition on the entity's type or on one of its aspects |
+| `entities[].relations[].relationTypeId` | `relationTypes[].id` |
+| `entities[].relations[].targetId` | `entities[].id` |
+| the value of a relation attribute | `entities[].id` (an array of ids when `multi`) |
+| `…attributes[].listId` | `selectLists[].id` |
+| `…attributes[].targetType` | `entityTypes[].id`, or `any` |
+| `relationTypes[].fromTypes[]`, `toTypes[]` | `entityTypes[].id` |
+| `settings.visibleTypeTabs[]`, `visibleAspectTabs[]` | `entityTypes[].id`, `aspects[].id` |
+
+Identifiers are unique within the file. DKM builds them as `prefix_<time><random>`
+(`e_lz3k9a1b2c`), but the format does not require that shape — the string only has to be
+unique and stable.
+
+A dangling reference will not break the application: a relation to a missing target is
+simply not shown. The data is damaged all the same, and the loss spreads with the next
+export.
+
+**An empty list means "anything", not "nothing".** This holds for `fromTypes` and
+`toTypes` on a relation type: a non-empty list restricts, while an empty list — and a
+missing key — leaves the relation unrestricted. Read it the other way round and you
+forbid everything. The restriction is also read according to `scope` only: `from` looks
+at `fromTypes`, `to` at `toTypes`, `specific` at both, `universal` at neither.
+
+### 37.4 Attribute values by type
+
+An entity's values live in `attributes` under the **identifier** of the attribute
+definition, not under its name. The shape of the value follows that definition's type:
+
+| Attribute type | Value shape | Note |
+|---|---|---|
+| `text`, `url` | string | |
+| `textarea` | string | rendered as Markdown with CriticMarkup |
+| `date` | string `YYYY-MM-DD` | not a full ISO timestamp — it is the value of an HTML date field |
+| `number` | number | a real number, not a string of digits |
+| `yesno` | `true` / `false` | |
+| `select` | string | must be one of the values of the linked select list |
+| `relation` | entity identifier | an array of identifiers when `multi: true` |
+
+**An empty value is not stored.** DKM deletes the key from `attributes` outright, so
+neither `null` nor `""` appears in freshly written data and a missing key is the normal
+state. The schema tolerates both so that data from elsewhere still passes. The exception
+is an entity's custom attributes (`customAttributes`), where the `value` key cannot be
+deleted — there, empty is an empty string.
+
+Relations in `relations` are recorded **on the source entity only**. The reverse
+direction (the "Links here" section) is derived by DKM and is not duplicated in the
+data. Record it on both sides and every relation appears twice.
+
+### 37.5 Identity when importing a package
+
+An entity is recognised by its `id`, not by its name. A package preserves identifiers,
+so importing the same data twice is recognised as a conflict with existing entities and
+offers overwrite or merge — it does not create a second set of records. Anyone producing
+a package outside DKM must therefore keep identifiers **stable across releases**;
+otherwise the data is duplicated on every import. Matching by name can be enabled only
+in the wizard's detailed mode (ch. 28.3) and is a fallback for data that shares no
+history of identifiers.
+
+The model in a package is narrowed to what the selected entities need. That has two
+consequences:
+
+- **Relations pointing outside the package are dropped on export**, so that no reference
+  to a missing entity is left in the file. Extending the selection to neighbours or to
+  the whole connected component prevents this (ch. 28.1).
+- **`fromTypes` and `toTypes` on the carried relation types may reference types that are
+  not in the package.** The restriction then does not fit the target project and the
+  wizard creates the relation type without it.
+
+### 37.6 Canonical shape and older spellings
+
+Select lists went through a clean-up and the reader still tolerates the older shape.
+Whoever produces a file should write only the canonical column:
+
+| Canonical | Deprecated | What DKM does with it |
+|---|---|---|
+| `selectLists[].values` | `selectLists[].options` | moves it into `values` on load and drops the old key |
+| `…attributes[].listId` | `…attributes[].selectListId` | moves it into `listId` on load and drops the old key |
+| a list in `selectLists` | values inline in `…attributes[].options` | read only as a safety net |
+| author name in the browser | `settings.userName` | takes it over locally and removes it from the data |
+
+`settings.userName` was removed so that several people can work on one project — the
+comment author's name belongs to a particular browser, not to shared data.
+
+### 37.7 What survives loading and what does not
+
+- **An unknown key at the top level of `.dkmdata` is dropped on load.** The reader takes
+  only the keys it knows, so custom metadata alongside `entities` will not survive the
+  first save. The schema flags it as an error (`additionalProperties: false`).
+- **An unknown key inside an entity is kept.** Entities pass through load and save
+  untouched, so a custom flag on a record survives. The schema therefore allows it.
+- **Missing collections are filled in as empty arrays.** The minimal valid file is
+  `{"entities": []}`; a missing `version` means 1.
+
+### 37.8 What is never in these files
+
+**No secrets are stored in project data.** The GitHub token, the AI key and the comment
+author's name are not in the file and never will be — the browser alone holds them
+(ch. 34.2). `ghPath` carries only a path of the form `owner/repo/path/file.dkmdata`, not
+access to it. A `.dkmdata` file can therefore be passed on or committed without taking
+credentials with it — it does contain all of the project's data, though, so whatever
+sensitivity applies to that data applies to the file.

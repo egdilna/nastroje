@@ -46,6 +46,7 @@ Uživatelská příručka
 34. [Technické pozadí](#34-technické-pozadí)
 35. [AI asistent](#35-ai-asistent)
 36. [Datový model a jeho export](#36-datový-model-a-jeho-export)
+37. [Formáty souborů `.dkmdata` a `.dkmpkg`](#37-formáty-souborů-dkmdata-a-dkmpkg)
 
 ---
 
@@ -1828,7 +1829,8 @@ Projekt žije jen v sessionStorage. Pro trvalé uložení:
 
 ### 34.1 Datová struktura
 
-Projekt je jeden JSON dokument (viz `dkmdata.json`):
+Projekt je jeden JSON dokument. Tady je jeho obrys; závazný popis obou formátů
+včetně strojových schémat je v kapitole 37:
 
 ```
 {
@@ -2087,3 +2089,164 @@ za konzistentní reasoner HermiT.
 **Co ověřené není: import do Enterprise Architectu.** XMI je psané podle UML 2.1 / XMI 2.1
 a strukturou odpovídá tomu, co CASE nástroje čekají, ale v samotném EA vyzkoušené nebylo.
 Kdyby na něčem trval, dej vědět — doladit se to dá.
+
+---
+
+## 37. Formáty souborů `.dkmdata` a `.dkmpkg`
+
+Tahle kapitola je pro toho, kdo chce s daty DKM pracovat zvenčí: vlastním skriptem,
+jiným nástrojem nebo přes AI. Popisuje oba souborové formáty závazně — co v nich je,
+co v nich být musí a co z nich smí čekat čtečka.
+
+### 37.1 Dva formáty a rozdíl mezi nimi
+
+| | `.dkmdata` | `.dkmpkg` |
+|---|---|---|
+| Co obsahuje | **celý projekt** — model, všechny entity, uložené pohledy a nastavení | **výsek** — vybrané entity a jen ta část modelu, kterou potřebují |
+| K čemu je | uložení a zálohování projektu, přenos mezi zařízeními, GitHub | přenos dat mezi dvěma projekty |
+| Jak vznikne | Uložit (Ctrl+S), schránka, GitHub | Nastavení → Balíčky, nebo hromadná akce nad výběrem (kap. 28) |
+| Poznávací značka | žádná — pozná se podle přípony a obsahu | povinný klíč `"format": "dkmpkg"` |
+| Jak se načte | nahradí celý projekt | projde průvodcem importu, který mapuje model na cílový projekt |
+
+Oba jsou prostý JSON v UTF‑8, bez komprese a bez obalení. `.dkmdata` je doslova
+`JSON.stringify` vnitřního stavu aplikace — nic se do něj nepřidává ani neubírá.
+
+### 37.2 Strojová schémata
+
+Vedle aplikace leží dvě schémata v JSON Schema, draft 2020-12:
+
+- **<https://nastroje.egdilna.cz/dkm/dkmdata-scheme.json>** — celý projekt
+- **<https://nastroje.egdilna.cz/dkm/dkmpkg-scheme.json>** — přenosný balíček
+
+Ve zdrojovém kódu je najdeš jako `dkm/dkmdata-scheme.json` a `dkm/dkmpkg-scheme.json`.
+
+Obě schémata jsou **samonosná**: neodkazují se na sebe navzájem ani na nic na síti,
+takže jedno stačí zkopírovat celé a validovat offline — nebo vložit AI do rozhovoru.
+Sdílené definice (entita, definice atributu, typ entity, aspekt, typ vazby, číselník,
+vazba, komentář, objekt, vlastní atribut, hodnota atributu) jsou v obou souborech
+záměrně totožné. Každá vlastnost má popis, který říká nejen tvar, ale i význam.
+
+Příklad kontroly v Pythonu:
+
+```python
+import json
+from jsonschema import Draft202012Validator
+
+schema = json.load(open('dkmdata-scheme.json'))
+data   = json.load(open('projekt.dkmdata'))
+
+v = Draft202012Validator(schema, format_checker=Draft202012Validator.FORMAT_CHECKER)
+for e in sorted(v.iter_errors(data), key=lambda e: list(e.path)):
+    print('/' + '/'.join(map(str, e.path)), '→', e.message)
+```
+
+`format_checker` je potřeba dodat výslovně — bez něj většina validátorů klíč `format`
+jen zaznamená a časová razítka nezkontroluje. V JavaScriptu si totéž vyžádá
+`ajv-formats` vedle `ajv`.
+
+### 37.3 Co schéma neuhlídá: odkazy uvnitř souboru
+
+JSON Schema umí zkontrolovat tvar, ne ale to, že odkaz někam vede. Tohle si musí
+ohlídat čtečka i ten, kdo soubor vyrábí:
+
+| Odkaz | Musí ukazovat na |
+|---|---|
+| `entities[].typeId` | `entityTypes[].id`, nebo `null` |
+| `entities[].aspects[]` | `aspects[].id` |
+| klíč v `entities[].attributes` | `id` definice atributu na typu entity nebo na některém jejím aspektu |
+| `entities[].relations[].relationTypeId` | `relationTypes[].id` |
+| `entities[].relations[].targetId` | `entities[].id` |
+| hodnota atributu typu vazba | `entities[].id` (při `multi` pole identifikátorů) |
+| `…attributes[].listId` | `selectLists[].id` |
+| `…attributes[].targetType` | `entityTypes[].id`, nebo `any` |
+| `relationTypes[].fromTypes[]`, `toTypes[]` | `entityTypes[].id` |
+| `settings.visibleTypeTabs[]`, `visibleAspectTabs[]` | `entityTypes[].id`, `aspects[].id` |
+
+Identifikátory jsou v rámci souboru jedinečné. DKM tvoří tvar `předpona_<čas><náhoda>`
+(`e_lz3k9a1b2c`), ale formát to nevynucuje — stačí, aby byl řetězec jedinečný a stabilní.
+
+Visící odkaz aplikaci nesloží: vazbu na neexistující cíl prostě nezobrazí. Data jsou
+tím ale poškozená a při dalším exportu se ztráta rozšíří.
+
+**Prázdný seznam znamená „cokoli", ne „nic".** Platí to u `fromTypes` a `toTypes`
+u typu vazby: neprázdný seznam omezuje, prázdný seznam i chybějící klíč nechává vazbu
+volnou. Kdo to přečte obráceně, zakáže všechno. Omezení se navíc čte jen podle `scope` —
+u `from` se dívá na `fromTypes`, u `to` na `toTypes`, u `specific` na obojí, u `universal`
+na nic.
+
+### 37.4 Hodnoty atributů podle typu
+
+Hodnoty entity leží v `attributes` pod **identifikátorem** definice atributu, ne pod
+jejím názvem. Tvar hodnoty se řídí typem té definice:
+
+| Typ atributu | Tvar hodnoty | Poznámka |
+|---|---|---|
+| `text`, `url` | řetězec | |
+| `textarea` | řetězec | vykresluje se jako Markdown s CriticMarkup |
+| `date` | řetězec `RRRR-MM-DD` | ne plné ISO razítko — je to hodnota HTML pole typu date |
+| `number` | číslo | opravdu číslo, ne řetězec s číslicemi |
+| `yesno` | `true` / `false` | |
+| `select` | řetězec | musí být jednou z hodnot navázaného číselníku |
+| `relation` | identifikátor entity | při `multi: true` pole identifikátorů |
+
+**Prázdná hodnota se neukládá.** DKM klíč z `attributes` rovnou smaže, takže `null`
+ani `""` v čerstvě zapsaných datech nevzniká a chybějící klíč je normální stav.
+Schéma obojí toleruje, aby prošla i data z cizí ruky. Výjimkou jsou vlastní atributy
+entity (`customAttributes`), kde klíč `value` smazat nelze — nevyplněno je tam prázdný
+řetězec.
+
+Vazby v `relations` se zapisují **jen u zdrojové entity**. Opačný směr (sekce
+„Odkazuje sem") si DKM dopočítává; v datech se neduplikuje. Kdo by ho zapsal na obě
+strany, dostane každou vazbu dvakrát.
+
+### 37.5 Identita při importu balíčku
+
+Entita se poznává podle `id`, ne podle názvu. Balíček identifikátory zachovává, takže
+opakovaný import týchž dat se pozná jako konflikt existujících entit a nabídne přepsání
+či sloučení — nezaloží druhou sadu záznamů. Kdo balíček vyrábí mimo DKM, musí proto
+identifikátory držet **stabilní mezi vydáními**; jinak se data při každém importu
+zduplikují. Párování podle názvu jde zapnout jen v podrobném režimu průvodce (kap. 28.3)
+a je to nouzové řešení pro data, která společnou historii identifikátorů nemají.
+
+Model v balíčku je zúžený na to, co vybrané entity potřebují. Má to dva důsledky:
+
+- **Vazby mimo balíček se při exportu zahodí**, aby v souboru nezůstal odkaz na entitu,
+  která v něm není. Rozšíření výběru o sousedy nebo o celou souvislou komponentu tomu
+  předejde (kap. 28.1).
+- **`fromTypes` a `toTypes` u přenášených typů vazeb mohou odkazovat na typy, které
+  v balíčku nejsou.** Omezení pak v cílovém projektu nesedí a průvodce zakládá typ
+  vazby bez něj.
+
+### 37.6 Kanonický tvar a starší zápisy
+
+Číselníky prošly sjednocením a čtečka dodnes toleruje starší tvar. Kdo soubor vyrábí,
+má psát jen kanonický sloupec:
+
+| Kanonicky | Zastarale | Co s tím DKM udělá |
+|---|---|---|
+| `selectLists[].values` | `selectLists[].options` | při načtení překlopí do `values` a starý klíč zahodí |
+| `…attributes[].listId` | `…attributes[].selectListId` | při načtení překlopí do `listId` a starý klíč zahodí |
+| číselník v `selectLists` | hodnoty přímo v `…attributes[].options` | čte se už jen jako záchytná síť |
+| jméno autora v prohlížeči | `settings.userName` | převezme si ho k sobě a z dat smaže |
+
+`settings.userName` odešel proto, aby nad jedním projektem mohlo pracovat víc lidí —
+jméno autora komentářů patří konkrétnímu prohlížeči, ne sdíleným datům.
+
+### 37.7 Co načtení přežije a co ne
+
+- **Neznámý klíč na nejvyšší úrovni `.dkmdata` se při načtení zahodí.** Čtečka
+  přebírá jen klíče, které zná, takže vlastní metadata vedle `entities` nepřežijí
+  první uložení. Schéma na to upozorní chybou (`additionalProperties: false`).
+- **Neznámý klíč uvnitř entity se zachová.** Entity procházejí načtením i uložením
+  beze změny, takže vlastní příznak u záznamu přežije. Schéma ho proto povoluje.
+- **Chybějící kolekce se doplní jako prázdné pole.** Minimální platný soubor je
+  `{"entities": []}`; `version` chybějící znamená 1.
+
+### 37.8 Co v souborech nikdy není
+
+Do dat projektu se **neukládají žádná tajemství**. GitHub token, klíč k AI ani jméno
+autora komentářů v souboru nejsou a nikdy nebudou — drží je jen prohlížeč (kap. 34.2).
+`ghPath` nese pouze cestu ve tvaru `vlastník/repozitář/cesta/soubor.dkmdata`, nikoli
+přístup k ní. Soubor `.dkmdata` je proto možné poslat dál nebo commitnout, aniž by
+s sebou vzal přihlašovací údaje — obsahuje ale všechna data projektu, takže o jejich
+citlivosti platí to, co u dat samotných.
