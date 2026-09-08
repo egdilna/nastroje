@@ -21,7 +21,7 @@ User guide
 9. [Relations and backlinks](#9-relations-and-backlinks)
 10. [Search and basic filters](#10-search-and-basic-filters)
 11. [Advanced filters and saved views](#11-advanced-filters-and-saved-views)
-12. [Display modes: list, Kanban, timeline](#12-display-modes-list-kanban-timeline)
+12. [Data views](#12-data-views)
 13. [Bulk operations](#13-bulk-operations)
 14. [Inbox and archive](#14-inbox-and-archive)
 15. [Markdown, CriticMarkup, wiki-links](#15-markdown-criticmarkup-wiki-links)
@@ -167,6 +167,7 @@ Always on top. Contains:
 - **Load** (Alt+L) — opens a `.dkmdata` file as the current project
 - **Save** (Ctrl+S) — saves the current project (to disk or GitHub, per configuration)
 - **📋⬇ Load from clipboard** (Ctrl+Shift+O) — replaces the project with data from clipboard (with confirmation)
+- **📋⬆ Copy to clipboard** (Ctrl+Shift+S) — copies the whole project as JSON to the clipboard
 - **📤 Export** — opens the Export data dialog: scope, target and format in one place (ch. 23)
 - **Export** — XLSX export of currently filtered entities
 - **Import TSV** — loads entities from TSV / CSV / pasted clipboard
@@ -535,21 +536,62 @@ When you delete an attribute referenced by a rule, the rule is marked red as `�
 
 ---
 
-## 12. Display modes: list, Kanban, timeline
+## 12. Data views
 
-In the list view toolbar there are three switches **📋 List · 📊 Kanban · 📅 Timeline**.
+The toolbar above the list has five switches: **📋 List · ▦ Table · 📊 Kanban · 🗓 Calendar ·
+📅 Timeline**. Next to them the **⫸ Preview** toggle, and for the list also **Sections by**.
+
+Only the way of showing changes — filters, search and sorting apply the same in all of them.
 
 ### 12.1 List (📋)
 
-Default. Entity cards below each other. Sorting, filters and views work normally.
+The default, and it stays the default. Entity cards below each other.
 
-### 12.2 Kanban (📊)
+**Sections by** splits the list into collapsible groups by a select or yes/no attribute, or by
+entity type. Each section shows how many entities it holds; entities without a value get a
+"(no value)" section at the end. The view remembers what you collapsed.
+
+### 12.2 Table (▦)
+
+The familiar grid: rows are entities, columns are attributes. **There is no editing in it** —
+it is a view, not a form; edit in the entity detail.
+
+- **⚙ Columns** — pick what shows. The list is grouped into basics, each type and aspect
+  separately, custom attributes and metadata, and each column shows how many entities have it
+  filled in. The default set is the name, the type, the attributes something has filled in, and
+  the update date.
+- **Sorting by clicking a header** — first click ascending, second descending, third clears it
+  and returns to the toolbar's sorting.
+- **The first column and the header stay put** while you scroll.
+- In selection mode a checkbox column appears, so bulk operations work here too.
+
+The columns come from the same source as the table export — what you see is what you export.
+
+### 12.3 Calendar (🗓)
+
+A month grid by a chosen date attribute. At the top the attribute picker, month navigation and
+a **Today** button; today is highlighted. Entities appear in their day as chips; clicking one
+opens the detail (or the preview, when it is on). Below the calendar it says how many entities
+have no date and are therefore not in it.
+
+### 12.4 Preview beside the list (⫸)
+
+**A mode, not a one-off action.** Turn it on in the toolbar and from then on clicking an entity
+does not open it full-page but **to the right of the list**. You can go through ten entities in
+a row without jumping back and forth every time. The selected entity is highlighted in the list.
+
+It works in the list, the table and the calendar. The preview has all the detail's actions
+(Edit, Duplicate, Export…), only the back navigation is missing — there is nowhere to go back
+from. On a narrow screen the panel moves below the list. Turning it off restores normal
+behaviour.
+
+### 12.5 Kanban (📊)
 
 Above the board a **Columns by** selector. Offers select / yesno attributes plus the system property "Entity type". Columns are values of the attribute (+ a "no value" column for entities without a value).
 
 Card has icon, name, snippet and a **Move to dropdown** — screen reader-compatible alternative to drag-and-drop. Changing column = editing attribute value, entity is re-saved.
 
-### 12.3 Timeline (📅)
+### 12.6 Timeline (📅)
 
 **Timeline by** selector — all date attributes (type, aspect) plus system Created / Updated.
 
@@ -557,9 +599,10 @@ Card has icon, name, snippet and a **Move to dropdown** — screen reader-compat
 
 Entities grouped by year and month with date before the name. Entities without a date in a separate **No date** section.
 
-### 12.4 Display mode in saved views
+### 12.7 Display mode in saved views
 
-When you save a view, display mode and its parameters are saved too. Clicking a pinned view tab returns you to the same display. Changeable via **Overwrite with current** in Settings → Saved views.
+When you save a view, the display mode and its settings are saved too — including the chosen
+table columns, the sections, the calendar attribute and whether the preview was on. Clicking a pinned view tab returns you to the same display. Changeable via **Overwrite with current** in Settings → Saved views.
 
 ---
 
@@ -932,7 +975,7 @@ Save writes to a file, not to GitHub.
 
 ### 21.7 Copy to clipboard
 
-**Ctrl+Shift+S**, or the **Project to the clipboard** target in the **📤 Export data** dialog. Copies the whole project as JSON. Useful for quick transfer to another tab or another app.
+The **📋⬆** button in the header (Ctrl+Shift+S), or the **Project to the clipboard** target in the **📤 Export data** dialog. Copies the whole project as JSON. Useful for quick transfer to another tab or another app.
 
 ### 21.8 Load from clipboard
 

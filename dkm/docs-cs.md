@@ -21,7 +21,7 @@ Uživatelská příručka
 9. [Vazby a zpětné odkazy](#9-vazby-a-zpětné-odkazy)
 10. [Hledání a základní filtry](#10-hledání-a-základní-filtry)
 11. [Pokročilé filtry a uložené pohledy](#11-pokročilé-filtry-a-uložené-pohledy)
-12. [Zobrazení: seznam, Kanban, časová osa](#12-zobrazení-seznam-kanban-časová-osa)
+12. [Zobrazení dat](#12-zobrazení-dat)
 13. [Hromadné operace](#13-hromadné-operace)
 14. [Inbox a archiv](#14-inbox-a-archiv)
 15. [Markdown, CriticMarkup, wiki-linky](#15-markdown-criticmarkup-wiki-linky)
@@ -167,6 +167,7 @@ Vždy nahoře. Obsahuje:
 - **Načíst** (klávesa Alt+L) — otevře soubor `.dkmdata` jako aktuální projekt
 - **Uložit** (klávesa Ctrl+S) — uloží aktuální projekt (na disk nebo GitHub, podle nastavení)
 - **📋⬇ Načíst ze schránky** (Ctrl+Shift+O) — nahradí projekt daty ze schránky (s potvrzením)
+- **📋⬆ Vložit do schránky** (Ctrl+Shift+S) — zkopíruje celý projekt jako JSON do schránky
 - **📤 Export** — otevře dialog Export dat: rozsah, cíl a formát na jednom místě (kap. 23)
 - **Import TSV** — nahraje entity z TSV / CSV / vložení ze schránky
 - **Nastavení** — projekt, typy, aspekty, vazby, seznamy, pohledy, obecné
@@ -533,21 +534,60 @@ Když smažeš atribut, na který pravidlo odkazuje, pravidlo se v panelu označ
 
 ---
 
-## 12. Zobrazení: seznam, Kanban, časová osa
+## 12. Zobrazení dat
 
-V toolbaru list view jsou tři přepínače **📋 Seznam · 📊 Kanban · 📅 Časová osa**.
+V liště nad seznamem je pět přepínačů: **📋 Seznam · ▦ Tabulka · 📊 Kanban · 🗓 Kalendář · 📅 Časová osa**.
+Vedle nich přepínač **⫸ Náhled** a u seznamu ještě volba **Sekce podle**.
+
+Přepíná se jen způsob zobrazení — filtry, hledání i řazení platí ve všech stejně.
 
 ### 12.1 Seznam (📋)
 
-Výchozí. Karty entit pod sebou. Řazení, filtry a pohledy fungují stejně.
+Výchozí a zůstává výchozí. Karty entit pod sebou.
 
-### 12.2 Kanban (📊)
+**Sekce podle** rozdělí seznam do rozbalovacích skupin podle atributu typu výběr, ano/ne, nebo
+podle typu entity. U každé sekce je vidět, kolik entit obsahuje; entity bez hodnoty mají sekci
+„(bez hodnoty)" na konci. Rozbalení a sbalení si pohled pamatuje.
+
+### 12.2 Tabulka (▦)
+
+Klasická mřížka: řádky jsou entity, sloupce atributy. **Needituje se v ní** — je to pohled,
+ne formulář; na úpravy je detail entity.
+
+- **⚙ Sloupce** — vybereš, co se ukáže. Nabídka je členěná na základní údaje, každý typ
+  a aspekt zvlášť, vlastní atributy a metadata, a u každého sloupce je vidět, u kolika entit je
+  vyplněný. Výchozí sada = název, typ, atributy, které jsou u něčeho vyplněné, a datum úpravy.
+- **Řazení klikem na hlavičku** — první klik vzestupně, druhý sestupně, třetí zruší a vrátí
+  řazení z lišty.
+- **První sloupec a hlavička zůstávají na místě** při odscrollování.
+- V režimu výběru přibude sloupec se zaškrtávátky, takže hromadné operace fungují i tady.
+
+Sloupce berou tentýž zdroj jako export do tabulky — co vidíš, to i vyexportuješ.
+
+### 12.3 Kalendář (🗓)
+
+Měsíční mřížka podle zvoleného datového atributu. Nahoře výběr atributu, přepínání měsíců
+a tlačítko **Dnes**; dnešek je zvýrazněný. Entity jsou v příslušném dni jako štítky, klik
+otevře detail (nebo náhled, když je zapnutý). Pod kalendářem se píše, kolik entit datum nemá,
+a tedy v něm nefiguruje.
+
+### 12.4 Náhled vedle seznamu (⫸)
+
+**Režim, ne jednorázová akce.** Zapneš ho tlačítkem v liště a od té chvíle se klik na entitu
+neotevře na celou stránku, ale **napravo vedle seznamu**. Můžeš tak projít deset entit za sebou,
+aniž bys pokaždé skákal tam a zpět. Vybraná entita je v seznamu zvýrazněná.
+
+Funguje v seznamu, v tabulce i v kalendáři. V náhledu jsou všechny akce detailu (Upravit,
+Duplikovat, Export…), jen chybí navigace zpět — z náhledu se nikam neodchází. Na úzké
+obrazovce se panel přesune pod seznam. Vypnutím se vrátí normální chování.
+
+### 12.5 Kanban (📊)
 
 Nad tabulí selector **Sloupce podle**. Nabízí atributy typu select, yesno a systémovou vlastnost „Typ entity". Sloupce jsou hodnoty toho atributu (+ sloupec „bez hodnoty" pro entity bez hodnoty).
 
 Karta má ikonu, název, snippet a **dropdown „Přesunout do"** — screen reader–kompatibilní alternativa k drag-and-drop. Změna sloupce = úprava hodnoty atributu, entita se přeuloží.
 
-### 12.3 Časová osa (📅)
+### 12.6 Časová osa (📅)
 
 Selector **Časová osa podle** — všechny date atributy typu, aspektu, plus systémové Vytvořeno a Upraveno.
 
@@ -555,9 +595,10 @@ Tlačítko **⇧ Vzestupně / ⇩ Sestupně**.
 
 Entity grupované podle roku a měsíce, s datem před názvem. Entity bez data v samostatné sekci **Bez data**.
 
-### 12.4 Zobrazení v uložených pohledech
+### 12.7 Zobrazení v uložených pohledech
 
-Když uložíš pohled, uloží se i display mode a jeho parametry. Klik na připnutou záložku pohledu tě vrátí do stejného zobrazení. Změnit lze přes **Přepsat aktuálním** v Nastavení → Uložené pohledy.
+Když uložíš pohled, uloží se i způsob zobrazení a jeho nastavení — včetně vybraných sloupců
+tabulky, sekcí, atributu kalendáře a toho, jestli byl zapnutý náhled. Klik na připnutou záložku pohledu tě vrátí do stejného zobrazení. Změnit lze přes **Přepsat aktuálním** v Nastavení → Uložené pohledy.
 
 ---
 
@@ -929,7 +970,7 @@ uloží do souboru, ne na GitHub.
 
 ### 21.7 Uložení do schránky
 
-Klávesa **Ctrl+Shift+S**, nebo v dialogu **📤 Export dat** cíl **Projekt do schránky**. Zkopíruje celý projekt jako JSON. Použitelné pro rychlé přenesení do jiné záložky nebo do jiné aplikace.
+Tlačítko **📋⬆** v hlavičce (Ctrl+Shift+S), nebo v dialogu **📤 Export dat** cíl **Projekt do schránky**. Zkopíruje celý projekt jako JSON. Použitelné pro rychlé přenesení do jiné záložky nebo do jiné aplikace.
 
 ### 21.8 Načtení ze schránky
 
