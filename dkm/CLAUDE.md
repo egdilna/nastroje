@@ -311,6 +311,18 @@ Akce v `applyImport`: `merge` **doplňuje, nepřepisuje** (prázdné atributy, s
 a vlastních atributů podle názvu, vazby se ve druhém průchodu deduplikují přes
 `typVazby:cíl`), `overwrite` nahrazuje, `skip` přeskočí, `newId` založí kopii.
 
+## Identifikátory obrazovek
+Každá obrazovka i dialog nese krátké interní id (`#scrallview.table`, `#dlgimppkg.step3`).
+Vypisuje se v patičce a leží v `data-scr` na `<body>` a na `<dialog>` — odtud ho čtou
+AI, testy i hlášení chyb.
+
+**Závazný seznam a návod, jak označit novou obrazovku, je v `dkm/screens.md`.**
+Přečti si ho, než přidáš obrazovku nebo dialog; nová obrazovka bez identifikátoru
+je nedodělaná. Dialog bez něj se v ladicím režimu sám ohlásí.
+
+Id vzniká na jednom místě — `idObrazovky()` ze `state.view`, dialog přes `idDialogu()`
+na řádku těsně před `showDialog`. Nerozsypávej ho po kódu.
+
 ## Souborové formáty a jejich schémata
 Vedle aplikace leží `dkm/dkmdata-scheme.json` (celý projekt) a `dkm/dkmpkg-scheme.json`
 (přenosný balíček) — JSON Schema 2020-12, závazný popis obou formátů pro cizí nástroje
