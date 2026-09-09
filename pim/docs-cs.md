@@ -328,6 +328,8 @@ Filtry se kombinují logikou **AND**.
 
 **Uložené pohledy** uchovají kompletní filtr — aspekt, tagy (včetně „nemá tag"), stav úkolu, prioritu, termín i pokročilé filtry atributů. Filtr přežije i zapnutí režimu výběru. Porovnání tagů nerozlišuje velikost písmen.
 
+Nad výsledky pohledu je pole **Hledaný text**, které je filtruje rovnou při psaní — stejně jako v pohledu Vše a se stejným dosahem (název, tělo, atributy, tagy). Nemění uložený filtr pohledu, jen ho dočasně zužuje; text si pohled pamatuje po dobu sezení, takže po návratu do něj zůstane.
+
 ## Klávesové zkratky
 
 ### Globální (kdekoliv kromě editačních polí)

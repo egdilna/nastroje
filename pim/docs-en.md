@@ -329,6 +329,8 @@ Filters combine with **AND** logic.
 
 **Saved views** keep the complete filter — aspect, tags (including "doesn't have tag"), task status, priority, deadline and advanced attribute filters. The filter survives toggling selection mode. Tag comparison is case-insensitive.
 
+Above the results there is a **Search text** field that filters them as you type — the same as in the All view and with the same reach (title, body, attributes, tags). It does not change the view's saved filter, it only narrows it temporarily; the text is remembered for the session, so it is still there when you come back to the view.
+
 ## Keyboard shortcuts
 
 ### Global (anywhere except editing fields)
