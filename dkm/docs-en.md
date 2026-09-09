@@ -47,6 +47,7 @@ User guide
 35. [AI assistant](#35-ai-assistant)
 36. [The data model and its export](#36-the-data-model-and-its-export)
 37. [The `.dkmdata` and `.dkmpkg` file formats](#37-the-dkmdata-and-dkmpkg-file-formats)
+38. [The screen identifier in the footer](#38-the-screen-identifier-in-the-footer)
 
 ---
 
@@ -2271,3 +2272,29 @@ author's name are not in the file and never will be — the browser alone holds 
 access to it. A `.dkmdata` file can therefore be passed on or committed without taking
 credentials with it — it does contain all of the project's data, though, so whatever
 sensitivity applies to that data applies to the file.
+
+
+---
+
+## 38. The screen identifier in the footer
+
+At the very bottom of every screen there is a short code in small type, for example
+`#scrallview.table` or `#dlgimppkg.step3`. It is the **internal name of the screen** you
+are currently looking at.
+
+What it is good for:
+
+- **Reporting a problem, or asking a question.** Instead of describing "that list screen,
+  the one where I have the table switched on", write `#scrallview.table`.
+- **Working with an AI over the application.** An assistant can tell which screen is meant
+  without guessing from a description or a screenshot.
+- **Tests and documentation.** A reference to a screen that survives translation and
+  renaming.
+
+The code is the same in Czech and in English and is never translated. What follows the dot
+is a qualifier — the display mode (`.table`, `.cal`), the preview being on (`.preview`),
+selection mode (`.select`), or a wizard step (`.step3`).
+
+The generated static viewer carries the same kind of name, with the prefix `scrstat`.
+
+The full list of identifiers is in `dkm/screens.md` in the source.

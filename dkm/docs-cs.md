@@ -47,6 +47,7 @@ Uživatelská příručka
 35. [AI asistent](#35-ai-asistent)
 36. [Datový model a jeho export](#36-datový-model-a-jeho-export)
 37. [Formáty souborů `.dkmdata` a `.dkmpkg`](#37-formáty-souborů-dkmdata-a-dkmpkg)
+38. [Identifikátor obrazovky v patičce](#38-identifikátor-obrazovky-v-patičce)
 
 ---
 
@@ -2250,3 +2251,28 @@ autora komentářů v souboru nejsou a nikdy nebudou — drží je jen prohlíž
 přístup k ní. Soubor `.dkmdata` je proto možné poslat dál nebo commitnout, aniž by
 s sebou vzal přihlašovací údaje — obsahuje ale všechna data projektu, takže o jejich
 citlivosti platí to, co u dat samotných.
+
+
+---
+
+## 38. Identifikátor obrazovky v patičce
+
+Úplně dole na každé obrazovce je drobným písmem krátký kód, například `#scrallview.table`
+nebo `#dlgimppkg.step3`. Je to **interní označení obrazovky**, na kterou se právě díváš.
+
+K čemu je dobrý:
+
+- **Hlášení chyby nebo dotaz.** Místo popisu „ta obrazovka se seznamem, jak mám zapnutou
+  tabulku" stačí napsat `#scrallview.table`.
+- **Práce s AI nad aplikací.** Asistent podle něj pozná, o kterou obrazovku jde, aniž by
+  hádal z popisu nebo ze snímku.
+- **Testy a dokumentace.** Odkaz na obrazovku, který se nerozbije překladem ani
+  přejmenováním.
+
+Kód se v češtině i angličtině shoduje a nepřekládá se. Za tečkou bývá upřesnění — režim
+zobrazení (`.table`, `.cal`), zapnutý náhled (`.preview`), režim výběru (`.select`) nebo
+krok průvodce (`.step3`).
+
+Stejné označení nese i vygenerovaný statický prohlížeč, jen s předponou `scrstat`.
+
+Úplný seznam všech identifikátorů je v souboru `dkm/screens.md` ve zdrojovém kódu.
