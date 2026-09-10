@@ -349,6 +349,19 @@ proto vůbec nevolá `preventDefault`, takže puštění tam není možné.
 U uložených pohledů se pracuje se **skutečným indexem v `savedViews`**, ne s pořadím
 mezi záložkami — v poli jsou i nepřipnuté pohledy, které se v liště nezobrazují.
 
+## Příručka se snímky (`dkm/prirucka/`)
+`snimky.mjs` postaví ukázkový projekt proklikáním aplikace a pořídí všech 43 snímků;
+každý ověří proti `data-scr`, takže snímek s nesedícím popiskem nevznikne.
+
+**Skript zmrazuje čas i `Math.random`** (`ZMRAZENI`, přes `addInitScript`). Bez toho vyjde
+po každém běhu jiných osmnáct snímků — mění se časová razítka a identifikátory entit,
+protože `uid()` je skládá z `Date.now()` a `Math.random()`. Regenerace pak dělá binární
+změny, které nic neříkají, a skutečnou změnu v nich není vidět. Kdyby snímky zase začaly
+kolísat, hledej nový zdroj času nebo náhody, ne důvod, proč to nevadí.
+
+Zmrazený okamžik je prosinec 2026 schválně — je to měsíc, ve kterém má ukázkový projekt
+termín, takže snímek kalendáře není prázdný.
+
 ## Identifikátory obrazovek
 Každá obrazovka i dialog nese krátké interní id (`#scrallview.table`, `#dlgimppkg.step3`).
 Vypisuje se v patičce a leží v `data-scr` na `<body>` a na `<dialog>` — odtud ho čtou

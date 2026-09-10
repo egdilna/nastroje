@@ -175,10 +175,49 @@ async function vazba(p, typVazby, cil) {
   };
 }
 
+/* ---------- zmrazený čas a náhoda ----------
+ * Bez tohohle vyjde po každém běhu jiných osmnáct snímků, protože se v nich
+ * mění časová razítka („Vytvořeno 10. 9. 2026 13:50“) a identifikátory entit —
+ * `uid()` je skládá z `Date.now()` a `Math.random()`. Regenerace by pak dělala
+ * binární změny, které nic neříkají, a skutečnou změnu by v nich nešlo najít.
+ *
+ * Vkládá se přes `addInitScript`, tedy dřív, než se spustí kód aplikace.
+ * `new Date(neco)` funguje dál normálně, zmrazený je jen dotaz na „teď“.
+ *
+ * Datum je vybrané schválně: prosinec 2026 je měsíc, ve kterém má ukázkový
+ * projekt termín, takže snímek kalendáře není prázdný. S dnešním datem
+ * vycházel prázdný vždycky. */
+const ZMRAZENI = `(() => {
+  const OKAMZIK = Date.parse('2026-12-10T09:30:00Z');
+  const PuvodniDate = Date;
+  function ZmrazenyDate(...a){
+    if(!(this instanceof ZmrazenyDate))return new PuvodniDate(OKAMZIK).toString();
+    return a.length ? new PuvodniDate(...a) : new PuvodniDate(OKAMZIK);
+  }
+  ZmrazenyDate.prototype = PuvodniDate.prototype;
+  ZmrazenyDate.now = () => OKAMZIK;
+  ZmrazenyDate.parse = PuvodniDate.parse;
+  ZmrazenyDate.UTC = PuvodniDate.UTC;
+  Object.setPrototypeOf(ZmrazenyDate, PuvodniDate);
+  window.Date = ZmrazenyDate;
+
+  /* Předvídatelný generátor (mulberry32) — pořád vrací různá čísla za sebou,
+     takže identifikátory zůstávají jedinečné, ale mezi běhy se opakují. */
+  let seed = 0x2f6e2b1;
+  Math.random = () => {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+})()`;
+
 /* ---------- stavba ukázkového projektu a snímky ---------- */
 
 const prohlizec = await chromium.launch();
-const p = await (await prohlizec.newContext({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1.5, locale: 'cs-CZ' })).newPage();
+const kontext = await prohlizec.newContext({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1.5, locale: 'cs-CZ' });
+await kontext.addInitScript(ZMRAZENI);
+const p = await kontext.newPage();
 p.setDefaultTimeout(8000);
 await p.goto(APLIKACE);
 await pauza(1500);
