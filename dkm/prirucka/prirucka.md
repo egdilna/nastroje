@@ -292,7 +292,8 @@ Teď propojíme projekt s úkoly, které do něj patří:
 
 Zopakujte to pro `Migrace obsahu` a nakonec přidejte vazbu typu **Odpovídá** na
 `👤 Jana Dvořáková`. Detail teď ukazuje všechny tři vazby a pod nimi **Strukturální
-pohled** — rozklikávací strom, kterým se dá po vazbách procházet:
+pohled** — strom, kterým se dá po vazbách procházet. Začíná sbalený; rozbalíte ho
+trojúhelníkem u názvu:
 
 ![Detail entity s vazbami](scrdetent2.png)
 
