@@ -362,6 +362,27 @@ kolísat, hledej nový zdroj času nebo náhody, ne důvod, proč to nevadí.
 Zmrazený okamžik je prosinec 2026 schválně — je to měsíc, ve kterém má ukázkový projekt
 termín, takže snímek kalendáře není prázdný.
 
+## Detail entity — dva sloupce a karty
+Vlevo **co entita je** (atributy, objekty), vpravo **její okolí** v kartách
+(`renderDetailTabs`): Vazby (a v ní i Odkazuje sem — je to týž vztah z opačné strany),
+Strukturální pohled, Komentáře. Pod oběma sloupci jeden řádek `.dmeta` s ID a časy.
+
+**Karty nenahrazují nadpisy.** Každá sekce si uvnitř panelu nechává svoje `<h3>`, aby se
+po detailu dalo dál pohybovat po nadpisech. Kdo přidá kartu, ať v ní nadpis nechá.
+
+**Počty patří do názvu karty** (`3→ 4←`, `2`). Schované sekce jinak není poznat, že vůbec
+něco obsahují. Značka je jen pro oči (`aria-hidden`), odečítači se počty řeknou slovy
+v `aria-label`.
+
+**Pořadí sloupců rozhoduje i o čtení v jednom sloupci.** Pod 1200 px, v náhledu vedle
+seznamu a v samostatném okně se sloupce poskládají pod sebe a jde **celý levý, pak celý
+pravý** — prostřídat je nejde. Proto je vpravo i strom a metadata jsou až pod mřížkou;
+kdyby zůstaly vlevo, četlo by se na notebooku „ID a datum" dřív než vazby.
+
+Vybraná karta žije v `_detailTab` **mimo `state.view`** — `navigateTo` ho nahrazuje
+výchozími hodnotami a přepnutá karta má přežít skok na jinou entitu. Do dat projektu
+nepatří. Promítá se do identifikátoru obrazovky (`#scrdetent.rels`).
+
 ## Identifikátory obrazovek
 Každá obrazovka i dialog nese krátké interní id (`#scrallview.table`, `#dlgimppkg.step3`).
 Vypisuje se v patičce a leží v `data-scr` na `<body>` a na `<dialog>` — odtud ho čtou

@@ -229,6 +229,26 @@ a real link, so middle-click or Ctrl+click opens it in a new tab.
 - **Heading** — type icon + entity name + type badge, aspect badges, status badges
 - **Actions**: Edit (E), Duplicate, Change type, 🖨 Export / print, 🪟 Standalone window, Archive, Delete
 - **Attributes** — filled attributes (type, aspects, custom)
+
+The detail is split in two. **On the left is what the entity is** — attributes and objects;
+those stay visible. **On the right is its surroundings and what is known about it**, switched
+by tabs:
+
+| Tab | What is on it |
+|---|---|
+| **Relations** `3→ 4←` | outgoing relations, and below them **Linked from**, the incoming ones. It is the same thing read from the other side, hence one tab. |
+| **🌳 Structural view** | a tree for walking the relations. The tab is only there for an entity that has some relation. |
+| **💬 Comments** `2` | the comments and the box for a new one |
+
+**The numbers next to a tab name are deliberate** — you do not have to click to find out
+whether there is anything. Left and right arrows move between tabs, Home jumps to the first,
+End to the last.
+
+At the very bottom there is a discreet line with the **ID, when the entity was created and
+when it last changed**.
+
+In a narrow window, in the preview beside the list and in the standalone window the columns
+stack: attributes first, then the tabs, and that line last.
 - **Relations** — entities relations point to, grouped by relation type
 - **Linked from** — entities that reference this one (classic relations, attribute-relations, wiki-links). Groups have different labels:
   - `relation name ←` (classic relations)
