@@ -1476,6 +1476,12 @@ relations pointing outside are dropped (as with a package, ch. 28.1), and tabs r
 a type or aspect that is not in the cut disappear. **Settings → Project** has a shortcut to
 the whole project.
 
+The viewer has **the same detail layout as the application**: attributes on the left, the
+**Relations** (with Linked from) and **🌳 Structural view** tabs on the right, and a line with
+the ID and timestamps at the bottom. Relations are counted the same way as in the application
+— classic ones, through a relation attribute and through a wiki link — and `[[Name]]` wiki
+links in texts are clickable. The viewer does not show comments.
+
 The static viewer has:
 
 - Entity list
