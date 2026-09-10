@@ -1534,9 +1534,14 @@ Klik na Import provede dvouprůchod:
 Seznam typů, klikem se otevře editor s atributy, ikonou, názvem a nepovinným
 polem **Klíč v JSON** (viz kap. 26.7). Totéž pole má i každý atribut.
 
+Pořadí typů měníš tlačítky **↑↓** u každého řádku, nebo řádek chytneš myší
+a přetáhneš na jiné místo. Obě cesty dělají totéž — přetahování je tu navíc
+pro toho, komu se s myší pracuje rychleji.
+
 ### 29.3 Aspekty
 
-Analogicky pro aspekty, včetně pole **Klíč v JSON**.
+Analogicky pro aspekty, včetně pole **Klíč v JSON**, včetně změny pořadí
+tlačítky **↑↓** i přetažením.
 
 ### 29.4 Vazby
 
@@ -1551,10 +1556,17 @@ atribut se na číselník odkáže v jeho editoru.
 ### 29.6 Uložené pohledy
 
 Správa všech uložených pohledů: přejmenovat, změnit ikonu, přepnout pin, přepsat aktuálním filtrem, smazat.
+Tlačítka **↑↓** mění jejich pořadí, a tím i pořadí jejich záložek nahoře.
 
 ### 29.7 Záložky
 
 Které typy a které aspekty se zobrazují jako záložka v hlavním toolbaru.
+Zapnuté položky jsou nahoře v tom pořadí, v jakém jdou záložky za sebou, a tlačítka
+**↑↓** u nich pořadí mění. Totéž svede přetažení záložky přímo v hlavním toolbaru.
+
+Přetahovat jde jen v rámci jedné skupiny — typ mezi typy, aspekt mezi aspekty,
+uložený pohled mezi uloženými pohledy. Schránka, Vše a Archiv mají pevné místo.
+Na dotykových zařízeních přetahování nefunguje; tlačítka **↑↓** ano vždycky.
 
 ### 29.8 GitHub
 
