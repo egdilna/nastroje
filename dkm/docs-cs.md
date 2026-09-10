@@ -1050,6 +1050,19 @@ V dialogu si vybereš **rozsah** (vybrané entity / zobrazený seznam / celý pr
 | **Statický prohlížeč** | jeden HTML soubor | poslat někomu, kdo DKM nemá (kap. 27) |
 | **Projekt do schránky** | JSON | rychlý přesun mezi záložkami (Ctrl+Shift+S) |
 
+Rozsah má nad rámec té nabídky ještě dvě upřesnění, která platí pro všechny cíle
+kromě přesunu celého projektu do schránky:
+
+- **⊘ Vyřadit jednotlivé entity** rozbalí seznam všeho, co je zrovna v rozsahu, a jednotlivé
+  položky z něj odškrtneš. Hodí se, když rozsah trefí skoro přesně a chceš z něj vyndat
+  dvě tři věci. Vyřazení si dialog pamatuje i při přepnutí rozsahu.
+- **Zahrnout aspekty** — odškrtnutý aspekt se do exportu nedostane vůbec: ani jeho hodnoty
+  u entit, ani jeho definice v modelu. Když máš aspekt „Interní poznámky", vyexportuješ
+  data bez něj a v souboru po něm nezůstane stopa.
+
+Balíček má vlastní rozšíření rozsahu (o sousedy nebo celou souvislou komponentu, kap. 28.1)
+a vyřazovat jednotlivé entity jde i tam — až nad tím rozšířeným seznamem.
+
 Mimo ten dialog zůstávají tři věci, a to schválně:
 
 | Co | Kde | Proč zvlášť |
