@@ -314,6 +314,15 @@ main{max-width:1100px;margin:0 auto;padding:1.25rem 1rem 4rem}
 .clist-item{display:flex;align-items:center;gap:.5rem;padding:.5rem .75rem;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);margin-bottom:.4rem}
 .clist-item-name{flex:1;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .clist-item-meta{font-size:.85rem;color:var(--mu)}
+/* Přetahování myší. Značka místa vložení se kreslí dovnitř prvku — u záložek
+   je spodní okraj obsazený zvýrazněním té vybrané, tak si ho nesmíme vzít. */
+.dnd-v{cursor:grab}
+.dnd-v:active{cursor:grabbing}
+.dnd-drag{opacity:.45}
+.dnd-h.dnd-before{box-shadow:inset 3px 0 0 var(--ac)}
+.dnd-h.dnd-after{box-shadow:inset -3px 0 0 var(--ac)}
+.dnd-v.dnd-before{box-shadow:inset 0 3px 0 var(--ac)}
+.dnd-v.dnd-after{box-shadow:inset 0 -3px 0 var(--ac)}
 .outline{font-family:inherit;font-size:.95rem}
 .out-n{margin:.15rem 0}
 .out-h{display:flex;align-items:center;gap:.3rem;padding:.15rem .25rem;border-radius:4px}
@@ -525,7 +534,7 @@ selectorDiagInboxNoType:'{n} entit je v Inboxu bez typu – otevři je a nastav 
 selectorDiagNoEntities:'V projektu nejsou žádné entity typu {type}. Vytvoř první přes tlačítko níže nebo přes Nové.',
 selectorDiagNoFilter:'Z {n} entit v projektu žádná nesplnila filtry.',
 selectAspect:'Vyber aspekt',selectRelationType:'Typ vazby',selectTargetEntity:'Cílová entita',
-scrIdLabel:'Identifikátor obrazovky',settingsTypes:'Typy entit',settingsAspects:'Aspekty',settingsRelations:'Typy vazeb',settingsLists:'Seznamy',settingsTabs:'Záložky',settingsGeneral:'Obecné',settingsStats:'Statistiky',settingsHelp:'Nápověda',
+scrIdLabel:'Identifikátor obrazovky',dndHint:'Pořadí změníš i přetažením myší.',dndMoved:'Přesunuto na pozici {n} z {z}.',settingsTypes:'Typy entit',settingsAspects:'Aspekty',settingsRelations:'Typy vazeb',settingsLists:'Seznamy',settingsTabs:'Záložky',settingsGeneral:'Obecné',settingsStats:'Statistiky',settingsHelp:'Nápověda',
 settingsTypesDesc:'Typy entit definují strukturu hlavních dat. Každý typ má vlastní sadu atributů.',
 settingsAspectsDesc:'Aspekty jsou doplňkové sady atributů, které lze přiřadit k jakékoliv entitě navíc k jejímu typu.',
 settingsRelationsDesc:'Definuj typy vazeb mezi entitami. Mohou být univerzální nebo omezené na konkrétní typy.',
@@ -1077,7 +1086,7 @@ selectorDiagInboxNoType:'{n} entities in Inbox without type – open them and se
 selectorDiagNoEntities:'No entities of type {type} in the project. Create one with the button below or via New.',
 selectorDiagNoFilter:'Of {n} entities in project, none matched the filters.',
 selectAspect:'Select aspect',selectRelationType:'Relation type',selectTargetEntity:'Target entity',
-scrIdLabel:'Screen identifier',settingsTypes:'Entity types',settingsAspects:'Aspects',settingsRelations:'Relation types',settingsLists:'Lists',settingsTabs:'Tabs',settingsGeneral:'General',settingsStats:'Statistics',settingsHelp:'Help',
+scrIdLabel:'Screen identifier',dndHint:'You can also drag to reorder.',dndMoved:'Moved to position {n} of {z}.',settingsTypes:'Entity types',settingsAspects:'Aspects',settingsRelations:'Relation types',settingsLists:'Lists',settingsTabs:'Tabs',settingsGeneral:'General',settingsStats:'Statistics',settingsHelp:'Help',
 settingsTypesDesc:'Entity types define the structure of your main data. Each type has its own attribute set.',
 settingsAspectsDesc:'Aspects are optional attribute sets you can attach to any entity in addition to its type.',
 settingsRelationsDesc:'Define relation types between entities. They can be universal or restricted to specific types.',
@@ -1754,6 +1763,71 @@ if(rt.scope==='to')return!rt.toTypes||!rt.toTypes.length||rt.toTypes.includes(to
 if(rt.scope==='specific'){const a=!rt.fromTypes||!rt.fromTypes.length||rt.fromTypes.includes(fromId);const b=!rt.toTypes||!rt.toTypes.length||rt.toTypes.includes(toId);return a&&b}
 return true;
 }
+/* ============================================================
+   PŘETAHOVÁNÍ MYŠÍ (drag and drop)
+   Doplněk k tlačítkům ↑↓, nikdy jejich náhrada: přetahování na
+   dotykových zařízeních ani z klávesnice nefunguje, takže tlačítka
+   musí u každého přetahovatelného seznamu zůstat.
+   Jedna implementace pro záložky i pro seznamy v Nastavení.
+   ============================================================ */
+
+/* Co se právě táhne. Skupina brání tomu, aby záložka typu skončila mezi aspekty —
+   pořadí se drží ve dvou různých polích a mezi nimi se položka přesunout nedá. */
+let _dnd=null;
+
+/* Přesune položku pole před nebo za cílovou pozici.
+   Vrací novou pozici, nebo -1, když se nic nezměnilo. */
+function presunPolozku(pole,od,cil,pred){
+if(od===cil)return -1;
+const prvek=pole[od];
+pole.splice(od,1);
+let ci=cil>od?cil-1:cil;      /* odebráním se indexy nad `od` posunuly */
+if(!pred)ci+=1;
+if(ci<0)ci=0;
+if(ci>pole.length)ci=pole.length;
+if(ci===od){pole.splice(od,0,prvek);return -1}
+pole.splice(ci,0,prvek);
+return ci;
+}
+
+function dndUklid(){
+document.querySelectorAll('.dnd-before,.dnd-after').forEach(x=>x.classList.remove('dnd-before','dnd-after'));
+}
+
+/* opts: {skupina, index, pole, vodorovne, hotovo} */
+function povolPretahovani(el,opts){
+el.draggable=true;
+el.classList.add(opts.vodorovne?'dnd-h':'dnd-v');
+const pred=ev=>opts.vodorovne
+  ? (ev.clientX < el.getBoundingClientRect().left+el.offsetWidth/2)
+  : (ev.clientY < el.getBoundingClientRect().top+el.offsetHeight/2);
+el.addEventListener('dragstart',ev=>{
+_dnd={skupina:opts.skupina,od:opts.index};
+ev.dataTransfer.effectAllowed='move';
+/* Bez zapsaných dat některé prohlížeče přetažení vůbec nezahájí. */
+try{ev.dataTransfer.setData('text/plain',String(opts.index))}catch(e){}
+el.classList.add('dnd-drag');
+});
+el.addEventListener('dragend',()=>{el.classList.remove('dnd-drag');_dnd=null;dndUklid()});
+el.addEventListener('dragover',ev=>{
+if(!_dnd||_dnd.skupina!==opts.skupina)return;
+ev.preventDefault();ev.dataTransfer.dropEffect='move';
+el.classList.remove('dnd-before','dnd-after');
+el.classList.add(pred(ev)?'dnd-before':'dnd-after');
+});
+el.addEventListener('dragleave',()=>el.classList.remove('dnd-before','dnd-after'));
+el.addEventListener('drop',ev=>{
+if(!_dnd||_dnd.skupina!==opts.skupina)return;
+ev.preventDefault();ev.stopPropagation();
+const nova=presunPolozku(opts.pole,_dnd.od,opts.index,pred(ev));
+_dnd=null;dndUklid();
+if(nova<0)return;
+setDirty(true);
+announce(t('dndMoved',{n:nova+1,z:opts.pole.length}));
+opts.hotovo();
+});
+}
+
 function moveItem(arr,idx,dir){const ni=idx+dir;if(ni<0||ni>=arr.length)return;const x=arr[idx];arr[idx]=arr[ni];arr[ni]=x;setDirty(true);render()}
 
 /* STORAGE */
@@ -3155,10 +3229,28 @@ const allTab=mkTab('all',t('tabAll'),allCount);
 allTab.setAttribute('accesskey','a');
 allTab.title=t('tabAll')+' ('+t('keyAlt')+'+A, '+t('keyOr')+' A)';
 tabs.appendChild(allTab);
-vis.forEach(ty=>{const c=state.data.entities.filter(e=>e.typeId===ty.id&&!e.inInbox&&!e.archived).length;tabs.appendChild(mkTab(ty.id,(ty.icon?ty.icon+' ':'')+ty.name,c))});
-visA.forEach(asp=>{const c=state.data.entities.filter(e=>(e.aspects||[]).includes(asp.id)&&!e.archived).length;tabs.appendChild(mkTab('aspect:'+asp.id,'◎ '+asp.name,c))});
+/* Záložky typů, aspektů i uložených pohledů jde přerovnat přetažením. Každá
+   skupina má vlastní pole, mezi skupinami se proto přetahovat nedá. Bez myši
+   slouží tlačítka ↑↓ v Nastavení → Záložky a → Uložené pohledy. */
+vis.forEach((ty,i)=>{const c=state.data.entities.filter(e=>e.typeId===ty.id&&!e.inInbox&&!e.archived).length;
+const b=mkTab(ty.id,(ty.icon?ty.icon+' ':'')+ty.name,c);
+b.title=ty.name+' — '+t('dndHint');
+povolPretahovani(b,{skupina:'zalozka-typ',index:i,pole:state.data.settings.visibleTypeTabs,vodorovne:true,hotovo:renderTabs});
+tabs.appendChild(b)});
+visA.forEach((asp,i)=>{const c=state.data.entities.filter(e=>(e.aspects||[]).includes(asp.id)&&!e.archived).length;
+const b=mkTab('aspect:'+asp.id,'◎ '+asp.name,c);
+b.title=asp.name+' — '+t('dndHint');
+povolPretahovani(b,{skupina:'zalozka-aspekt',index:i,pole:state.data.settings.visibleAspectTabs,vodorovne:true,hotovo:renderTabs});
+tabs.appendChild(b)});
 /* Pinned saved views */
-(state.data.savedViews||[]).filter(sv=>sv.pinned).forEach(sv=>{const lbl=(sv.icon?sv.icon+' ':'⭐ ')+sv.name;const b=document.createElement('button');b.className='tab';b.type='button';b.setAttribute('role','tab');b.setAttribute('aria-selected',state.view.name==='list'&&state.view.savedViewId===sv.id?'true':'false');b.innerHTML=esc(lbl);b.title=t('viewApply')+': '+sv.name;b.addEventListener('click',()=>{applySavedView(sv)});tabs.appendChild(b)});
+(state.data.savedViews||[]).forEach((sv,skutecnyIdx)=>{
+if(!sv.pinned)return;
+const lbl=(sv.icon?sv.icon+' ':'⭐ ')+sv.name;const b=document.createElement('button');b.className='tab';b.type='button';b.setAttribute('role','tab');
+b.setAttribute('aria-selected',state.view.name==='list'&&state.view.savedViewId===sv.id?'true':'false');
+b.innerHTML=esc(lbl);b.title=t('viewApply')+': '+sv.name+' — '+t('dndHint');
+b.addEventListener('click',()=>{applySavedView(sv)});
+povolPretahovani(b,{skupina:'zalozka-pohled',index:skutecnyIdx,pole:state.data.savedViews,vodorovne:true,hotovo:renderTabs});
+tabs.appendChild(b)});
 if(arc>0||state.view.tab==='archive')tabs.appendChild(mkTab('archive','📦 '+t('tabArchive'),arc));
 }
 function mkTab(id,label,count){
@@ -10156,6 +10248,16 @@ head.appendChild(apply);
 const upd=document.createElement('button');upd.type='button';upd.className='btn btn-sm';upd.textContent='↻ '+t('viewOverwrite');upd.title=t('viewOverwriteHint');
 upd.addEventListener('click',()=>{sv.filter={search:state.filters.search||'',filterType:state.filters.filterType||'',filterAspect:state.filters.filterAspect||'',filterUpdated:state.filters.filterUpdated||'',attrFilters:JSON.parse(JSON.stringify(state.filters.attrFilters||[]))};sv.sort=state.filters.sort||'updated';sv.tab=state.view.tab||'all';sv.displayMode=state.view.displayMode||'list';sv.kanbanAttr=state.view.kanbanAttr||'';sv.timelineAttr=state.view.timelineAttr||'';sv.timelineDesc=state.view.timelineDesc!==false;setDirty(true);toast(t('viewOverwritten',{name:sv.name}));render()});
 head.appendChild(upd);
+/* Pořadí uložených pohledů určuje pořadí jejich záložek nahoře — a tam se dá měnit
+   i přetažením. Tlačítka tu jsou proto, aby na to nebyla myš jediná cesta. */
+const up=document.createElement('button');up.type='button';up.className='btn btn-sm btn-gh';up.textContent='↑';
+up.setAttribute('aria-label',t('moveUp')+': '+(sv.name||''));up.disabled=idx<=0;
+up.addEventListener('click',()=>moveItem(state.data.savedViews,idx,-1));
+head.appendChild(up);
+const dn=document.createElement('button');dn.type='button';dn.className='btn btn-sm btn-gh';dn.textContent='↓';
+dn.setAttribute('aria-label',t('moveDown')+': '+(sv.name||''));dn.disabled=idx>=(state.data.savedViews||[]).length-1;
+dn.addEventListener('click',()=>moveItem(state.data.savedViews,idx,1));
+head.appendChild(dn);
 const del=document.createElement('button');del.type='button';del.className='btn btn-sm btn-dg';del.textContent='×';del.title=t('delete');
 del.addEventListener('click',()=>{if(!confirm(t('viewConfirmDelete',{name:sv.name})))return;state.data.savedViews.splice(idx,1);setDirty(true);render()});
 head.appendChild(del);
@@ -10192,8 +10294,13 @@ x.addEventListener('click',()=>{if(beforeDelete()===false)return;setDirty(true);
 parent.appendChild(u);parent.appendChild(d);parent.appendChild(x);
 }
 
-function rsListItem(label,meta,onEdit,arr,idx,onDelete){
+function rsListItem(label,meta,onEdit,arr,idx,onDelete,dndSkupina){
 const it=document.createElement('div');it.className='clist-item';
+/* Přetahování je doplněk — tlačítka ↑↓ níž zůstávají hlavní cestou. */
+if(dndSkupina){
+it.title=t('dndHint');
+povolPretahovani(it,{skupina:dndSkupina,index:idx,pole:arr,vodorovne:false,hotovo:render});
+}
 const nm=document.createElement('div');nm.className='clist-item-name';nm.textContent=label||t('typeNoName');
 it.appendChild(nm);
 if(meta){const m=document.createElement('span');m.className='clist-item-meta';m.textContent=meta;it.appendChild(m)}
@@ -10220,8 +10327,8 @@ const meta=(ty.attributes?ty.attributes.length:0)+' '+t('detailAttributes').toLo
 list.appendChild(rsListItem((ty.icon?ty.icon+' ':'')+ty.name,meta,
 ()=>navigateTo({name:'settings',settingsTab:'types',settingsItemId:ty.id}),
 state.data.entityTypes,idx,
-()=>{if(!confirm(t('confirmDeleteType')))return false;state.data.entityTypes.splice(idx,1);state.data.entities.forEach(e=>{if(e.typeId===ty.id)e.typeId=null});state.data.settings.visibleTypeTabs=(state.data.settings.visibleTypeTabs||[]).filter(x=>x!==ty.id);return true}
-));
+()=>{if(!confirm(t('confirmDeleteType')))return false;state.data.entityTypes.splice(idx,1);state.data.entities.forEach(e=>{if(e.typeId===ty.id)e.typeId=null});state.data.settings.visibleTypeTabs=(state.data.settings.visibleTypeTabs||[]).filter(x=>x!==ty.id);return true},
+'typ-entity'));
 });
 w.appendChild(list);
 const ab=document.createElement('button');ab.className='btn btn-pri';ab.type='button';ab.textContent='＋ '+t('addType');
@@ -10269,8 +10376,8 @@ const meta=(asp.attributes?asp.attributes.length:0)+' '+t('detailAttributes').to
 list.appendChild(rsListItem(asp.name,meta,
 ()=>navigateTo({name:'settings',settingsTab:'aspects',settingsItemId:asp.id}),
 state.data.aspects,idx,
-()=>{if(!confirm(t('confirmDeleteAspect')))return false;state.data.aspects.splice(idx,1);state.data.entities.forEach(e=>{if(e.aspects)e.aspects=e.aspects.filter(x=>x!==asp.id)});state.data.settings.visibleAspectTabs=(state.data.settings.visibleAspectTabs||[]).filter(x=>x!==asp.id);return true}
-));
+()=>{if(!confirm(t('confirmDeleteAspect')))return false;state.data.aspects.splice(idx,1);state.data.entities.forEach(e=>{if(e.aspects)e.aspects=e.aspects.filter(x=>x!==asp.id)});state.data.settings.visibleAspectTabs=(state.data.settings.visibleAspectTabs||[]).filter(x=>x!==asp.id);return true},
+'aspekt'));
 });
 w.appendChild(list);
 const ab=document.createElement('button');ab.className='btn btn-pri';ab.type='button';ab.textContent='＋ '+t('addAspect2');
@@ -10628,6 +10735,34 @@ ab.addEventListener('click',()=>{state.data.selectLists.push({id:uid('l'),name:'
 w.appendChild(ab);return w;
 }
 
+/* Jeden řádek v Nastavení → Záložky. Zapnuté položky dostanou ↑↓ — bez nich by
+   pořadí záložek šlo měnit jedině přetažením, a to z klávesnice ani na dotyku nejde. */
+function rsTabRadek(polozka,popis,poleId){
+const arr=state.data.settings[poleId];
+const zapnuto=arr.includes(polozka.id);
+const radek=document.createElement('div');radek.style.display='flex';radek.style.alignItems='center';radek.style.gap='.4rem';
+const lab=document.createElement('label');lab.className='cb';lab.style.flex='1';lab.style.minWidth='0';
+const cb=document.createElement('input');cb.type='checkbox';cb.checked=zapnuto;
+cb.addEventListener('change',()=>{
+if(cb.checked){if(!arr.includes(polozka.id))arr.push(polozka.id)}
+else state.data.settings[poleId]=arr.filter(x=>x!==polozka.id);
+setDirty(true);render();
+});
+lab.appendChild(cb);const sp=document.createElement('span');sp.textContent=popis;lab.appendChild(sp);
+radek.appendChild(lab);
+if(zapnuto){
+const idx=arr.indexOf(polozka.id);
+const u=document.createElement('button');u.type='button';u.className='btn btn-sm btn-gh';u.textContent='↑';
+u.setAttribute('aria-label',t('moveUp')+': '+popis);u.disabled=idx<=0;
+u.addEventListener('click',()=>moveItem(arr,idx,-1));
+const d=document.createElement('button');d.type='button';d.className='btn btn-sm btn-gh';d.textContent='↓';
+d.setAttribute('aria-label',t('moveDown')+': '+popis);d.disabled=idx>=arr.length-1;
+d.addEventListener('click',()=>moveItem(arr,idx,1));
+radek.appendChild(u);radek.appendChild(d);
+}
+return radek;
+}
+
 function rsTabs(){
 const w=document.createElement('div');
 const h=document.createElement('h1');h.textContent=t('settingsTabs');w.appendChild(h);
@@ -10640,17 +10775,10 @@ const ht1=document.createElement('h3');ht1.textContent=t('settingsTypes');w.appe
 if(!state.data.entityTypes.length){const p=document.createElement('p');p.className='aempty';p.textContent=t('noTypesYet');w.appendChild(p)}
 else{
 const lst=document.createElement('div');lst.style.display='flex';lst.style.flexDirection='column';lst.style.gap='.4rem';
-state.data.entityTypes.forEach(ty=>{
-const lab=document.createElement('label');lab.className='cb';
-const cb=document.createElement('input');cb.type='checkbox';cb.checked=state.data.settings.visibleTypeTabs.includes(ty.id);
-cb.addEventListener('change',()=>{
-const arr=state.data.settings.visibleTypeTabs;
-if(cb.checked){if(!arr.includes(ty.id))arr.push(ty.id)}else{state.data.settings.visibleTypeTabs=arr.filter(x=>x!==ty.id)}
-setDirty(true);renderTabs();
-});
-lab.appendChild(cb);const sp=document.createElement('span');sp.textContent=(ty.icon?ty.icon+' ':'')+ty.name;lab.appendChild(sp);
-lst.appendChild(lab);
-});
+/* Zapnuté nahoře v pořadí záložek, aby ↑↓ posouvala viditelně; zbytek pod nimi. */
+const vidT=state.data.settings.visibleTypeTabs.map(findType).filter(Boolean);
+const zbytekT=state.data.entityTypes.filter(ty=>!state.data.settings.visibleTypeTabs.includes(ty.id));
+vidT.concat(zbytekT).forEach(ty=>lst.appendChild(rsTabRadek(ty,(ty.icon?ty.icon+' ':'')+ty.name,'visibleTypeTabs')));
 w.appendChild(lst);
 }
 
@@ -10659,17 +10787,9 @@ const ht2=document.createElement('h3');ht2.textContent=t('settingsAspects');ht2.
 if(!state.data.aspects.length){const p=document.createElement('p');p.className='aempty';p.textContent='—';w.appendChild(p)}
 else{
 const lst2=document.createElement('div');lst2.style.display='flex';lst2.style.flexDirection='column';lst2.style.gap='.4rem';
-state.data.aspects.forEach(asp=>{
-const lab=document.createElement('label');lab.className='cb';
-const cb=document.createElement('input');cb.type='checkbox';cb.checked=state.data.settings.visibleAspectTabs.includes(asp.id);
-cb.addEventListener('change',()=>{
-const arr=state.data.settings.visibleAspectTabs;
-if(cb.checked){if(!arr.includes(asp.id))arr.push(asp.id)}else{state.data.settings.visibleAspectTabs=arr.filter(x=>x!==asp.id)}
-setDirty(true);renderTabs();
-});
-lab.appendChild(cb);const sp=document.createElement('span');sp.textContent='◎ '+asp.name;lab.appendChild(sp);
-lst2.appendChild(lab);
-});
+const vidA=state.data.settings.visibleAspectTabs.map(findAspect).filter(Boolean);
+const zbytekA=state.data.aspects.filter(asp=>!state.data.settings.visibleAspectTabs.includes(asp.id));
+vidA.concat(zbytekA).forEach(asp=>lst2.appendChild(rsTabRadek(asp,'◎ '+asp.name,'visibleAspectTabs')));
 w.appendChild(lst2);
 }
 return w;

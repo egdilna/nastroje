@@ -311,6 +311,23 @@ Akce v `applyImport`: `merge` **doplňuje, nepřepisuje** (prázdné atributy, s
 a vlastních atributů podle názvu, vazby se ve druhém průchodu deduplikují přes
 `typVazby:cíl`), `overwrite` nahrazuje, `skip` přeskočí, `newId` založí kopii.
 
+## Přetahování myší (`povolPretahovani`)
+Jedna implementace pro záložky i pro seznamy v Nastavení. Prvku se předá skupina,
+index, pole a co udělat po přesunu; `presunPolozku` řeší aritmetiku (pozor na to,
+že odebráním prvku se indexy nad ním posunou — je to ověřené hrubou silou na všech
+kombinacích do sedmi prvků).
+
+**Přetahování je vždycky jen doplněk, nikdy jediná cesta.** Na dotyku ani z klávesnice
+nefunguje, takže u každého přetahovatelného seznamu musí zůstat tlačítka ↑↓. Když
+někde chybí, doplň je — ne naopak.
+
+**Skupina brání přesunu mezi poli.** Záložka typu a záložka aspektu vypadají v jedné
+liště stejně, ale pořadí se drží ve dvou různých polích; `dragover` mimo skupinu
+proto vůbec nevolá `preventDefault`, takže puštění tam není možné.
+
+U uložených pohledů se pracuje se **skutečným indexem v `savedViews`**, ne s pořadím
+mezi záložkami — v poli jsou i nepřipnuté pohledy, které se v liště nezobrazují.
+
 ## Identifikátory obrazovek
 Každá obrazovka i dialog nese krátké interní id (`#scrallview.table`, `#dlgimppkg.step3`).
 Vypisuje se v patičce a leží v `data-scr` na `<body>` a na `<dialog>` — odtud ho čtou

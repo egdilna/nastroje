@@ -1544,9 +1544,14 @@ Clicking Import performs a two-pass:
 List of types, click to open editor with attributes, icon, name and an optional
 **JSON key** field (see ch. 26.7). Every attribute has the same field.
 
+Reorder types with the **↑↓** buttons on each row, or grab a row with the mouse and
+drag it elsewhere. Both do the same thing — dragging is there for those who find the
+mouse quicker.
+
 ### 29.3 Aspects
 
-Analogous for aspects, including the **JSON key** field.
+Analogous for aspects, including the **JSON key** field, and including reordering with
+the **↑↓** buttons or by dragging.
 
 ### 29.4 Relations
 
@@ -1561,10 +1566,17 @@ references a list in its own editor.
 ### 29.6 Saved views
 
 Manage all saved views: rename, change icon, toggle pin, overwrite with current filter, delete.
+The **↑↓** buttons change their order, and with it the order of their tabs at the top.
 
 ### 29.7 Tabs
 
-Which types and aspects appear as tabs in the main toolbar.
+Which types and aspects appear as tabs in the main toolbar. The enabled entries sit at
+the top in the order the tabs appear, and the **↑↓** buttons next to them change that
+order. Dragging a tab in the toolbar itself does the same.
+
+Dragging works within one group only — a type among types, an aspect among aspects, a
+saved view among saved views. Inbox, All and Archive have fixed places. Dragging does
+not work on touch devices; the **↑↓** buttons always do.
 
 ### 29.8 GitHub
 
