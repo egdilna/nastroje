@@ -1054,6 +1054,19 @@ database.
 | Part of the project | `.dkmpkg` (a package) | bulk action **Export package** | move a slice into another project (ch. 28) |
 | Context for a language model | Markdown | **🤖 Ask AI** → Show what will be sent | the prompt for the AI (ch. 35.3) |
 
+Beyond picking a scope, the **📤 Export data** dialog has two further refinements, which
+apply to every target except moving the whole project to the clipboard:
+
+- **⊘ Exclude individual entities** unfolds a list of everything currently in scope, and you
+  untick individual items. Useful when the scope is almost right and you want two or three
+  things out of it. The dialog remembers the exclusions across a change of scope.
+- **Include aspects** — an unticked aspect stays out of the export entirely: neither its
+  values on entities nor its definition in the model. With an "Internal notes" aspect you
+  export the data without it and the file keeps no trace of it.
+
+The package has its own scope extension (to neighbours or the whole connected component,
+ch. 28.1), and individual entities can be excluded there too — on top of that extended list.
+
 ### 23.3 Model exports
 
 All seven live in one place — **Settings → Model** (ch. 36), individually or in a ZIP:
@@ -1424,8 +1437,11 @@ DKM can generate a **static HTML viewer** of project data — a single file you 
 ### 27.1 Generating
 
 In the **📤 Export data** dialog (ch. 23) pick the **Static viewer** target. A file with the
-embedded project data is downloaded. It always takes the whole project; the scope does not
-apply to it. **Settings → Project** has a shortcut to the same thing.
+embedded data is downloaded. **It takes the chosen scope** — so it need not be the whole
+project. In a cut the model is narrowed to what the selected entities actually need,
+relations pointing outside are dropped (as with a package, ch. 28.1), and tabs referring to
+a type or aspect that is not in the cut disappear. **Settings → Project** has a shortcut to
+the whole project.
 
 The static viewer has:
 

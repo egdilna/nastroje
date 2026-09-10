@@ -153,6 +153,27 @@ bere vždy celý projekt — rozsah se zamkne a napíše se to.
 Vstupy: tlačítko `b-exp` v hlavičce, hromadná akce `export`, rychlá paleta. Vždy týž dialog,
 liší se jen předvyplněný rozsah.
 
+**Rozsah má tři vrstvy:** výběr entit → ručně vyřazené jednotlivé entity (`vyrazovacEntit`)
+→ vynechané aspekty (`vyberAspektu`). Skládá je `projekceEntit`, která vrací **kopie** entit
+bez vynechaných aspektů a bez jejich hodnot. Cíle exportu čtou z těch kopií, takže se
+vynechaný aspekt nepropíše ani do modelu — ten se všude počítá z toho, co entity opravdu
+používají, ne ze `state.data`. Když se nevynechává nic, vrací `projekceEntit` původní entity;
+chování bez těch voleb je tím pádem stejné jako dřív.
+
+Cíl, který si otevře vlastní dialog, musí projekci dostat s sebou: `bulkExportPackage` bere
+`bezAspektu` a aplikuje ji **až po rozšíření rozsahu**, protože sousedé a komponenta se
+dobírají ze `state.data`, tedy neprojektovaní. Kdo přidá další navazující dialog, ať to
+udělá stejně.
+
+Vyřazovač nemůže mít vlastní dialog — aplikace má jen jeden `<dialog>` a druhý by ten první
+přepsal. Je to proto rozbalovací seznam na místě.
+
+**Výřez projektu dělá `orezProjekt`** — kopie entit s vazbami omezenými dovnitř výřezu
+(včetně hodnot vazebních atributů) a model zúžený na to, co entity potřebují. Sdílí ho
+balíček (`buildPackageObj`) i statický prohlížeč (`viewerData`); nikdy si nepiš druhý.
+`buildPackageObj` proto bere **hotové entity, ne množinu id** — jinak by si projekci
+znovu přepsal tím, že by si entity dotáhl přes `findEntity`.
+
 **Mimo dialog zůstávají tři věci schválně:** `smartSave` (uložení projektu, ne export),
 export jedné entity v jejím detailu (`openExportDialog`) a kontext pro AI. Nepřidávej je tam.
 
