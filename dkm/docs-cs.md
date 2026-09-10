@@ -1450,6 +1450,11 @@ V dialogu **📤 Export dat** (kap. 23) zvol cíl **Statický prohlížeč**. St
 s vloženými daty projektu. Bere vždycky celý projekt, rozsah se na něj nevztahuje.
 V **Nastavení → Projekt** je na totéž zkratka.
 
+Prohlížeč má **stejné rozvržení detailu jako aplikace**: vlevo atributy, vpravo karty
+**Vazby** (s Odkazuje sem) a **🌳 Strukturální pohled**, dole řádek s ID a časy. Vazby se
+počítají stejně jako v aplikaci — klasické, přes vazební atribut i přes wiki odkaz — a wiki
+odkazy `[[Název]]` v textech jsou proklikávací. Komentáře prohlížeč nezobrazuje.
+
 Statický prohlížeč má:
 
 - Seznam entit

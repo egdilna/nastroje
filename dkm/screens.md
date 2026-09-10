@@ -176,7 +176,8 @@ kopírují aplikaci, jen s předponou `scrstat`.
 | `#scrstattypeview` | seznam jednoho typu entit |
 | `#scrstataspview` | seznam jednoho aspektu |
 | `#scrstatarchive` | Archiv |
-| `#scrstatdetent` | detail entity |
+| `#scrstatdetent.rels` | detail entity, karta Vazby (s Odkazuje sem) |
+| `#scrstatdetent.tree` | detail entity, karta Strukturální pohled |
 
 ## Jak přidat identifikátor nové obrazovce
 

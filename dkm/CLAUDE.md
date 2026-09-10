@@ -113,6 +113,12 @@ takže se CSS mezi nimi kopírovat nedá. Motivy i jazyk si prohlížeč uklád�
 `dkm-viewer-theme` / `dkm-viewer-lang`, tedy do prohlížeče příjemce, ne do generovaného souboru.
 Editace: dekóduj base64 do souboru, uprav, zakóduj zpět a nahraď řetězec — nikdy needituj base64.
 
+**Prohlížeč zrcadlí detail aplikace**: dva sloupce, karty Vazby a Strukturální pohled,
+řádek s metadaty dole, wiki odkazy v textech a odkazy počítané oběma směry přes
+`getLinksFrom` / `getRelsTo`. Když měníš detail v aplikaci, projdi i prohlížeč — má
+vlastní kopii těchhle funkcí a tiše by se rozešly. Komentáře prohlížeč **nezobrazuje**
+(i když je data nesou), a to je zatím záměr.
+
 ## Export výběru entit (`openBulkExportDialog`)
 Staví na exportu jedné entity a nemění ho: `buildExportModel(entity, sel)` čte jen atributy
 daného typu a jeho aspektů, takže **jeden `sel` jako sjednocení všech typů a aspektů ve výběru
