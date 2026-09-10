@@ -10,8 +10,11 @@ každé obrazovky (`#scrallview`, `#dlgaddrel`…) je **identifikátor obrazovky
 nebudete jistí, jestli jste na správném místě, porovnejte ho s tím na obrázku. Seznam
 všech identifikátorů je v [`screens.md`](../screens.md).
 
-Celou příručkou se táhne jeden příklad: **evidence agend úřadu**. Postavíme si v ní
-agendy, informační systémy a lidi, kteří za ně odpovídají.
+> **DKM nemá žádný předepsaný obsah.** Jaké typy záznamů budete vést, si určujete sami —
+> může to být evidence smluv, přehled zařízení, znalostní báze, seznam rizik, cokoliv.
+> Příručka proto používá nejobyčejnější možný příklad: **projekty, úkoly a lidi**.
+> Kdekoliv v ní stojí *Projekt* nebo *Úkol*, dosaďte si svoje vlastní pojmy — postup
+> je stejný.
 
 ---
 
@@ -59,7 +62,14 @@ Po prvním otevření uvidíte tohle:
 ![Prázdný projekt po prvním spuštění](scrinbox1.png)
 
 Aplikace je prázdná a stojíte na záložce **Inbox**. To je v pořádku — DKM totiž nemá
-žádný předpřipravený datový model. **Jaké typy záznamů budete vést, si určíte sami.**
+žádný předpřipravený datový model. Nejdřív si tedy popíšeme, **s čím budeme pracovat**,
+a teprve pak začneme zapisovat data.
+
+Pořadí, ve kterém se to dělá, je vždycky stejné:
+
+```
+seznam hodnot  →  typy entit  →  aspekty  →  typy vazeb  →  data
+```
 
 > **Kde data žijí.** Projekt existuje v této záložce prohlížeče. Obnovení stránky (F5)
 > přežije, zavření záložky ne. Proto si projekt průběžně ukládejte do souboru
@@ -71,9 +81,9 @@ Aplikace je prázdná a stojíte na záložce **Inbox**. To je v pořádku — D
 
 1. V hlavičce klikněte na **Nastavení**.
 2. V levém sloupci je vybraná sekce **Projekt**.
-3. Do pole **Název projektu** napište `Evidence agend úřadu`.
-4. Do pole **Popis** napište, k čemu projekt je — třeba
-   `Přehled agend, informačních systémů a jejich garantů.`
+3. Do pole **Název projektu** napište, jak se má projekt jmenovat — v příručce to bude
+   `Projekty a úkoly`.
+4. Do pole **Popis** napište, k čemu projekt je.
 
 ![Nastavení projektu](scrsetproj1.png)
 
@@ -85,21 +95,22 @@ Název se hned objeví v hlavičce vlevo nahoře. Vedle něj se rozsvítí oran�
 ## 3. Datový model: seznam hodnot
 
 Než založíme typ entity, připravíme si **číselník** — pevnou nabídku hodnot, ze které se
-bude vybírat. Vyhnete se tak překlepům typu „hotovo" / „Hotovo" / „HOTOVO".
+bude vybírat. Vyhnete se tak překlepům typu „hotovo" / „Hotovo" / „HOTOVO" a získáte
+něco, podle čeho se dá filtrovat a stavět kanban.
 
 1. V Nastavení klikněte v levém sloupci na **Seznamy**.
 2. Klikněte na **＋ Přidat seznam**.
-3. Do pole **Název** napište `Stav agendy`.
+3. Do pole **Název** napište `Stav`.
 4. Do velkého pole **Hodnoty** napište každou hodnotu na vlastní řádek:
 
    ```
-   Návrh
-   V řešení
-   Schváleno
+   Nový
+   Probíhá
+   Ke kontrole
    Hotovo
    ```
 
-![Seznam hodnot Stav agendy](scrsetlists1.png)
+![Seznam hodnot Stav](scrsetlists1.png)
 
 Nikde není tlačítko „Uložit" — **změny v nastavení platí okamžitě**. Stačí odklepnout
 mimo pole.
@@ -108,8 +119,8 @@ mimo pole.
 
 ## 4. Datový model: typy entit
 
-**Typ entity** je šablona záznamu: říká, jaká pole entita má. My budeme potřebovat tři —
-agendu, informační systém a osobu.
+**Typ entity** je šablona záznamu: říká, jaká pole entita má. V příkladu budeme
+potřebovat tři — projekt, úkol a osobu.
 
 ### 4.1 Založení typu
 
@@ -119,11 +130,11 @@ agendu, informační systém a osobu.
 
 2. Klikněte na **＋ Přidat typ entity**.
 3. Do pole **Ikona** napište emotikonu `📁` — bude entitu odlišovat v každém seznamu.
-4. Do pole **Název** napište `Agenda`.
+4. Do pole **Název** napište `Projekt`.
 5. Pole **Klíč v JSON** nechte prázdné. Vyplňte ho jen tehdy, když víte, že budete data
    exportovat do jiného systému a potřebujete mít název pole neměnný.
 
-![Nový typ entity Agenda](scrsettype1.png)
+![Nový typ entity](scrsettype1.png)
 
 ### 4.2 Atributy typu
 
@@ -132,52 +143,73 @@ Teď typu přidáme pole. Pro každý atribut klikněte na **＋ Přidat atribut
 
 | Název atributu | Typ | Zaškrtněte |
 |---|---|---|
-| `Kód agendy` | Text (jeden řádek) | Zobrazit v seznamu |
+| `Kód` | Text (jeden řádek) | Zobrazit v seznamu |
 | `Popis` | Text (víceřádkový, Markdown + CriticMarkup) | — |
 | `Stav` | Výběr ze seznamu | Zobrazit v seznamu |
 | `Termín` | Datum | — |
 
 U atributu **Stav** se po zvolení typu *Výběr ze seznamu* objeví vpravo rozbalovátko
-**Seznam** — vyberte v něm `Stav agendy`, tedy číselník z kapitoly 3.
+**Seznam** — vyberte v něm `Stav`, tedy číselník z kapitoly 3.
 
-![Typ Agenda se čtyřmi atributy](scrsettype2.png)
+![Typ se čtyřmi atributy](scrsettype2.png)
 
 Zaškrtávátko **Zobrazit v seznamu** znamená, že se hodnota vypíše rovnou na kartě entity,
 aniž byste ji museli otevírat. Šetřete s ním — dva tři atributy stačí, jinak se karty
 rozbují.
 
+**Typy atributů, ze kterých se vybírá:**
+
+| Typ | K čemu |
+|---|---|
+| Text (jeden řádek) | krátké údaje — kód, jméno, číslo jednací |
+| Text (víceřádkový) | popisy a poznámky; umí Markdown a značky revizí |
+| Datum | termíny, data platnosti |
+| URL | odkazy — v detailu se z nich stane proklik |
+| Výběr ze seznamu | hodnota z číselníku |
+| Ano/Ne | přepínač |
+| Relace na entitu | odkaz na jiný záznam přímo v atributu |
+| Číslo | částky, počty, odhady |
+
 ### 4.3 Zbylé dva typy
 
 Klikněte na **← Zpět na seznam** a stejným postupem založte:
 
-- **💻 Informační systém** — atributy `Zkratka` (text, zobrazit v seznamu),
-  `Adresa` (URL), `V provozu` (Ano/Ne)
-- **👤 Osoba** — atributy `E-mail` (text, zobrazit v seznamu), `Útvar` (text)
+- **✅ Úkol** — atributy `Popis` (víceřádkový text), `Stav` (výběr ze seznamu *Stav*,
+  zobrazit v seznamu), `Termín` (datum), `Odhad (hodin)` (číslo)
+- **👤 Osoba** — atributy `E-mail` (text, zobrazit v seznamu), `Role` (text)
 
 Výsledek:
 
 ![Tři hotové typy entit](scrsettypes2.png)
+
+Pořadí typů (a stejně tak aspektů, vazeb i atributů uvnitř typu) se dá měnit —
+buď **přetažením myší**, nebo tlačítky **↑ ↓** u položky. Pořadí atributů určuje, jak
+za sebou jdou pole v editoru entity, takže se vyplatí ho srovnat podle toho, jak
+záznamy skutečně vyplňujete.
 
 ---
 
 ## 5. Datový model: aspekty
 
 **Aspekt** je průřezová sada atributů, kterou přilepíte na entitu **jakéhokoli typu**.
-Hodí se přesně tam, kde by vám typ nestačil: „zpracovává osobní údaje" se může týkat
-agendy i systému, a zakládat kvůli tomu nové typy by bylo špatně.
+Hodí se přesně tam, kde by vám typ nestačil: informace o penězích se může týkat projektu
+i jednotlivého úkolu, a zakládat kvůli tomu nové typy by bylo špatně.
 
 1. V Nastavení klikněte na **Aspekty**.
 2. Klikněte na **＋ Přidat aspekt**.
-3. **Název**: `Osobní údaje`.
+3. **Název**: `Rozpočet`.
 4. Přidejte dva atributy:
-   - `Zpracovává osobní údaje` — typ **Ano/Ne**
-   - `Právní titul` — typ **Text (jeden řádek)**
+   - `Náklady` — typ **Číslo**
+   - `Schváleno` — typ **Ano/Ne**
 
-![Aspekt Osobní údaje](scrsetasp1.png)
+![Aspekt Rozpočet](scrsetasp1.png)
 
-**Kdy typ a kdy aspekt?** Typ odpovídá na otázku „co to je" (agenda, systém, osoba).
-Aspekt odpovídá na „co se toho navíc týká" (osobní údaje, utajované informace,
-přeshraniční provoz). Entita má **právě jeden typ** a **libovolný počet aspektů**.
+**Kdy typ a kdy aspekt?** Typ odpovídá na otázku „co to je" (projekt, úkol, osoba).
+Aspekt odpovídá na „co se toho navíc týká" (rozpočet, osobní údaje, utajení).
+Entita má **právě jeden typ** a **libovolný počet aspektů**.
+
+Poznat to jde jednoduchou zkouškou: kdyby vám z toho vznikly typy *Projekt* a *Projekt
+s rozpočtem*, patří ta věc do aspektu.
 
 ---
 
@@ -187,14 +219,17 @@ přeshraniční provoz). Entita má **právě jeden typ** a **libovolný počet 
 
 1. V Nastavení klikněte na **Typy vazeb**.
 2. Klikněte na **＋ Přidat typ vazby**.
-3. **Název vazby**: `Podporuje`.
-4. **Opačný název**: `Je podporována` — tenhle text uvidí protistrana v sekci
+3. **Název vazby**: `Obsahuje`.
+4. **Opačný název**: `Je součástí` — tenhle text uvidí protistrana v sekci
    „Odkazuje sem".
 5. **Rozsah** nechte na *univerzální*. Znamená to „smí spojit cokoliv s čímkoliv".
-   Kdybyste chtěli hlídat, že Podporuje vede jen ze systému na agendu, přepněte
-   rozsah a vyberte povolené typy.
+   Kdybyste chtěli hlídat, že *Obsahuje* vede jen z projektu na úkol, přepněte rozsah
+   a vyberte povolené typy.
 
-![Typ vazby Podporuje](scrsetrel1.png)
+![Typ vazby](scrsetrel1.png)
+
+Stejným způsobem založte ještě druhý typ vazby: **Odpovídá** s opačným názvem
+`Odpovídá za`.
 
 Datový model je hotový. Teď do něj nasypeme data.
 
@@ -204,7 +239,7 @@ Datový model je hotový. Teď do něj nasypeme data.
 
 1. Vraťte se do hlavního pohledu — klikněte v horní liště na záložku **Vše**.
 2. Klikněte na **＋ Nová entita** (nebo stiskněte klávesu **N**).
-3. Vyskočí nabídka typů. Klikněte na **📁 Agenda**.
+3. Vyskočí nabídka typů. Klikněte na **📁 Projekt**.
 
    ![Výběr typu nové entity](dlgnewent1.png)
 
@@ -214,11 +249,11 @@ Datový model je hotový. Teď do něj nasypeme data.
    ![Prázdný editor nové entity](scrnewent1.png)
 
 5. Vyplňte:
-   - **Název**: `Evidence obyvatel`
-   - **Kód agendy**: `A115`
+   - **Název**: `Nové webové stránky`
+   - **Kód**: `P-01`
    - **Popis**: libovolný text; můžete použít Markdown, takže `**tučně**` opravdu
      ztuční
-   - **Stav**: `V řešení`
+   - **Stav**: `Probíhá`
    - **Termín**: `31. 12. 2026`
 
    ![Vyplněný editor entity](scrnewent2.png)
@@ -236,36 +271,34 @@ Nahoře jsou akce, které s entitou můžete udělat: **Upravit**, **Duplikovat*
 
 ## 8. Vazby mezi entitami
 
-Než půjdeme dál, založte stejným postupem ještě pár entit, ať je co propojovat:
-dva informační systémy (`Registr obyvatel ROB`, `Spisová služba`), dvě osoby
-(`Jana Dvořáková`, `Petr Málek`) a tři další agendy (`Matrika`, `Ověřování listin`,
-`Místní poplatky`).
+Než půjdeme dál, založte stejným postupem ještě pár entit, ať je co propojovat: druhý
+projekt (`Stěhování kanceláře`), čtyři úkoly (`Návrh grafiky`, `Migrace obsahu`,
+`Výběr dodavatele`, `Revize smluv`) a dvě osoby (`Jana Dvořáková`, `Petr Málek`).
 
 Seznam pak vypadá takhle:
 
 ![Seznam všech entit](scrallview1.png)
 
-Teď propojíme agendu se systémem, který ji podporuje:
+Teď propojíme projekt s úkoly, které do něj patří:
 
-1. Klikněte na kartu **Evidence obyvatel** — otevře se její detail.
+1. Klikněte na kartu **Nové webové stránky** — otevře se její detail.
 2. V sekci **Vazby** klikněte na **＋ Přidat vazbu** (nebo stiskněte **Alt+R**).
-3. V horním rozbalovátku vyberte typ vazby **Podporuje**.
-4. Pod ním je filtr a vlastní výběr. Ve **Výběru** označte
-   `💻 Registr obyvatel ROB [Informační systém]`.
+3. V horním rozbalovátku vyberte typ vazby **Obsahuje**.
+4. Pod ním je filtr a vlastní výběr. Ve **Výběru** označte `✅ Návrh grafiky [Úkol]`.
 
    ![Dialog přidání vazby](dlgaddrel1.png)
 
 5. Klikněte na **Přidat vazbu**.
 
-Zopakujte to ještě jednou a přidejte vazbu na `👤 Jana Dvořáková`. Detail teď ukazuje
-obě vazby a pod nimi **Strukturální pohled** — rozklikávací strom, kterým se dá po
-vazbách procházet:
+Zopakujte to pro `Migrace obsahu` a nakonec přidejte vazbu typu **Odpovídá** na
+`👤 Jana Dvořáková`. Detail teď ukazuje všechny tři vazby a pod nimi **Strukturální
+pohled** — rozklikávací strom, kterým se dá po vazbách procházet:
 
 ![Detail entity s vazbami](scrdetent2.png)
 
-> **Zpětné odkazy.** Když teď otevřete `Registr obyvatel ROB`, uvidíte v sekci
-> **Odkazuje sem** položku `Podporuje ←` s Evidencí obyvatel. Nemusíte tedy zakládat
-> vazbu z obou stran — DKM ji vidí oběma směry.
+> **Zpětné odkazy.** Když teď otevřete `Návrh grafiky`, uvidíte v sekci **Odkazuje sem**
+> položku `Je součástí ←` s projektem. Nemusíte tedy zakládat vazbu z obou stran — DKM
+> ji vidí oběma směry.
 
 ---
 
@@ -273,14 +306,16 @@ vazbách procházet:
 
 ### 9.1 Přidání aspektu
 
-1. V detailu entity `Evidence obyvatel` klikněte na **Upravit**.
-2. Sjeďte do sekce **Aspekty** a zaškrtněte **Osobní údaje**. Okamžitě se objeví jeho
+1. V detailu entity `Nové webové stránky` klikněte na **Upravit**.
+2. Sjeďte do sekce **Aspekty** a zaškrtněte **Rozpočet**. Okamžitě se objeví jeho
    atributy.
 
    ![Editace entity se zaškrtnutým aspektem](scredent1.png)
 
-3. Vyplňte **Právní titul** — třeba `Zákon č. 133/2000 Sb., o evidenci obyvatel`.
+3. Vyplňte **Náklady** a zaškrtněte **Schváleno**.
 4. Klikněte na **Uložit**.
+
+Kdykoliv později můžete tentýž aspekt přidat i úkolu — na typu nezáleží.
 
 ### 9.2 Komentář
 
@@ -288,7 +323,7 @@ Komentáře jsou pro poznámky, které nepatří do atributů — proč se něco
 ještě potřeba doladit.
 
 1. V detailu entity je vpravo sekce **Komentáře**.
-2. Do pole napište text, třeba `Termín posunut po dohodě s odborem informatiky.`
+2. Do pole napište text.
 3. Klikněte na **＋ Přidat komentář** (nebo stiskněte **Ctrl+Enter**).
 
 ![Detail s aspektem a komentářem](scrdetent3.png)
@@ -320,7 +355,7 @@ na kartu** otevře detail; ikona 🪟 vpravo nahoře otevře entitu rovnou v sam
 
 ### 11.1 Fulltext
 
-Do pole **Hledat…** napište část slova, třeba `matrik`. Seznam se filtruje průběžně:
+Do pole **Hledat…** napište část slova, třeba `migr`. Seznam se filtruje průběžně:
 
 ![Fulltextové hledání](scrallview2.png)
 
@@ -328,15 +363,15 @@ Než půjdete dál, pole zase vyprázdněte.
 
 ### 11.2 Pravidlový filtr
 
-Fulltext hledá v textu. Když potřebujete „všechny agendy, které jsou zrovna v řešení",
+Fulltext hledá v textu. Když potřebujete „všechny úkoly, na kterých se zrovna dělá",
 je na to pravidlový filtr:
 
 1. Klikněte na **⚙ Pokročilé filtry**.
 2. Klikněte na **＋ Přidat pravidlo**.
-3. V prvním rozbalovátku (**Atribut**) vyberte `Agenda / Stav`. Kromě atributů tu
+3. V prvním rozbalovátku (**Atribut**) vyberte `Úkol / Stav`. Kromě atributů tu
    najdete i systémové vlastnosti — název, typ, aspekty, počet vazeb, datum vytvoření.
 4. **Operátor** nechte na *rovná se*.
-5. Ve třetím poli vyberte hodnotu `V řešení`.
+5. Ve třetím poli vyberte hodnotu `Probíhá`.
 
 ![Pokročilý filtr podle stavu](scrallview3.png)
 
@@ -351,7 +386,7 @@ Filtr, který budete používat opakovaně, si uložte.
 
 1. Nechte filtr z předchozí kapitoly zapnutý.
 2. Klikněte na **⭐ Uložit jako pohled**.
-3. Do pole **Název pohledu** napište `Rozpracované agendy`.
+3. Do pole **Název pohledu** napište `Rozpracované úkoly`.
 4. Chcete-li mít pohled po ruce jako záložku vedle *Inboxu* a *Vše*, zaškrtněte
    **Připnout jako záložku**.
 5. Klikněte na **Uložit**.
@@ -377,8 +412,9 @@ Klikněte na **▦**. Řádek = entita, sloupce = atributy. Klikem na hlavičku 
 ### 📊 Kanban
 
 Klikněte na **📊**. Nad sloupci je rozbalovátko **Sloupce podle** — vyberte atribut typu
-*Výběr ze seznamu*, tedy náš `Agenda / Stav`. Každá hodnota číselníku dostane vlastní
-sloupec a entity bez hodnoty spadnou do sloupce *(bez hodnoty)*.
+*Výběr ze seznamu*, tedy `Úkol / Stav`. Každá hodnota číselníku dostane vlastní sloupec
+a entity bez té hodnoty (v našem případě projekty a osoby) spadnou do sloupce
+*(bez hodnoty)*.
 
 Kartu přesunete přetažením, nebo — což je spolehlivější — rozbalovátkem **Přesunout do**
 přímo na kartě.
@@ -421,7 +457,7 @@ Dalším klikem na **⫸** se náhled vypne.
 vlastní filtry, vlastní otevřená entita. Nad obsahem se objeví lišta panelů a přepínáte
 se mezi nimi klikem. **Ctrl+W** aktivní panel zavře.
 
-Hodí se, když porovnáváte dvě agendy nebo si v jednom panelu držíte filtrovaný seznam
+Hodí se, když porovnáváte dva záznamy nebo si v jednom panelu držíte filtrovaný seznam
 a ve druhém pracujete.
 
 ### 14.3 Samostatné okno entity
@@ -439,8 +475,7 @@ monitor a pracovat s ní vedle hlavního okna.
 sem a zatřídíte později.
 
 1. Klikněte na záložku **📥 Inbox**.
-2. Do horního pole napište krátký název, třeba
-   `Zjistit, kdo spravuje registr smluv`.
+2. Do horního pole napište krátký název.
 3. Do pole pod ním můžete připsat poznámku.
 
    ![Rychlý zápis do Inboxu](scrinbox2.png)
@@ -460,8 +495,7 @@ Když potřebujete změnit deset záznamů najednou, nedělejte to po jednom.
 
 1. V seznamu klikněte na **☑ Výběr** (nebo stiskněte **V**). U každé karty se objeví
    zaškrtávátko.
-2. Naklikejte entity, kterých se změna týká — třeba `Matrika` a `Ověřování listin`.
-   Nahoře se objeví lišta **Vybráno: 2**.
+2. Naklikejte entity, kterých se změna týká. Nahoře se objeví lišta **Vybráno: 2**.
 
    ![Režim hromadného výběru](scrallview-select1.png)
 
@@ -485,14 +519,14 @@ Příklad — hromadné přidání aspektu:
 Nejrychlejší způsob, jak se v projektu pohybovat.
 
 1. Stiskněte **Ctrl+P**.
-2. Začněte psát — třeba `matr`.
+2. Začněte psát — třeba `graf`.
 3. Šipkami vyberte položku a stiskněte **Enter**.
 
 ![Rychlá paleta](dlgcmdpal1.png)
 
 Paleta hledá entity, obrazovky nastavení, uložené pohledy i akce (přepnutí motivu,
 export, uložení). Nemusíte psát celé slovo — hledá se „fuzzy", takže `rzp` najde
-*Rozpracované agendy*.
+*Rozpracované úkoly*.
 
 ---
 
@@ -557,7 +591,7 @@ Po volbě cíle klikněte na **Dál →**.
 
 ## 21. Export a tisk jedné entity
 
-Někdy potřebujete jen jeden záznam — třeba kartu agendy do spisu.
+Někdy potřebujete jen jeden záznam — třeba kartu projektu do zápisu z porady.
 
 1. Otevřete detail entity.
 2. Klikněte na **🖨 Export / tisk**.
@@ -632,9 +666,9 @@ První řádek musí být hlavička s názvy sloupců:
 - **`ID`** — když ho vyplníte existujícím identifikátorem, entita se **aktualizuje**;
   jinak se založí nová.
 - Ostatní sloupce se párují na atributy podle názvu. Vyplatí se psát je ve tvaru
-  **`Název typu / Název atributu`** (třeba `Agenda / Kód agendy`) — bez prefixu hledá
-  import atribut nejdřív u typu a teprve pak u aspektů, což u shodných názvů uloží
-  hodnotu jinam, než jste čekali.
+  **`Název typu / Název atributu`** (třeba `Úkol / Termín`) — bez prefixu hledá import
+  atribut nejdřív u typu a teprve pak u aspektů, což u shodných názvů uloží hodnotu
+  jinam, než jste čekali.
 
 **Nejjistější postup:** vyexportujte si nejdřív data do XLSX (kapitola 20), upravte je
 a naimportujte zpět. Sloupce pak sedí na první pokus.
@@ -661,6 +695,10 @@ změnit. Funguje offline a dá se poslat mailem.
 
 **Nastavení → Záložky.** Určuje, které typy, aspekty a uložené pohledy se ukazují
 v horní liště. Když máte typů deset, nechte v liště jen ty, se kterými opravdu pracujete.
+
+Pořadí záložek změníte **přetažením myší** přímo v liště; typy se přerovnávají mezi typy
+a aspekty mezi aspekty, přes hranici skupiny to nejde. Kdo myš nechce nebo nemůže
+použít, má u každé položky tlačítka **↑ ↓** — dělají totéž.
 
 ![Nastavení záložek](scrsettabs1.png)
 
@@ -759,6 +797,10 @@ text — Markdown se vykreslí až v detailu entity.
 **„Seznam ukazuje jen sto položek."** Ano, to je pojistka proti zahlcení. Zúžte výběr
 filtrem; export a všechny další operace pracují s celým seznamem, ne jen se zobrazenou
 stovkou.
+
+**„Kanban má všechno v jednom sloupci."** V rozbalovátku **Sloupce podle** je vybraný
+atribut, který dotčené entity nemají vyplněný — nebo ho vůbec nemají. Vyberte atribut
+typu *Výběr ze seznamu*, který na daných entitách skutečně je.
 
 ---
 

@@ -22,7 +22,7 @@ node snimky.mjs
 ```
 
 Skript otevře `../index.html` v Chromiu (přes Playwright), **od nuly proklikáním postaví
-ukázkový projekt „Evidence agend úřadu"** a cestou pořídí všechny snímky. Trvá to
+ukázkový projekt „Projekty a úkoly"** a cestou pořídí všechny snímky. Trvá to
 zhruba čtyři minuty a přepíše všechny `*.png` v této složce.
 
 Data se nikde nepředvyplňují — projekt vzniká stejnými kroky, jaké příručka popisuje.
