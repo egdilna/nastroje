@@ -110,6 +110,7 @@ Datové typy atributů:
 - **yesno** — ano/ne
 - **number** — číslo
 - **relation** — odkaz na jinou entitu (volitelně omezený na konkrétní typ, jednonásobný nebo vícenásobný)
+- **tagy** — sada značek z jedné **soustavy tagů**; hodnotou je několik tagů najednou (viz kap. 7.5)
 
 U každého atributu si můžeš nastavit:
 
@@ -236,6 +237,7 @@ ty vidíš pořád. **Vpravo je její okolí a co se o ní ví**, přepínané k
 |---|---|
 | **Vazby** `3→ 4←` | odchozí vazby a pod nimi **Odkazuje sem**, tedy příchozí. Je to dvakrát totéž z opačné strany, proto jedna karta. |
 | **🌳 Strukturální pohled** | strom, kterým se dá po vazbách procházet. Karta je jen u entity, která nějakou vazbu má. |
+| **🏷 Tagy** `3` | tagy téhle entity; každý se rozbalí na entity, které mají tentýž tag ze stejné soustavy. Karta je jen u entity, která nějaký tag má. |
 | **💬 Komentáře** `2` | komentáře a pole na nový |
 
 **Čísla u názvu karty jsou tam schválně** — nemusíš klikat, abys zjistil, jestli tam něco
@@ -397,6 +399,40 @@ Zvláštní typ atributu — hodnota je ID cílové entity. Můžeš nastavit:
 
 Tento atribut se **automaticky započítává do „Odkazuje sem"** u cílové entity, i když neexistuje formální vazba.
 
+### 7.5 Atribut typu tagy
+
+Tagový atribut je univerzální značkovač. Nedrží jednu hodnotu, ale **kolik chceš tagů
+najednou** — a všechny berou z jedné **soustavy tagů** (Nastavení → Tagy, kap. 29.6).
+Soustava je pojmenovaná zásoba značek: „Barvy", „Priorita", „Oblast agendy".
+
+Když v editoru typu nebo aspektu přidáš atribut typu **tagy**, vybereš k němu soustavu —
+podobně jako vybíráš číselník u atributu typu výběr. Tutéž soustavu může používat libovolný
+počet atributů, klidně na různých typech entit; tag je značka **napříč atributy**, takže
+„Zelená" ze soustavy „Barvy" znamená u Osoby i u Systému totéž.
+
+**Jak se tagy zadávají.** V editoru entity je atribut sbalený a v jeho shrnutí je rovnou
+vidět, co je vybráno — `Barvy: Červená, Zelená`, nebo „nic nevybráno". Po rozbalení jsou
+tam zaškrtávátka pro celou soustavu a pod nimi políčko **＋ Přidat tag**: co do něj napíšeš,
+přibude do soustavy (takže to hned nabízejí i ostatní atributy) a zároveň se u téhle entity
+rovnou zaškrtne. Enter stačí, na tlačítko klikat nemusíš. Pořadí vybraných tagů drží
+soustava, ne pořadí klikání.
+
+Tag, který někdo mezitím ze soustavy vyhodil, se u entity **neztratí** — zůstane
+zaškrtnutý a je označený `⚠`, ať je vidět, že už do soustavy nepatří.
+
+**Jak se tagy zobrazují.** V detailu entity je každý tag odznáček a **odkaz na seznam všech
+entit, které ten tag mají**. Vedle toho je vpravo karta **🏷 Tagy**: co tag, to sbalitelná
+položka, po rozbalení odkazy na ostatní entity s toutéž značkou (nejvýš patnáct) a odkaz
+na plný seznam.
+
+**Jak se podle tagů filtruje.** V liště seznamu je rozbalovátko **Tag** se všemi opravdu
+použitými tagy a počtem entit u každého; vybráním se seznam okamžitě zúží. Totéž umí
+adresa `#tag/<soustava>/<tag>` — odkaz na tag se dá poslat kolegovi a otevře se mu
+rovnou vyfiltrovaný seznam. V pokročilých filtrech (kap. 11) přibyly operátory
+**má tag**, **nemá tag**, **má některý tag** a **nemá žádný tag**.
+
+Fulltextové hledání tagy prohledává taky.
+
 ---
 
 ## 8. Aspekty
@@ -473,6 +509,7 @@ Pole **Hledání** v toolbaru prochází:
 - Název entity
 - Textové a textarea atributy
 - Vlastní atributy typu text a textarea
+- Tagy (hodnoty tagových atributů)
 
 Vrátí entity, kde je hledaný řetězec.
 
@@ -484,11 +521,18 @@ Dropdown v toolbaru — zúží seznam na jeden vybraný typ.
 
 Dropdown — zúží seznam na entity, které mají daný aspekt.
 
-### 10.4 Filtr data úpravy
+### 10.4 Filtr podle tagu
+
+Rozbalovátko **Tag** nabízí všechny tagy, které se v projektu opravdu používají — seskupené
+po soustavách a s počtem entit u každého. Výběrem se seznam zúží na entity s tím tagem,
+bez ohledu na to, ve kterém atributu ho mají. Totéž dělá adresa `#tag/<soustava>/<tag>`,
+na kterou vedou odznáčky tagů v detailu entity.
+
+### 10.5 Filtr data úpravy
 
 Dropdown se čtyřmi volbami: dnes, posledních 7 dní, posledních 30 dní, starší než měsíc.
 
-### 10.5 Řazení
+### 10.6 Řazení
 
 Podle data úpravy (výchozí), názvu, data vytvoření.
 
@@ -532,6 +576,8 @@ Pravidla se kombinují v **AND** — všechna musí platit.
 **Yes/No:** isTrue, isFalse, empty
 
 **Relation atribut:** hasAnyTarget, hasNoTarget, targetIs (konkrétní entita), targetIsType, targetHasAspect
+
+**Tagy:** hasTag (má tag), hasNotTag (nemá tag), hasAnyTag (má některý tag), hasNoTags (nemá žádný tag) — hodnota se vybírá z navázané soustavy
 
 ### 11.4 Popis aktivního filtru
 
@@ -1390,6 +1436,8 @@ vynechají a nahlásí. Zpětné odkazy se neexportují — jsou odvozené.
   nepovinný a průvodce to napíše mezi upozornění
 - `enum` u výběrových atributů = hodnoty číselníku; hodnota v datech mimo číselník enum
   rozšíří a nahlásí se
+- tagový atribut je pole řetězců s `uniqueItems` a s `enum` podle soustavy tagů; tag mimo
+  soustavu se do `enum` doplní a nahlásí stejně jako u výběru
 - `format: date` / `format: uri` se doplní jen tehdy, když **všechny** hodnoty odpovídají
 
 Před zabalením se spustí vestavěný validátor a jeho výsledek jde i do `README.md`.
@@ -1447,13 +1495,17 @@ DKM umí vygenerovat **statický HTML prohlížeč** dat projektu — jeden soub
 ### 27.1 Generování
 
 V dialogu **📤 Export dat** (kap. 23) zvol cíl **Statický prohlížeč**. Stáhne se soubor
-s vloženými daty projektu. Bere vždycky celý projekt, rozsah se na něj nevztahuje.
-V **Nastavení → Projekt** je na totéž zkratka.
+s vloženými daty projektu. **Bere zvolený rozsah** — nemusí to tedy být celý projekt.
+Ve výřezu je model zúžený na to, co vybrané entity opravdu potřebují, vazby mimo výřez
+se zahodí (stejně jako u balíčku, kap. 28.1) a záložky na typ nebo aspekt, který ve výřezu
+není, zmizí. V **Nastavení → Projekt** je zkratka na celý projekt.
 
 Prohlížeč má **stejné rozvržení detailu jako aplikace**: vlevo atributy, vpravo karty
-**Vazby** (s Odkazuje sem) a **🌳 Strukturální pohled**, dole řádek s ID a časy. Vazby se
-počítají stejně jako v aplikaci — klasické, přes vazební atribut i přes wiki odkaz — a wiki
-odkazy `[[Název]]` v textech jsou proklikávací. Komentáře prohlížeč nezobrazuje.
+**Vazby** (s Odkazuje sem), **🌳 Strukturální pohled** a **🏷 Tagy**, dole řádek s ID a časy.
+Vazby se počítají stejně jako v aplikaci — klasické, přes vazební atribut i přes wiki odkaz —
+a wiki odkazy `[[Název]]` v textech jsou proklikávací. Tagy jsou odznáčky a odkazy na ostatní
+entity se stejnou značkou a v liště seznamu je i rozbalovátko **Tag**. Komentáře prohlížeč
+nezobrazuje.
 
 Statický prohlížeč má:
 
@@ -1497,7 +1549,7 @@ kdo si ještě nevybral; bez uložené volby se motiv poprvé řídí nastavení
 V bulk režimu vybereš entity, akce **📦 Export balíčku**. Wizard:
 
 1. **Rozsah**: jen vybrané / vybrané + sousedy (přes vazby) / celá komponenta (grafové sousedství)
-2. **Model**: typy, aspekty, seznamy a relace, které se přenesou
+2. **Model**: typy, aspekty, seznamy, soustavy tagů a relace, které se přenesou
 3. **Preview**: přehled, co se v balíčku octne
 
 Stáhne se `.dkmpkg`.
@@ -1508,7 +1560,7 @@ Stáhne se `.dkmpkg`.
 
 - Shrnutí obsahu
 - Kontrola konfliktů (existující typy, atributy)
-- Automap: matchování atributů podle názvu + typu
+- Automap: matchování atributů podle názvu + typu; číselníky a soustavy tagů se párují podle názvu a slučují (nové hodnoty se doplní, existující zůstanou)
 - Preview změn
 - Backup před importem (checkbox default zapnutý — stáhne se aktuální projekt jako `.dkmdata` před importem)
 
@@ -1592,12 +1644,23 @@ a **Klíč v JSON**.
 Číselníky s výčtem hodnot. Používají se v atributech typu „výběr ze seznamu" —
 atribut se na číselník odkáže v jeho editoru.
 
-### 29.6 Uložené pohledy
+### 29.6 Tagy
+
+Soustavy tagů — pojmenované zásoby značek pro atributy typu **tagy** (viz kap. 7.5).
+U každé soustavy je název, seznam tagů (jeden na řádek) a přehled toho, které tagy se
+opravdu používají a u kolika entit; každý takový odznáček je odkaz na vyfiltrovaný seznam,
+takže než tag ze soustavy vyhodíš, vidíš, o co přijdeš. Tlačítka **↑↓** mění pořadí soustav,
+pořadí tagů uvnitř soustavy určuje pořadí řádků — a v tom pořadí se pak tagy všude nabízejí
+i zobrazují.
+
+Tag smazaný ze soustavy se u entit, které ho mají, nemaže — zůstane u nich označený `⚠`.
+
+### 29.7 Uložené pohledy
 
 Správa všech uložených pohledů: přejmenovat, změnit ikonu, přepnout pin, přepsat aktuálním filtrem, smazat.
 Tlačítka **↑↓** mění jejich pořadí, a tím i pořadí jejich záložek nahoře.
 
-### 29.7 Záložky
+### 29.8 Záložky
 
 Které typy a které aspekty se zobrazují jako záložka v hlavním toolbaru.
 Zapnuté položky jsou nahoře v tom pořadí, v jakém jdou záložky za sebou, a tlačítka
@@ -1607,19 +1670,19 @@ Přetahovat jde jen v rámci jedné skupiny — typ mezi typy, aspekt mezi aspek
 uložený pohled mezi uloženými pohledy. Schránka, Vše a Archiv mají pevné místo.
 Na dotykových zařízeních přetahování nefunguje; tlačítka **↑↓** ano vždycky.
 
-### 29.8 GitHub
+### 29.9 GitHub
 
 Personal access token pro GitHub API. Uložený v localStorage prohlížeče (per-origin).
 
-### 29.9 AI
+### 29.10 AI
 
 Poskytovatel, API klíč a model pro AI asistenta — viz kap. 35.2.
 
-### 29.10 Model
+### 29.11 Model
 
 Přehled datového modelu a jeho export do standardních formátů — viz kap. 36.
 
-### 29.11 Duplicity
+### 29.12 Duplicity
 
 Najde entity, které mají **stejný název**, ukáže je vedle sebe a nabídne řešení.
 
@@ -1640,7 +1703,7 @@ Slučuje se stejnou cestou jako hromadná operace (kap. 13.1): vybereš, která 
 udělat s odlišnými hodnotami, vazby vedoucí na zrušené entity se přesměrují. Po sloučení
 i přejmenování zůstaneš na kartě Duplicity a seznam se přepočítá.
 
-### 29.12 Obecné
+### 29.13 Obecné
 
 - **Jazyk** (Čeština / English)
 - **Motiv** — Světlý / Tmavý / Papír / Matrix, totéž co v menu ⚙ Přizpůsobit
@@ -1650,11 +1713,11 @@ i přejmenování zůstaneš na kartě Duplicity a seznam se přepočítá.
 - **Autosave** — automatické ukládání do sessionStorage (per záložka)
 - **Debug** — zapne panel s debug logy dole
 
-### 29.13 Statistiky
+### 29.14 Statistiky
 
 Přehled počtů: entit, typů, atributů, aspektů, vazeb, komentářů.
 
-### 29.14 Nápověda
+### 29.15 Nápověda
 
 Odkazy na online dokumentaci a repozitář.
 
@@ -1892,6 +1955,7 @@ včetně strojových schémat je v kapitole 37:
   aspects: [{ id, name, jsonKey?, attributes: [...] }],
   relationTypes: [{ id, name, inverseName, scope, fromTypes, toTypes, jsonKey? }],
   selectLists: [{ id, name, values }],
+  tagSets: [{ id, name, tags }],
   savedViews: [{ id, name, icon, pinned, filter, sort, tab, displayMode, ... }],
   jsonExports: [{ id, name, cfg }],
   entities: [{
@@ -2210,6 +2274,7 @@ ohlídat čtečka i ten, kdo soubor vyrábí:
 | `entities[].relations[].targetId` | `entities[].id` |
 | hodnota atributu typu vazba | `entities[].id` (při `multi` pole identifikátorů) |
 | `…attributes[].listId` | `selectLists[].id` |
+| `…attributes[].tagSetId` | `tagSets[].id` |
 | `…attributes[].targetType` | `entityTypes[].id`, nebo `any` |
 | `relationTypes[].fromTypes[]`, `toTypes[]` | `entityTypes[].id` |
 | `settings.visibleTypeTabs[]`, `visibleAspectTabs[]` | `entityTypes[].id`, `aspects[].id` |
@@ -2239,6 +2304,7 @@ jejím názvem. Tvar hodnoty se řídí typem té definice:
 | `number` | číslo | opravdu číslo, ne řetězec s číslicemi |
 | `yesno` | `true` / `false` | |
 | `select` | řetězec | musí být jednou z hodnot navázaného číselníku |
+| `tags` | pole řetězců | každý je jeden tag z navázané soustavy (`tagSetId`); pořadí drží soustava |
 | `relation` | identifikátor entity | při `multi: true` pole identifikátorů |
 
 **Prázdná hodnota se neukládá.** DKM klíč z `attributes` rovnou smaže, takže `null`

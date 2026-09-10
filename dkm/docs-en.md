@@ -110,6 +110,7 @@ Attribute data types:
 - **yesno** — yes/no
 - **number** — number
 - **relation** — link to another entity (optionally restricted to a specific type, single or multi-value)
+- **tags** — a set of labels from one **tag set**; the value is several tags at once (see 7.5)
 
 For each attribute you can set:
 
@@ -238,6 +239,7 @@ by tabs:
 |---|---|
 | **Relations** `3→ 4←` | outgoing relations, and below them **Linked from**, the incoming ones. It is the same thing read from the other side, hence one tab. |
 | **🌳 Structural view** | a tree for walking the relations. The tab is only there for an entity that has some relation. |
+| **🏷 Tags** `3` | this entity's tags; each expands to the entities carrying the same tag from the same set. The tab is only there for an entity that has some tag. |
 | **💬 Comments** `2` | the comments and the box for a new one |
 
 **The numbers next to a tab name are deliberate** — you do not have to click to find out
@@ -401,6 +403,40 @@ Special attribute type — value is target entity's ID. You can configure:
 
 This attribute is **automatically counted in "Linked from"** at the target entity, even without a formal relation.
 
+### 7.5 Attribute of type tags
+
+A tags attribute is a universal labeller. It does not hold one value but **as many tags as
+you want at once** — all of them from a single **tag set** (Settings → Tags, see 29.6).
+A tag set is a named supply of labels: "Colours", "Priority", "Agenda area".
+
+When you add an attribute of type **tags** in a type or aspect editor, you pick a tag set
+for it — much like picking a value list for a select attribute. Any number of attributes can
+share one set, across different entity types; a tag is a label **across attributes**, so
+"Green" from the "Colours" set means the same on a Person and on a System.
+
+**Entering tags.** In the entity editor the attribute is collapsed and its summary shows what
+is selected — `Colours: Red, Green`, or "nothing selected". Expanded, there are checkboxes for
+the whole set and below them an **＋ Add tag** field: whatever you type there is added to the
+set (so every other attribute offers it right away) and selected for this entity at the same
+time. Enter is enough, you need not click the button. The order of the selected tags follows
+the set, not the order you clicked.
+
+A tag someone has meanwhile removed from the set is **not lost** on the entity — it stays
+selected and is marked `⚠` so you can see it no longer belongs to the set.
+
+**Showing tags.** In the entity detail every tag is a chip and a **link to the list of all
+entities carrying that tag**. Next to it, on the right, is the **🏷 Tags** tab: one collapsible
+item per tag, expanding to links to the other entities with the same label (fifteen at most)
+and a link to the full list.
+
+**Filtering by tags.** The list toolbar has a **Tag** dropdown with every tag actually in use
+and the number of entities for each; picking one narrows the list immediately. The address
+`#tag/<set>/<tag>` does the same — a tag link can be sent to a colleague and opens the
+filtered list for them. Advanced filters (chapter 11) gained the operators **has tag**,
+**does not have tag**, **has any tag** and **has no tag**.
+
+Full-text search looks into tags as well.
+
 ---
 
 ## 8. Aspects
@@ -478,6 +514,7 @@ The **Search** field in the toolbar searches through:
 - Entity name
 - Text and textarea attributes
 - Custom attributes of type text and textarea
+- Tags (values of tag attributes)
 
 Returns entities containing the query string.
 
@@ -489,11 +526,18 @@ Dropdown in toolbar — narrows list to one selected type.
 
 Dropdown — narrows list to entities carrying the aspect.
 
-### 10.4 Update date filter
+### 10.4 Tag filter
+
+The **Tag** dropdown offers every tag actually used in the project — grouped by set and with
+the number of entities for each. Picking one narrows the list to entities carrying that tag,
+no matter which attribute holds it. The address `#tag/<set>/<tag>` does the same; that is
+where the tag chips in an entity detail lead.
+
+### 10.5 Update date filter
 
 Dropdown with four choices: today, last 7 days, last 30 days, older than a month.
 
-### 10.5 Sort
+### 10.6 Sort
 
 By update date (default), name, creation date.
 
@@ -537,6 +581,8 @@ Rules are combined with **AND** — all must be true.
 **Yes/No:** isTrue, isFalse, empty
 
 **Relation attribute:** hasAnyTarget, hasNoTarget, targetIs (specific entity), targetIsType, targetHasAspect
+
+**Tags:** hasTag, hasNotTag, hasAnyTag, hasNoTags — the value is picked from the attached tag set
 
 ### 11.4 Active filter summary
 
@@ -1410,6 +1456,8 @@ The governing rule: **the schema must validate the data it ships with.** Therefo
   otherwise it is optional and the wizard says so among the warnings
 - `enum` for select attributes = the list's values; a value in the data outside the list
   extends the enum and is reported
+- a tags attribute is an array of strings with `uniqueItems` and an `enum` from its tag set;
+  a tag outside the set extends the enum and is reported the same way as for select
 - `format: date` / `format: uri` is added only when **all** values match
 
 Before packaging, a built-in validator runs and its result also goes into `README.md`.
@@ -1477,10 +1525,12 @@ a type or aspect that is not in the cut disappear. **Settings → Project** has 
 the whole project.
 
 The viewer has **the same detail layout as the application**: attributes on the left, the
-**Relations** (with Linked from) and **🌳 Structural view** tabs on the right, and a line with
-the ID and timestamps at the bottom. Relations are counted the same way as in the application
-— classic ones, through a relation attribute and through a wiki link — and `[[Name]]` wiki
-links in texts are clickable. The viewer does not show comments.
+**Relations** (with Linked from), **🌳 Structural view** and **🏷 Tags** tabs on the right, and
+a line with the ID and timestamps at the bottom. Relations are counted the same way as in the
+application — classic ones, through a relation attribute and through a wiki link — and
+`[[Name]]` wiki links in texts are clickable. Tags are chips linking to the other entities with
+the same label, and the list toolbar has a **Tag** dropdown too. The viewer does not show
+comments.
 
 The static viewer has:
 
@@ -1524,7 +1574,7 @@ chosen yet; with no stored choice the theme first follows the system setting.
 In bulk mode select entities, action **📦 Export package**. Wizard:
 
 1. **Scope**: only selected / selected + neighbors (via relations) / whole component (graph neighborhood)
-2. **Model**: types, aspects, lists and relations to transfer
+2. **Model**: types, aspects, lists, tag sets and relations to transfer
 3. **Preview**: overview of what will be in the package
 
 Downloads a `.dkmpkg`.
@@ -1535,7 +1585,7 @@ Downloads a `.dkmpkg`.
 
 - Content summary
 - Conflict check (existing types, attributes)
-- Automap: attribute matching by name + type
+- Automap: attribute matching by name + type; value lists and tag sets are matched by name and merged (new values are added, existing ones stay)
 - Change preview
 - Backup before import (checkbox on by default — downloads current project as `.dkmdata` before import)
 
@@ -1619,12 +1669,24 @@ and **JSON key**.
 Value lists with their enumerations. Used by "select" attributes — an attribute
 references a list in its own editor.
 
-### 29.6 Saved views
+### 29.6 Tags
+
+Tag sets — named supplies of labels for attributes of type **tags** (see 7.5).
+Each set has a name, its list of tags (one per line) and an overview of which tags are
+actually used and on how many entities; every such chip is a link to the filtered list, so
+before you drop a tag from the set you can see what you would lose. The **↑↓** buttons change
+the order of the sets, the order of tags inside a set is the order of the lines — and tags are
+offered and displayed in that order everywhere.
+
+A tag deleted from a set is not deleted from the entities that carry it — it stays there
+marked `⚠`.
+
+### 29.7 Saved views
 
 Manage all saved views: rename, change icon, toggle pin, overwrite with current filter, delete.
 The **↑↓** buttons change their order, and with it the order of their tabs at the top.
 
-### 29.7 Tabs
+### 29.8 Tabs
 
 Which types and aspects appear as tabs in the main toolbar. The enabled entries sit at
 the top in the order the tabs appear, and the **↑↓** buttons next to them change that
@@ -1634,19 +1696,19 @@ Dragging works within one group only — a type among types, an aspect among asp
 saved view among saved views. Inbox, All and Archive have fixed places. Dragging does
 not work on touch devices; the **↑↓** buttons always do.
 
-### 29.8 GitHub
+### 29.9 GitHub
 
 Personal access token for GitHub API. Stored in the browser's localStorage (per origin).
 
-### 29.9 AI
+### 29.10 AI
 
 Provider, API key and model for the AI assistant — see ch. 35.2.
 
-### 29.10 Model
+### 29.11 Model
 
 The data model overview and its export into standard formats — see ch. 36.
 
-### 29.11 Duplicates
+### 29.12 Duplicates
 
 Finds entities that share a **name**, shows them side by side and offers a resolution.
 
@@ -1667,7 +1729,7 @@ Merging goes through the same path as the bulk operation (ch. 13.1): you pick wh
 and what to do with differing values, and relations pointing at the removed entities are
 redirected. After a merge or a rename you stay on the Duplicates tab and the list is recomputed.
 
-### 29.12 General
+### 29.13 General
 
 - **Language** (Čeština / English)
 - **Theme** — Light / Dark / Paper / Matrix, same as in the ⚙ Customize menu
@@ -1677,11 +1739,11 @@ redirected. After a merge or a rename you stay on the Duplicates tab and the lis
 - **Autosave** — automatic saving to sessionStorage (per tab)
 - **Debug** — enables a bottom panel with debug logs
 
-### 29.13 Statistics
+### 29.14 Statistics
 
 Counts overview: entities, types, attributes, aspects, relations, comments.
 
-### 29.14 Help
+### 29.15 Help
 
 Links to online documentation and repository.
 
@@ -1920,6 +1982,7 @@ both formats, machine-readable schemas included, is in chapter 37:
   aspects: [{ id, name, jsonKey?, attributes: [...] }],
   relationTypes: [{ id, name, inverseName, scope, fromTypes, toTypes, jsonKey? }],
   selectLists: [{ id, name, values }],
+  tagSets: [{ id, name, tags }],
   savedViews: [{ id, name, icon, pinned, filter, sort, tab, displayMode, ... }],
   jsonExports: [{ id, name, cfg }],
   entities: [{
@@ -2058,8 +2121,9 @@ The upper part of the tab is a readable listing of the model:
 - **Relations** — from → to, the inverse name and how many times the relation is actually
   used in the data. Where there is no restriction to specific types, it says "any".
 - **Lists** — the values and the number of attributes using the list
+- **Tag sets** — the tags of the set; a tags attribute states which set it draws from
 - **Warnings** — anything that could complicate the export: an attribute with no name, a
-  select attribute with no list assigned, an empty or unused list, a key collision between
+  select attribute with no list assigned, a tags attribute with no tag set assigned, an empty or unused list, a key collision between
   an aspect and a type, a project with no type at all
 
 Warnings block nothing — the export runs anyway. They mark the spots where the model left
@@ -2100,8 +2164,8 @@ Pick a format with the switcher; the preview right below shows the output.
 | `openapi.yaml` | OpenAPI 3.1 | A REST API over the model: schemas plus `list/create/get/update/delete` paths for every type |
 | `schema.json` | JSON Schema 2020-12 | A validation schema; aspects are separate `$defs` composed through `allOf` |
 | `schema.xsd` | XSD (XML Schema) | The same for XML; an aspect is an `xs:group`, which is how XSD composes it into a type |
-| `model.sql` | SQL DDL | PostgreSQL: an `entita` table, one table per type and per aspect, list tables, `typ_vazby` + `vazba` and junction tables for relation attributes |
-| `model.ttl` | RDFS/OWL + SKOS | An ontology in Turtle: classes, properties, plus the lists as SKOS concepts |
+| `model.sql` | SQL DDL | PostgreSQL: an `entita` table, one table per type and per aspect, list and tag-set tables, `typ_vazby` + `vazba` and junction tables for relation and tags attributes |
+| `model.ttl` | RDFS/OWL + SKOS | An ontology in Turtle: classes, properties, plus the lists and tag sets as SKOS concepts |
 | `shapes.ttl` | SHACL | Shapes matching the classes from the OWL output — validate RDF data against the model |
 | `model.xmi` | XMI (UML) | A UML model for Enterprise Architect and other CASE tools: classes, attributes, associations, enumerations |
 
@@ -2147,6 +2211,11 @@ worth knowing how they are handled:
 - **List values are SKOS concepts in RDF**, not strings. SHACL says the same (`sh:in` with
   the concept IRIs), so OWL and SHACL describe the same data. If one talked about strings and
   the other about concepts, no dataset could satisfy both.
+- **A tags attribute is multi-valued.** In SQL it therefore gets its own junction table
+  (`type_attribute`) with a foreign key into the tag set's table, not a column; in JSON Schema
+  and XSD it is an array with an enumeration; in OWL an object property into the set's SKOS
+  concepts — with no `sh:maxCount`, because there can be several tags; in UML an attribute
+  with multiplicity `0..*` and an enumeration type.
 - **The XMI defines its own primitive types.** UML 2.1 only knows `String`, `Boolean`,
   `Integer` and `UnlimitedNatural` — a reference to `Date` or `Real` in the standard library
   would resolve in no tool. The file is therefore self-contained.
@@ -2244,6 +2313,7 @@ and on whoever produces the file:
 | `entities[].relations[].targetId` | `entities[].id` |
 | the value of a relation attribute | `entities[].id` (an array of ids when `multi`) |
 | `…attributes[].listId` | `selectLists[].id` |
+| `…attributes[].tagSetId` | `tagSets[].id` |
 | `…attributes[].targetType` | `entityTypes[].id`, or `any` |
 | `relationTypes[].fromTypes[]`, `toTypes[]` | `entityTypes[].id` |
 | `settings.visibleTypeTabs[]`, `visibleAspectTabs[]` | `entityTypes[].id`, `aspects[].id` |
@@ -2275,6 +2345,7 @@ definition, not under its name. The shape of the value follows that definition's
 | `number` | number | a real number, not a string of digits |
 | `yesno` | `true` / `false` | |
 | `select` | string | must be one of the values of the linked select list |
+| `tags` | array of strings | each is one tag from the linked set (`tagSetId`); the order follows the set |
 | `relation` | entity identifier | an array of identifiers when `multi: true` |
 
 **An empty value is not stored.** DKM deletes the key from `attributes` outright, so
