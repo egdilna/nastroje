@@ -228,6 +228,23 @@ skutečný odkaz — jde otevřít prostředním tlačítkem nebo Ctrl+klikem v 
 - **Nadpis** — ikona typu + název entity + badge typu, badges aspektů, stavu
 - **Akce**: Upravit (E), Duplikovat, Změnit typ, 🖨 Export / tisk, 🪟 V samostatném okně, Archivovat, Smazat
 - **Atributy** — vyplněné atributy (typu, aspektu, vlastní)
+
+Detail je rozdělený na dvě části. **Vlevo je to, co ta entita je** — atributy a objekty;
+ty vidíš pořád. **Vpravo je její okolí a co se o ní ví**, přepínané kartami:
+
+| Karta | Co je na ní |
+|---|---|
+| **Vazby** `3→ 4←` | odchozí vazby a pod nimi **Odkazuje sem**, tedy příchozí. Je to dvakrát totéž z opačné strany, proto jedna karta. |
+| **🌳 Strukturální pohled** | strom, kterým se dá po vazbách procházet. Karta je jen u entity, která nějakou vazbu má. |
+| **💬 Komentáře** `2` | komentáře a pole na nový |
+
+**Čísla u názvu karty jsou tam schválně** — nemusíš klikat, abys zjistil, jestli tam něco
+je. Mezi kartami se dá jezdit šipkami vlevo a vpravo, Home skočí na první, End na poslední.
+
+Úplně dole je nenápadný řádek s **ID, kdy entita vznikla a kdy se naposledy změnila**.
+
+V úzkém okně, v náhledu vedle seznamu a v samostatném okně se sloupce poskládají pod sebe:
+nejdřív atributy, pak karty, nakonec ten řádek.
 - **Vazby** — entity, kam vede vazba, seskupené podle typu vazby
 - **Odkazuje sem** — entity, které odkazují sem (klasické vazby, atributy typu relation, wiki-linky). Skupiny mají různé popisky:
   - `název vazby ←` (klasické vazby)

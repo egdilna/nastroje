@@ -63,6 +63,13 @@ je to seznam, jen s mezinadpisy.
 | Identifikátor | Obrazovka |
 |---|---|
 | `#scrdetent` | detail entity |
+| `#scrdetent.rels` | detail, karta Vazby (s Odkazuje sem) |
+| `#scrdetent.tree` | detail, karta Strukturální pohled |
+| `#scrdetent.comments` | detail, karta Komentáře |
+
+Detail entity má v pravém sloupci karty a vybraná karta se do identifikátoru promítá —
+je na ní vidět jiný obsah. Samotné `#scrdetent` bez přípony nenastane; karta je vždycky
+nějaká vybraná. Kartu stromu má jen entita, která má vazby.
 | `#scredent` | editace entity |
 | `#scrnewent` | zakládání nové entity |
 | `#scrcomments` | přehled všech komentářů |

@@ -412,6 +412,9 @@ await pauza(300);
 await p.getByRole('button', { name: 'Uložit', exact: true }).last().click();
 await pauza(1300);
 
+/* Komentáře jsou v detailu za kartou — bez přepnutí není pole vidět. */
+await p.locator('#dtab-comments').click();
+await pauza(400);
 await p.locator('#cmt-t, textarea[placeholder*="komentář"]').first().fill('Termín potvrzen na poradě, grafika má přednost před migrací.');
 await pauza(300);
 await p.getByRole('button', { name: /Přidat komentář/ }).click();

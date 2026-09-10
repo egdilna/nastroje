@@ -291,15 +291,18 @@ Teď propojíme projekt s úkoly, které do něj patří:
 5. Klikněte na **Přidat vazbu**.
 
 Zopakujte to pro `Migrace obsahu` a nakonec přidejte vazbu typu **Odpovídá** na
-`👤 Jana Dvořáková`. Detail teď ukazuje všechny tři vazby a pod nimi **Strukturální
-pohled** — strom, kterým se dá po vazbách procházet. Začíná sbalený; rozbalíte ho
-trojúhelníkem u názvu:
+`👤 Jana Dvořáková`. Vpravo v detailu je teď na kartě **Vazby** všechno, co z entity
+vede — a pod tím **Odkazuje sem**, tedy co vede do ní. Číslo u názvu karty (`3→ 0←`)
+říká, kolik čeho je, aniž byste museli klikat:
 
 ![Detail entity s vazbami](scrdetent2.png)
 
-> **Zpětné odkazy.** Když teď otevřete `Návrh grafiky`, uvidíte v sekci **Odkazuje sem**
-> položku `Je součástí ←` s projektem. Nemusíte tedy zakládat vazbu z obou stran — DKM
-> ji vidí oběma směry.
+> **Zpětné odkazy.** Když teď otevřete `Návrh grafiky`, uvidíte na téže kartě v části
+> **Odkazuje sem** položku `Je součástí ←` s projektem. Nemusíte tedy zakládat vazbu
+> z obou stran — DKM ji vidí oběma směry.
+
+> **Karta 🌳 Strukturální pohled** vedle Vazeb je strom, kterým se dá po vazbách
+> procházet dál do hloubky. Začíná sbalený, rozbalíte ho trojúhelníkem u názvu.
 
 ---
 
@@ -323,7 +326,7 @@ Kdykoliv později můžete tentýž aspekt přidat i úkolu — na typu nezále�
 Komentáře jsou pro poznámky, které nepatří do atributů — proč se něco rozhodlo, co je
 ještě potřeba doladit.
 
-1. V detailu entity je vpravo sekce **Komentáře**.
+1. V detailu entity vpravo přepněte na kartu **💬 Komentáře**.
 2. Do pole napište text.
 3. Klikněte na **＋ Přidat komentář** (nebo stiskněte **Ctrl+Enter**).
 
