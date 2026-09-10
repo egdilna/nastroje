@@ -237,7 +237,8 @@ a real link, so middle-click or Ctrl+click opens it in a new tab.
   - `[[AttrName]] (Context) ←` (wiki-links)
 - **Objects** — section with entity's objects (see chapter 17)
 - **Comments** — section with comments and new-comment form (see chapter 16)
-- **Structural view** — 🌳 hierarchical tree by relations
+- **Structural view** — 🌳 hierarchical tree by relations. It starts **collapsed, root
+  included** — not everyone opening a detail wants to see it. Expand it with the triangle.
 - **Metadata** — ID, created, updated
 
 ### 4.6 Entity editor

@@ -236,7 +236,9 @@ skutečný odkaz — jde otevřít prostředním tlačítkem nebo Ctrl+klikem v 
   - `[[Atribut]] (Kontext) ←` (wiki-linky)
 - **Objekty** — sekce s objekty entity (viz kapitola 17)
 - **Komentáře** — sekce s komentáři a formulářem na nový (viz kapitola 16)
-- **Strukturální pohled** — 🌳 hierarchický strom podle vazeb
+- **Strukturální pohled** — 🌳 hierarchický strom podle vazeb. Ve výchozím stavu je
+  **sbalený včetně kořene** — nechce ho vidět každý, kdo otevře detail. Rozbalíš ho
+  trojúhelníkem.
 - **Metadata** — ID, vytvořeno, upraveno
 
 ### 4.6 Editor entity
