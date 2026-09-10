@@ -249,7 +249,10 @@ when it last changed**.
 
 In a narrow window, in the preview beside the list and in the standalone window the columns
 stack: attributes first, then the tabs, and that line last.
-- **Relations** — entities relations point to, grouped by relation type
+- **Relations** — where the entity points: classic relations grouped by relation type, but
+  also the targets of relation attributes and wiki links `[[Name]]` from texts. It mirrors
+  the **Linked from** section exactly — whatever counts as an incoming link counts as an
+  outgoing one too
 - **Linked from** — entities that reference this one (classic relations, attribute-relations, wiki-links). Groups have different labels:
   - `relation name ←` (classic relations)
   - `Type / AttrName ←` (attribute-of-type-relation references)

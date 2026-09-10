@@ -1728,7 +1728,53 @@ if(e.aspects)e.aspects.forEach(aid=>{const asp=findAspect(aid);if(asp)asp.attrib
 if(e.customAttributes)e.customAttributes.forEach(a=>out.push({source:'custom',sourceId:'custom',sourceLabel:t('customAttrs'),attr:a}));
 return out;
 }
-function getRelsFrom(e){return(e.relations||[]).filter(r=>{const tgt=findEntity(r.targetId);return tgt&&!tgt.archived})}
+/* Odchozí protějšek `getRelsTo`. Zpětné odkazy počítají tři zdroje — klasickou
+   vazbu, vazební atribut a wiki odkaz —, ale odchozí strana uměla jen ten první.
+   Strukturální pohled se kvůli tomu dal projít jen jedním směrem: do entity přes
+   atribut ano, z entity ven ne. Tohle to srovnává. */
+function getLinksFrom(e){
+const out=[];
+if(!e)return out;
+(e.relations||[]).forEach(r=>{
+const tgt=findEntity(r.targetId);
+if(tgt&&!tgt.archived)out.push({kind:'relation',relationTypeId:r.relationTypeId,targetId:r.targetId,attrId:null,attrName:null});
+});
+const pridej=(id,zaznam)=>{const tgt=findEntity(id);if(tgt&&!tgt.archived&&id!==e.id)out.push(Object.assign({targetId:id},zaznam))};
+const defs=getAllAttrDefsForEntity(e);
+defs.forEach(def=>{
+const v=e.attributes&&e.attributes[def.id];
+if(def.type==='relation'){
+if(v==null||v==='')return;
+(Array.isArray(v)?v:[v]).forEach(id=>pridej(id,{kind:'attribute',relationTypeId:null,attrId:def.id,attrName:def.name,scopeLabel:def.scopeLabel}));
+}else if(def.type==='textarea'||def.type==='text'){
+if(typeof v!=='string'||!v)return;
+wikiLinkTargets(v).forEach(id=>pridej(id,{kind:'wikilink',relationTypeId:null,attrId:def.id,attrName:def.name,scopeLabel:def.scopeLabel}));
+}
+});
+(e.customAttributes||[]).forEach(ca=>{
+if(ca.type==='relation'){
+if(ca.value==null||ca.value==='')return;
+(Array.isArray(ca.value)?ca.value:[ca.value]).forEach(id=>pridej(id,{kind:'attribute',relationTypeId:null,attrId:ca.id,attrName:ca.name||'?',scopeLabel:'* '+t('customAttrs')}));
+}else if((ca.type==='textarea'||ca.type==='text')&&typeof ca.value==='string'&&ca.value){
+wikiLinkTargets(ca.value).forEach(id=>pridej(id,{kind:'wikilink',relationTypeId:null,attrId:ca.id,attrName:ca.name||'?',scopeLabel:'* '+t('customAttrs')}));
+}
+});
+/* Táž dvojice (cíl, zdroj odkazu) se nemá objevit dvakrát. */
+const videne=new Set();
+return out.filter(x=>{const k=x.kind+'|'+x.targetId+'|'+(x.attrId||'')+'|'+(x.relationTypeId||'');if(videne.has(k))return false;videne.add(k);return true});
+}
+
+/* Entity, na které míří wiki odkazy `[[Název]]` v textu. Protějšek `scanForWikiLink`,
+   který se ptá opačně — jestli text odkazuje na jednu konkrétní entitu. */
+function wikiLinkTargets(text){
+const out=[];const re=/\[\[([^\]\n]+)\]\]/g;let m;
+while((m=re.exec(text))!==null){
+const ent=findEntityByName(m[1].trim());
+if(ent)out.push(ent.id);
+}
+return out;
+}
+
 function getRelsTo(eid){
 const out=[];
 const target=findEntity(eid);
@@ -4780,14 +4826,25 @@ const arb=document.createElement('button');arb.className='btn btn-sm';arb.type='
 arb.addEventListener('click',()=>openAddRelDialog(e,null));rhdr.appendChild(arb);
 }
 rs.appendChild(rhdr);
-const rels=getRelsFrom(e);
+/* Odchozí strana bere všechny tři zdroje stejně jako Odkazuje sem — klasickou vazbu,
+   vazební atribut i wiki odkaz. Dřív tu byly jen klasické vazby, takže entita, která
+   ven odkazovala přes atribut, hlásila „0 →" a neměla ani strukturální pohled. */
+const rels=getLinksFrom(e);
 if(!rels.length){const p=document.createElement('p');p.className='aempty';p.textContent='—';rs.appendChild(p)}
 else{
-const g={};rels.forEach(r=>{const k=r.relationTypeId||'_';g[k]=g[k]||[];g[k].push(r)});
+const g={};rels.forEach(r=>{
+const k=r.kind==='attribute'?'a:'+r.attrId:r.kind==='wikilink'?'w:'+(r.attrId||r.attrName):'r:'+(r.relationTypeId||'_');
+g[k]=g[k]||{kind:r.kind,attrName:r.attrName,scopeLabel:r.scopeLabel,relationTypeId:r.relationTypeId,items:[]};
+g[k].items.push(r);
+});
 Object.keys(g).forEach(k=>{
-const rt=findRT(k);const grp=document.createElement('div');grp.className='rgrp';
-const lbl=document.createElement('span');lbl.className='rgrp-l';lbl.textContent=(rt?rt.name:t('selectRelationType'))+':';grp.appendChild(lbl);
-g[k].forEach(r=>{const tgt=findEntity(r.targetId);const x=document.createElement('a');x.className='rch';x.href='#entity/'+r.targetId;appendEntityLabel(x,tgt);grp.appendChild(x)});
+const info=g[k];const grp=document.createElement('div');grp.className='rgrp';
+const lbl=document.createElement('span');lbl.className='rgrp-l';
+if(info.kind==='attribute')lbl.textContent=(info.scopeLabel?info.scopeLabel+' / ':'')+info.attrName+' →:';
+else if(info.kind==='wikilink')lbl.textContent='[['+info.attrName+']] '+(info.scopeLabel?'('+info.scopeLabel+') ':'')+'→:';
+else{const rt=findRT(info.relationTypeId);lbl.textContent=(rt?rt.name:t('selectRelationType'))+':'}
+grp.appendChild(lbl);
+info.items.forEach(r=>{const tgt=findEntity(r.targetId);const x=document.createElement('a');x.className='rch';x.href='#entity/'+r.targetId;appendEntityLabel(x,tgt);grp.appendChild(x)});
 rs.appendChild(grp);
 });
 }
@@ -5138,7 +5195,7 @@ setDirty(true);
 
 /* OUTLINE */
 function renderOutlineSection(rootEntity){
-const hasOut=getRelsFrom(rootEntity).length||getRelsTo(rootEntity.id).length;
+const hasOut=getLinksFrom(rootEntity).length||getRelsTo(rootEntity.id).length;
 if(!hasOut)return null;
 const sec=document.createElement('section');sec.className='dsec';sec.setAttribute('aria-labelledby','h-outline');
 const hh=document.createElement('h3');hh.id='h-outline';hh.textContent='🌳 '+t('detailOutline');sec.appendChild(hh);
@@ -5150,7 +5207,7 @@ sec.appendChild(tree);return sec;
 
 function buildOutlineNode(entity,visited,depth,isRoot){
 const node=document.createElement('div');node.className='out-n';node.setAttribute('role','treeitem');
-const out=getRelsFrom(entity);
+const out=getLinksFrom(entity);
 const back=getRelsTo(entity.id);
 const hasChildren=(out.length+back.length)>0;
 const hdr=document.createElement('div');hdr.className='out-h';
@@ -5178,11 +5235,20 @@ const buildChildren=()=>{
 if(built)return;built=true;
 const childWrap=document.createElement('div');
 if(out.length){
-const og={};out.forEach(r=>{const k=r.relationTypeId||'_';og[k]=og[k]||[];og[k].push(r)});
+const og={};out.forEach(r=>{
+const k=r.kind==='attribute'?'a:'+r.attrId:r.kind==='wikilink'?'w:'+(r.attrId||r.attrName):'r:'+(r.relationTypeId||'_');
+og[k]=og[k]||{kind:r.kind,attrName:r.attrName,scopeLabel:r.scopeLabel,relationTypeId:r.relationTypeId,items:[]};
+og[k].items.push(r);
+});
 Object.keys(og).forEach(k=>{
-const rt=findRT(k);const grp=document.createElement('div');grp.className='out-g';
-const lbl=document.createElement('div');lbl.className='out-gl';lbl.textContent=(rt?rt.name:t('detailRelations'))+' →';grp.appendChild(lbl);
-og[k].forEach(r=>{const tgt=findEntity(r.targetId);if(!tgt)return;
+const info=og[k];const grp=document.createElement('div');grp.className='out-g';
+const lbl=document.createElement('div');lbl.className='out-gl';
+/* Popisky jako u zpětných odkazů, jen opačným směrem. */
+if(info.kind==='attribute')lbl.textContent=(info.scopeLabel?info.scopeLabel+' / ':'')+info.attrName+' →';
+else if(info.kind==='wikilink')lbl.textContent='[['+info.attrName+']] '+(info.scopeLabel?'('+info.scopeLabel+') ':'')+'→';
+else{const rt=findRT(info.relationTypeId);lbl.textContent=(rt?rt.name:t('detailRelations'))+' →'}
+grp.appendChild(lbl);
+info.items.forEach(r=>{const tgt=findEntity(r.targetId);if(!tgt)return;
 if(visited.has(tgt.id)){const cn=document.createElement('div');cn.className='out-loop';cn.textContent='↻ '+getTitle(tgt)+' ('+t('outlineCycle')+')';grp.appendChild(cn);return}
 grp.appendChild(buildOutlineNode(tgt,new Set([...visited,tgt.id]),depth+1,false))});
 childWrap.appendChild(grp);
