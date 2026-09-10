@@ -245,7 +245,9 @@ je. Mezi kartami se dá jezdit šipkami vlevo a vpravo, Home skočí na první, 
 
 V úzkém okně, v náhledu vedle seznamu a v samostatném okně se sloupce poskládají pod sebe:
 nejdřív atributy, pak karty, nakonec ten řádek.
-- **Vazby** — entity, kam vede vazba, seskupené podle typu vazby
+- **Vazby** — kam entita odkazuje: klasické vazby seskupené podle typu vazby, ale taky
+  cíle vazebních atributů a wiki odkazy `[[Název]]` z textů. Je to přesné zrcadlo sekce
+  **Odkazuje sem** — co se počítá jako příchozí odkaz, počítá se i jako odchozí
 - **Odkazuje sem** — entity, které odkazují sem (klasické vazby, atributy typu relation, wiki-linky). Skupiny mají různé popisky:
   - `název vazby ←` (klasické vazby)
   - `Typ / Atribut ←` (odkazy přes atribut typu)
