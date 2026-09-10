@@ -17,8 +17,10 @@ a při změně chování ji aktualizuj.
   entitě přidat nezávisle na typu (`getAllAttrDefsForEntity` skládá obojí).
 - **Vazba** má rozsah (`RSCOPES = ['universal','from','to','specific']`), platnost kontroluje
   `isRelApplicable(rt, fromId, toId)`.
-- Typy atributů: `ATYPES = ['text','textarea','date','url','select','yesno','relation','number']`;
+- Typy atributů: `ATYPES = ['text','textarea','date','url','select','yesno','relation','number','tags']`;
   kompatibilitu při konverzích řídí `ATTR_TYPE_COMPAT` (`attrTypesCompatible`).
+- **Tag** je značka ze **soustavy tagů** (`state.data.tagSets`), na kterou se atribut typu
+  `tags` váže přes `tagSetId` — obdoba číselníku u `select`, jen hodnotou je pole tagů.
 
 ## Otevření projektu z adresy
 Dvě cesty, obě řeší `autoLoadFromUrlParams()` při startu — `?id=` (base64 cesty v GitHub
@@ -371,7 +373,7 @@ termín, takže snímek kalendáře není prázdný.
 ## Detail entity — dva sloupce a karty
 Vlevo **co entita je** (atributy, objekty), vpravo **její okolí** v kartách
 (`renderDetailTabs`): Vazby (a v ní i Odkazuje sem — je to týž vztah z opačné strany),
-Strukturální pohled, Komentáře. Pod oběma sloupci jeden řádek `.dmeta` s ID a časy.
+Strukturální pohled, Tagy, Komentáře. Pod oběma sloupci jeden řádek `.dmeta` s ID a časy.
 
 **Karty nenahrazují nadpisy.** Každá sekce si uvnitř panelu nechává svoje `<h3>`, aby se
 po detailu dalo dál pohybovat po nadpisech. Kdo přidá kartu, ať v ní nadpis nechá.
@@ -388,6 +390,29 @@ kdyby zůstaly vlevo, četlo by se na notebooku „ID a datum" dřív než vazby
 Vybraná karta žije v `_detailTab` **mimo `state.view`** — `navigateTo` ho nahrazuje
 výchozími hodnotami a přepnutá karta má přežít skok na jinou entitu. Do dat projektu
 nepatří. Promítá se do identifikátoru obrazovky (`#scrdetent.rels`).
+
+## Tagy (`state.data.tagSets`)
+Soustava tagů je pojmenovaná zásoba značek (`{id,name,tags:[]}`), atribut typu `tags` se na
+ni váže přes `tagSetId`. Hodnota u entity je **vždy pole řetězců**, i když je tag jeden.
+
+Pravidla, na která se dá narazit:
+
+- **Tag je značka napříč atributy.** Táž hodnota z téže soustavy znamená u dvou různých typů
+  entit totéž — proto se filtruje přes `entityHasTag(e,tagSetId,tag)`, ne přes jeden atribut.
+- `entityTagAttrs(e)` skládá tagy z modelových i z vlastních atributů entity;
+  `collectUsedTags()` vrací opravdu použité tagy s počty (na entitu se tatáž dvojice
+  započítá jednou).
+- **Pořadí drží soustava**, ne pořadí klikání — `buildTagEditor` výběr při ukládání
+  přerovná. Tag, který v soustavě není, se nesmí ztratit: zůstává vybraný a značí se `⚠`.
+- **Hodnota tagu není identifikátor entity.** `deleteEntity` proto tagové atributy
+  z úklidu vynechává — jinak by mazání entity ukusovalo tagy.
+- Odkaz na tag je `#tag/<soustava>/<tag>` (`tagHash`); adresu čte `parseHash` a nastaví
+  `state.filters.tagFilter`, takže je sdílitelná. Zrušení filtrů (`zrusFiltry`) musí i tu
+  adresu opustit, jinak by se filtr po načtení vrátil.
+- Do modelu i do balíčku patří soustavy stejně jako číselníky (`orezProjekt` sbírá
+  `usedTS`, IR má `ir.tagSets`). V generátorech je tag **vícehodnotový**: vlastní spojovací
+  tabulka v SQL, pole s výčtem v JSON Schema a XSD, SKOS koncepty v OWL/SHACL bez
+  `sh:maxCount`, násobnost `0..*` v XMI.
 
 ## Identifikátory obrazovek
 Každá obrazovka i dialog nese krátké interní id (`#scrallview.table`, `#dlgimppkg.step3`).

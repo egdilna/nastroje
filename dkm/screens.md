@@ -65,6 +65,7 @@ je to seznam, jen s mezinadpisy.
 | `#scrdetent` | detail entity |
 | `#scrdetent.rels` | detail, karta Vazby (s Odkazuje sem) |
 | `#scrdetent.tree` | detail, karta Strukturální pohled |
+| `#scrdetent.tags` | detail, karta Tagy |
 | `#scrdetent.comments` | detail, karta Komentáře |
 
 Detail entity má v pravém sloupci karty a vybraná karta se do identifikátoru promítá —
@@ -86,6 +87,7 @@ nějaká vybraná. Kartu stromu má jen entita, která má vazby.
 | `#scrsetrels` | Typy vazeb — seznam |
 | `#scrsetrel` | Typy vazeb — editace jednoho typu |
 | `#scrsetlists` | Seznamy hodnot |
+| `#scrsettags` | Soustavy tagů |
 | `#scrsetviews` | Uložené pohledy |
 | `#scrsettabs` | Záložky |
 | `#scrsetgh` | GitHub |
@@ -178,6 +180,7 @@ kopírují aplikaci, jen s předponou `scrstat`.
 | `#scrstatarchive` | Archiv |
 | `#scrstatdetent.rels` | detail entity, karta Vazby (s Odkazuje sem) |
 | `#scrstatdetent.tree` | detail entity, karta Strukturální pohled |
+| `#scrstatdetent.tags` | detail entity, karta Tagy |
 
 ## Jak přidat identifikátor nové obrazovce
 
