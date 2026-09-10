@@ -1041,18 +1041,20 @@ database.
 
 ### 23.2 Data exports
 
-| What | Format | Where to find it | What for |
-|---|---|---|---|
-| The whole project | `.dkmdata` (JSON) | header **Save** | backup, transfer, GitHub (ch. 21) |
-| A single entity | MD as a file or to the clipboard, formatted text to the clipboard, DOCX, print / PDF | entity detail → **🖨 Export / print** | a document about one thing (ch. 24) |
-| A selection of entities | the same, but into **one** document | list → selection mode → **🖨 Export / print selection** | a report, an overview, a briefing (ch. 24.4) |
-| A selection, the list or the whole project | XLSX, CSV, TSV — with a column picker | header **Export** | a table for Excel, edit and import back (ch. 25.1) |
-| Selected entities | PlantUML | command palette or a bulk action | a picture of the relation diagram (ch. 25.3) |
-| Selected entities | GraphML | the same place, via the format switch | a graph for Gephi, yEd, Cytoscape — centrality, communities (ch. 25.3) |
-| Data by type | ZIP: `data.json` + `schema.json`, or `data.xml` + `schema.xsd` | **Export data to JSON** | machine processing, integration, import elsewhere (ch. 26) |
-| The whole project to browse | a single HTML file | Settings → Project → Static viewer | send it to someone without DKM (ch. 27) |
-| Part of the project | `.dkmpkg` (a package) | bulk action **Export package** | move a slice into another project (ch. 28) |
-| Context for a language model | Markdown | **🤖 Ask AI** → Show what will be sent | the prompt for the AI (ch. 35.3) |
+**Everything except saving the project goes through one button: 📤 Export data.** Open it with
+**Export** in the header, with the **📤 Export data** bulk action over a selection, or from the
+quick palette. In the dialog you pick a **scope** (selected entities / the displayed list / the
+whole project) and a **target**:
+
+| Target | Formats | What for |
+|---|---|---|
+| **Document** | Markdown, DOCX, print / PDF, formatted text to the clipboard | a report, an overview, something to read (ch. 24) |
+| **Table** | XLSX, CSV, TSV — with a column picker | Excel, edit and import back (ch. 25.1) |
+| **Data with a schema** | JSON + JSON Schema, XML + XSD | machine processing, integration (ch. 26) |
+| **Diagram or graph** | PlantUML, GraphML | a picture of the relations, or a graph for Gephi and yEd (ch. 25.3) |
+| **Package** | `.dkmpkg` | moving a slice into another DKM project (ch. 28) |
+| **Static viewer** | a single HTML file | sending it to someone without DKM (ch. 27) |
+| **Project to the clipboard** | JSON | a quick move between tabs (Ctrl+Shift+S) |
 
 Beyond picking a scope, the **📤 Export data** dialog has two further refinements, which
 apply to every target except moving the whole project to the clipboard:
@@ -1066,6 +1068,14 @@ apply to every target except moving the whole project to the clipboard:
 
 The package has its own scope extension (to neighbours or the whole connected component,
 ch. 28.1), and individual entities can be excluded there too — on top of that extended list.
+
+Three things stay outside that dialog, deliberately:
+
+| What | Where | Why separate |
+|---|---|---|
+| The whole project as `.dkmdata` | header **Save** (Ctrl+S) | it is not an export but saving the project — it has GitHub, the sound feedback and its own key (ch. 21) |
+| A single entity | entity detail → **🖨 Export / print** | it is about one particular thing you have open (ch. 24) |
+| Context for a language model | **🤖 Ask AI** → Show what will be sent | not a file, but the brief for the AI (ch. 35.3) |
 
 ### 23.3 Model exports
 
@@ -1084,12 +1094,12 @@ All seven live in one place — **Settings → Model** (ch. 36), individually or
 
 ### 23.4 Which export to pick
 
-- **I just want to keep it or move it to another computer** → `.dkmdata` (ch. 21)
-- **I want to send it to someone to read** → the static viewer (ch. 27) or DOCX / PDF (ch. 24)
-- **I want to do arithmetic in Excel** → XLSX, CSV or TSV (ch. 25.1)
-- **I want to measure the graph, not draw it** → GraphML (ch. 25.3)
-- **A colleague or a script needs to process it** → the data JSON with its schema (ch. 26)
-- **I want to hand a part over to another DKM project** → a package (ch. 28)
+- **I just want to keep it or move it to another computer** → **Save** (ch. 21)
+- **I want to send it to someone to read** → Static viewer (ch. 27) or Document (ch. 24)
+- **I want to do arithmetic in Excel** → Table (ch. 25.1)
+- **I want to measure the graph, not draw it** → Diagram or graph → GraphML (ch. 25.3)
+- **A colleague or a script needs to process it** → Data with a schema (ch. 26)
+- **I want to hand a part over to another DKM project** → Package (ch. 28)
 - **I want to hand over how it is built, not what is in it** → the model export (ch. 36)
 
 ### 23.5 What never leaves

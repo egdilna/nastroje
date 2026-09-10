@@ -25,6 +25,15 @@ Skript otevře `../index.html` v Chromiu (přes Playwright), **od nuly prokliká
 ukázkový projekt „Projekty a úkoly"** a cestou pořídí všechny snímky. Trvá to
 zhruba čtyři minuty a přepíše všechny `*.png` v této složce.
 
+**Snímky jsou mezi běhy shodné.** Skript před spuštěním aplikace zmrazí čas
+(10. 12. 2026 9:30) a nahradí `Math.random` předvídatelným generátorem — bez toho
+by se v každém běhu měnila časová razítka a identifikátory entit (`uid()` je skládá
+z obou) a regenerace by dělala binární změny, které nic neříkají. Dvojí spuštění za
+sebou proto dá bajtově stejné soubory a v gitu se objeví jen to, co se opravdu změnilo.
+
+Datum je vybrané schválně: prosinec 2026 je měsíc, ve kterém má ukázkový projekt termín,
+takže snímek kalendáře není prázdný.
+
 Data se nikde nepředvyplňují — projekt vzniká stejnými kroky, jaké příručka popisuje.
 Když se tedy postup v aplikaci změní, skript spadne a je vidět, že příručka přestala
 platit.
