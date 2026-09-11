@@ -396,9 +396,14 @@ Entity a tagy se v zobrazení řadí **abecedně, case-insensitive, s `numeric:t
 jedna funkce `porovnejNazvy` / `serazPodleNazvu`, nikde vlastní `localeCompare`. Týká se
 vazeb, Odkazuje sem, hodnot vazebních atributů, strukturálního pohledu, odznáčků tagů,
 karty Tagy, výběru entit i textových exportů (Markdown, HTML, DOCX, tabulky, PlantUML).
+Platí to i pro **nabídky** — kdekoli se vybírá tag (zaškrtávátka v editoru, rozbalovátka
+filtru i nastavení záložek), jde seznam abecedně.
 
-**Data se nepřerovnávají** — pořadí v `attributes` zůstává, jak ho uživatel uložil, a
-strukturovaný export (JSON, XML) ho vydává tak, jak je. Řadí se až to, co je vidět.
+**Data se obecně nepřerovnávají** — pořadí vazeb v `attributes` zůstává, jak ho uživatel
+uložil, a strukturovaný export (JSON, XML) ho vydává tak, jak je. Řadí se až to, co je
+vidět. **Výjimkou jsou tagy**: tam pořadí nikdy nic neznamenalo (tag může vzniknout
+rychlým přidáním zevnitř kterékoli entity), takže `attrTagValues` vrací soustavu
+abecedně a `buildTagEditor` ukládá vybrané tagy taky abecedně.
 
 ## Záložky (`state.data.settings.tabs`)
 Lišta nahoře je obyčejný seznam položek. Každá nese druh (`kind`) a cíl; **Inbox, Vše ani
@@ -464,8 +469,10 @@ Pravidla, na která se dá narazit:
 - `entityTagAttrs(e)` skládá tagy z modelových i z vlastních atributů entity;
   `collectUsedTags()` vrací opravdu použité tagy s počty (na entitu se tatáž dvojice
   započítá jednou).
-- **Pořadí drží soustava**, ne pořadí klikání — `buildTagEditor` výběr při ukládání
-  přerovná. Tag, který v soustavě není, se nesmí ztratit: zůstává vybraný a značí se `⚠`.
+- **Pořadí drží abeceda**, ne pořadí řádků v soustavě ani pořadí klikání — `attrTagValues`
+  soustavu řadí a `buildTagEditor` výběr při ukládání přerovná. Pořadí řádků v soustavě je
+  tedy jen zápis, ne nastavení. Tag, který v soustavě není, se nesmí ztratit: zůstává
+  vybraný, řadí se mezi ostatní a značí se `⚠`.
 - **Hodnota tagu není identifikátor entity.** `deleteEntity` proto tagové atributy
   z úklidu vynechává — jinak by mazání entity ukusovalo tagy.
 - Odkaz na tag je `#tag/<soustava>/<tag>` (`tagHash`); adresu čte `parseHash` a nastaví
