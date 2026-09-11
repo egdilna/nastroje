@@ -1850,6 +1850,10 @@ Links to online documentation and repository.
 They work **on every screen** — they used to hang off buttons (`accesskey`), so they only
 worked where that button happened to be. In Firefox it is **Alt+Shift+**, on macOS **Ctrl+Alt+**.
 
+A shortcut is recognised by the **physical key**, not by the character produced. With Alt held
+the keyboard layout changes what is sent: on a Czech layout Alt+U is "¨" and Alt+2 is "ě", and
+macOS composes characters. So Alt+U commits the edit on any layout.
+
 | Key | Action |
 |-----|--------|
 | Alt+L | Load project from file |
@@ -1874,8 +1878,8 @@ worked where that button happened to be. In Firefox it is **Alt+Shift+**, on mac
 | Shortcut | Action |
 |----------|--------|
 | e | Edit |
-| r | Add relation |
-| c | Focus comment input |
+| r | Add relation (opens the dialog) |
+| c | New comment — switches to the 💬 Comments tab and focuses the box |
 
 ### Editor
 
