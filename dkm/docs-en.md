@@ -250,7 +250,9 @@ End to the last.
 **Every list of entities and tags in the detail is sorted alphabetically**, case-insensitively
 and with a feel for numbers ("item 2" before "item 10"). That covers relations, Linked from, the
 values of relation attributes, the structural view and the tag chips — the order does not depend
-on what was written first. The stored data keeps its order; sorting happens on display.
+on what was written first. The tag picker in the editor is alphabetical too. For relations the
+stored order is untouched and sorting happens on display; tags are stored alphabetically right
+away, because there the order never meant anything.
 
 At the very bottom there is a discreet line with the **ID, when the entity was created and
 when it last changed**.
@@ -425,17 +427,19 @@ share one set, across different entity types; a tag is a label **across attribut
 
 **Entering tags.** In the entity editor the attribute is collapsed and its summary shows what
 is selected — `Colours: Red, Green`, or "nothing selected". Expanded, there are checkboxes for
-the whole set and below them an **＋ Add tag** field: whatever you type there is added to the
-set (so every other attribute offers it right away) and selected for this entity at the same
-time. Enter is enough, you need not click the button. The order of the selected tags follows
-the set, not the order you clicked.
+the whole set **in alphabetical order** and below them an **＋ Add tag** field: whatever you
+type there is added to the set (so every other attribute offers it right away) and selected
+for this entity at the same time — and it lands in its alphabetical place, not at the end.
+Enter is enough, you need not click the button. The order of the selected tags follows the
+alphabet, not the order you clicked.
 
 A tag someone has meanwhile removed from the set is **not lost** on the entity — it stays
 selected and is marked `⚠` so you can see it no longer belongs to the set.
 
-**Showing tags.** The chips are ordered **alphabetically**, case-insensitively — the order
-within the set governs the picker in the editor and the stored data, not the display. In the
-entity detail every tag is a chip and a **link to the list of all entities carrying that tag**. Next to it, on the right, is the **🏷 Tags** tab: one collapsible
+**Showing tags.** The chips are ordered **alphabetically**, case-insensitively — and so is
+the picker in the editor and the stored value. The order of the lines in the set therefore
+governs nothing: tags also come into being through quick add from inside an entity, so the
+picker would otherwise look different every time. In the entity detail every tag is a chip and a **link to the list of all entities carrying that tag**. Next to it, on the right, is the **🏷 Tags** tab: one collapsible
 item per tag, expanding to links to the other entities with the same label (fifteen at most)
 and a link to the full list.
 
@@ -1724,8 +1728,9 @@ Tag sets — named supplies of labels for attributes of type **tags** (see 7.5).
 Each set has a name, its list of tags (one per line) and an overview of which tags are
 actually used and on how many entities; every such chip is a link to the filtered list, so
 before you drop a tag from the set you can see what you would lose. The **↑↓** buttons change
-the order of the sets, the order of tags inside a set is the order of the lines — and tags are
-offered and displayed in that order everywhere.
+the order of the sets. The order of the lines inside a set does not matter — tags are offered
+and displayed **alphabetically** everywhere, because new ones also arrive through quick add
+from inside an entity.
 
 A tag deleted from a set is not deleted from the entities that carry it — it stays there
 marked `⚠`.
@@ -2441,7 +2446,7 @@ definition, not under its name. The shape of the value follows that definition's
 | `number` | number | a real number, not a string of digits |
 | `yesno` | `true` / `false` | |
 | `select` | string | must be one of the values of the linked select list |
-| `tags` | array of strings | each is one tag from the linked set (`tagSetId`); the order follows the set |
+| `tags` | array of strings | each is one tag from the linked set (`tagSetId`); DKM stores them alphabetically |
 | `relation` | entity identifier | an array of identifiers when `multi: true` |
 
 **An empty value is not stored.** DKM deletes the key from `attributes` outright, so

@@ -247,7 +247,9 @@ je. Mezi kartami se dá jezdit šipkami vlevo a vpravo, Home skočí na první, 
 **Všechny seznamy entit a tagů v detailu jsou řazené abecedně**, bez ohledu na velikost
 písmen a s citem pro čísla („věc 2" před „věc 10"). Platí to pro vazby, Odkazuje sem, hodnoty
 vazebních atributů, strukturální pohled i odznáčky tagů — pořadí tedy nezávisí na tom, v jakém
-sledu se co zapsalo. V datech se pořadí nemění, řadí se až při zobrazení.
+sledu se co zapsalo. Abecedně jde i nabídka tagů v editoru. U vazeb se pořadí v datech nemění,
+řadí se až při zobrazení; u tagů se abecedně rovnou i ukládá, protože tam pořadí nikdy nic
+neznamenalo.
 
 Úplně dole je nenápadný řádek s **ID, kdy entita vznikla a kdy se naposledy změnila**.
 
@@ -421,16 +423,19 @@ počet atributů, klidně na různých typech entit; tag je značka **napříč 
 
 **Jak se tagy zadávají.** V editoru entity je atribut sbalený a v jeho shrnutí je rovnou
 vidět, co je vybráno — `Barvy: Červená, Zelená`, nebo „nic nevybráno". Po rozbalení jsou
-tam zaškrtávátka pro celou soustavu a pod nimi políčko **＋ Přidat tag**: co do něj napíšeš,
-přibude do soustavy (takže to hned nabízejí i ostatní atributy) a zároveň se u téhle entity
-rovnou zaškrtne. Enter stačí, na tlačítko klikat nemusíš. Pořadí vybraných tagů drží
-soustava, ne pořadí klikání.
+tam zaškrtávátka pro celou soustavu **v abecedním pořadí** a pod nimi políčko
+**＋ Přidat tag**: co do něj napíšeš, přibude do soustavy (takže to hned nabízejí i ostatní
+atributy) a zároveň se u téhle entity rovnou zaškrtne — a rovnou na svém abecedním místě,
+ne na konci. Enter stačí, na tlačítko klikat nemusíš. Pořadí vybraných tagů drží abeceda,
+ne pořadí klikání.
 
 Tag, který někdo mezitím ze soustavy vyhodil, se u entity **neztratí** — zůstane
 zaškrtnutý a je označený `⚠`, ať je vidět, že už do soustavy nepatří.
 
-**Jak se tagy zobrazují.** Odznáčky jdou **abecedně**, bez ohledu na velikost písmen — pořadí
-v soustavě platí pro nabídku v editoru a pro uložená data, ne pro zobrazení. V detailu entity je
+**Jak se tagy zobrazují.** Odznáčky jdou **abecedně**, bez ohledu na velikost písmen —
+stejně jako nabídka v editoru a jako uložená hodnota. Pořadí řádků v soustavě tak neurčuje
+nic: tagy vznikají i rychlým přidáním zevnitř entity, takže by nabídka pokaždé vypadala
+jinak. V detailu entity je
 každý tag odznáček a **odkaz na seznam všech entit, které ten tag mají**. Vedle toho je vpravo karta **🏷 Tagy**: co tag, to sbalitelná
 položka, po rozbalení odkazy na ostatní entity s toutéž značkou (nejvýš patnáct) a odkaz
 na plný seznam.
@@ -1698,9 +1703,9 @@ atribut se na číselník odkáže v jeho editoru.
 Soustavy tagů — pojmenované zásoby značek pro atributy typu **tagy** (viz kap. 7.5).
 U každé soustavy je název, seznam tagů (jeden na řádek) a přehled toho, které tagy se
 opravdu používají a u kolika entit; každý takový odznáček je odkaz na vyfiltrovaný seznam,
-takže než tag ze soustavy vyhodíš, vidíš, o co přijdeš. Tlačítka **↑↓** mění pořadí soustav,
-pořadí tagů uvnitř soustavy určuje pořadí řádků — a v tom pořadí se pak tagy všude nabízejí
-i zobrazují.
+takže než tag ze soustavy vyhodíš, vidíš, o co přijdeš. Tlačítka **↑↓** mění pořadí soustav.
+Na pořadí řádků uvnitř soustavy nezáleží — tagy se všude nabízejí i zobrazují **abecedně**,
+protože nové tagy přibývají i rychlým přidáním zevnitř entity.
 
 Tag smazaný ze soustavy se u entit, které ho mají, nemaže — zůstane u nich označený `⚠`.
 
@@ -2399,7 +2404,7 @@ jejím názvem. Tvar hodnoty se řídí typem té definice:
 | `number` | číslo | opravdu číslo, ne řetězec s číslicemi |
 | `yesno` | `true` / `false` | |
 | `select` | řetězec | musí být jednou z hodnot navázaného číselníku |
-| `tags` | pole řetězců | každý je jeden tag z navázané soustavy (`tagSetId`); pořadí drží soustava |
+| `tags` | pole řetězců | každý je jeden tag z navázané soustavy (`tagSetId`); DKM je ukládá abecedně |
 | `relation` | identifikátor entity | při `multi: true` pole identifikátorů |
 
 **Prázdná hodnota se neukládá.** DKM klíč z `attributes` rovnou smaže, takže `null`
