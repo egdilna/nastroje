@@ -603,6 +603,7 @@ tabKind:'Co ukazuje',tabKindInbox:'Inbox',tabKindAll:'Vše',tabKindArchive:'Arch
 tabRecentLimit:'Kolik položek',tabRecentLimitHint:'Nejvýš 500. Seznam se ořezává až po filtrech a řazení.',tabRecentCount:'posledních {n}',
 recentCut:'Zobrazeno {n} z {z} — seznam je výřez.',
 groupDateGran:'Sekce po',groupDateDay:'dnech',groupDateWeek:'týdnech',groupDateMonth:'měsících',groupDateYear:'letech',
+groupTagNone:'(bez tagu)',groupTagNote:'Entita s několika tagy je v každé odpovídající sekci, proto je součet sekcí větší než počet entit.',
 dateToday:'Dnes',dateYesterday:'Včera',tabKindType:'Typy entit',tabKindAspect:'Aspekt',
 tabKindTag:'Tag',tabKindView:'Uložený pohled',tabKindEntity:'Entita',tabKindComments:'Komentáře',tabKindNew:'Nová entita',tabKindSep:'Oddělovač',
 tabPickTypes:'Typy entit',tabPickTypesHint:'Zaškrtni klidně víc typů — záložka pak ukáže entity všech zaškrtnutých. Týž typ může být i v dalších záložkách.',
@@ -1187,6 +1188,7 @@ tabKind:'Shows',tabKindInbox:'Inbox',tabKindAll:'All',tabKindArchive:'Archive',t
 tabRecentLimit:'How many items',tabRecentLimitHint:'At most 500. The list is cut after filters and sorting.',tabRecentCount:'last {n}',
 recentCut:'Showing {n} of {z} — this is a slice.',
 groupDateGran:'Sections by',groupDateDay:'day',groupDateWeek:'week',groupDateMonth:'month',groupDateYear:'year',
+groupTagNone:'(no tag)',groupTagNote:'An entity with several tags is in every matching section, which is why the sections add up to more than the number of entities.',
 dateToday:'Today',dateYesterday:'Yesterday',tabKindType:'Entity types',tabKindAspect:'Aspect',
 tabKindTag:'Tag',tabKindView:'Saved view',tabKindEntity:'Entity',tabKindComments:'Comments',tabKindNew:'New entity',tabKindSep:'Separator',
 tabPickTypes:'Entity types',tabPickTypesHint:'Tick several types if you like — the tab then shows entities of all of them. The same type may appear in other tabs too.',
@@ -4937,17 +4939,28 @@ const target=cands.find(c=>c.scope===parts[0]&&(c.scopeId||'')===parts[1]&&c.att
 if(!target){const ul=document.createElement('div');ul.className='elist';ul.setAttribute('role','list');list.forEach(e=>ul.appendChild(renderCard(e)));return ul}
 const cols=getColumnValuesForAttr(target);
 const bucket=new Map();cols.forEach(c=>bucket.set(c.key,{label:c.label,ents:[]}));
+const prazdny=target.type==='tags'?t('groupTagNone'):t('kanbanColNone');
 list.forEach(e=>{
-const k=entityColumnKey(e,target);
-if(!bucket.has(k))bucket.set(k,{label:k==='_none'?t('kanbanColNone'):(target.type==='date'?datumPopis(k):String(k)),ents:[]});
+entityColumnKeys(e,target).forEach(k=>{
+if(!bucket.has(k))bucket.set(k,{label:k==='_none'?prazdny:(target.type==='date'?datumPopis(k):(target.type==='tags'?k.slice(2):String(k))),ents:[]});
 bucket.get(k).ents.push(e);
 });
-/* U dat nemá přihrádka předem dané pořadí — nejnovější nahoře, bez data dospod. */
+});
+/* U dat nemá přihrádka předem dané pořadí — nejnovější nahoře, bez data dospod.
+   U tagů abecedně, taky bez tagu dospod. */
 let poradi=Array.from(bucket.entries());
 if(target.type==='date')poradi.sort((a,b)=>{
 if(a[0]==='_none')return 1;if(b[0]==='_none')return-1;
 return a[0]<b[0]?1:(a[0]>b[0]?-1:0);
 });
+if(target.type==='tags'){
+poradi.sort((a,b)=>{
+if(a[0]==='_none')return 1;if(b[0]==='_none')return-1;
+return porovnejNazvy(a[1].label,b[1].label);
+});
+/* Součet sekcí je větší než počet entit — ať to nevypadá jako chyba. */
+const pozn=document.createElement('p');pozn.className='fhint';pozn.textContent=t('groupTagNote');w.appendChild(pozn);
+}
 state.view.groupOpen=state.view.groupOpen||{};
 poradi.forEach(([k,v])=>{
 if(!v.ents.length)return;
@@ -5075,16 +5088,34 @@ return d;
 /* Kandidáti na sloupce Kanbanu a na sekce v seznamu. Data se nabízejí jen
    pro sekce (`sDaty`) — v Kanbanu by přetažení karty znamenalo „přepiš datum",
    což nedává smysl, stejně jako u tagů. */
-function collectColumnAttrCandidates(sDaty){
+/* Soustavy tagů, na které se dá vůbec narazit — tedy ty, které používá nějaký
+   atribut v modelu nebo vlastní atribut některé entity. Soustava, kterou nic
+   nepoužívá, by dala jednu sekci „(bez tagu)" se vším, a to nabídku jen plevelí. */
+function soustavyProSekce(){
+const ids=new Set();
+const vezmi=a=>{if(a&&a.type==='tags'&&a.tagSetId)ids.add(a.tagSetId)};
+state.data.entityTypes.forEach(ty=>ty.attributes.forEach(vezmi));
+state.data.aspects.forEach(asp=>asp.attributes.forEach(vezmi));
+state.data.entities.forEach(e=>(e.customAttributes||[]).forEach(vezmi));
+return (state.data.tagSets||[]).filter(ts=>ids.has(ts.id));
+}
+
+/* `proSekce` rozlišuje sekce v seznamu od sloupců Kanbanu. Data ani tagy se jako
+   sloupce nenabízejí: přetažení karty mezi sloupci znamená „přepiš hodnotu", což
+   u data úpravy nedává smysl a u tagů by nešlo rozhodnout, který tag přepsat. */
+function collectColumnAttrCandidates(proSekce){
 const out=[];
 state.data.entityTypes.forEach(ty=>ty.attributes.forEach(a=>{if(a.type==='select'||a.type==='yesno')out.push({scope:'type',scopeId:ty.id,attrId:a.id,label:ty.name+' / '+a.name,type:a.type,def:a})}));
 state.data.aspects.forEach(asp=>asp.attributes.forEach(a=>{if(a.type==='select'||a.type==='yesno')out.push({scope:'aspect',scopeId:asp.id,attrId:a.id,label:'◎ '+asp.name+' / '+a.name,type:a.type,def:a})}));
 out.push({scope:'system',scopeId:null,attrId:'typeId',label:'● '+t('sysType'),type:'typeRef'});
-if(sDaty){
+if(proSekce){
 out.push({scope:'system',scopeId:null,attrId:'updatedAt',label:'● '+t('updated'),type:'date'});
 out.push({scope:'system',scopeId:null,attrId:'createdAt',label:'● '+t('created'),type:'date'});
 state.data.entityTypes.forEach(ty=>ty.attributes.forEach(a=>{if(a.type==='date')out.push({scope:'type',scopeId:ty.id,attrId:a.id,label:ty.name+' / '+a.name,type:'date',def:a})}));
 state.data.aspects.forEach(asp=>asp.attributes.forEach(a=>{if(a.type==='date')out.push({scope:'aspect',scopeId:asp.id,attrId:a.id,label:'◎ '+asp.name+' / '+a.name,type:'date',def:a})}));
+/* Tag je značka napříč atributy, proto se seskupuje podle celé soustavy, ne podle
+   jednoho atributu — stejně jako se podle něj filtruje. */
+soustavyProSekce().forEach(ts=>out.push({scope:'tagset',scopeId:ts.id,attrId:'',label:'🏷 '+(ts.name||'?'),type:'tags'}));
 }
 return out;
 }
@@ -5126,7 +5157,19 @@ if(!target)return[];
 if(target.scope==='system'&&target.attrId==='typeId'){return state.data.entityTypes.map(ty=>({key:ty.id,label:(ty.icon?ty.icon+' ':'')+ty.name}))}
 if(target.type==='yesno'){return[{key:'true',label:t('yes')},{key:'false',label:t('no')}]}
 if(target.type==='select'){return attrSelectValues(target.def).map(o=>({key:o,label:o}))}
+if(target.type==='tags'){return attrTagValues({tagSetId:target.scopeId}).map(tg=>({key:'t:'+tg,label:tg}))}
 return[];
+}
+/* Do kolika sekcí entita patří. Skoro vždycky do jedné — u tagů ale do každé,
+   jejíž tag nese. Kanban tohle nepoužívá, tam je karta vždycky v jednom sloupci. */
+function entityColumnKeys(e,target){
+if(target&&target.type==='tags'){
+const videne=new Set();
+entityTagAttrs(e).forEach(x=>{if(x.def.tagSetId===target.scopeId)x.tagy.forEach(tg=>videne.add(tg))});
+if(!videne.size)return['_none'];
+return Array.from(videne).sort(porovnejNazvy).map(tg=>'t:'+tg);
+}
+return[entityColumnKey(e,target)];
 }
 function entityColumnKey(e,target){
 if(!target)return'_';
@@ -5278,10 +5321,16 @@ const jeNahled=previewOn()&&state.view.previewId===e.id;
 const a=document.createElement('div');
 a.className='ecard'+(bulkActive?' ecard-bulk':'')+(bulkActive&&state.bulk.selected.has(e.id)?' ecard-sel':'')+(jeNahled?' ecard-prev':'');
 a.setAttribute('role','listitem');
+/* Při sekcích podle tagu může být táž entita na stránce víckrát — podle tohohle
+   se najdou její ostatní karty, aby se zaškrtávátka nerozešla. */
+a.dataset.eid=e.id;
 if(bulkActive){
 const cb=document.createElement('input');cb.type='checkbox';cb.className='ecard-cb';cb.checked=state.bulk.selected.has(e.id);
 cb.setAttribute('aria-label',t('bulkToggleSelect',{name:getTitle(e)}));
-cb.addEventListener('change',()=>{if(cb.checked)state.bulk.selected.add(e.id);else state.bulk.selected.delete(e.id);a.classList.toggle('ecard-sel',cb.checked);const bar=document.querySelector('.bulk-bar');if(bar){const newBar=renderBulkToolbar();bar.parentNode.replaceChild(newBar,bar)}});
+cb.addEventListener('change',()=>{if(cb.checked)state.bulk.selected.add(e.id);else state.bulk.selected.delete(e.id);a.classList.toggle('ecard-sel',cb.checked);
+/* Táž entita může být v několika sekcích — srovnej i její ostatní karty. */
+document.querySelectorAll('.ecard').forEach(k=>{if(k===a||k.dataset.eid!==e.id)return;const j=k.querySelector('.ecard-cb');if(j&&j.checked!==cb.checked)j.checked=cb.checked;k.classList.toggle('ecard-sel',cb.checked)});
+const bar=document.querySelector('.bulk-bar');if(bar){const newBar=renderBulkToolbar();bar.parentNode.replaceChild(newBar,bar)}});
 cb.addEventListener('click',ev=>ev.stopPropagation());
 a.appendChild(cb);
 a.style.cursor='pointer';

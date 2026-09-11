@@ -446,7 +446,8 @@ and a link to the full list.
 **Filtering by tags.** The list toolbar has a **Tag** dropdown with every tag actually in use
 and the number of entities for each; picking one narrows the list immediately. The address
 `#tag/<set>/<tag>` does the same — a tag link can be sent to a colleague and opens the
-filtered list for them. Advanced filters (chapter 11) gained the operators **has tag**,
+filtered list for them. The list can also be **split into sections** by tag (12.1), where an
+entity with several tags shows up in each of them. Advanced filters (chapter 11) gained the operators **has tag**,
 **does not have tag**, **has any tag** and **has no tag**.
 
 Full-text search looks into tags as well.
@@ -637,14 +638,25 @@ Only the way of showing changes — filters, search and sorting apply the same i
 The default, and it stays the default. Entity cards below each other.
 
 **Sections by** splits the list into collapsible groups by a select or yes/no attribute, by
-entity type, or **by date** — either a date attribute or the system **Updated** and **Created**.
-Each section shows how many entities it holds; entities without a value get a "(no value)"
-section at the end. The view remembers what you collapsed.
+entity type, **by date** — either a date attribute or the system **Updated** and **Created** —
+or **by tag**. Each section shows how many entities it holds; entities without a value get a
+"(no value)" section at the end. The view remembers what you collapsed.
 
 For dates the toolbar adds a **Sections by** granularity: day, week, month or year. Sections run
 newest first and the headings are human — *Today*, *Yesterday*, *Wednesday 9 September 2026*,
-*September 2026*. Dates are not offered as Kanban columns: dragging a card between columns means
-"overwrite the value", which makes no sense for a change date.
+*September 2026*.
+
+**Sections by tag** are offered per whole set (`🏷 Colours`), not per attribute — a tag is a
+label across attributes, so what sits in "Colours" on one type and in "Labels" on another comes
+together, and an entity's custom attribute counts too. **An entity with several tags appears in
+every matching section** — something that is both Red and Green shows under both. The sections
+therefore add up to more than the number of entities, and a note above the list says so, so it
+does not read as a bug. Sections are alphabetical, "(no tag)" last. In selection mode one
+entity is ticked in all of its sections at once and counts once in the selection.
+
+Neither dates nor tags are offered as Kanban columns: dragging a card between columns means
+"overwrite the value", which makes no sense for a change date and gives no way to tell which
+tag should be overwritten.
 
 ### 12.2 Table (▦)
 
