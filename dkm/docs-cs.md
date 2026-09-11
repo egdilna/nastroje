@@ -244,6 +244,11 @@ ty vidíš pořád. **Vpravo je její okolí a co se o ní ví**, přepínané k
 **Čísla u názvu karty jsou tam schválně** — nemusíš klikat, abys zjistil, jestli tam něco
 je. Mezi kartami se dá jezdit šipkami vlevo a vpravo, Home skočí na první, End na poslední.
 
+**Všechny seznamy entit a tagů v detailu jsou řazené abecedně**, bez ohledu na velikost
+písmen a s citem pro čísla („věc 2" před „věc 10"). Platí to pro vazby, Odkazuje sem, hodnoty
+vazebních atributů, strukturální pohled i odznáčky tagů — pořadí tedy nezávisí na tom, v jakém
+sledu se co zapsalo. V datech se pořadí nemění, řadí se až při zobrazení.
+
 Úplně dole je nenápadný řádek s **ID, kdy entita vznikla a kdy se naposledy změnila**.
 
 V úzkém okně, v náhledu vedle seznamu a v samostatném okně se sloupce poskládají pod sebe:
@@ -424,8 +429,9 @@ soustava, ne pořadí klikání.
 Tag, který někdo mezitím ze soustavy vyhodil, se u entity **neztratí** — zůstane
 zaškrtnutý a je označený `⚠`, ať je vidět, že už do soustavy nepatří.
 
-**Jak se tagy zobrazují.** V detailu entity je každý tag odznáček a **odkaz na seznam všech
-entit, které ten tag mají**. Vedle toho je vpravo karta **🏷 Tagy**: co tag, to sbalitelná
+**Jak se tagy zobrazují.** Odznáčky jdou **abecedně**, bez ohledu na velikost písmen — pořadí
+v soustavě platí pro nabídku v editoru a pro uložená data, ne pro zobrazení. V detailu entity je
+každý tag odznáček a **odkaz na seznam všech entit, které ten tag mají**. Vedle toho je vpravo karta **🏷 Tagy**: co tag, to sbalitelná
 položka, po rozbalení odkazy na ostatní entity s toutéž značkou (nejvýš patnáct) a odkaz
 na plný seznam.
 
