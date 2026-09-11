@@ -1822,7 +1822,7 @@ Links to online documentation and repository.
 
 | Shortcut | Action |
 |----------|--------|
-| Ctrl+S | Save (file / GitHub) |
+| Ctrl+S | Save — to GitHub when both path and token are set, otherwise to a file (same as Alt+S) |
 | Ctrl+F | Open advanced filters |
 | Ctrl+Shift+F | Close advanced filters and clear |
 | Ctrl+Shift+P | Command palette |
@@ -1853,6 +1853,9 @@ worked where that button happened to be. In Firefox it is **Alt+Shift+**, on mac
 A shortcut is recognised by the **physical key**, not by the character produced. With Alt held
 the keyboard layout changes what is sent: on a Czech layout Alt+U is "¨" and Alt+2 is "ě", and
 macOS composes characters. So Alt+U commits the edit on any layout.
+
+The same goes for the Ctrl shortcuts: they accept the character and the physical key, so Ctrl+S
+saves even with Caps Lock on and on layouts where that key types a different letter.
 
 | Key | Action |
 |-----|--------|
