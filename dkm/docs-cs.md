@@ -446,7 +446,8 @@ adresa `#tag/<soustava>/<tag>` — odkaz na tag se dá poslat kolegovi a otevře
 rovnou vyfiltrovaný seznam. V pokročilých filtrech (kap. 11) přibyly operátory
 **má tag**, **nemá tag**, **má některý tag** a **nemá žádný tag**.
 
-Fulltextové hledání tagy prohledává taky.
+Fulltextové hledání tagy prohledává taky. A seznam se dá podle tagů i **rozdělit na sekce**
+(kap. 12.1) — entita s několika tagy se ukáže v každé z nich.
 
 ---
 
@@ -633,14 +634,26 @@ Přepíná se jen způsob zobrazení — filtry, hledání i řazení platí ve 
 Výchozí a zůstává výchozí. Karty entit pod sebou.
 
 **Sekce podle** rozdělí seznam do rozbalovacích skupin podle atributu typu výběr, ano/ne,
-podle typu entity, nebo **podle data** — a to jak podle datumového atributu, tak podle
-systémového **Upraveno** a **Vytvořeno**. U každé sekce je vidět, kolik entit obsahuje; entity
-bez hodnoty mají sekci „(bez hodnoty)" na konci. Rozbalení a sbalení si pohled pamatuje.
+podle typu entity, **podle data** — a to jak podle datumového atributu, tak podle systémového
+**Upraveno** a **Vytvořeno** — nebo **podle tagu**. U každé sekce je vidět, kolik entit
+obsahuje; entity bez hodnoty mají sekci „(bez hodnoty)" na konci. Rozbalení a sbalení si
+pohled pamatuje.
 
 U dat přibude v liště volba **Sekce po**: dnech, týdnech, měsících nebo letech. Sekce jdou od
 nejnovější a nadpisy jsou lidské — *Dnes*, *Včera*, *středa 9. září 2026*, *září 2026*.
-V Kanbanu se data jako sloupce nenabízejí: přetažení karty mezi sloupci znamená „přepiš
-hodnotu", a to u data úpravy nedává smysl.
+
+**Sekce podle tagu** se nabízejí po celých soustavách (`🏷 Barvy`), ne po jednotlivých
+atributech — tag je značka napříč atributy, takže se sejde i to, co je u jednoho typu
+v atributu „Barvy" a u druhého ve „Štítcích", a počítá se i vlastní atribut entity.
+**Entita s několika tagy je v každé odpovídající sekci** — kdo má Červenou i zelenou, je
+vidět pod obojím. Součet sekcí je proto větší než počet entit a nad seznamem to říká
+poznámka, ať to nevypadá jako chyba. Sekce jdou abecedně, „(bez tagu)" je poslední.
+V režimu výběru je jedna entita zaškrtnutá ve všech svých sekcích najednou a do výběru
+se počítá jednou.
+
+V Kanbanu se data ani tagy jako sloupce nenabízejí: přetažení karty mezi sloupci znamená
+„přepiš hodnotu", a to u data úpravy nedává smysl a u tagů by nešlo poznat, který tag
+se má přepsat.
 
 ### 12.2 Tabulka (▦)
 

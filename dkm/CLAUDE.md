@@ -391,6 +391,17 @@ Vybraná karta žije v `_detailTab` **mimo `state.view`** — `navigateTo` ho na
 výchozími hodnotami a přepnutá karta má přežít skok na jinou entitu. Do dat projektu
 nepatří. Promítá se do identifikátoru obrazovky (`#scrdetent.rels`).
 
+## Sekce v seznamu
+`collectColumnAttrCandidates(proSekce)` je jediný zdroj cílů; `proSekce` odděluje sekce
+seznamu od sloupců Kanbanu — data ani tagy se jako sloupce nenabízejí, protože přetažení
+karty znamená „přepiš hodnotu". Podle tagů se seskupuje **po soustavách** (`tagset|<id>|`),
+ne po atributech, protože tag je značka napříč atributy.
+
+**Entita může patřit do víc sekcí.** Klíče dává `entityColumnKeys` (množné číslo);
+`entityColumnKey` zůstává pro Kanban, kde je karta vždy v jednom sloupci. Kdo sahá na
+sekce, musí počítat s tím, že `renderCard` se pro tutéž entitu zavolá vícekrát — karta
+proto nese `data-eid` a zaškrtávátka v režimu výběru se mezi svými kartami dorovnávají.
+
 ## Řazení zobrazených seznamů
 Entity a tagy se v zobrazení řadí **abecedně, case-insensitive, s `numeric:true`** —
 jedna funkce `porovnejNazvy` / `serazPodleNazvu`, nikde vlastní `localeCompare`. Týká se
