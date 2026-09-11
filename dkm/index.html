@@ -1073,6 +1073,7 @@ dupOpen:'Otevřít',
 dupRename:'Přejmenovat',
 dupMergeHint:'Sloučení nabídne, která entita zůstane a co udělat s odlišnými hodnotami. Vazby vedoucí na zrušené entity se přesměrují.',
 expScopeWhole:'Tenhle cíl bere vždycky celý projekt, rozsah se na něj nevztahuje.',
+expScopeOpenEntity:'Otevřená entita: {name}',
 expExclude:'Vyřadit jednotlivé entity',expExcludedN:'vyřazeno: {n}',expExcludedNone:'nic není vyřazeno',
 expAspects:'Zahrnout aspekty',expAspectsHint:'Odškrtnutý aspekt se do exportu nedostane — ani jeho hodnoty u entit, ani jeho definice v modelu.',
 expScopeEmpty:'Rozsah je po vyřazení prázdný.',
@@ -1532,6 +1533,7 @@ dupOpen:'Open',
 dupRename:'Rename',
 dupMergeHint:'Merging asks which entity stays and what to do with differing values. Relations pointing at the removed entities are redirected.',
 expScopeWhole:'This target always takes the whole project; the scope does not apply to it.',
+expScopeOpenEntity:'Open entity: {name}',
 expExclude:'Exclude individual entities',expExcludedN:'excluded: {n}',expExcludedNone:'nothing excluded',
 expAspects:'Include aspects',expAspectsHint:'An unchecked aspect stays out of the export — neither its values on entities nor its definition in the model.',
 expScopeEmpty:'The scope is empty after the exclusions.',
@@ -2990,7 +2992,7 @@ const EXPORT_TARGETS=[
 ];
 const EXPORT_GROUPS=[['document','expGrpDocument'],['table','expGrpTable'],['data','expGrpData'],['graph','expGrpGraph'],['transfer','expGrpTransfer']];
 
-function openExportHub(preselected){
+function openExportHub(preselected,popisVyberu){
 const body=document.createElement('div');
 const has=!!(preselected&&preselected.length);
 let target=EXPORT_TARGETS[0];
@@ -3006,10 +3008,17 @@ const kExportu=()=>projekceEntit(vRozsahu(),bezAspektu);
 const fScope=document.createElement('div');fScope.className='fld';
 const lScope=document.createElement('label');lScope.htmlFor='exp-scope';lScope.textContent=t('jsonScope');fScope.appendChild(lScope);
 const selScope=document.createElement('select');selScope.id='exp-scope';
-const def=has?'selection':(getList().length?'view':'all');
+/* „Aktuálně zobrazený seznam" se nabízí jen tam, kde nějaký seznam opravdu je.
+   Mimo seznam (detail, editace, nastavení) `getList()` vrací Inbox, protože tam se
+   `state.view.tab` vrací na výchozí — a volba by slibovala něco úplně jiného. */
+const jeSeznam=state.view.name==='list';
+const def=has?'selection':((jeSeznam&&getList().length)?'view':'all');
 const so=[];
-if(has)so.push(['selection',t('jsonScopeSelected',{n:preselected.length})]);
-so.push(['view',t('jsonScopeFiltered')],['all',t('jsonScopeAll')]);
+if(has)so.push(['selection',popisVyberu||t('jsonScopeSelected',{n:preselected.length})]);
+/* U rozsahu je rovnou vidět, kolik entit z něj vypadne. */
+const pocetVRozsahu=sc=>{try{return exportScopeEntities(sc,preselected).length}catch(e){return 0}};
+if(jeSeznam)so.push(['view',t('jsonScopeFiltered')+' — '+entityCountLabel(pocetVRozsahu('view'))]);
+so.push(['all',t('jsonScopeAll')+' — '+entityCountLabel(pocetVRozsahu('all'))]);
 so.forEach(([v,l])=>{const o=document.createElement('option');o.value=v;o.textContent=l;if(v===def)o.selected=true;selScope.appendChild(o)});
 fScope.appendChild(selScope);
 const nScope=document.createElement('small');nScope.className='fhint';fScope.appendChild(nScope);
@@ -6677,6 +6686,20 @@ const ids=Array.from(state.bulk.selected);
 return ids.map(id=>findEntity(id)).filter(Boolean);
 }
 
+/* Co má Export nabídnout jako výchozí rozsah. Vybrané entity mají přednost, ale když
+   nic vybraného není a je otevřená entita, je výchozí ona — kdo si otevřel detail
+   a klikne nahoře na Export, chce tuhle entitu, ne poslední vyfiltrovaný seznam.
+   Vrací i popisek, ať v dialogu není „Vybrané entity (1)", když nikdo nic nevybíral. */
+function exportPredvyber(){
+const vybrane=bulkSelectedEntities();
+if(vybrane.length)return{entity:vybrane,popis:''};
+if(state.view.name==='detail'||state.view.name==='edit'){
+const e=findEntity(state.view.entityId);
+if(e)return{entity:[e],popis:t('expScopeOpenEntity',{name:getTitle(e)})};
+}
+return{entity:[],popis:''};
+}
+
 function runBulkAction(actionId){
 const ents=bulkSelectedEntities();
 if(!ents.length){toast(t('bulkNoSelection'));return}
@@ -9443,7 +9466,7 @@ pridej('⫸',t('tvPreviewToggle'),kat,()=>{state.view.preview=!state.view.previe
 const kat=t('cmdCatAction');
 pridej('💾',t('btnSave'),kat,smartSave,'Ctrl+S');
 pridej('📂',t('btnLoad'),kat,()=>{document.getElementById('fin').click()},'Alt+L');
-pridej('📤',t('expHubTitle'),kat,()=>openExportHub(bulkSelectedEntities()));
+pridej('📤',t('expHubTitle'),kat,()=>{const v=exportPredvyber();openExportHub(v.entity,v.popis)});
 pridej('📋',t('clipLoad'),kat,loadProjectFromClipboard,'Ctrl+Shift+O');
 pridej('📋',t('clipSave'),kat,copyProjectToClipboard,'Ctrl+Shift+S');
 pridej('🌐',t('urlLoadBtn'),kat,()=>{const v=prompt(t('urlSection'));if(!v||!v.trim())return;if(state.dirty&&!confirm(t('confirmDiscardDirty')))return;loadFromUrl(v.trim()).catch(()=>{})});
@@ -13695,7 +13718,7 @@ document.getElementById('b-clip-in').addEventListener('click',loadProjectFromCli
 document.getElementById('b-clip-out').addEventListener('click',copyProjectToClipboard);
 document.getElementById('fin').addEventListener('change',ev=>{const f=ev.target.files&&ev.target.files[0];if(!f)return;loadFile(f);ev.target.value=''});
 document.getElementById('b-save').addEventListener('click',smartSave);
-document.getElementById('b-exp').addEventListener('click',()=>openExportHub(bulkSelectedEntities()));
+document.getElementById('b-exp').addEventListener('click',()=>{const v=exportPredvyber();openExportHub(v.entity,v.popis)});
 document.getElementById('b-imp').addEventListener('click',openImportTSVDialog);
 document.getElementById('b-cmdp').addEventListener('click',openCommandPalette);
 document.getElementById('b-set').addEventListener('click',()=>navigateTo({name:'settings',settingsTab:state.view.settingsTab||'project'}));
