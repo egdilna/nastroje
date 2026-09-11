@@ -28,7 +28,7 @@ User guide
 16. [Comments](#16-comments)
 17. [Objects](#17-objects)
 18. [Panels](#18-panels)
-19. [Command palette (Ctrl+P)](#19-command-palette-ctrlp)
+19. [Command palette](#19-command-palette)
 20. [Standalone windows](#20-standalone-windows)
 21. [Data storage](#21-data-storage)
 22. [Diff since last save](#22-diff-since-last-save)
@@ -174,13 +174,14 @@ Always on top. Contains:
 - **📤 Export** — opens the Export data dialog: scope, target and format in one place (ch. 23)
 - **Export** — XLSX export of currently filtered entities
 - **Import TSV** — loads entities from TSV / CSV / pasted clipboard
+- **⌘ Commands** — the command palette: everything the app can do, in one place (Ctrl+Shift+P or F1, see ch. 19)
 - **Settings** — project, types, aspects, relations, lists, views, general
 - **⚙ Customize** — a dropdown with two sections: **Language** (Čeština / English) and **Theme** (see 4.2)
 - **● Unsaved changes** — clicking opens diff against last save
 
 ### 4.2 Visual themes
 
-In the **⚙ Customize → Theme** menu (or Settings → General, or via the Ctrl+P command palette):
+In the **⚙ Customize → Theme** menu (or Settings → General, or from the command palette):
 
 | Theme | What it looks like |
 |---|---|
@@ -308,7 +309,7 @@ Several ways:
 - **+ New entity** in the header or toolbar
 - **Quick add** from Inbox view — the "New entity" field at the top of Inbox, type text and press Enter → creates an entity without type in Inbox
 - **Duplicate** in detail — creates a copy of current entity (name suffixed with "(copy)")
-- Via **Command palette (Ctrl+P)** → action "New entity"
+- From the **command palette** (Ctrl+Shift+P or F1) → "New entity", "New into Inbox" or "New: <type>"
 
 Entities created via quick add are in Inbox without a type. In Detail click **Change type** to assign.
 
@@ -372,7 +373,7 @@ You can delete a type only when no entity uses it. Otherwise DKM warns you.
 
 In **Settings → Tabs** add a tab of kind *Entity types* and tick the types it should show —
 several at once is fine ("Objects and subjects"). The **＋ Tabs for all types** button does it
-for every type in one go. Types without a tab stay reachable from the command palette (Ctrl+P)
+for every type in one go. Types without a tab stay reachable from the command palette (Ctrl+Shift+P, F1)
 and from advanced filters.
 
 ---
@@ -831,7 +832,7 @@ Comment list: each has author, date, Markdown content, "edited" label if edited,
 
 ### 16.2 All comments view
 
-Access via Command palette (Ctrl+P → "All comments") or URL `#comments`.
+Access from the command palette (→ "All comments") or URL `#comments`.
 
 - Search field — searches content, author, entity name
 - Sorted newest-first across all entities
@@ -926,31 +927,54 @@ Panels are **in-memory only** — disappear when the browser tab closes.
 
 ---
 
-## 19. Command palette (Ctrl+P)
+## 19. Command palette
+
+**Everything the app can do, in one place.** The palette is not just an entity finder — it is
+a universal list of commands: whatever is visible as a button somewhere is in here too, plus
+jumps to entities, tabs, types, aspects, tags, saved views and every settings section.
 
 ### 19.1 Opening
 
-Press **Ctrl+P** (Cmd+P on Mac) → a modal with a text field.
+- **Ctrl+Shift+P** (Cmd+Shift+P on Mac)
+- **F1**
+- the **⌘ Commands** button in the header, next to Settings
 
-### 19.2 What you can find
+**Ctrl+P is left to the browser for printing** — hence the Shift.
+**Shift+F1** opens Help directly (Settings → Help).
 
-- **Entities** (top 60 or fuzzy match) — click opens detail
-- **Saved views**
-- **Aspects** (click → aspect tab)
-- **Entity types** (click → type tab)
-- **Actions**: New entity, Settings, Save, Load, **Load from URL**, Advanced filters, load from clipboard, **📤 Export data**, **Theme (all four)**, New panel, All comments, Inbox / All / Archive
+The palette does not open on top of a dialog — the app has a single dialog window and a
+command from the palette would break it. Close it with Esc first.
 
-### 19.3 Fuzzy match
+### 19.2 What is in it
 
-Type keywords. Condition: each word must be a substring in label or sublabel (case-insensitive). Bonuses: exact match, startsWith. Shorter label wins ties.
+Listing every command would be pointless; the list grows with the app. It keeps to these
+groups:
 
-Empty query offers recently visited entities from navigation history.
+| Group | What is in it |
+|---|---|
+| **Create** | New entity, **New into Inbox**, Quick add to Inbox, and **New entity of each type** separately ("New: Contract") |
+| **Entity** | commands for the entity currently open — exactly the ones it has as buttons in the detail: Edit, Duplicate, Add relation, Comments, Export / print, Ask AI, Standalone window, To / From Inbox, Change type, Archive or Restore, Delete |
+| **List** | search, advanced filters, clear filters, save view, selection mode, preview beside the list and the display switch (list, table, Kanban, calendar, timeline) |
+| **Action** | save, load, export data, clipboard, load from URL, panels, AI, theme and language |
+| **Navigation** | the tabs from the bar, Inbox / All / Archive, All comments and **every settings section** |
+| **Jumps** | entity types, aspects, tags, saved views |
+| **Entities** | every non-archived entity — Enter opens its detail |
+
+Commands that have a keyboard shortcut show it on the right. The **Entity** and **List**
+groups are offered only where they make sense — in a detail and above a list respectively.
+
+### 19.3 Matching
+
+Type keywords. Condition: each word must be a substring of the name or of the group label
+(case-insensitive). Bonuses: exact match, starts-with. Shorter names win ties.
+
+An empty query offers recently visited entities from the navigation history.
 
 ### 19.4 Keyboard control
 
-- **↑↓** — move in list
+- **↑↓** — move in the list
 - **Home / End** — first / last
-- **Enter** — run action
+- **Enter** — run the command
 - **Esc** — close
 
 Screen reader-compatible (ARIA combobox + listbox + aria-activedescendant).
@@ -1034,7 +1058,7 @@ intranet, GitHub Pages, `raw.githubusercontent.com`, a network share exposed ove
 
 The address **must be encoded** (because of `?` and `&` inside it) — so don't write it by
 hand, have the link built in **Settings → Project → Load project from a URL**. The same place
-has a button that loads the project right away, without a link. The command palette (Ctrl+P)
+has a button that loads the project right away, without a link. The command palette
 offers loading too.
 
 Rules:
@@ -1697,7 +1721,7 @@ The **↑↓** buttons change their order, and with it the order of their tabs a
 
 The bar at the top is one list you compose yourself. **Inbox, All and Archive are no
 exception** — they are ordinary tabs you can reorder, rename or throw away. What makes it safe
-to open the bar up like this is the command palette (Ctrl+P): it reaches every type, aspect,
+to open the bar up like this is the command palette (Ctrl+Shift+P, F1): it reaches every type, aspect,
 view and entity regardless of the tabs, so nobody can lock themselves out.
 
 What a tab can show:
@@ -1801,7 +1825,9 @@ Links to online documentation and repository.
 | Ctrl+S | Save (file / GitHub) |
 | Ctrl+F | Open advanced filters |
 | Ctrl+Shift+F | Close advanced filters and clear |
-| Ctrl+P | Command palette |
+| Ctrl+Shift+P | Command palette |
+| F1 | Command palette |
+| Shift+F1 | Help |
 | Ctrl+T | New panel |
 | Ctrl+W | Close active panel |
 | Ctrl+Shift+O | Load project from clipboard |
@@ -1912,7 +1938,7 @@ Cards aren't drag-and-drop (inaccessible to screen readers). Instead a **Move to
 ### 32.1 Quick workflow
 
 1. Open the app daily with `?id={ghPath}` (bookmark) — project auto-loads from GitHub
-2. Ctrl+P → type few letters of entity name → Enter — you're in the detail
+2. Ctrl+Shift+P (or F1) → type a few letters of the entity name → Enter — you're in the detail
 3. Key `e` — edit
 4. Key `u` — save edit
 5. Ctrl+S → push to GitHub
@@ -1938,7 +1964,7 @@ Create an aspect "Approval" with attribute "Status" (select: New / In progress /
 For external data model documentation:
 
 1. Select entities (or use an aspect)
-2. Ctrl+P → "PlantUML export"
+2. Ctrl+Shift+P → "PlantUML export"
 3. Class diagram + include attributes
 4. Download .puml
 5. Paste into PlantUML editor → image

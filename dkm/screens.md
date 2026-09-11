@@ -153,7 +153,7 @@ chybí řádek v `SCR_NASTAVENI` a tady v tabulce.
 | `#dlgpickent` | Výběr entity do filtru |
 | `#dlgsaveview` | Uložení pohledu |
 | `#dlgtblcols` | Sloupce tabulky |
-| `#dlgcmdpal` | Rychlé akce (Ctrl+P) |
+| `#dlgcmdpal` | Paleta příkazů (Ctrl+Shift+P, F1) |
 
 ### Hromadné akce
 
