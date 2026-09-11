@@ -1823,6 +1823,10 @@ Odkazy na online dokumentaci a repozitář.
 Fungují **na každé obrazovce** — dřív visely na tlačítkách (`accesskey`), takže platily jen
 tam, kde zrovna to tlačítko bylo. Ve Firefoxu je to **Alt+Shift+**, na macOS **Ctrl+Alt+**.
 
+Zkratka se pozná podle **fyzické klávesy**, ne podle znaku, který vyjde. S Altem totiž
+rozložení klávesnice mění, co se pošle: na české klávesnici je Alt+U „¨" a Alt+2 „ě",
+na macOS Alt znaky skládá. Alt+U tedy uloží editaci i s českou klávesnicí.
+
 | Klávesa | Akce |
 |---------|------|
 | Alt+L | Načíst projekt ze souboru |
@@ -1847,8 +1851,8 @@ tam, kde zrovna to tlačítko bylo. Ve Firefoxu je to **Alt+Shift+**, na macOS *
 | Zkratka | Akce |
 |---------|------|
 | e | Editovat |
-| r | Přidat vazbu |
-| c | Fokus na comment input |
+| r | Přidat vazbu (otevře dialog) |
+| c | Nový komentář — přepne na kartu 💬 Komentáře a zaostří pole |
 
 ### Editor
 

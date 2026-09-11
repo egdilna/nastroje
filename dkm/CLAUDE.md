@@ -427,6 +427,13 @@ Alt-zkratky (L, S, N, A, B, R, U a Alt+1…9 na záložky) jsou **na jednom mís
 `keydown`**, ne na `accesskey` u tlačítek. Dřív fungovaly jen tam, kde zrovna to tlačítko
 bylo — Alt+N tedy na detailu ani v nastavení vůbec ne. `accesskey` v aplikaci nepoužívej.
 
+**Alt-zkratku čti z `ev.code` (`altZnak`), nikdy z `ev.key`.** S Altem rozložení klávesnice
+mění, jaký znak vyjde — na české klávesnici je Alt+U „¨" a Alt+2 „ě", macOS pošle „Dead".
+Prosté klávesy (n, e, r, c…) naopak `ev.key` chtějí, ty rozložení respektovat mají.
+
+Zkratka, která míří do něčeho schovaného v kartě detailu, musí **nejdřív přepnout kartu** —
+do skrytého prvku se zaostřit nedá. Viz `fokusNovyKomentar` u klávesy C.
+
 ## Tagy (`state.data.tagSets`)
 Soustava tagů je pojmenovaná zásoba značek (`{id,name,tags:[]}`), atribut typu `tags` se na
 ni váže přes `tagSetId`. Hodnota u entity je **vždy pole řetězců**, i když je tag jeden.
