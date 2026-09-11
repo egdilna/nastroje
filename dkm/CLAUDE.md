@@ -413,6 +413,15 @@ Archiv nejsou výjimka** — nic v liště není napevno. Druhy: `inbox`, `all`,
   `uklidZalozky()`. Rozbitá záložka z cizích dat zůstává vidět s ⚠ a klik nabídne smazání.
 - Prohlížeč čte tutéž sadu a vynechává druhy, které neumí (`view`, `comments`, `new`).
 
+## Paleta příkazů (`collectPaletteCandidates`)
+Otevírá ji Ctrl+Shift+P, F1 a tlačítko v hlavičce; **Ctrl+P patří prohlížeči na tisk**,
+Shift+F1 skáče do Nápovědy. Nad otevřeným `<dialog>` se neotevírá.
+
+Je to **jediné místo, kde se skládá seznam příkazů** — co přibude jako tlačítko, přidej
+i sem. Kontextové skupiny (příkazy k otevřené entitě, příkazy k seznamu) se přidávají jen
+v odpovídajícím pohledu; sekce nastavení čte ze sdíleného `SETTINGS_SEKCE`, ať se seznam
+nerozejde s levým sloupcem nastavení.
+
 ## Klávesové zkratky
 Alt-zkratky (L, S, N, A, B, R, U a Alt+1…9 na záložky) jsou **na jednom místě v globálním
 `keydown`**, ne na `accesskey` u tlačítek. Dřív fungovaly jen tam, kde zrovna to tlačítko

@@ -28,7 +28,7 @@ Uživatelská příručka
 16. [Komentáře](#16-komentáře)
 17. [Objekty](#17-objekty)
 18. [Panely](#18-panely)
-19. [Rychlá paleta (Ctrl+P)](#19-rychlá-paleta-ctrlp)
+19. [Paleta příkazů](#19-paleta-příkazů)
 20. [Samostatná okna](#20-samostatná-okna)
 21. [Ukládání dat](#21-ukládání-dat)
 22. [Diff od posledního uložení](#22-diff-od-posledního-uložení)
@@ -173,13 +173,14 @@ Vždy nahoře. Obsahuje:
 - **📋⬆ Vložit do schránky** (Ctrl+Shift+S) — zkopíruje celý projekt jako JSON do schránky
 - **📤 Export** — otevře dialog Export dat: rozsah, cíl a formát na jednom místě (kap. 23)
 - **Import TSV** — nahraje entity z TSV / CSV / vložení ze schránky
+- **⌘ Příkazy** — paleta příkazů: všechno, co aplikace umí, na jednom místě (Ctrl+Shift+P nebo F1, viz kap. 19)
 - **Nastavení** — projekt, typy, aspekty, vazby, seznamy, pohledy, obecné
 - **⚙ Přizpůsobit** — rozbalovací menu se dvěma sekcemi: **Jazyk** (Čeština / English) a **Motiv** (viz 4.2)
 - **● Neuložené změny** — klik otevře diff proti poslednímu uložení
 
 ### 4.2 Grafické motivy
 
-V menu **⚙ Přizpůsobit → Motiv** (nebo v Nastavení → Obecné, nebo přes rychlou paletu Ctrl+P):
+V menu **⚙ Přizpůsobit → Motiv** (nebo v Nastavení → Obecné, nebo přes paletu příkazů):
 
 | Motiv | Jaký je |
 |---|---|
@@ -304,7 +305,7 @@ Několik způsobů:
 - **+ Nová entita** v hlavičce nebo toolbaru
 - **Rychlé přidání** z Inbox pohledu — pole „Nová entita" nahoře v Inboxu, zapíšeš text a stiskneš Enter → vznikne entita bez typu v Inboxu
 - **Duplikovat** v detailu — vytvoří kopii aktuální entity (s příponou „(kopie)" v názvu)
-- Přes **Rychlou paletu (Ctrl+P)** → akce „Nová entita"
+- Přes **paletu příkazů** (Ctrl+Shift+P nebo F1) → příkaz „Nová entita"
 
 Entity vytvořené přes rychlé přidání jsou v Inboxu bez typu. V Detailu klikneš **Změnit typ** a přiřadíš.
 
@@ -368,7 +369,7 @@ Smazat lze typ jen tehdy, když neexistuje entita, která ho používá. DKM tě
 
 V **Nastavení → Záložky** přidáš záložku druhu *Typy entit* a zaškrtneš, které typy má ukazovat —
 klidně několik najednou („Objekty a subjekty"). Tlačítko **＋ Záložky pro všechny typy** to udělá
-pro každý typ jednou ranou. Typy bez záložky zůstávají dosažitelné rychlou paletou (Ctrl+P)
+pro každý typ jednou ranou. Typy bez záložky zůstávají dosažitelné paletou příkazů (Ctrl+Shift+P, F1)
 i pokročilými filtry.
 
 ---
@@ -824,7 +825,7 @@ Seznam komentářů: každý má autora, datum, Markdown obsah, štítek „upra
 
 ### 16.2 Samostatný pohled Všechny komentáře
 
-Přístup přes Rychlou paletu (Ctrl+P → „Všechny komentáře") nebo URL `#comments`.
+Přístup přes paletu příkazů (→ „Všechny komentáře") nebo URL `#comments`.
 
 - Vyhledávací pole — hledá v obsahu, autorovi a názvu entity
 - Řazení od nejnovějšího napříč všemi entitami
@@ -919,23 +920,46 @@ Panely jsou **jen v paměti** — při zavření záložky prohlížeče zmizí.
 
 ---
 
-## 19. Rychlá paleta (Ctrl+P)
+## 19. Paleta příkazů
+
+**Všechno, co aplikace umí, na jednom místě.** Paleta není jen hledátko entit — je to
+univerzální seznam příkazů: co je někde vidět jako tlačítko, najdeš i tady, a k tomu skoky
+na entity, záložky, typy, aspekty, tagy, uložené pohledy i na každou sekci nastavení.
 
 ### 19.1 Otevření
 
-Stiskneš **Ctrl+P** (Cmd+P na Macu) → modal s textovým polem.
+- **Ctrl+Shift+P** (Cmd+Shift+P na Macu)
+- **F1**
+- tlačítko **⌘ Příkazy** v hlavičce vedle Nastavení
 
-### 19.2 Co lze najít
+**Ctrl+P zůstává prohlížeči na tisk** — proto ta kombinace se Shiftem.
+**Shift+F1** otevře rovnou Nápovědu (Nastavení → Nápověda).
 
-- **Entity** (top 60, nebo fuzzy match) — klik otevře detail
-- **Uložené pohledy**
-- **Aspekty** (klik → záložka aspektu)
-- **Typy entit** (klik → záložka typu)
-- **Akce**: Nová entita, Nastavení, Uložit, Načíst, **Načíst z URL**, Pokročilé filtry, načtení ze schránky, **📤 Export dat**, **Motiv (všechny čtyři)**, Nový panel, Všechny komentáře, Inbox / Vše / Archiv
+Nad otevřeným dialogem se paleta neotevře — aplikace má jen jedno dialogové okno a příkaz
+z palety by ho rozbil. Zavři ho Esc a otevři paletu potom.
 
-### 19.3 Fuzzy match
+### 19.2 Co v ní je
 
-Píšeš klíčová slova. Podmínka: každé slovo musí být substring v labelu nebo popisku (case-insensitive). Bonusy: exact match, startsWith. Kratší label vyhrává v pořadí.
+Vypisovat všechny příkazy nemá cenu, seznam roste s aplikací. Drží se těchhle skupin:
+
+| Skupina | Co obsahuje |
+|---|---|
+| **Vytvořit** | Nová entita, **Nová do Inboxu**, Rychlé přidání do Inboxu a **Nová entita každého typu** zvlášť („Nová: Smlouva") |
+| **Entita** | příkazy k právě otevřené entitě — přesně ty, co má v detailu za tlačítka: Upravit, Duplikovat, Přidat vazbu, Komentáře, Export / tisk, Zeptat se AI, V samostatném okně, Do / Z Inboxu, Změnit typ, Archivovat nebo Obnovit, Smazat |
+| **Seznam** | hledání, pokročilé filtry, vyčištění filtrů, uložení pohledu, režim výběru, náhled vedle seznamu a přepnutí zobrazení (seznam, tabulka, Kanban, kalendář, časová osa) |
+| **Akce** | uložit, načíst, export dat, schránka, načtení z adresy, panely, AI, motiv a jazyk |
+| **Navigace** | záložky z lišty, Inbox / Vše / Archiv, Všechny komentáře a **každá sekce nastavení** |
+| **Skoky** | typy entit, aspekty, tagy, uložené pohledy |
+| **Entity** | každá nearchivovaná entita — Enter otevře její detail |
+
+Příkazy, které mají klávesovou zkratku, ji mají vypsanou vpravo. Skupiny **Entita** a
+**Seznam** se nabízejí jen tam, kde dávají smysl — v detailu, respektive nad seznamem.
+
+### 19.3 Hledání
+
+Píšeš klíčová slova. Podmínka: každé slovo musí být substring v názvu nebo v popisku skupiny
+(bez ohledu na velikost písmen). Bonusy: přesná shoda, začátek slova. Kratší název vyhrává
+v pořadí.
 
 Prázdný dotaz nabídne poslední navštívené entity z historie navigace.
 
@@ -943,10 +967,10 @@ Prázdný dotaz nabídne poslední navštívené entity z historie navigace.
 
 - **↑↓** — pohyb v seznamu
 - **Home / End** — první / poslední
-- **Enter** — spustit akci
+- **Enter** — spustit příkaz
 - **Esc** — zavřít
 
-Screen reader kompatibilní (ARIA combobox + listbox + aria-activedescendant).
+Kompatibilní s odečítači (ARIA combobox + listbox + aria-activedescendant).
 
 ---
 
@@ -1027,7 +1051,7 @@ v prohlížeči. Na privátní repozitář je potřeba token uložený v prohlí
 
 Adresa se **musí zakódovat** (kvůli `?` a `&` v ní) — proto ji nepiš ručně, ale nech si
 odkaz vyrobit v **Nastavení → Projekt → Načíst projekt z adresy (URL)**. Tamtéž je tlačítko,
-kterým projekt načteš rovnou, bez odkazu. Načtení nabízí i rychlá paleta (Ctrl+P).
+kterým projekt načteš rovnou, bez odkazu. Načtení nabízí i paleta příkazů.
 
 Pravidla:
 
@@ -1671,7 +1695,7 @@ Tlačítka **↑↓** mění jejich pořadí, a tím i pořadí jejich záložek
 
 Lišta nahoře je jeden seznam, který si poskládáš sám. **Inbox, Vše ani Archiv nejsou výjimka** —
 jsou to obyčejné záložky, které jde přerovnat, přejmenovat i vyhodit. Že se dá lišta takhle
-uvolnit, stojí na rychlé paletě (Ctrl+P): ta dosáhne na každý typ, aspekt, pohled i entitu bez
+uvolnit, stojí na paletě příkazů (Ctrl+Shift+P, F1): ta dosáhne na každý typ, aspekt, pohled i entitu bez
 ohledu na záložky, takže se nikdo nezamkne ven.
 
 Co může záložka ukazovat:
@@ -1774,7 +1798,9 @@ Odkazy na online dokumentaci a repozitář.
 | Ctrl+S | Uložit (soubor / GitHub) |
 | Ctrl+F | Otevřít pokročilé filtry |
 | Ctrl+Shift+F | Zavřít pokročilé filtry a vyčistit |
-| Ctrl+P | Rychlá paleta |
+| Ctrl+Shift+P | Paleta příkazů |
+| F1 | Paleta příkazů |
+| Shift+F1 | Nápověda |
 | Ctrl+T | Nový panel |
 | Ctrl+W | Zavřít aktivní panel |
 | Ctrl+Shift+O | Načíst projekt ze schránky |
@@ -1884,7 +1910,7 @@ Karty nejsou drag-and-drop (nedostupné pro screen reader). Místo toho **dropdo
 ### 32.1 Rychlý workflow
 
 1. Denně otevři aplikaci s `?id={ghPath}` (bookmark) — projekt se automaticky natáhne z GitHubu
-2. Ctrl+P → napiš pár písmen názvu entity → Enter — okamžitě jsi v detailu
+2. Ctrl+Shift+P (nebo F1) → napiš pár písmen názvu entity → Enter — okamžitě jsi v detailu
 3. Klávesa `e` — editace
 4. Klávesa `u` — uložení editace
 5. Ctrl+S → push na GitHub
