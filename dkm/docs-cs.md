@@ -601,9 +601,12 @@ Když panel zavřeš a jsou aktivní pravidla, nad seznamem se objeví strip s p
 
 ### 11.5 Uložené pohledy
 
-Tlačítko **⭐ Uložit jako pohled** v panelu filtrů. Dialog: název, ikona (emoji), zaškrtávátko **Připnout jako záložku**.
+Tlačítko **⭐** je v liště nad seznamem, vedle přepínačů zobrazení a náhledu — vždycky,
+i když žádný pokročilý filtr nemáš. Totéž umí paleta příkazů (**Ctrl+Shift+P** → *Uložit jako
+pohled*). Dialog: název, ikona (emoji), zaškrtávátko **Připnout jako záložku**.
 
-Uložený pohled uchová: search, filtr typu / aspektu / data, pokročilá pravidla (attrFilters), řazení, aktivní záložku a display mode (seznam / Kanban / časová osa) i s parametry.
+Uložený pohled uchová: search, filtr typu / aspektu / data, pokročilá pravidla (attrFilters),
+řazení, aktivní záložku a celé zobrazení i s podrobnostmi (viz kap. 12.7).
 
 **Připnutý pohled** se objeví jako záložka v liště (např. `🔥 Naléhavé`). Klik aplikuje filtr.
 Zaškrtávátko u pohledu v Nastavení → Uložené pohledy je totéž jako přidat či odebrat záložku
@@ -704,13 +707,16 @@ Entity grupované podle roku a měsíce, s datem před názvem. Entity bez data 
 ### 12.7 Zobrazení v uložených pohledech
 
 Když uložíš pohled, uloží se i způsob zobrazení a jeho nastavení — **sekce včetně granularity
-u dat**, vybrané sloupce tabulky, atribut Kanbanu, atribut kalendáře, atribut a směr časové osy
-a to, jestli byl zapnutý náhled. „Dokumenty seskupené podle Stavu" nebo „Úkoly po dnech splatnosti"
-jde tedy uložit jedním kliknutím a dát do lišty jako záložku.
+u dat**, vybrané sloupce tabulky **i jejich řazení klikem na hlavičku**, atribut Kanbanu, atribut
+kalendáře, atribut a směr časové osy a to, jestli byl zapnutý náhled. „Dokumenty seskupené podle
+Stavu" nebo „Úkoly po dnech splatnosti" jde tedy uložit jedním kliknutím tlačítkem **⭐** v liště
+a dát do lišty jako záložku.
 
 Klik na záložku pohledu tě vrátí do stejného zobrazení. Změnit ho jde přes **Přepsat aktuálním**
-v Nastavení → Uložené pohledy — a to nově přepíše opravdu celé zobrazení; dřív se sekce, sloupce
-tabulky, kalendář a náhled ztrácely.
+v Nastavení → Uložené pohledy. To bere **poslední seznam, který jsi měl otevřený** — do nastavení
+se jde odjinud a aktuální zobrazení do něj samo nedojde. Když jsi od načtení projektu žádný seznam
+neotevřel, zobrazení se nepřepíše a přenese se jen filtr — ať se pohled nerozbije na prázdný
+seznam.
 
 ---
 
@@ -983,7 +989,7 @@ Vypisovat všechny příkazy nemá cenu, seznam roste s aplikací. Drží se tě
 | **Vytvořit** | Nová entita, **Nová do Inboxu**, Rychlé přidání do Inboxu a **Nová entita každého typu** zvlášť („Nová: Smlouva") |
 | **Entita** | příkazy k právě otevřené entitě — přesně ty, co má v detailu za tlačítka: Upravit, Duplikovat, Přidat vazbu, Komentáře, Export / tisk, Zeptat se AI, V samostatném okně, Do / Z Inboxu, Změnit typ, Archivovat nebo Obnovit, Smazat |
 | **Seznam** | hledání, pokročilé filtry, vyčištění filtrů, uložení pohledu, režim výběru, náhled vedle seznamu a přepnutí zobrazení (seznam, tabulka, Kanban, kalendář, časová osa) |
-| **Akce** | uložit, načíst, export dat, schránka, načtení z adresy, panely, AI, motiv a jazyk |
+| **Akce** | uložit, načíst, export dat, **import TSV**, **import balíčku .dkmpkg**, schránka, načtení z adresy, panely, AI, motiv a jazyk |
 | **Navigace** | záložky z lišty, Inbox / Vše / Archiv, Všechny komentáře a **každá sekce nastavení** |
 | **Skoky** | typy entit, aspekty, tagy, uložené pohledy |
 | **Entity** | každá nearchivovaná entita — Enter otevře její detail |
@@ -1637,13 +1643,17 @@ Stáhne se `.dkmpkg`.
 
 ### 28.3 Import balíčku
 
-**Nastavení → Projekt → Přenos mezi projekty → Importovat balíček**. Nahraješ `.dkmpkg`. Wizard:
+**Nastavení → Projekt → Přenos mezi projekty → Importovat balíček**, nebo rovnou z palety
+příkazů (**Ctrl+Shift+P** → *Importovat balíček*). Nahraješ `.dkmpkg`. Wizard:
 
 - Shrnutí obsahu
 - Kontrola konfliktů (existující typy, atributy)
 - Automap: matchování atributů podle názvu + typu; číselníky a soustavy tagů se párují podle názvu a slučují (nové hodnoty se doplní, existující zůstanou)
 - Preview změn
 - Backup před importem (checkbox default zapnutý — stáhne se aktuální projekt jako `.dkmdata` před importem)
+
+**Import nezakládá záložky.** Lišta je tvoje uspořádání (kap. 29.8) a cizí balíček do ní
+nemá co sahat — nové typy a aspekty si do ní přidáš v Nastavení → Záložky, když a jak chceš.
 
 #### Když už entita v projektu je
 
