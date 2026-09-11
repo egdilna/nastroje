@@ -391,6 +391,33 @@ Vybraná karta žije v `_detailTab` **mimo `state.view`** — `navigateTo` ho na
 výchozími hodnotami a přepnutá karta má přežít skok na jinou entitu. Do dat projektu
 nepatří. Promítá se do identifikátoru obrazovky (`#scrdetent.rels`).
 
+## Záložky (`state.data.settings.tabs`)
+Lišta nahoře je obyčejný seznam položek. Každá nese druh (`kind`) a cíl; **Inbox, Vše ani
+Archiv nejsou výjimka** — nic v liště není napevno. Druhy: `inbox`, `all`, `archive`, `type`
+(pole `typeIds`, klidně víc typů najednou), `aspect`, `tag`, `view`, `entity`, `comments`,
+`new` (založí entitu daného typu) a `sep` (jen čárka).
+
+- **Jediné místo, kde druh znamená chování**, je čtveřice `zalozkaNazev` / `zalozkaIkona` /
+  `zalozkaPocet` / `otevriZalozku` + `zalozkaOdpovida`. Nový druh se přidá tam a do
+  `ZALOZKA_DRUHY`, ne rozsypaně po kódu.
+- **Zvýrazněná je záložka, ze které se přišlo** (`state.view.tabId`); po skoku odjinud
+  (odkaz, paleta) první, která odpovídá obsahu — proto `zalozkaOdpovida`.
+- **Adresa zůstává podle obsahu**, ne podle záložky (`#type/x`, `#types/a,b`, `#tag/…`),
+  takže staré odkazy platí dál a dvě záložky na totéž si nepřekáží.
+- **Počet u uloženého pohledu se počítá spuštěním jeho filtru** (`pocetUlozenehoPohledu`
+  přes `getList`), proto je dobrovolný. U ostatních druhů je to prosté počítání entit.
+- **Migrace ze starších dat** (`migrujZalozky`) čte `visibleTypeTabs`, `visibleAspectTabs`
+  a `savedViews[].pinned` a klíče z dat zahodí. Čte se ze **vstupu**, ne ze sloučeného
+  nastavení — `emptyData` má základní lištu a ta by starší klíče přebila.
+- **Uklízení**: smazání typu, aspektu, pohledu, soustavy tagů či entity v aplikaci volá
+  `uklidZalozky()`. Rozbitá záložka z cizích dat zůstává vidět s ⚠ a klik nabídne smazání.
+- Prohlížeč čte tutéž sadu a vynechává druhy, které neumí (`view`, `comments`, `new`).
+
+## Klávesové zkratky
+Alt-zkratky (L, S, N, A, B, R, U a Alt+1…9 na záložky) jsou **na jednom místě v globálním
+`keydown`**, ne na `accesskey` u tlačítek. Dřív fungovaly jen tam, kde zrovna to tlačítko
+bylo — Alt+N tedy na detailu ani v nastavení vůbec ne. `accesskey` v aplikaci nepoužívej.
+
 ## Tagy (`state.data.tagSets`)
 Soustava tagů je pojmenovaná zásoba značek (`{id,name,tags:[]}`), atribut typu `tags` se na
 ni váže přes `tagSetId`. Hodnota u entity je **vždy pole řetězců**, i když je tag jeden.
