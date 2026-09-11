@@ -1187,6 +1187,12 @@ database.
 quick palette. In the dialog you pick a **scope** (selected entities / the displayed list / the
 whole project) and a **target**:
 
+**The default scope follows where you opened Export from.** If something is selected in
+selection mode, the selection wins. If you are in an entity detail or editor, the default is
+**that entity** ("Open entity: Service contract") — not the last list filter. Otherwise it is
+the displayed list, and when that is empty, the whole project. Every scope shows how many
+entities it yields, and "the displayed list" is offered only when you are actually over a list.
+
 | Target | Formats | What for |
 |---|---|---|
 | **Document** | Markdown, DOCX, print / PDF, formatted text to the clipboard | a report, an overview, something to read (ch. 24) |
@@ -1321,9 +1327,8 @@ The other rules from 23.3 apply unchanged — empty values are skipped, objects 
 The **Export** button in the header opens a dialog where you pick the scope, the format and
 the **columns** — so you get exactly what you need instead of everything.
 
-**Scope** — the selected entities (when you are in selection mode), the currently displayed
-list, or the whole project without the archive. When the displayed list is empty, the whole
-project is offered straight away.
+**Scope** — see 23: the selection, the open entity when you come from its detail, the
+currently displayed list, or the whole project without the archive.
 
 **Format**
 

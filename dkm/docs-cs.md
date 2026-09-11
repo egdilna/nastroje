@@ -1179,6 +1179,12 @@ Většina exportů níže je datová. Model se exportuje z jednoho místa — **
 **Export** v hlavičce, hromadnou akcí **📤 Export dat** nad výběrem, nebo z rychlé palety.
 V dialogu si vybereš **rozsah** (vybrané entity / zobrazený seznam / celý projekt) a **cíl**:
 
+**Výchozí rozsah se řídí tím, odkud jsi Export otevřel.** Máš-li něco vybrané v režimu
+výběru, platí výběr. Jsi-li v detailu nebo v editaci entity, je výchozí **právě ta entita**
+(„Otevřená entita: Smlouva o dílo") — ne poslední filtr seznamu. Jinak platí zobrazený
+seznam, a když je prázdný, celý projekt. U rozsahu je vždycky vypsané, kolik entit z něj
+vypadne. „Zobrazený seznam" se nabízí jen tehdy, když jsi opravdu nad seznamem.
+
 | Cíl | Formáty | K čemu |
 |---|---|---|
 | **Dokument** | Markdown, DOCX, tisk / PDF, formátovaný text do schránky | zpráva, přehled, podklad ke čtení (kap. 24) |

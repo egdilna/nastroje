@@ -391,6 +391,17 @@ Vybraná karta žije v `_detailTab` **mimo `state.view`** — `navigateTo` ho na
 výchozími hodnotami a přepnutá karta má přežít skok na jinou entitu. Do dat projektu
 nepatří. Promítá se do identifikátoru obrazovky (`#scrdetent.rels`).
 
+## Export: výchozí rozsah
+`exportPredvyber()` je jediné místo, které rozhoduje, co Export nabídne jako výchozí —
+výběr v režimu výběru, jinak otevřená entita, jinak nic. Volá ho tlačítko v hlavičce
+i paleta; nový vstup do `openExportHub` má jít přes něj, ne přes `bulkSelectedEntities()`.
+Druhý parametr `openExportHub(entity, popisVyberu)` mění popisek volby „výběr", aby
+u jedné otevřené entity nestálo „Vybrané entity (1)".
+
+`getList()` mimo seznam vrací **Inbox**, protože `navigateTo` vrací `state.view.tab` na
+výchozí. Proto se rozsah „zobrazený seznam" nabízí jen při `state.view.name==='list'`
+a u rozsahů se vypisuje počet entit.
+
 ## Víc oken, víc projektů
 `BroadcastChannel` slyší **celý origin**, takže jeden společný kanál by znamenal, že si
 dva projekty otevřené ve dvou oknech navzájem přepíšou `state.data`. Proto se synchronizuje
