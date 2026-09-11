@@ -412,6 +412,14 @@ Archiv nejsou výjimka** — nic v liště není napevno. Druhy: `inbox`, `all`,
 - **Uklízení**: smazání typu, aspektu, pohledu, soustavy tagů či entity v aplikaci volá
   `uklidZalozky()`. Rozbitá záložka z cizích dat zůstává vidět s ⚠ a klik nabídne smazání.
 - Prohlížeč čte tutéž sadu a vynechává druhy, které neumí (`view`, `comments`, `new`).
+- **Limit u druhu `recent` patří k záložce, ne do projektu** — je to vlastnost zobrazení,
+  dvě záložky můžou chtít jiný počet. Ořez dělá `getList` až úplně nakonec, po filtrech
+  i řazení, a kolik toho bylo předtím, hlásí `state.view._orezano` do řádku nad seznamem.
+  Ten řádek patří **dovnitř** seznamu, jinak by po změně filtru zůstal starý.
+- **Sekce podle data** (`collectColumnAttrCandidates(true)`) se nabízejí jen pro seskupení,
+  ne pro Kanban: přetažení karty tam znamená „přepiš hodnotu", a přepisovat datum úpravy
+  nedává smysl. Granularitu drží `state.view.groupDate`, klíč přihrádky nese předponu
+  (`d:`, `w:`, `m:`, `y:`), aby se přihrádky různých granularit nepotkaly.
 
 ## Paleta příkazů (`collectPaletteCandidates`)
 Otevírá ji Ctrl+Shift+P, F1 a tlačítko v hlavičce; **Ctrl+P patří prohlížeči na tisk**,
