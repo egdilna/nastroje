@@ -621,9 +621,15 @@ Přepíná se jen způsob zobrazení — filtry, hledání i řazení platí ve 
 
 Výchozí a zůstává výchozí. Karty entit pod sebou.
 
-**Sekce podle** rozdělí seznam do rozbalovacích skupin podle atributu typu výběr, ano/ne, nebo
-podle typu entity. U každé sekce je vidět, kolik entit obsahuje; entity bez hodnoty mají sekci
-„(bez hodnoty)" na konci. Rozbalení a sbalení si pohled pamatuje.
+**Sekce podle** rozdělí seznam do rozbalovacích skupin podle atributu typu výběr, ano/ne,
+podle typu entity, nebo **podle data** — a to jak podle datumového atributu, tak podle
+systémového **Upraveno** a **Vytvořeno**. U každé sekce je vidět, kolik entit obsahuje; entity
+bez hodnoty mají sekci „(bez hodnoty)" na konci. Rozbalení a sbalení si pohled pamatuje.
+
+U dat přibude v liště volba **Sekce po**: dnech, týdnech, měsících nebo letech. Sekce jdou od
+nejnovější a nadpisy jsou lidské — *Dnes*, *Včera*, *středa 9. září 2026*, *září 2026*.
+V Kanbanu se data jako sloupce nenabízejí: přetažení karty mezi sloupci znamená „přepiš
+hodnotu", a to u data úpravy nedává smysl.
 
 ### 12.2 Tabulka (▦)
 
@@ -673,8 +679,14 @@ Entity grupované podle roku a měsíce, s datem před názvem. Entity bez data 
 
 ### 12.7 Zobrazení v uložených pohledech
 
-Když uložíš pohled, uloží se i způsob zobrazení a jeho nastavení — včetně vybraných sloupců
-tabulky, sekcí, atributu kalendáře a toho, jestli byl zapnutý náhled. Klik na připnutou záložku pohledu tě vrátí do stejného zobrazení. Změnit lze přes **Přepsat aktuálním** v Nastavení → Uložené pohledy.
+Když uložíš pohled, uloží se i způsob zobrazení a jeho nastavení — **sekce včetně granularity
+u dat**, vybrané sloupce tabulky, atribut Kanbanu, atribut kalendáře, atribut a směr časové osy
+a to, jestli byl zapnutý náhled. „Dokumenty seskupené podle Stavu" nebo „Úkoly po dnech splatnosti"
+jde tedy uložit jedním kliknutím a dát do lišty jako záložku.
+
+Klik na záložku pohledu tě vrátí do stejného zobrazení. Změnit ho jde přes **Přepsat aktuálním**
+v Nastavení → Uložené pohledy — a to nově přepíše opravdu celé zobrazení; dřív se sekce, sloupce
+tabulky, kalendář a náhled ztrácely.
 
 ---
 
@@ -1703,6 +1715,7 @@ Co může záložka ukazovat:
 | Druh | Co se otevře |
 |---|---|
 | **Inbox**, **Vše**, **Archiv** | dnešní obrazovky seznamů |
+| **Naposledy změněné** | entity seřazené podle data úpravy a ořezané na zvolený počet (výchozí 30), rovnou po dnech. Kolik položek, se nastavuje u záložky — je to vlastnost zobrazení, ne projektu, takže dvě záložky můžou mít každá jiný počet. Že jde o výřez, hlásí řádek „Zobrazeno 30 z 412". |
 | **Typy entit** | seznam entit zaškrtnutých typů — **klidně několika najednou**; záložku si pak pojmenuješ třeba „Objekty a subjekty". Týž typ může být i v dalších záložkách. |
 | **Aspekt** | entity s daným aspektem |
 | **Tag** | entity s daným tagem (kap. 7.5) |

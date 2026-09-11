@@ -42,6 +42,7 @@ její obsah.
 | `#scraspview` | seznam jednoho aspektu |
 | `#scrtagview` | seznam filtrovaný jedním tagem |
 | `#scrarchive` | Archiv |
+| `#scrrecentview` | Naposledy změněné |
 | `#scrsavedview` | uložený pohled |
 
 ### Přípony
@@ -182,6 +183,7 @@ kopírují aplikaci, jen s předponou `scrstat`.
 | `#scrstataspview` | seznam jednoho aspektu |
 | `#scrstattagview` | seznam filtrovaný jedním tagem |
 | `#scrstatarchive` | Archiv |
+| `#scrstatrecentview` | Naposledy změněné |
 | `#scrstatdetent.rels` | detail entity, karta Vazby (s Odkazuje sem) |
 | `#scrstatdetent.tree` | detail entity, karta Strukturální pohled |
 | `#scrstatdetent.tags` | detail entity, karta Tagy |

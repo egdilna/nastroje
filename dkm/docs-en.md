@@ -626,9 +626,15 @@ Only the way of showing changes — filters, search and sorting apply the same i
 
 The default, and it stays the default. Entity cards below each other.
 
-**Sections by** splits the list into collapsible groups by a select or yes/no attribute, or by
-entity type. Each section shows how many entities it holds; entities without a value get a
-"(no value)" section at the end. The view remembers what you collapsed.
+**Sections by** splits the list into collapsible groups by a select or yes/no attribute, by
+entity type, or **by date** — either a date attribute or the system **Updated** and **Created**.
+Each section shows how many entities it holds; entities without a value get a "(no value)"
+section at the end. The view remembers what you collapsed.
+
+For dates the toolbar adds a **Sections by** granularity: day, week, month or year. Sections run
+newest first and the headings are human — *Today*, *Yesterday*, *Wednesday 9 September 2026*,
+*September 2026*. Dates are not offered as Kanban columns: dragging a card between columns means
+"overwrite the value", which makes no sense for a change date.
 
 ### 12.2 Table (▦)
 
@@ -680,8 +686,14 @@ Entities grouped by year and month with date before the name. Entities without a
 
 ### 12.7 Display mode in saved views
 
-When you save a view, the display mode and its settings are saved too — including the chosen
-table columns, the sections, the calendar attribute and whether the preview was on. Clicking a pinned view tab returns you to the same display. Changeable via **Overwrite with current** in Settings → Saved views.
+When you save a view, the display mode and its settings are saved too — **the sections including
+the date granularity**, the chosen table columns, the Kanban attribute, the calendar attribute,
+the timeline attribute and direction, and whether the preview was on. So "Documents grouped by
+Status" or "Tasks by due day" is one click to save and one tab on the bar.
+
+Clicking a view tab returns you to the same display. To change it use **Overwrite with current**
+in Settings → Saved views — which now really overwrites the whole display; sections, table
+columns, calendar and preview used to get lost.
 
 ---
 
@@ -1729,6 +1741,7 @@ What a tab can show:
 | Kind | What opens |
 |---|---|
 | **Inbox**, **All**, **Archive** | today's list screens |
+| **Recently changed** | entities sorted by change date and cut to a chosen count (30 by default), sectioned by day. The count is set on the tab — it is a property of the display, not of the project, so two tabs can each have their own. That it is a slice is stated by a "Showing 30 of 412" line. |
 | **Entity types** | entities of the ticked types — **several at once if you like**; then you name the tab "Objects and subjects", say. The same type may appear in other tabs too. |
 | **Aspect** | entities carrying that aspect |
 | **Tag** | entities carrying that tag (7.5) |
