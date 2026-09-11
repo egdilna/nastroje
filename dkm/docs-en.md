@@ -247,6 +247,11 @@ by tabs:
 whether there is anything. Left and right arrows move between tabs, Home jumps to the first,
 End to the last.
 
+**Every list of entities and tags in the detail is sorted alphabetically**, case-insensitively
+and with a feel for numbers ("item 2" before "item 10"). That covers relations, Linked from, the
+values of relation attributes, the structural view and the tag chips — the order does not depend
+on what was written first. The stored data keeps its order; sorting happens on display.
+
 At the very bottom there is a discreet line with the **ID, when the entity was created and
 when it last changed**.
 
@@ -428,8 +433,9 @@ the set, not the order you clicked.
 A tag someone has meanwhile removed from the set is **not lost** on the entity — it stays
 selected and is marked `⚠` so you can see it no longer belongs to the set.
 
-**Showing tags.** In the entity detail every tag is a chip and a **link to the list of all
-entities carrying that tag**. Next to it, on the right, is the **🏷 Tags** tab: one collapsible
+**Showing tags.** The chips are ordered **alphabetically**, case-insensitively — the order
+within the set governs the picker in the editor and the stored data, not the display. In the
+entity detail every tag is a chip and a **link to the list of all entities carrying that tag**. Next to it, on the right, is the **🏷 Tags** tab: one collapsible
 item per tag, expanding to links to the other entities with the same label (fifteen at most)
 and a link to the full list.
 

@@ -391,6 +391,15 @@ Vybraná karta žije v `_detailTab` **mimo `state.view`** — `navigateTo` ho na
 výchozími hodnotami a přepnutá karta má přežít skok na jinou entitu. Do dat projektu
 nepatří. Promítá se do identifikátoru obrazovky (`#scrdetent.rels`).
 
+## Řazení zobrazených seznamů
+Entity a tagy se v zobrazení řadí **abecedně, case-insensitive, s `numeric:true`** —
+jedna funkce `porovnejNazvy` / `serazPodleNazvu`, nikde vlastní `localeCompare`. Týká se
+vazeb, Odkazuje sem, hodnot vazebních atributů, strukturálního pohledu, odznáčků tagů,
+karty Tagy, výběru entit i textových exportů (Markdown, HTML, DOCX, tabulky, PlantUML).
+
+**Data se nepřerovnávají** — pořadí v `attributes` zůstává, jak ho uživatel uložil, a
+strukturovaný export (JSON, XML) ho vydává tak, jak je. Řadí se až to, co je vidět.
+
 ## Záložky (`state.data.settings.tabs`)
 Lišta nahoře je obyčejný seznam položek. Každá nese druh (`kind`) a cíl; **Inbox, Vše ani
 Archiv nejsou výjimka** — nic v liště není napevno. Druhy: `inbox`, `all`, `archive`, `type`
