@@ -38,7 +38,9 @@ její obsah.
 | `#scrinbox` | Schránka |
 | `#scrallview` | Vše |
 | `#scrtypeview` | seznam jednoho typu entit |
+| `#scrtypesview` | seznam záložky s víc typy entit |
 | `#scraspview` | seznam jednoho aspektu |
+| `#scrtagview` | seznam filtrovaný jedním tagem |
 | `#scrarchive` | Archiv |
 | `#scrsavedview` | uložený pohled |
 
@@ -176,7 +178,9 @@ kopírují aplikaci, jen s předponou `scrstat`.
 | `#scrstatinbox` | Schránka |
 | `#scrstatallview` | Vše |
 | `#scrstattypeview` | seznam jednoho typu entit |
+| `#scrstattypesview` | seznam záložky s víc typy entit |
 | `#scrstataspview` | seznam jednoho aspektu |
+| `#scrstattagview` | seznam filtrovaný jedním tagem |
 | `#scrstatarchive` | Archiv |
 | `#scrstatdetent.rels` | detail entity, karta Vazby (s Odkazuje sem) |
 | `#scrstatdetent.tree` | detail entity, karta Strukturální pohled |

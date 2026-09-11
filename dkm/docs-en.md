@@ -201,7 +201,7 @@ those are outputs for someone else, not your working environment.
 
 ### 4.3 Toolbar above the list
 
-- **Tabs**: Inbox, All, individual entity types, individual aspects, pinned saved views, Archive.
+- **Tabs**: the whole bar is yours — you compose it in Settings → Tabs (29.8) out of anything: Inbox, All, Archive, entity types (several types in one tab if you like), aspects, tags, saved views, one specific entity, comments, creating a new entity of a given type, and plain separators. Nothing is fixed; you can reorder by dragging in the bar itself and **Alt+1 … Alt+9** jump to the first nine tabs.
 - **Search** — fulltext across name and text attributes
 - **Filter** — type, aspect, update date
 - **Sort** — by update date / name / creation date
@@ -287,7 +287,7 @@ Left panel with sections:
 - **Relations** — relation types, names, scope, allowed types
 - **Lists** — select lists with value enumerations
 - **Saved views** — management of saved filters
-- **Tabs** — which types and aspects show in the toolbar
+- **Tabs** — what the bar at the top is made of
 - **GitHub** — token, synchronization
 - **General** — language, user name for comments, autosave, debug
 - **Statistics** — counts of entities, attributes, relations
@@ -370,7 +370,10 @@ You can delete a type only when no entity uses it. Otherwise DKM warns you.
 
 ### 6.4 Show type as a tab
 
-In **Settings → Tabs** you check which types should appear in the main toolbar as tabs (e.g. only the most frequent). Others are accessible via advanced filtering or command palette.
+In **Settings → Tabs** add a tab of kind *Entity types* and tick the types it should show —
+several at once is fine ("Objects and subjects"). The **＋ Tabs for all types** button does it
+for every type in one go. Types without a tab stay reachable from the command palette (Ctrl+P)
+and from advanced filters.
 
 ---
 
@@ -591,6 +594,9 @@ When you close the panel and rules are active, a strip appears above the list: `
 ### 11.5 Saved views
 
 The **⭐ Save as view** button in the filter panel. Dialog: name, icon (emoji), checkbox **Pin as tab**.
+That checkbox — and the one next to a view in Settings → Saved views — is the same thing as adding
+or removing a *Saved view* tab in Settings → Tabs; two ways to one thing. There is no pinning
+anywhere else (not on an entity, not on a tag); tabs are otherwise composed in Settings.
 
 A saved view stores: search, type / aspect / date filter, advanced rules (attrFilters), sort, active tab, and display mode (list / Kanban / timeline) with its parameters.
 
@@ -1520,8 +1526,9 @@ DKM can generate a **static HTML viewer** of project data — a single file you 
 In the **📤 Export data** dialog (ch. 23) pick the **Static viewer** target. A file with the
 embedded data is downloaded. **It takes the chosen scope** — so it need not be the whole
 project. In a cut the model is narrowed to what the selected entities actually need,
-relations pointing outside are dropped (as with a package, ch. 28.1), and tabs referring to
-a type or aspect that is not in the cut disappear. **Settings → Project** has a shortcut to
+relations pointing outside are dropped (as with a package, ch. 28.1), and tabs whose target is
+not in the cut disappear. The viewer has **the same tab bar as the application** (29.8) — it
+only leaves out the kinds it cannot do: saved views, comments and creating a new entity. **Settings → Project** has a shortcut to
 the whole project.
 
 The viewer has **the same detail layout as the application**: attributes on the left, the
@@ -1688,13 +1695,49 @@ The **↑↓** buttons change their order, and with it the order of their tabs a
 
 ### 29.8 Tabs
 
-Which types and aspects appear as tabs in the main toolbar. The enabled entries sit at
-the top in the order the tabs appear, and the **↑↓** buttons next to them change that
-order. Dragging a tab in the toolbar itself does the same.
+The bar at the top is one list you compose yourself. **Inbox, All and Archive are no
+exception** — they are ordinary tabs you can reorder, rename or throw away. What makes it safe
+to open the bar up like this is the command palette (Ctrl+P): it reaches every type, aspect,
+view and entity regardless of the tabs, so nobody can lock themselves out.
 
-Dragging works within one group only — a type among types, an aspect among aspects, a
-saved view among saved views. Inbox, All and Archive have fixed places. Dragging does
-not work on touch devices; the **↑↓** buttons always do.
+What a tab can show:
+
+| Kind | What opens |
+|---|---|
+| **Inbox**, **All**, **Archive** | today's list screens |
+| **Entity types** | entities of the ticked types — **several at once if you like**; then you name the tab "Objects and subjects", say. The same type may appear in other tabs too. |
+| **Aspect** | entities carrying that aspect |
+| **Tag** | entities carrying that tag (7.5) |
+| **Saved view** | applies the saved filter and display mode |
+| **Entity** | the detail of one specific entity — handy as a landing page or overview |
+| **Comments** | the All comments screen |
+| **New entity** | creates a new entity of the chosen type straight away |
+| **Separator** | just a vertical line that splits the bar into groups |
+
+For every tab you can set:
+
+- An **icon** and a **name on the bar** — both optional; empty means derived from the target. A
+  filled-in name is used as the **heading above the list** as well, so "Tasks" shows up there too.
+- **Show count** — the number next to the name. For a saved view it is off by default: computing
+  it means running the whole filter, and with several views over a large project you feel it.
+- **Hide when empty** — this is how Archive behaves in a new project.
+- **Open on this one** — the app starts on this tab. With none marked it starts on the first.
+
+A row expands on click for editing. Order is changed by the **↑↓** buttons or by dragging —
+both here and in the bar itself, now **across all kinds** (it used to be within a group only).
+Dragging does not work on touch devices; the **↑↓** buttons always do.
+
+The **＋ Tabs for all types** and **＋ For all aspects** buttons create the missing tabs in bulk —
+handy right after you set up the model.
+
+When a tab's target disappears (someone deleted an entity in another project and the file came
+from elsewhere), the tab is struck through and marked `⚠`; clicking it offers to delete it.
+Deleting a type, aspect, view, tag set or entity **in the app itself** cleans up the tabs by
+itself.
+
+**Older projects** convert themselves: the bar is composed exactly as it looked — Inbox, All,
+the enabled types, the enabled aspects, pinned views and Archive with "hide when empty".
+Nothing is lost and nothing asks.
 
 ### 29.9 GitHub
 
@@ -1772,24 +1815,25 @@ Links to online documentation and repository.
 |----------|--------|
 | i | Go to Inbox |
 | a | Go to All |
-| n | New entity (with type picker) |
+| n | New entity — of that type when on a single-type tab, otherwise with a picker |
 | q | Quick add to Inbox |
 | s | Save (file / GitHub) |
 
-### Access keys
+### Alt shortcuts
 
-They work inside text fields too. The exact combination is up to the browser — usually **Alt+**,
-**Alt+Shift+** in Firefox, **Ctrl+Alt+** on macOS.
+They work **on every screen** — they used to hang off buttons (`accesskey`), so they only
+worked where that button happened to be. In Firefox it is **Alt+Shift+**, on macOS **Ctrl+Alt+**.
 
 | Key | Action |
 |-----|--------|
 | Alt+L | Load project from file |
 | Alt+S | Save |
-| Alt+N | New entity (list toolbar button) |
-| Alt+A | All tab |
-| Alt+B | Back (in detail, editor, settings) |
+| Alt+N | New entity — of that type when on a single-type tab |
+| Alt+A | The All list (even with no All tab on the bar) |
+| Alt+B | Back |
 | Alt+R | Add relation (in entity detail) |
 | Alt+U | Commit edit (in editor) |
+| Alt+1 … Alt+9 | Jump to the 1st–9th tab on the bar |
 
 ### List
 
@@ -1977,7 +2021,7 @@ both formats, machine-readable schemas included, is in chapter 37:
 ```
 {
   version, projectName, projectDescription, ghPath,
-  settings: { visibleTypeTabs, visibleAspectTabs },
+  settings: { tabs: [{ id, kind, name?, icon?, typeIds?, aspectId?, tagSetId?, tag?, viewId?, entityId?, typeId?, showCount?, hideEmpty?, isDefault? }] },
   entityTypes: [{ id, name, icon, jsonKey?, attributes: [{ id, name, type, required, showInList, listId?, jsonKey?, ... }] }],
   aspects: [{ id, name, jsonKey?, attributes: [...] }],
   relationTypes: [{ id, name, inverseName, scope, fromTypes, toTypes, jsonKey? }],
@@ -2316,7 +2360,7 @@ and on whoever produces the file:
 | `…attributes[].tagSetId` | `tagSets[].id` |
 | `…attributes[].targetType` | `entityTypes[].id`, or `any` |
 | `relationTypes[].fromTypes[]`, `toTypes[]` | `entityTypes[].id` |
-| `settings.visibleTypeTabs[]`, `visibleAspectTabs[]` | `entityTypes[].id`, `aspects[].id` |
+| `settings.tabs[].typeIds[]`, `aspectId`, `tagSetId`, `viewId`, `entityId`, `typeId` | `entityTypes[].id`, `aspects[].id`, `tagSets[].id`, `savedViews[].id`, `entities[].id` — depending on the tab kind |
 
 Identifiers are unique within the file. DKM builds them as `prefix_<time><random>`
 (`e_lz3k9a1b2c`), but the format does not require that shape — the string only has to be
@@ -2389,6 +2433,7 @@ Whoever produces a file should write only the canonical column:
 | `…attributes[].listId` | `…attributes[].selectListId` | moves it into `listId` on load and drops the old key |
 | a list in `selectLists` | values inline in `…attributes[].options` | read only as a safety net |
 | author name in the browser | `settings.userName` | takes it over locally and removes it from the data |
+| `settings.tabs` | `settings.visibleTypeTabs`, `visibleAspectTabs`, `savedViews[].pinned` | composes the bar from them and drops the deprecated keys |
 
 `settings.userName` was removed so that several people can work on one project — the
 comment author's name belongs to a particular browser, not to shared data.

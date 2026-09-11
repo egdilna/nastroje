@@ -200,7 +200,7 @@ jsou to výstupy pro někoho jiného, ne tvoje pracovní prostředí.
 
 ### 4.3 Toolbar nad seznamem
 
-- **Záložky**: Inbox, Vše, jednotlivé typy entit, jednotlivé aspekty, připnuté uložené pohledy, Archiv. Klikem se přepneš na pohled, který obsahuje jen entity z dané kategorie.
+- **Záložky**: celá lišta je tvoje — poskládáš si ji v Nastavení → Záložky (kap. 29.8) z čehokoliv: Inbox, Vše, Archiv, typy entit (i víc typů v jedné záložce), aspekty, tagy, uložené pohledy, konkrétní entita, komentáře, zakládání nové entity daného typu i prosté oddělovače. Nic není napevno; přetažením se dá přerovnat i přímo v liště a **Alt+1 … Alt+9** skočí na prvních devět záložek.
 - **Hledání** — fulltext napříč jménem a textovými atributy
 - **Filtr** — typ, aspekt, datum aktualizace
 - **Řazení** — podle data úpravy / názvu / data vytvoření
@@ -283,7 +283,7 @@ Levý panel se sekcemi:
 - **Vazby** — relační typy, jejich jména, scope, povolené typy
 - **Seznamy** — select listy s výčtem hodnot
 - **Uložené pohledy** — správa uložených filtrů
-- **Záložky** — které typy a aspekty se zobrazují v toolbaru
+- **Záložky** — z čeho je poskládaná lišta nahoře
 - **GitHub** — token, synchronizace
 - **Obecné** — jazyk, jméno uživatele pro komentáře, autosave, debug
 - **Statistiky** — počty entit, atributů, vazeb
@@ -366,7 +366,10 @@ Smazat lze typ jen tehdy, když neexistuje entita, která ho používá. DKM tě
 
 ### 6.4 Zobrazit typ jako záložku
 
-V **Nastavení → Záložky** zaškrtneš, které typy chceš mít v hlavním toolbaru jako záložku (např. jen ty nejčastější). Ostatní jsou dostupné přes rozšířené filtrování nebo rychlou paletu.
+V **Nastavení → Záložky** přidáš záložku druhu *Typy entit* a zaškrtneš, které typy má ukazovat —
+klidně několik najednou („Objekty a subjekty"). Tlačítko **＋ Záložky pro všechny typy** to udělá
+pro každý typ jednou ranou. Typy bez záložky zůstávají dosažitelné rychlou paletou (Ctrl+P)
+i pokročilými filtry.
 
 ---
 
@@ -589,7 +592,10 @@ Tlačítko **⭐ Uložit jako pohled** v panelu filtrů. Dialog: název, ikona (
 
 Uložený pohled uchová: search, filtr typu / aspektu / data, pokročilá pravidla (attrFilters), řazení, aktivní záložku a display mode (seznam / Kanban / časová osa) i s parametry.
 
-**Připnutý pohled** se objeví jako záložka v hlavním toolbaru (např. `🔥 Naléhavé`). Klik aplikuje filtr.
+**Připnutý pohled** se objeví jako záložka v liště (např. `🔥 Naléhavé`). Klik aplikuje filtr.
+Zaškrtávátko u pohledu v Nastavení → Uložené pohledy je totéž jako přidat či odebrat záložku
+druhu *Uložený pohled* v Nastavení → Záložky — je to jedno a totéž, jen dvě cesty k tomu.
+Připínání jinde než u pohledu (u entity, u tagu) není; záložky se jinak skládají v nastavení.
 
 ### 11.6 Správa pohledů
 
@@ -1497,8 +1503,9 @@ DKM umí vygenerovat **statický HTML prohlížeč** dat projektu — jeden soub
 V dialogu **📤 Export dat** (kap. 23) zvol cíl **Statický prohlížeč**. Stáhne se soubor
 s vloženými daty projektu. **Bere zvolený rozsah** — nemusí to tedy být celý projekt.
 Ve výřezu je model zúžený na to, co vybrané entity opravdu potřebují, vazby mimo výřez
-se zahodí (stejně jako u balíčku, kap. 28.1) a záložky na typ nebo aspekt, který ve výřezu
-není, zmizí. V **Nastavení → Projekt** je zkratka na celý projekt.
+se zahodí (stejně jako u balíčku, kap. 28.1) a záložky, jejichž cíl ve výřezu není, zmizí.
+Prohlížeč má **tutéž lištu záložek jako aplikace** (kap. 29.8) — vynechá jen druhy, které
+neumí: uložené pohledy, komentáře a zakládání nové entity. V **Nastavení → Projekt** je zkratka na celý projekt.
 
 Prohlížeč má **stejné rozvržení detailu jako aplikace**: vlevo atributy, vpravo karty
 **Vazby** (s Odkazuje sem), **🌳 Strukturální pohled** a **🏷 Tagy**, dole řádek s ID a časy.
@@ -1662,13 +1669,48 @@ Tlačítka **↑↓** mění jejich pořadí, a tím i pořadí jejich záložek
 
 ### 29.8 Záložky
 
-Které typy a které aspekty se zobrazují jako záložka v hlavním toolbaru.
-Zapnuté položky jsou nahoře v tom pořadí, v jakém jdou záložky za sebou, a tlačítka
-**↑↓** u nich pořadí mění. Totéž svede přetažení záložky přímo v hlavním toolbaru.
+Lišta nahoře je jeden seznam, který si poskládáš sám. **Inbox, Vše ani Archiv nejsou výjimka** —
+jsou to obyčejné záložky, které jde přerovnat, přejmenovat i vyhodit. Že se dá lišta takhle
+uvolnit, stojí na rychlé paletě (Ctrl+P): ta dosáhne na každý typ, aspekt, pohled i entitu bez
+ohledu na záložky, takže se nikdo nezamkne ven.
 
-Přetahovat jde jen v rámci jedné skupiny — typ mezi typy, aspekt mezi aspekty,
-uložený pohled mezi uloženými pohledy. Schránka, Vše a Archiv mají pevné místo.
-Na dotykových zařízeních přetahování nefunguje; tlačítka **↑↓** ano vždycky.
+Co může záložka ukazovat:
+
+| Druh | Co se otevře |
+|---|---|
+| **Inbox**, **Vše**, **Archiv** | dnešní obrazovky seznamů |
+| **Typy entit** | seznam entit zaškrtnutých typů — **klidně několika najednou**; záložku si pak pojmenuješ třeba „Objekty a subjekty". Týž typ může být i v dalších záložkách. |
+| **Aspekt** | entity s daným aspektem |
+| **Tag** | entity s daným tagem (kap. 7.5) |
+| **Uložený pohled** | použije uložený filtr i režim zobrazení |
+| **Entita** | rovnou detail konkrétní entity — hodí se na rozcestník nebo přehled |
+| **Komentáře** | obrazovka Všechny komentáře |
+| **Nová entita** | rovnou založí novou entitu zvoleného typu |
+| **Oddělovač** | jen svislá čárka, kterou se lišta rozdělí na skupiny |
+
+U každé záložky si nastavíš:
+
+- **Ikonu** a **název na liště** — obojí nepovinné; prázdné se odvodí z cíle. Vyplněný název
+  se použije i jako **nadpis nad seznamem**, takže „Úkoly" svítí i tam.
+- **Zobrazit počet** — číslo vedle názvu. U uloženého pohledu je ve výchozím stavu vypnuté:
+  spočítat ho znamená projet celý filtr, a u několika pohledů nad velkým projektem to je znát.
+- **Skrýt, když je prázdná** — takhle se chová Archiv v novém projektu.
+- **Otevírat na této** — na téhle záložce aplikace začíná. Bez označení začíná na první.
+
+Řádek se klikem rozbalí do editace. Pořadí mění tlačítka **↑↓** i přetažení — a to jak tady,
+tak přímo v liště, nově **napříč všemi druhy** (dřív jen v rámci skupiny). Na dotykových
+zařízeních přetahování nefunguje; tlačítka **↑↓** ano vždycky.
+
+Tlačítka **＋ Záložky pro všechny typy** a **＋ Pro všechny aspekty** založí chybějící záložky
+hromadně — hodí se hned po založení modelu.
+
+Když cíl záložky zmizí (někdo smazal entitu v jiném projektu a soubor přišel odjinud),
+záložka se přeškrtne a označí `⚠`; klik nabídne, že ji smaže. Smazání typu, aspektu, pohledu,
+soustavy tagů nebo entity **rovnou v aplikaci** záložky uklidí samo.
+
+**Starší projekty** se převedou samy: lišta se poskládá přesně tak, jak vypadala — Inbox, Vše,
+zapnuté typy, zapnuté aspekty, připnuté pohledy a Archiv se „skrýt, když je prázdná". Nic se
+neztratí a nic se neptá.
 
 ### 29.9 GitHub
 
@@ -1746,24 +1788,25 @@ Odkazy na online dokumentaci a repozitář.
 |---------|------|
 | i | Přejít na Inbox |
 | a | Přejít na Vše |
-| n | Nová entita (s výběrem typu) |
+| n | Nová entita — na záložce jednoho typu rovnou toho typu, jinak s výběrem |
 | q | Rychlé přidání do Inboxu |
 | s | Uložit (soubor / GitHub) |
 
-### Přístupové klávesy (accesskey)
+### Zkratky s Altem
 
-Fungují i v textových polích. Konkrétní kombinaci určuje prohlížeč — obvykle **Alt+**,
-ve Firefoxu **Alt+Shift+**, na macOS **Ctrl+Alt+**.
+Fungují **na každé obrazovce** — dřív visely na tlačítkách (`accesskey`), takže platily jen
+tam, kde zrovna to tlačítko bylo. Ve Firefoxu je to **Alt+Shift+**, na macOS **Ctrl+Alt+**.
 
 | Klávesa | Akce |
 |---------|------|
 | Alt+L | Načíst projekt ze souboru |
 | Alt+S | Uložit |
-| Alt+N | Nová entita (tlačítko v seznamu) |
-| Alt+A | Záložka Vše |
-| Alt+B | Zpět (v detailu, editoru, nastavení) |
+| Alt+N | Nová entita — na záložce jednoho typu rovnou toho typu |
+| Alt+A | Seznam Vše (i když záložku Vše v liště nemáš) |
+| Alt+B | Zpět |
 | Alt+R | Přidat vazbu (v detailu entity) |
 | Alt+U | Uložit editaci (v editoru) |
+| Alt+1 … Alt+9 | Skok na 1.–9. záložku v liště |
 
 ### Seznam
 
@@ -1950,7 +1993,7 @@ včetně strojových schémat je v kapitole 37:
 ```
 {
   version, projectName, projectDescription, ghPath,
-  settings: { visibleTypeTabs, visibleAspectTabs },
+  settings: { tabs: [{ id, kind, name?, icon?, typeIds?, aspectId?, tagSetId?, tag?, viewId?, entityId?, typeId?, showCount?, hideEmpty?, isDefault? }] },
   entityTypes: [{ id, name, icon, jsonKey?, attributes: [{ id, name, type, required, showInList, listId?, jsonKey?, ... }] }],
   aspects: [{ id, name, jsonKey?, attributes: [...] }],
   relationTypes: [{ id, name, inverseName, scope, fromTypes, toTypes, jsonKey? }],
@@ -2277,7 +2320,7 @@ ohlídat čtečka i ten, kdo soubor vyrábí:
 | `…attributes[].tagSetId` | `tagSets[].id` |
 | `…attributes[].targetType` | `entityTypes[].id`, nebo `any` |
 | `relationTypes[].fromTypes[]`, `toTypes[]` | `entityTypes[].id` |
-| `settings.visibleTypeTabs[]`, `visibleAspectTabs[]` | `entityTypes[].id`, `aspects[].id` |
+| `settings.tabs[].typeIds[]`, `aspectId`, `tagSetId`, `viewId`, `entityId`, `typeId` | `entityTypes[].id`, `aspects[].id`, `tagSets[].id`, `savedViews[].id`, `entities[].id` — podle druhu záložky |
 
 Identifikátory jsou v rámci souboru jedinečné. DKM tvoří tvar `předpona_<čas><náhoda>`
 (`e_lz3k9a1b2c`), ale formát to nevynucuje — stačí, aby byl řetězec jedinečný a stabilní.
@@ -2346,6 +2389,7 @@ má psát jen kanonický sloupec:
 | `…attributes[].listId` | `…attributes[].selectListId` | při načtení překlopí do `listId` a starý klíč zahodí |
 | číselník v `selectLists` | hodnoty přímo v `…attributes[].options` | čte se už jen jako záchytná síť |
 | jméno autora v prohlížeči | `settings.userName` | převezme si ho k sobě a z dat smaže |
+| `settings.tabs` | `settings.visibleTypeTabs`, `visibleAspectTabs`, `savedViews[].pinned` | z nich poskládá lištu a zastaralé klíče z dat zahodí |
 
 `settings.userName` odešel proto, aby nad jedním projektem mohlo pracovat víc lidí —
 jméno autora komentářů patří konkrétnímu prohlížeči, ne sdíleným datům.
