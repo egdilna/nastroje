@@ -1032,12 +1032,20 @@ The standalone window has **minimized chrome**: hidden tab bar, panel bar, quick
 
 ### 20.4 Data handoff and live sync
 
-Current data is passed to the new window via localStorage handoff (short-lived, one-shot). The new window loads it and clears the handoff key.
+Current data is passed to the new window via localStorage handoff (short-lived, one-shot). The new window loads it and clears the handoff key. A handoff nobody consumed (the popup blocker got in the way) is cleaned up on the next start.
 
-Between open windows a **live sync via BroadcastChannel** works:
+**Only a workspace syncs.** A workspace is one main window plus the standalone windows
+that came out of it. Within it:
 
-- When you edit data in one window, others auto-update
-- When another window is in editing mode, a banner shows "Data changed in another window" with a **Load current** button — prevents overwriting the in-progress edit
+- When you edit data in one window, the other windows of that workspace auto-update
+- When another window is in editing mode **or has unsaved changes**, a banner shows
+  "Data changed in another window" with a **Load current** button — work in progress is
+  never overwritten, it loads only when you explicitly click
+
+**Two projects open in two windows do not see each other.** Every newly opened DKM window
+is its own workspace, so you can keep as many projects side by side as you like and nothing
+leaks between them. The same holds for the same project opened a second time — those are two
+independent workspaces. A workspace belongs to the browser tab, so F5 does not break it.
 
 You can have **any number of standalone windows** open at once.
 
@@ -2078,6 +2086,12 @@ The project lives only in sessionStorage. For persistent storage:
 - Browser is blocking popups — allow popups for DKM
 - Check the browser notification panel (usually right of the address bar)
 
+### 33.7 "I have several projects open at once"
+
+That is fine and nothing gets mixed up — every DKM window is its own workspace (20.4). Only
+standalone windows sync with their main window. To get changes from one window into another,
+save and load — through a file, the clipboard or GitHub.
+
 ---
 
 ## 34. Technical background
@@ -2114,7 +2128,11 @@ both formats, machine-readable schemas included, is in chapter 37:
 ### 34.2 Browser storage
 
 - **sessionStorage['dkm-session-data']** — current project, per tab. Refresh survives, tab close doesn't.
-- **BroadcastChannel 'dkm-sync'** — live sync between open windows.
+- **BroadcastChannel `dkm-sync-<workspace>`** — live sync within one workspace. The channel
+  is named after the workspace on purpose: `BroadcastChannel` reaches the whole origin, so on
+  one shared channel two projects open in two windows would overwrite each other.
+- **sessionStorage `dkm-workspace`** — the workspace identity. It lives in the browser tab
+  (survives F5, not a new window); a standalone window gets it in the address (`?ws=`).
 - **localStorage** — preferences only, never project data:
 
 | Key | What it holds |
@@ -2125,7 +2143,7 @@ both formats, machine-readable schemas included, is in chapter 37:
 | `dkm-autosave`, `dkm-debug`, `dkm-sound`, `dkm-wiki-suggest` | switches in Settings → General |
 | `dkm-ai-provider`, `dkm-ai-key`, `dkm-ai-model` | AI connection (see ch. 35) |
 | `dkm-github-token` | GitHub PAT (per origin) |
-| `dkm-handoff-…` | short-lived data handoff to a standalone window |
+| `dkm-handoff-…` | short-lived data handoff to a standalone window; an unconsumed one is cleaned up after 10 minutes |
 | `dkm-viewer-lang`, `dkm-viewer-theme` | choices in a generated static viewer |
 
 ### 34.3 GitHub API

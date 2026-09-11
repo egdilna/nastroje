@@ -1027,12 +1027,20 @@ Samostatné okno má **minimalizovaný chrom**: skrytá záložková lišta, pan
 
 ### 20.4 Předání dat a live sync
 
-Aktuální data se předají do nového okna přes localStorage handoff (short-lived, jednorázový). Nové okno data načte a smaže handoff klíč.
+Aktuální data se předají do nového okna přes localStorage handoff (short-lived, jednorázový). Nové okno data načte a smaže handoff klíč. Nespotřebovaný handoff (okno zablokoval popup blocker) se uklidí sám při dalším startu.
 
-Mezi otevřenými okny funguje **live sync přes BroadcastChannel**:
+**Synchronizuje se jen pracovní prostor.** Pracovní prostor je jedno hlavní okno
+a samostatná okna, která z něj vznikla. Uvnitř něj platí:
 
-- Když v jednom okně upravíš data, ostatní okna se automaticky aktualizují
-- Když je jiné okno v editaci, ukáže se banner „Data se změnila v jiném okně" s tlačítkem **Načíst aktuální** — zabrání se přepsání rozdělané editace
+- Když v jednom okně upravíš data, ostatní okna prostoru se automaticky aktualizují
+- Když má jiné okno rozdělanou editaci **nebo neuložené změny**, ukáže se banner
+  „Data se změnila v jiném okně" s tlačítkem **Načíst aktuální** — nikdy se nepřepíše
+  rozdělaná práce, načte se až na výslovné kliknutí
+
+**Dva projekty otevřené ve dvou oknech se navzájem nevidí.** Každé nově otevřené okno
+DKM je vlastní pracovní prostor, takže si můžeš mít vedle sebe otevřených projektů kolik
+chceš a nic mezi nimi neprosakuje. Platí to i pro tentýž projekt otevřený podruhé — jsou
+to dvě nezávislá pracoviště. Prostor drží záložka prohlížeče, takže F5 ho nezruší.
 
 Můžeš mít otevřeno **libovolný počet samostatných oken** současně.
 
@@ -2051,6 +2059,12 @@ Projekt žije jen v sessionStorage. Pro trvalé uložení:
 - Prohlížeč blokuje pop-upy — povol vyskakovací okna pro DKM
 - Zkontroluj panel oznámení prohlížeče (obvykle vpravo od adresního řádku)
 
+### 33.7 „Mám otevřených víc projektů najednou"
+
+To je v pořádku a nic se nemíchá — každé okno DKM je vlastní pracovní prostor (kap. 20.4).
+Synchronizují se jen samostatná okna se svým hlavním oknem. Když chceš mít změny z jednoho
+okna v druhém, ulož a načti — přes soubor, schránku nebo GitHub.
+
 ---
 
 ## 34. Technické pozadí
@@ -2087,7 +2101,12 @@ včetně strojových schémat je v kapitole 37:
 ### 34.2 Úložiště v prohlížeči
 
 - **sessionStorage['dkm-session-data']** — aktuální projekt, per záložka. Refresh přežije, zavření záložky ne.
-- **BroadcastChannel 'dkm-sync'** — live synchronizace mezi otevřenými okny.
+- **BroadcastChannel `dkm-sync-<prostor>`** — live synchronizace uvnitř jednoho pracovního
+  prostoru. Kanál je jmenovaný na prostor schválně: `BroadcastChannel` slyší celý origin,
+  takže na jednom společném kanálu by si dva projekty otevřené ve dvou oknech navzájem
+  přepsaly obsah.
+- **sessionStorage `dkm-workspace`** — identita pracovního prostoru. Žije v záložce
+  prohlížeče (přežije F5, ne nové okno); samostatné okno ji dostane v adrese (`?ws=`).
 - **localStorage** — jen předvolby, nikdy data projektu:
 
 | Klíč | Co drží |
@@ -2098,7 +2117,7 @@ včetně strojových schémat je v kapitole 37:
 | `dkm-autosave`, `dkm-debug`, `dkm-sound`, `dkm-wiki-suggest` | přepínače v Nastavení → Obecné |
 | `dkm-ai-provider`, `dkm-ai-key`, `dkm-ai-model` | napojení na AI (viz kap. 35) |
 | `dkm-github-token` | GitHub PAT (per origin) |
-| `dkm-handoff-…` | krátkodobé předání dat do samostatného okna |
+| `dkm-handoff-…` | krátkodobé předání dat do samostatného okna; nespotřebované se uklidí po 10 minutách |
 | `dkm-viewer-lang`, `dkm-viewer-theme` | volby ve vygenerovaném statickém prohlížeči |
 
 ### 34.3 GitHub API

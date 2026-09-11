@@ -391,6 +391,22 @@ Vybraná karta žije v `_detailTab` **mimo `state.view`** — `navigateTo` ho na
 výchozími hodnotami a přepnutá karta má přežít skok na jinou entitu. Do dat projektu
 nepatří. Promítá se do identifikátoru obrazovky (`#scrdetent.rels`).
 
+## Víc oken, víc projektů
+`BroadcastChannel` slyší **celý origin**, takže jeden společný kanál by znamenal, že si
+dva projekty otevřené ve dvou oknech navzájem přepíšou `state.data`. Proto se synchronizuje
+jen uvnitř **pracovního prostoru**: kanál se jmenuje `dkm-sync-<workspaceId()>`.
+
+- Prostor = jedno hlavní okno + samostatná okna, která z něj vzešla. Identita žije
+  v `sessionStorage['dkm-workspace']` (přežije F5, ne nové okno) a do samostatného okna
+  se předává v adrese (`?ws=`).
+- **Nikdy nepřepisuj rozdělanou práci potichu.** Příchozí `data-updated` se zahodí ve
+  prospěch banneru, když je okno v `edit`/`new` **nebo** je `state.dirty`. Výjimkou je
+  `syncVynuceno`, které nastaví tlačítko „Načíst aktuální" — bez něj by si banner
+  odpovědí na `request-sync` znovu vyvolal sám sebe a nikdy by se nic nenačetlo.
+- Handoff (`dkm-handoff-…`) nese celý projekt v localStorage. Je jednorázový; co nikdo
+  nespotřeboval, uklidí `uklidHandoffy()` při startu.
+- Nová úložná položka patří do tabulky v dokumentaci (kap. 34.2 cs i en).
+
 ## Sekce v seznamu
 `collectColumnAttrCandidates(proSekce)` je jediný zdroj cílů; `proSekce` odděluje sekce
 seznamu od sloupců Kanbanu — data ani tagy se jako sloupce nenabízejí, protože přetažení

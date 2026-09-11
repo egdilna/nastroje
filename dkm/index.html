@@ -13569,8 +13569,41 @@ bootstrap();
    ============================================================= */
 
 const SK_HANDOFF_PREFIX='dkm-handoff-';
+const SK_WORKSPACE='dkm-workspace';
+const HANDOFF_MAX_MS=10*60*1000;
 const ORIGIN_ID=Math.random().toString(36).slice(2)+Date.now().toString(36);
 let bcSync=null;
+let syncVynuceno=false;
+
+/* Identita pracovního prostoru: hlavní okno a samostatná okna, která z něj vzešla.
+   Jen uvnitř téhle skupiny se data synchronizují — jinak by si dva projekty otevřené
+   ve dvou oknech téhož prohlížeče navzájem přepsaly obsah, protože BroadcastChannel
+   je společný pro celý origin. Drží se v sessionStorage, takže přežije F5, ale ne
+   nově otevřené okno; samostatné okno ho dostane v adrese. */
+let _wsId='';
+function workspaceId(){
+if(_wsId)return _wsId;
+let z='';
+try{z=new URLSearchParams(location.search).get('ws')||''}catch(e){}
+if(!z){try{z=sessionStorage.getItem(SK_WORKSPACE)||''}catch(e){}}
+if(!z)z='ws'+Math.random().toString(36).slice(2)+Date.now().toString(36);
+try{sessionStorage.setItem(SK_WORKSPACE,z)}catch(e){}
+_wsId=z;return z;
+}
+
+/* Handoff je jednorázový a nese celý projekt. Když ho samostatné okno nespotřebuje
+   (zavřel ho popup blocker, uživatel okno zabil), nesmí data zůstat ležet v localStorage. */
+function uklidHandoffy(){
+try{
+const ted=Date.now();
+for(let i=localStorage.length-1;i>=0;i--){
+const k=localStorage.key(i);
+if(!k||k.indexOf(SK_HANDOFF_PREFIX)!==0)continue;
+let ts=0;try{ts=(JSON.parse(localStorage.getItem(k))||{}).ts||0}catch(e){}
+if(!ts||ted-ts>HANDOFF_MAX_MS)localStorage.removeItem(k);
+}
+}catch(e){dbg('Handoff cleanup failed: '+e.message,true)}
+}
 
 function openEntityStandalone(entity){
 if(!entity)return;
@@ -13580,6 +13613,7 @@ const url=new URL(location.href);
 url.hash='#entity/'+entity.id;
 url.searchParams.set('h',key);
 url.searchParams.set('standalone','1');
+url.searchParams.set('ws',workspaceId());
 const w=window.open(url.toString(),'_blank','width=1000,height=800,menubar=no,toolbar=no,location=yes');
 if(!w){toast(t('standalonePopupBlocked'));try{localStorage.removeItem(key)}catch(e){}return}
 w.focus();
@@ -13588,11 +13622,15 @@ toast(t('standaloneOpened'));
 
 function initBroadcastSync(){
 if(typeof BroadcastChannel==='undefined')return;
-try{bcSync=new BroadcastChannel('dkm-sync');
+try{bcSync=new BroadcastChannel('dkm-sync-'+workspaceId());
 bcSync.onmessage=ev=>{
 if(!ev.data||ev.data.from===ORIGIN_ID)return;
 if(ev.data.type==='data-updated'&&ev.data.data){
-if(state.view.name==='edit'||state.view.name==='new'){showSyncBanner();return}
+/* Rozdělanou práci nikdy nepřepisujeme potichu. Výjimka je jen tehdy, když si
+   uživatel sám řekl „Načíst aktuální" — bez toho by tlačítko v banneru jen znovu
+   vyvolalo banner a nikdy by se nic nenačetlo. */
+if(!syncVynuceno&&(state.view.name==='edit'||state.view.name==='new'||state.dirty)){showSyncBanner();return}
+syncVynuceno=false;
 state.data=mergeEmpty(ev.data.data);snapshotBaseline();state.dirty=false;setDirty(false);render();
 }
 if(ev.data.type==='request-sync'){bcSync.postMessage({type:'data-updated',data:state.data,from:ORIGIN_ID})}
@@ -13607,7 +13645,7 @@ if(document.getElementById('sync-banner'))return;
 const b=document.createElement('div');b.id='sync-banner';b.className='sync-banner';
 const msg=document.createElement('span');msg.textContent=t('syncOtherWindowChanged');b.appendChild(msg);
 const btn=document.createElement('button');btn.type='button';btn.className='btn btn-sm';btn.textContent=t('syncApply');
-btn.addEventListener('click',()=>{requestInitSync();b.remove()});
+btn.addEventListener('click',()=>{syncVynuceno=true;requestInitSync();b.remove()});
 b.appendChild(btn);
 const dismiss=document.createElement('button');dismiss.type='button';dismiss.className='btn btn-sm';dismiss.textContent='×';dismiss.setAttribute('aria-label',t('close'));
 dismiss.addEventListener('click',()=>b.remove());
@@ -13635,6 +13673,7 @@ return true;
 
 function bootstrap(){
 const handoffApplied=consumeHandoff();
+uklidHandoffy();
 if(!handoffApplied)loadLS();
 snapshotBaseline();
 state.view=Object.assign({name:'list',tab:'inbox',entityId:null,settingsTab:'project',settingsItemId:null,edit:null,typeId:null},parseHash());
