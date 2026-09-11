@@ -605,12 +605,14 @@ When you close the panel and rules are active, a strip appears above the list: `
 
 ### 11.5 Saved views
 
-The **⭐ Save as view** button in the filter panel. Dialog: name, icon (emoji), checkbox **Pin as tab**.
+The **⭐** button sits in the toolbar above the list, next to the display and preview switches —
+always, even with no advanced filter set. The command palette does the same (**Ctrl+Shift+P** →
+*Save as view*). Dialog: name, icon (emoji), checkbox **Pin as tab**.
 That checkbox — and the one next to a view in Settings → Saved views — is the same thing as adding
 or removing a *Saved view* tab in Settings → Tabs; two ways to one thing. There is no pinning
 anywhere else (not on an entity, not on a tag); tabs are otherwise composed in Settings.
 
-A saved view stores: search, type / aspect / date filter, advanced rules (attrFilters), sort, active tab, and display mode (list / Kanban / timeline) with its parameters.
+A saved view stores: search, type / aspect / date filter, advanced rules (attrFilters), sort, active tab, and the whole display with its details (see 12.7).
 
 **Pinned view** appears as a tab in the main toolbar (e.g. `🔥 Urgent`). Click to apply the filter.
 
@@ -709,13 +711,16 @@ Entities grouped by year and month with date before the name. Entities without a
 ### 12.7 Display mode in saved views
 
 When you save a view, the display mode and its settings are saved too — **the sections including
-the date granularity**, the chosen table columns, the Kanban attribute, the calendar attribute,
-the timeline attribute and direction, and whether the preview was on. So "Documents grouped by
-Status" or "Tasks by due day" is one click to save and one tab on the bar.
+the date granularity**, the chosen table columns **and the sort you clicked into the header**, the
+Kanban attribute, the calendar attribute, the timeline attribute and direction, and whether the
+preview was on. So "Documents grouped by Status" or "Tasks by due day" is one click on the **⭐**
+button in the toolbar and one tab on the bar.
 
 Clicking a view tab returns you to the same display. To change it use **Overwrite with current**
-in Settings → Saved views — which now really overwrites the whole display; sections, table
-columns, calendar and preview used to get lost.
+in Settings → Saved views. It takes **the last list you had open** — you reach Settings from
+somewhere else, and the current display does not travel there on its own. If you have not opened
+a list since loading the project, the display is left alone and only the filter is carried over,
+so the view is not reduced to an empty list.
 
 ---
 
@@ -989,7 +994,7 @@ groups:
 | **Create** | New entity, **New into Inbox**, Quick add to Inbox, and **New entity of each type** separately ("New: Contract") |
 | **Entity** | commands for the entity currently open — exactly the ones it has as buttons in the detail: Edit, Duplicate, Add relation, Comments, Export / print, Ask AI, Standalone window, To / From Inbox, Change type, Archive or Restore, Delete |
 | **List** | search, advanced filters, clear filters, save view, selection mode, preview beside the list and the display switch (list, table, Kanban, calendar, timeline) |
-| **Action** | save, load, export data, clipboard, load from URL, panels, AI, theme and language |
+| **Action** | save, load, export data, **import TSV**, **import a .dkmpkg package**, clipboard, load from URL, panels, AI, theme and language |
 | **Navigation** | the tabs from the bar, Inbox / All / Archive, All comments and **every settings section** |
 | **Jumps** | entity types, aspects, tags, saved views |
 | **Entities** | every non-archived entity — Enter opens its detail |
@@ -1659,13 +1664,18 @@ Downloads a `.dkmpkg`.
 
 ### 28.3 Package import
 
-**Settings → Project → Move between projects → Import package**. Upload `.dkmpkg`. Wizard:
+**Settings → Project → Move between projects → Import package**, or straight from the command
+palette (**Ctrl+Shift+P** → *Import package*). Upload `.dkmpkg`. Wizard:
 
 - Content summary
 - Conflict check (existing types, attributes)
 - Automap: attribute matching by name + type; value lists and tag sets are matched by name and merged (new values are added, existing ones stay)
 - Change preview
 - Backup before import (checkbox on by default — downloads current project as `.dkmdata` before import)
+
+**The import creates no tabs.** The bar is your arrangement (29.8) and somebody else's package
+has no business touching it — you add new types and aspects to it in Settings → Tabs, if and
+how you want.
 
 #### When the entity is already in the project
 

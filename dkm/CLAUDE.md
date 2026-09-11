@@ -391,6 +391,20 @@ Vybraná karta žije v `_detailTab` **mimo `state.view`** — `navigateTo` ho na
 výchozími hodnotami a přepnutá karta má přežít skok na jinou entitu. Do dat projektu
 nepatří. Promítá se do identifikátoru obrazovky (`#scrdetent.rels`).
 
+## Uložené pohledy
+`zobrazeniProUlozeni()` je jediný zdroj toho, co se do pohledu uloží jako zobrazení —
+používá ho ukládání i „Přepsat aktuálním". Čte snímek `posledniZobrazeni`, který bere
+`renderListEl()` (tedy i při částečném překreslení po kliku na hlavičku tabulky).
+
+**Proč snímek a ne `state.view`:** do nastavení se jde přes `navigateTo`, a to `state.view`
+přepíše výchozími hodnotami. „Přepsat aktuálním" tak dřív ukládalo `displayMode:'list'`,
+`tableCols:null`, `tab:'inbox'` — tedy pohled rozbilo. Když snímek není, zobrazení se
+nepřepisuje vůbec.
+
+Tlačítko **⭐** patří do lišty seznamu (`renderList`), ne do panelu pokročilých filtrů —
+tam bylo navíc podmíněné existencí pravidla, takže kdo si seznam vyladil lištou a sloupci,
+neměl ho čím uložit.
+
 ## Export: výchozí rozsah
 `exportPredvyber()` je jediné místo, které rozhoduje, co Export nabídne jako výchozí —
 výběr v režimu výběru, jinak otevřená entita, jinak nic. Volá ho tlačítko v hlavičce
