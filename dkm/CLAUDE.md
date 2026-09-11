@@ -391,6 +391,17 @@ Vybraná karta žije v `_detailTab` **mimo `state.view`** — `navigateTo` ho na
 výchozími hodnotami a přepnutá karta má přežít skok na jinou entitu. Do dat projektu
 nepatří. Promítá se do identifikátoru obrazovky (`#scrdetent.rels`).
 
+## Navigace a adresa
+`navigateTo` sestaví `state.view` a teprve pak mění `location.hash`; vlastní `hashchange`
+pohled jen převezme z `_navPohled`, protože adresa nenese režim zobrazení, sekce, sloupce
+ani vazbu na uložený pohled. `_navAdresa` drží adresu, kterou jsme nastavili sami: dokud
+`location.hash` sedí na ni, je pohled hotový a nesmí se skládat z adresy znovu.
+
+**Proč to tam je:** dvě `navigateTo` v jednom tiku pošlou dvě události `hashchange`, ale
+`_navPohled` si předá jen ta první — ta druhá pohled dřív složila z adresy a zobrazení
+zahodila. Kdo přidává navigaci, nemusí na pořadí myslet, ale ani jedno z toho nemá obcházet
+přímým zápisem do `location.hash`.
+
 ## Uložené pohledy
 `zobrazeniProUlozeni()` je jediný zdroj toho, co se do pohledu uloží jako zobrazení —
 používá ho ukládání i „Přepsat aktuálním". Čte snímek `posledniZobrazeni`, který bere
