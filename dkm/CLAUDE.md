@@ -430,6 +430,8 @@ bylo — Alt+N tedy na detailu ani v nastavení vůbec ne. `accesskey` v aplikac
 **Alt-zkratku čti z `ev.code` (`altZnak`), nikdy z `ev.key`.** S Altem rozložení klávesnice
 mění, jaký znak vyjde — na české klávesnici je Alt+U „¨" a Alt+2 „ě", macOS pošle „Dead".
 Prosté klávesy (n, e, r, c…) naopak `ev.key` chtějí, ty rozložení respektovat mají.
+Ctrl-zkratky berou obojí (`ctrlKlavesa`): znak kvůli zvyku, fyzickou klávesu kvůli
+Caps Locku a rozložením, kde Ctrl+S pošle „ы". Nikdy neporovnávej jen `ev.key==='s'`.
 
 Zkratka, která míří do něčeho schovaného v kartě detailu, musí **nejdřív přepnout kartu** —
 do skrytého prvku se zaostřit nedá. Viz `fokusNovyKomentar` u klávesy C.

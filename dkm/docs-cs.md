@@ -1795,7 +1795,7 @@ Odkazy na online dokumentaci a repozitář.
 
 | Zkratka | Akce |
 |---------|------|
-| Ctrl+S | Uložit (soubor / GitHub) |
+| Ctrl+S | Uložit — na GitHub, když je nastavená cesta i token, jinak do souboru (totéž co Alt+S) |
 | Ctrl+F | Otevřít pokročilé filtry |
 | Ctrl+Shift+F | Zavřít pokročilé filtry a vyčistit |
 | Ctrl+Shift+P | Paleta příkazů |
@@ -1826,6 +1826,9 @@ tam, kde zrovna to tlačítko bylo. Ve Firefoxu je to **Alt+Shift+**, na macOS *
 Zkratka se pozná podle **fyzické klávesy**, ne podle znaku, který vyjde. S Altem totiž
 rozložení klávesnice mění, co se pošle: na české klávesnici je Alt+U „¨" a Alt+2 „ě",
 na macOS Alt znaky skládá. Alt+U tedy uloží editaci i s českou klávesnicí.
+
+Totéž platí pro zkratky s Ctrl: berou znak i fyzickou klávesu, takže Ctrl+S uloží
+i se zapnutým Caps Lockem a na rozložení, kde ta klávesa píše jiné písmeno.
 
 | Klávesa | Akce |
 |---------|------|
