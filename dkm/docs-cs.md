@@ -111,13 +111,14 @@ Datové typy atributů:
 - **number** — číslo
 - **relation** — odkaz na jinou entitu (volitelně omezený na konkrétní typ, jednonásobný nebo vícenásobný)
 - **tagy** — sada značek z jedné **soustavy tagů**; hodnotou je několik tagů najednou (viz kap. 7.5)
+- **složený** — nemá vlastní hodnotu, skládá se ze šablony z hodnot ostatních atributů (viz kap. 7.6)
 
 U každého atributu si můžeš nastavit:
 
 - **Povinný** — DKM nedovolí uložit entitu bez vyplnění
 - **Zobrazit v seznamu** — hodnota se zobrazí přímo v kartě entity v seznamech
 - **Skrytý**, **Kopírování**, **Zvýraznit** a **Nezobrazovat prázdný** — čtyři přepínače
-  zobrazení, popsané v kapitole 7.6
+  zobrazení, popsané v kapitole 7.7
 
 ### 3.4 Aspekt
 
@@ -393,7 +394,7 @@ Přidáš v editoru typu. Zadáš:
 - **Datový typ** (viz kap. 3.3)
 - **Povinný** (checkbox)
 - **Zobrazit v seznamu** (checkbox)
-- **Skrytý**, **Kopírování**, **Zvýraznit**, **Nezobrazovat prázdný** (checkboxy, kap. 7.6)
+- **Skrytý**, **Kopírování**, **Zvýraznit**, **Nezobrazovat prázdný** (checkboxy, kap. 7.7)
 - Volitelně: **Seznam hodnot** (pro select), **Typ cíle** (pro relation)
 
 ### 7.2 Atribut aspektu
@@ -453,7 +454,39 @@ rovnou vyfiltrovaný seznam. V pokročilých filtrech (kap. 11) přibyly operát
 Fulltextové hledání tagy prohledává taky. A seznam se dá podle tagů i **rozdělit na sekce**
 (kap. 12.1) — entita s několika tagy se ukáže v každé z nich.
 
-### 7.6 Jak se atribut chová v zobrazení
+### 7.6 Složený atribut
+
+Složený atribut **nemá vlastní hodnotu** — nevyplňuje se u entity, ale skládá se ze
+**šablony v Markdownu**, kterou napíšeš u atributu v nastavení typu nebo aspektu. Do šablony
+píšeš `((název pole))` a na jeho místo se vloží hodnota jiného atributu téže entity.
+
+```
+## Smlouva ((Číslo))
+
+**Stav:** ((stav)) · **Platí od:** ((Platnost od))
+
+Strany: ((Strany)) — [Detail na webu](((Web)))
+```
+
+- **Na velikosti písmen nezáleží**: `((stav))`, `((Stav))` i `((STAV))` je totéž.
+- **Kvalifikovaně** přes `((Aspekt / Atribut))` nebo `((Typ / Atribut))` sáhneš i mimo.
+  Mezery kolem lomítka nevadí.
+- **Nekvalifikovaný název** se hledá nejdřív tam, kde je složený atribut napsaný — ve
+  složeném atributu aspektu tedy mezi atributy toho aspektu —, teprve pak kdekoli u entity.
+- **Co se nenajde nebo je prázdné, zmizí bez stopy.** Nezůstane text chyby ani samotné
+  `((…))`, prostě prázdné místo.
+- **Hodnota se bere tak, jak se čte**: u vazby název cílové entity (u víc cílů oddělené
+  čárkou), u tagů tagy oddělené čárkou, u data datum ve zvyklém tvaru.
+- Šablona snese uvozovky, apostrofy i odkazy v Markdownu. Závorku dovnitř `((…))` dát nejde
+  — právě proto, aby si to nerozumělo s `[text](adresa)`.
+- Odkazovat ze složeného na jiný složený nejde; takový placeholder zůstane prázdný.
+
+**Kde se vykreslí:** v detailu entity, v exportu jako dokument a v tisku, v offline
+prohlížeči a ve sloupci tabulky. Platí na něj i všechna čtyři zaškrtávátka z kapitoly 7.7.
+V **datových** exportech (JSON, XML, balíček) není — tam se vydává to, co je uložené,
+a složený atribut uloženou hodnotu nemá.
+
+### 7.7 Jak se atribut chová v zobrazení
 
 Čtyři zaškrtávátka u každého atributu typu i aspektu. **Do dat nesahají** — mění jen to, co
 a jak je vidět. Vlastní atributy jednotlivé entity je nemají, protože se nastavují na modelu.
@@ -912,6 +945,22 @@ V detailu entity sekce **💬 Komentáře**. Formulář nahoře:
 Seznam komentářů: každý má autora, datum, Markdown obsah, štítek „upraveno" pokud editován, tlačítka **✎ Upravit** (inline editace) a **× Smazat**. Řazení od nejnovějšího.
 
 **Klávesa `c` v detailu** skočí focusem na comment input.
+
+### 16.1b Poznámky v textu (CriticMarkup)
+
+Nad formulářem je na téže kartě blok **📝 Poznámky v textu**. Sbírá komentáře zapsané
+`{>>takhle<<}` přímo v textových atributech entity (viz kap. 15.2) — z typu, z aspektu
+i z vlastních atributů. U každé je vidět, ve kterém atributu leží.
+
+**Neupravují se tady.** Patří do textu atributu, tohle je jen jejich soupis na jednom místě,
+ať se nemusí hledat po dlouhých poznámkách. Do čísla na kartě se počítají spolu
+s komentáři k entitě.
+
+Atribut označený jako **Skrytý** (kap. 7.7) se přeskakuje — jeho obsah se nemá ukázat ani
+oklikou přes poznámky.
+
+**V offline prohlížeči je karta Komentáře právě a jen z těchhle poznámek.** Komentáře
+k entitě se do prohlížeče dál nedávají.
 
 ### 16.2 Samostatný pohled Všechny komentáře
 

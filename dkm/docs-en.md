@@ -111,13 +111,14 @@ Attribute data types:
 - **number** — number
 - **relation** — link to another entity (optionally restricted to a specific type, single or multi-value)
 - **tags** — a set of labels from one **tag set**; the value is several tags at once (see 7.5)
+- **composed** — has no value of its own, it is built from a template out of the other attributes (see 7.6)
 
 For each attribute you can set:
 
 - **Required** — DKM won't save an entity without a value
 - **Show in list** — value appears directly in the entity card in lists
 - **Hidden**, **Copying**, **Highlight** and **Hide when empty** — four display toggles,
-  described in chapter 7.6
+  described in chapter 7.7
 
 ### 3.4 Aspect
 
@@ -397,7 +398,7 @@ Added in type editor. Enter:
 - **Data type** (see 3.3)
 - **Required** (checkbox)
 - **Show in list** (checkbox)
-- **Hidden**, **Copying**, **Highlight**, **Hide when empty** (checkboxes, 7.6)
+- **Hidden**, **Copying**, **Highlight**, **Hide when empty** (checkboxes, 7.7)
 - Optionally: **Value list** (for select), **Target type** (for relation)
 
 
@@ -456,7 +457,41 @@ entity with several tags shows up in each of them. Advanced filters (chapter 11)
 
 Full-text search looks into tags as well.
 
-### 7.6 How an attribute behaves in the display
+### 7.6 Composed attribute
+
+A composed attribute **has no value of its own** — it is not filled in on the entity but built
+from a **Markdown template** you write on the attribute in the type or aspect settings. In the
+template you write `((field name))` and the value of another attribute of the same entity is
+put in its place.
+
+```
+## Contract ((Number))
+
+**State:** ((state)) · **Valid from:** ((Valid from))
+
+Parties: ((Parties)) — [Details on the web](((Web)))
+```
+
+- **Case does not matter**: `((state))`, `((State))` and `((STATE))` are the same thing.
+- **Qualified** as `((Aspect / Attribute))` or `((Type / Attribute))` reaches outside. Spaces
+  around the slash are fine.
+- **An unqualified name** is looked up first where the composed attribute is written — so in
+  a composed attribute of an aspect, among that aspect's attributes — and only then anywhere
+  on the entity.
+- **Whatever is not found or is empty disappears without a trace.** No error text, not even
+  the `((…))` itself — just an empty spot.
+- **The value is taken as it reads**: for a relation the target's name (comma-separated for
+  several), for tags the tags comma-separated, for a date the date in the usual form.
+- The template tolerates quotes, apostrophes and Markdown links. A parenthesis cannot go
+  inside `((…))` — precisely so that it does not clash with `[text](address)`.
+- A composed attribute cannot reference another composed one; such a placeholder stays empty.
+
+**Where it renders:** in the entity detail, in a document export and in print, in the offline
+viewer and in a table column. All four toggles from 7.7 apply to it as well. It is **not** in
+**data** exports (JSON, XML, package) — those emit what is stored, and a composed attribute
+has no stored value.
+
+### 7.7 How an attribute behaves in the display
 
 Four checkboxes on every attribute of a type and of an aspect. **They do not touch the data** —
 they only change what is seen and how. Custom attributes of a single entity do not have them,
@@ -917,6 +952,22 @@ In entity detail, the **💬 Comments** section. Form on top:
 Comment list: each has author, date, Markdown content, "edited" label if edited, **✎ Edit** (inline editing) and **× Delete** buttons. Sorted newest-first.
 
 **Key `c` in detail** focuses the comment input.
+
+### 16.1b Notes in the text (CriticMarkup)
+
+Above the form, on the same card, is a **📝 Notes in the text** block. It collects comments
+written `{>>like this<<}` straight inside the entity's text attributes (see 15.2) — from the
+type, from an aspect and from custom attributes. Each one shows which attribute it sits in.
+
+**They are not edited here.** They belong in the attribute's text; this is only their list in
+one place, so you do not have to hunt through long notes. They count towards the number on the
+card together with the entity's comments.
+
+An attribute marked **Hidden** (7.7) is skipped — its content should not show up even
+indirectly through the notes.
+
+**In the offline viewer the Comments card is made of these notes and nothing else.** The
+entity's own comments still do not go into the viewer.
 
 ### 16.2 All comments view
 

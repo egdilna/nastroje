@@ -17,7 +17,7 @@ a při změně chování ji aktualizuj.
   entitě přidat nezávisle na typu (`getAllAttrDefsForEntity` skládá obojí).
 - **Vazba** má rozsah (`RSCOPES = ['universal','from','to','specific']`), platnost kontroluje
   `isRelApplicable(rt, fromId, toId)`.
-- Typy atributů: `ATYPES = ['text','textarea','date','url','select','yesno','relation','number','tags']`;
+- Typy atributů: `ATYPES = ['text','textarea','date','url','select','yesno','relation','number','tags','composed']`;
   kompatibilitu při konverzích řídí `ATTR_TYPE_COMPAT` (`attrTypesCompatible`).
 - **Tag** je značka ze **soustavy tagů** (`state.data.tagSets`), na kterou se atribut typu
   `tags` váže přes `tagSetId` — obdoba číselníku u `select`, jen hodnotou je pole tagů.
@@ -390,6 +390,26 @@ kdyby zůstaly vlevo, četlo by se na notebooku „ID a datum" dřív než vazby
 Vybraná karta žije v `_detailTab` **mimo `state.view`** — `navigateTo` ho nahrazuje
 výchozími hodnotami a přepnutá karta má přežít skok na jinou entitu. Do dat projektu
 nepatří. Promítá se do identifikátoru obrazovky (`#scrdetent.rels`).
+
+## Složený atribut (`type:'composed'`)
+Hodnotu nemá — skládá ji `slozenyText(e,def,vlastnikId)` ze šablony `def.template`.
+Jediný vstup do zobrazení je `hodnotaProZobrazeni(e,def)`; kdo sahá na hodnotu atributu
+kvůli tomu, co uvidí člověk, má jít přes něj, ne přes `e.attributes[id]`.
+
+- Placeholder je `((pole))`. Regulární výraz **nesmí pustit závorku dovnitř**, jinak si
+  nerozumí s odkazem `[text](adresa)`.
+- Nekvalifikovaný název se hledá nejdřív u vlastníka definice (`vlastnikAtributu`),
+  pak kdekoli u entity; kvalifikovaně `((Zdroj / Atribut))`.
+- Sází se **jako víceřádkový Markdown**, tedy všude tam, kde se tak sází `textarea`
+  (detail, md/html/docx export, prohlížeč). Přidáváš-li nový výstup, přidej obojí.
+- V datových exportech není a nemá být — nic uloženého za ním nestojí.
+
+## Poznámky z CriticMarkupu
+`criticPoznamky(e)` sbírá `{>>…<<}` z textových atributů (stejná plocha jako wiki odkazy)
+a plní blok na kartě Komentáře; do značky karty se počítají k uživatelským komentářům.
+Skrytý atribut se přeskakuje — jeho obsah se nemá ukázat ani oklikou.
+**V offline prohlížeči je karta jen z těchhle poznámek**; uživatelské komentáře se do
+prohlížeče dál nedávají.
 
 ## Přepínače zobrazení u atributu
 `hidden`, `copyable`, `highlight`, `hideEmpty` na definici atributu typu i aspektu. Mění
