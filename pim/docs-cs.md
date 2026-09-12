@@ -133,6 +133,7 @@ Tělo entity je v markdownu s rozšířeními:
 - **Vložení deníku**: `((deník))` vloží na dané místo v těle deník této entity od nejstaršího záznamu (jen u aspektu „Deník")
 - **Inline-select**: `(!a/b/|c!)` — viz výše
 - **Inline anotace**: `(>text)` — zůstává ve zdroji, zobrazí se jako anotační bublina; do exportu/tisku/kopírování nejde (viz sekce Anotace)
+  - Text anotace smí obsahovat závorky, typicky odkazy na odstavce: `(>viz odstavec (2) zákona)`. Musí být **vyvážené** — osamocená `(` nebo `)` způsobí, že se zápis za anotaci nepovažuje a zůstane v textu tak, jak je napsaný.
 
 ## Nástroje nad textovým polem
 
