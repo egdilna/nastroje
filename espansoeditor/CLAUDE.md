@@ -73,7 +73,12 @@ Je to hlavní důvod existence nástroje, takže platí bez výjimky:
 - **seznam zkratek jsou odkazy `<a href="#nadpis-editor">`, ne tlačítka** — položka seznamu, která
   někam vede, je odkaz; kliknutí vybere zkratku a přesune fokus na nadpis editoru, šipky nahoru
   a dolů procházejí seznam,
-- po přidání/přesunu/smazání se fokus vrací na smysluplný prvek a akce se ohlásí.
+- po přidání/přesunu/smazání se fokus vrací na smysluplný prvek a akce se ohlásí,
+- hlavní akce mají **přístupovou klávesu i klávesovou zkratku**: `accesskey` je na tlačítku
+  (`n` přidat, `o` otevřít, `s` uložit, `c` do schránky) spolu s `aria-keyshortcuts` a `title`,
+  Ctrl-varianty (Ctrl+N, Ctrl+O, Ctrl+S, Ctrl+Shift+S) obsluhuje jeden `keydown` na dokumentu.
+  Obojí je schválně dvojí — Ctrl+N a Ctrl+O si některé prohlížeče berou pro sebe a stránce je
+  nepředají. Přístupové klávesy musí zůstat jedinečné a při změně patří i do tabulky v nápovědě.
 
 ## Pasti
 - **Nepřekreslovat editor při každém stisku klávesy** — vstupy mění model přímo, překresluje se
