@@ -103,6 +103,17 @@ Je to hlavní důvod existence nástroje, takže platí bez výjimky:
   Obojí je schválně dvojí — Ctrl+N a Ctrl+O si některé prohlížeče berou pro sebe a stránce je
   nepředají. Přístupové klávesy musí zůstat jedinečné a při změně patří i do tabulky v nápovědě.
 
+## HTTPS a stahování
+Editor nabízí soubory ke stažení (YAML, HTML verze) a **prohlížeče stahování z nezabezpečeného
+spojení blokují**. Proto je v `<head>` krátký skript, který stránku běžící po `http:` přesune na
+`https:` — ale až poté, co ověří (`fetch` s `HEAD` a `no-cors`), že HTTPS opravdu odpovídá;
+slepé přesměrování by editor znepřístupnilo tam, kde HTTPS není. Místní adresy (`localhost`,
+`127.0.0.1`, `file:`) se nepřesměrovávají.
+
+Veškeré stahování jde přes `stahniSoubor()`. Ta v nezabezpečeném kontextu (`window.isSecureContext`)
+vrátí text varování, který se připojí ke stavové hlášce — jinak by uživatel jen viděl, že se nic
+nestalo. Nové stahování přidávej jen přes ni.
+
 ## Pasti
 - **Nepřekreslovat editor při každém stisku klávesy** — vstupy mění model přímo, překresluje se
   jen seznam vlevo, náhled zdroje a kontrola (`zmena()`). Celý editor se staví znovu jen tam, kde
