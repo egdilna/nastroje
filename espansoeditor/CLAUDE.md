@@ -31,6 +31,11 @@ Zkratka (`novaZkratka()`) drží typ spouštěče (`jeden` / `vice` / `regex`) a
 se z nich teprve odvodí klíč (`trigger` vs. `triggers` vs. `regex`, `replace` vs. `markdown` …).
 Díky tomu se dá typ přepnout bez ztráty rozepsaného textu.
 
+**Popisek se doplňuje sám:** zkratka bez vlastního `label` ho při zápisu dostane ze spouštěče
+(`odvozenyPopisek`) — u více spouštěčů z prvního, u regexu z výrazu. Model si přitom drží popisek
+prázdný, takže se dopočítává vždy z aktuálního spouštěče; v editoru to ukazuje placeholder pole
+a živě ho spolu s náhledem YAML obnovuje `aktualizujOdvozenePopisky()`.
+
 Neznámé klíče se při načtení uloží do `ostatni` (u zkratky a proměnné) a `ostatniKlice`
 (u souboru) a při ukládání se vypíšou zpátky — **round-trip nesmí nic zahodit.**
 
