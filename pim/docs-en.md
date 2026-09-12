@@ -331,6 +331,10 @@ Filters combine with **AND** logic.
 
 Above the results there is a **Search text** field that filters them as you type — the same as in the All view and with the same reach (title, body, attributes, tags). It does not change the view's saved filter, it only narrows it temporarily; the text is remembered for the session, so it is still there when you come back to the view.
 
+Next to it is a **Show** select with 100, 500, 1000, 2000 and *all*; the default is **100**. It is a plain cap on the number of rendered rows, not pagination — the rest appears when you raise the limit. The count above the table always reports how many entities the view found in total, and when truncated, how many were rendered. Sorting and filtering are computed over the whole result and only then truncated, so sorting descending really does show the first 100. The choice is remembered for the session.
+
+Note: bulk selection (and therefore export or chat over the selection) only works with what is rendered — at a limit of 100 you cannot tick an entity that was not shown.
+
 ## Keyboard shortcuts
 
 ### Global (anywhere except editing fields)

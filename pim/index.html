@@ -11919,6 +11919,12 @@ function renderViewsList(main) {
   });
 }
 
+// Kolik řádků pohled nejvýš vykreslí. Stránkování schválně není – jen strop,
+// aby se velký pohled neotevíral pomalu. 0 = bez omezení.
+const VIEW_LIMIT_MOZNOSTI = [100, 500, 1000, 2000, 0];
+const VIEW_LIMIT_VYCHOZI = 100;
+function popisLimitu(n) { return n === 0 ? 'vše' : String(n); }
+
 function renderSavedView(main, id) {
   const v = findSavedView(id);
   if (!v) {
@@ -11930,6 +11936,8 @@ function renderSavedView(main, id) {
   if (!state._viewSort[id]) state._viewSort[id] = { key: 'updated', dir: 'desc' };
   // Rychlé hledání v rámci pohledu – text si pohled drží po dobu sezení, stejně jako řazení.
   if (!state._viewFilter) state._viewFilter = {};
+  if (!state._viewLimit) state._viewLimit = {};
+  if (state._viewLimit[id] === undefined) state._viewLimit[id] = VIEW_LIMIT_VYCHOZI;
   const sort = state._viewSort[id];
 
   main.innerHTML = '<h1>' + (v.icon ? escapeHtml(v.icon) + ' ' : '') + escapeHtml(v.name) + '</h1>' +
@@ -11937,6 +11945,11 @@ function renderSavedView(main, id) {
     '<div class="toolbar" role="search" aria-label="Hledání v pohledu">' +
       '<div style="flex:1;min-width:14em;"><label for="view-filter-text">Hledaný text</label>' +
         '<input type="search" id="view-filter-text" placeholder="Filtrovat výsledky…" value="' + escapeHtml(state._viewFilter[id] || '') + '"></div>' +
+      '<div style="flex:0 0 auto;"><label for="view-limit">Zobrazit</label>' +
+        '<select id="view-limit">' +
+          VIEW_LIMIT_MOZNOSTI.map(n => '<option value="' + n + '"' +
+            (state._viewLimit[id] === n ? ' selected' : '') + '>' + popisLimitu(n) + '</option>').join('') +
+        '</select></div>' +
     '</div>' +
     '<div class="btn-group"><button id="back-btn">← Zpět</button> <button id="edit-view">Upravit pohled</button>' +
       ' <button id="bulk-toggle" title="Přepnout režim hromadného výběru (klávesa X)">' + (_bulk.active ? 'Ukončit režim výběru' : 'Režim výběru') + '</button>' +
@@ -11956,14 +11969,20 @@ function renderSavedView(main, id) {
       r = r.filter(e => nalezene.has(e.id));
     }
     r = sortEntitiesBy(r, state._viewSort[id]);
+    const limit = Number(state._viewLimit[id]) || 0;
+    const zobrazene = limit > 0 ? r.slice(0, limit) : r;
+    const orezano = zobrazene.length < r.length;
     const pocet = document.getElementById('view-count');
-    if (pocet) pocet.textContent = 'Nalezeno ' + r.length + ' entit' + (hledany ? ' (filtrováno)' : '') + '.';
+    if (pocet) {
+      pocet.textContent = 'Nalezeno ' + r.length + ' entit' + (hledany ? ' (filtrováno)' : '') + '.' +
+        (orezano ? ' Zobrazeno prvních ' + zobrazene.length + ' – zbytek se načte po zvýšení limitu.' : '');
+    }
     const out = document.getElementById('view-results');
     if (r.length === 0) {
       out.innerHTML = '<div class="empty">' + (hledany ? 'Hledanému textu nic neodpovídá.' : 'Žádné výsledky.') + '</div>';
       return;
     }
-    out.innerHTML = renderEntityTableHtml(r, state._viewSort[id], { selectionMode: _bulk.active, selected: _bulk.selected });
+    out.innerHTML = renderEntityTableHtml(zobrazene, state._viewSort[id], { selectionMode: _bulk.active, selected: _bulk.selected });
     attachEntityRowHandlers(out);
     bulkAttachHandlers(document);
     attachSortHandlers(out, state._viewSort[id], (newSort) => {
@@ -11974,6 +11993,11 @@ function renderSavedView(main, id) {
 
   if (filtrInput) filtrInput.oninput = () => {
     state._viewFilter[id] = filtrInput.value || '';
+    prekresliVysledky();
+  };
+  const limitSelect = document.getElementById('view-limit');
+  if (limitSelect) limitSelect.onchange = () => {
+    state._viewLimit[id] = Number(limitSelect.value) || 0;
     prekresliVysledky();
   };
   document.getElementById('back-btn').onclick = goBack;
