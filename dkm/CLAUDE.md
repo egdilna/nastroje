@@ -17,7 +17,7 @@ a při změně chování ji aktualizuj.
   entitě přidat nezávisle na typu (`getAllAttrDefsForEntity` skládá obojí).
 - **Vazba** má rozsah (`RSCOPES = ['universal','from','to','specific']`), platnost kontroluje
   `isRelApplicable(rt, fromId, toId)`.
-- Typy atributů: `ATYPES = ['text','textarea','date','url','select','yesno','relation','number','tags']`;
+- Typy atributů: `ATYPES = ['text','textarea','date','url','select','yesno','relation','number','tags','composed']`;
   kompatibilitu při konverzích řídí `ATTR_TYPE_COMPAT` (`attrTypesCompatible`).
 - **Tag** je značka ze **soustavy tagů** (`state.data.tagSets`), na kterou se atribut typu
   `tags` váže přes `tagSetId` — obdoba číselníku u `select`, jen hodnotou je pole tagů.
