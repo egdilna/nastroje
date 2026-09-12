@@ -134,6 +134,7 @@ The entity body uses markdown with extensions:
 - **Insert journal**: `((deník))` (or `((denik))` — this one has no English spelling) inserts this entity's journal at that point in the body, oldest entry first (only on entities with the "Journal" aspect)
 - **Inline select**: `(!a/b/|c!)` — see above
 - **Inline annotation**: `(>text)` — stays in the source, renders as an annotation bubble; never reaches export/print/copy (see Annotations section)
+  - The annotation text may contain parentheses, typically references to paragraphs: `(>see paragraph (2) of the act)`. They must be **balanced** — a lone `(` or `)` means the construct is not treated as an annotation and stays in the text as written.
 
 ## Tools above a text field
 
