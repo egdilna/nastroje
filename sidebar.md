@@ -6,6 +6,7 @@
 [DKedit](https://nastroje.egdilna.cz/dkedit),
 [DKM nanažer](https://nastroje.egdilna.cz/dkm)
 [DMS storage](https://nastroje.egdilna.cz/stor),
+[Espanso editor](https://nastroje.egdilna.cz/espansoeditor),
 [JSON editor](https://nastroje.egdilna.cz/json),
 [JSONDB databáze](https://nastroje.egdilna.cz/jsondb),
 [KURZor](https://naucseto.info/kurzor)
