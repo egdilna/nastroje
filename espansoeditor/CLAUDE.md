@@ -39,6 +39,13 @@ a živě ho spolu s náhledem YAML obnovuje `aktualizujOdvozenePopisky()`.
 Neznámé klíče se při načtení uloží do `ostatni` (u zkratky a proměnné) a `ostatniKlice`
 (u souboru) a při ukládání se vypíšou zpátky — **round-trip nesmí nic zahodit.**
 
+## Pořadí zkratek
+Zkratky se **nikde nedrží v ručním pořadí** — seznam vlevo i zapsaný YAML je řadí abecedně
+podle spouštěče (`klicRazeni` + `serazeneZkratky`, `localeCompare` s češtinou; rozepsané zkratky
+bez spouštěče jdou na konec). `stav.zkratky` si drží pořadí načtení a nemění se; obě zobrazení
+si o pořadí říkají té jedné funkci, takže seznam a soubor nemůžou jít od sebe. Proto tu není
+žádné „nahoru/dolů“ — na přednost mezi zkratkami je `priority`.
+
 ## Dynamické prvky
 Katalog typů proměnných je v `TYPY_PROMENNYCH` — jeden objekt na typ (`date`, `clipboard`,
 `echo`, `random`, `shell`, `script`, `match`, `form`), každý s popisem parametrů (`pole`).
@@ -62,7 +69,10 @@ Je to hlavní důvod existence nástroje, takže platí bez výjimky:
   nikdy se nepřepisuje `vstup.id` až po vytvoření — rozbilo by to vazbu),
 - `#stav` (role=status) pro stavy, `#hlaseni` (aria-live) pro krátká hlášení (`ohlas()`),
 - dialog má `aria-modal`, past na Tab, Esc a vrací fokus (`otevriDialog` / `zavriDialog`),
-- záložky jsou plnohodnotný tablist (šipky, Home/End), seznam zkratek se prochází šipkami,
+- záložky jsou plnohodnotný tablist (šipky, Home/End),
+- **seznam zkratek jsou odkazy `<a href="#nadpis-editor">`, ne tlačítka** — položka seznamu, která
+  někam vede, je odkaz; kliknutí vybere zkratku a přesune fokus na nadpis editoru, šipky nahoru
+  a dolů procházejí seznam,
 - po přidání/přesunu/smazání se fokus vrací na smysluplný prvek a akce se ohlásí.
 
 ## Pasti
