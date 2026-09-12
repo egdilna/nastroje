@@ -88,6 +88,25 @@ Webová aplikace pro správu znalostí s entitním modelem a aspekty. Podporuje 
 
 ---
 
+## espansoeditor — Espanso Editor
+
+**Přístupná správa zkratek pro Espanso bez psaní YAML.**
+
+Editor souborů se zkratkami pro nástroj Espanso (`match/*.yml`). Načte YAML ze souboru nebo ze schránky, umožní zkratky pohodlně upravovat a výsledek zase uloží do souboru nebo do schránky. Všechny pokročilé možnosti Espansa se dají naklikat — YAML se nemusí psát ručně.
+
+Hlavní funkce:
+- Načtení a uložení YAML souboru, načtení a zkopírování přes schránku, přetažení souboru do okna
+- Jeden spouštěč, více spouštěčů i regulární výraz s pojmenovanými skupinami
+- Náhrada jako prostý text, Markdown, HTML, obrázek nebo formulář
+- Naklikatelné dynamické proměnné: datum a čas (s náhledem a hotovými formáty), obsah schránky, pevný text, náhodný výběr, příkaz shellu, skript, vnořená zkratka, vnořený formulář
+- Pole formulářů včetně výběru z nabídky a předvyplněných hodnot
+- Chování zkratky: hranice slov, přenášení velikosti písmen, priorita, způsob vložení, klíčová slova pro hledání
+- Globální proměnné a importy dalších souborů
+- Průběžná kontrola (duplicitní spouštěče, nedefinované proměnné, prázdné náhrady)
+- Záložka se zdrojovým YAML, kterou lze upravit ručně a načíst zpátky
+
+---
+
 ## json — Vizuální JSON Editor
 
 **Intuitivní webový editor JSON dat.**
