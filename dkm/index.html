@@ -746,6 +746,10 @@ wikiSuggestSkip:'Uložit bez odkazů',
 wikiSuggestBack:'Zpět k editaci',
 wikiSuggestAll:'Vybrat vše',wikiSuggestNone:'Nevybrat nic',
 wikiSuggestApplied:'Vytvořeno odkazů: {n}',
+wikiRenamed:'Přejmenováno i ve wiki odkazech: {n}, dotčených entit: {e}',
+wikiRenamedImport:'Přejmenováno i ve wiki odkazech: {n}',
+wikiRenameDupe:'Pozor: tentýž název má i jiná entita — odkazy teď můžou mířit na ni.',
+wikiRenameBadName:'Název obsahuje „]" nebo zalomení řádku, takže se ve wiki odkazu zapsat nedá. {n} odkazů zůstalo na starém názvu a je rozbitých.',
 generalWikiSuggest:'Nabízet wiki odkazy při uložení entity',
 generalWikiSuggestHint:'Při uložení projde víceřádkové (Markdown) atributy a nabídne názvy jiných entit k převodu na [[odkaz]]. Existující odkazy, kód a URL nechává být. Ukládá se jen do tohoto prohlížeče.',
 generalSound:'Zvuková odezva u ukládání na GitHub',
@@ -1670,6 +1674,10 @@ wikiSuggestSkip:'Save without links',
 wikiSuggestBack:'Back to editing',
 wikiSuggestAll:'Select all',wikiSuggestNone:'Select none',
 wikiSuggestApplied:'Links created: {n}',
+wikiRenamed:'Renamed in wiki links too: {n}, entities touched: {e}',
+wikiRenamedImport:'Renamed in wiki links too: {n}',
+wikiRenameDupe:'Careful: another entity has the same name — the links may now point to it.',
+wikiRenameBadName:'The name contains "]" or a line break, so it cannot be written in a wiki link. {n} links kept the old name and are broken.',
 generalWikiSuggest:'Suggest wiki links when saving an entity',
 generalWikiSuggestHint:'On save it scans multi-line (Markdown) attributes and offers names of other entities for conversion into a [[link]]. Existing links, code and URLs are left alone. Stored in this browser only.',
 generalSound:'Sound feedback for GitHub saves',
@@ -1985,6 +1993,56 @@ if(scanForWikiLink(ca.value,targetName))out.push({kind:'wikilink',sourceId:e.id,
 }
 });
 return out;
+}
+/* Wiki odkaz míří na entitu jménem, ne identifikátorem — přejmenováním by se tedy
+   rozbil. Tohle přepíše `[[Starý název]]` na `[[Nový název]]` všude v projektu.
+   Porovnává se bez ohledu na velikost písmen, stejně jako odkaz hledá svůj cíl.
+   Prochází i archivované entity a text samotné přejmenované entity: odkaz má být
+   správný i tam, kam se uživatel zrovna nedívá. */
+function prejmenujWikiOdkazy(stary,novy){
+const s=String(stary==null?'':stary).trim().toLowerCase();
+const n=String(novy==null?'':novy).trim();
+const vysledek={odkazu:0,entit:0,rozbity:false};
+if(!s||!n||s===n.toLowerCase())return vysledek;
+/* Do `[[…]]` se nevejde `]` ani zalomení řádku. Takový název nejde zapsat, tak radši
+   nesaháme na text vůbec — jinak bychom z odkazů udělali nesmysl. */
+vysledek.rozbity=/[\]\n\r]/.test(n);
+const entity=new Set();
+const preved=txt=>txt.replace(/\[\[([^\]\n]+)\]\]/g,(cele,jm)=>{
+if(jm.trim().toLowerCase()!==s)return cele;
+vysledek.odkazu++;
+return vysledek.rozbity?cele:('[['+n+']]');
+});
+state.data.entities.forEach(e=>{
+let zmena=false;
+getAllAttrDefsForEntity(e).forEach(def=>{
+if(def.type!=='textarea'&&def.type!=='text')return;
+const v=e.attributes&&e.attributes[def.id];
+if(typeof v!=='string'||v.indexOf('[[')<0)return;
+const nv=preved(v);
+if(nv!==v){e.attributes[def.id]=nv;zmena=true}
+});
+(e.customAttributes||[]).forEach(ca=>{
+if(ca.type!=='textarea'&&ca.type!=='text')return;
+if(typeof ca.value!=='string'||ca.value.indexOf('[[')<0)return;
+const nv=preved(ca.value);
+if(nv!==ca.value){ca.value=nv;zmena=true}
+});
+if(zmena)entity.add(e.id);
+});
+vysledek.entit=entity.size;
+/* `updatedAt` se schválně nemění. Obsah cizí entity zůstal, jak byl — odkaz míří
+   pořád na tutéž entitu, jen se srovnal pravopis. Kdyby se datum posunulo, jedno
+   přejmenování by zaplavilo pohled Naposledy změněné cizími entitami. */
+return vysledek;
+}
+/* Ohlásí, co přejmenování udělalo s odkazy. Ticho jen tehdy, když nebylo co dělat. */
+function ohlasPrejmenovani(v,novyNazev){
+if(!v||!v.odkazu)return;
+if(v.rozbity){toast(t('wikiRenameBadName',{n:v.odkazu}),true);return}
+toast(t('wikiRenamed',{n:v.odkazu,e:v.entit}));
+const stejne=state.data.entities.filter(x=>!x.archived&&(getTitle(x)||'').toLowerCase()===String(novyNazev||'').trim().toLowerCase());
+if(stejne.length>1)setTimeout(()=>toast(t('wikiRenameDupe'),true),1200);
 }
 function scanForWikiLink(text,targetNameLower){
 const re=/\[\[([^\]\n]+)\]\]/g;let m;
@@ -3229,7 +3287,7 @@ return null;
 
 if(idCol.name<0){toast(t('importTSVNeedNameColumn'));dbg('Import aborted: no name column found in headers: '+headers.join(', '),true);return}
 
-let added=0,updated=0,skipped=0;
+let added=0,updated=0,skipped=0,prejmenovano=0;
 const now=new Date().toISOString();
 dataRows.forEach(row=>{
 const name=(row[idCol.name]||'').trim();
@@ -3276,7 +3334,10 @@ let target=null;
 if(idVal)target=state.data.entities.find(x=>x.id===idVal);
 if(!target&&typeId)target=state.data.entities.find(x=>x.typeId===typeId&&getTitle(x).toLowerCase()===name.toLowerCase());
 if(target){
+/* Řádek s identifikátorem umí entitu i přejmenovat — odkazy musí jít s ním. */
+const staryNazev=getTitle(target);
 target.name=name;
+if(getTitle(target)!==staryNazev)prejmenovano+=prejmenujWikiOdkazy(staryNazev,getTitle(target)).odkazu;
 if(typeId)target.typeId=typeId;
 target.attributes=Object.assign(target.attributes||{},attributes);
 if(aspectIds.length)target.aspects=Array.from(new Set([...(target.aspects||[]),...aspectIds]));
@@ -3293,7 +3354,8 @@ added++;
 });
 setDirty(true);closeDialog();render();
 toast(t('importTSVResult',{a:added,u:updated,s:skipped}));
-dbg('TSV import: added='+added+' updated='+updated+' skipped='+skipped);
+if(prejmenovano)setTimeout(()=>toast(t('wikiRenamedImport',{n:prejmenovano})),1200);
+dbg('TSV import: added='+added+' updated='+updated+' skipped='+skipped+' wikiRenamed='+prejmenovano);
 }
 
 /* MARKDOWN + CRITICMARKUP */
@@ -9647,7 +9709,11 @@ e.updatedAt=new Date().toISOString();
 delete e.__draft;
 e.customAttributes=(e.customAttributes||[]).filter(ca=>(ca.name&&ca.name.trim())||(ca.value!==''&&ca.value!=null&&(!Array.isArray(ca.value)||ca.value.length>0)));
 const idx=state.data.entities.findIndex(x=>x.id===e.id);
+/* Starý název musíme přečíst, dokud je entita v datech ještě v původní podobě. */
+const staryNazev=idx===-1?'':getTitle(state.data.entities[idx]);
 if(idx===-1)state.data.entities.push(e);else state.data.entities[idx]=e;
+const novyNazev=getTitle(e);
+ohlasPrejmenovani(prejmenujWikiOdkazy(staryNazev,novyNazev),novyNazev);
 const id=e.id;state.view.edit=null;
 setDirty(true);
 navigateTo({name:'detail',entityId:id});
