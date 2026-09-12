@@ -4,6 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Espanso Editor — správa zkratek</title>
+<script>
+  // Prohlížeče blokují stahování souborů ze stránek běžících po nezabezpečeném spojení.
+  // Editor soubory nabízí ke stažení, tak se hned na začátku přesuneme na HTTPS.
+  // Přesuneme se ale jen tehdy, když HTTPS opravdu odpovídá — jinak bychom editor znepřístupnili.
+  (function () {
+    var mistni = /^(localhost|127\.0\.0\.1|\[::1\])?$/.test(location.hostname);
+    if (location.protocol !== "http:" || mistni) return;
+    var cil = "https:" + location.href.slice(location.protocol.length);
+    try {
+      fetch(cil, { method: "HEAD", mode: "no-cors", cache: "no-store" })
+        .then(function () { location.replace(cil); })
+        .catch(function () { /* HTTPS neodpovídá, zůstaneme tady a upozorníme až u stahování */ });
+    } catch (e) { /* starý prohlížeč bez fetch — necháme být */ }
+  })();
+</script>
 <style>
   :root {
     --bg: #10131a;
@@ -2607,16 +2622,26 @@ $("#vstup-soubor").addEventListener("change", (e) => {
   e.target.value = "";
 });
 
-$("#tl-ulozit").addEventListener("click", () => {
-  const obsah = zdrojRucneUpraven ? $("#zdroj").value : serializujSoubor();
-  const blob = new Blob([obsah], { type: "text/yaml;charset=utf-8" });
+// Všechno stahování jde tudy. Vrací varování, když stránka neběží v zabezpečeném
+// kontextu — prohlížeč pak stažení nejspíš zablokuje a uživatel by nevěděl proč.
+function stahniSoubor(nazev, obsah, typ) {
+  const blob = new Blob([obsah], { type: typ });
   const url = URL.createObjectURL(blob);
-  const a = prvek("a", { href: url, download: stav.nazevSouboru || "base.yml" });
+  const a = prvek("a", { href: url, download: nazev });
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  nastavStav("Soubor „" + (stav.nazevSouboru || "base.yml") + "“ uložen do stažených souborů.");
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  if (window.isSecureContext) return "";
+  return " Pozor: stránka neběží přes HTTPS, takže prohlížeč mohl stahování zablokovat."
+    + " Otevři si editor na adrese začínající https:// a zkus to znovu.";
+}
+
+$("#tl-ulozit").addEventListener("click", () => {
+  const obsah = zdrojRucneUpraven ? $("#zdroj").value : serializujSoubor();
+  const nazev = stav.nazevSouboru || "base.yml";
+  const varovani = stahniSoubor(nazev, obsah, "text/yaml;charset=utf-8");
+  nastavStav("Soubor „" + nazev + "“ uložen do stažených souborů." + varovani, !!varovani);
 });
 
 async function zkopirujText(text) {
@@ -2982,17 +3007,12 @@ function vytvorHtmlVerzi() {
     .split("%%NAZEV%%").join(nazevHtml)
     .split("%%DATA%%").join(json);
 
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = prvek("a", { href: url, download: zaklad + "-zkratky.html" });
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const varovani = stahniSoubor(zaklad + "-zkratky.html", html, "text/html;charset=utf-8");
 
   nastavStav("Hotovo — HTML verze s " + (pouzitelne.length === 1 ? "1 zkratkou" : pouzitelne.length + " zkratkami")
     + " je ve stažených souborech"
-    + (vynechano ? ". Vynechal jsem " + pocetZkratek(vynechano) + " s příkazem nebo skriptem — prohlížeč je spustit neumí." : "."));
+    + (vynechano ? ". Vynechal jsem " + pocetZkratek(vynechano) + " s příkazem nebo skriptem — prohlížeč je spustit neumí." : ".")
+    + varovani, !!varovani);
 }
 
 $("#tl-html").addEventListener("click", vytvorHtmlVerzi);
