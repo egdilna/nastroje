@@ -824,6 +824,29 @@ Example: in a note on one entity you write "Follow-up on [[Regulation 409/2025]]
 
 Match is case-insensitive on full entity name.
 
+#### Renaming does not orphan the links
+
+A link points at an entity **by name**, not by identifier, so renaming would break it. DKM
+guards against that: **when you rename an entity, its name is rewritten in every wiki link
+too** — in text and multi-line attributes, in attributes from the type and from an aspect, in
+custom attributes, in archived entities, and in the renamed entity's own text. It applies to
+renaming in the editor and to a TSV import that matches the entity by ID. A message after
+saving tells you how many links were rewritten.
+
+The links are also normalised in **spelling**: `[[alfa]]` and `[[ALFA]]` are both written
+exactly as the entity is named now.
+
+Two situations DKM warns you about:
+
+- **Another entity already has the new name.** The links are rewritten, but from then on they
+  are ambiguous and may point at that other entity — the name is all a link has to go on.
+- **The new name contains `]` or a line break.** Such a name cannot be written inside `[[…]]`,
+  so the links are left alone — and stay broken until you rename the entity differently.
+
+**The update date of the other entities does not change.** Their content is what it was — the
+link still points at the same entity, only its spelling caught up. Otherwise one rename would
+flood the *Recently changed* view with entities you never touched.
+
 ### 15.4 Link suggestions on save
 
 Typing `[[…]]` by hand is tedious, so **when you save an entity DKM scans its multi-line

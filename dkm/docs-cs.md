@@ -820,6 +820,29 @@ Příklad: v poznámce k jedné entitě napíšeš „Návaznost na [[Vyhláška
 
 Match je case-insensitive přes plný název entity.
 
+#### Přejmenování entitu neodpojí
+
+Odkaz míří na entitu **jménem**, ne identifikátorem, takže by ho přejmenování rozbilo. DKM to
+proto hlídá: **když entitu přejmenuješ, přepíše se její jméno i ve všech wiki odkazech** —
+v atributech typu text i víceřádkový text, v atributech z typu i z aspektu, ve vlastních
+atributech, v archivovaných entitách i v textu té přejmenované entity samotné. Platí to
+pro přejmenování v editoru i pro import TSV, který entitu najde podle ID. Kolik odkazů se
+přepsalo, ti řekne hláška po uložení.
+
+Odkazy se srovnají i **v pravopisu**: `[[alfa]]` i `[[ALFA]]` se po přejmenování zapíšou
+přesně tak, jak se entita jmenuje teď.
+
+Dvě situace, na které tě DKM upozorní:
+
+- **Nový název už má jiná entita.** Odkazy se přepíšou, ale od té chvíle jsou dvojznačné a
+  můžou mířit na tu druhou entitu — název je jediné, čím se cíl pozná.
+- **Nový název obsahuje `]` nebo zalomení řádku.** Takový název se do `[[…]]` zapsat nedá,
+  takže se odkazy radši nechají být — a zůstanou rozbité, dokud entitu nepřejmenuješ jinak.
+
+**Datum úpravy cizích entit se nemění.** Obsah zůstal, jak byl — odkaz míří pořád na tutéž
+entitu, jen se srovnal pravopis. Jedno přejmenování by jinak zaplavilo pohled
+*Naposledy změněné* entitami, kterých ses nedotkl.
+
 ### 15.4 Nabídka odkazů při uložení
 
 Psát `[[…]]` ručně je otrava, takže **při uložení entity projde DKM její víceřádkové (Markdown)

@@ -391,6 +391,21 @@ Vybraná karta žije v `_detailTab` **mimo `state.view`** — `navigateTo` ho na
 výchozími hodnotami a přepnutá karta má přežít skok na jinou entitu. Do dat projektu
 nepatří. Promítá se do identifikátoru obrazovky (`#scrdetent.rels`).
 
+## Wiki odkazy a přejmenování
+Wiki odkaz `[[Název]]` míří na entitu **jménem**, ne identifikátorem — proto každé místo,
+které umí entitu přejmenovat, musí zavolat `prejmenujWikiOdkazy(stary,novy)`. Dnes to jsou
+`finishCommitEdit` (editor) a `processTSVImport` (řádek s ID). Kdo přidá další cestu
+k přejmenování, musí ji přidat taky.
+
+- Prochází se stejná plocha, jakou zná `getRelsTo`: atributy typu `text` a `textarea`
+  z typu i z aspektu plus `customAttributes`. Navíc ale **i archivované entity a entita
+  samotná** — odkaz má být správný i tam, kam se uživatel zrovna nedívá.
+- **`updatedAt` cizích entit se nemění** (záměr, ne opomenutí): obsah zůstal týž a jedno
+  přejmenování by jinak zaplavilo pohled Naposledy změněné.
+- Název s `]` nebo zalomením řádku do `[[…]]` nejde; v tom případě se text nechá být
+  a uživateli se to řekne, místo aby se z odkazů udělal nesmysl.
+- Hlásí se přes `ohlasPrejmenovani()`, včetně varování, když nový název nosí i jiná entita.
+
 ## Navigace a adresa
 `navigateTo` sestaví `state.view` a teprve pak mění `location.hash`; vlastní `hashchange`
 pohled jen převezme z `_navPohled`, protože adresa nenese režim zobrazení, sekce, sloupce
