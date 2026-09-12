@@ -180,16 +180,14 @@
   /* ── Seznam zkratek ───────────────────────────────────── */
   #seznam-zkratek { max-height: 62vh; overflow: auto; border: 1px solid var(--ram); border-radius: var(--radius); }
   #seznam-zkratek li + li { border-top: 1px solid var(--ram); }
-  #seznam-zkratek button {
-    width: 100%;
+  #seznam-zkratek a {
     display: block;
-    text-align: left;
-    background: none;
-    border: none;
-    border-radius: 0;
     padding: 0.5rem 0.6rem;
+    color: inherit;
+    text-decoration: none;
   }
-  #seznam-zkratek button[aria-current="true"] { background: var(--akcent-tmavy); box-shadow: inset 4px 0 0 var(--akcent); }
+  #seznam-zkratek a:hover .spoustec { text-decoration: underline; }
+  #seznam-zkratek a[aria-current="true"] { background: var(--akcent-tmavy); box-shadow: inset 4px 0 0 var(--akcent); }
   #seznam-zkratek .spoustec { font-family: ui-monospace, Consolas, monospace; font-weight: 600; display: block; }
   #seznam-zkratek .ukazka { display: block; font-size: 0.82rem; color: var(--text-tlumeny); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .prazdno { color: var(--text-tlumeny); font-size: 0.9rem; padding: 0.75rem; }
@@ -309,15 +307,13 @@
         <div class="nastroje" role="group" aria-label="Úpravy seznamu zkratek" style="margin-bottom:0.6rem">
           <button type="button" id="tl-pridat" class="hlavni">+ Přidat zkratku</button>
           <button type="button" id="tl-duplikovat">Duplikovat</button>
-          <button type="button" id="tl-nahoru">Nahoru</button>
-          <button type="button" id="tl-dolu">Dolů</button>
           <button type="button" id="tl-smazat" class="nebezpecne">Smazat</button>
         </div>
-        <ul id="seznam-zkratek" aria-label="Seznam zkratek"></ul>
+        <ul id="seznam-zkratek" aria-label="Seznam zkratek (řazeno abecedně podle spouštěče)"></ul>
       </section>
 
       <section class="panel" aria-labelledby="nadpis-editor">
-        <h2 id="nadpis-editor">Úprava zkratky</h2>
+        <h2 id="nadpis-editor" tabindex="-1">Úprava zkratky</h2>
         <div id="kontrola" role="status"></div>
         <div id="editor"></div>
       </section>
@@ -662,7 +658,7 @@ function serializujSoubor() {
   if (!stav.zkratky.length) {
     radky.push("  []");
   } else {
-    for (const z of stav.zkratky) {
+    for (const { z } of serazeneZkratky()) {
       const o = zkratkaDoObjektu(z);
       const podradky = yamlMapaZkratky(o, "    ");
       podradky[0] = "  - " + podradky[0].slice(4);
@@ -1355,6 +1351,22 @@ function aktualniZkratka() {
   return stav.zkratky[stav.vybrana] || null;
 }
 
+// Zkratky se všude ukazují i ukládají seřazené abecedně podle spouštěče.
+// Pořadí drží jediná funkce, aby seznam a výsledný YAML nešly od sebe.
+function klicRazeni(z) {
+  return odvozenyPopisek(z).toLocaleLowerCase("cs");
+}
+
+function serazeneZkratky() {
+  return stav.zkratky.map((z, i) => ({ z, i })).sort((a, b) => {
+    const ka = klicRazeni(a.z), kb = klicRazeni(b.z);
+    if (!ka && kb) return 1;          // rozepsané zkratky bez spouštěče patří na konec
+    if (ka && !kb) return -1;
+    const porovnani = ka.localeCompare(kb, "cs", { numeric: true, sensitivity: "base" });
+    return porovnani !== 0 ? porovnani : a.i - b.i;
+  });
+}
+
 function popisSpoustece(z) {
   if (z.typSpoustece === "regex") return z.regex || "(prázdný regulární výraz)";
   if (z.typSpoustece === "vice") return (z.triggers || []).filter(Boolean).join(", ") || "(bez spouštěče)";
@@ -1380,7 +1392,7 @@ function odpovidaFiltru(z, filtr) {
 function vykresliSeznam() {
   const seznam = $("#seznam-zkratek");
   seznam.innerHTML = "";
-  const viditelne = stav.zkratky.map((z, i) => ({ z, i })).filter(({ z }) => odpovidaFiltru(z, stav.filtr));
+  const viditelne = serazeneZkratky().filter(({ z }) => odpovidaFiltru(z, stav.filtr));
 
   $("#pocet-zkratek").textContent = stav.filtr
     ? "(" + viditelne.length + " z " + stav.zkratky.length + ")"
@@ -1395,21 +1407,25 @@ function vykresliSeznam() {
   }
 
   for (const { z, i } of viditelne) {
-    const tl = prvek("button", { type: "button", "aria-current": i === stav.vybrana ? "true" : null });
-    tl.appendChild(prvek("span", { trida: "spoustec", text: popisSpoustece(z) }));
+    const odkaz = prvek("a", { href: "#nadpis-editor", "aria-current": i === stav.vybrana ? "true" : null });
+    odkaz.appendChild(prvek("span", { trida: "spoustec", text: popisSpoustece(z) }));
     const ukazka = (z.label ? z.label + " — " : "") + (textNahrady(z) || "").replace(/\s+/g, " ").slice(0, 70);
-    tl.appendChild(prvek("span", { trida: "ukazka", text: ukazka || "(bez textu)" }));
-    tl.addEventListener("click", () => vyberZkratku(i));
-    tl.addEventListener("keydown", (e) => {
+    odkaz.appendChild(prvek("span", { trida: "ukazka", text: ukazka || "(bez textu)" }));
+    odkaz.addEventListener("click", (e) => {
+      e.preventDefault();
+      vyberZkratku(i);
+      $("#nadpis-editor").focus();
+    });
+    odkaz.addEventListener("keydown", (e) => {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
-        const vsechna = Array.from(seznam.querySelectorAll("button"));
-        const poz = vsechna.indexOf(e.currentTarget);
-        const cil = vsechna[poz + (e.key === "ArrowDown" ? 1 : -1)];
+        const vsechny = Array.from(seznam.querySelectorAll("a"));
+        const poz = vsechny.indexOf(e.currentTarget);
+        const cil = vsechny[poz + (e.key === "ArrowDown" ? 1 : -1)];
         if (cil) cil.focus();
       }
     });
-    seznam.appendChild(prvek("li", {}, tl));
+    seznam.appendChild(prvek("li", {}, odkaz));
   }
 }
 
@@ -2193,18 +2209,6 @@ $("#tl-smazat").addEventListener("click", () => {
   nastavStav("Zkratka smazána.");
 });
 
-function presun(smer) {
-  const i = stav.vybrana;
-  const j = i + smer;
-  if (i < 0 || j < 0 || j >= stav.zkratky.length) { nastavStav("Dál to nejde.", true); return; }
-  [stav.zkratky[i], stav.zkratky[j]] = [stav.zkratky[j], stav.zkratky[i]];
-  stav.vybrana = j;
-  prekresliVse();
-  nastavStav("Zkratka přesunuta na pozici " + (j + 1) + ".");
-}
-$("#tl-nahoru").addEventListener("click", () => presun(-1));
-$("#tl-dolu").addEventListener("click", () => presun(1));
-
 $("#hledani").addEventListener("input", (e) => {
   stav.filtr = e.target.value.trim();
   vykresliSeznam();
@@ -2284,7 +2288,7 @@ $("#tl-napoveda").addEventListener("click", () => {
     <h3 style="margin:0.8rem 0 0.3rem;font-size:1rem">Jak na to</h3>
     <ol style="padding-left:1.2rem;list-style:decimal">
       <li>Načti svůj soubor tlačítkem <strong>Načíst soubor</strong> nebo <strong>Načíst ze schránky</strong>.</li>
-      <li>Vlevo vyber zkratku, vpravo ji uprav. Nová se přidává tlačítkem <strong>+ Přidat zkratku</strong>.</li>
+      <li>Vlevo vyber zkratku (seznam je řazený abecedně podle spouštěče, stejně se ukládá i do souboru), vpravo ji uprav. Nová se přidává tlačítkem <strong>+ Přidat zkratku</strong>.</li>
       <li>Do textu náhrady se dynamické věci vkládají tlačítky pod polem — datum, schránka, příkaz, náhodný výběr, formulář…</li>
       <li>Hotovo uložíš tlačítkem <strong>Uložit soubor</strong> nebo <strong>Kopírovat do schránky</strong>.</li>
     </ol>
