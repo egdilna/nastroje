@@ -63,6 +63,29 @@ nutné zavolat `zamerNahradu()`, jinak by odkaz na textareu ukazoval do prázdna
 Náhled data (`nahledData`) je vlastní podmnožina strftime — počítá se v prohlížeči jen kvůli
 ukázce, Espanso používá chrono. Když se doplní nová značka, patří i do `ZNACKY_DATA`.
 
+## Samostatná HTML verze (rozbalovač)
+Tlačítko „Vytvořit HTML verzi“ (accesskey `w`) stáhne **jeden soubor** se všemi zkratkami,
+hledáním a kopírováním do schránky. Slouží k používání zkratek tam, kde není Espanso — ne
+k jejich úpravám.
+
+Šablona je uložená přímo v `index.html` jako `<script type="text/plain" id="sablona-rozbalovac">`,
+takže se dá normálně číst a editovat na místě. **Jediné pravidlo: zavírací značka skriptu se
+uvnitř šablony píše `<\/script>`** (jinak by blok skončil dřív); generátor ji při skládání
+souboru vrátí zpátky. Do šablony se dosazují dvě značky: `%%NAZEV%%` (název sady, HTML-escapovaný)
+a `%%DATA%%` (JSON dat; `<` se escapuje na `\u003c`, aby nemohl rozbít blok).
+
+Rozbalovač si nese vlastní kopii vyhodnocování proměnných (`naDatum`, `sestav`, `potrebnaPole`) —
+musí být samostatný, takže **změna chování proměnných v editoru se musí promítnout i do šablony**.
+Co umí: `date`, `echo`, `random`, `clipboard`, `match` (rekurzivně), `form`, pole formuláře
+(`[[pole]]`), pojmenované skupiny regexu, značku kurzoru `$|$` (zahodí se). Na co se ptá
+uživatele: pole formulářů, skupiny regexu a obsah schránky (ten se pokusí předvyplnit z
+`navigator.clipboard`). Vnořené zkratky mají v klíčích prefix `jmeno>`, pole vnořeného formuláře
+`jmeno.pole` — proto se hodnoty drží v ploché mapě `hodnoty`.
+
+**Zkratky, které potřebují `shell` nebo `script`, se do souboru nedávají** (`potrebujePrikaz`,
+tranzitivně přes `echo` a `match`) — prohlížeč je spustit neumí a poloprázdný výsledek by byl
+horší než chybějící zkratka. Počet vynechaných se hlásí v editoru i v rozbalovači.
+
 ## Přístupnost
 Je to hlavní důvod existence nástroje, takže platí bez výjimky:
 - každý ovládací prvek má `<label for>` (id se předává čtvrtým parametrem `vytvorPole`,

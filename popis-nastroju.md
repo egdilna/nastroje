@@ -104,6 +104,7 @@ Hlavní funkce:
 - Globální proměnné a importy dalších souborů
 - Průběžná kontrola (duplicitní spouštěče, nedefinované proměnné, prázdné náhrady)
 - Záložka se zdrojovým YAML, kterou lze upravit ručně a načíst zpátky
+- Vygenerování samostatné HTML verze: jeden offline soubor se všemi zkratkami, hledáním a kopírováním do schránky — zkratka se použije kliknutím, u formulářů se nejdřív doplní údaje
 
 ---
 
