@@ -116,6 +116,8 @@ U každého atributu si můžeš nastavit:
 
 - **Povinný** — DKM nedovolí uložit entitu bez vyplnění
 - **Zobrazit v seznamu** — hodnota se zobrazí přímo v kartě entity v seznamech
+- **Skrytý**, **Kopírování**, **Zvýraznit** a **Nezobrazovat prázdný** — čtyři přepínače
+  zobrazení, popsané v kapitole 7.6
 
 ### 3.4 Aspekt
 
@@ -391,11 +393,13 @@ Přidáš v editoru typu. Zadáš:
 - **Datový typ** (viz kap. 3.3)
 - **Povinný** (checkbox)
 - **Zobrazit v seznamu** (checkbox)
+- **Skrytý**, **Kopírování**, **Zvýraznit**, **Nezobrazovat prázdný** (checkboxy, kap. 7.6)
 - Volitelně: **Seznam hodnot** (pro select), **Typ cíle** (pro relation)
 
 ### 7.2 Atribut aspektu
 
 Definuješ v editoru aspektu. Pravidla jsou stejná. Aspekt může přinést atributy libovolného typu (včetně relation).
+
 
 ### 7.3 Vlastní atribut
 
@@ -448,6 +452,27 @@ rovnou vyfiltrovaný seznam. V pokročilých filtrech (kap. 11) přibyly operát
 
 Fulltextové hledání tagy prohledává taky. A seznam se dá podle tagů i **rozdělit na sekce**
 (kap. 12.1) — entita s několika tagy se ukáže v každé z nich.
+
+### 7.6 Jak se atribut chová v zobrazení
+
+Čtyři zaškrtávátka u každého atributu typu i aspektu. **Do dat nesahají** — mění jen to, co
+a jak je vidět. Vlastní atributy jednotlivé entity je nemají, protože se nastavují na modelu.
+
+| Přepínač | Co dělá |
+|---|---|
+| **Skrytý** | Atribut se neukáže v detailu entity, v tisku ani v exportu jako dokument a do offline prohlížeče se vůbec nezapíše. **V datových exportech zůstává** — v JSON, XML, tabulce i balíčku. |
+| **Kopírování** | Vedle názvu atributu přibude tlačítko **⧉**, které jeho hodnotu zkopíruje do schránky. |
+| **Zvýraznit** | Atribut i s hodnotou se vykreslí ve žlutém rámečku s obrysem — v detailu entity i v offline prohlížeči. |
+| **Nezobrazovat prázdný** | Když atribut nemá hodnotu, v detailu ani v prohlížeči se neukáže vůbec, místo řádku s „Nevyplněno". |
+
+**Skrytý není tajný.** Je to přepínač zobrazení, ne zabezpečení: kdo dostane datový export
+nebo `.dkmdata` soubor, hodnotu v něm najde. Co se nemá dostat k druhým, do projektu nepatří.
+Do offline prohlížeče se ale takový atribut nezapíše ani definicí, ani hodnotou — prohlížeč
+je soubor, který se posílá dál.
+
+**Co se kopíruje.** U víceřádkového textu zdroj v Markdownu, ať se dá vložit zpátky. U tagů,
+vazeb a dat totéž, co vidíš — „Červená, Zelená", „Alfa (Věc)", „1. 1. 2026". Prázdný atribut
+kopírovat nejde a DKM to řekne.
 
 ---
 

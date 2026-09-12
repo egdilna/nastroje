@@ -391,6 +391,21 @@ Vybraná karta žije v `_detailTab` **mimo `state.view`** — `navigateTo` ho na
 výchozími hodnotami a přepnutá karta má přežít skok na jinou entitu. Do dat projektu
 nepatří. Promítá se do identifikátoru obrazovky (`#scrdetent.rels`).
 
+## Přepínače zobrazení u atributu
+`hidden`, `copyable`, `highlight`, `hideEmpty` na definici atributu typu i aspektu. Mění
+**jen zobrazení**, nikdy data — datové exporty (JSON, XML, tabulka, balíček) je ignorují.
+
+- `nezakryte(seznam)` filtruje skryté, `atributyProZobrazeni(e)` řeší detail entity
+  (skryté pryč, prázdné s `hideEmpty` pryč). Nové zobrazení atributů má jít přes ně.
+- Dokumentový export má jedinou autoritu: `buildExportModel`. Dialogy jen nenabízejí,
+  co by stejně nevypadlo.
+- Do offline prohlížeče se skrytý atribut **nezapisuje vůbec** — `bezSkrytychAtributu()`
+  v `viewerData` zahodí definici i hodnoty. Prohlížeč je soubor, který se posílá dál.
+- Barvy zvýraznění drží tokeny `--zv`, `--zvt`, `--zvo` v každém motivu, v aplikaci
+  i v šabloně prohlížeče. Nikdy natvrdo — v tmavém motivu by černý text na žluté chyběl.
+- `scalarValueStr` je na úrovni souboru, protože ji potřebuje i tlačítko kopírování;
+  dřív byla zanořená v exportním bloku.
+
 ## Wiki odkazy a přejmenování
 Wiki odkaz `[[Název]]` míří na entitu **jménem**, ne identifikátorem — proto každé místo,
 které umí entitu přejmenovat, musí zavolat `prejmenujWikiOdkazy(stary,novy)`. Dnes to jsou
