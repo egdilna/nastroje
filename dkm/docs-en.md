@@ -116,6 +116,8 @@ For each attribute you can set:
 
 - **Required** — DKM won't save an entity without a value
 - **Show in list** — value appears directly in the entity card in lists
+- **Hidden**, **Copying**, **Highlight** and **Hide when empty** — four display toggles,
+  described in chapter 7.6
 
 ### 3.4 Aspect
 
@@ -395,7 +397,9 @@ Added in type editor. Enter:
 - **Data type** (see 3.3)
 - **Required** (checkbox)
 - **Show in list** (checkbox)
+- **Hidden**, **Copying**, **Highlight**, **Hide when empty** (checkboxes, 7.6)
 - Optionally: **Value list** (for select), **Target type** (for relation)
+
 
 ### 7.2 Aspect attribute
 
@@ -451,6 +455,28 @@ entity with several tags shows up in each of them. Advanced filters (chapter 11)
 **does not have tag**, **has any tag** and **has no tag**.
 
 Full-text search looks into tags as well.
+
+### 7.6 How an attribute behaves in the display
+
+Four checkboxes on every attribute of a type and of an aspect. **They do not touch the data** —
+they only change what is seen and how. Custom attributes of a single entity do not have them,
+because they are set on the model.
+
+| Toggle | What it does |
+|---|---|
+| **Hidden** | The attribute is not shown in the entity detail, in print or in a document export, and it is not written into the offline viewer at all. **It stays in data exports** — JSON, XML, table and package. |
+| **Copying** | A **⧉** button appears next to the attribute name and copies its value to the clipboard. |
+| **Highlight** | The attribute and its value render in a yellow box with an outline — in the entity detail and in the offline viewer. |
+| **Hide when empty** | When the attribute has no value it is not shown at all, instead of a row saying "Not set". |
+
+**Hidden is not secret.** It is a display toggle, not security: anyone who gets a data export
+or a `.dkmdata` file will find the value in it. Whatever must not reach other people does not
+belong in the project. It is, however, not written into the offline viewer — neither its
+definition nor its values — because the viewer is a file you pass on.
+
+**What gets copied.** For multi-line text the Markdown source, so you can paste it back. For
+tags, relations and dates the same thing you see — "Red, Green", "Alfa (Thing)", "1 Jan 2026".
+An empty attribute cannot be copied and DKM says so.
 
 ---
 
