@@ -452,6 +452,18 @@ ani vazbu na uložený pohled. `_navAdresa` drží adresu, kterou jsme nastavili
 zahodila. Kdo přidává navigaci, nemusí na pořadí myslet, ale ani jedno z toho nemá obcházet
 přímým zápisem do `location.hash`.
 
+## Rozšíření rozsahu o sousedy
+`sousedeEntity(id)` je jediný zdroj — `getLinksFrom` + `getRelsTo` bez `kind==='wikilink'`.
+Vazba přes atribut typu `relation` je pro model plnohodnotná vazba, takže do sousedů patří
+stejně jako klasická, a to **v obou směrech**. Nikdy nepočítej sousedy z `e.relations` —
+přesně tím se roky natahovala jen půlka okolí, zatímco `orezProjekt` pak hodnoty vazebních
+atributů mimo výřez ještě zahodil.
+
+Wiki zmínky se schválně **nepočítají**: odkaz v textu je poznámka, ne vazba modelu, a přes
+zmínky by se do balíčku natáhlo půl projektu.
+
+Komponenta je průchod do šířky s frontou a množinou hotových — každá entita se řeší jednou.
+
 ## Výchozí záložka při načtení projektu
 Načtení projektu (soubor, schránka, GitHub, `?id=`, `?open=`) končí voláním
 `otevriVychoziZalozku()`, ne tvrdým `state.view={tab:'inbox'}`. Kdo přidá další cestu

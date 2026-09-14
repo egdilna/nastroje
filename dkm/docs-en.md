@@ -1811,6 +1811,14 @@ In bulk mode select entities, action **📦 Export package**. Wizard:
 2. **Model**: types, aspects, lists, tag sets and relations to transfer
 3. **Preview**: overview of what will be in the package
 
+**What counts as a relation when widening the scope:** a classic relation **and a relation
+through an attribute of type relation**, in **both directions** — a neighbor is both the one
+you point at and the one pointing at you. Archived entities are not pulled in.
+
+**Wiki mentions `[[Name]]` do not count.** A link in text is a note, not a relation of the
+model; through mentions half the project would end up in the package. When you need such an
+entity, add it to the selection by hand.
+
 Downloads a `.dkmpkg`.
 
 ### 28.3 Package import
