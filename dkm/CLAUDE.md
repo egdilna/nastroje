@@ -452,6 +452,27 @@ ani vazbu na uložený pohled. `_navAdresa` drží adresu, kterou jsme nastavili
 zahodila. Kdo přidává navigaci, nemusí na pořadí myslet, ale ani jedno z toho nemá obcházet
 přímým zápisem do `location.hash`.
 
+## Import balíčku: co se z entity a z definice atributu přenáší
+**Definice atributu se kopíruje celá** (`novyAtributZBalicku`), jen s novým id. Dřív se
+opisovalo `name`, `type`, číselník a `multi` — a všechno ostatní tiše mizelo: `template`
+složeného atributu, `targetType` vazebního, `required`, `showInList`, `jsonKey` a všechny
+čtyři přepínače zobrazení. Vyjmenovaný seznam nikdo při přidání dalšího pole nerozšíří,
+proto se kopíruje všechno a **odmapovává se jen to, co ukazuje ven**:
+
+- `listId`/`selectListId` a `tagSetId` se přeloží hned; co se přeložit nedá (přeskočený
+  číselník), se **zahodí** — cizí identifikátor v atributu je horší než žádný.
+- `targetType` míří na typ entity a ty vznikají v témže kroku, takže se dorovnává až
+  v **kroku 4b**, po krocích 3 a 4. Stejný důvod jako u kroku 3b u typů vazeb.
+
+**Komentáře a objekty entity balíček nese** (jsou v jeho schématu) a import je musí předat —
+dřív se v `applyImport` tiše zahazovaly, takže přenesená entita přišla o diskusi i o připojené
+texty. Při `merge` je doplňuje `doplnPodleId`: rozlišují se podle id z balíčku, takže opakovaný
+import nic nezdvojí.
+
+Krok 7 (náhled) a krok 8 (výsledek) musí hlásit **všechno, co import založí** — soustavy tagů
+a sloučené entity v nich chyběly, přestože `applyImport` obojí počítá. Kdo přidá do `log`
+další položku, ať ji přidá i do obou výpisů a do `simulateImport`.
+
 ## Model v balíčku: typy vazeb
 `orezProjekt` sbíral `usedRT` **až z vazeb po ořezu**, takže typ vazby cestoval jen tehdy,
 když ho použila vazba, která zůstala uvnitř výřezu. Entity bez vazeb nepřenesly nic a
