@@ -1221,6 +1221,25 @@ Then **Save** (Ctrl+S) saves directly to GitHub.
 
 Saving comes with **sound feedback** — a short rising tone on success, a darker falling one on failure (missing path, missing token, a GitHub rejection or a network error). It can be switched off in Settings → General.
 
+#### Autosave (Auto)
+
+Next to the **Save** button is an **Auto** checkbox. When it is on, DKM saves the project
+**to GitHub** after every change — not to a file, that stays on the button.
+
+- **Green = running, grey = not.** When on, it also shows the time of the last save:
+  `Auto · saved 15:47`.
+- **Without GitHub set up** the checkbox is disabled and greyed out; the tooltip says why.
+- **It does not save on every keystroke.** It waits for 2.5 seconds of quiet, so ten typed
+  letters make one commit, not ten. Leaving the tab does not wait — it sends straight away.
+- **It is not remembered anywhere.** The setting goes neither into the project nor into the
+  browser, so after every page load Auto is **off**. That is deliberate — sending your work
+  somewhere on its own should be switched on consciously.
+- **It saves quietly**: no "Saving…", no tone. A failure, on the other hand, is loud — and
+  **switches it off**. If it kept trying, a bad token would mean an endless run of messages.
+  Once you know what went wrong, you turn it back on.
+
+Switching it on with unsaved work saves right away; it does not wait for the next change.
+
 ### 21.5 URL parameter for GitHub autoload
 
 `?id={base64ghPath}` in the URL → DKM auto-loads the project from GitHub via the API on

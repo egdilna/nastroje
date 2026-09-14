@@ -1213,6 +1213,25 @@ Pak **Uložit** (Ctrl+S) uloží přímo do GitHubu (`Uložit lokálně` zůstá
 
 Uložení doprovází **zvuková odezva** — po úspěchu krátký stoupavý tón, po neúspěchu temnější klesavý (chybějící cesta, chybějící token, zamítnutí GitHubu i síťová chyba). Dá se vypnout v Nastavení → Obecné.
 
+#### Automatické ukládání (Auto)
+
+Vedle tlačítka **Uložit** je zaškrtávátko **Auto**. Když je zapnuté, DKM po každé změně
+samo uloží projekt **na GitHub** — do souboru ne, to zůstává na tlačítku.
+
+- **Zelené = běží, šedé = neběží.** U zapnutého je vidět i čas posledního uložení:
+  `Auto · uloženo 15:47`.
+- **Bez nastaveného GitHubu** je zaškrtávátko nedostupné a zašedlé; napoví to i titulek.
+- **Neukládá po každém úhozu.** Čeká na 2,5 sekundy klidu, takže z deseti napsaných písmen
+  vznikne jeden commit, ne deset. Při odchodu ze záložky se čekání nedodrží a odešle se hned.
+- **Nikam se nepamatuje.** Nastavení nejde do projektu ani do prohlížeče, takže po každém
+  načtení stránky je Auto **vypnuté**. Je to schválně — posílat práci samo někam ven se má
+  zapínat vědomě.
+- **Ukládá potichu**: žádné „Ukládám…", žádný tón. Chybu naopak řekne nahlas — a **vypne se**.
+  Kdyby se pokoušelo dál, špatný token by znamenal nekonečnou řadu hlášek. Když víš, co bylo
+  špatně, zapneš ho znovu.
+
+Zapnutí nad rozdělanou prací uloží rovnou, nečeká se na další změnu.
+
 ### 21.5 URL parametr pro autoload z GitHubu
 
 `?id={base64ghPath}` v URL → DKM při startu automaticky načte projekt z GitHubu přes API.
