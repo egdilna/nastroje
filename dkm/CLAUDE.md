@@ -452,6 +452,20 @@ ani vazbu na uložený pohled. `_navAdresa` drží adresu, kterou jsme nastavili
 zahodila. Kdo přidává navigaci, nemusí na pořadí myslet, ale ani jedno z toho nemá obcházet
 přímým zápisem do `location.hash`.
 
+## Automatické ukládání na GitHub
+Přepínač v hlavičce vedle Uložit. Stav drží `ghAutoStav` **jen v paměti stránky** — do dat
+projektu ani do `localStorage` nepatří, takže po načtení je vždycky vypnuté. Záměr, ne
+opomenutí: automatické odesílání práce ven se má zapínat vědomě.
+
+- Spouští ho `setDirty(true)` přes `ghAutoNaplanuj()`; mezi změnou a odesláním je
+  **2,5 s ticha** (`GHAUTO_PRODLEVA`), jinak by každé písmeno v editoru dělalo commit.
+- `saveToGitHub(tiche)` — s `tiche` bez „Ukládám…", bez tónu a bez hlášky o úspěchu;
+  úspěch se pozná podle času u přepínače. **Chyba se hlásí vždycky.**
+- **Po chybě se autosave vypne.** Opakovat po každé změně by u špatného tokenu znamenalo
+  nekonečnou řadu chybových hlášek.
+- Souběh hlídá `ghAutoStav.bezi` + `znovu`: dvě ukládání naráz by si přepsala `sha`.
+- `visibilitychange` čekání nedodrží a odešle hned — odchod ze záložky na ticho nepočká.
+
 ## Výběr a filtry přežívají
 **Hromadný výběr se po akci nemaže.** `bulkFinish` z něj vyhodí jen entity, které už
 neexistují; `renderBulkToolbar` ořezává **na existenci, ne na viditelnost** — entita, která
