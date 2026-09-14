@@ -1927,6 +1927,27 @@ Clicking Import performs a two-pass:
 2. Relations and relation attributes are remapped to the target IDs; when filling, **the same
    relation is not created twice**
 
+#### What a package actually carries
+
+The complete list of what shows up in the target project — and what does not:
+
+| Carried over | Note |
+|---|---|
+| Entities with all attribute values | from the type, from aspects, and custom ones |
+| Entity comments and objects | *Add to existing* only fills in the ones the target does not have |
+| Relations between entities in the package | relations pointing outside are dropped at export time |
+| Values of relation-typed attributes | remapped to the target project's new IDs |
+| Entity types and aspects | including the icon |
+| **Whole attribute definitions** | type, select list, tag set, relation target type, `multi`, composed-attribute template, required flag, show-in-list, JSON key, and the *Hidden / Copy / Highlight / Hide when empty* switches |
+| Relation types with scope and constraints | `fromTypes`/`toTypes` are translated to the target project's types |
+| Select lists and tag sets | on a name match the values are merged, nothing is overwritten |
+
+| Not carried over | Why |
+|---|---|
+| Tabs | the bar is your own arrangement (29.8) |
+| Saved views, export profiles, project settings | they belong to the project, not to a slice of data |
+| A reference to something the package does not contain | an attribute that pointed at a type or select list outside the package is released in the target — a reference to a foreign identifier could be neither picked nor repaired |
+
 ---
 
 ## 29. Settings

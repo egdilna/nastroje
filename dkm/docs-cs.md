@@ -1900,6 +1900,27 @@ Klik na Import provede dvouprůchod:
 2. Vazby a relační atributy se přemapují na cílová ID; při doplňování se **tatáž vazba
    nezaloží podruhé**
 
+#### Co všechno balíček přenese
+
+Kompletní seznam toho, co se v cílovém projektu objeví — a co ne:
+
+| Přenáší se | Poznámka |
+|---|---|
+| Entity se všemi hodnotami atributů | podle typu, aspektu i vlastní atributy |
+| Komentáře a objekty entity | u *Doplnit do existující* se jen doplní ty, které v cíli nejsou |
+| Vazby mezi entitami balíčku | vazby ven se zahodí už při exportu |
+| Hodnoty vazebních atributů | přemapují se na nová ID cílového projektu |
+| Typy entit a aspekty | i s ikonou |
+| **Celé definice atributů** | typ, číselník, soustava tagů, cílový typ vazby, `multi`, šablona složeného atributu, povinnost, zobrazení na kartě, klíč pro JSON i přepínače *Skrytý / Kopírování / Zvýraznit / Nezobrazovat prázdný* |
+| Typy vazeb i s rozsahem a omezením | `fromTypes`/`toTypes` se přeloží na typy cílového projektu |
+| Číselníky a soustavy tagů | při shodě názvu se hodnoty sloučí, nic se nepřepisuje |
+
+| Nepřenáší se | Proč |
+|---|---|
+| Záložky | lišta je tvoje uspořádání (kap. 29.8) |
+| Uložené pohledy, profily exportu, nastavení projektu | patří projektu, ne výseku dat |
+| Odkaz na to, co v balíčku není | atribut, který mířil na typ nebo číselník mimo balíček, se v cíli uvolní — odkaz na cizí identifikátor by nešel ani vybrat, ani opravit |
+
 ---
 
 ## 29. Nastavení
