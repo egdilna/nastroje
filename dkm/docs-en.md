@@ -660,6 +660,26 @@ Rules are combined with **AND** — all must be true.
 
 **Tags:** hasTag, hasNotTag, hasAnyTag, hasNoTags — the value is picked from the attached tag set
 
+### 11.3b Default state of the list (🧹)
+
+The **🧹** button in the toolbar above the list puts the list back where it started: it clears
+the search and all filters including advanced rules. **The default state is the state of the tab
+you came from**, not emptiness:
+
+| Where you are | What the reset does |
+|---|---|
+| **All**, Inbox, Archive | clears everything |
+| a **type** or **aspect** tab | clears the filters, the type or aspect list stays |
+| a **tag** tab | clears the filters, the tag stays — the tag is the tab's content, not a filter |
+| a **saved view** | restores the view's **own** filter, not emptiness |
+
+When there is nothing to reset, the button is greyed out.
+
+**Filters survive a trip to a detail.** Set a filter, open an entity, come back — the filter is
+still there. This holds in a saved view too: the return restores its display (table, columns,
+sections), but the filter you set in the meantime is your work and is not thrown away. Putting
+the view back to its own filter is exactly what the **🧹** button is for.
+
 ### 11.4 Active filter summary
 
 When you close the panel and rules are active, a strip appears above the list: `Filter: Person / Email contains "firma" · aspects has aspect VIP  [Clear]`. Click Clear to discard all advanced rules.
@@ -788,6 +808,16 @@ so the view is not reduced to an empty list.
 ## 13. Bulk operations
 
 Click **☑ Select** in toolbar (V key). Entity cards get a checkbox. Pick which entities to process.
+
+**The selection survives the action.** You almost always do something else with the same
+entities — archive them and bring them straight back, set an attribute and add an aspect. Only
+entities the action actually deleted drop out. Clear it with **Deselect all** or by leaving
+selection mode (key V, Esc).
+
+An entity that disappears from the current list after the action (archived, for instance)
+**stays selected** and the bar says so: `Selected: 5 · 2 of them outside this list`. So you can
+fire another action at the same five, while it is visible that it reaches further than what you
+have in front of you.
 
 Bulk toolbar shows count selected + action dropdown:
 

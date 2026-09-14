@@ -653,6 +653,26 @@ Pravidla se kombinují v **AND** — všechna musí platit.
 
 **Tagy:** hasTag (má tag), hasNotTag (nemá tag), hasAnyTag (má některý tag), hasNoTags (nemá žádný tag) — hodnota se vybírá z navázané soustavy
 
+### 11.3b Výchozí stav seznamu (🧹)
+
+Tlačítko **🧹** v liště nad seznamem vrátí seznam tam, kde začal: zruší hledání i všechny
+filtry včetně pokročilých pravidel. **Výchozí stav je stav té záložky, ze které jsi přišel**,
+ne prázdno:
+
+| Kde jsi | Co reset udělá |
+|---|---|
+| **Vše**, Inbox, Archiv | zruší úplně všechno |
+| záložka **typu** nebo **aspektu** | zruší filtry, seznam typu či aspektu zůstane |
+| záložka **tagu** | zruší filtry, tag zůstane — tag je obsah záložky, ne filtr |
+| **uložený pohled** | vrátí pohledu jeho **vlastní** filtr, ne prázdno |
+
+Když není co resetovat, je tlačítko zašedlé.
+
+**Filtry přežijí odskok na detail.** Nasadíš filtr, otevřeš entitu, vrátíš se — a filtr je
+pořád tam. Platí to i v uloženém pohledu: návrat obnoví jeho zobrazení (tabulku, sloupce,
+sekce), ale filtr, který sis mezitím nasadil, je tvoje práce a nezahodí se. Vrátit pohled
+k jeho vlastnímu filtru je právě to tlačítko **🧹**.
+
 ### 11.4 Popis aktivního filtru
 
 Když panel zavřeš a jsou aktivní pravidla, nad seznamem se objeví strip s popisem: `Filtr: Person / Email obsahuje "firma" · aspekty má aspekt VIP  [Vyčistit]`. Klik na Vyčistit zahodí všechna pokročilá pravidla.
@@ -781,6 +801,15 @@ seznam.
 ## 13. Hromadné operace
 
 Klikneš **☑ Výběr** v toolbaru (klávesa V). Karty entit získají checkbox. Vyber, které entity chceš zpracovat.
+
+**Výběr po akci zůstává.** Nad týmiž entitami se skoro vždycky dělá ještě něco dalšího —
+archivovat a hned zpátky, nastavit atribut a přidat aspekt. Z výběru vypadnou jen entity,
+které akce opravdu smazala. Zrušíš ho tlačítkem **Odznačit vše** nebo vypnutím režimu výběru
+(klávesa V, Esc).
+
+Entita, která po akci z aktuálního seznamu zmizí (třeba se archivuje), **ve výběru zůstane**
+a lišta to řekne: `Vybráno: 5 · z toho 2 mimo tento seznam`. Díky tomu jde na tutéž pětici
+rovnou pustit další akci, ale je vidět, že sahá dál než na to, co máš před očima.
 
 Toolbar hromadných akcí ukazuje počet vybraných + dropdown akcí:
 

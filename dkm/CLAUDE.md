@@ -452,6 +452,21 @@ ani vazbu na uložený pohled. `_navAdresa` drží adresu, kterou jsme nastavili
 zahodila. Kdo přidává navigaci, nemusí na pořadí myslet, ale ani jedno z toho nemá obcházet
 přímým zápisem do `location.hash`.
 
+## Výběr a filtry přežívají
+**Hromadný výběr se po akci nemaže.** `bulkFinish` z něj vyhodí jen entity, které už
+neexistují; `renderBulkToolbar` ořezává **na existenci, ne na viditelnost** — entita, která
+jen vypadla ze seznamu (archivace), zůstává vybraná a lišta hlásí, kolik jich je mimo seznam.
+Dřív se ořezávalo na `getList()`, takže archivace výběr vyprázdnila a nešlo ho hned obnovit.
+
+**Návrat na uložený pohled nesmí přepsat filtry.** `applySavedView(sv,zalozkaId,zachovejFiltry)`
+— se třetím parametrem obnoví jen zobrazení a `state.filters` nechá být. Používá ho
+`applyNavEntry` (cesta zpět); otevření pohledu filtr naopak nastaví, o to jde.
+
+`resetFiltru()` vrací seznam do výchozího stavu **té záložky**, ze které se přišlo
+(`state.view.tabId` → `otevriZalozku`), ne do prázdna — u tagu tedy tag zůstane a u pohledu
+se vrátí jeho vlastní filtr. Filtry čistí napřed, protože `otevriZalozku` nastavuje obsah,
+ne filtry.
+
 ## Uložené pohledy
 `zobrazeniProUlozeni()` je jediný zdroj toho, co se do pohledu uloží jako zobrazení —
 používá ho ukládání i „Přepsat aktuálním". Čte snímek `posledniZobrazeni`, který bere
