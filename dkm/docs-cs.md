@@ -1783,7 +1783,11 @@ kdo si ještě nevybral; bez uložené volby se motiv poprvé řídí nastavení
 V bulk režimu vybereš entity, akce **📦 Export balíčku**. Wizard:
 
 1. **Rozsah**: jen vybrané / vybrané + sousedy (přes vazby) / celá komponenta (grafové sousedství)
-2. **Model**: typy, aspekty, seznamy, soustavy tagů a relace, které se přenesou
+2. **Model**: typy, aspekty, seznamy, soustavy tagů a relace, které se přenesou.
+   **Typy vazeb se nesou i tehdy, když je zrovna žádná vyvezená entita nepoužívá** —
+   stačí, že jdou mezi vyvezenými typy nakreslit. Bez toho by se v cílovém projektu
+   musely zakládat ručně, než by šlo pokračovat v modelování. Univerzální typy vazeb
+   (platí pro cokoli) jedou vždycky, typ vázaný jen na typy mimo balíček ne.
 3. **Preview**: přehled, co se v balíčku octne
 
 **Co se počítá jako vazba při rozšíření rozsahu:** klasická vazba **i vazba přes atribut

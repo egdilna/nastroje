@@ -452,6 +452,20 @@ ani vazbu na uložený pohled. `_navAdresa` drží adresu, kterou jsme nastavili
 zahodila. Kdo přidává navigaci, nemusí na pořadí myslet, ale ani jedno z toho nemá obcházet
 přímým zápisem do `location.hash`.
 
+## Model v balíčku: typy vazeb
+`orezProjekt` sbíral `usedRT` **až z vazeb po ořezu**, takže typ vazby cestoval jen tehdy,
+když ho použila vazba, která zůstala uvnitř výřezu. Entity bez vazeb nepřenesly nic a
+s ořezanou vazbou zmizel i její typ — v cíli se pak nedalo modelovat dál.
+
+Nově `rtProVyrez`: typ vazby jde do balíčku, když je **použitý**, nebo když je mezi
+vyvezenými typy **použitelný** (`isRelApplicable`; prázdné `fromTypes`/`toTypes` znamená
+„cokoli", takže univerzální jedou vždycky).
+
+**Omezení se doplňují až po založení typů entit** (krok 3b v `applyImport`). Typy vazeb
+vznikají dřív než typy entit, takže při jejich zakládání `fromTypes`/`toTypes` neměly na co
+ukazovat a „konkrétní" typ vazby zůstal bez omezení, tedy volný mezi čímkoli. Kdo sáhne
+na pořadí kroků v `applyImport`, ať na tenhle druhý průchod nezapomene.
+
 ## Rozšíření rozsahu o sousedy
 `sousedeEntity(id)` je jediný zdroj — `getLinksFrom` + `getRelsTo` bez `kind==='wikilink'`.
 Vazba přes atribut typu `relation` je pro model plnohodnotná vazba, takže do sousedů patří

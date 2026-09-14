@@ -1808,7 +1808,12 @@ chosen yet; with no stored choice the theme first follows the system setting.
 In bulk mode select entities, action **📦 Export package**. Wizard:
 
 1. **Scope**: only selected / selected + neighbors (via relations) / whole component (graph neighborhood)
-2. **Model**: types, aspects, lists, tag sets and relations to transfer
+2. **Model**: types, aspects, lists, tag sets and relations to transfer.
+   **Relation types travel even when no exported entity currently uses one** — it is
+   enough that it can be drawn between the exported types. Without that you would have
+   to create them by hand in the target project before you could carry on modelling.
+   Universal relation types (they apply to anything) always travel; one bound only to
+   types outside the package does not.
 3. **Preview**: overview of what will be in the package
 
 **What counts as a relation when widening the scope:** a classic relation **and a relation

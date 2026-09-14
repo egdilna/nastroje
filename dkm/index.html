@@ -3203,6 +3203,17 @@ if(a.type==='tags'&&a.tagSetId)usedTS.add(a.tagSetId);
 });
 state.data.entityTypes.forEach(ty=>{if(usedTypes.has(ty.id))sberSeznamu(ty)});
 state.data.aspects.forEach(asp=>{if(usedAspects.has(asp.id))sberSeznamu(asp)});
+/* Typ vazby patří do modelu i tehdy, když ho zrovna žádná vyvezená entita nepoužívá:
+   v cílovém projektu má jít mezi vyvezenými typy kreslit dál, ne je nejdřív zakládat
+   ručně. Bere se proto každý typ vazby, který je mezi vyvezenými typy **použitelný** —
+   `isRelApplicable` přitom počítá s tím, že prázdné `fromTypes`/`toTypes` znamená
+   „cokoli", takže univerzální typy vazeb jedou vždycky. Bez typů ve výřezu (samý Inbox)
+   zůstanou jen ty opravdu použité. */
+const typyVeVyrezu=Array.from(usedTypes);
+const rtProVyrez=rt=>{
+if(usedRT.has(rt.id))return true;
+return typyVeVyrezu.some(a=>typyVeVyrezu.some(b=>isRelApplicable(rt,a,b)));
+};
 const klon=x=>JSON.parse(JSON.stringify(x));
 return{
 entities:ents,
@@ -3210,7 +3221,7 @@ droppedRelations:dropped,
 model:{
 entityTypes:state.data.entityTypes.filter(ty=>usedTypes.has(ty.id)).map(klon),
 aspects:state.data.aspects.filter(a=>usedAspects.has(a.id)).map(klon),
-relationTypes:state.data.relationTypes.filter(rt=>usedRT.has(rt.id)).map(klon),
+relationTypes:state.data.relationTypes.filter(rtProVyrez).map(klon),
 selectLists:(state.data.selectLists||[]).filter(sl=>usedSL.has(sl.id)).map(klon),
 tagSets:(state.data.tagSets||[]).filter(ts=>usedTS.has(ts.id)).map(klon)
 }};
@@ -8604,6 +8615,22 @@ else attrMap[sa.id]=mapped;
 });
 attrIdMapByTy[srcTy.id]=attrMap;
 }
+});
+
+/* 3b) Omezení typů vazeb se doplní až teď. Typy vazeb se zakládají dřív než typy
+   entit (odkazuje na ně ledacos), takže při jejich vzniku `fromTypes`/`toTypes`
+   neměly na co ukazovat — a „konkrétní" typ vazby zůstal bez konkrétních typů,
+   tedy použitelný mezi čímkoli. Co ukazuje na typ, který balíček nenese, se
+   vynechá; když tím omezení zmizí úplně, je typ vazby volný — pořád lepší než
+   ukazovat na cizí identifikátor. */
+pkg.model.relationTypes.forEach(srcRt=>{
+const m=mapping.relationTypes[srcRt.id];
+if(!m||m.action!=='create')return;
+const nrt=findRT(rtIdMap[srcRt.id]);
+if(!nrt)return;
+const prevod=sez=>(sez||[]).map(id=>tyIdMap[id]).filter(Boolean);
+nrt.fromTypes=prevod(srcRt.fromTypes);
+nrt.toTypes=prevod(srcRt.toTypes);
 });
 
 /* 4) Aspects */
