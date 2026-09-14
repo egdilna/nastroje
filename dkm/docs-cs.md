@@ -961,6 +961,49 @@ Vypnout to jde v **Nastavení → Obecné → Nabízet wiki odkazy při uložen�
 
 ---
 
+### 15.5 Zkratky v markdownových polích
+
+Značky se nemusí psát ručně. Ve **víceřádkových (Markdown) atributech při editaci entity**
+— v atributech z typu, z aspektu i ve vlastních — a v poli pro rychlé přidání do Inboxu
+fungují tyhle zkratky:
+
+| Zkratka | Co udělá |
+|---------|----------|
+| Ctrl+B | `**tučně**` |
+| Ctrl+I | `*kurzíva*` |
+| Ctrl+K | markdownový odkaz `[název](adresa)` |
+| Ctrl+Shift+K | wiki odkaz `[[Název entity]]` — otevře se seznam entit k vybrání |
+| Ctrl+> | náhrada `{~~staré~>nové~~}` |
+| Ctrl++ | přidaný text `{++…++}` |
+| Ctrl+- | smazaný text `{--…--}` |
+| Ctrl+= | zvýraznění `{==…==}` |
+
+Chování je u všech stejné: **označený text se obalí**, bez výběru se značky vloží prázdné
+a kurzor se postaví dovnitř. **Druhé stisknutí značku zase sundá** — a to i tehdy, když máš
+označený jen vnitřek (`{==zvýrazněno==}` stačí kliknout doprostřed slova a dát Ctrl+=).
+Krok zpět (Ctrl+Z) funguje normálně.
+
+Dvě zkratky se chovají chytřeji:
+
+- **Ctrl+K** se podívá do schránky. Je-li v ní adresa (`https://…` nebo `mailto:…`),
+  doplní se rovnou do závorek a kurzor stojí tam, kam se píše název odkazu. Když ve schránce
+  adresa není — nebo ji prohlížeč přečíst nedá — zůstanou závorky prázdné.
+- **Ctrl+> u náhrady** bere označený text jako ten **starý** a kurzor postaví za `~>`,
+  tedy tam, kam se píše nový.
+
+**Ctrl+Shift+K** otevře seznam entit ve stylu palety příkazů: píšeš a seznam se filtruje,
+šipkami vybíráš, Enter vloží `[[Název]]`. Označený text se použije jako první filtr, takže
+rozepsaný název není práce nazmar; Esc seznam zavře a vrátí kurzor přesně tam, kde byl.
+Nenabízí se archivované entity, ta, kterou právě upravuješ, a entity, jejichž název
+obsahuje `]` nebo zalomení řádku — na takové se wiki odkaz zapsat nedá (viz kap. 15.3).
+
+> **Pozor na Ctrl+K.** Jinde v aplikaci skáče Ctrl+K do hledání. V markdownovém poli má
+> přednost vkládání odkazu; hledání je odtud pořád dostupné klávesou Ctrl+F nebo paletou.
+> Ve Firefoxu si Ctrl+Shift+K bere konzoli vývojáře, tam použij na wiki odkaz nabídku,
+> která se ukáže při uložení entity (kap. 15.4).
+
+---
+
 ## 16. Komentáře
 
 ### 16.1 K entitě
@@ -2030,7 +2073,7 @@ Odkazy na online dokumentaci a repozitář.
 | Ctrl+W | Zavřít aktivní panel |
 | Ctrl+Shift+O | Načíst projekt ze schránky |
 | Ctrl+Shift+S | Vložit projekt do schránky |
-| Ctrl+K | Fokus na hledání |
+| Ctrl+K | Fokus na hledání (v markdownovém poli místo toho vloží odkaz — viz níž) |
 | Esc | Zavřít dialog / opustit režim |
 
 ### Navigace
@@ -2088,6 +2131,21 @@ i se zapnutým Caps Lockem a na rozložení, kde ta klávesa píše jiné písme
 |---------|------|
 | u | Uložit editaci |
 | Esc | Zrušit editaci |
+
+### Markdownová pole (editace entity, rychlé přidání do Inboxu)
+
+Podrobně i s pravidly v kap. 15.5.
+
+| Zkratka | Akce |
+|---------|------|
+| Ctrl+B | Tučně |
+| Ctrl+I | Kurzíva |
+| Ctrl+K | Markdownový odkaz (adresu ze schránky doplní sám) |
+| Ctrl+Shift+K | Wiki odkaz — výběr entity ze seznamu |
+| Ctrl+> | CriticMarkup náhrada |
+| Ctrl++ | CriticMarkup přidáno |
+| Ctrl+- | CriticMarkup smazáno |
+| Ctrl+= | CriticMarkup zvýrazněno |
 
 ### Komentáře
 

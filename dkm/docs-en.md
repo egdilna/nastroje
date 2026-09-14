@@ -969,6 +969,49 @@ You can switch it off in **Settings → General → Suggest wiki links when savi
 
 ---
 
+### 15.5 Shortcuts in Markdown fields
+
+You do not have to type the marks by hand. These shortcuts work in **multi-line (Markdown)
+attributes while editing an entity** — from the type, from an aspect and custom ones alike —
+and in the quick-add field on the Inbox:
+
+| Shortcut | What it does |
+|----------|--------------|
+| Ctrl+B | `**bold**` |
+| Ctrl+I | `*italic*` |
+| Ctrl+K | Markdown link `[label](url)` |
+| Ctrl+Shift+K | wiki link `[[Entity name]]` — opens a list of entities to pick from |
+| Ctrl+> | substitution `{~~old~>new~~}` |
+| Ctrl++ | addition `{++…++}` |
+| Ctrl+- | deletion `{--…--}` |
+| Ctrl+= | highlight `{==…==}` |
+
+They all behave the same way: **a selection gets wrapped**, without one the marks are inserted
+empty and the caret lands inside. **Pressing again removes the marks** — including when you
+only selected the inside (click in the middle of `{==highlighted==}` and press Ctrl+=).
+Undo (Ctrl+Z) works as usual.
+
+Two of them are smarter:
+
+- **Ctrl+K** looks at the clipboard. If it holds a URL (`https://…` or `mailto:…`), it is
+  filled into the parentheses and the caret sits where the link label goes. If there is no URL
+  — or the browser will not let the page read the clipboard — the parentheses stay empty.
+- **Ctrl+> for a substitution** treats the selection as the **old** text and puts the caret
+  after `~>`, where the new one goes.
+
+**Ctrl+Shift+K** opens a list of entities styled like the command palette: type to filter,
+pick with the arrow keys, Enter inserts `[[Name]]`. A selection is used as the initial filter,
+so a half-typed name is not wasted; Esc closes the list and puts the caret back exactly where
+it was. Archived entities, the one you are editing, and entities whose name contains `]` or a
+line break are not offered — a wiki link to those cannot be written (see 15.3).
+
+> **Careful with Ctrl+K.** Everywhere else in the app Ctrl+K jumps to search. Inside a Markdown
+> field inserting a link wins; search is still reachable with Ctrl+F or from the palette.
+> Firefox claims Ctrl+Shift+K for its developer console — there, use the wiki-link suggestions
+> offered when you save the entity (15.4) instead.
+
+---
+
 ## 16. Comments
 
 ### 16.1 On an entity
@@ -2060,7 +2103,7 @@ Links to online documentation and repository.
 | Ctrl+W | Close active panel |
 | Ctrl+Shift+O | Load project from clipboard |
 | Ctrl+Shift+S | Copy project to clipboard |
-| Ctrl+K | Focus search |
+| Ctrl+K | Focus search (inside a Markdown field it inserts a link instead — see below) |
 | Esc | Close dialog / exit mode |
 
 ### Navigation
@@ -2118,6 +2161,21 @@ saves even with Caps Lock on and on layouts where that key types a different let
 |----------|--------|
 | u | Save edit |
 | Esc | Cancel edit |
+
+### Markdown fields (entity editing, Inbox quick add)
+
+Full rules in 15.5.
+
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+B | Bold |
+| Ctrl+I | Italic |
+| Ctrl+K | Markdown link (a URL in the clipboard is filled in for you) |
+| Ctrl+Shift+K | Wiki link — pick an entity from a list |
+| Ctrl+> | CriticMarkup substitution |
+| Ctrl++ | CriticMarkup addition |
+| Ctrl+- | CriticMarkup deletion |
+| Ctrl+= | CriticMarkup highlight |
 
 ### Comments
 

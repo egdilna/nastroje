@@ -155,6 +155,7 @@ chybí řádek v `SCR_NASTAVENI` a tady v tabulce.
 | `#dlgsaveview` | Uložení pohledu |
 | `#dlgtblcols` | Sloupce tabulky |
 | `#dlgcmdpal` | Paleta příkazů (Ctrl+Shift+P, F1) |
+| `#dlgwikipal` | Výběr entity pro wiki odkaz (Ctrl+Shift+K v markdownovém poli) |
 
 ### Hromadné akce
 
