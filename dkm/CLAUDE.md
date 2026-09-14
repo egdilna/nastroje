@@ -618,6 +618,33 @@ Archiv nejsou výjimka** — nic v liště není napevno. Druhy: `inbox`, `all`,
   nedává smysl. Granularitu drží `state.view.groupDate`, klíč přihrádky nese předponu
   (`d:`, `w:`, `m:`, `y:`), aby se přihrádky různých granularit nepotkaly.
 
+## Zkratky v markdownových polích
+`pripojZkratkyMd(ta)` visí na **té konkrétní textarei**, ne v globálním `keydown`. Musí to
+tak být: globální větev pro Ctrl+K (vyhledávání) se nekouká na Shift, takže by Ctrl+Shift+K
+spadlo do téhož. Obsloužená zkratka proto volá i `stopPropagation` — jinak by se provedlo
+obojí. Mimo markdownová pole obě zkratky zůstávají, jak byly.
+
+- **Vkládá se přes `document.execCommand('insertText')`** (`vlozDoPole`). Metoda je zastaralá,
+  ale jako jediná zachová Ctrl+Z prohlížeče a vyvolá událost `input` — a **právě z ní se
+  hodnota atributu ukládá**. Přímý zápis do `ta.value` by změnu tiše zahodil. Kdo bude
+  cokoli vkládat do pole programově, ať jde tudy.
+- **Znaky (`>`, `+`, `-`, `=`) se čtou z `ev.key`**, ne z fyzické klávesy: `+` je na české
+  klávesnici bez Shiftu, na americké se Shiftem. Písmena naopak přes `ctrlKlavesa`.
+- Obalování je párové (`mdObal`): druhé stisknutí značku sundá, a to i když je výběr jen
+  vnitřek. `jeObal` hlídá, aby kurzíva (`*`) nesundala půlku tučného (`**`).
+- Pole jsou dvě: `buildFieldInput` (atributy typu, aspektu i vlastní) a rychlé přidání
+  do Inboxu. Kdo přidá další markdownové pole, ať zavolá `pripojZkratkyMd`.
+
+## Paleta jako widget
+`otevriPaletu(o)` je **jeden overlay pro dvě věci** — příkazovou paletu (`openCommandPalette`)
+a výběr entity pro wiki odkaz (`otevriWikiPaletu`, Ctrl+Shift+K). Liší se jen `zdroj` voleb
+a tím, co udělá `action`. Další takový seznam přidávej jako `zdroj`, ne jako druhý overlay;
+id `cmdp` a `cmdp-in` zůstávají příkazové paletě, protože se o ně opírá `screens.md` i testy.
+
+Do nabídky wiki odkazu se nedostane entita, jejíž název nese `]` nebo zalomení řádku —
+takový odkaz zapsat nejde, stejně jako ho neumí přepsat `prejmenujWikiOdkazy`.
+`poZavreni` vrací kurzor do textu přesně tam, kde byl, když se nic nevybralo.
+
 ## Paleta příkazů (`collectPaletteCandidates`)
 Otevírá ji Ctrl+Shift+P, F1 a tlačítko v hlavičce; **Ctrl+P patří prohlížeči na tisk**,
 Shift+F1 skáče do Nápovědy. Nad otevřeným `<dialog>` se neotevírá.
@@ -637,6 +664,10 @@ mění, jaký znak vyjde — na české klávesnici je Alt+U „¨" a Alt+2 „�
 Prosté klávesy (n, e, r, c…) naopak `ev.key` chtějí, ty rozložení respektovat mají.
 Ctrl-zkratky berou obojí (`ctrlKlavesa`): znak kvůli zvyku, fyzickou klávesu kvůli
 Caps Locku a rozložením, kde Ctrl+S pošle „ы". Nikdy neporovnávej jen `ev.key==='s'`.
+
+**Výjimka jsou markdownová pole** — tam zkratky visí na samotné textarei a událost
+zastaví, protože Ctrl+K i Ctrl+Shift+K globálně znamenají něco jiného. Viz „Zkratky
+v markdownových polích" výš.
 
 Zkratka, která míří do něčeho schovaného v kartě detailu, musí **nejdřív přepnout kartu** —
 do skrytého prvku se zaostřit nedá. Viz `fokusNovyKomentar` u klávesy C.
@@ -746,7 +777,7 @@ Hranice slova se testuje přes `\p{L}` — `\b` by na diakritice selhalo. Nahraz
 Při změně názvu entity nebo formátu textových hodnot na to pamatuj.
 
 ## Lokalizace
-`I18N = {cs:{…}, en:{…}}` s **915 klíči**, přístup přes `t(k, v)`, jazyk v `dkm-lang`.
+`I18N = {cs:{…}, en:{…}}` s **1125 klíči**, přístup přes `t(k, v)`, jazyk v `dkm-lang`.
 Každý nový text = klíč v obou jazycích. Do UI nikdy nepiš řetězec natvrdo.
 Řetězce jsou **prostý text, ne HTML** — vkládej je přes `textContent`. `importTSVDesc` byl
 psaný se značkami a nasazovaný přes `innerHTML=esc(...)`, takže se `<br>` a `<b>` uživateli
