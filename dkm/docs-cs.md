@@ -1786,6 +1786,14 @@ V bulk režimu vybereš entity, akce **📦 Export balíčku**. Wizard:
 2. **Model**: typy, aspekty, seznamy, soustavy tagů a relace, které se přenesou
 3. **Preview**: přehled, co se v balíčku octne
 
+**Co se počítá jako vazba při rozšíření rozsahu:** klasická vazba **i vazba přes atribut
+typu relation**, a to v **obou směrech** — soused je jak ten, na koho ukazuješ, tak ten, kdo
+ukazuje na tebe. Archivované entity se nenatahují.
+
+**Wiki zmínky `[[Název]]` se nepočítají.** Odkaz v textu je poznámka, ne vazba modelu; přes
+zmínky by se do balíčku natáhlo půl projektu. Když takovou entitu potřebuješ, přidej si ji
+do výběru ručně.
+
 Stáhne se `.dkmpkg`.
 
 ### 28.3 Import balíčku
