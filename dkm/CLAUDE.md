@@ -459,8 +459,9 @@ opomenutí: automatické odesílání práce ven se má zapínat vědomě.
 
 - Spouští ho `setDirty(true)` přes `ghAutoNaplanuj()`; mezi změnou a odesláním je
   **2,5 s ticha** (`GHAUTO_PRODLEVA`), jinak by každé písmeno v editoru dělalo commit.
-- `saveToGitHub(tiche)` — s `tiche` bez „Ukládám…", bez tónu a bez hlášky o úspěchu;
-  úspěch se pozná podle času u přepínače. **Chyba se hlásí vždycky.**
+- `saveToGitHub(tiche)` — s `tiche` bez „Ukládám…" a bez hlášky o úspěchu. **Tón zní dál**:
+  je to jediná zpětná vazba tichého ukládání vedle zhasnutého ukazatele změn.
+  **Chyba se hlásí vždycky.**
 - **Po chybě se autosave vypne.** Opakovat po každé změně by u špatného tokenu znamenalo
   nekonečnou řadu chybových hlášek.
 - Souběh hlídá `ghAutoStav.bezi` + `znovu`: dvě ukládání naráz by si přepsala `sha`.

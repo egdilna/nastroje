@@ -1226,7 +1226,9 @@ samo uloží projekt **na GitHub** — do souboru ne, to zůstává na tlačítk
 - **Nikam se nepamatuje.** Nastavení nejde do projektu ani do prohlížeče, takže po každém
   načtení stránky je Auto **vypnuté**. Je to schválně — posílat práci samo někam ven se má
   zapínat vědomě.
-- **Ukládá potichu**: žádné „Ukládám…", žádný tón. Chybu naopak řekne nahlas — a **vypne se**.
+- **Ukládá potichu**: žádné „Ukládám…", žádná hláška o úspěchu. **Tón zní** stejně jako
+  u ručního uložení — je to jediná zpětná vazba, kterou tiché ukládání má (vypnout se dá
+  v Nastavení → Obecné). Chybu naopak řekne nahlas — a **vypne se**.
   Kdyby se pokoušelo dál, špatný token by znamenal nekonečnou řadu hlášek. Když víš, co bylo
   špatně, zapneš ho znovu.
 

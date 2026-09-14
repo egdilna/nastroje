@@ -1234,7 +1234,9 @@ Next to the **Save** button is an **AutoSave** checkbox. When it is on, DKM save
 - **It is not remembered anywhere.** The setting goes neither into the project nor into the
   browser, so after every page load Auto is **off**. That is deliberate — sending your work
   somewhere on its own should be switched on consciously.
-- **It saves quietly**: no "Saving…", no tone. A failure, on the other hand, is loud — and
+- **It saves quietly**: no "Saving…", no success message. **The tone plays** just as it does
+  for a manual save — it is the only feedback a quiet save has (it can be switched off in
+  Settings → General). A failure, on the other hand, is loud — and
   **switches it off**. If it kept trying, a bad token would mean an endless run of messages.
   Once you know what went wrong, you turn it back on.
 
