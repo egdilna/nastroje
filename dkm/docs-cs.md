@@ -1928,6 +1928,11 @@ U každé záložky si nastavíš:
   spočítat ho znamená projet celý filtr, a u několika pohledů nad velkým projektem to je znát.
 - **Skrýt, když je prázdná** — takhle se chová Archiv v novém projektu.
 - **Otevírat na této** — na téhle záložce aplikace začíná. Bez označení začíná na první.
+  Platí to i po **načtení projektu** — ze souboru, ze schránky, z GitHubu i z adresy
+  (`?id=`, `?open=`). **Přednost má ale adresa**: odkaz `…#entity/e2` skončí na té entitě,
+  ne na výchozí záložce, aby sdílené odkazy dál vedly tam, kam mají. Když cíl z adresy
+  v načtených datech není (v adrese zbyl cíl z předchozího projektu), otevře se výchozí
+  záložka.
 
 Řádek se klikem rozbalí do editace. Pořadí mění tlačítka **↑↓** i přetažení — a to jak tady,
 tak přímo v liště, nově **napříč všemi druhy** (dřív jen v rámci skupiny). Na dotykových

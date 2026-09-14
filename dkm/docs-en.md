@@ -1956,6 +1956,11 @@ For every tab you can set:
   it means running the whole filter, and with several views over a large project you feel it.
 - **Hide when empty** — this is how Archive behaves in a new project.
 - **Open on this one** — the app starts on this tab. With none marked it starts on the first.
+  This holds after **loading a project** too — from a file, the clipboard, GitHub or an address
+  (`?id=`, `?open=`). **The address wins, though**: a link `…#entity/e2` ends on that entity,
+  not on the default tab, so shared links keep leading where they should. When the address'
+  target is not in the loaded data (a target left over from the previous project), the default
+  tab opens.
 
 A row expands on click for editing. Order is changed by the **↑↓** buttons or by dragging —
 both here and in the bar itself, now **across all kinds** (it used to be within a group only).
