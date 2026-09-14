@@ -452,6 +452,20 @@ ani vazbu na uložený pohled. `_navAdresa` drží adresu, kterou jsme nastavili
 zahodila. Kdo přidává navigaci, nemusí na pořadí myslet, ale ani jedno z toho nemá obcházet
 přímým zápisem do `location.hash`.
 
+## Výchozí záložka při načtení projektu
+Načtení projektu (soubor, schránka, GitHub, `?id=`, `?open=`) končí voláním
+`otevriVychoziZalozku()`, ne tvrdým `state.view={tab:'inbox'}`. Kdo přidá další cestu
+k načtení projektu, ať to udělá stejně.
+
+**Proč to nešlo přes `bootstrap`:** ten o výchozí záložce rozhoduje dřív, než
+`autoLoadFromUrlParams()` stihne data stáhnout — v ten okamžik žádné záložky nejsou.
+Načtení pak pohled beztak přepsalo na Inbox, takže označení „Otevírat na této" se
+při načtení z adresy nikdy neuplatnilo.
+
+**Adresa má přednost.** Když `location.hash` na něco v načtených datech ukazuje
+(`cilAdresyPlati`), vyhraje — sdílený odkaz `…#entity/e2` musí skončit na té entitě.
+Zastaralý cíl z předchozího projektu se ignoruje a otevře se výchozí záložka.
+
 ## Automatické ukládání na GitHub
 Přepínač v hlavičce vedle Uložit. Stav drží `ghAutoStav` **jen v paměti stránky** — do dat
 projektu ani do `localStorage` nepatří, takže po načtení je vždycky vypnuté. Záměr, ne
