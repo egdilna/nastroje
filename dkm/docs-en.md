@@ -1223,11 +1223,11 @@ Saving comes with **sound feedback** — a short rising tone on success, a darke
 
 #### Autosave (Auto)
 
-Next to the **Save** button is an **Auto** checkbox. When it is on, DKM saves the project
+Next to the **Save** button is an **AutoSave** checkbox. When it is on, DKM saves the project
 **to GitHub** after every change — not to a file, that stays on the button.
 
-- **Green = running, grey = not.** When on, it also shows the time of the last save:
-  `Auto · saved 15:47`.
+- **Green = running, grey = not.** You can tell it saved by the unsaved-changes indicator
+  going out.
 - **Without GitHub set up** the checkbox is disabled and greyed out; the tooltip says why.
 - **It does not save on every keystroke.** It waits for 2.5 seconds of quiet, so ten typed
   letters make one commit, not ten. Leaving the tab does not wait — it sends straight away.

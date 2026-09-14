@@ -1215,11 +1215,11 @@ Uložení doprovází **zvuková odezva** — po úspěchu krátký stoupavý t�
 
 #### Automatické ukládání (Auto)
 
-Vedle tlačítka **Uložit** je zaškrtávátko **Auto**. Když je zapnuté, DKM po každé změně
+Vedle tlačítka **Uložit** je zaškrtávátko **AutoSave**. Když je zapnuté, DKM po každé změně
 samo uloží projekt **na GitHub** — do souboru ne, to zůstává na tlačítku.
 
-- **Zelené = běží, šedé = neběží.** U zapnutého je vidět i čas posledního uložení:
-  `Auto · uloženo 15:47`.
+- **Zelené = běží, šedé = neběží.** Že se uložilo, poznáš podle toho, že zhasne ukazatel
+  neuložených změn.
 - **Bez nastaveného GitHubu** je zaškrtávátko nedostupné a zašedlé; napoví to i titulek.
 - **Neukládá po každém úhozu.** Čeká na 2,5 sekundy klidu, takže z deseti napsaných písmen
   vznikne jeden commit, ne deset. Při odchodu ze záložky se čekání nedodrží a odešle se hned.
