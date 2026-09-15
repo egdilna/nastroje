@@ -1161,11 +1161,20 @@ function odvozenyPopisek(z) {
   return (z.trigger || "").trim();
 }
 
+// Spouštěče tak, jak se zapíšou do souboru — se závěrečnou mezerou, když je zaškrtnutá.
+// Mezera je fígl z cookbooku Espansa: napsaná mezera spustí náhradu a sama za vloženým
+// textem nezůstane. V modelu ji spouštěče nenesou, přidává se až tady.
+function spousteceProZapis(z) {
+  const konec = z.mezeraNaKonci ? " " : "";
+  const seznam = z.typSpoustece === "vice" ? (z.triggers || []) : [z.trigger || ""];
+  return seznam.filter((t) => t !== "").map((t) => t + konec);
+}
+
 function zkratkaDoObjektu(z) {
   const o = {};
   if (z.typSpoustece === "regex") o.regex = z.regex || "";
-  else if (z.typSpoustece === "vice") o.triggers = (z.triggers || []).filter((t) => t !== "");
-  else o.trigger = z.trigger || "";
+  else if (z.typSpoustece === "vice") o.triggers = spousteceProZapis(z);
+  else o.trigger = spousteceProZapis(z)[0] || "";
 
   const popisek = bezpecnyText(z.label).trim();
   if (popisek && popisek !== odvozenyPopisek(z)) o.label = popisek;
@@ -1308,6 +1317,20 @@ function zkratkaZObjektu(o) {
   else if (Array.isArray(o.triggers)) { z.typSpoustece = "vice"; z.triggers = o.triggers.map(bezpecnyText); }
   else { z.typSpoustece = "jeden"; z.trigger = bezpecnyText(o.trigger); }
 
+  // Končí-li všechny spouštěče mezerou, je to ten fígl z cookbooku — zaškrtneme ho
+  // a mezeru z modelu sundáme, ať ji uživatel nemusí hlídat ručně.
+  if (z.typSpoustece !== "regex") {
+    const seznam = z.typSpoustece === "vice" ? z.triggers : [z.trigger];
+    const vsechny = seznam.filter((t) => t !== "");
+    z.mezeraNaKonci = vsechny.length > 0 && vsechny.every((t) => t.length > 1 && t.endsWith(" "));
+    if (z.mezeraNaKonci) {
+      if (z.typSpoustece === "vice") z.triggers = z.triggers.map((t) => t.replace(/ $/, ""));
+      else z.trigger = z.trigger.replace(/ $/, "");
+    }
+  } else {
+    z.mezeraNaKonci = false;
+  }
+
   z.label = bezpecnyText(o.label);
   if (z.label.trim() === odvozenyPopisek(z)) z.label = "";
 
@@ -1362,6 +1385,7 @@ function novaZkratka() {
   return {
     id: noveId(),
     typSpoustece: "jeden",
+    mezeraNaKonci: true,
     trigger: "",
     triggers: [""],
     regex: "",
@@ -2114,6 +2138,15 @@ function vykresliEditor() {
     fsSpoustec.appendChild(p.obal);
   }
 
+  if (z.typSpoustece !== "regex") {
+    const mezera = vytvorPole({
+      popisek: "Spouštěč zakončit mezerou", typ: "zaskrtavatko",
+      napoveda: "Do souboru se za spouštěč přidá mezera, takže zkratku spustíš až mezerníkem. "
+        + "Ta mezera se tím spotřebuje a za vloženým textem nezůstane přebývat. Doporučeno."
+    }, z.mezeraNaKonci, (e) => { z.mezeraNaKonci = e.target.checked; zmena(); }, "sp-mezera");
+    fsSpoustec.appendChild(mezera.obal);
+  }
+
   const popisekPole = vytvorPole({ popisek: "Popisek zkratky (nepovinné)", typ: "text",
     napoveda: "Vlastní název zkratky pro vyhledávací okno Espansa. Nech ho prázdný, pokud by "
       + "jen opakoval spouštěč — hledat se dá ve spouštěči, popisku i v textu." },
@@ -2486,10 +2519,10 @@ function zkontroluj() {
   const potize = [];
   const z = aktualniZkratka();
 
+  // Porovnáváme spouštěče tak, jak se zapíšou — :zkr a :zkr s mezerou jsou dva různé.
   const vsechnySpoustece = [];
   for (const zk of stav.zkratky) {
-    if (zk.typSpoustece === "jeden" && zk.trigger) vsechnySpoustece.push(zk.trigger);
-    if (zk.typSpoustece === "vice") vsechnySpoustece.push(...zk.triggers.filter(Boolean));
+    if (zk.typSpoustece !== "regex") vsechnySpoustece.push(...spousteceProZapis(zk));
   }
   const duplicity = vsechnySpoustece.filter((t, i) => vsechnySpoustece.indexOf(t) !== i);
   if (duplicity.length) potize.push("Stejný spouštěč je použitý víckrát: " + Array.from(new Set(duplicity)).join(", "));
@@ -2959,8 +2992,8 @@ function zkratkaProRozbalovac(z) {
     label: bezpecnyText(z.label).trim()
   };
   if (z.typSpoustece === "regex") o.regex = z.regex;
-  else if (z.typSpoustece === "vice") o.triggers = z.triggers.filter(Boolean);
-  else o.trigger = z.trigger;
+  else if (z.typSpoustece === "vice") o.triggers = spousteceProZapis(z);
+  else o.trigger = spousteceProZapis(z)[0] || "";
   o[{ text: "replace", markdown: "markdown", html: "html", obrazek: "image_path", formular: "form" }[z.typNahrady]] =
     textNahrady(z);
   if (z.typNahrady === "formular" && z.poleFormulare.length) {
