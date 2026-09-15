@@ -370,6 +370,13 @@ kolísat, hledej nový zdroj času nebo náhody, ne důvod, proč to nevadí.
 Zmrazený okamžik je prosinec 2026 schválně — je to měsíc, ve kterém má ukázkový projekt
 termín, takže snímek kalendáře není prázdný.
 
+## Nadpis detailu se nesmí smrsknout
+`.dh` je `flex-wrap:wrap` a `.dt` v něm mělo `min-width:0`. Nadpis se tím smrskl na nejdelší
+slovo, tlačítka akcí si vzala zbytek řádky a z „Alice Nováková (Osoba)" byl tři řádky vysoký
+sloupeček. Nadpis má proto **vlastní minimum** (`flex:1 1 18rem;min-width:min(100%,18rem)`):
+tlačítka se radši zalomí pod něj a pod 18rem šířky si nadpis vezme celou řádku sám.
+`min-width:0` sem nepatří — nadpis se láme, netruncuje.
+
 ## Detail entity — dva sloupce a karty
 Vlevo **co entita je** (atributy, objekty), vpravo **její okolí** v kartách
 (`renderDetailTabs`): Vazby (a v ní i Odkazuje sem — je to týž vztah z opačné strany),
@@ -776,6 +783,12 @@ zpět na řazení z lišty).
 
 **Sekce** (`state.view.groupBy`) staví na `collectColumnAttrCandidates` a `entityColumnKey` —
 tytéž funkce jako kanban, jen do `<details>` místo sloupců.
+
+**Kanban skrývá prázdné sloupce jen v zobrazení** (`state.view.kanbanSkrytPrazdne`). Nabídka
+„Přesunout do" na kartě dostává `vsechnySloupce`, ne `columnsToShow` — jinak by se do prázdného
+sloupce nedalo nic přesunout a zůstal by prázdný napořád. Hláška „všechny sloupce jsou prázdné"
+visí na zapnutém přepínači, aby nelhala, když je vypnutý; prázdný seznam se sem nedostane,
+řeší ho `renderListEl`.
 
 **Náhled** (`state.view.preview`) je režim: `previewOn()` mění chování kliku na entitu
 v kartě, v tabulce i v kalendáři. `renderDetail(id,{embedded:true})` vynechá navigaci zpět.

@@ -808,6 +808,13 @@ Nad tabulí selector **Sloupce podle**. Nabízí atributy typu select, yesno a s
 
 Karta má ikonu, název, snippet a **dropdown „Přesunout do"** — screen reader–kompatibilní alternativa k drag-and-drop. Změna sloupce = úprava hodnoty atributu, entita se přeuloží.
 
+Vedle selectoru je zaškrtávátko **Skrýt prázdné sloupce**. U úkolů dává smysl vidět
+i sloupec, do kterého se zatím nic nedostalo — jinde jsou prázdné sloupce jen místo
+navíc. Zapnuté skrývání se **netýká nabídky „Přesunout do"**: ta nabízí sloupce
+všechny, i skryté, jinak by se do prázdného sloupce nedalo nic dostat a zůstal by
+prázdný navždy. Jakmile v něm něco je, objeví se sám. Volba se ukládá do pohledu
+(kap. 12.7).
+
 ### 12.6 Časová osa (📅)
 
 Selector **Časová osa podle** — všechny date atributy typu, aspektu, plus systémové Vytvořeno a Upraveno.
@@ -819,7 +826,8 @@ Entity grupované podle roku a měsíce, s datem před názvem. Entity bez data 
 ### 12.7 Zobrazení v uložených pohledech
 
 Když uložíš pohled, uloží se i způsob zobrazení a jeho nastavení — **sekce včetně granularity
-u dat**, vybrané sloupce tabulky **i jejich řazení klikem na hlavičku**, atribut Kanbanu, atribut
+u dat**, vybrané sloupce tabulky **i jejich řazení klikem na hlavičku**, atribut Kanbanu
+i skrývání jeho prázdných sloupců, atribut
 kalendáře, atribut a směr časové osy a to, jestli byl zapnutý náhled. „Dokumenty seskupené podle
 Stavu" nebo „Úkoly po dnech splatnosti" jde tedy uložit jedním kliknutím tlačítkem **⭐** v liště
 a dát do lišty jako záložku.

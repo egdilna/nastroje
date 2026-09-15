@@ -817,6 +817,13 @@ Above the board a **Columns by** selector. Offers select / yesno attributes plus
 
 Card has icon, name, snippet and a **Move to dropdown** — screen reader-compatible alternative to drag-and-drop. Changing column = editing attribute value, entity is re-saved.
 
+Next to the selector there is a **Hide empty columns** tick box. For tasks it makes sense
+to see a column nothing has reached yet; elsewhere empty columns are just wasted space.
+Hiding does **not** apply to the **Move to** dropdown: it offers every column, hidden ones
+included — otherwise nothing could ever be moved into an empty column and it would stay
+empty forever. As soon as something lands in it, the column reappears. The choice is stored
+in the saved view (12.7).
+
 ### 12.6 Timeline (📅)
 
 **Timeline by** selector — all date attributes (type, aspect) plus system Created / Updated.
@@ -829,7 +836,7 @@ Entities grouped by year and month with date before the name. Entities without a
 
 When you save a view, the display mode and its settings are saved too — **the sections including
 the date granularity**, the chosen table columns **and the sort you clicked into the header**, the
-Kanban attribute, the calendar attribute, the timeline attribute and direction, and whether the
+Kanban attribute and whether its empty columns are hidden, the calendar attribute, the timeline attribute and direction, and whether the
 preview was on. So "Documents grouped by Status" or "Tasks by due day" is one click on the **⭐**
 button in the toolbar and one tab on the bar.
 
