@@ -213,19 +213,21 @@ button at a heading opens the source editor for that one section. Below the text
 the same tools as for editing the whole entity — **Vložit…** (Insert), **Smazat hotové úkoly**
 (Delete done tasks), **📝 Revize** (Revisions), **Korektor** (Spell check) and **Lint**.
 
-Revisions, spell check and lint are full-screen modes: the detail is re-rendered and the
+**Lint is not offered in the section editor.** It checks the structure of the whole
+markdown document — heading levels, list numbering, links — and over a slice of one section
+it reports nonsense, because it cannot see the rest of the body. It still works over the
+entity's whole content.
+
+Revisions and spell check are full-screen modes: the detail is re-rendered and the
 section editor, which only lives in the open page, is destroyed with it. The app therefore
 remembers which section you came from and, after **← Zpět na úpravy** (Back to editing),
 **reopens the section editor with the text you ended up with in the tool**. You then write it
 into the entity with **💾 Uložit sekci** (Save section) — only that writes to the body, so
 **✕ Zrušit** (Cancel) still changes nothing.
 
-> Note on lint: when working over a section, its *Save* button does not save to the entity but
-> returns the text to the section editor (it says so in a toast). Writing straight to the body
-> would replace the whole body with the contents of one section.
-
-**Delete done tasks** in the section editor removes ticked tasks from that section only; the
-number in brackets shows how many there are.
+**Delete done tasks** in the section editor removes ticked tasks from that section only. It
+asks for confirmation first (same as over the whole content) and the number in brackets is
+recomputed as you type, so it always shows how many tasks will go.
 
 ## Table editor
 

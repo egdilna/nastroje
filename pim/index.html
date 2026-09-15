@@ -2595,6 +2595,7 @@ async function importFromFile(file) {
     }
   }
   db = parsed;
+  normalizujKonceRadkuVDb();
   if (!db.tags) db.tags = [];
   if (!db.savedViews) db.savedViews = [];
   if (!db.customTemplates) db.customTemplates = [];
@@ -2930,7 +2931,10 @@ function insertAtCursor(ta, text) {
 }
 
 // excludeMd: pokud true, nepřidá Revizi/Korektor (např. PlantUML zdroj)
-function buildMdFieldActions(targetId, fieldKey, fieldLabel, value, excludeMd) {
+// bezLintu: Lint kontroluje strukturu celého markdownového dokumentu (úrovně nadpisů,
+// číslování seznamů, odkazy). Nad výřezem jedné sekce hlásí nesmysly, protože kontext
+// zbytku těla nevidí – proto se v editoru sekce nenabízí vůbec.
+function buildMdFieldActions(targetId, fieldKey, fieldLabel, value, excludeMd, bezLintu) {
   const trimmed = (value || '').trim();
   let h = '';
   // Tlačítko „Vložit…" – otevírá rozšířený dialog se 5 možnostmi
@@ -2946,7 +2950,7 @@ function buildMdFieldActions(targetId, fieldKey, fieldLabel, value, excludeMd) {
   if (!excludeMd) {
     h += '<button type="button" class="md-revize" data-md-rev-target="' + escapeHtml(targetId) + '" data-md-rev-label="' + escapeHtml(fieldLabel) + '" data-md-rev-field="' + escapeHtml(fieldKey) + '" title="Spravovat revize CriticMarkup v tomto poli">📝 Revize</button> ';
     h += '<button type="button" class="md-korektor" data-md-spc-target="' + escapeHtml(targetId) + '" data-md-spc-label="' + escapeHtml(fieldLabel) + '" data-md-spc-field="' + escapeHtml(fieldKey) + '" title="Kontrola pravopisu (Korektor)">🔍 Korektor</button> ';
-    h += '<button type="button" class="md-lint" data-md-lint-target="' + escapeHtml(targetId) + '" data-md-lint-label="' + escapeHtml(fieldLabel) + '" data-md-lint-field="' + escapeHtml(fieldKey) + '" title="Kontrola syntaxe markdownu (Lint)">🧹 Lint</button>';
+    if (!bezLintu) h += '<button type="button" class="md-lint" data-md-lint-target="' + escapeHtml(targetId) + '" data-md-lint-label="' + escapeHtml(fieldLabel) + '" data-md-lint-field="' + escapeHtml(fieldKey) + '" title="Kontrola syntaxe markdownu (Lint)">🧹 Lint</button>';
   }
   return h;
 }
@@ -5457,6 +5461,36 @@ function getEntityDate(e) {
 
 // Vrací seznam sekcí jako plochý seznam s offsety v textu.
 // Sekce = nadpis Hx + obsah pod ním až k dalšímu nadpisu jakékoliv úrovně.
+// Markdown v aplikaci počítá s '\n'. Text s windowsovými konci řádků ('\r\n')
+// se jinak nezpracuje VŮBEC: regulární výrazy na nadpisy, seznamy i tabulky
+// končí na '$' a zbylé '\r' je rozbije – tělo se vykreslí jako jeden odstavec
+// a editace sekcí v něm nenajde ani jednu sekci. Data proto po převzetí zvenčí
+// (GitHub, import JSON, import ZIP) srovnáváme na '\n'.
+function normalizujKonceRadku(t) {
+  return (typeof t === 'string' && t.indexOf('\r') >= 0) ? t.replace(/\r\n?/g, '\n') : t;
+}
+
+// Projde entity a srovná konce řádků v těle, textových atributech a komentářích.
+// Vrací počet úprav (0 = data byla v pořádku).
+function normalizujKonceRadkuVDb(entity) {
+  const seznam = entity || (db && db.entities) || [];
+  let zmen = 0;
+  seznam.forEach(e => {
+    if (!e) return;
+    const noveTelo = normalizujKonceRadku(e.body);
+    if (noveTelo !== e.body) { e.body = noveTelo; zmen++; }
+    if (e.attributes) Object.keys(e.attributes).forEach(k => {
+      const nova = normalizujKonceRadku(e.attributes[k]);
+      if (nova !== e.attributes[k]) { e.attributes[k] = nova; zmen++; }
+    });
+    (e.comments || []).forEach(c => {
+      const novy = normalizujKonceRadku(c.text);
+      if (novy !== c.text) { c.text = novy; zmen++; }
+    });
+  });
+  return zmen;
+}
+
 function extractSectionsFlat(md) {
   if (!md) return [];
   const lines = md.split('\n');
@@ -19002,7 +19036,7 @@ function openSectionEditor(entity, sectionIdx) {
     '<label for="sec-edit-ta" class="sr-only">Zdroj sekce v Markdownu</label>' +
     '<textarea id="sec-edit-ta" rows="14" class="body-edit"></textarea>' +
     '<div class="md-field-actions" id="sec-edit-ta-actions" style="margin-top:0.4em;">' +
-      buildMdFieldActions('sec-edit-ta', 'body', 'sekce', fullSourceText, false) +
+      buildMdFieldActions('sec-edit-ta', 'body', 'sekce', fullSourceText, false, true) +
     '</div>' +
     buildMdSelectionActions('sec-edit-ta', 'body', 'sekce', false) +
     '<div class="btn-group" style="margin-top:0.5em;">' +
@@ -19018,15 +19052,12 @@ function openSectionEditor(entity, sectionIdx) {
   attachMarkdownShortcuts(ta, 'sec-edit-ta', () => entity);
 
   // Napojit nástroje (Vložit, Revize, Korektor, Lint, CriticMarkup) – stejné jako u editace celé entity.
-  (function attachSectionMdTools() {
+  function napojNastrojeSekce() {
     editDiv.querySelectorAll('button[data-md-rev-target]').forEach(btn => {
       btn.onclick = () => openCmReview(entity, 'sec-edit-ta', 'body', 'sekce');
     });
     editDiv.querySelectorAll('button[data-md-spc-target]').forEach(btn => {
       btn.onclick = () => openSpellCheck(entity, 'sec-edit-ta', 'body', 'sekce');
-    });
-    editDiv.querySelectorAll('button[data-md-lint-target]').forEach(btn => {
-      btn.onclick = () => openMdLint(entity, 'sec-edit-ta', 'body', 'sekce');
     });
     editDiv.querySelectorAll('button[data-md-paste-target]').forEach(btn => {
       btn.onclick = () => pasteHtmlAsMarkdown(btn.dataset.mdPasteTarget);
@@ -19034,16 +19065,35 @@ function openSectionEditor(entity, sectionIdx) {
     editDiv.querySelectorAll('button.md-insert-helper').forEach(btn => {
       btn.onclick = () => openMdInsertChooser(entity, 'sec-edit-ta');
     });
-    editDiv.querySelectorAll('button.md-del-done-tasks').forEach(btn => {
-      btn.onclick = () => {
-        ta.value = stripMarkdownDoneTasks(ta.value);
-        ta.dispatchEvent(new Event('input', { bubbles: true }));
-        toast('Hotové úkoly odstraněny.');
-      };
-    });
+    napojSmazatHotoveVSekci();
     // CriticMarkup akce nad výběrem + sledování výběru (globální funkce zpracuje náš sel-actions div).
     if (typeof attachMdSelectionTracking === 'function') attachMdSelectionTracking();
-  })();
+  }
+  napojNastrojeSekce();
+
+  // Lišta akcí se musí přepočítat při psaní, jinak zůstane viset starý počet
+  // hotových úkolů (a po jejich smazání tlačítko, které už nemá co mazat).
+  function prekresliAkceSekce() {
+    const akce = document.getElementById('sec-edit-ta-actions');
+    if (!akce) return;
+    akce.innerHTML = buildMdFieldActions('sec-edit-ta', 'body', 'sekce', ta.value, false, true);
+    napojNastrojeSekce();
+  }
+  function napojSmazatHotoveVSekci() {
+    editDiv.querySelectorAll('button.md-del-done-tasks').forEach(btn => {
+      btn.onclick = () => {
+        const cnt = countMarkdownDoneTasks(ta.value);
+        if (cnt === 0) return;
+        // Stejné potvrzení jako u editace celého těla – mazání je nevratné.
+        if (!confirm('Smazat ' + cnt + ' zaškrtnut' + (cnt === 1 ? 'ý úkol' : cnt < 5 ? 'é úkoly' : 'ých úkolů') + ' v této sekci?')) return;
+        ta.value = stripMarkdownDoneTasks(ta.value);
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        prekresliAkceSekce();
+        toast('Hotové úkoly odstraněny ze sekce.');
+      };
+    });
+  }
+  ta.addEventListener('input', prekresliAkceSekce);
 
   ta.focus();
   // Cursor na konec headingu
@@ -26090,6 +26140,7 @@ const GH = {
       if (!parsed.entities) throw new Error('Soubor neobsahuje entity.');
       // zachovat nastavení (téma, jméno, GH config), nahradit jen db
       db = parsed;
+      normalizujKonceRadkuVDb();
       if (!db.tags) db.tags = [];
       if (!db.savedViews) db.savedViews = [];
       if (!db.customTemplates) db.customTemplates = [];
@@ -28405,6 +28456,7 @@ async function importFromZip(file) {
 
     // Dosadit do db
     db = parsed;
+    normalizujKonceRadkuVDb();
     if (!db.tags) db.tags = [];
     if (!db.savedViews) db.savedViews = [];
     if (!db.customTemplates) db.customTemplates = [];
@@ -28674,6 +28726,8 @@ function analyzeImport(payload) {
 // scope: 'entities' (jen entity) | 'all' (entity + tagy + views + šablony + aspekty)
 function performImport(payload, strategy, scope) {
   const log = { added: 0, overwritten: 0, skipped: 0, renamed: 0 };
+  // Balíček může přijít z Windows – srovnat konce řádků dřív, než se entity zařadí.
+  if (payload && payload.db) normalizujKonceRadkuVDb(payload.db.entities || []);
   const idRemap = {}; // pro 'new-id' strategii
 
   // 1. Vlastní aspekty (jen 'all' scope)

@@ -230,6 +230,32 @@ a čitelnostní pojistky — neruš je, případně zpřístupni v nastavení.
 - Vanilla JS, `'use strict'`, žádný build krok. Jediná stálá externí závislost je GitHub API
   (+ volitelně Toggl, LINDAT a SheetJS).
 
+## Testy: `pim/testy/`
+V repozitáři je sada automatických testů proti skutečnému `index.html` v bezhlavém
+Chromiu. **Spouštěj ji u každé změny**, která sahá na obsah entit, editory nebo
+zobrazovací kód:
+
+```bash
+node pim/testy/spustit.mjs
+```
+
+Podrobnosti a jak psát novou sadu jsou v `pim/testy/README.md`. Dvě věci, které
+musí zůstat platit:
+
+1. **Pravidlo kanárků.** Když nová funkce sahá na text entity, musí k ní přibýt
+   test, který do každé sekce dá unikátní značku a po operaci ověří, že žijí
+   všechny, kterých se operace neměla dotknout. Tohle chytá tichá přepsání —
+   jediná třída chyb, která uživateli sežere data a nedá o sobě vědět.
+2. **Nástroj nad výřezem nesmí zapisovat do celku.** Kdo dostane `targetId`
+   a `fieldKey: 'body'`, musí počítat s tím, že `targetId` může být
+   `sec-edit-ta`, tedy jen jedna sekce. Zápis `entity.body = text` je v takové
+   funkci chyba; text patří zpátky do editoru sekce (`obnovEditorSekce`).
+   Celoobrazovkové nástroje (Revize, Korektor, Lint) si proto pamatují
+   `navratSekce`.
+
+Konce řádků: aplikace počítá s `\n`. Data zvenčí (GitHub, import JSON i ZIP)
+procházejí `normalizujKonceRadkuVDb()` — s `\r\n` se markdown nezpracuje vůbec.
+
 ## Ověření změny
 Entity s různými aspekty → vazby a graf souvislostí → Markdown s wiki odkazem, statusem
 a database includem → úkoly, projekt s plánem, deník → databáze (filtry, řazení, import TSV/CSV) →
