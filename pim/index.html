@@ -1132,8 +1132,14 @@ body.theme-dark .outline-children { border-left-color: #444; }
 body.theme-dark .progress-bar { background: #333; }
 .progress-bar-fill { background: #0066cc; height: 100%; transition: width 0.3s; }
 .progress-bar-label { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 0.85em; color: #fff; text-shadow: 0 0 3px rgba(0,0,0,0.5); }
-.kanban-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75em; margin: 0.75em 0; }
-.kanban-col { background: #f0f0f0; border-radius: 6px; padding: 0.6em; min-height: 60px; }
+.kanban-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75em; margin: 0.75em 0;
+  /* start, ne výchozí stretch: jinak mřížka natáhne všechny sloupce na výšku
+     nejvyššího a prázdný sloupec je pak vysoký šedý blok, ve kterém je jen nadpis. */
+  align-items: start; }
+.kanban-col { background: #f0f0f0; border-radius: 6px; padding: 0.6em; }
+.kanban-col.kanban-prazdny { opacity: 0.6; }
+.kanban-prepinac { display: flex; align-items: center; gap: 0.4em; margin: 0.5em 0 0; font-size: 0.9em; font-weight: normal; }
+.kanban-prepinac input { margin: 0; }
 body.theme-dark .kanban-col { background: #222; }
 .kanban-col h4 { margin: 0 0 0.4em; font-size: 0.95em; border-bottom: 2px solid #0066cc; padding-bottom: 0.2em; }
 .kanban-card { background: #fff; padding: 0.4em 0.6em; margin: 0.3em 0; border-radius: 4px; border: 1px solid #ddd; font-size: 0.9em; }
@@ -13648,6 +13654,12 @@ function renderDetailRead(main, e) {
     quickEntInp.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doAddEnt(); } };
   }
   // Kanban task toggle (v project dashboard)
+  const kanbanCb = main.querySelector('#kanban-skryt-prazdne');
+  if (kanbanCb) kanbanCb.onchange = () => {
+    state.settings.kanbanZobrazitPrazdne = !kanbanCb.checked;
+    save();
+    render();
+  };
   main.querySelectorAll('input[data-task-toggle]').forEach(cb => {
     cb.onclick = (ev) => ev.stopPropagation();
     cb.onchange = () => {
@@ -18380,9 +18392,21 @@ function renderProjectDashboard(project) {
 
   // Úkoly (kanban) – speciální
   if (totalT > 0) {
-    h += '<h4>Úkoly (kanban)</h4><div class="kanban-cols">';
+    // Prázdné sloupce jsou ve výchozím stavu schované: u projektu, kde se zrovna
+    // na nic nečeká, by to byly jen prázdné bloky navíc. Přepínač je nad sloupci
+    // a volba se pamatuje v nastavení (ukládá se kladně, aby výchozím stavem bylo skrytí).
+    const skrytPrazdne = !(state.settings && state.settings.kanbanZobrazitPrazdne);
+    const prazdnych = Object.values(kanban).filter(c => c.items.length === 0).length;
+    h += '<h4>Úkoly (kanban)</h4>' +
+      '<label class="kanban-prepinac"><input type="checkbox" id="kanban-skryt-prazdne"' +
+        (skrytPrazdne ? ' checked' : '') + '> Skrýt prázdné sloupce' +
+        (prazdnych > 0 ? ' <span class="meta">(' + prazdnych + ')</span>' : '') +
+      '</label>' +
+      '<div class="kanban-cols">';
     Object.entries(kanban).forEach(([k, col]) => {
-      h += '<div class="kanban-col"><h4>' + escapeHtml(col.label) + ' (' + col.items.length + ')</h4>';
+      if (skrytPrazdne && col.items.length === 0) return;
+      h += '<div class="kanban-col' + (col.items.length === 0 ? ' kanban-prazdny' : '') + '">' +
+        '<h4>' + escapeHtml(col.label) + ' (' + col.items.length + ')</h4>';
       col.items.forEach(t => {
         const isDone = t.attributes && t.attributes.status === 'done';
         h += '<div class="kanban-card">' +
@@ -22454,8 +22478,15 @@ function openRelationPicker(opts) {
   let activeIndex = 0;
   let renderedItems = [];
 
+  // Porovnává se bez diakritiky: „cinnost" má najít typ „Činnost". Velikost písmen
+  // řeší tentýž průchod.
+  function bezDiakritiky(t) {
+    return String(t == null ? '' : t).toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+
   function refreshList() {
-    const raw = searchInput.value.trim().toLowerCase();
+    const raw = bezDiakritiky(searchInput.value.trim());
     const words = raw ? raw.split(/\s+/).filter(w => w.length > 0) : [];
     const aspectFilter = aspectSelect.value || null;
     const exclude = new Set(opts.excludeIds || []);
@@ -22471,12 +22502,15 @@ function openRelationPicker(opts) {
       if (aspectFilter) {
         if (!(e.aspects || []).includes(aspectFilter)) return false;
       }
-      // Hledání po slovech v názvu, tagách a aspektech
+      // Hledání po slovech v názvu, tagách a typu (aspektu). U typu se hledá jak
+      // podle popisku („Činnost"), tak podle klíče aspektu („cinnost"), aby zabralo
+      // obojí bez ohledu na to, jak je vlastní aspekt pojmenovaný.
       if (words.length > 0) {
-        const title = (getDisplayTitle(e) || '').toLowerCase();
-        const altTitle = (e.title || '').toLowerCase();
-        const tags = (e.tags || []).map(t => t.toLowerCase());
-        const aspects = (e.aspects || []).map(a => (aspectLabel(a) || '').toLowerCase());
+        const title = bezDiakritiky(getDisplayTitle(e));
+        const altTitle = bezDiakritiky(e.title);
+        const tags = (e.tags || []).map(bezDiakritiky);
+        const aspects = [];
+        (e.aspects || []).forEach(a => { aspects.push(bezDiakritiky(aspectLabel(a))); aspects.push(bezDiakritiky(a)); });
         const allMatch = words.every(w =>
           title.includes(w) ||
           altTitle.includes(w) ||
@@ -29844,8 +29878,11 @@ body.theme-dark .outline-children { border-left-color: #444; }
 body.theme-dark .progress-bar { background: #333; }
 .progress-bar-fill { background: #0066cc; height: 100%; transition: width 0.3s; }
 .progress-bar-label { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 0.85em; color: #fff; text-shadow: 0 0 3px rgba(0,0,0,0.5); }
-.kanban-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75em; margin: 0.75em 0; }
-.kanban-col { background: #f0f0f0; border-radius: 6px; padding: 0.6em; min-height: 60px; }
+.kanban-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75em; margin: 0.75em 0;
+  /* start, ne výchozí stretch: jinak mřížka natáhne všechny sloupce na výšku
+     nejvyššího a prázdný sloupec je pak vysoký šedý blok, ve kterém je jen nadpis. */
+  align-items: start; }
+.kanban-col { background: #f0f0f0; border-radius: 6px; padding: 0.6em; }
 body.theme-dark .kanban-col { background: #222; }
 .kanban-col h4 { margin: 0 0 0.4em; font-size: 0.95em; border-bottom: 2px solid #0066cc; padding-bottom: 0.2em; }
 .kanban-card { background: #fff; padding: 0.4em 0.6em; margin: 0.3em 0; border-radius: 4px; border: 1px solid #ddd; font-size: 0.9em; }
@@ -36405,6 +36442,9 @@ function renderProjectDashboard(project) {
   if (totalT > 0) {
     h += '<h4>Úkoly (kanban)</h4><div class="kanban-cols">';
     Object.entries(kanban).forEach(([k, col]) => {
+      // Prohlížeč je statický soubor – přepínač by nebylo kam dát, takže prázdné
+      // sloupce vynecháváme rovnou, stejně jako je aplikace ve výchozím stavu skrývá.
+      if (col.items.length === 0) return;
       h += '<div class="kanban-col"><h4>' + escapeHtml(col.label) + ' (' + col.items.length + ')</h4>';
       col.items.forEach(t => {
         h += '<div class="kanban-card"><a href="#" data-entity="' + escapeHtml(t.id) + '">' + getDisplayTitleWithBadges(t) + '</a>';
@@ -36651,8 +36691,15 @@ function openRelationPicker(opts) {
   let activeIndex = 0;
   let renderedItems = [];
 
+  // Porovnává se bez diakritiky: „cinnost" má najít typ „Činnost". Velikost písmen
+  // řeší tentýž průchod.
+  function bezDiakritiky(t) {
+    return String(t == null ? '' : t).toLowerCase()
+      .normalize('NFD').replace(/[\\u0300-\\u036f]/g, '');
+  }
+
   function refreshList() {
-    const raw = searchInput.value.trim().toLowerCase();
+    const raw = bezDiakritiky(searchInput.value.trim());
     const words = raw ? raw.split(/\\s+/).filter(w => w.length > 0) : [];
     const aspectFilter = aspectSelect.value || null;
     const exclude = new Set(opts.excludeIds || []);
@@ -36668,12 +36715,15 @@ function openRelationPicker(opts) {
       if (aspectFilter) {
         if (!(e.aspects || []).includes(aspectFilter)) return false;
       }
-      // Hledání po slovech v názvu, tagách a aspektech
+      // Hledání po slovech v názvu, tagách a typu (aspektu). U typu se hledá jak
+      // podle popisku („Činnost"), tak podle klíče aspektu („cinnost"), aby zabralo
+      // obojí bez ohledu na to, jak je vlastní aspekt pojmenovaný.
       if (words.length > 0) {
-        const title = (getDisplayTitle(e) || '').toLowerCase();
-        const altTitle = (e.title || '').toLowerCase();
-        const tags = (e.tags || []).map(t => t.toLowerCase());
-        const aspects = (e.aspects || []).map(a => (aspectLabel(a) || '').toLowerCase());
+        const title = bezDiakritiky(getDisplayTitle(e));
+        const altTitle = bezDiakritiky(e.title);
+        const tags = (e.tags || []).map(bezDiakritiky);
+        const aspects = [];
+        (e.aspects || []).forEach(a => { aspects.push(bezDiakritiky(aspectLabel(a))); aspects.push(bezDiakritiky(a)); });
         const allMatch = words.every(w =>
           title.includes(w) ||
           altTitle.includes(w) ||

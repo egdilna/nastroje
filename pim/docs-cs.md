@@ -451,6 +451,12 @@ naposledy dělal"; dál se v něm dá normálně hledat a filtrovat.
 
 ## Vazby mezi entitami
 
+Dialog **Vybrat entitu** (výběr cíle vazby, vložení wiki odkazu přes `Ctrl+Shift+K`, include
+i status chip) hledá zároveň v **názvu, tazích a typu (aspektu)** entity. U typu se hledá jak
+podle popisku, tak podle klíče aspektu, takže „Činnost" najde nejen entity, které to slovo
+mají v názvu, ale i všechny entity toho typu. Nezáleží na velikosti písmen **ani na diakritice** —
+`cinnost` najde totéž co `Činnost`. Víc slov se chová jako AND.
+
 Vazby jsou typované odkazy mezi entitami. Definované typy:
 
 | Typ | Inverzní popis |
@@ -517,6 +523,19 @@ U entity s aspektem **Projekt** se automaticky generuje dashboard se sekcemi:
 - atd.
 
 Pod každou sekcí je rychlá akce pro přidání nového dítěte projektu.
+
+### Kanban úkolů
+
+Úkoly projektu jsou nad sekcemi ve čtyřech sloupcích — *K udělání*, *Probíhá*, *Čeká*, *Hotovo*.
+Nad sloupci je zaškrtávátko **Skrýt prázdné sloupce**, ve výchozím stavu zapnuté: sloupec,
+ve kterém nic není, se nevykreslí. V závorce za popiskem je vidět, kolik sloupců je zrovna
+schovaných. Odškrtnutím se zobrazí všechny čtyři; volba se pamatuje v nastavení.
+
+Prázdný sloupec už taky není vysoký šedý blok — mřížka sloupce nenatahuje na výšku toho
+nejvyššího, takže když je zobrazený, je to jen proužek s nadpisem.
+
+Ve **statickém prohlížeči** se prázdné sloupce vynechávají vždy; přepínač by v jednom
+vygenerovaném souboru nebylo kam dát.
 
 ## Tisk / Export / Kopírování
 
