@@ -481,7 +481,10 @@ Parties: ((Parties)) — [Details on the web](((Web)))
 - **Whatever is not found or is empty disappears without a trace.** No error text, not even
   the `((…))` itself — just an empty spot.
 - **The value is taken as it reads**: for a relation the target's name (comma-separated for
-  several), for tags the tags comma-separated, for a date the date in the usual form.
+  several), for tags the tags comma-separated, for a date the date in the usual form. **Here a
+  relation is rendered by name only**, without the type in parentheses — a template is a
+  sentence a person writes, and a stray „(Person)“ would break it. Everywhere else in the app
+  the type in parentheses stays, because there it tells two entities of the same name apart.
 - The template tolerates quotes, apostrophes and Markdown links. A parenthesis cannot go
   inside `((…))` — precisely so that it does not clash with `[text](address)`.
 - A composed attribute cannot reference another composed one; such a placeholder stays empty.
@@ -490,6 +493,39 @@ Parties: ((Parties)) — [Details on the web](((Web)))
 viewer and in a table column. All four toggles from 7.7 apply to it as well. It is **not** in
 **data** exports (JSON, XML, package) — those emit what is stored, and a composed attribute
 has no stored value.
+
+#### Entity metadata
+
+Besides attributes, a template can use **facts about the entity itself**:
+
+| Field | What it inserts |
+|---|---|
+| `((název))` · `((name))` | the entity's name |
+| `((typ))` · `((type))` | the entity type's name (nothing for an entity in the Inbox) |
+| `((ikona))` · `((icon))` | the type's emoji |
+| `((id))` | the entity's identifier |
+| `((aspekty))` · `((aspects))` | the entity's aspect names, alphabetically, comma-separated |
+| `((vytvořeno))` · `((created))` | the creation date |
+| `((upraveno))` · `((updated))` | the date of the last change |
+
+**Both the Czech and the English name always work**, whichever language you have switched on —
+the template is part of the data and travels in a package to projects set to the other one.
+For the fields with diacritics the plain spelling works too (`((vytvoreno))`), and for the
+change date so does `((změněno))`.
+
+**An attribute of the same name wins.** If you create an attribute called *Type* on the type,
+`((type))` inserts its value, not the entity type's name — your model outranks this.
+
+#### Checking as you type
+
+Below the template field, whatever does not add up is listed as you write:
+
+- **Not found** — no such attribute or metadata field exists in the project. Almost always a typo.
+- **Will not render** — a reference to another composed attribute, or to itself; it stays empty.
+- **Only filled in on entities that have the field** — the attribute exists but belongs to
+  another type or aspect. On entities without it the spot stays empty.
+
+Without these notes a typo would only show up on the entity, where all it leaves is a blank.
 
 ### 7.7 How an attribute behaves in the display
 
