@@ -9215,8 +9215,17 @@ function attachSortHandlers(root, currentSort, onChange) {
     };
   });
 }
+// Kolik řádků seznam entit nejvýš vykreslí (pohled Vše i uložené pohledy).
+// Stránkování schválně není – jen strop, aby se velký seznam neotevíral pomalu.
+// 0 = bez omezení. Ořezává se až po filtrování a řazení, takže strop nemění,
+// které entity do seznamu patří, jen kolik jich HTML skutečně obsahuje.
+const VIEW_LIMIT_MOZNOSTI = [100, 300, 500, 1000, 2000, 0];
+const VIEW_LIMIT_VYCHOZI = 100;
+function popisLimitu(n) { return n === 0 ? 'vše' : String(n); }
+
 function renderAll(main) {
   const f = state.filter;
+  if (state._allLimit === undefined) state._allLimit = VIEW_LIMIT_VYCHOZI;
   const aspectOpts = Object.entries(getActiveAspects())
     .map(([k,v]) => '<option value="' + k + '"' + (f.aspect === k ? ' selected' : '') + '>' + escapeHtml(v.label) + '</option>').join('');
   const tagOpts = getAllTags().map(t => '<option value="' + escapeHtml(t) + '"' + (f.tag === t ? ' selected' : '') + '>' + escapeHtml(t) + '</option>').join('');
@@ -9224,6 +9233,11 @@ function renderAll(main) {
     '<h2>Vše</h2>' +
     '<div class="toolbar" role="search" aria-label="Hledání">' +
       '<div style="flex:1;min-width:14em;"><label for="filter-text">Hledaný text</label><input type="search" id="filter-text" value="' + escapeHtml(f.text || '') + '"></div>' +
+      '<div style="flex:0 0 auto;"><label for="all-limit">Zobrazit</label>' +
+        '<select id="all-limit" title="Kolik řádků se nejvýš vykreslí. Není to stránkování – filtrování i řazení pracují s celým výsledkem.">' +
+          VIEW_LIMIT_MOZNOSTI.map(n => '<option value="' + n + '"' +
+            (state._allLimit === n ? ' selected' : '') + '>' + popisLimitu(n) + '</option>').join('') +
+        '</select></div>' +
       '<div style="flex:0 0 auto;"><button id="filter-reset">Reset</button> <button id="filter-save">Uložit jako pohled</button>' +
         ' <button id="bulk-toggle" title="Přepnout režim hromadného výběru (klávesa X)">' + (_bulk.active ? 'Ukončit režim výběru' : 'Režim výběru') + '</button>' +
       '</div>' +
@@ -9526,9 +9540,13 @@ function renderAll(main) {
     const active = countActiveFilters();
     if (sumEl) sumEl.textContent = active > 0 ? '(' + active + ' aktivních)' : '';
     if (r.length === 0) { out.innerHTML = '<div class="empty">Žádné výsledky.</div>'; statusMsgDebounced('0 výsledků.'); return; }
-    out.innerHTML = '<p class="meta">Nalezeno ' + r.length + ' entit.</p>' +
-      renderEntityTableHtml(r, state._allSort, { selectionMode: _bulk.active, selected: _bulk.selected });
-    statusMsgDebounced(r.length + ' výsledků.');
+    const limit = Number(state._allLimit) || 0;
+    const zobrazene = limit > 0 ? r.slice(0, limit) : r;
+    const orezano = zobrazene.length < r.length;
+    out.innerHTML = '<p class="meta">Nalezeno ' + r.length + ' entit.' +
+        (orezano ? ' Zobrazeno prvních ' + zobrazene.length + ' – zbytek se načte po zvýšení limitu.' : '') + '</p>' +
+      renderEntityTableHtml(zobrazene, state._allSort, { selectionMode: _bulk.active, selected: _bulk.selected });
+    statusMsgDebounced(r.length + ' výsledků.' + (orezano ? ' Zobrazeno prvních ' + zobrazene.length + '.' : ''));
     attachEntityRowHandlers(out);
     bulkAttachHandlers(document);
     attachSortHandlers(out, state._allSort, (newSort) => {
@@ -9541,6 +9559,11 @@ function renderAll(main) {
     if (el.tagName === 'INPUT') el.oninput = update;
     el.onchange = update;
   });
+  const limitSelect = document.getElementById('all-limit');
+  if (limitSelect) limitSelect.onchange = () => {
+    state._allLimit = Number(limitSelect.value) || 0;
+    update();
+  };
   document.getElementById('filter-reset').onclick = () => {
     state.filter = { aspect:'', tag:'', text:'', status:'', attrFilters: [] };
     it.value = ''; sa.value = ''; st.value = ''; if (stn) stn.value = ''; if (fa) fa.value = ''; sar.value = 'active';
@@ -11919,11 +11942,6 @@ function renderViewsList(main) {
   });
 }
 
-// Kolik řádků pohled nejvýš vykreslí. Stránkování schválně není – jen strop,
-// aby se velký pohled neotevíral pomalu. 0 = bez omezení.
-const VIEW_LIMIT_MOZNOSTI = [100, 500, 1000, 2000, 0];
-const VIEW_LIMIT_VYCHOZI = 100;
-function popisLimitu(n) { return n === 0 ? 'vše' : String(n); }
 
 function renderSavedView(main, id) {
   const v = findSavedView(id);
@@ -11946,7 +11964,7 @@ function renderSavedView(main, id) {
       '<div style="flex:1;min-width:14em;"><label for="view-filter-text">Hledaný text</label>' +
         '<input type="search" id="view-filter-text" placeholder="Filtrovat výsledky…" value="' + escapeHtml(state._viewFilter[id] || '') + '"></div>' +
       '<div style="flex:0 0 auto;"><label for="view-limit">Zobrazit</label>' +
-        '<select id="view-limit">' +
+        '<select id="view-limit" title="Kolik řádků se nejvýš vykreslí. Není to stránkování – filtrování i řazení pracují s celým výsledkem.">' +
           VIEW_LIMIT_MOZNOSTI.map(n => '<option value="' + n + '"' +
             (state._viewLimit[id] === n ? ' selected' : '') + '>' + popisLimitu(n) + '</option>').join('') +
         '</select></div>' +
@@ -32860,7 +32878,13 @@ function attachSortHandlers(root, currentSort, onChange) {
     };
   });
 }
+// Strop na počet vykreslených řádků – stejně jako v aplikaci, viz VIEW_LIMIT_MOZNOSTI.
+const VIEW_LIMIT_MOZNOSTI = [100, 300, 500, 1000, 2000, 0];
+const VIEW_LIMIT_VYCHOZI = 100;
+function popisLimitu(n) { return n === 0 ? 'vše' : String(n); }
+
 function renderAll(main) {
+  if (state._allLimit === undefined) state._allLimit = VIEW_LIMIT_VYCHOZI;
   const f = state.filter;
   const aspectOpts = Object.entries(getActiveAspects())
     .map(([k,v]) => '<option value="' + k + '"' + (f.aspect === k ? ' selected' : '') + '>' + escapeHtml(v.label) + '</option>').join('');
@@ -32869,6 +32893,11 @@ function renderAll(main) {
     '<h2>Vše</h2>' +
     '<div class="toolbar" role="search" aria-label="Hledání">' +
       '<div style="flex:1;min-width:14em;"><label for="filter-text">Hledaný text</label><input type="search" id="filter-text" value="' + escapeHtml(f.text || '') + '"></div>' +
+      '<div style="flex:0 0 auto;"><label for="all-limit">Zobrazit</label>' +
+        '<select id="all-limit" title="Kolik řádků se nejvýš vykreslí. Není to stránkování – filtrování i řazení pracují s celým výsledkem.">' +
+          VIEW_LIMIT_MOZNOSTI.map(n => '<option value="' + n + '"' +
+            (state._allLimit === n ? ' selected' : '') + '>' + popisLimitu(n) + '</option>').join('') +
+        '</select></div>' +
       '<div style="flex:0 0 auto;"><button id="filter-reset">Reset</button> <button id="filter-save">Uložit jako pohled</button>' +
         ' <button id="bulk-toggle" title="Přepnout režim hromadného výběru (klávesa X)">' + (_bulk.active ? 'Ukončit režim výběru' : 'Režim výběru') + '</button>' +
       '</div>' +
@@ -33124,9 +33153,13 @@ function renderAll(main) {
     const active = countActiveFilters();
     if (sumEl) sumEl.textContent = active > 0 ? '(' + active + ' aktivních)' : '';
     if (r.length === 0) { out.innerHTML = '<div class="empty">Žádné výsledky.</div>'; statusMsgDebounced('0 výsledků.'); return; }
-    out.innerHTML = '<p class="meta">Nalezeno ' + r.length + ' entit.</p>' +
-      renderEntityTableHtml(r, state._allSort, { selectionMode: _bulk.active, selected: _bulk.selected });
-    statusMsgDebounced(r.length + ' výsledků.');
+    const limit = Number(state._allLimit) || 0;
+    const zobrazene = limit > 0 ? r.slice(0, limit) : r;
+    const orezano = zobrazene.length < r.length;
+    out.innerHTML = '<p class="meta">Nalezeno ' + r.length + ' entit.' +
+        (orezano ? ' Zobrazeno prvních ' + zobrazene.length + ' – zbytek se načte po zvýšení limitu.' : '') + '</p>' +
+      renderEntityTableHtml(zobrazene, state._allSort, { selectionMode: _bulk.active, selected: _bulk.selected });
+    statusMsgDebounced(r.length + ' výsledků.' + (orezano ? ' Zobrazeno prvních ' + zobrazene.length + '.' : ''));
     attachEntityRowHandlers(out);
     bulkAttachHandlers(document);
     attachSortHandlers(out, state._allSort, (newSort) => {
@@ -33139,6 +33172,11 @@ function renderAll(main) {
     if (el.tagName === 'INPUT') el.oninput = update;
     el.onchange = update;
   });
+  const limitSelect = document.getElementById('all-limit');
+  if (limitSelect) limitSelect.onchange = () => {
+    state._allLimit = Number(limitSelect.value) || 0;
+    update();
+  };
   document.getElementById('filter-reset').onclick = () => {
     state.filter = { aspect:'', tag:'', text:'', status:'' };
     it.value = ''; sa.value = ''; st.value = ''; if (stn) stn.value = ''; if (fa) fa.value = ''; sar.value = 'active';
@@ -33553,12 +33591,27 @@ function renderSavedView(main, id) {
   let r = applySavedView(v);
   if (!state._viewSort) state._viewSort = {};
   if (!state._viewSort[id]) state._viewSort[id] = { key: 'updated', dir: 'desc' };
+  if (!state._viewLimit) state._viewLimit = {};
+  if (state._viewLimit[id] === undefined) state._viewLimit[id] = VIEW_LIMIT_VYCHOZI;
   const sort = state._viewSort[id];
   r = sortEntitiesBy(r, sort);
+  const limit = Number(state._viewLimit[id]) || 0;
+  const zobrazene = limit > 0 ? r.slice(0, limit) : r;
+  const orezano = zobrazene.length < r.length;
   main.innerHTML = '<h1>' + (v.icon ? escapeHtml(v.icon) + ' ' : '') + escapeHtml(v.name) + '</h1>' +
-    '<p class="meta">Filtr: ' + escapeHtml(describeFilter(v.filters || {})) + '. Nalezeno ' + r.length + ' entit.</p>' +
+    '<p class="meta">Filtr: ' + escapeHtml(describeFilter(v.filters || {})) + '. Nalezeno ' + r.length + ' entit.' +
+      (orezano ? ' Zobrazeno prvních ' + zobrazene.length + ' – zbytek se načte po zvýšení limitu.' : '') + '</p>' +
+    '<div class="toolbar"><div style="flex:0 0 auto;"><label for="view-limit">Zobrazit</label>' +
+      '<select id="view-limit" title="Kolik řádků se nejvýš vykreslí. Není to stránkování – filtrování i řazení pracují s celým výsledkem.">' +
+        VIEW_LIMIT_MOZNOSTI.map(n => '<option value="' + n + '"' +
+          (state._viewLimit[id] === n ? ' selected' : '') + '>' + popisLimitu(n) + '</option>').join('') +
+      '</select></div></div>' +
     '<div class="btn-group"><button id="back-btn">← Zpět</button> <button id="edit-view">Upravit pohled</button></div>' +
-    (r.length === 0 ? '<div class="empty">Žádné výsledky.</div>' : '<div id="view-results">' + renderEntityTableHtml(r, sort) + '</div>');
+    (r.length === 0 ? '<div class="empty">Žádné výsledky.</div>' : '<div id="view-results">' + renderEntityTableHtml(zobrazene, sort) + '</div>');
+  const limitSelect = document.getElementById('view-limit');
+  if (limitSelect) limitSelect.onchange = () => {
+    state._viewLimit[id] = Number(limitSelect.value) || 0; render();
+  };
   document.getElementById('back-btn').onclick = goBack;
   document.getElementById('edit-view').onclick = () => openSaveViewDialog(v, true);
   attachEntityRowHandlers(main);

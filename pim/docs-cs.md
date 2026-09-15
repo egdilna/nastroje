@@ -331,7 +331,7 @@ Filtry se kombinují logikou **AND**.
 
 Nad výsledky pohledu je pole **Hledaný text**, které je filtruje rovnou při psaní — stejně jako v pohledu Vše a se stejným dosahem (název, tělo, atributy, tagy). Nemění uložený filtr pohledu, jen ho dočasně zužuje; text si pohled pamatuje po dobu sezení, takže po návratu do něj zůstane.
 
-Vedle je select **Zobrazit** s volbami 100, 500, 1000, 2000 a *vše*; výchozí je **100**. Je to prostý strop na počet vykreslených řádků, ne stránkování — zbytek se zobrazí zvýšením limitu. Počet nad tabulkou vždycky hlásí, kolik entit pohled našel celkem, a při oříznutí i kolik se jich vykreslilo. Řazení i filtrování se počítá z celého výsledku, teprve pak se ořízne, takže po seřazení sestupně uvidíte skutečně prvních 100. Volbu si pohled pamatuje po dobu sezení.
+Vedle je select **Zobrazit** s volbami 100, 300, 500, 1000, 2000 a *vše*; výchozí je **100**. Stejný select je i v pohledu **Vše** (vedle pole Hledaný text), takže se stejně chová i obyčejné filtrování. Je to prostý strop na počet vykreslených řádků, ne stránkování — zbytek se zobrazí zvýšením limitu. Počet nad tabulkou vždycky hlásí, kolik entit se našlo celkem, a při oříznutí i kolik jich je vykresleno. Řazení i filtrování se počítá z celého výsledku, teprve pak se ořízne, takže po seřazení sestupně uvidíte skutečně prvních 100 — a hlavně se do stránky nikdy nevykreslí víc řádků, než kolik je zvoleno. Volbu si pohled (i pohled Vše) pamatuje po dobu sezení; tlačítko Reset filtrů ji nemění.
 
 Pozor: hromadný výběr (a tím i export nebo chat nad vybranými) pracuje jen s tím, co je vykreslené — při limitu 100 nelze zaškrtnout entitu, která se nezobrazila.
 
