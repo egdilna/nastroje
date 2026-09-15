@@ -452,6 +452,12 @@ doing"; you can search and filter in it as usual.
 
 ## Links between entities
 
+The **Vybrat entitu** (Select entity) dialog — used for link targets, for inserting a wiki link
+with `Ctrl+Shift+K`, and for includes and status chips — searches the entity's **title, tags and
+type (aspect)** at once. For the type it matches both the label and the aspect key, so "Činnost"
+finds not only entities with that word in the title but every entity of that type. Case and
+**diacritics** do not matter — `cinnost` finds the same as `Činnost`. Several words behave as AND.
+
 Links are typed references between entities. Defined types:
 
 | Type | Inverse label |
@@ -518,6 +524,19 @@ For an entity with the **Project** aspect, a dashboard is automatically generate
 - etc.
 
 Below each section is a quick-add action for a new project child.
+
+### Task kanban
+
+Project tasks sit above the sections in four columns — *To do*, *In progress*, *Waiting*, *Done*.
+Above the columns is a **Skrýt prázdné sloupce** (Hide empty columns) checkbox, on by default:
+a column with nothing in it is not rendered. The number in brackets after the label shows how
+many columns are currently hidden. Unticking it shows all four; the choice is remembered in settings.
+
+An empty column is also no longer a tall grey block — the grid no longer stretches columns to
+the height of the tallest one, so when shown it is just a strip with its heading.
+
+In the **static viewer**, empty columns are always omitted; there would be nowhere to put a
+toggle in a single generated file.
 
 ## Print / Export / Copy
 
