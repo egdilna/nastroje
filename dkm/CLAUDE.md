@@ -688,6 +688,16 @@ takový odkaz zapsat nejde, stejně jako ho neumí přepsat `prejmenujWikiOdkazy
 Otevírá ji Ctrl+Shift+P, F1 a tlačítko v hlavičce; **Ctrl+P patří prohlížeči na tisk**,
 Shift+F1 skáče do Nápovědy. Nad otevřeným `<dialog>` se neotevírá.
 
+**Hledá `fuzzyMatchCandidates` a hledá v `label` i `sublabel`** — u entity je podtitulek
+typ, u příkazu kategorie, takže „činnost" najde i všechno toho typu. Text obou stran jde
+přes `hledaciKlic` (malá písmena, bez diakritiky, sražené mezery — táž normalizace jako
+`dupeKey` a jako párování podle názvu při importu).
+
+**Shoda v názvu musí přebít shodu v podtitulku.** Stupně skóre (3000 přesně / 2000 začíná /
+1000 obsahuje) jsou schválně daleko od sebe, aby je odečet délky názvu nepřebil. Dřív
+rozhodovala jen délka, takže se hledaná entita utopila mezi desítkami entit téhož typu —
+a protože se výsledek ořezává na 60, z nabídky rovnou vypadla.
+
 Je to **jediné místo, kde se skládá seznam příkazů** — co přibude jako tlačítko, přidej
 i sem. Kontextové skupiny (příkazy k otevřené entitě, příkazy k seznamu) se přidávají jen
 v odpovídajícím pohledu; sekce nastavení čte ze sdíleného `SETTINGS_SEKCE`, ať se seznam

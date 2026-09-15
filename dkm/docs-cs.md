@@ -1039,6 +1039,15 @@ rozepsaný název není práce nazmar; Esc seznam zavře a vrátí kurzor přesn
 Nenabízí se archivované entity, ta, kterou právě upravuješ, a entity, jejichž název
 obsahuje `]` nebo zalomení řádku — na takové se wiki odkaz zapsat nedá (viz kap. 15.3).
 
+**Hledá se podle názvu i podle typu.** Napíšeš-li *činnost*, dostaneš jak entity, které to
+mají v názvu, tak všechny entity **typu Činnost** — typ je u každé položky vypsaný vpravo.
+Nezáleží na velikosti písmen ani na diakritice, *cinnost* najde totéž. **Shody v názvu jsou
+vždycky napřed**: nejdřív přesný název, pak ty, které dotazem začínají, pak ty, kde je dotaz
+uvnitř, a teprve nakonec zbytek typu. Bez toho by se hledaná entita utopila mezi desítkami
+entit téhož typu. Víc slov musí sedět všechna, každé kdekoli — *krok 07* najde „Krok 07".
+
+Totéž platí i pro paletu příkazů (Ctrl+Shift+P): tam je vpravo místo typu kategorie příkazu.
+
 > **Pozor na Ctrl+K.** Jinde v aplikaci skáče Ctrl+K do hledání. V markdownovém poli má
 > přednost vkládání odkazu; hledání je odtud pořád dostupné klávesou Ctrl+F nebo paletou.
 > Ve Firefoxu si Ctrl+Shift+K bere konzoli vývojáře, tam použij na wiki odkaz nabídku,
