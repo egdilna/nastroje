@@ -23,6 +23,7 @@ Nástroj je dostupný také jako samostatný soubor HTML ke stažení a provozov
 - **Stav diagramu (workflow)** — 9 stavů (rozpracovaný, návrh, ke schválení, schválený, upravovaný, neschválený, aktualizovaný, hotový, zrušený)
 - **Skrytí prvků** — jednotlivé prvky lze skrýt z výsledného diagramu (výřez), model zůstává
 - **Označení „hotovo"** — checkbox u každého prvku ve stromu + filtr Vše / Hotové / Nehotové
+- **GitHub jako úložiště** — projekt se ukládá i načítá přímo z repozitáře (Contents API), obrázky diagramů v PNG se ukládají do stejné složky; každý projekt má statickou adresu `?gh=…`, kterou se rovnou otevře
 - **Export a import** — projekt `.pup`, přenosový balíček `.pupe` (diagram nebo složka), PlantUML zdroj `.puml`; import PUML s automatickou detekcí typu diagramu; načtení i uložení přes schránku (Ctrl+Shift+O/S)
 - **Textový popis a dokument** — automaticky generovaný čtivý popis diagramu; export do Markdown a Word (DOCX) i s obrázkem
 - **Validace** — průběžná kontrola modelu (chybějící texty, neplatné odkazy, duplicitní aliasy)
@@ -39,6 +40,8 @@ Aplikace je navržena s důrazem na přístupnost — semantické HTML, ARIA atr
 ### Uložení dat
 
 Projekt se ukládá jako jediný soubor s příponou `.pup` (PlantUML Project) — obsahuje všechny diagramy, složky, verze, sdílené prvky a nastavení v JSON formátu. Při načítání aplikace automaticky rozpozná, zda jde o projekt (`.pup`), přenosový balíček (`.pupe`) nebo PUML zdroj, takže pracuje i s přejmenovanými soubory nebo soubory bez přípony. Data se nikam neodesílají, vykreslování přes `plantuml.com` posílá pouze zakódovaný zdrojový kód aktuálního diagramu do URL.
+
+Stejný soubor `.pup` lze místo na disk ukládat do **GitHub repozitáře** — viz [GitHub jako úložiště](#github-jako-úložiště). Pak se komunikuje jen s `api.github.com` a token zůstává v tomto prohlížeči.
 
 ---
 
@@ -703,6 +706,61 @@ Prázdné hodnoty se vynechávají. DOCX se generuje v prohlížeči i s vložen
 
 ---
 
+## GitHub jako úložiště
+
+Projekt (soubor `.pup`) i vyrenderované obrázky diagramů se dají ukládat rovnou do GitHub repozitáře. Každé uložení je běžný commit, takže historie verzí vzniká sama a není potřeba nic přenášet ručně.
+
+Nastavení otevře tlačítko **GitHub** v hlavičce (Alt+G) — je dostupné v obou pohledech, tedy i při otevřeném diagramu.
+
+### Token
+
+| Situace | Token |
+|---------|-------|
+| Čtení veřejného repozitáře | není potřeba |
+| Čtení soukromého repozitáře | potřeba |
+| Zápis (projekt i PNG) | vždy potřeba |
+
+Používá se GitHub **Personal Access Token** s oprávněním *Contents → Read and write*. Token se ukládá **jen do tohoto prohlížeče** (`localStorage`, klíč `plantuml.editor.github.token`) a odesílá se výhradně na `api.github.com`. Tlačítko „Uložit token" s prázdným polem token z prohlížeče odstraní.
+
+### Cesta k souboru
+
+Cesta se zadává v jednom poli ve tvaru `owner/repo/cesta/projekt.pup` — například `egdilna/diagramy/architektura/model.pup`. Pamatuje se v projektu (klíč `ghPath`) i v prohlížeči, takže ji stačí zadat jednou.
+
+**Nový projekt cestu záměrně zapomene**, aby uložení nepřepsalo existující soubor v repozitáři prázdným projektem. Po vytvoření nového projektu ji tedy zadejte znovu.
+
+### Načtení a uložení
+
+| Tlačítko | Co dělá |
+|----------|---------|
+| Načíst z GitHub | Přečte soubor z repozitáře a otevře ho jako aktuální projekt |
+| Uložit do GitHub | Zapíše aktuální projekt do souboru (vytvoří ho, nebo přepíše) |
+| Uložit PNG diagramu | Vykreslí aktuální diagram a uloží obrázek vedle souboru projektu |
+| Kopírovat odkaz | Zkopíruje statickou adresu, kterou se projekt rovnou otevře |
+
+Soubory větší než 1 MB se čtou přes Git Blob API, takže velké projekty fungují také.
+
+### Ukládání obrázků (PNG)
+
+Tlačítko **Uložit PNG do GitHub** na kartě Výstup (Alt+P) — a stejné tlačítko v dialogu nastavení — vykreslí aktuální diagram přes `plantuml.com` a výsledné PNG uloží **do stejné složky jako soubor projektu**, pod názvem diagramu (`Přihlášení uživatele` → `Přihlášení uživatele.png`).
+
+Stejný název znamená, že se **starší verze obrázku přepíše**. To je záměr: odkazy na obrázek (například z wiki nebo dokumentace) zůstávají platné a vždy ukazují na aktuální podobu diagramu.
+
+### Statická adresa projektu
+
+Tlačítko **Kopírovat odkaz** dá adresu ve tvaru:
+
+```
+https://egdilna.github.io/nastroje/plantuml/?gh=ZWdkaWxuYS9kaWFncmFteS9hcmNoaXRla3R1cmEvbW9kZWwucHVw
+```
+
+Parametr `gh` je cesta k souboru zakódovaná v base64. Po otevření takové adresy se projekt načte rovnou z repozitáře — hodí se do záložek i pro sdílení s kolegy (kteří u soukromého repozitáře potřebují vlastní token). Stejná adresa se do řádku prohlížeče doplní i po každém načtení a uložení.
+
+### Ukládání zkratkou Alt+S
+
+Když je nastavená cesta na GitHub, ukládá tlačítko **Uložit projekt** i zkratka **Alt+S** do repozitáře — ne na disk. Chybí-li token, aplikace to oznámí a otevře dialog nastavení. Bez nastavené cesty zůstává původní chování, tedy stažení souboru `.pup`.
+
+---
+
 ## Export, import a sdílení
 
 | Akce | Zkratka | Popis |
@@ -711,7 +769,9 @@ Prázdné hodnoty se vynechávají. DOCX se generuje v prohlížeči i s vložen
 | Náhled (SVG) | Alt+V | Otevře SVG na plantuml.com v novém okně |
 | Stáhnout .puml | Alt+U | Uloží zdrojový kód jako `.puml` soubor |
 | Zkopírovat zdroj | Alt+C | Vloží PlantUML kód do schránky (fallback na výběr v textarea + Ctrl+C) |
-| Uložit projekt | Alt+S | Stáhne projekt jako `.pup` JSON |
+| Uložit projekt | Alt+S | Uloží projekt do GitHub repozitáře, nebo (bez nastavené cesty) stáhne `.pup` JSON |
+| Uložit PNG do GitHub | Alt+P | Uloží obrázek diagramu vedle souboru projektu v repozitáři |
+| Načíst z GitHub / Uložit do GitHub | Alt+G | Dialog nastavení GitHub (token, cesta, odkaz) |
 | Vložit do schránky | Ctrl+Shift+S | Zkopíruje JSON projektu do schránky |
 | Načíst projekt | Alt+O | Otevře libovolný soubor s autodetekcí (.pup / .pupe / .puml) |
 | Načíst ze schránky | Ctrl+Shift+O | Načte projekt z obsahu schránky |
@@ -736,8 +796,9 @@ Akce v aktivitních diagramech podporují tři syntaktické varianty (moderní `
 |---------|------|
 | Alt+N | Nový projekt |
 | Alt+O | Načíst projekt |
-| Alt+S | Uložit projekt |
+| Alt+S | Uložit projekt (při nastaveném GitHubu do repozitáře) |
 | Alt+M | Importovat .puml |
+| Alt+G | Nastavení GitHub |
 | Alt+H | Nápověda |
 | Alt+B | ← Zpět na projekt (v pohledu na diagram) |
 | Alt+D | Nový diagram |
@@ -758,6 +819,7 @@ Akce v aktivitních diagramech podporují tři syntaktické varianty (moderní `
 | Alt+V | Náhled (SVG) v okně |
 | Alt+I | Promítat / Překreslit promítání |
 | Alt+E | Stáhnout PNG |
+| Alt+P | Uložit PNG do GitHub |
 | Alt+U | Stáhnout .puml |
 | Alt+C | Zkopírovat zdroj do schránky |
 | Alt+T | Vygenerovat textový popis |
