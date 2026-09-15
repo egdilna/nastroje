@@ -105,6 +105,7 @@ Hlavní funkce:
 - Globální proměnné a importy dalších souborů
 - Průběžná kontrola (duplicitní spouštěče, nedefinované proměnné, prázdné náhrady)
 - Záložka se zdrojovým YAML, kterou lze upravit ručně a načíst zpátky
+- Psací plocha: velké pole, ve kterém zkratky fungují samy — napsaný spouštěč se rovnou rozbalí, formuláře se doptají na údaje a značka kurzoru se respektuje; vedle je seznam zkratek k vložení odkazem. Je v editoru i ve vygenerované HTML verzi
 - Vygenerování samostatné HTML verze: jeden offline soubor se všemi zkratkami, hledáním a kopírováním do schránky — zkratka se použije kliknutím, u formulářů se nejdřív doplní údaje
 
 ---
