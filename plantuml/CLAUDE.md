@@ -97,6 +97,25 @@ Dnes takto fungují:
 v sekci `=== ŘEŠENÍ ABSOLUTNÍCH DAT V GANTTU ===` (ř. 6709). Popis termínů skládá
 `formatGanttTerm` s českým formátem data. Změny v modelu úkolů promítni do obou.
 
+## GitHub jako úložiště (sekce `=== GITHUB: … ===`)
+Projekt (`.pup`) i PNG diagramů se ukládají přes **GitHub Contents API**.
+- Token jen v `localStorage` (`GH_TOKEN_KEY`), posílá se výhradně na `api.github.com`.
+  Veřejný repozitář jde číst bez tokenu, zápis (a čtení soukromého) ho vyžaduje.
+- Cesta `owner/repo/cesta/soubor.pup` se drží na dvou místech: `project.ghPath` (cestuje
+  s projektem) a `localStorage` (`GH_PATH_KEY`). `ghCurrentPath()` je jediný správný
+  způsob, jak ji zjistit — projekt má přednost. `newProject` cestu **záměrně maže**,
+  aby uložení nepřepsalo existující soubor prázdným projektem.
+- Statická adresa `?gh=<base64 cesty>` (`ghEncodePath` / `ghDecodePath`, UTF-8 přes
+  `unescape(encodeURIComponent())`); `initGitHubFromUrl()` se volá na konci `init()`.
+- `ghPutFile` si vždy nejdřív načte SHA (`ghFetchMeta`), jinak GitHub přepis odmítne.
+  Soubory > 1 MB nemají `content` v odpovědi — `ghFetchText` pro ně sáhne na Blob API.
+- PNG jde do **stejné složky** jako projekt, název = `safeBaseName(diagram.name)` — shodný
+  s názvem při stažení, takže se starší verze obrázku přepíše (to je požadované chování).
+- `saveProjectAction()` je za tlačítkem „Uložit projekt" i za Alt+S: s nastavenou cestou
+  ukládá do repozitáře, bez ní stahuje `.pup`.
+- Hlášky jdou přes `ghStatus()` (dialog + globální status pruh) a mají vlastní slovník
+  `L.gh` — nový text patří do **obou** jazykových mutací.
+
 ## Konvence
 - `el(tag, props, …children)` staví DOM, `clear(node)` čistí — nepoužívej `innerHTML`
   s uživatelským textem.
