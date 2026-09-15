@@ -71,6 +71,40 @@ nutné zavolat `zamerNahradu()`, jinak by odkaz na textareu ukazoval do prázdna
 Náhled data (`nahledData`) je vlastní podmnožina strftime — počítá se v prohlížeči jen kvůli
 ukázce, Espanso používá chrono. Když se doplní nová značka, patří i do `ZNACKY_DATA`.
 
+## Sdílený kód (`#kod-sdileny`)
+Vyhodnocování zkratek **a psací plocha jsou jeden kód pro obě aplikace.** Leží v `index.html`
+jako `<script type="text/plain" id="kod-sdileny">`; editor si ho při startu vloží do stránky jako
+skript (`nactiSdilenyKod()`), generátor ho vepíše do vygenerovaného souboru místo `%%SDILENE%%`.
+Modul se vystaví jako `window.Zkratky` a data si nedrží — bere je přes `ctx`:
+`ctx.zkratky()`, `ctx.globalni()`, `ctx.ohlas(t)`, `ctx.stav(t, chyba)`. Vnitřní tvar zkratky je
+v editoru i v exportu **schválně stejný**, jinak by adaptér nestačil.
+
+Obsahuje: `naDatum` (strftime), `textNahrady`, `spousteceKPouziti`, `popisSpoustece`,
+`potrebnaPole`, `potrebujePrikaz`, `sestav`, `najdiShodu`, `upravVelikost`, `vytvorPlochu`.
+**Změna chování proměnných patří sem, ne do jedné z aplikací** — editor i rozbalovač na tohle
+jediné místo jen volají (editor má pro jistotu vlastní zálohu `vlastniNahledData`
+a `vlastniPotrebujePrikaz`, kdyby se blok nepodařilo spustit).
+
+## Psací plocha
+Velká textarea, ve které se zkratky rozbalují při psaní, plus panel zkratek jako odkazy vpravo.
+Je v editoru (záložka Psací plocha) i v rozbalovači (záložka Psací plocha) a je to týž kód.
+
+- `najdiShodu()` po každé změně textu porovná text před kurzorem se spouštěči; vyhrává vyšší
+  `priority`, pak delší shoda. Regex se převádí na JS (`(?P<` → `(?<`) a kotví se na konec,
+  pojmenované skupiny rovnou plní proměnné, takže se na ně plocha neptá.
+- Vkládá se přes `document.execCommand("insertText")`, aby fungovalo Ctrl+Z. Vlastní vkládání
+  hlídá `probihaVkladani`, jinak by se výsledek mohl rozbalit sám do sebe.
+- `$|$` **tady dává smysl** — text se rozdělí a kurzor se postaví na značku.
+- Respektuje `word`/`left_word` (hranice vlevo), `propagate_case` a `uppercase_style`.
+  `right_word` se nevynucuje: při psaní ještě není jasné, co bude následovat.
+- Nefungují `shell`, `script` (prohlížeč je nespustí) ani obrázky — takové zkratky se nerozbalí
+  a nejsou ani v panelu.
+
+**Fokus:** dokud uživatel píše, fokus z textarey nesaháme. Přesune se jen tehdy, když si o to
+řekne (klik na odkaz) nebo když se zkratka musí doptat — formulář se ukáže pod textareou, fokus
+jde na první pole a po vložení (i po zrušení) se vrací do textu na správnou pozici. Každé vložení
+se ohlásí přes `ctx.ohlas`.
+
 ## Samostatná HTML verze (rozbalovač)
 Tlačítko „Vytvořit HTML verzi“ (accesskey `w`) stáhne **jeden soubor** se všemi zkratkami,
 hledáním a kopírováním do schránky. Slouží k používání zkratek tam, kde není Espanso — ne
@@ -82,8 +116,7 @@ uvnitř šablony píše `<\/script>`** (jinak by blok skončil dřív); generát
 souboru vrátí zpátky. Do šablony se dosazují dvě značky: `%%NAZEV%%` (název sady, HTML-escapovaný)
 a `%%DATA%%` (JSON dat; `<` se escapuje na `\u003c`, aby nemohl rozbít blok).
 
-Rozbalovač si nese vlastní kopii vyhodnocování proměnných (`naDatum`, `sestav`, `potrebnaPole`) —
-musí být samostatný, takže **změna chování proměnných v editoru se musí promítnout i do šablony**.
+Vyhodnocování si rozbalovač nedělá sám — volá sdílený kód, který mu generátor vepsal do souboru.
 Co umí: `date`, `echo`, `random`, `clipboard`, `match` (rekurzivně), `form`, pole formuláře
 (`[[pole]]`), pojmenované skupiny regexu, značku kurzoru `$|$` (zahodí se). Na co se ptá
 uživatele: pole formulářů, skupiny regexu a obsah schránky (ten se pokusí předvyplnit z
