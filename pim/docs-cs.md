@@ -212,19 +212,20 @@ tlačítko ✏️ u nadpisu editor zdroje té jedné sekce. Pod textovým polem 
 jako u editace celé entity — **Vložit…**, **Smazat hotové úkoly**, **📝 Revize**,
 **Korektor** a **Lint**.
 
-Revize, Korektor i Lint jsou celoobrazovkové režimy: detail se překreslí a editor sekce,
+**Lint se v editoru sekce nenabízí.** Kontroluje strukturu celého markdownového
+dokumentu — úrovně nadpisů, číslování seznamů, odkazy — a nad výřezem jedné sekce
+hlásí nesmysly, protože zbytek těla nevidí. Nad celým obsahem entity funguje dál.
+
+Revize a Korektor jsou celoobrazovkové režimy: detail se překreslí a editor sekce,
 který žije jen v otevřené stránce, tím zanikne. Aplikace si proto pamatuje, ze které sekce
 jste přišli, a po tlačítku **← Zpět na úpravy** editor sekce **znovu otevře i s textem,
 se kterým jste v nástroji skončili**. Úpravu pak uložíte do entity tlačítkem
 **💾 Uložit sekci** — teprve tím se zapíše do těla, takže pořád platí, že **✕ Zrušit**
 nic nezmění.
 
-> Pozor na Lint: jeho tlačítko *Uložit* při práci nad sekcí neukládá do entity, ale vrací
-> text zpátky do editoru sekce (upozorní na to hláškou). Kdyby zapsal rovnou do těla,
-> přepsal by celé tělo obsahem jedné sekce.
-
-**Smazat hotové úkoly** v editoru sekce odstraní zaškrtnuté úkoly jen z té sekce; číslo
-v závorce ukazuje, kolik jich je.
+**Smazat hotové úkoly** v editoru sekce odstraní zaškrtnuté úkoly jen z té sekce. Před
+smazáním se zeptá na potvrzení (stejně jako u celého obsahu) a číslo v závorce se přepočítá
+při psaní, takže vždycky ukazuje, kolik úkolů se smaže.
 
 ## Editor tabulky
 
@@ -649,6 +650,13 @@ Uloženou konverzaci lze **vybrat jako podklad pro další chat**. Její obsah (
 Zabezpečené entity se mezi podklady nedostanou vůbec (aplikace to při otevření oznámí) a soukromé bloky `~~~private` se z obsahu vyříznou.
 
 Model je předvolený; pole **Model** v nastavení ho umí přepsat, když je potřeba. Tlačítkem **Ověřit spojení** si nastavení otestujete. Funkce je jen v aplikaci — vygenerovaný offline prohlížeč ji neobsahuje a klíč se nedostane do exportu, do synchronizace na GitHub ani do statického prohlížeče.
+
+## Konce řádků
+
+Aplikace pracuje s markdownem po unixovsku (`\n`). Data přicházející zvenčí — z GitHubu,
+z importu JSON i ZIP — se proto po načtení srovnají. Text s windowsovými konci řádků
+(`\r\n`) by se jinak nezpracoval vůbec: nadpisy, seznamy ani tabulky by se nevykreslily
+a editace sekcí by v takovém obsahu nenašla ani jednu sekci.
 
 ## Datová synchronizace s GitHubem
 
