@@ -403,6 +403,17 @@ kvůli tomu, co uvidí člověk, má jít přes něj, ne přes `e.attributes[id]
 - Sází se **jako víceřádkový Markdown**, tedy všude tam, kde se tak sází `textarea`
   (detail, md/html/docx export, prohlížeč). Přidáváš-li nový výstup, přidej obojí.
 - V datových exportech není a nemá být — nic uloženého za ním nestojí.
+- **Metadata entity** (`META_POLE`) jsou poslední v pořadí hledání: atribut téhož jména
+  vyhraje. Česká i anglická jména platí **vždycky**, nezávisle na `state.language` — šablona
+  je v datech a cestuje balíčkem do projektu s druhým jazykem. Aliasy bez diakritiky jsou tam
+  schválně; `klicPole` diakritiku nesráží, protože u názvů atributů by tím splynulo, co splynout
+  nemá. Nové metadatum přidej **do obou kopií** `META_POLE` — aplikace i šablona prohlížeče.
+- **Vazba se v šabloně sází jen názvem** (`hodnotaDoSablony`), bez typu v závorce. Jinde
+  (`scalarValueStr`, `hodnotaJakoText`) typ v závorce zůstává — tam odlišuje dvě entity téhož
+  jména, v šabloně by rozbil větu. Jsou to proto dvě funkce, ne jedna s přepínačem.
+- **`rozborSablony` je jen pro editor.** Entita tam žádná není, takže hledá napříč celým
+  modelem a vlastními atributy všech entit a rozlišuje „nenajde se" od „je jinde". Nikdy
+  z něj nepočítej, co se vysází — na to je `slozenyText`.
 
 ## Poznámky z CriticMarkupu
 `criticPoznamky(e)` sbírá `{>>…<<}` z textových atributů (stejná plocha jako wiki odkazy)

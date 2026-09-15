@@ -476,7 +476,9 @@ Strany: ((Strany)) — [Detail na webu](((Web)))
 - **Co se nenajde nebo je prázdné, zmizí bez stopy.** Nezůstane text chyby ani samotné
   `((…))`, prostě prázdné místo.
 - **Hodnota se bere tak, jak se čte**: u vazby název cílové entity (u víc cílů oddělené
-  čárkou), u tagů tagy oddělené čárkou, u data datum ve zvyklém tvaru.
+  čárkou), u tagů tagy oddělené čárkou, u data datum ve zvyklém tvaru. **Vazba se tu sází
+  jen názvem**, bez typu v závorce — šablona je věta, kterou píše člověk, a „(Osoba)" navíc
+  by ji rozbilo. Jinde v aplikaci typ v závorce zůstává, tam odlišuje dvě entity téhož jména.
 - Šablona snese uvozovky, apostrofy i odkazy v Markdownu. Závorku dovnitř `((…))` dát nejde
   — právě proto, aby si to nerozumělo s `[text](adresa)`.
 - Odkazovat ze složeného na jiný složený nejde; takový placeholder zůstane prázdný.
@@ -485,6 +487,38 @@ Strany: ((Strany)) — [Detail na webu](((Web)))
 prohlížeči a ve sloupci tabulky. Platí na něj i všechna čtyři zaškrtávátka z kapitoly 7.7.
 V **datových** exportech (JSON, XML, balíček) není — tam se vydává to, co je uložené,
 a složený atribut uloženou hodnotu nemá.
+
+#### Metadata entity
+
+Kromě atributů jdou v šabloně použít i **údaje o entitě samotné**:
+
+| Pole | Co vloží |
+|---|---|
+| `((název))` · `((name))` | název entity |
+| `((typ))` · `((type))` | název typu entity (u entity ve Schránce nic) |
+| `((ikona))` · `((icon))` | emotikona typu |
+| `((id))` | identifikátor entity |
+| `((aspekty))` · `((aspects))` | názvy aspektů entity, abecedně, oddělené čárkou |
+| `((vytvořeno))` · `((created))` | datum vytvoření |
+| `((upraveno))` · `((updated))` | datum poslední úpravy |
+
+**České i anglické jméno platí vždycky**, bez ohledu na to, jaký jazyk máš zapnutý — šablona
+je součástí dat a cestuje balíčkem do projektů, kde je nastavený ten druhý. U polí
+s diakritikou projde i zápis bez ní (`((vytvoreno))`), u data úpravy i `((změněno))`.
+
+**Atribut stejného jména má přednost.** Když si na typu založíš atribut *Typ*, `((typ))`
+vloží jeho hodnotu, ne název typu entity — tvůj model je víc než tohle.
+
+#### Kontrola při psaní
+
+Pod polem se šablonou průběžně vypisuje, co v ní nesedí:
+
+- **Nenajde se** — takový atribut ani metadatum v projektu není. Skoro vždycky překlep.
+- **Nevyhodnotí se** — odkaz na jiný složený atribut nebo sám na sebe; zůstane prázdný.
+- **Vyplní se jen u entit, které to pole mají** — atribut existuje, ale patří jinému typu
+  nebo aspektu. U entit, které ho nemají, zůstane prázdné místo.
+
+Bez těchhle hlášek by se překlep poznal až na entitě, kde po něm zbude jen prázdno.
 
 ### 7.7 Jak se atribut chová v zobrazení
 
