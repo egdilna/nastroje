@@ -1048,6 +1048,17 @@ so a half-typed name is not wasted; Esc closes the list and puts the caret back 
 it was. Archived entities, the one you are editing, and entities whose name contains `]` or a
 line break are not offered — a wiki link to those cannot be written (see 15.3).
 
+**It searches the name and the type alike.** Type *činnost* and you get both the entities with
+that in their name and every entity **of type Činnost** — the type is printed on the right of
+each row. Case and diacritics do not matter, *cinnost* finds the same. **Name matches always
+come first**: the exact name, then the ones starting with the query, then the ones containing
+it, and only then the rest of the type. Without that the entity you were after would drown
+among dozens of the same type. With several words all of them must match, each anywhere —
+*krok 07* finds "Krok 07".
+
+The same goes for the command palette (Ctrl+Shift+P), where the right-hand label is the
+command's category instead of a type.
+
 > **Careful with Ctrl+K.** Everywhere else in the app Ctrl+K jumps to search. Inside a Markdown
 > field inserting a link wins; search is still reachable with Ctrl+F or from the palette.
 > Firefox claims Ctrl+Shift+K for its developer console — there, use the wiki-link suggestions

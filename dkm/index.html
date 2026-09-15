@@ -813,7 +813,7 @@ jsonScopeSelected:'Vybrané entity ({n})',
 jsonScopeFiltered:'Aktuálně zobrazený seznam (podle filtrů)',
 jsonScopeAll:'Celý projekt (bez archivu)',
 jsonTypes:'Typy entit',
-jsonUntyped:'Bez typu (Inbox)',
+inboxTypeNone:'Bez typu',jsonUntyped:'Bez typu (Inbox)',
 jsonNothingToExport:'Není co exportovat — vyber aspoň jeden typ.',
 jsonKeyStyle:'Styl klíčů',
 jsonSysLang:'Systémová pole',jsonSysLangCs:'Česky (nazev, typ, vazby…)',jsonSysLangEn:'Anglicky (name, type, relations…)',
@@ -1298,7 +1298,7 @@ jsonScopeSelected:'Selected entities ({n})',
 jsonScopeFiltered:'Currently displayed list (by filters)',
 jsonScopeAll:'Whole project (without archive)',
 jsonTypes:'Entity types',
-jsonUntyped:'Without type (Inbox)',
+inboxTypeNone:'No type',jsonUntyped:'Without type (Inbox)',
 jsonNothingToExport:'Nothing to export — pick at least one type.',
 jsonKeyStyle:'Key style',
 jsonSysLang:'System fields',jsonSysLangCs:'Czech (nazev, typ, vazby…)',jsonSysLangEn:'English (name, type, relations…)',
@@ -1971,6 +1971,13 @@ return String(a==null?'':a).localeCompare(String(b==null?'':b),state.language,{s
 }
 function serazPodleNazvu(pole,klic){
 return pole.slice().sort((a,b)=>porovnejNazvy(klic(a),klic(b)));
+}
+
+/* Klíč pro hledání v textu psaném uživatelem: malá písmena, bez diakritiky,
+   sražené mezery. Táž normalizace jako u duplicit (`dupeKey`) a u párování entit
+   podle názvu při importu — kdo napíše „cinnost", má najít „Činnost". */
+function hledaciKlic(s){
+return String(s==null?'':s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
 }
 function findTagSet(id){return (state.data.tagSets||[]).find(x=>x.id===id)}
 
@@ -10372,7 +10379,7 @@ return out;
 
 /* Fuzzy match: all words of query must be substring of label+sublabel (case-insensitive). Score = shorter label wins ties */
 function fuzzyMatchCandidates(query,all){
-const q=(query||'').trim().toLowerCase();
+const q=(query||'').trim();
 if(!q){
 /* Empty query: show recent nav history first, then a mix */
 const hist=(state.navHistory||[]).slice().reverse();
@@ -10382,15 +10389,24 @@ hist.forEach(h=>{if(h.kind==='entity'&&!seenIds.has(h.id)){seenIds.add(h.id);con
 const rest=all.filter(c=>!c.entityId||!seenIds.has(c.entityId));
 return priority.concat(rest).slice(0,60);
 }
-const words=q.split(/\s+/).filter(Boolean);
+const words=hledaciKlic(q).split(' ').filter(Boolean);
+const dotaz=hledaciKlic(q);
 const scored=[];
 all.forEach(c=>{
-const hay=((c.label||'')+' '+(c.sublabel||'')).toLowerCase();
+const nazev=hledaciKlic(c.label),podtitul=hledaciKlic(c.sublabel);
+const hay=nazev+' '+podtitul;
 if(!words.every(w=>hay.indexOf(w)>=0))return;
+/* Shoda v názvu je vždycky víc než shoda v podtitulku — a podtitulek je u entity
+   typ, u příkazu kategorie. Kdo napíše „činnost", chce nejdřív to, co se tak
+   jmenuje, teprve pak všechno toho typu. Dřív o pořadí rozhodovala jen délka
+   názvu, takže se hledaná entita utopila mezi desítkami entit téhož typu —
+   a při ořezu na 60 z nabídky rovnou vypadla. Stupně jsou proto tak daleko od
+   sebe, aby je délka názvu nepřebila. */
 let score=0;
-if(c.label.toLowerCase().indexOf(q)===0)score+=100;/* startsWith bonus */
-if(c.label.toLowerCase()===q)score+=200;/* exact match */
-score-=c.label.length;/* shorter wins */
+if(nazev===dotaz)score+=3000;
+else if(nazev.indexOf(dotaz)===0)score+=2000;
+else if(words.every(w=>nazev.indexOf(w)>=0))score+=1000;
+score-=(c.label||'').length;/* kratší napřed */
 scored.push({c:c,s:score});
 });
 scored.sort((a,b)=>b.s-a.s);
