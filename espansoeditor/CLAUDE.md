@@ -36,6 +36,14 @@ při načtení se popisek shodný se spouštěčem (`odvozenyPopisek`) zahodí a
 popisek nevypisuje. Hledání beztak jde přes spouštěč, popisek i text náhrady — v editoru
 (`odpovidaFiltru`) i v rozbalovači, obojí musí zůstat souhlasné.
 
+**Mezera na konci spouštěče** (`mezeraNaKonci`, u nových zkratek zapnutá) je fígl z cookbooku
+Espansa: spouštěč se do souboru zapíše s mezerou, zkratku tak spustí až mezerník a ta mezera se
+spotřebuje místo toho, aby zůstala za vloženým textem. V modelu spouštěče mezeru **nenesou** —
+přidává ji až `spousteceProZapis()`, kterou používá zápis YAML, export do HTML verze i kontrola
+duplicit. Při načtení se zaškrtne jen tehdy, když mezerou končí *všechny* spouštěče zkratky;
+u smíšeného zápisu zůstanou mezery součástí spouštěčů, ať se soubor nepřepíše jinak, než jak byl.
+U regulárního výrazu se mezera neřeší.
+
 Neznámé klíče se při načtení uloží do `ostatni` (u zkratky a proměnné) a `ostatniKlice`
 (u souboru) a při ukládání se vypíšou zpátky — **round-trip nesmí nic zahodit.**
 

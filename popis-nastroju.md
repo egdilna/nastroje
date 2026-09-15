@@ -100,6 +100,7 @@ Hlavní funkce:
 - Náhrada jako prostý text, Markdown, HTML, obrázek nebo formulář
 - Naklikatelné dynamické proměnné: datum a čas (s náhledem a hotovými formáty), obsah schránky, pevný text, náhodný výběr, příkaz shellu, skript, vnořená zkratka, vnořený formulář
 - Pole formulářů včetně výběru z nabídky a předvyplněných hodnot
+- Volitelná mezera na konci spouštěče, aby po vložení textu nezůstávala přebývat
 - Chování zkratky: hranice slov, přenášení velikosti písmen, priorita, způsob vložení, klíčová slova pro hledání
 - Globální proměnné a importy dalších souborů
 - Průběžná kontrola (duplicitní spouštěče, nedefinované proměnné, prázdné náhrady)
