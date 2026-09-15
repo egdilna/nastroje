@@ -206,6 +206,27 @@ Annotations are short notes attached to individual lines or paragraphs of conten
 
 **Migration**: if you still have old annotations stored separately (from an earlier version), they are automatically converted into text as `(>text)` next to their paragraph the first time you save the entity.
 
+## Section editor and its tools
+
+In **section-edit mode** (toggle `d` in read mode or the "Edit sections" button), the ✏️
+button at a heading opens the source editor for that one section. Below the text field are
+the same tools as for editing the whole entity — **Vložit…** (Insert), **Smazat hotové úkoly**
+(Delete done tasks), **📝 Revize** (Revisions), **Korektor** (Spell check) and **Lint**.
+
+Revisions, spell check and lint are full-screen modes: the detail is re-rendered and the
+section editor, which only lives in the open page, is destroyed with it. The app therefore
+remembers which section you came from and, after **← Zpět na úpravy** (Back to editing),
+**reopens the section editor with the text you ended up with in the tool**. You then write it
+into the entity with **💾 Uložit sekci** (Save section) — only that writes to the body, so
+**✕ Zrušit** (Cancel) still changes nothing.
+
+> Note on lint: when working over a section, its *Save* button does not save to the entity but
+> returns the text to the section editor (it says so in a toast). Writing straight to the body
+> would replace the whole body with the contents of one section.
+
+**Delete done tasks** in the section editor removes ticked tasks from that section only; the
+number in brackets shows how many there are.
+
 ## Table editor
 
 In **section-edit mode** (toggle `d` in read mode or the "Edit sections" button), below each markdown table a **📊 Edit table** button appears. It opens an accessible dialog with a grid:

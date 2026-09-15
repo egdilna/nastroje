@@ -205,6 +205,27 @@ Anotace jsou krátké poznámky k jednotlivým řádkům či odstavcům obsahu. 
 
 **Migrace**: pokud máte ještě staré anotace uložené odděleně (z dřívější verze), při prvním uložení entity se automaticky převedou do textu jako `(>text)` u svého odstavce.
 
+## Editor sekce a nástroje nad ním
+
+V **section-edit režimu** (přepínač `d` v read modu nebo tlačítko „Editovat sekce") otevře
+tlačítko ✏️ u nadpisu editor zdroje té jedné sekce. Pod textovým polem jsou stejné nástroje
+jako u editace celé entity — **Vložit…**, **Smazat hotové úkoly**, **📝 Revize**,
+**Korektor** a **Lint**.
+
+Revize, Korektor i Lint jsou celoobrazovkové režimy: detail se překreslí a editor sekce,
+který žije jen v otevřené stránce, tím zanikne. Aplikace si proto pamatuje, ze které sekce
+jste přišli, a po tlačítku **← Zpět na úpravy** editor sekce **znovu otevře i s textem,
+se kterým jste v nástroji skončili**. Úpravu pak uložíte do entity tlačítkem
+**💾 Uložit sekci** — teprve tím se zapíše do těla, takže pořád platí, že **✕ Zrušit**
+nic nezmění.
+
+> Pozor na Lint: jeho tlačítko *Uložit* při práci nad sekcí neukládá do entity, ale vrací
+> text zpátky do editoru sekce (upozorní na to hláškou). Kdyby zapsal rovnou do těla,
+> přepsal by celé tělo obsahem jedné sekce.
+
+**Smazat hotové úkoly** v editoru sekce odstraní zaškrtnuté úkoly jen z té sekce; číslo
+v závorce ukazuje, kolik jich je.
+
 ## Editor tabulky
 
 V **section-edit režimu** (přepínač `d` v read modu nebo tlačítko „Editovat sekce") se pod každou markdown tabulkou objeví tlačítko **📊 Upravit tabulku**. Otevře přístupný dialog s gridem:

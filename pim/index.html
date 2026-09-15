@@ -7181,6 +7181,7 @@ function setView(view, params = {}) {
     if (viewHistory.length > 30) viewHistory.shift();
     state.justNavigated = true;
     state.sectionEditMode = false; // reset režimu editace sekcí při změně view/entity
+    state._secEditIdx = null;
   }
   state.view = view;
   if (params.detailId !== undefined) state.detailId = params.detailId;
@@ -18946,10 +18947,36 @@ function setupSectionEditMode(entity) {
   });
 }
 
+// Nástroje nad markdown polem (Revize, Korektor, Lint) jsou celoobrazovkové: detail
+// se překreslí a editor sekce, který žije JEN v DOM, tím zanikne. Proto si při jejich
+// otevření pamatujeme, ze které sekce jsme přišli, a po návratu ji otevřeme znovu
+// i s textem, se kterým uživatel v nástroji skončil. Bez toho se úpravy tiše ztratí.
+function sekceProNastroj(targetId) {
+  return (targetId === 'sec-edit-ta' && state._secEditIdx != null) ? state._secEditIdx : null;
+}
+
+// novyText === null → sekci jen znovu otevřít s původním zdrojem (návrat bez uložení).
+function obnovEditorSekce(sekceIdx, entityId, novyText) {
+  state.sectionEditMode = true;
+  setTimeout(() => {
+    const ent = findEntity(entityId);
+    if (!ent) return;
+    if (!document.getElementById('sec-edit-ta')) openSectionEditor(ent, sekceIdx);
+    const ta = document.getElementById('sec-edit-ta');
+    if (!ta) { toast('Sekci se nepodařilo znovu otevřít.'); return; }
+    if (typeof novyText === 'string' && ta.value !== novyText) {
+      ta.value = novyText;
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    ta.focus();
+  }, 60);
+}
+
 function openSectionEditor(entity, sectionIdx) {
   const sections = extractSectionsFlat(entity.body || '');
   const sec = sections[sectionIdx];
   if (!sec) return;
+  state._secEditIdx = sectionIdx;
   // Najít nadpis v rendered HTML
   const wrap = document.getElementById('body-rendered');
   if (!wrap) return;
@@ -19023,6 +19050,7 @@ function openSectionEditor(entity, sectionIdx) {
   ta.setSelectionRange(fullSourceText.length, fullSourceText.length);
 
   document.getElementById('sec-edit-save').onclick = () => {
+    state._secEditIdx = null;
     let newText = ta.value;
     // Sanity: musí začínat #...# nadpisem
     if (!/^#{1,6}\s+/.test(newText.trim())) {
@@ -19062,6 +19090,7 @@ function openSectionEditor(entity, sectionIdx) {
     playSound('save-entity');
   };
   document.getElementById('sec-edit-cancel').onclick = () => {
+    state._secEditIdx = null;
     render();
   };
 }
@@ -20222,7 +20251,8 @@ function openCmReview(entity, targetId, fieldKey, fieldLabel) {
     targetId: targetId,
     fieldKey: fieldKey || '',
     fieldLabel: fieldLabel || 'Markdown pole',
-    src: ta.value || ''
+    src: ta.value || '',
+    navratSekce: sekceProNastroj(targetId)
   };
   render();
 }
@@ -20231,6 +20261,12 @@ function closeCmReview(saveBack) {
   if (!state.cmReview) return;
   const cm = state.cmReview;
   state.cmReview = null;
+  if (cm.navratSekce != null) {
+    // Z editoru sekce: text patří do sekce, ne do celého těla entity.
+    obnovEditorSekce(cm.navratSekce, cm.entityId, saveBack !== false ? cm.src : null);
+    render();
+    return;
+  }
   if (saveBack !== false) {
     // Po renderu zpět nastavit hodnotu do textarea a triggernout input
     setTimeout(() => {
@@ -20475,6 +20511,7 @@ function openSpellCheck(entity, targetId, fieldKey, fieldLabel) {
     fieldKey: fieldKey || '',
     fieldLabel: fieldLabel || 'Markdown pole',
     src: ta.value || '',
+    navratSekce: sekceProNastroj(targetId),
     apiRes: null,    // [[token, sug1, sug2...], ...]
     corr: {},        // idx → opravený text
     ignored: new Set(),
@@ -20569,15 +20606,22 @@ function closeSpellCheck(saveBack) {
       ent.updated_at = nowIso();
       save();
     }
-    // Aktualizovat i textareu, pokud v DOM zůstává (sekční editor spoléhá jen na ni)
-    setTimeout(() => {
-      const ta = document.getElementById(sp.targetId);
-      if (ta && ta.value !== newSrc) {
-        ta.value = newSrc;
-        ta.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-      if (ta) ta.focus();
-    }, 50);
+    if (sp.navratSekce != null) {
+      // Editor sekce se překreslením ztratil – otevřít ho znovu i s opraveným textem.
+      obnovEditorSekce(sp.navratSekce, sp.entityId, newSrc);
+    } else {
+      // Aktualizovat i textareu, pokud v DOM zůstává
+      setTimeout(() => {
+        const ta = document.getElementById(sp.targetId);
+        if (ta && ta.value !== newSrc) {
+          ta.value = newSrc;
+          ta.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        if (ta) ta.focus();
+      }, 50);
+    }
+  } else if (sp.navratSekce != null) {
+    obnovEditorSekce(sp.navratSekce, sp.entityId, null);
   }
   render();
 }
@@ -43731,6 +43775,7 @@ function openMdLint(entity, targetId, fieldKey, fieldLabel) {
     fieldKey: fieldKey,
     fieldLabel: fieldLabel,
     workingText: ta.value,
+    navratSekce: sekceProNastroj(targetId),
     severityFilter: 'all'
   };
   render();
@@ -43811,6 +43856,16 @@ function renderMdLint(main) {
 
   // Handlers
   document.getElementById('lint-save').onclick = () => {
+    if (ml.navratSekce != null) {
+      // POZOR: z editoru sekce je workingText jen ta jedna sekce, ne celé tělo.
+      // Zápis do entity.body by zbytek těla smazal – text proto putuje zpátky
+      // do editoru sekce a do entity ho uloží až její vlastní „Uložit sekci".
+      state.mdLint = null;
+      obnovEditorSekce(ml.navratSekce, ml.entityId, ml.workingText);
+      toast('Lint úpravy vráceny do sekce – uložte ji tlačítkem „Uložit sekci".');
+      render();
+      return;
+    }
     const ta = document.getElementById(ml.targetId);
     if (ta) {
       ta.value = ml.workingText;
@@ -43829,7 +43884,10 @@ function renderMdLint(main) {
     render();
   };
   document.getElementById('lint-cancel').onclick = () => {
+    const zSekce = ml.navratSekce;
+    const entId = ml.entityId;
     state.mdLint = null;
+    if (zSekce != null) obnovEditorSekce(zSekce, entId, null);
     render();
   };
   document.getElementById('lint-config').onclick = () => openLintConfigDialog();
