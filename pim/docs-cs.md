@@ -335,6 +335,67 @@ Vedle je select **Zobrazit** s volbami 100, 300, 500, 1000, 2000 a *vše*; vých
 
 Pozor: hromadný výběr (a tím i export nebo chat nad vybranými) pracuje jen s tím, co je vykreslené — při limitu 100 nelze zaškrtnout entitu, která se nezobrazila.
 
+## ⌘ Paleta příkazů
+
+Jedno místo, odkud jde spustit cokoli — pohledy, akce nad otevřenou entitou, nástroje,
+přepínače nastavení i skok na konkrétní entitu nebo tag. Smysl je v tom, že si nemusíte
+pamatovat zkratky ani vědět, ve které nabídce věc leží: prostě začnete psát.
+
+**Otevření:** `F1`, `Ctrl+Shift+P`, tlačítko **⌘ Příkazy** v záhlaví (`Alt+Shift+K`),
+nebo položka *Paleta příkazů…* v nabídkách Zobrazení a Nápověda. Nápověda se přesunula
+na `Shift+F1` (klávesa `?` funguje dál).
+
+> `Ctrl+Shift+P` si ve Firefoxu bere prohlížeč na anonymní okno. Proto je paleta i na `F1`
+> a na tlačítku — jedna z cest vždycky projde.
+
+**Ovládání:** `↑` `↓` pohyb, `PageUp`/`PageDown` po osmi, `Home`/`End` na kraj,
+`Enter` spustí, `Esc` zavře. Myší stačí kliknout. Po zavření se fokus vrací tam, odkud
+jste paletu otevřeli.
+
+**Prázdná paleta** nabídne naposledy použité příkazy, akce ke kontextu (v detailu entity
+akce nad ní, v seznamu akce nad seznamem), hlavní pohledy a **posledních 100 změněných entit**.
+
+**Psaním** se hledá zároveň v příkazech, entitách i tazích. Na diakritice ani velikosti
+písmen nezáleží — `ukoly` najde *Úkoly*. Víc slov se chová jako AND (`zah ukol` najde
+*Úkoly na zahradě*). Předsazený znak hledání zúží:
+
+| Předpona | Hledá jen |
+|---|---|
+| `>` | příkazy (bez předpony se vypíšou jen ty podstatné, s `>` celý katalog) |
+| `@` | entity |
+| `#` | tagy |
+
+**Co v paletě je:**
+
+- **Přejít** — všechny pohledy: Nástěnka, Doručeno, Vše, Úkoly, Kalendář, Tagy, Připomenutí,
+  Příznaky, Sledování času, Témata, Uložené pohledy, Šablony, Vazby, Komentáře,
+  Hledat a nahradit, Související, Koš, Data, Nastavení, Zpět — a **Posledních 100 změněných**.
+- **Pohledy** — každý uložený pohled zvlášť.
+- **Vytvořit** — nová entita, ze šablony, rychlé zachycení, rychlý úkol, odkládací prostor.
+- **Entita** (jen když je otevřená) — úpravy, přejmenování, obsah, pokročilý editor,
+  anotační režim, editace sekcí, vazba, související entita, komentář, export/tisk, osnova,
+  umělá inteligence nad obsahem, timer, duplikace, Inbox, archivace, smazání.
+- **Seznam** (v pohledu Vše a uložených pohledech) — režim výběru, uložení filtru jako pohled,
+  počet zobrazených řádků, řazení podle času změny / vzniku / názvu.
+- **Nástroje** — diagnostika aspektů, osiřelé atributy, migrace, statický prohlížeč.
+- **Data a GitHub** — import/export, uložit, načíst, autosave.
+- **Nastavení** — motiv, styl navigace, otevřít nastavení.
+- **Nápověda** — klávesové zkratky.
+- **Entity a tagy** — skok na konkrétní entitu (otevře detail) nebo na entity daného tagu.
+
+Nabídka je **kontextová**: co zrovna nedává smysl, se nezobrazí. Akce nad entitou jen
+v detailu, akce nad seznamem jen v seznamu, GitHub jen když je nastavený, umělá inteligence
+jen když je vyplněný klíč.
+
+Vykreslí se nejvýš 50 položek a pod nimi je poznámka, kolik dalších výsledků zbývá —
+nad databází o tisících entit by jinak psaní v paletě trhalo.
+
+### 🕒 Posledních 100 změněných
+
+Vlastní příkaz (a položka v nabídce Zobrazení): otevře pohled **Vše** bez filtrů, seřazený
+podle času poslední změny sestupně a omezený na **100 řádků**. Je to zkratka k „co jsem
+naposledy dělal"; dál se v něm dá normálně hledat a filtrovat.
+
 ## Klávesové zkratky
 
 ### Globální (kdekoliv kromě editačních polí)
@@ -350,7 +411,8 @@ Pozor: hromadný výběr (a tím i export nebo chat nad vybranými) pracuje jen 
 | `Alt+Shift+V` | Odkládací prostor |
 | `Alt+Shift+S` | Uložit na GitHub |
 | `/` | Skok do pole hledání |
-| `?` | Nápověda |
+| `F1` / `Ctrl+Shift+P` / `Alt+Shift+K` | **Paleta příkazů** (funguje i v editačních polích) |
+| `Shift+F1` / `?` | Nápověda |
 | `F10` | Hlavní nabídka (v režimu klasického menu) — dál šipky, Enter otevře, Esc zavře |
 | `p` / `Alt+Shift+P` | Skok na první otevřený panel |
 | `Esc` | Zavřít dialog / opustit edit / zpět |

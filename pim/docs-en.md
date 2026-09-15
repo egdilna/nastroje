@@ -336,6 +336,67 @@ Next to it is a **Show** select with 100, 300, 500, 1000, 2000 and *all*; the de
 
 Note: bulk selection (and therefore export or chat over the selection) only works with what is rendered — at a limit of 100 you cannot tick an entity that was not shown.
 
+## ⌘ Command palette
+
+One place to run anything — views, actions on the open entity, tools, settings toggles, and
+jumping to a specific entity or tag. The point is that you don't have to remember shortcuts
+or know which menu something lives in: you just start typing.
+
+**Opening:** `F1`, `Ctrl+Shift+P`, the **⌘ Příkazy** button in the header (`Alt+Shift+K`),
+or *Paleta příkazů…* in the View and Help menus. Help moved to `Shift+F1` (the `?` key still works).
+
+> Firefox claims `Ctrl+Shift+P` for private windows. That is why the palette is also on `F1`
+> and on a button — one of the routes always gets through.
+
+**Controls:** `↑` `↓` to move, `PageUp`/`PageDown` by eight, `Home`/`End` to the ends,
+`Enter` runs, `Esc` closes. The mouse just clicks. On close, focus returns to wherever you
+opened the palette from.
+
+**An empty palette** offers the most recently used commands, context actions (actions on the
+entity when one is open, actions on the list when you are in one), the main views, and the
+**last 100 changed entities**.
+
+**Typing** searches commands, entities and tags at once. Diacritics and case do not matter —
+`ukoly` finds *Úkoly*. Several words behave as AND (`zah ukol` finds *Úkoly na zahradě*).
+A leading character narrows the search:
+
+| Prefix | Searches only |
+|---|---|
+| `>` | commands (without a prefix only the essential ones are listed; `>` shows the full catalogue) |
+| `@` | entities |
+| `#` | tags |
+
+**What is in the palette:**
+
+- **Přejít (Go to)** — every view: Dashboard, Inbox, All, Tasks, Calendar, Tags, Reminders,
+  Flags, Time tracking, Topics, Saved views, Templates, Links, Comments, Find and replace,
+  Related, Trash, Data, Settings, Back — plus **Last 100 changed**.
+- **Pohledy (Views)** — each saved view separately.
+- **Vytvořit (Create)** — new entity, from template, quick capture, quick task, scratchpad.
+- **Entita (Entity)** (only when one is open) — edit, rename, content, advanced editor,
+  annotation mode, section editing, link, related entity, comment, export/print, outline,
+  AI over the content, timer, duplicate, Inbox, archive, delete.
+- **Seznam (List)** (in the All view and saved views) — selection mode, save filter as a view,
+  number of rendered rows, sort by change time / creation time / title.
+- **Nástroje (Tools)** — aspect diagnostics, orphan attributes, migrations, static viewer.
+- **Data a GitHub** — import/export, save, load, autosave.
+- **Nastavení (Settings)** — theme, navigation style, open settings.
+- **Nápověda (Help)** — keyboard shortcuts.
+- **Entities and tags** — jump to a specific entity (opens its detail) or to the entities of a tag.
+
+The offering is **context-aware**: whatever does not currently apply is not shown. Entity
+actions only in a detail, list actions only in a list, GitHub only when configured, AI only
+when the key is filled in.
+
+At most 50 items are rendered, with a note below saying how many more results there are —
+over a database of thousands of entities, typing in the palette would otherwise stutter.
+
+### 🕒 Last 100 changed
+
+Its own command (and an item in the View menu): opens the **All** view with no filters, sorted
+by last change descending and capped at **100 rows**. It is a shortcut to "what was I just
+doing"; you can search and filter in it as usual.
+
 ## Keyboard shortcuts
 
 ### Global (anywhere except editing fields)
@@ -351,7 +412,8 @@ Note: bulk selection (and therefore export or chat over the selection) only work
 | `Alt+Shift+V` | Scratchpad |
 | `Alt+Shift+S` | Save to GitHub |
 | `/` | Jump to search field |
-| `?` | Help |
+| `F1` / `Ctrl+Shift+P` / `Alt+Shift+K` | **Command palette** (works in editing fields too) |
+| `Shift+F1` / `?` | Help |
 | `F10` | Main menu (in classic menu mode) — then arrows, Enter opens, Esc closes |
 | `p` / `Alt+Shift+P` | Jump to first open panel |
 | `Esc` | Close dialog / leave edit / back |

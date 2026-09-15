@@ -55,6 +55,28 @@ kopii, odstraňuje GitHub metadata a citlivé věci a umí filtrovat podle tagů
 nového pole do dat rozhodni, zda do prohlížeče patří** — všechno, co tudy projde, se dostane
 ven k příjemci vygenerovaného souboru.
 
+## Paleta příkazů
+Paleta (`F1`, `Ctrl+Shift+P`, tlačítko `#btn-palette`) je v aplikaci **jediné místo, kde se
+příkazy sbíhají**. Žije v bloku `==== PALETA PŘÍKAZŮ ====` hned nad `buildMenuModel()`.
+
+Dvě pravidla, která se nesmí porušit:
+
+1. **Seznam příkazů se staví až při otevření** (`paletaSestavPrikazy()`), ne jako konstanta.
+   Je kontextový — v detailu nabízí akce nad entitou, v seznamu nad seznamem, a skrývá to,
+   co nedává smysl (GitHub bez konfigurace, AI bez klíče). Nová akce v aplikaci patří
+   i sem; paleta je to, kde ji uživatel bude hledat.
+2. **Vykresluje se nejvýš `PALETA_MAX_VYSLEDKU` položek.** Entit můžou být tisíce
+   a `paletaSestavEntity()` je proto normalizuje jednou při otevření, ne při každém stisku.
+
+Hledání je bez diakritiky a velikosti písmen (`paletaNorm`), víc slov je AND. Předpony
+`>` (příkazy), `@` (entity), `#` (tagy) zúží rozsah. Při shodném skóre rozhoduje `_poradi`,
+tedy pořadí deklarace — labely začínají emoji, takže abecední řazení dává nesmysly.
+
+Prázdná paleta schválně nevypisuje celý katalog, jen `zakladni: true` pohledy, kontextové
+akce a posledních `PALETA_NEDAVNYCH` změněných entit.
+
+Paleta je **jen v aplikaci, ne v šabloně prohlížeče** — většina jejích příkazů edituje.
+
 ## Archivace: co kam patří
 Archivované entity (`e.archived`) se **nezobrazují v běžných sekcích detailu** — ve Vazbách,
 v dashboardu projektu (kanban, cíle, lidé a organizace) ani v úkolech a účastnících schůzky.
