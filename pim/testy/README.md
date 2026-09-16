@@ -30,6 +30,7 @@ upravte v `lib.mjs`.
 | `datova-integrita.mjs` | Hromadné akce, koš, export/import a editory tabulky a seznamu přepíšou víc, než měly. |
 | `editor-sekce.mjs` | Návrat z celoobrazovkových nástrojů do editoru sekce. |
 | `paleta.mjs` | Paleta příkazů: otevírání, hledání, kontextové příkazy, limit vykreslení. |
+| `paleta-tagy.mjs` | Tagy v paletě: pořadí ve výsledcích, počty entit a přechod na tag. |
 | `kanban.mjs` | Prázdné sloupce kanbanu a jejich výška. |
 | `limit-vse.mjs`, `limit-pohledu.mjs` | Strop na počet vykreslených řádků seznamu. |
 | `filtr-v-pohledu.mjs` | Rychlé hledání uvnitř uloženého pohledu. |

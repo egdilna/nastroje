@@ -376,8 +376,8 @@ or *Paleta příkazů…* in the View and Help menus. Help moved to `Shift+F1` (
 opened the palette from.
 
 **An empty palette** offers the most recently used commands, context actions (actions on the
-entity when one is open, actions on the list when you are in one), the main views, and the
-**last 100 changed entities**.
+entity when one is open, actions on the list when you are in one), the main views, the
+**most used tags**, and the **last 100 changed entities**.
 
 **Typing** searches commands, entities and tags at once. Diacritics and case do not matter —
 `ukoly` finds *Úkoly*. Several words behave as AND (`zah ukol` finds *Úkoly na zahradě*).
@@ -387,7 +387,7 @@ A leading character narrows the search:
 |---|---|
 | `>` | commands (without a prefix only the essential ones are listed; `>` shows the full catalogue) |
 | `@` | entities |
-| `#` | tags |
+| `#` | tags (`#` alone lists them all) |
 
 **What is in the palette:**
 
@@ -405,7 +405,10 @@ A leading character narrows the search:
 - **Data a GitHub** — import/export, save, load, autosave.
 - **Nastavení (Settings)** — theme, navigation style, open settings.
 - **Nápověda (Help)** — keyboard shortcuts.
-- **Entities and tags** — jump to a specific entity (opens its detail) or to the entities of a tag.
+- **Tags** — jump to the entities of a tag: opens the **All** view filtered by it and clears the
+  other filters. Each tag shows how many entities it has; with no query the most used ones are
+  offered, with the `#` prefix all of them. Archived entities are not counted.
+- **Entities** — jump to a specific entity (opens its detail).
 
 The offering is **context-aware**: whatever does not currently apply is not shown. Entity
 actions only in a detail, list actions only in a list, GitHub only when configured, AI only
