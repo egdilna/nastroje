@@ -1223,7 +1223,8 @@ groups:
 | **List** | search, advanced filters, clear filters, save view, selection mode, preview beside the list and the display switch (list, table, Kanban, calendar, timeline) |
 | **Action** | save, load, export data, **import TSV**, **import a .dkmpkg package**, clipboard, load from URL, panels, AI, theme and language |
 | **Navigation** | the tabs from the bar, Inbox / All / Archive, All comments and **every settings section** |
-| **Jumps** | entity types, aspects, tags, saved views |
+| **Tag** | **every tag in use** as “Set / tag”, with the entity count on the right; Enter switches the list to that tag |
+| **Jumps** | entity types, aspects, saved views |
 | **Entities** | every non-archived entity — Enter opens its detail |
 
 Commands that have a keyboard shortcut show it on the right. The **Entity** and **List**
@@ -1231,10 +1232,18 @@ groups are offered only where they make sense — in a detail and above a list r
 
 ### 19.3 Matching
 
-Type keywords. Condition: each word must be a substring of the name or of the group label
-(case-insensitive). Bonuses: exact match, starts-with. Shorter names win ties.
+Type keywords. Condition: **every word must appear in the name or in the group label** —
+neither case nor diacritics matter, so *cinnost* finds *Činnost*. For an entity the label is
+its type, for a tag its tag set, for a command its group; so "činnost" finds both the entities
+with that in their name and every entity of type *Činnost*.
 
-An empty query offers recently visited entities from the navigation history.
+**Name matches always come first**: the exact name, then the ones starting with the query,
+then the ones containing it, and only then matches in the label alone. Shorter names win ties.
+
+**An empty query** offers recently visited entities from the navigation history plus a
+selection from the other groups. The listing is capped at sixty items, but **no group drops
+out of it entirely** — if it does not fit, it is appended once at the end so you can see it
+exists.
 
 ### 19.4 Keyboard control
 

@@ -1211,7 +1211,8 @@ Vypisovat všechny příkazy nemá cenu, seznam roste s aplikací. Drží se tě
 | **Seznam** | hledání, pokročilé filtry, vyčištění filtrů, uložení pohledu, režim výběru, náhled vedle seznamu a přepnutí zobrazení (seznam, tabulka, Kanban, kalendář, časová osa) |
 | **Akce** | uložit, načíst, export dat, **import TSV**, **import balíčku .dkmpkg**, schránka, načtení z adresy, panely, AI, motiv a jazyk |
 | **Navigace** | záložky z lišty, Inbox / Vše / Archiv, Všechny komentáře a **každá sekce nastavení** |
-| **Skoky** | typy entit, aspekty, tagy, uložené pohledy |
+| **Tag** | **každý použitý tag** jako „Soustava / tag", vpravo počet entit; Enter na něj přepne seznam na ten tag |
+| **Skoky** | typy entit, aspekty, uložené pohledy |
 | **Entity** | každá nearchivovaná entita — Enter otevře její detail |
 
 Příkazy, které mají klávesovou zkratku, ji mají vypsanou vpravo. Skupiny **Entita** a
@@ -1219,11 +1220,18 @@ Příkazy, které mají klávesovou zkratku, ji mají vypsanou vpravo. Skupiny *
 
 ### 19.3 Hledání
 
-Píšeš klíčová slova. Podmínka: každé slovo musí být substring v názvu nebo v popisku skupiny
-(bez ohledu na velikost písmen). Bonusy: přesná shoda, začátek slova. Kratší název vyhrává
-v pořadí.
+Píšeš klíčová slova. Podmínka: **každé slovo musí být někde v názvu nebo v popisku skupiny** —
+nezáleží na velikosti písmen ani na diakritice, takže *cinnost* najde *Činnost*. U entity je
+popiskem její typ, u tagu soustava, u příkazu jeho skupina; „činnost" tedy najde jak entity,
+které to mají v názvu, tak všechny entity typu *Činnost*.
 
-Prázdný dotaz nabídne poslední navštívené entity z historie navigace.
+**Shody v názvu jsou vždycky napřed**: nejdřív přesný název, pak ty, které dotazem začínají,
+pak ty, kde je dotaz uvnitř, a teprve nakonec shody jen v popisku. Kratší název vyhrává
+v pořadí při shodě.
+
+**Prázdný dotaz** nabídne poslední navštívené entity z historie navigace a k nim výběr
+z ostatních skupin. Výpis je omezený na šedesát položek, ale **žádná skupina z něj nevypadne
+úplně** — když se na ni nedostane, přidá se aspoň jednou na konec, aby bylo vidět, že existuje.
 
 ### 19.4 Ovládání klávesnicí
 
