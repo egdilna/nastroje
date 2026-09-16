@@ -1351,6 +1351,11 @@ vazbu, vazba zmizí — v datech nezůstane odkaz do prázdna.
 Uložit, přepsala by tvoje deset minut stará kopie všechno, co mezitím přišlo. Proto se
 i tady slučuje: základem je stav při otevření editoru a při střetu vyhraje to, co zrovna píšeš.
 
+**Tlačítko ↻ Sloučit** v hlavičce vedle Uložit stáhne změny od ostatních a spojí je
+s tvými — **neukládá**. Rozdělaná práce zůstane, jen se k ní přidá, co mezitím udělali
+ostatní. Oproti *Načíst* nic nepřepíše. Když nic nového není, řekne to a nic neudělá.
+Bez nastaveného GitHubu je zašedlé.
+
 **Že někdo jiný uložil, se dozvíš i bez ukládání.** DKM se jednou za dvě minuty (a při
 návratu do okna) zeptá, jestli se souborem nehnul cizí commit — je to jeden levný dotaz,
 ne stahování dat. Když ano, ukáže se cedulka se jménem a tlačítkem **Sloučit**. Nabízí se

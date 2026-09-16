@@ -567,6 +567,11 @@ Konflikt řeší `slucSVzdalenym` + `slucProjekty` (trojcestně: základ = `stat
 a `finishCommitEdit` slučuje trojcestně i tam; bez toho by rozepsaná kopie přepsala všechno,
 co se mezitím sloučilo. Kdo sáhne na zakládání kopie v `renderEdit`, ať základ nastaví taky.
 
+**Sloučit je čtení, ne zápis.** `slucitZGithubu` (tlačítko `b-sync` vedle Uložit, taky
+v paletě) stáhne a sloučí, ale **neukládá** — co jde ven, si má uživatel říct sám. Proto
+stojí vedle Načíst a Uložit, ne mezi exporty. Když se `sha` nezměnila, `slucSVzdalenym`
+rovnou skončí hláškou „nic nového"; bez toho by opakovaný stisk pokaždé hlásil sloučení.
+
 `zkontrolujVzdalene` se ptá jen na **poslední commit** (ne na obsah), jen když je okno vidět,
 a nabízí **Sloučit**, ne Načíst — načtení by zahodilo rozdělanou práci.
 
