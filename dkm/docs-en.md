@@ -2225,7 +2225,7 @@ saves even with Caps Lock on and on layouts where that key types a different let
 | Alt+A | The All list (even with no All tab on the bar) |
 | Alt+B | Back |
 | Alt+R | Add relation (in entity detail) |
-| Alt+U | Commit edit (in editor) |
+| Alt+U | Commit edit — in the editor and while creating a new entity |
 | Alt+1 … Alt+9 | Jump to the 1st–9th tab on the bar |
 
 ### List

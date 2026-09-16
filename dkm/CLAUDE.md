@@ -736,6 +736,13 @@ Caps Locku a rozložením, kde Ctrl+S pošle „ы". Nikdy neporovnávej jen `ev
 zastaví, protože Ctrl+K i Ctrl+Shift+K globálně znamenají něco jiného. Viz „Zkratky
 v markdownových polích" výš.
 
+**Zkratka se ptá na stav, ne na jméno obrazovky.** Alt+U (a prosté U) se řídilo
+`state.view.name==='edit'`, jenže editor je i na `new` — při zakládání nové entity tedy
+nedělalo nic, přestože tlačítko Uložit bylo na svém místě a fungovalo. Podmínka je nově
+`state.view.edit`, tedy totéž, na co se ptá sám `commitEdit`; rozejít se tak nemají kde.
+Táž past byla v paletě: rozepsaná nová entita v datech ještě není, `findEntity` ji nenajde
+a celý blok příkazů k entitě se přeskočil i s Uložit.
+
 Zkratka, která míří do něčeho schovaného v kartě detailu, musí **nejdřív přepnout kartu** —
 do skrytého prvku se zaostřit nedá. Viz `fokusNovyKomentar` u klávesy C.
 
