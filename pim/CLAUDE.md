@@ -198,9 +198,16 @@ Přehled všech entit s atributem `reminder_at`, seřazený podle data — `rend
 tlačítko `data-view="reminders"` v navigaci, větev `case 'reminders':` v render routeru.
 Stav se počítá proti `localDayKey(new Date())` a barví se třídami `.rem-overdue` / `.rem-today` /
 `.rem-future` (mají i variantu pro tmavý motiv — nové stavové barvy dělej stejně).
-Datum jde změnit přímo v tabulce a připomenutí odstranit; obojí musí nastavit `updated_at`,
-zavolat `save()` a překreslit. Prázdná hodnota v poli znamená **smazat atribut**, ne uložit
-prázdný řetězec.
+V tabulce je datum **jen vypsané** (`<time datetime>`), ne jako `<input type="date">`.
+Inline pole tam bylo a nefungovalo: každá změna hned uložila a překreslila celý pohled,
+řádek se kvůli řazení podle data přesunul jinam, fokus spadl na `<body>` a vyprázdnění pole
+připomenutí tiše smazalo. Přeplánování má proto vlastní dialog (`otevriDialogData`) a v akcích
+je vedle Odstranit i Přeplánovat. Obě akce nastaví `updated_at`, zavolají `save()`, překreslí
+**a vrátí fokus** — po překreslení se na nic nespoléhej, řádek už může být jinde.
+
+`otevriDialogData({ titul, popis, hodnota, onOk, onZavreni })` je obecný dialog na výběr data.
+Nativní kalendář neotevírej sám přes `showPicker()` — spolkne první Escape a dialog pak nejde
+zrušit jedním stiskem.
 Pohled je **jen v aplikaci, ne v šabloně prohlížeče** — `reminder_at` je ale v `GLOBAL_FIELDS`
 na obou místech.
 

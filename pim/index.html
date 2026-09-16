@@ -1839,6 +1839,17 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
   </form>
 </dialog>
 
+<dialog id="dialog-datum" aria-labelledby="dialog-datum-title">
+  <h2 id="dialog-datum-title">Přeplánovat</h2>
+  <p class="meta" id="dialog-datum-popis"></p>
+  <label for="dialog-datum-input">Nové datum</label>
+  <input type="date" id="dialog-datum-input">
+  <div class="btn-group" style="margin-top:1em;">
+    <button type="button" class="primary" id="datum-ok">Změnit</button>
+    <button type="button" id="datum-cancel">Zrušit</button>
+  </div>
+</dialog>
+
 <dialog id="dialog-palette" aria-label="Paleta příkazů">
   <div class="pal-box">
     <label for="pal-input" class="sr-only">Hledat příkaz nebo entitu</label>
@@ -7932,6 +7943,38 @@ function openQuickTagEditor(entityId) {
 }
 
 // Přehled všech připomenutí (entity s reminder_at), seřazeno podle data.
+// Dialog na výběr data. Používá ho přeplánování v pohledu Připomenutí; je psaný
+// obecně, aby šel použít i jinde.
+//   opts: { titul, popis, hodnota (ISO yyyy-mm-dd), onOk(iso), onZavreni() }
+function otevriDialogData(opts) {
+  opts = opts || {};
+  const d = document.getElementById('dialog-datum');
+  if (!d) return;
+  const inp = document.getElementById('dialog-datum-input');
+  document.getElementById('dialog-datum-title').textContent = opts.titul || 'Vybrat datum';
+  document.getElementById('dialog-datum-popis').textContent = opts.popis || '';
+  inp.value = opts.hodnota || '';
+
+  let potvrzeno = false;
+  function potvrd() {
+    if (!inp.value) { alertMsg('Vyberte datum.'); inp.focus(); return; }
+    potvrzeno = true;
+    d.close();
+    if (opts.onOk) opts.onOk(inp.value);
+  }
+  document.getElementById('datum-ok').onclick = potvrd;
+  document.getElementById('datum-cancel').onclick = () => d.close();
+  // Enter v poli potvrdí – jinak by dialog jen zavřel formulář bez akce.
+  inp.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); potvrd(); } };
+  d.onclose = () => { if (!potvrzeno && opts.onZavreni) opts.onZavreni(); };
+
+  d.showModal();
+  // Nativní kalendář se schválně neotevírá sám: spolkl by první Escape, takže by
+  // se dialog nedal zrušit jedním stiskem. Fokus je v poli, datum jde napsat
+  // z klávesnice a kalendář si uživatel otevře sám.
+  inp.focus();
+}
+
 function renderRemindersView(main) {
   const todayKey = localDayKey(new Date());
   const list = db.entities
@@ -7945,7 +7988,7 @@ function renderRemindersView(main) {
     main.innerHTML = h;
     return;
   }
-  h += '<p class="meta">' + list.length + ' ' + (list.length === 1 ? 'entita má' : (list.length >= 2 && list.length <= 4 ? 'entity mají' : 'entit má')) + ' termín připomenutí. Datum lze změnit přímo v poli, nebo připomenutí odstranit.</p>';
+  h += '<p class="meta">' + list.length + ' ' + (list.length === 1 ? 'entita má' : (list.length >= 2 && list.length <= 4 ? 'entity mají' : 'entit má')) + ' termín připomenutí. Tlačítkem Přeplánovat vyberete nové datum, Odstranit připomenutí zruší.</p>';
   h += '<table><thead><tr><th scope="col">Entita</th><th scope="col">Datum připomenutí</th><th scope="col">Stav</th><th scope="col">Akce</th></tr></thead><tbody>';
   list.forEach(item => {
     const e = item.e;
@@ -7955,9 +7998,14 @@ function renderRemindersView(main) {
     else { stav = 'Budoucí'; stavCls = 'rem-future'; }
     h += '<tr>' +
       '<td><a href="#" data-entity="' + escapeHtml(e.id) + '">' + getDisplayTitleWithBadges(e) + '</a></td>' +
-      '<td><input type="date" class="rem-date" data-rem-id="' + escapeHtml(e.id) + '" value="' + escapeHtml(item.iso) + '"></td>' +
+      '<td><time datetime="' + escapeHtml(item.iso) + '">' + escapeHtml(fmtDate(item.iso)) + '</time></td>' +
       '<td><span class="' + stavCls + '">' + stav + '</span></td>' +
-      '<td><button class="danger rem-remove" data-rem-id="' + escapeHtml(e.id) + '">Odstranit</button></td>' +
+      '<td>' +
+        '<button class="rem-resched" data-rem-id="' + escapeHtml(e.id) + '" ' +
+          'aria-label="Přeplánovat připomenutí u entity ' + escapeHtml(getDisplayTitle(e)) + '">📅 Přeplánovat</button> ' +
+        '<button class="danger rem-remove" data-rem-id="' + escapeHtml(e.id) + '" ' +
+          'aria-label="Odstranit připomenutí u entity ' + escapeHtml(getDisplayTitle(e)) + '">Odstranit</button>' +
+      '</td>' +
       '</tr>';
   });
   h += '</tbody></table>';
@@ -7967,26 +8015,41 @@ function renderRemindersView(main) {
   main.querySelectorAll('a[data-entity]').forEach(a => {
     a.onclick = (ev) => { ev.preventDefault(); setView('detail', { detailId: a.dataset.entity, detailMode: 'read' }); };
   });
-  // Změna data přímo v poli
-  main.querySelectorAll('input.rem-date').forEach(inp => {
-    inp.onchange = () => {
-      const e = findEntity(inp.dataset.remId);
+  // Po překreslení vrátit fokus tam, odkud uživatel akci spustil. Seznam se řadí
+  // podle data, takže přeplánovaný řádek skočí jinam – bez tohohle by fokus spadl
+  // na <body> a klávesnicí ani odečítačem by nebylo kde pokračovat.
+  function vratFokus(id) {
+    setTimeout(() => {
+      const cil = document.querySelector('button.rem-resched[data-rem-id="' + id + '"]') ||
+        document.querySelector('button.rem-resched') ||
+        document.querySelector('#main h1');
+      if (cil && cil.focus) { if (cil.tagName === 'H1') cil.tabIndex = -1; cil.focus(); }
+    }, 60);
+  }
+
+  // Přeplánování – dialog s výběrem data
+  main.querySelectorAll('button.rem-resched').forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.dataset.remId;
+      const e = findEntity(id);
       if (!e) return;
-      if (!e.attributes) e.attributes = {};
-      const val = inp.value;
-      if (val) {
-        e.attributes.reminder_at = val;
-        e.updated_at = nowIso();
-        save();
-        if (typeof statusMsg === 'function') statusMsg('Připomenutí změněno na ' + fmtDate(val) + '.');
-        render();
-      } else {
-        delete e.attributes.reminder_at;
-        e.updated_at = nowIso();
-        save();
-        if (typeof statusMsg === 'function') statusMsg('Připomenutí odstraněno.');
-        render();
-      }
+      const puvodni = String((e.attributes || {}).reminder_at || '').slice(0, 10);
+      otevriDialogData({
+        titul: 'Přeplánovat připomenutí',
+        popis: getDisplayTitle(e) + ' — nyní ' + fmtDate(puvodni),
+        hodnota: puvodni,
+        onOk: (iso) => {
+          if (!e.attributes) e.attributes = {};
+          e.attributes.reminder_at = iso;
+          e.updated_at = nowIso();
+          save();
+          toast('Připomenutí přeplánováno na ' + fmtDate(iso) + '.');
+          if (typeof statusMsg === 'function') statusMsg('Připomenutí u „' + getDisplayTitle(e) + '" přeplánováno na ' + fmtDate(iso) + '.');
+          render();
+          vratFokus(id);
+        },
+        onZavreni: () => btn.focus()
+      });
     };
   });
   // Odstranění připomenutí
@@ -8000,6 +8063,7 @@ function renderRemindersView(main) {
       toast('Připomenutí odstraněno.');
       if (typeof statusMsg === 'function') statusMsg('Připomenutí odstraněno u „' + getDisplayTitle(e) + '".');
       render();
+      vratFokus(null);
     };
   });
 }
