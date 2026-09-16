@@ -89,13 +89,27 @@ Tudy jdou i typy řádku `ins`/`del` (viz výše), takže změna v této cestě 
 Vlastní Markdown renderer (`renderMarkdown`, `parseInline`, `parseList`, `parseTableRow`)
 je společný pro zobrazení i exporty; při jeho úpravě ověř všechny výstupy.
 
+## Paleta příkazů
+`paletteCommands()` sestavuje **kompletní seznam příkazů** při každém otevření palety
+(`otevriPaletu`, `F1` / `Ctrl+Shift+P`, tlačítko `btn-palette`, položka `btn-palette-menu`).
+Je to jediné místo, kde je vyjmenované všechno, co aplikace umí — **každou novou akci
+sem přidej**, jinak v paletě nebude. Příkaz je `{ id, skupina, nazev, akce, klavesa?,
+popis?, klic?, jenPriHledani? }`; `klic` jsou synonyma pro hledání, `jenPriHledani`
+mají řádky dokumentu (skupina „Přejít na"). Příkazy s **proměnlivým názvem**
+(přepínače) musí mít stabilní `id`, jinak jim nefunguje řazení podle posledního použití.
+Existující tlačítka se volají přes `palKlik("id-tlačítka")`, aby paleta nedublovala logiku.
+Hledání (`palNorm`, `palShoda`, `palFiltruj`) ignoruje velikost písmen i diakritiku,
+umí souvislou shodu, shodu po slovech i fuzzy, a vrací pozice pro zvýraznění
+(`palNazevHtml`). Vykreslení je combobox + listbox s `aria-activedescendant`
+(`palPrekresli`, `palOznac`).
+
 ## Přístupnost
 Menubar (`menubar`, `menu-file/edit/view/tools/help`, `openMenu`, `menuItemsOf`) s klávesovou
-obsluhou, `live-region` + `announce(msg)`, `status(msg)` ve stavovém řádku, řádková navigace
+obsluhou, paleta příkazů (`F1`, `Shift+F1` = nápověda), `live-region` + `announce(msg)`, `status(msg)` ve stavovém řádku, řádková navigace
 (`onRowKeydown`, `navigateRel`, `flatVisible`), popisy řádku pro odečítač
 (`describeRowBrief`, `describeRowFull`, `rowPositionInfo`), roving fokus a `focusOutline()`.
 Osnova se renderuje jako vnořené seznamy s nadpisy podle hloubky (`tagForDepth`, `depthIsHeading`).
-**Každá nová akce potřebuje hlášení přes `announce()` a dosažitelnost klávesnicí.**
+**Každá nová akce potřebuje hlášení přes `announce()`, dosažitelnost klávesnicí a záznam v paletě příkazů.**
 
 ## Konvence
 - Vše česky, texty natvrdo (nemá i18n vrstvu). `escapeHtml(s)` / `esc(s)` / `xmlEsc(s)`
@@ -111,4 +125,5 @@ Načti `Ukázka.outline` → přidej sloupce různých typů včetně popup a so
 a přenastav ho pro sekci → typy řádků → zrcadlo → filtry (vč. rekurzivních) a hledání →
 fokus na sekci a breadcrumb → hromadné operace → verze a její obnovení →
 export do všech formátů (DOCX otevři ve Wordu, ověř revize) → import OPML a Markdownu →
-průchod celé aplikace klávesnicí včetně menubaru a kontextového menu.
+průchod celé aplikace klávesnicí včetně menubaru, kontextového menu a palety příkazů
+(`F1`: hledání s diakritikou i bez, skok na řádek, spuštění příkazu, naposledy použité nahoře).
