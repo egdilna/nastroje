@@ -115,6 +115,14 @@ takže se CSS mezi nimi kopírovat nedá. Motivy i jazyk si prohlížeč uklád�
 `dkm-viewer-theme` / `dkm-viewer-lang`, tedy do prohlížeče příjemce, ne do generovaného souboru.
 Editace: dekóduj base64 do souboru, uprav, zakóduj zpět a nahraď řetězec — nikdy needituj base64.
 
+**Seznam entit zrcadlí aplikaci taky.** Karta je `<div class=ecard>` uvnitř `<li>`,
+název je `<h2 class=etitle>` a v něm skutečný `<a class=etitle-lnk href="#entity/…">`.
+Kartou nesmí být `<a>`: odkaz do odkazu vnořit nejde, a dokud jí byla, měla `role=listitem`,
+což **přebilo roli odkazu** — odečítač hlásil položku seznamu a nic o tom, že se dá otevřít.
+Název navíc nebyl nadpis, takže po seznamu nešlo chodit po nadpisech (osnova je H1 hlavička →
+H2 entita, stejně jako v detailu). Odkaz má barvu akcentu a podtrhává se při najetí; ohnisko
+drží on, ne karta. Klik kamkoli jinam po kartě detail otevře taky, cíl kliknutí se nezmenšil.
+
 **Prohlížeč zrcadlí detail aplikace**: dva sloupce, karty Vazby a Strukturální pohled,
 řádek s metadaty dole, wiki odkazy v textech a odkazy počítané oběma směry přes
 `getLinksFrom` / `getRelsTo`. Když měníš detail v aplikaci, projdi i prohlížeč — má

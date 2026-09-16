@@ -1872,6 +1872,11 @@ application — classic ones, through a relation attribute and through a wiki li
 the same label, and the list toolbar has a **Tag** dropdown too. The viewer does not show
 comments.
 
+**The entity list looks and behaves the same as in the app**: the entity name is a heading
+and a real link at once — it has the link colour, underlines on hover, opens in a new tab and
+is reachable from the keyboard. Clicking anywhere else on the card opens the detail too. The
+list is a real list (`<ul>`), so it can be walked by headings and by links alike.
+
 The static viewer has:
 
 - Entity list

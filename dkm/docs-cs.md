@@ -1843,6 +1843,11 @@ a wiki odkazy `[[Název]]` v textech jsou proklikávací. Tagy jsou odznáčky a
 entity se stejnou značkou a v liště seznamu je i rozbalovátko **Tag**. Komentáře prohlížeč
 nezobrazuje.
 
+**Seznam entit vypadá a chová se jako v aplikaci**: název entity je nadpis a zároveň
+odkaz — má barvu odkazu, podtrhne se při najetí, dá se otevřít v nové záložce a dojde se
+na něj klávesnicí. Klik kamkoli jinam po kartě otevře detail taky. Seznam je opravdový
+seznam (`<ul>`), takže se dá procházet po nadpisech i po odkazech.
+
 Statický prohlížeč má:
 
 - Seznam entit
