@@ -553,6 +553,7 @@ document.documentElement.setAttribute('data-theme',v);
 <button id="ind" class="unsaved" type="button" hidden></button>
 <button class="btn btn-sm" id="b-load" type="button"></button>
 <button class="btn btn-sm" id="b-save" type="button"></button>
+<button class="btn btn-sm" id="b-sync" type="button"></button>
 <label class="ghauto" id="b-ghauto-l"><input type="checkbox" id="b-ghauto"><span id="b-ghauto-t"></span></label>
 <button class="btn btn-sm" id="b-clip-in" type="button"></button>
 <button class="btn btn-sm" id="b-clip-out" type="button"></button>
@@ -1189,7 +1190,7 @@ ghErr404:'Soubor nenalezen (404). Zkontroluj cestu a oprávnění tokenu.',
 ghErr401:'Přístup odepřen (401). Token chybí nebo není platný.',
 ghErr403:'Přístup odepřen (403). Token nemá dostatečná oprávnění.',
 ghErrGeneric:'Chyba GitHub: ',
-ghSlouceno:'Sloučeno se vzdálenou verzí',ghSlucPrevzato:'{n} entit od druhého',ghSlucPridano:'{n} nových od druhého',ghSlucSmazano:'{n} smazaných',ghSlucOziveno:'{n} zůstalo (druhý je smazal, ty upravil)',ghSlucKolize:'{n}× spor – ponechána tvoje verze',ghKonfliktVzdal:'Ukládání se opakovaně střetlo s cizím zápisem. Zkus to za chvíli znovu.',ghVzdalenaZmena:'Na GitHubu je novější verze',ghVzdalenaKdo:'Uložil: {kdo}',ghSloucitBtn:'Sloučit',ghCommitMsg:'Update from DKM',
+ghSlouceno:'Sloučeno se vzdálenou verzí',ghSlucPrevzato:'{n} entit od druhého',ghSlucPridano:'{n} nových od druhého',ghSlucSmazano:'{n} smazaných',ghSlucOziveno:'{n} zůstalo (druhý je smazal, ty upravil)',ghSlucKolize:'{n}× spor – ponechána tvoje verze',ghKonfliktVzdal:'Ukládání se opakovaně střetlo s cizím zápisem. Zkus to za chvíli znovu.',ghVzdalenaZmena:'Na GitHubu je novější verze',ghVzdalenaKdo:'Uložil: {kdo}',ghSloucitBtn:'Sloučit',ghSloucitHint:'Stáhne změny od ostatních a spojí je s tvými. Neukládá.',ghNicNoveho:'Nic nového – máš aktuální verzi',ghCommitMsg:'Update from DKM',
 ghStatus:'Stav',ghStatusNotConfigured:'Nepřipojeno',ghStatusReady:'Připraveno',
 ghShowToken:'Ukázat',ghHideToken:'Skrýt'
 },en:{
@@ -1804,7 +1805,7 @@ ghErr404:'File not found (404). Check the path and token permissions.',
 ghErr401:'Access denied (401). Token missing or invalid.',
 ghErr403:'Access denied (403). Token lacks sufficient permissions.',
 ghErrGeneric:'GitHub error: ',
-ghSlouceno:'Merged with the remote version',ghSlucPrevzato:'{n} entities from the other side',ghSlucPridano:'{n} new from the other side',ghSlucSmazano:'{n} deleted',ghSlucOziveno:'{n} kept (the other side deleted them, you edited them)',ghSlucKolize:'{n}× clash – your version kept',ghKonfliktVzdal:'Saving kept clashing with someone else writing. Try again in a moment.',ghVzdalenaZmena:'A newer version is on GitHub',ghVzdalenaKdo:'Saved by: {kdo}',ghSloucitBtn:'Merge',ghCommitMsg:'Update from DKM',
+ghSlouceno:'Merged with the remote version',ghSlucPrevzato:'{n} entities from the other side',ghSlucPridano:'{n} new from the other side',ghSlucSmazano:'{n} deleted',ghSlucOziveno:'{n} kept (the other side deleted them, you edited them)',ghSlucKolize:'{n}× clash – your version kept',ghKonfliktVzdal:'Saving kept clashing with someone else writing. Try again in a moment.',ghVzdalenaZmena:'A newer version is on GitHub',ghVzdalenaKdo:'Saved by: {kdo}',ghSloucitBtn:'Merge',ghSloucitHint:'Fetches other people\u2019s changes and joins them with yours. Does not save.',ghNicNoveho:'Nothing new – you are up to date',ghCommitMsg:'Update from DKM',
 ghStatus:'Status',ghStatusNotConfigured:'Not connected',ghStatusReady:'Ready',
 ghShowToken:'Show',ghHideToken:'Hide'
 }};
@@ -2957,6 +2958,9 @@ return {data:out,zprava:zpr};
    Kdyby se sem dosadila sloučená data, další ukládání by počítalo rozdíl špatně. */
 function slucSVzdalenym(parsed){
 return ghNactiSoubor(parsed).then(({text,sha})=>{
+/* Táž verze, jakou už máme — slučovat není co. Tlačítko se tím dá mačkat
+   opakovaně, aniž by pokaždé hlásilo, že něco sloučilo. */
+if(sha&&sha===state.ghSha&&hasBaseline()){toast(t('ghNicNoveho'));return {prevzatoEntit:0,pridanoEntit:0,smazanoEntit:0,kolize:[],oziveno:[],zahozenychOdkazu:0,zmenenoModelu:0}}
 const p=JSON.parse(text);
 if(!p||typeof p!=='object'||!Array.isArray(p.entities))throw new Error(t('errLoadInvalid'));
 const jejich=mergeEmpty(p);
@@ -2973,6 +2977,17 @@ ohlasSlouceni(vysl.zprava);
 if(!state.view.edit)render();
 return vysl.zprava;
 });
+}
+
+/* Ruční stažení cizích změn. Oproti Načíst nic nepřepíše — rozdělaná práce
+   zůstane a jen se k ní přidá, co mezitím udělali ostatní. Neukládá: co se
+   odešle ven, ať si uživatel řekne sám. */
+function slucitZGithubu(){
+if(!state.data.ghPath||!ghToken()){toast(t('ghAutoNoGh'));return}
+const parsed=parseGhPath(state.data.ghPath);
+if(!parsed){toast(t('ghErrInvalidPath'));return}
+const b=document.getElementById('gh-banner');if(b)b.remove();
+slucSVzdalenym(parsed).then(()=>{ghZapamatujCommit()},err=>{toast(err.message||String(err))});
 }
 
 /* Co sloučení udělalo. Rozděleno schválně na dvě úrovně:
@@ -4346,6 +4361,13 @@ sb.textContent=(ghMode?'⬆ ':'')+t('btnSave');
 sb.title=(ghMode?t('ghSave')+' ('+state.data.ghPath+')':t('btnSave'))+' ('+t('keyAlt')+'+S, '+t('keyOr')+' S)';
 sb.setAttribute('aria-label',ghMode?t('ghSave'):t('btnSave'));
 prekresliGhAuto();
+/* Sloučit je čtení, ne zápis — proto stojí vedle Načíst a Uložit, ale nic
+   neodesílá. Bez nastaveného GitHubu nemá co dělat, tak je zašedlé. */
+const syb=document.getElementById('b-sync');
+syb.textContent='↻ '+t('ghSloucitBtn');
+syb.disabled=!ghMode;
+syb.title=ghMode?t('ghSloucitHint'):t('ghAutoNoGh');
+syb.setAttribute('aria-label',t('ghSloucitBtn')+' — '+syb.title);
 document.getElementById('b-exp').textContent=t('btnExport');
 document.getElementById('b-imp').textContent=t('btnImport');
 document.getElementById('b-imp').title=t('importTSVDesc');
@@ -10562,6 +10584,7 @@ pridej('📥',t('btnImport'),kat,openImportTSVDialog);
 pridej('📦',t('pkgImportBtn'),kat,openImportPackageDialog);
 pridej('📋',t('clipLoad'),kat,loadProjectFromClipboard,'Ctrl+Shift+O');
 pridej('📋',t('clipSave'),kat,copyProjectToClipboard,'Ctrl+Shift+S');
+pridej('↻',t('ghSloucitBtn'),kat,slucitZGithubu);
 pridej('🌐',t('urlLoadBtn'),kat,()=>{const v=prompt(t('urlSection'));if(!v||!v.trim())return;if(state.dirty&&!confirm(t('confirmDiscardDirty')))return;loadFromUrl(v.trim()).catch(()=>{})});
 pridej('📑',t('panelAdd'),kat,addPanel,'Ctrl+T');
 if((state.panels||[]).length>1)pridej('✕',t('panelClose'),kat,()=>closePanel(state.activePanel),'Ctrl+W');
@@ -14955,6 +14978,7 @@ document.getElementById('b-clip-in').addEventListener('click',loadProjectFromCli
 document.getElementById('b-clip-out').addEventListener('click',copyProjectToClipboard);
 document.getElementById('fin').addEventListener('change',ev=>{const f=ev.target.files&&ev.target.files[0];if(!f)return;loadFile(f);ev.target.value=''});
 document.getElementById('b-save').addEventListener('click',smartSave);
+document.getElementById('b-sync').addEventListener('click',slucitZGithubu);
 document.getElementById('b-ghauto').addEventListener('change',ev=>ghAutoPrepni(ev.target.checked));
 /* Odchod ze záložky čekání na ticho nepočká — co je rozdělané, odešli hned.
    Projekt je i v sessionStorage, tohle jen zkracuje okno, kdy GitHub zaostává. */

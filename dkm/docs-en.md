@@ -1361,6 +1361,11 @@ meanwhile linked to, the relation goes — no reference into nothing is left in 
 your ten-minute-old copy would overwrite everything that arrived meanwhile. So it merges here
 as well: the base is the state when the editor opened, and on a clash what you are typing wins.
 
+**The ↻ Merge button** in the header next to Save fetches other people's changes and joins
+them with yours — it **does not save**. Work in progress stays, whatever the others did in the
+meantime is simply added to it. Unlike *Load*, it overwrites nothing. If there is nothing new,
+it says so and does nothing. Without GitHub set up it is greyed out.
+
 **You learn that someone else saved without saving yourself.** Every two minutes (and when you
 return to the window) DKM asks whether a foreign commit touched the file — one cheap request,
 not a download. If so, a notice appears with the name and a **Merge** button. Merging is offered
