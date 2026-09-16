@@ -375,7 +375,8 @@ na `Shift+F1` (klávesa `?` funguje dál).
 jste paletu otevřeli.
 
 **Prázdná paleta** nabídne naposledy použité příkazy, akce ke kontextu (v detailu entity
-akce nad ní, v seznamu akce nad seznamem), hlavní pohledy a **posledních 100 změněných entit**.
+akce nad ní, v seznamu akce nad seznamem), hlavní pohledy, **nejpoužívanější tagy**
+a **posledních 100 změněných entit**.
 
 **Psaním** se hledá zároveň v příkazech, entitách i tazích. Na diakritice ani velikosti
 písmen nezáleží — `ukoly` najde *Úkoly*. Víc slov se chová jako AND (`zah ukol` najde
@@ -385,7 +386,7 @@ písmen nezáleží — `ukoly` najde *Úkoly*. Víc slov se chová jako AND (`z
 |---|---|
 | `>` | příkazy (bez předpony se vypíšou jen ty podstatné, s `>` celý katalog) |
 | `@` | entity |
-| `#` | tagy |
+| `#` | tagy (samotné `#` vypíše všechny) |
 
 **Co v paletě je:**
 
@@ -403,7 +404,10 @@ písmen nezáleží — `ukoly` najde *Úkoly*. Víc slov se chová jako AND (`z
 - **Data a GitHub** — import/export, uložit, načíst, autosave.
 - **Nastavení** — motiv, styl navigace, otevřít nastavení.
 - **Nápověda** — klávesové zkratky.
-- **Entity a tagy** — skok na konkrétní entitu (otevře detail) nebo na entity daného tagu.
+- **Tagy** — skok na entity daného tagu: otevře pohled **Vše** s filtrem na ten tag a ostatní
+  filtry vyčistí. U každého tagu je vidět, kolik entit má; bez napsaného dotazu se nabídnou
+  nejpoužívanější, s předponou `#` všechny. Archivované entity se do počtu nepočítají.
+- **Entity** — skok na konkrétní entitu (otevře detail).
 
 Nabídka je **kontextová**: co zrovna nedává smysl, se nezobrazí. Akce nad entitou jen
 v detailu, akce nad seznamem jen v seznamu, GitHub jen když je nastavený, umělá inteligence

@@ -24355,6 +24355,8 @@ function setupKeyboard() {
 //    jinak psaní v paletě trhalo – entit můžou být tisíce.
 const PALETA_MAX_VYSLEDKU = 50;
 const PALETA_NEDAVNYCH = 100;      // kolik posledně změněných entit nabídnout v prázdné paletě
+const PALETA_TAGU_PRAZDNA = 8;     // kolik nejpoužívanějších tagů ukázat v prázdné paletě
+const PALETA_TAGU_SMISENE = 8;     // kolik tagů nejvýš při běžném hledání (s „#" jich jde víc)
 const PALETA_MRU_KLIC = 'pim_paleta_mru';
 const PALETA_MRU_MAX = 8;
 
@@ -24362,7 +24364,7 @@ const PALETA_MRU_MAX = 8;
 const PALETA_SKUPINY = ['Naposledy použité', 'Entita', 'Seznam', 'Přejít', 'Pohledy',
   'Vytvořit', 'Nástroje', 'Data a GitHub', 'Nastavení', 'Nápověda', 'Tagy', 'Entity'];
 
-const _paleta = { prikazy: [], entity: [], vysledky: [], index: 0, vracetFokus: null };
+const _paleta = { prikazy: [], entity: [], tagy: [], vysledky: [], index: 0, vracetFokus: null };
 
 // Porovnávání bez ohledu na velikost písmen a diakritiku – „ukoly" musí najít „Úkoly".
 function paletaNorm(t) {
@@ -24648,6 +24650,25 @@ function paletaSestavPrikazy() {
   return P;
 }
 
+// Tagy s počtem entit. Počítá se jednou při otevření palety – procházet kvůli
+// počtu celou databázi při každém stisku klávesy by nedávalo smysl.
+function paletaSestavTagy() {
+  const pocty = new Map();
+  (db.entities || []).forEach(e => {
+    if (e.archived) return;
+    (e.tags || []).forEach(t => pocty.set(t, (pocty.get(t) || 0) + 1));
+  });
+  const vsechny = (typeof getAllTags === 'function') ? getAllTags() : [...pocty.keys()];
+  return vsechny.map(t => ({ tag: t, pocet: pocty.get(t) || 0, _hledat: paletaNorm(t) }))
+    .sort((a, b) => b.pocet - a.pocet || a.tag.localeCompare(b.tag, 'cs'));
+}
+
+function popisPoctuEntit(n) {
+  if (n === 1) return '1 entita';
+  if (n >= 2 && n <= 4) return n + ' entity';
+  return n + ' entit';
+}
+
 // Entity se připravují jednou při otevření: normalizace názvu přes tisíce entit
 // při každém stisku klávesy by paletu znatelně zpomalila.
 function paletaSestavEntity() {
@@ -24686,7 +24707,7 @@ function paletaVysledky(dotazSurovy) {
   if (prazdny && rezim === 'vse') {
     paletaMruNacti().forEach(id => {
       const c = _paleta.prikazy.find(x => x.id === id);
-      if (c) out.push({ skupina: 'Naposledy použité', label: c.label, hint: c.hint, klavesa: c.klavesa, id: c.id, run: c.run });
+      if (c) out.push({ skupina: 'Naposledy použité', sk: Infinity, label: c.label, hint: c.hint, klavesa: c.klavesa, id: c.id, run: c.run });
     });
   }
 
@@ -24707,25 +24728,38 @@ function paletaVysledky(dotazSurovy) {
       if (ra !== rb) return (ra < 0 ? 99 : ra) - (rb < 0 ? 99 : rb);
       return a.c._poradi - b.c._poradi;
     });
-    nalezene.forEach(({ c }) => {
+    nalezene.forEach(({ sk, c }) => {
       if (out.some(o => o.id === c.id)) return;   // už je mezi naposledy použitými
-      out.push({ skupina: c.kategorie, label: c.label, hint: c.hint, klavesa: c.klavesa, id: c.id, run: c.run });
+      out.push({ skupina: c.kategorie, sk: sk, label: c.label, hint: c.hint, klavesa: c.klavesa, id: c.id, run: c.run });
     });
   }
 
-  // Tagy se při prázdném dotazu nevypisují – jsou jich desítky a nic neříkají.
-  if (rezim === 'tagy' || (rezim === 'vse' && !prazdny)) {
-    const tagy = (typeof getAllTags === 'function') ? getAllTags() : [];
-    const nalezene = [];
-    tagy.forEach(t => {
-      const sk = paletaSkore(slova, paletaNorm(t));
-      if (sk > 0) nalezene.push({ sk, t });
-    });
-    nalezene.sort((a, b) => b.sk - a.sk || a.t.localeCompare(b.t, 'cs'));
-    nalezene.slice(0, rezim === 'tagy' ? PALETA_MAX_VYSLEDKU : 5).forEach(({ t }) => {
+  if (rezim === 'tagy' || rezim === 'vse') {
+    let nalezene;
+    if (prazdny) {
+      // Bez dotazu nabídneme nejpoužívanější tagy – pole je podle počtu seřazené.
+      nalezene = _paleta.tagy.slice(0, rezim === 'tagy' ? PALETA_MAX_VYSLEDKU : PALETA_TAGU_PRAZDNA)
+        .map(t => ({ sk: 1, t }));
+    } else {
+      nalezene = [];
+      _paleta.tagy.forEach(t => {
+        const sk = paletaSkore(slova, t._hledat);
+        if (sk > 0) nalezene.push({ sk, t });
+      });
+      nalezene.sort((a, b) => b.sk - a.sk || b.t.pocet - a.t.pocet || a.t.tag.localeCompare(b.t.tag, 'cs'));
+      nalezene = nalezene.slice(0, rezim === 'tagy' ? PALETA_MAX_VYSLEDKU : PALETA_TAGU_SMISENE);
+    }
+    nalezene.forEach(({ sk, t }) => {
+      const nazev = t.tag;
       out.push({
-        skupina: 'Tagy', label: '🏷 ' + t, hint: 'Zobrazit entity s tímto tagem', id: 'tag:' + t,
-        run: () => { state.filter = { aspect: '', tag: t, text: '', status: '', attrFilters: [] }; setView('all'); }
+        skupina: 'Tagy', sk: sk, label: '🏷 ' + nazev,
+        hint: popisPoctuEntit(t.pocet) + ' — otevřít v pohledu Vše', id: 'tag:' + nazev,
+        run: () => {
+          state.filter = { aspect: '', tag: nazev, text: '', status: '', attrFilters: [] };
+          _bulk.active = false;
+          setView('all');
+          toast('🏷 ' + nazev);
+        }
       });
     });
   }
@@ -24739,7 +24773,7 @@ function paletaVysledky(dotazSurovy) {
       const s = [];
       _paleta.entity.forEach(e => {
         const sk = paletaSkore(slova, e._hledat);
-        if (sk > 0) s.push({ sk, e });
+        if (sk > 0) { e._sk = sk; s.push({ sk, e }); }
       });
       // Při shodě skóre vyhrává novější entita – pole je seřazené podle času,
       // takže stabilní řazení stačí porovnat podle skóre.
@@ -24748,14 +24782,28 @@ function paletaVysledky(dotazSurovy) {
     }
     nalezene.forEach(e => {
       out.push({
-        skupina: prazdny ? 'Nedávno změněné' : 'Entity',
+        skupina: prazdny ? 'Nedávno změněné' : 'Entity', sk: e._sk || 1,
         label: (e.archived ? '🗄 ' : '📄 ') + e.titul, hint: e.hint, id: 'e:' + e.id,
         run: () => setView('detail', { detailId: e.id })
       });
     });
   }
 
-  return out;
+  // Skupiny se řadí podle svého nejlepšího skóre. Když uživatel napíše název tagu,
+  // nesmí ho odsunout příkaz, který se shodl jen volně – a naopak. Uvnitř skupiny
+  // pořadí zůstává. V prázdné paletě se nepřerovnává, tam je pořadí dané záměrně.
+  if (prazdny) return out;
+  const nejlepsi = {};
+  const poradi = [];
+  out.forEach(o => {
+    const sk = (o.sk === undefined) ? 1 : o.sk;
+    if (!(o.skupina in nejlepsi)) { nejlepsi[o.skupina] = sk; poradi.push(o.skupina); }
+    else if (sk > nejlepsi[o.skupina]) nejlepsi[o.skupina] = sk;
+  });
+  poradi.sort((a, b) => nejlepsi[b] - nejlepsi[a]);
+  const serazene = [];
+  poradi.forEach(g => out.forEach(o => { if (o.skupina === g) serazene.push(o); }));
+  return serazene;
 }
 
 function paletaVykresli() {
@@ -24848,6 +24896,7 @@ function paletaOtevri() {
   _paleta.vracetFokus = (document.activeElement && document.activeElement !== document.body) ? document.activeElement : null;
   _paleta.prikazy = paletaSestavPrikazy();
   _paleta.entity = paletaSestavEntity();
+  _paleta.tagy = paletaSestavTagy();
   input.value = '';
   d.showModal();
   paletaAktualizuj();
@@ -24882,6 +24931,7 @@ function setupPaleta() {
     _paleta.vysledky = [];
     _paleta.prikazy = [];
     _paleta.entity = [];
+    _paleta.tagy = [];
     const vrat = _paleta.vracetFokus;
     _paleta.vracetFokus = null;
     if (vrat && document.body.contains(vrat)) { try { vrat.focus(); } catch (e) {} }
