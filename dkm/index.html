@@ -135,6 +135,8 @@ button,input,select,textarea{font:inherit;color:inherit}
 .standalone-mode .app-title{font-size:.85rem;color:var(--mu)}
 .standalone-mode .app-header-actions{gap:.3rem}
 .standalone-mode #b-imp,.standalone-mode #b-exp{display:none}
+.sync-banner-vic{align-items:flex-start;max-width:min(420px,90vw)}
+.sync-banner-vic .sluc-sez{margin-top:.2rem;color:var(--mu);font-size:.85rem;max-height:9rem;overflow:auto}
 .sync-banner{position:fixed;top:.5rem;right:.5rem;background:var(--sf);border:1px solid var(--ac);border-radius:var(--r);padding:.5rem .7rem;display:flex;gap:.4rem;align-items:center;box-shadow:0 2px 8px rgba(0,0,0,.15);z-index:150;font-size:.9rem}
 .btn{display:inline-flex;align-items:center;gap:.4rem;padding:.4rem .75rem;background:var(--sf);color:var(--tx);border:1px solid var(--bd);border-radius:var(--r);cursor:pointer;font-size:.9rem;transition:background var(--tr),border-color var(--tr);text-decoration:none}
 .btn:hover{background:var(--sf2)}
@@ -1187,7 +1189,7 @@ ghErr404:'Soubor nenalezen (404). Zkontroluj cestu a oprávnění tokenu.',
 ghErr401:'Přístup odepřen (401). Token chybí nebo není platný.',
 ghErr403:'Přístup odepřen (403). Token nemá dostatečná oprávnění.',
 ghErrGeneric:'Chyba GitHub: ',
-ghCommitMsg:'Update from DKM',
+ghSlouceno:'Sloučeno se vzdálenou verzí',ghSlucPrevzato:'{n} entit od druhého',ghSlucPridano:'{n} nových od druhého',ghSlucSmazano:'{n} smazaných',ghSlucOziveno:'{n} zůstalo (druhý je smazal, ty upravil)',ghSlucKolize:'{n}× spor – ponechána tvoje verze',ghKonfliktVzdal:'Ukládání se opakovaně střetlo s cizím zápisem. Zkus to za chvíli znovu.',ghVzdalenaZmena:'Na GitHubu je novější verze',ghVzdalenaKdo:'Uložil: {kdo}',ghSloucitBtn:'Sloučit',ghCommitMsg:'Update from DKM',
 ghStatus:'Stav',ghStatusNotConfigured:'Nepřipojeno',ghStatusReady:'Připraveno',
 ghShowToken:'Ukázat',ghHideToken:'Skrýt'
 },en:{
@@ -1802,7 +1804,7 @@ ghErr404:'File not found (404). Check the path and token permissions.',
 ghErr401:'Access denied (401). Token missing or invalid.',
 ghErr403:'Access denied (403). Token lacks sufficient permissions.',
 ghErrGeneric:'GitHub error: ',
-ghCommitMsg:'Update from DKM',
+ghSlouceno:'Merged with the remote version',ghSlucPrevzato:'{n} entities from the other side',ghSlucPridano:'{n} new from the other side',ghSlucSmazano:'{n} deleted',ghSlucOziveno:'{n} kept (the other side deleted them, you edited them)',ghSlucKolize:'{n}× clash – your version kept',ghKonfliktVzdal:'Saving kept clashing with someone else writing. Try again in a moment.',ghVzdalenaZmena:'A newer version is on GitHub',ghVzdalenaKdo:'Saved by: {kdo}',ghSloucitBtn:'Merge',ghCommitMsg:'Update from DKM',
 ghStatus:'Status',ghStatusNotConfigured:'Not connected',ghStatusReady:'Ready',
 ghShowToken:'Show',ghHideToken:'Hide'
 }};
@@ -2756,25 +2758,33 @@ function ghHeaders(){const h={'Accept':'application/vnd.github.v3+json'};const t
 function ghErrFromStatus(status){if(status===404)return t('ghErr404');if(status===401)return t('ghErr401');if(status===403)return t('ghErr403');return t('ghErrGeneric')+'HTTP '+status}
 function ghShareUrl(ghPath){return location.origin+location.pathname+'?id='+ghEncode(ghPath)}
 
+/* Stažení souboru z GitHubu. Velký soubor přijde bez obsahu, ten se dotahuje
+   zvlášť přes blob API. Sdílí to načtení projektu i sloučení při konfliktu —
+   druhou kopii téhle logiky nikam nepiš. */
+function ghNactiSoubor(parsed){
+const apiUrl='https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/contents/'+parsed.path;
+return fetch(apiUrl,{headers:ghHeaders()}).then(res=>{
+if(!res.ok)throw new Error(ghErrFromStatus(res.status));
+return res.json();
+}).then(meta=>{
+dbg('GH meta: size='+meta.size+' sha='+(meta.sha||'').slice(0,8));
+if(meta.content&&meta.encoding==='base64')return{text:ghB64ToText(meta.content),sha:meta.sha};
+const blobUrl='https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/git/blobs/'+meta.sha;
+dbg('Large file, fetching blob: '+blobUrl);
+return fetch(blobUrl,{headers:ghHeaders()}).then(res=>{
+if(!res.ok)throw new Error(ghErrFromStatus(res.status));
+return res.json();
+}).then(blob=>({text:ghB64ToText(blob.content),sha:meta.sha}));
+});
+}
+
 function loadFromGitHub(ghPath,opts){
 opts=opts||{};
 const parsed=parseGhPath(ghPath);
 if(!parsed){toast(t('ghErrInvalidPath'));return Promise.reject(new Error('invalid path'))}
 const apiUrl='https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/contents/'+parsed.path;
 toast(t('ghLoading'));dbg('GitHub GET '+apiUrl+(ghToken()?' (with token)':' (no token)'));
-return fetch(apiUrl,{headers:ghHeaders()}).then(res=>{
-if(!res.ok)throw new Error(ghErrFromStatus(res.status));
-return res.json();
-}).then(meta=>{
-dbg('GH meta: size='+meta.size+' sha='+(meta.sha||'').slice(0,8));
-if(meta.content&&meta.encoding==='base64'){return{text:ghB64ToText(meta.content),sha:meta.sha}}
-const blobUrl='https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/git/blobs/'+meta.sha;
-dbg('Large file, fetching blob: '+blobUrl);
-return fetch(blobUrl,{headers:ghHeaders()}).then(res=>{
-if(!res.ok)throw new Error(ghErrFromStatus(res.status));
-return res.json();
-}).then(blob=>{return{text:ghB64ToText(blob.content),sha:meta.sha}});
-}).then(({text,sha})=>{
+return ghNactiSoubor(parsed).then(({text,sha})=>{
 const p=JSON.parse(text);
 if(!p||typeof p!=='object'||!Array.isArray(p.entities))throw new Error(t('errLoadInvalid'));
 const merged=mergeEmpty(p);merged.ghPath=ghPath;
@@ -2785,10 +2795,221 @@ state.navHistory=[];
 saveLS();
 otevriVychoziZalozku();
 toast('✓ '+t('ghLoaded'));
+ghZapamatujCommit();
 dbg('Loaded from GitHub OK ('+text.length+' B)');
 }).catch(err=>{
 const msg=err.message||String(err);toast(msg);dbg('GitHub load failed: '+msg,true);throw err;
 });
+}
+
+/* ============================================================
+   SLOUČENÍ DVOU VERZÍ PROJEKTU (trojcestné)
+   Základ = co jsem načetl, moje = co mám teď, jejich = co je na GitHubu.
+   Cíl: nepřijít o cizí práci. Co jde sloučit, se sloučí bez ptaní; skutečná
+   kolize (oba změnili totéž jinak) se řeší ve prospěch toho, kdo ukládá —
+   a vypíše se, aby o ní věděl. Dialog tu být nesmí: ukládá i AutoSave.
+   ============================================================ */
+
+/* Model se slučuje sjednocením podle `id`: co druhý přidal, zůstane; co oba
+   změnili, vyhraje moje. Uživatel si model hlídá sám, tohle má jen zabránit
+   tomu, aby uložení smazalo cizí nový typ. */
+const MODELOVE_KOLEKCE=['entityTypes','aspects','relationTypes','selectLists','tagSets','savedViews','jsonExports'];
+/* Skalární pole entity. `updatedAt` se řeší zvlášť (bere se pozdější), `id` je
+   klíč a `attributes` mají vlastní porovnání po klíčích. */
+const SKALARY_ENTITY=['name','inInbox','archived','typeId','createdAt'];
+
+function slKopie(x){return x===undefined?undefined:JSON.parse(JSON.stringify(x))}
+function slStejne(a,b){return JSON.stringify(a===undefined?null:a)===JSON.stringify(b===undefined?null:b)}
+function slPodleId(pole){const m=new Map();(pole||[]).forEach(x=>{if(x&&x.id!=null)m.set(x.id,x)});return m}
+
+/* Trojcestné sloučení členství v množině: co druhý přidal, přibude; co druhý
+   odebral, zmizí — ledaže jsem to přidal já. */
+function clenstvi(zaklad,moje,jejich){
+const out=new Set(moje);
+jejich.forEach(k=>{if(!zaklad.has(k))out.add(k)});
+zaklad.forEach(k=>{if(!jejich.has(k)&&moje.has(k))out.delete(k)});
+moje.forEach(k=>{if(!zaklad.has(k))out.add(k)});
+return out;
+}
+
+/* Sloučení pole objektů s `id`. `slucPrvek` se volá, jen když prvek změnili oba.
+   Členství se tu nepočítá přes `clenstvi`: u pojmenovaných prvků je totiž navíc
+   vidět, jestli je druhá strana **změnila**. Smazat se proto smí jen to, čeho se
+   ten druhý nedotkl — jinak by uložení zahodilo jeho práci, a to je přesně to,
+   čemu se tu snažíme zabránit. `onOziveno` takový případ ohlásí. */
+function slucPodleId(zaklad,moje,jejich,slucPrvek,onOziveno){
+const zB=slPodleId(zaklad),zM=slPodleId(moje),zJ=slPodleId(jejich);
+const zust=new Set();
+new Set([].concat(Array.from(zB.keys()),Array.from(zM.keys()),Array.from(zJ.keys()))).forEach(id=>{
+const jeB=zB.has(id),jeM=zM.has(id),jeJ=zJ.has(id);
+if(!jeB){if(jeM||jeJ)zust.add(id);return}
+if(jeM&&jeJ){zust.add(id);return}
+if(!jeM&&!jeJ)return;
+if(jeM&&!jeJ){if(!slStejne(zB.get(id),zM.get(id))){zust.add(id);if(onOziveno)onOziveno(zM.get(id),'moje')}return}
+if(!slStejne(zB.get(id),zJ.get(id))){zust.add(id);if(onOziveno)onOziveno(zJ.get(id),'jejich')}
+});
+const vyres=id=>{
+const b=zB.get(id),m=zM.get(id),j=zJ.get(id);
+if(m&&j){
+const zmenilJa=!slStejne(b,m),zmeniliOni=!slStejne(b,j);
+if(zmenilJa&&zmeniliOni)return slucPrvek?slucPrvek(b,m,j):slKopie(m);
+return slKopie(zmeniliOni?j:m);
+}
+return slKopie(m||j);
+};
+const out=[];const hotovo=new Set();
+/* Nejdřív v mém pořadí, pak to, co přibylo od druhého. */
+(moje||[]).forEach(x=>{if(!zust.has(x.id)||hotovo.has(x.id))return;hotovo.add(x.id);out.push(vyres(x.id))});
+(jejich||[]).forEach(x=>{if(!zust.has(x.id)||hotovo.has(x.id))return;hotovo.add(x.id);out.push(vyres(x.id))});
+return out;
+}
+
+/* Vazba se pozná dvojicí (typ vazby, cíl), ne svým `id` — to má každý klient
+   vlastní. Dva lidé, kteří přidají téže entitě různou vazbu, se tak nesrazí. */
+function klicVazby(r){return JSON.stringify([String(r&&r.relationTypeId||''),String(r&&r.targetId||'')])}
+
+/* Jedna entita. Vrací {entita, kolize:[názvy polí]}. */
+function slucEntitu(zaklad,moje,jejich){
+const b=zaklad||{},kolize=[];
+const e=slKopie(moje);
+const vezmi=(pole,hodB,hodM,hodJ,nastav)=>{
+const zmenilJa=!slStejne(hodB,hodM),zmeniliOni=!slStejne(hodB,hodJ);
+if(!zmeniliOni)return;
+if(!zmenilJa){nastav(slKopie(hodJ));return}
+if(!slStejne(hodM,hodJ))kolize.push(pole);
+};
+SKALARY_ENTITY.forEach(k=>vezmi(k,b[k],moje[k],jejich[k],v=>{e[k]=v}));
+/* Atributy po klíčích — dva lidé na různých atributech téže entity se nesrazí. */
+const klice=new Set([].concat(Object.keys(b.attributes||{}),Object.keys(moje.attributes||{}),Object.keys(jejich.attributes||{})));
+e.attributes=Object.assign({},moje.attributes||{});
+klice.forEach(k=>vezmi('attributes.'+k,(b.attributes||{})[k],(moje.attributes||{})[k],(jejich.attributes||{})[k],v=>{
+if(v===undefined||v===null||v==='')delete e.attributes[k];else e.attributes[k]=v}));
+e.aspects=Array.from(clenstvi(new Set(b.aspects||[]),new Set(moje.aspects||[]),new Set(jejich.aspects||[])));
+const mapaVazeb=pole=>{const m=new Map();(pole||[]).forEach(r=>m.set(klicVazby(r),r));return m};
+const vB=mapaVazeb(b.relations),vM=mapaVazeb(moje.relations),vJ=mapaVazeb(jejich.relations);
+const vZust=clenstvi(new Set(vB.keys()),new Set(vM.keys()),new Set(vJ.keys()));
+e.relations=[];const videno=new Set();
+[vM,vJ].forEach(m=>m.forEach((r,k)=>{if(!vZust.has(k)||videno.has(k))return;videno.add(k);e.relations.push(slKopie(r))}));
+/* Vlastní atributy, komentáře a objekty podle `id`. Komentáře a objekty jsou
+   v praxi jen přírůstkové, takže se skoro nikdy nesrazí. */
+e.customAttributes=slucPodleId(b.customAttributes,moje.customAttributes,jejich.customAttributes,(bb,mm)=>{kolize.push('customAttributes');return slKopie(mm)});
+e.comments=slucPodleId(b.comments,moje.comments,jejich.comments,(bb,mm)=>{kolize.push('comments');return slKopie(mm)});
+e.objects=slucPodleId(b.objects,moje.objects,jejich.objects,(bb,mm)=>{kolize.push('objects');return slKopie(mm)});
+/* Čas úpravy je pozdější z obou — datum je tu údaj, ne předmět sporu. */
+const tM=moje.updatedAt||'',tJ=jejich.updatedAt||'';
+e.updatedAt=tJ>tM?tJ:tM;
+return {entita:e,kolize:kolize};
+}
+
+/* Po sloučení nesmí zůstat odkaz na entitu, kterou druhý smazal. */
+function uklidOdkazy(data){
+const zive=new Set((data.entities||[]).map(e=>e.id));
+let zahozeno=0;
+const typyAtributu=new Map();
+(data.entityTypes||[]).forEach(ty=>(ty.attributes||[]).forEach(a=>typyAtributu.set(a.id,a.type)));
+(data.aspects||[]).forEach(as=>(as.attributes||[]).forEach(a=>typyAtributu.set(a.id,a.type)));
+(data.entities||[]).forEach(e=>{
+const pred=(e.relations||[]).length;
+e.relations=(e.relations||[]).filter(r=>zive.has(r.targetId));
+zahozeno+=pred-e.relations.length;
+const orez=(drzak,klic,typ)=>{
+if(typ!=='relation')return;
+const v=drzak[klic];
+if(Array.isArray(v)){const p=v.filter(x=>zive.has(x));zahozeno+=v.length-p.length;drzak[klic]=p}
+else if(v&&!zive.has(v)){zahozeno++;delete drzak[klic]}
+};
+Object.keys(e.attributes||{}).forEach(aid=>orez(e.attributes,aid,typyAtributu.get(aid)));
+(e.customAttributes||[]).forEach(ca=>orez(ca,'value',ca.type));
+});
+return zahozeno;
+}
+
+/* Hlavní vstup. Vrací sloučená data a zprávu o tom, co se stalo. */
+function slucProjekty(zaklad,moje,jejich){
+const zpr={prevzatoEntit:0,pridanoEntit:0,smazanoEntit:0,kolize:[],oziveno:[],zahozenychOdkazu:0,zmenenoModelu:0};
+const out=slKopie(moje);
+MODELOVE_KOLEKCE.forEach(k=>{
+const pred=JSON.stringify(moje[k]||[]);
+out[k]=slucPodleId(zaklad[k],moje[k],jejich[k],(b,m)=>slKopie(m));
+if(JSON.stringify(out[k])!==pred)zpr.zmenenoModelu++;
+});
+const zB=slPodleId(zaklad.entities),zM=slPodleId(moje.entities),zJ=slPodleId(jejich.entities);
+out.entities=slucPodleId(zaklad.entities,moje.entities,jejich.entities,(b,m,j)=>{
+const r=slucEntitu(b,m,j);
+if(r.kolize.length)zpr.kolize.push({id:m.id,nazev:m.name||m.id,pole:r.kolize});
+return r.entita;
+},(e,strana)=>{zpr.oziveno.push({nazev:e.name||e.id,strana:strana})});
+out.entities.forEach(e=>{if(!zM.has(e.id)&&zJ.has(e.id))zpr.pridanoEntit++;else if(zM.has(e.id)&&zJ.has(e.id)&&!slStejne(zJ.get(e.id),zM.get(e.id)))zpr.prevzatoEntit++});
+zB.forEach((e,id)=>{if(zM.has(id)&&!zJ.has(id)&&slStejne(zB.get(id),zM.get(id)))zpr.smazanoEntit++});
+zpr.zahozenychOdkazu=uklidOdkazy(out);
+return {data:out,zprava:zpr};
+}
+
+/* Stáhne vzdálenou verzi a sloučí ji do rozpracovaných dat. Používá to konflikt
+   při ukládání i tlačítko Sloučit v banneru.
+
+   Základem trojcestného sloučení je `state.baseline`, tedy stav, jak jsme ho
+   načetli. Když žádný není (projekt vznikl lokálně a teprve se ukládá do cizího
+   souboru), použije se **prázdný základ**: tím se ze sloučení stane sjednocení,
+   ve kterém při střetu vyhraje ukládající — a hlavně se nic cizího nesmaže.
+
+   Po sloučení je novým základem **jejich** verze, protože na ni ukazuje `ghSha`.
+   Kdyby se sem dosadila sloučená data, další ukládání by počítalo rozdíl špatně. */
+function slucSVzdalenym(parsed){
+return ghNactiSoubor(parsed).then(({text,sha})=>{
+const p=JSON.parse(text);
+if(!p||typeof p!=='object'||!Array.isArray(p.entities))throw new Error(t('errLoadInvalid'));
+const jejich=mergeEmpty(p);
+const zaklad=hasBaseline()?state.baseline:emptyData();
+const vysl=slucProjekty(zaklad,state.data,jejich);
+vysl.data.ghPath=state.data.ghPath;
+state.data=vysl.data;
+state.baseline=JSON.parse(JSON.stringify(jejich));
+state.ghSha=sha;
+saveLS();
+ohlasSlouceni(vysl.zprava);
+/* Překreslovat s otevřeným editorem by sebralo ohnisko uprostřed psaní.
+   Rozepsaná kopie se stejně slučuje až při potvrzení editace. */
+if(!state.view.edit)render();
+return vysl.zprava;
+});
+}
+
+/* Co sloučení udělalo. Rozděleno schválně na dvě úrovně:
+
+   Běžný průběh (převzaté a přidané entity) je jen **toast** — informace, kterou
+   nikdo nemusí číst.
+
+   Spor a oživená entita jsou **banner**, který sám nezmizí. Toast by nestačil:
+   hned po sloučení přijde hláška o úspěšném uložení a tu první by překryla —
+   přitom právě tohle je jediná zpráva o tom, že něčí změna ustoupila. Dialog tu
+   být nesmí, protože sem chodí i automatické ukládání. */
+function ohlasSlouceni(z){
+dbg('Merge: '+JSON.stringify(z));
+const casti=[];
+if(z.prevzatoEntit)casti.push(t('ghSlucPrevzato',{n:z.prevzatoEntit}));
+if(z.pridanoEntit)casti.push(t('ghSlucPridano',{n:z.pridanoEntit}));
+if(z.smazanoEntit)casti.push(t('ghSlucSmazano',{n:z.smazanoEntit}));
+if(casti.length)toast(t('ghSlouceno')+': '+casti.join(', '));
+else if(!z.kolize.length&&!z.oziveno.length)toast(t('ghSlouceno'));
+if(z.kolize.length||z.oziveno.length)ukazSlucBanner(z);
+}
+function ukazSlucBanner(z){
+const stary=document.getElementById('gh-merge-banner');if(stary)stary.remove();
+const b=document.createElement('div');b.id='gh-merge-banner';b.className='sync-banner sync-banner-vic';
+const txt=document.createElement('div');
+const h=document.createElement('strong');
+h.textContent=z.kolize.length?t('ghSlucKolize',{n:z.kolize.length}):t('ghSlucOziveno',{n:z.oziveno.length});
+txt.appendChild(h);
+const sez=document.createElement('div');sez.className='sluc-sez';
+z.kolize.forEach(k=>{const d=document.createElement('div');d.textContent=k.nazev+' – '+k.pole.join(', ');sez.appendChild(d)});
+z.oziveno.forEach(o=>{const d=document.createElement('div');d.textContent=o.nazev;sez.appendChild(d)});
+txt.appendChild(sez);
+b.appendChild(txt);
+const x=document.createElement('button');x.type='button';x.className='btn btn-sm';x.textContent='×';x.setAttribute('aria-label',t('close'));
+x.addEventListener('click',()=>b.remove());
+b.appendChild(x);
+document.body.appendChild(b);
 }
 
 /* `tiche` je pro automatické ukládání: bez „Ukládám…" a bez hlášky o úspěchu.
@@ -2802,21 +3023,27 @@ if(!parsed){toast(t('ghErrInvalidPath'));soundFailed();return Promise.reject(new
 const apiUrl='https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/contents/'+parsed.path;
 if(!tiche)toast(t('ghSaving'));
 dbg('GitHub PUT '+apiUrl+(tiche?' (auto)':''));
-const json=JSON.stringify(state.data,null,2);
-const content=ghTextToB64(json);
+/* Posílá se `sha`, kterou jsme načetli, ne ta nejčerstvější. Právě tím GitHub
+   pozná, že mezitím uložil někdo jiný, a zápis odmítne (409, u chybějící sha 422).
+   Dřív se sha načítala těsně před zápisem, takže se ta ochrana zahazovala a poslední
+   uložení tiše přepsalo cizí práci. Konflikt se teď vyřeší sloučením a zkusí znovu. */
 const doPut=sha=>{
-const body={message:t('ghCommitMsg')+(state.data.projectName?' – '+state.data.projectName:''),content:content};
+const kdo=userName();
+const body={message:t('ghCommitMsg')+(state.data.projectName?' – '+state.data.projectName:'')+(kdo?' ('+kdo+')':''),content:ghTextToB64(JSON.stringify(state.data,null,2))};
 if(sha)body.sha=sha;
 return fetch(apiUrl,{method:'PUT',headers:Object.assign({'Content-Type':'application/json'},ghHeaders()),body:JSON.stringify(body)}).then(res=>{
+if(res.status===409||res.status===422)return{__konflikt:true};
 if(!res.ok)return res.json().catch(()=>({})).then(j=>{throw new Error(ghErrFromStatus(res.status)+(j.message?' – '+j.message:''))});
 return res.json();
 });
 };
-return fetch(apiUrl,{headers:ghHeaders()}).then(res=>{
-if(res.status===404)return null;
-if(!res.ok)throw new Error(ghErrFromStatus(res.status));
-return res.json();
-}).then(meta=>doPut(meta?meta.sha:null)).then(result=>{
+const pokus=n=>doPut(state.ghSha).then(res=>{
+if(!res||!res.__konflikt)return res;
+if(n>=3)throw new Error(t('ghKonfliktVzdal'));
+dbg('GitHub conflict, merging (pokus '+(n+1)+')');
+return slucSVzdalenym(parsed).then(()=>pokus(n+1));
+});
+return pokus(0).then(result=>{
 state.ghSha=result.content&&result.content.sha;
 state.dirty=false;saveLS();snapshotBaseline();
 const ind=document.getElementById('ind');if(ind)ind.hidden=true;
@@ -2824,6 +3051,7 @@ const ind=document.getElementById('ind');if(ind)ind.hidden=true;
    ukládání má. Potlačuje se jen hláška, ne zvuk. */
 soundSaved();
 if(!tiche)toast('✓ '+t('ghSaved'));
+ghZapamatujCommit();
 dbg('GitHub save OK'+(tiche?' (auto)':''));
 return result;
 }).catch(err=>{
@@ -6786,7 +7014,10 @@ state.view.edit=e;
 const o=findEntity(state.view.entityId);
 if(!o){w.innerHTML='<p class="empty">Entity not found</p>';return w}
 if(state.view.edit&&state.view.edit.id===o.id)e=state.view.edit;
-else{e=JSON.parse(JSON.stringify(o));if(typeof e.name!=='string')e.name='';state.view.edit=e}
+else{e=JSON.parse(JSON.stringify(o));if(typeof e.name!=='string')e.name='';state.view.edit=e;
+/* Editor pracuje na kopii. Aby se při uložení dalo poznat, co jsem změnil já
+   a co se mezitím sloučilo zvenčí, drží se tu i stav při otevření. */
+state.view.editZaklad=JSON.parse(JSON.stringify(o));}
 }
 
 const h=document.createElement('div');h.className='dh';
@@ -10506,10 +10737,24 @@ e.customAttributes=(e.customAttributes||[]).filter(ca=>(ca.name&&ca.name.trim())
 const idx=state.data.entities.findIndex(x=>x.id===e.id);
 /* Starý název musíme přečíst, dokud je entita v datech ještě v původní podobě. */
 const staryNazev=idx===-1?'':getTitle(state.data.entities[idx]);
+/* Otevřený editor je sám o sobě odložená kopie: než se dá Uložit, mohlo se na
+   pozadí sloučit něco od druhého člověka. Uložit rozpracovanou kopii tak, jak je,
+   by jeho změny v téhle entitě přepsalo — proto se i tady slučuje trojcestně.
+   Základ je stav při otevření editoru, „moje" je rozepsaná kopie (ta při střetu
+   vyhrává, protože ji člověk právě píše) a „jejich" to, co je v datech teď. */
+if(idx>-1&&state.view.editZaklad&&state.view.editZaklad.id===e.id){
+const ted=state.data.entities[idx];
+if(JSON.stringify(ted)!==JSON.stringify(state.view.editZaklad)){
+const r=slucEntitu(state.view.editZaklad,e,ted);
+e=r.entita;
+dbg('Editor merge: '+e.id+' kolize='+JSON.stringify(r.kolize));
+if(r.kolize.length)toast(t('ghSlucKolize',{n:r.kolize.length}));
+}
+}
 if(idx===-1)state.data.entities.push(e);else state.data.entities[idx]=e;
 const novyNazev=getTitle(e);
 ohlasPrejmenovani(prejmenujWikiOdkazy(staryNazev,novyNazev),novyNazev);
-const id=e.id;state.view.edit=null;
+const id=e.id;state.view.edit=null;state.view.editZaklad=null;
 setDirty(true);
 navigateTo({name:'detail',entityId:id});
 }
@@ -14621,6 +14866,53 @@ b.appendChild(dismiss);
 document.body.appendChild(b);
 }
 
+/* Hlídání, jestli mezitím neuložil někdo jiný. Není to synchronizace — jen
+   dotaz na poslední commit, který se souboru dotkl. Ptá se levně (jeden commit,
+   ne obsah souboru) a jen když je okno vidět, takže na pozadí nic neběží.
+   Odpověď nese i jméno a čas, takže banner může říct, kdo to byl. */
+let ghPosledniCommit=null;
+const GH_KONTROLA_MS=120000;
+function ghZapamatujCommit(){
+const parsed=parseGhPath(state.data.ghPath);if(!parsed)return;
+ghPosledniCommit=null;
+ghPosledniCommitZeSite(parsed).then(c=>{if(c)ghPosledniCommit=c.sha}).catch(()=>{});
+}
+function ghPosledniCommitZeSite(parsed){
+const url='https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/commits?per_page=1&path='+encodeURIComponent(parsed.path);
+return fetch(url,{headers:ghHeaders()}).then(res=>{
+if(!res.ok)return null;
+return res.json();
+}).then(j=>(Array.isArray(j)&&j[0])?{sha:j[0].sha,kdo:(j[0].commit&&j[0].commit.author&&j[0].commit.author.name)||'',kdy:(j[0].commit&&j[0].commit.author&&j[0].commit.author.date)||''}:null);
+}
+function zkontrolujVzdalene(){
+if(document.visibilityState!=='visible')return;
+if(!state.data.ghPath||!ghToken())return;
+if(ghAutoStav.bezi)return;
+const parsed=parseGhPath(state.data.ghPath);if(!parsed)return;
+ghPosledniCommitZeSite(parsed).then(c=>{
+if(!c)return;
+if(!ghPosledniCommit){ghPosledniCommit=c.sha;return}
+if(c.sha===ghPosledniCommit)return;
+ghPosledniCommit=c.sha;
+ukazVzdalenyBanner(c,parsed);
+}).catch(()=>{});
+}
+/* Nabízí se Sloučit, ne Načíst: načtení by zahodilo rozdělanou práci. */
+function ukazVzdalenyBanner(c,parsed){
+const stary=document.getElementById('gh-banner');if(stary)stary.remove();
+const b=document.createElement('div');b.id='gh-banner';b.className='sync-banner';
+const msg=document.createElement('span');
+msg.textContent=t('ghVzdalenaZmena')+(c.kdo?' – '+t('ghVzdalenaKdo',{kdo:c.kdo}):'');
+b.appendChild(msg);
+const btn=document.createElement('button');btn.type='button';btn.className='btn btn-sm';btn.textContent=t('ghSloucitBtn');
+btn.addEventListener('click',()=>{b.remove();slucSVzdalenym(parsed).catch(err=>toast(err.message||String(err)))});
+b.appendChild(btn);
+const x=document.createElement('button');x.type='button';x.className='btn btn-sm';x.textContent='×';x.setAttribute('aria-label',t('close'));
+x.addEventListener('click',()=>b.remove());
+b.appendChild(x);
+document.body.appendChild(b);
+}
+
 function isStandalone(){try{return new URLSearchParams(location.search).get('standalone')==='1'}catch(e){return false}}
 
 function consumeHandoff(){
@@ -14676,6 +14968,8 @@ document.getElementById('b-set').addEventListener('click',()=>navigateTo({name:'
 initCustomizeMenu();
 document.addEventListener('pointerdown',primeAudio,{once:true});
 document.addEventListener('keydown',primeAudio,{once:true});
+setInterval(zkontrolujVzdalene,GH_KONTROLA_MS);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')zkontrolujVzdalene()});
 document.getElementById('dbg-x').addEventListener('click',()=>{state.showDebug=false;localStorage.setItem(SK_DBG,'false');document.getElementById('dbg').hidden=true});
 document.getElementById('dbg-clr').addEventListener('click',()=>{document.getElementById('dbg-c').innerHTML=''});
 document.addEventListener('keydown',ev=>{

@@ -1327,6 +1327,51 @@ Then **Save** (Ctrl+S) saves directly to GitHub.
 
 Saving comes with **sound feedback** — a short rising tone on success, a darker falling one on failure (missing path, missing token, a GitHub rejection or a network error). It can be switched off in Settings → General.
 
+#### Two people on one project
+
+DKM expects more than one person to work on the same file. **The file is not overwritten
+wholesale** — a save sends GitHub the version you started from as well. If someone else saved
+meanwhile, GitHub rejects the write and DKM **merges**: it fetches their version, compares it
+with yours and with the original, and saves the result.
+
+Merging happens field by field, so two people only meet where they touched the same thing:
+
+| Situation | Result |
+|---|---|
+| each a different entity | both kept |
+| each a different attribute of the same entity | both kept |
+| each a different relation on the same entity | both kept — a relation is identified by *relation type + target*, not by its ID |
+| each a different aspect, tag, comment, object | both kept |
+| both added an entity | both kept |
+| the other deleted, you did not touch it | the deletion stands |
+| the other deleted, you edited | the entity **stays** and you are told |
+| **both changed the same thing differently** | whoever saves wins — and it is reported |
+
+A clash and a kept-back entity are reported by a **notice that does not disappear on its own**,
+listing which entities and which fields. The other value is not lost — it is in the commit history.
+
+**The model** (types, aspects, select lists, views) is merged by union: what the other side
+added stays; what you both changed goes to whoever saves. DKM does not police the model — two
+people should not be changing it at once.
+
+**References are cleaned up after a merge.** If the other side deleted an entity you had
+meanwhile linked to, the relation goes — no reference into nothing is left in the data.
+
+**An open editor** is a deferred copy too. If you opened it, went to lunch and then hit Save,
+your ten-minute-old copy would overwrite everything that arrived meanwhile. So it merges here
+as well: the base is the state when the editor opened, and on a clash what you are typing wins.
+
+**You learn that someone else saved without saving yourself.** Every two minutes (and when you
+return to the window) DKM asks whether a foreign commit touched the file — one cheap request,
+not a download. If so, a notice appears with the name and a **Merge** button. Merging is offered
+on purpose rather than loading: loading would throw away work in progress.
+
+**The commit message carries the name** from *Settings → General → Your name for comments*.
+With a token each, git itself tells the authors apart.
+
+**AutoSave copes too** — it resolves the conflict on its own and stays on; it only switches off
+after a real error (bad token, network down).
+
 #### Autosave (Auto)
 
 Next to the **Save** button is an **AutoSave** checkbox. When it is on, DKM saves the project
