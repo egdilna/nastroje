@@ -422,6 +422,18 @@ Vlastní příkaz (a položka v nabídce Zobrazení): otevře pohled **Vše** be
 podle času poslední změny sestupně a omezený na **100 řádků**. Je to zkratka k „co jsem
 naposledy dělal"; dál se v něm dá normálně hledat a filtrovat.
 
+## 🔔 Připomenutí
+
+Pohled se všemi entitami, které mají vyplněný atribut **Připomenutí (datum)**, seřazenými
+podle data. U každé je vidět entita, datum, stav (*Po termínu* / *Dnes* / *Budoucí*) a akce.
+
+Datum je v tabulce jen vypsané. Změnit ho jde tlačítkem **📅 Přeplánovat**, které otevře
+dialog s výběrem nového data — potvrdíte tlačítkem *Změnit* nebo Enterem, `Esc` a *Zrušit*
+nezmění nic. **Odstranit** připomenutí u entity zruší (samotná entita zůstane).
+
+Po obou akcích se seznam překreslí a fokus se vrátí na tlačítko u téže entity, takže jde
+plynule pokračovat klávesnicí. Řádek se po přeplánování přesune podle nového data.
+
 ## Klávesové zkratky
 
 ### Globální (kdekoliv kromě editačních polí)

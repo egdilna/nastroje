@@ -423,6 +423,18 @@ Its own command (and an item in the View menu): opens the **All** view with no f
 by last change descending and capped at **100 rows**. It is a shortcut to "what was I just
 doing"; you can search and filter in it as usual.
 
+## 🔔 Reminders
+
+A view of every entity with the **Reminder (date)** attribute filled in, sorted by date. Each
+row shows the entity, the date, a status (*overdue* / *today* / *future*) and actions.
+
+The date is only printed in the table. To change it use **📅 Přeplánovat** (Reschedule), which
+opens a dialog with a date picker — confirm with *Změnit* or Enter; `Esc` and *Zrušit* change
+nothing. **Odstranit** (Remove) clears the reminder on that entity (the entity itself stays).
+
+After either action the list is re-rendered and focus returns to the button on the same entity,
+so you can carry on with the keyboard. A rescheduled row moves according to its new date.
+
 ## Keyboard shortcuts
 
 ### Global (anywhere except editing fields)

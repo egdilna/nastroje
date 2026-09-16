@@ -40,6 +40,7 @@ upravte v `lib.mjs`.
 | `anotace.mjs` | Inline anotace `(>text)` se nevykreslují doslova a nejdou do exportu. |
 | `skryte-ukoly.mjs` | Skrytí hotových úkolů přežije zaškrtnutí dalšího. |
 | `klavesy.mjs` | Klávesové zkratky a accesskey se nepřekrývají. |
+| `pripomenuti.mjs` | Tabulka termínů, přeplánování dialogem a návrat fokusu po překreslení. |
 | `staticky-prohlizec.mjs` | Vygenerovaný offline prohlížeč se načte a ukazuje totéž. |
 
 ## Psaní nové sady
