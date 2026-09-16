@@ -28,6 +28,8 @@ Osnova se v hlavní ploše zobrazuje jako **víceúrovňový vnořený seznam �
 - **Uložené filtry** — pokročilé podmínky nad libovolnými sloupci a nad typem řádku, kombinované logickým **A**, ukládané spolu s dokumentem.
 - **Hromadné operace** — přesun, změna hodnoty sloupce, změna typu řádku, smazání pro označené řádky; u data i posun o počet dnů.
 - **Verze dokumentu** — pojmenované snímky celého dokumentu, uložené přímo v souboru `.outline`.
+- **Paleta příkazů** — `F1` nebo `Ctrl+Shift+P`: jedno vyhledávací pole, odkud jde spustit každá funkce aplikace
+  i skočit na libovolný řádek dokumentu.
 - **Fulltextové hledání** — v tématu, poznámkách i hodnotách sloupců, s úryvky a skoky mezi výsledky.
 - **Statistiky** — počty řádků, hloubka, rozpad podle stavu, úrovní a typů; souhrny každého sloupce.
 - **Import a export** — nativní `.outline`, OPML, Markdown, DOCX (se sledovanými změnami a komentáři), HTML (statické i dynamické), CSV, TSV, prostý text.
@@ -51,6 +53,7 @@ Aplikace má tři hlavní oblasti nad sebou/vedle sebe (bez sticky/fixed prvků 
 
 - **Název aktuálního dokumentu** (velký, aktualizuje se podle metadat).
 - **Hlavní nabídka** (menubar) s pěti nabídkami: Soubor, Úpravy, Zobrazení, Nástroje, Nápověda.
+- **Tlačítko „⌘ Paleta příkazů"** hned vedle nabídky — otevře [paletu příkazů](#paleta-příkazů) i bez klávesnice.
 - **Filter bar** — pole pro rychlý filtr textu a filtr podle stavu (Vše / Jen hotové / Jen nehotové).
 
 ### Postranní panely (sidebar)
@@ -149,6 +152,8 @@ Osnova je jeden „stromový“ ovládací prvek: v seznamu je vždy tabulátore
 | `←` | Sbalit větev (u rozbalené); jinak přejít na rodiče. |
 | `Home` / `End` | První / poslední viditelný řádek. |
 | `/` | Skočit do osnovy z libovolného pole (mimo dialog a mimo aktivní psaní). |
+| `F1` / `Ctrl+Shift+P` / `Cmd+Shift+P` | Paleta příkazů (stejná klávesa ji zase zavře). |
+| `Shift+F1` | Nápověda a klávesové zkratky. |
 | `F10` | Skočit do hlavní nabídky. |
 | `Shift+F10` nebo `T` | Otevřít kontextovou nabídku vybraného řádku. |
 | `Menu` / `ContextMenu` | Otevřít kontextovou nabídku vybraného řádku. |
@@ -525,6 +530,43 @@ Náhled i „Vrátit se k verzi“ jsou dostupné také přímo z okna náhledu.
 ---
 
 ## Nástroje
+
+### Paleta příkazů
+
+Paleta je **jedno místo, odkud jde spustit všechno, co aplikace umí** — bez hledání v nabídkách a bez pamatování zkratek.
+
+**Otevření:** klávesa `F1`, zkratka `Ctrl+Shift+P` (`Cmd+Shift+P`), tlačítko **⌘ Paleta příkazů** vedle hlavní nabídky, nebo *Nápověda → Paleta příkazů…*. Stejná klávesa paletu zavře, stejně jako `Esc`.
+
+**Hledání:** píšeš, co chceš udělat, a seznam se zužuje. Hledá se
+
+- bez ohledu na **velikost písmen a diakritiku** — „cislo" najde „Číslování",
+- **po slovech** — „export word" najde „Exportovat do Word (.docx)",
+- **i s vynechanými písmeny** (fuzzy shoda); nalezená písmena jsou v názvu podtržená,
+- kromě názvu také ve **skupině, popisu, klávesové zkratce a synonymech** — „stáhnout" najde exporty, „mirror" zrcadlo.
+
+**Ovládání:** `↑` `↓` (i `PageUp` / `PageDown`, `Home` / `End`) vybírají, `Enter` spustí, `Esc` zavře. Položky jdou i kliknout myší. Naposledy použité příkazy jsou po otevření nahoře.
+
+**Co v paletě je:**
+
+| Skupina | Obsah |
+|---------|-------|
+| **Soubor** | Nový, otevřít, uložit `.outline`, schránka, import, export (dialog), uložit verzi, verze dokumentu, načíst ukázková data. |
+| **Export** | Přímý export bez dialogu: Word (i se přijatými změnami), statické HTML, dynamické HTML, Markdown, OPML, CSV, prostý text. |
+| **Řádek** | Upravit řádek i poznámku, přepnout hotovo, přidat sourozence/potomka, posuny, zanoření a vynoření, sbalit/rozbalit, zrcadlo, začátek sekce a její číslování, informace o řádku pro odečítač, nabídka akcí, smazání. |
+| **Typ řádku** | Každý sémantický typ (normální, strong, em, ins, del, mark, citace, článek, poznámka) jako samostatný příkaz. |
+| **Hodnoty sloupce** | U každého viditelného pop-up sloupce přímo jeho hodnoty (a vyprázdnění). |
+| **Výběr** | Režim výběru, vybrat řádek / celou větev a všechny hromadné operace, když je něco vybráno. |
+| **Zobrazení** | Sbalit / rozbalit vše, hoist a jeho zrušení, přejít do osnovy, hlavní nabídka, skrýt panely, tmavý režim. |
+| **Panely** | Otevře a zaměří konkrétní postranní panel (sekce, sloupce, číslování, styly, metadata, uložené filtry, ladicí výstup). |
+| **Filtry** | Rychlý filtr, pokročilé podmínky, filtr stavu, zrušení podmínek i všech filtrů, použití uloženého filtru podle jména. |
+| **Číslování** | Zapnout/vypnout číslování a předvolby schémat (úřední, osnova, předpis, desetinné). |
+| **Sloupce** | Přidat sloupec, upravit konkrétní sloupec, skrýt/zobrazit konkrétní sloupec. |
+| **Nástroje, Nápověda** | Najít, statistiky, nápověda a zkratky. |
+| **Přejít na** | Skok na libovolný řádek dokumentu podle jeho textu (nabízí se až při psaní, ukazuje i cestu k řádku). Cílový řádek se rozbalí a vybere. |
+
+**Nabízí se jen to, co dává smysl:** příkazy pro řádek jen s vybraným řádkem, „Posunout nahoru" jen když řádek není první, „Zrušit hoist" jen při zapnutém hoistu, hromadné operace jen při neprázdném výběru. Když není vybraný žádný řádek, paleta to připomene tipem ve spodní části.
+
+**Přístupnost:** pole je *combobox* nad *listboxem*, aktivní položka se hlásí přes `aria-activedescendant`, počet nalezených příkazů se oznamuje odečítači a po zavření se fokus vrací tam, odkud jsi paletu otevřel.
 
 ### Fulltextové hledání
 
