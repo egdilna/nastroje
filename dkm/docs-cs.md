@@ -2191,7 +2191,7 @@ i se zapnutým Caps Lockem a na rozložení, kde ta klávesa píše jiné písme
 | Alt+A | Seznam Vše (i když záložku Vše v liště nemáš) |
 | Alt+B | Zpět |
 | Alt+R | Přidat vazbu (v detailu entity) |
-| Alt+U | Uložit editaci (v editoru) |
+| Alt+U | Uložit editaci — v editoru i při zakládání nové entity |
 | Alt+1 … Alt+9 | Skok na 1.–9. záložku v liště |
 
 ### Seznam
