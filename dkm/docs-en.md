@@ -1364,7 +1364,8 @@ as well: the base is the state when the editor opened, and on a clash what you a
 **The ↻ Merge button** in the header next to Save fetches other people's changes and joins
 them with yours — it **does not save**. Work in progress stays, whatever the others did in the
 meantime is simply added to it. Unlike *Load*, it overwrites nothing. If there is nothing new,
-it says so and does nothing. Without GitHub set up it is greyed out.
+it says so and does nothing. Without GitHub set up it is greyed out. From the keyboard
+**Alt+M** (as in *merge*).
 
 **You learn that someone else saved without saving yourself.** Every two minutes (and when you
 return to the window) DKM asks whether a foreign commit touched the file — one cheap request,
@@ -2271,6 +2272,7 @@ saves even with Caps Lock on and on layouts where that key types a different let
 |-----|--------|
 | Alt+L | Load project from file |
 | Alt+S | Save |
+| Alt+M | Merge — fetch other people's changes (does not save) |
 | Alt+N | New entity — of that type when on a single-type tab |
 | Alt+A | The All list (even with no All tab on the bar) |
 | Alt+B | Back |

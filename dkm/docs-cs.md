@@ -1354,7 +1354,7 @@ i tady slučuje: základem je stav při otevření editoru a při střetu vyhraj
 **Tlačítko ↻ Sloučit** v hlavičce vedle Uložit stáhne změny od ostatních a spojí je
 s tvými — **neukládá**. Rozdělaná práce zůstane, jen se k ní přidá, co mezitím udělali
 ostatní. Oproti *Načíst* nic nepřepíše. Když nic nového není, řekne to a nic neudělá.
-Bez nastaveného GitHubu je zašedlé.
+Bez nastaveného GitHubu je zašedlé. Z klávesnice **Alt+M** (jako *merge*).
 
 **Že někdo jiný uložil, se dozvíš i bez ukládání.** DKM se jednou za dvě minuty (a při
 návratu do okna) zeptá, jestli se souborem nehnul cizí commit — je to jeden levný dotaz,
@@ -2239,6 +2239,7 @@ i se zapnutým Caps Lockem a na rozložení, kde ta klávesa píše jiné písme
 |---------|------|
 | Alt+L | Načíst projekt ze souboru |
 | Alt+S | Uložit |
+| Alt+M | Sloučit — stáhnout změny od ostatních (neukládá) |
 | Alt+N | Nová entita — na záložce jednoho typu rovnou toho typu |
 | Alt+A | Seznam Vše (i když záložku Vše v liště nemáš) |
 | Alt+B | Zpět |
