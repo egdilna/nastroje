@@ -480,7 +480,13 @@ doing"; you can search and filter in it as usual.
 
 The **Vybrat entitu** (Select entity) dialog — used for link targets, for inserting a wiki link
 with `Ctrl+Shift+K`, and for includes and status chips — searches the entity's **title, tags and
-type (aspect)** at once. For the type it matches both the label and the aspect key, so "Činnost"
+type (aspect)** at once.
+
+Every list item **starts with the entity's title**. The selection marker (`○` / `●`, or `☐` / `☑`
+in multi-select) is visual only and screen readers do not read it, so first-letter navigation
+works in the list. Selection state is carried by `aria-selected`, and arrow-key highlighting by
+`aria-activedescendant` — so moving through the list does not announce "selected".
+ For the type it matches both the label and the aspect key, so "Činnost"
 finds not only entities with that word in the title but every entity of that type. Case and
 **diacritics** do not matter — `cinnost` finds the same as `Činnost`. Several words behave as AND.
 

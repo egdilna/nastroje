@@ -230,6 +230,16 @@ a čitelnostní pojistky — neruš je, případně zpřístupni v nastavení.
 - Vanilla JS, `'use strict'`, žádný build krok. Jediná stálá externí závislost je GitHub API
   (+ volitelně Toggl, LINDAT a SheetJS).
 
+## Přístupnost: název první
+Aplikaci ovládá i odečítač obrazovky a hledání po písmenech v seznamech. **Přístupný
+název položky seznamu musí začínat tím, co uživatel hledá** — názvem entity, ne značkou
+výběru, číslem ani ikonou. Vizuální značky patří do elementu s `aria-hidden="true"`
+(viz `.rp-znacka` v dialogu Vybrat entitu).
+
+V `role="listbox"` znamená `aria-selected` **vybráno**, ne „zvýrazněno". Zvýraznění
+šipkami se hlásí přes `aria-activedescendant` a kreslí se třídou (`.rp-aktivni`).
+Záměna obojího je tichá chyba: odečítač pak hlásí vybráno u všeho, přes co se projede.
+
 ## Testy: `pim/testy/`
 V repozitáři je sada automatických testů proti skutečnému `index.html` v bezhlavém
 Chromiu. **Spouštěj ji u každé změny**, která sahá na obsah entit, editory nebo
