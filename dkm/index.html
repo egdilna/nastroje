@@ -10344,6 +10344,16 @@ if(!maZalozku('all'))pridej('',t('tabAll'),t('cmdCatNav'),()=>navigateTo({name:'
 if(!maZalozku('archive'))pridej('📦',t('tabArchive'),t('cmdCatNav'),()=>navigateTo({name:'list',tab:'archive'}));
 if(!maZalozku('recent'))pridej('🕘',t('tabKindRecent'),t('cmdCatNav'),()=>navigateTo({name:'list',tab:'recent',displayMode:'list',groupBy:'system||updatedAt',groupDate:'day'}));
 if(!maZalozku('comments'))pridej('💬',t('viewAllComments'),t('cmdCatNav'),()=>navigateTo({name:'allComments'}));
+
+/* Tag je navigační cíl jako záložka, ne položka modelu — proto stojí tady, ne až
+   za typy, aspekty a pohledy. Tam skončil kolem stovté položky, a protože paleta
+   bez napsaného dotazu ukazuje jen prvních šedesát, nebyl při otevření vidět vůbec:
+   dostat se k tagu šlo jen tak, že člověk jeho název znal a napsal ho.
+   Počet entit jde do `kbd`, ne do názvu — v názvu by se na číslo dalo hledat. */
+collectUsedTags().forEach(x=>{
+if(maZalozku('tag',z=>z.tagSetId===x.tagSetId&&z.tag===x.tag))return;
+pridej('🏷',x.setName+' / '+x.tag,t('cmdCatTag'),()=>nastavTagFiltr(x.tagSetId,x.tag),'×'+x.pocet);
+});
 SETTINGS_SEKCE.forEach(s=>pridej('⚙',t('btnSettings')+': '+t(s[1]),t('cmdCatSettings'),()=>navigateTo({name:'settings',settingsTab:s[0],settingsItemId:null})));
 
 /* --- Vzhled a jazyk --- */
@@ -10363,11 +10373,6 @@ pridej('◎',asp.name,t('cmdCatAspect'),()=>navigateTo({name:'list',tab:'aspect:
 if(maZalozku('view',z=>z.viewId===sv.id))return;
 pridej(sv.icon||'⭐',sv.name,t('cmdCatView'),()=>applySavedView(sv));
 });
-collectUsedTags().forEach(x=>{
-if(maZalozku('tag',z=>z.tagSetId===x.tagSetId&&z.tag===x.tag))return;
-pridej('🏷',x.setName+' / '+x.tag,t('cmdCatTag'),()=>nastavTagFiltr(x.tagSetId,x.tag));
-});
-
 /* --- Entity: hledání podle názvu, Enter otevře detail --- */
 state.data.entities.forEach(e=>{
 if(e.archived)return;
@@ -10378,6 +10383,8 @@ return out;
 }
 
 /* Fuzzy match: all words of query must be substring of label+sublabel (case-insensitive). Score = shorter label wins ties */
+/* Kolik položek paleta ukáže, než se začne psát. */
+const PALETA_NAHLED=60;
 function fuzzyMatchCandidates(query,all){
 const q=(query||'').trim();
 if(!q){
@@ -10387,7 +10394,19 @@ const seenIds=new Set();
 const priority=[];
 hist.forEach(h=>{if(h.kind==='entity'&&!seenIds.has(h.id)){seenIds.add(h.id);const c=all.find(x=>x.entityId===h.id);if(c)priority.push(c)}});
 const rest=all.filter(c=>!c.entityId||!seenIds.has(c.entityId));
-return priority.concat(rest).slice(0,60);
+const vse=priority.concat(rest);
+if(vse.length<=PALETA_NAHLED)return vse;
+/* Ořez nesmí umlčet celou kategorii. Tagy stály v seznamu až za typy, aspekty
+   a pohledy, takže v projektu s plnou lištou vypadly za šedesátou položku —
+   a kdo jejich název neznal, neměl jak se k nim proklikat. Hlava seznamu
+   zůstává, jak byla; kategorie, které v ní chybí, se přidají na konec jednou
+   položkou každá, aby bylo aspoň vidět, že existují. */
+const hlava=vse.slice(0,PALETA_NAHLED);
+const maKat=new Set(hlava.map(c=>c.sublabel||''));
+const chybi=[];
+vse.slice(PALETA_NAHLED).forEach(c=>{const k=c.sublabel||'';if(maKat.has(k))return;maKat.add(k);chybi.push(c)});
+if(!chybi.length)return hlava;
+return hlava.slice(0,Math.max(0,PALETA_NAHLED-chybi.length)).concat(chybi);
 }
 const words=hledaciKlic(q).split(' ').filter(Boolean);
 const dotaz=hledaciKlic(q);

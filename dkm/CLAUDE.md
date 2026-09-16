@@ -698,6 +698,16 @@ přes `hledaciKlic` (malá písmena, bez diakritiky, sražené mezery — táž 
 rozhodovala jen délka, takže se hledaná entita utopila mezi desítkami entit téhož typu —
 a protože se výsledek ořezává na 60, z nabídky rovnou vypadla.
 
+**Tag je navigační cíl, ne položka modelu** — v `collectPaletteCandidates` proto stojí hned
+za záložkami, ne až za typy, aspekty a pohledy. Tam skončil kolem stovté položky a z náhledu
+bez dotazu vypadl úplně: k tagu se dalo dostat jen tak, že člověk jeho název znal a napsal ho.
+Počet entit jde do `kbd`, ne do názvu — v názvu by se na číslo dalo hledat.
+
+**Ořez náhledu (`PALETA_NAHLED`) nesmí umlčet celou kategorii.** Pořadí samo o sobě nestačí:
+při plné liště záložek se tagy za šedesátou položku posunou tak jako tak. `fuzzyMatchCandidates`
+proto u prázdného dotazu hlavu seznamu nechá být a kategorie, které v ní chybí, doplní na konec
+po jedné. Kdo přidá další skupinu příkazů, nemusí na pořadí myslet.
+
 Je to **jediné místo, kde se skládá seznam příkazů** — co přibude jako tlačítko, přidej
 i sem. Kontextové skupiny (příkazy k otevřené entitě, příkazy k seznamu) se přidávají jen
 v odpovídajícím pohledu; sekce nastavení čte ze sdíleného `SETTINGS_SEKCE`, ať se seznam
