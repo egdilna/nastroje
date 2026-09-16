@@ -6,6 +6,29 @@ jsou zaznamenány v tomto souboru.
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/)
 a nástroj se drží [sémantického verzování](https://semver.org/lang/cs/).
 
+## [1.4.0] - 2026-09-16
+
+### Přidáno
+
+- **Lepicí poznámky na desky.** Papírek šlo dosud přilepit jen na soubor nebo odkaz;
+  nově i na desky, tlačítkem „Přilepit poznámku“ na jejich obrazovce. Poznámky se
+  ukládají k uzlu do `folder.json`, takže putují i do offline kopie.
+- **Hlavička desek** — desky se otevřou jako otevřená složka ve vlastní barvě: jazýček
+  navazuje šířkou na dlaždici v šanonu, pod názvem je čárkovaná linka jako na dlaždici
+  a uvnitř leží popis, štítky a nalepené papírky.
+  - Štítky desek šlo zadat už dřív, ale na obrazovce desek nebyly vidět; stejně tak popis.
+    Nyní jsou obojí vypsané a kliknutí na štítek vyhledá vše, co jej nese.
+  - Na širší obrazovce se papírky lepí vedle textu, nejvýš dva vedle sebe, aby neukrojily
+    šířku popisu. Pod 860 px se zalomí pod text.
+- Papírek nalepený na deskách je vidět i na jejich dlaždici v šanonu, stejně jako
+  u souborů; počet poznámek se hlásí i v popisu pro odečítač.
+- Poznámky desek se prohledávají spolu s názvem a popisem míst archivu.
+
+### Změněno
+
+- Cíl poznámky je nově popsaný samostatně (soubor podle názvu, místo archivu podle cesty),
+  takže se poznámka ukládá vždy do čerstvě dohledaného záznamu.
+
 ## [1.3.0] - 2026-09-16
 
 ### Změněno
@@ -96,6 +119,7 @@ a nástroj se drží [sémantického verzování](https://semver.org/lang/cs/).
 - Označení offline kopie zůstává zachováno na konci titulku:
   `Byty · Nájmy · Můj archiv (offline kopie)`.
 
+[1.4.0]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.3.0]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.2.0]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.1.4]: https://github.com/egdilna/nastroje/tree/main/sanony
