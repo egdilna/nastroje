@@ -23,6 +23,7 @@ Nástroj je dostupný také jako samostatný soubor HTML ke stažení a provozov
 - **Stav diagramu (workflow)** — 9 stavů (rozpracovaný, návrh, ke schválení, schválený, upravovaný, neschválený, aktualizovaný, hotový, zrušený)
 - **Skrytí prvků** — jednotlivé prvky lze skrýt z výsledného diagramu (výřez), model zůstává
 - **Označení „hotovo"** — checkbox u každého prvku ve stromu + filtr Vše / Hotové / Nehotové
+- **Paleta příkazů** — F1 nebo Ctrl+Shift+P otevře vyhledávání nad všemi funkcemi editoru včetně otevírání diagramů a vkládání prvků; hledá se bez ohledu na diakritiku
 - **GitHub jako úložiště** — projekt se ukládá i načítá přímo z repozitáře (Contents API), obrázky diagramů v PNG se ukládají do stejné složky; každý projekt má statickou adresu `?gh=…`, kterou se rovnou otevře
 - **Export a import** — projekt `.pup`, přenosový balíček `.pupe` (diagram nebo složka), PlantUML zdroj `.puml`; import PUML s automatickou detekcí typu diagramu; načtení i uložení přes schránku (Ctrl+Shift+O/S)
 - **Textový popis a dokument** — automaticky generovaný čtivý popis diagramu; export do Markdown a Word (DOCX) i s obrázkem
@@ -706,6 +707,59 @@ Prázdné hodnoty se vynechávají. DOCX se generuje v prohlížeči i s vložen
 
 ---
 
+## Paleta příkazů
+
+Paleta příkazů je jedno místo, odkud se dá spustit cokoliv, co editor umí — všechno, co má tlačítko, kartu nebo položku v seznamu.
+
+| Otevření | |
+|----------|---|
+| **F1** | Hlavní zkratka, funguje ve všech prohlížečích |
+| **Ctrl+Shift+P** | Zvykové z editorů kódu. Ve Firefoxu si ji bere anonymní okno — tam použijte F1 |
+| **⌘ Paleta příkazů** | Tlačítko v hlavičce, vedle přepínače jazyka (paleta je tedy dostupná i bez klávesnice) |
+| **Shift+F1** | Nápověda k paletě |
+
+### Hledání
+
+Stačí napsat část názvu příkazu:
+
+- **Nezáleží na diakritice ani velikosti písmen** — `nahled` najde „Náhled".
+- **Více slov platí zároveň** — `ulozit png` najde „Uložit PNG do GitHub".
+- **Fungují i písmena, která nejdou za sebou** — `ulpng` najde „Uložit PNG".
+- **Hledá se i v popisu, kategorii a klávesové zkratce** — `alt+e` najde „Stáhnout PNG".
+- **Česká synonyma klíčových slov PlantUML** — `účastník` najde „Vložit: participant", `fronta` najde „queue", `výčet` najde „Enum".
+
+Shoda se v seznamu podbarví. S prázdným polem paleta nabídne nejdřív **naposledy použité** příkazy (pamatují se v prohlížeči), pak všechny ostatní po kategoriích. Mazací příkazy se při shodném skóre řadí až za ostatní, aby Enter netrefil „Smazat verzi", když jste hledali „verzi".
+
+### Ovládání
+
+| Klávesa | Akce |
+|---------|------|
+| ↑ / ↓ | Posun výběru (cyklicky) |
+| Page Up / Page Down | Posun po osmi |
+| Home / End | První / poslední položka |
+| Enter | Spustit zvýrazněný příkaz |
+| Esc | Zavřít paletu |
+
+Vše jde i myší — kliknutím na položku. Paleta je postavená jako `combobox` + `listbox` s `aria-activedescendant`, takže ji korektně čtou i odečítače obrazovky.
+
+### Co paleta obsahuje
+
+| Kategorie | Příkazy |
+|-----------|---------|
+| **Projekt** | Nový, načíst ze souboru i ze schránky, uložit, uložit jako `.pup`, vložit do schránky, přejmenovat, importovat `.puml` a `.pupe`, nastavení projektu |
+| **GitHub** | Nastavení, načíst, uložit, uložit PNG, kopírovat odkaz |
+| **Diagramy** | Nový diagram (i samostatný příkaz pro každý ze 14 typů), nová složka, **otevření kteréhokoliv diagramu podle názvu**, následující/předchozí diagram, přejmenování, export a smazání složky |
+| **Diagram** | Přejmenovat, přesunout, duplikovat, exportovat, smazat, nastavení, uložit verzi, **obnovit / zobrazit / smazat konkrétní verzi**, **nastavit stav ve workflow**, skrytí prvků a přepnutí jeho aplikace |
+| **Tvorba** | **Vložení každého prvku otevřeného diagramu** (čte se přímo z toolbaru, takže paleta zná přesně tytéž prvky), filtr hotové/nehotové, skok do stromu a na detail prvku |
+| **Výstup** | Náhled inline i v okně, promítání, PNG, PNG do GitHubu, `.puml`, kopírování zdroje, textový popis, dokument MD a DOCX, skok na zdroj a na popis |
+| **Zobrazení** | Karty Diagram / Tvorba / Výstup, pohled na projekt, jazyk rozhraní, filtr diagramů podle stavu, zavření ladicího výstupu |
+| **Sdílené prvky** | Skok na první použití, smazání z katalogu projektu |
+| **Nápověda** | Nápověda k aplikaci, nápověda k paletě |
+
+Paleta nabízí **jen to, co jde právě teď spustit** — příkazy nad otevřeným diagramem se v pohledu na projekt vůbec neobjeví, takže v ní nejsou slepé uličky.
+
+---
+
 ## GitHub jako úložiště
 
 Projekt (soubor `.pup`) i vyrenderované obrázky diagramů se dají ukládat rovnou do GitHub repozitáře. Každé uložení je běžný commit, takže historie verzí vzniká sama a není potřeba nic přenášet ručně.
@@ -796,6 +850,7 @@ Akce v aktivitních diagramech podporují tři syntaktické varianty (moderní `
 |---------|------|
 | Alt+N | Nový projekt |
 | Alt+O | Načíst projekt |
+| F1 | **Paleta příkazů** (Shift+F1 = nápověda k ní) |
 | Alt+S | Uložit projekt (při nastaveném GitHubu do repozitáře) |
 | Alt+M | Importovat .puml |
 | Alt+G | Nastavení GitHub |
@@ -809,6 +864,7 @@ Akce v aktivitních diagramech podporují tři syntaktické varianty (moderní `
 
 | Zkratka | Akce |
 |---------|------|
+| Ctrl+Shift+P | Paleta příkazů (ve Firefoxu použijte F1) |
 | Ctrl+Shift+O | Načíst projekt ze schránky |
 | Ctrl+Shift+S | Vložit projekt do schránky |
 

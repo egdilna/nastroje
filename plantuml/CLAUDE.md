@@ -97,6 +97,26 @@ Dnes takto fungují:
 v sekci `=== ŘEŠENÍ ABSOLUTNÍCH DAT V GANTTU ===` (ř. 6709). Popis termínů skládá
 `formatGanttTerm` s českým formátem data. Změny v modelu úkolů promítni do obou.
 
+## Paleta příkazů (sekce `=== PALETA PŘÍKAZŮ ===`)
+F1 / Ctrl+Shift+P / tlačítko `#btnPalette`; Shift+F1 otevře `openPaletteHelp()`.
+- Příkazy mají dva zdroje: `paletteStaticCommands()` (pevné akce) a
+  `paletteDynamicCommands()` (diagramy, složky, verze, stavy, sdílené prvky).
+  **Vkládací příkazy se čtou z `#modelToolbar`** — nový prvek v toolbaru se tedy
+  v paletě objeví sám a seznam se nikde neudržuje dvakrát. Nový prvek v toolbaru
+  pojmenovaný klíčovým slovem PlantUML doplň do `PALETTE_SYNONYMS`, aby se dal
+  najít i českým slovem.
+- Nová akce s tlačítkem = jeden řádek `add(id, cat, label, hint, keys, run, when)`
+  ve `paletteStaticCommands()`; `run` volej přes `palClick('btnXxx')`, ať zůstane
+  jediný zdroj pravdy v tlačítku. `when` vynechá příkaz, který teď nejde spustit —
+  paleta zásadně nenabízí slepé uličky.
+- Hledání (`paletteMatch`) je bez diakritiky (`paletteNormalize` vrací i mapu
+  indexů kvůli zvýrazňování), tokeny platí konjunktivně, pořadí preferencí je
+  začátek názvu → začátek slova → název → ostatní data → fuzzy. Příkazy s `delete`
+  v id mají penalizaci, ať se Enter netrefí do mazání.
+- Příkazy se staví při každém otevření, takže reagují na jazyk i na aktuální
+  kontext. Spuštění nejdřív zavře `#dlgPalette` a teprve pak volá `run` — dva
+  modální `<dialog>` nad sebou nedávají smysl.
+
 ## GitHub jako úložiště (sekce `=== GITHUB: … ===`)
 Projekt (`.pup`) i PNG diagramů se ukládají přes **GitHub Contents API**.
 - Token jen v `localStorage` (`GH_TOKEN_KEY`), posílá se výhradně na `api.github.com`.
