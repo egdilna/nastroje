@@ -478,7 +478,13 @@ naposledy dělal"; dál se v něm dá normálně hledat a filtrovat.
 ## Vazby mezi entitami
 
 Dialog **Vybrat entitu** (výběr cíle vazby, vložení wiki odkazu přes `Ctrl+Shift+K`, include
-i status chip) hledá zároveň v **názvu, tazích a typu (aspektu)** entity. U typu se hledá jak
+i status chip) hledá zároveň v **názvu, tazích a typu (aspektu)** entity.
+
+Každá položka seznamu **začíná názvem entity**. Značka výběru (`○` / `●`, ve vícenásobném
+výběru `☐` / `☑`) je jen vizuální a odečítač obrazovky ji nečte, takže jde v seznamu hledat
+po písmenech. Stav výběru nese `aria-selected`, zvýraznění šipkami se hlásí přes
+`aria-activedescendant` — projet seznam šipkami tedy neznamená „vybráno".
+ U typu se hledá jak
 podle popisku, tak podle klíče aspektu, takže „Činnost" najde nejen entity, které to slovo
 mají v názvu, ale i všechny entity toho typu. Nezáleží na velikosti písmen **ani na diakritice** —
 `cinnost` najde totéž co `Činnost`. Víc slov se chová jako AND.

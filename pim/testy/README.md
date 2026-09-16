@@ -36,6 +36,7 @@ upravte v `lib.mjs`.
 | `filtr-v-pohledu.mjs` | Rychlé hledání uvnitř uloženého pohledu. |
 | `hromadny-export.mjs` | Hromadný výběr drží entity i po překreslení seznamu. |
 | `vyber-entity.mjs` | Dialog Vybrat entitu hledá i podle typu a bez diakritiky. |
+| `pristupnost-vyberu.mjs` | Položky v dialogu Vybrat entitu začínají názvem entity a `aria-selected` znamená vybráno. |
 | `anotace.mjs` | Inline anotace `(>text)` se nevykreslují doslova a nejdou do exportu. |
 | `skryte-ukoly.mjs` | Skrytí hotových úkolů přežije zaškrtnutí dalšího. |
 | `klavesy.mjs` | Klávesové zkratky a accesskey se nepřekrývají. |
