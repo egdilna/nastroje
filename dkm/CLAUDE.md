@@ -539,6 +539,37 @@ při načtení z adresy nikdy neuplatnilo.
 (`cilAdresyPlati`), vyhraje — sdílený odkaz `…#entity/e2` musí skončit na té entitě.
 Zastaralý cíl z předchozího projektu se ignoruje a otevře se výchozí záložka.
 
+## Dva lidé na jednom souboru: sloučení místo přepsání
+`saveToGitHub` posílá **`state.ghSha`, tedy verzi, ze které jsme vyšli** — ne tu nejčerstvější.
+Právě tím GitHub pozná cizí zápis a odmítne ho (409, u chybějící sha 422). Dřív se sha načítala
+těsně před zápisem, takže se ta ochrana zahazovala a poslední uložení tiše přepsalo cizí práci.
+**Nikdy si sha nenačítej znovu jen proto, aby zápis prošel** — tím se celá věc vypne.
+
+Konflikt řeší `slucSVzdalenym` + `slucProjekty` (trojcestně: základ = `state.baseline`, moje =
+`state.data`, jejich = stažený soubor) a zápis se zkusí znovu, nejvýš třikrát.
+
+- **Po sloučení je novým základem `jejich`**, protože na ně ukazuje `ghSha`. Kdyby se sem
+  dosadila sloučená data, další ukládání by počítalo rozdíl špatně.
+- **Bez základu se slučuje proti prázdnému projektu** — ze sloučení se tím stane sjednocení,
+  ve kterém při střetu vyhraje ukládající a nic cizího se nesmaže. Proto tu není žádný dialog
+  „přepsat / načíst": sem chodí i automatické ukládání a to nesmí nic blokovat.
+- **Vazba se pozná dvojicí `(relationTypeId, targetId)`**, ne svým `id` — to má každý klient
+  vlastní. Bez toho by se dvě různé nové vazby téže entity hlásily jako spor.
+- **Smazat smí jen ten, koho se druhý nedotkl.** `slucPodleId` proto nepočítá členství přes
+  `clenstvi`: u pojmenovaných prvků je navíc vidět, jestli je druhá strana změnila, a úprava
+  přebíjí smazání. Opačné pořadí by zahodilo cizí práci.
+- **Po sloučení běží `uklidOdkazy`** — vazba na entitu, kterou druhý smazal, nesmí zůstat.
+- **Spor a oživená entita jdou do banneru, ne do toastu.** Hned po sloučení přijde hláška
+  o úspěšném uložení a toast by ten první překryla — přitom je to jediná zpráva o tom, že
+  něčí změna ustoupila.
+
+**Otevřený editor je taky odložená kopie.** `state.view.editZaklad` drží stav při otevření
+a `finishCommitEdit` slučuje trojcestně i tam; bez toho by rozepsaná kopie přepsala všechno,
+co se mezitím sloučilo. Kdo sáhne na zakládání kopie v `renderEdit`, ať základ nastaví taky.
+
+`zkontrolujVzdalene` se ptá jen na **poslední commit** (ne na obsah), jen když je okno vidět,
+a nabízí **Sloučit**, ne Načíst — načtení by zahodilo rozdělanou práci.
+
 ## Automatické ukládání na GitHub
 Přepínač v hlavičce vedle Uložit. Stav drží `ghAutoStav` **jen v paměti stránky** — do dat
 projektu ani do `localStorage` nepatří, takže po načtení je vždycky vypnuté. Záměr, ne

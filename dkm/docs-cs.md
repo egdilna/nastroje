@@ -1315,6 +1315,53 @@ Pak **Uložit** (Ctrl+S) uloží přímo do GitHubu (`Uložit lokálně` zůstá
 
 Uložení doprovází **zvuková odezva** — po úspěchu krátký stoupavý tón, po neúspěchu temnější klesavý (chybějící cesta, chybějící token, zamítnutí GitHubu i síťová chyba). Dá se vypnout v Nastavení → Obecné.
 
+
+#### Dva lidé na jednom projektu
+
+DKM počítá s tím, že na témž souboru dělá víc lidí. **Nepřepisuje se celý soubor** —
+uložení pošle GitHubu i tu verzi souboru, ze které jsi vyšel. Když mezitím uložil někdo
+jiný, GitHub zápis odmítne a DKM ho **sloučí**: stáhne cizí verzi, porovná ji se svou
+i s tou původní a uloží výsledek.
+
+Slučuje se na úrovni jednotlivých polí, takže se dva lidé potkají opravdu jen tam, kde
+sáhli na totéž:
+
+| Situace | Výsledek |
+|---|---|
+| každý jinou entitu | obojí zůstane |
+| každý jiný atribut téže entity | obojí zůstane |
+| každý jinou vazbu téže entitě | obojí zůstane — vazba se pozná dvojicí *typ vazby + cíl*, ne svým ID |
+| každý jiný aspekt, tag, komentář, objekt | obojí zůstane |
+| oba přidali entitu | obojí zůstane |
+| druhý smazal, ty ses nedotkl | smazání platí |
+| druhý smazal, ty upravil | entita **zůstane** a řekne se ti to |
+| **oba změnili totéž jinak** | vyhraje ten, kdo ukládá — a vypíše se to |
+
+Střet a vrácená entita se hlásí **cedulkou, která sama nezmizí**, a je v ní vypsané, které
+entity a která pole se to týká. Cizí hodnota není ztracená — je v historii commitů.
+
+**Model** (typy, aspekty, číselníky, pohledy) se slučuje sjednocením: co druhý přidal,
+zůstane; co jste změnili oba, vyhraje ten, kdo ukládá. Na hlídání modelu DKM není — dva
+lidé by ho současně měnit neměli.
+
+**Odkazy se po sloučení uklidí.** Když druhý smazal entitu, na kterou jsi mezitím udělal
+vazbu, vazba zmizí — v datech nezůstane odkaz do prázdna.
+
+**Otevřený editor** je taky odložená kopie. Kdyby ses do něj podíval, šel na oběd a pak dal
+Uložit, přepsala by tvoje deset minut stará kopie všechno, co mezitím přišlo. Proto se
+i tady slučuje: základem je stav při otevření editoru a při střetu vyhraje to, co zrovna píšeš.
+
+**Že někdo jiný uložil, se dozvíš i bez ukládání.** DKM se jednou za dvě minuty (a při
+návratu do okna) zeptá, jestli se souborem nehnul cizí commit — je to jeden levný dotaz,
+ne stahování dat. Když ano, ukáže se cedulka se jménem a tlačítkem **Sloučit**. Nabízí se
+schválně sloučení, ne načtení: načtení by zahodilo rozdělanou práci.
+
+**Do zprávy commitu se píše jméno** z *Nastavení → Obecné → Tvoje jméno pro komentáře*.
+Když má každý vlastní token, rozliší autory i samotný git.
+
+**AutoSave to zvládá taky** — konflikt vyřeší sám a nevypne se; vypíná se jen po skutečné
+chybě (špatný token, nedostupná síť).
+
 #### Automatické ukládání (Auto)
 
 Vedle tlačítka **Uložit** je zaškrtávátko **AutoSave**. Když je zapnuté, DKM po každé změně
