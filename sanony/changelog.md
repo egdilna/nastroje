@@ -6,6 +6,26 @@ jsou zaznamenány v tomto souboru.
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/)
 a nástroj se drží [sémantického verzování](https://semver.org/lang/cs/).
 
+## [1.3.0] - 2026-09-16
+
+### Změněno
+
+- **Položky archivu jsou odkazy, ne tlačítka.** Kartotéky, šanony, desky, soubory, odkazy
+  na web, propojení, výsledky hledání i drobečková navigace byly technicky tlačítka;
+  odečítač je tak hlásil jako „tlačítko“ a nešly otevřít v novém panelu. Nově jde
+  o `<a>` se skutečnou adresou položky.
+  - Odečítač je hlásí jako odkaz a dá se procházet seznamem odkazů na stránce.
+  - Ctrl, Cmd, Shift nebo prostřední tlačítko otevřou položku v novém panelu či okně,
+    adresa jde zkopírovat z kontextové nabídky. Obyčejné kliknutí obsluhuje aplikace
+    jako dosud, stránka se nepřenačítá.
+  - Adresa je relativní, takže vede i v offline kopii otevřené ze souboru.
+  - Totéž platí pro tlačítka „Otevřít“, „Otevřít cíl“ a „Otevřít místo“ v přihrádkách
+    volných listů, v sekci „Propojeno sem“ a v nesrovnalostech.
+- Ovládací prvky, které nikam nevedou — „Nový soubor“, „Nové propojení“, „Upravit šanon“,
+  „Smazat“, filtr štítků, „Otevřít nastavení“ a podobné — zůstávají tlačítky.
+- Vzhled se nemění. Ověřeno pixelovým srovnáním pěti obrazovek se zapnutou i vypnutou
+  Správou a snímkem ohniska klávesnice: nula změněných pixelů.
+
 ## [1.2.0] - 2026-08-26
 
 ### Přidáno
@@ -76,5 +96,6 @@ a nástroj se drží [sémantického verzování](https://semver.org/lang/cs/).
 - Označení offline kopie zůstává zachováno na konci titulku:
   `Byty · Nájmy · Můj archiv (offline kopie)`.
 
+[1.3.0]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.2.0]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.1.4]: https://github.com/egdilna/nastroje/tree/main/sanony
