@@ -95,7 +95,7 @@ nějaká vybraná. Kartu stromu má jen entita, která má vazby.
 | `#scrsettabs` | Záložky |
 | `#scrsetgh` | GitHub |
 | `#scrsetai` | AI |
-| `#scrsetmodel` | Datový model a jeho export |
+| `#scrsetmodel` | Datový model, jeho export do standardních formátů a přenos do jiného projektu |
 | `#scrsetdupes` | Duplicity |
 | `#scrsetgen` | Obecné |
 | `#scrsetstats` | Statistiky |
