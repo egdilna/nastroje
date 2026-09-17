@@ -572,8 +572,40 @@ v paletě) stáhne a sloučí, ale **neukládá** — co jde ven, si má uživat
 stojí vedle Načíst a Uložit, ne mezi exporty. Když se `sha` nezměnila, `slucSVzdalenym`
 rovnou skončí hláškou „nic nového"; bez toho by opakovaný stisk pokaždé hlásil sloučení.
 
-`zkontrolujVzdalene` se ptá jen na **poslední commit** (ne na obsah), jen když je okno vidět,
-a nabízí **Sloučit**, ne Načíst — načtení by zahodilo rozdělanou práci.
+`zkontrolujVzdalene` se ptá jen na **poslední commit** (ne na obsah) a jen když je okno vidět.
+Tempo je adaptivní: `GH_KONTROLA_CILA_MS` (20 s) při práci, `GH_KONTROLA_KLID_MS` (120 s)
+v klidu; přepíná to `ghPosledniCinnost`. Ani to rychlé tempo není drahé — 180 dotazů za hodinu
+proti limitu 5000.
+
+## Sloučení běží samo; ptát se je výjimka
+Cizí commit se **slučuje automaticky** (`automatickeSlouceni` → `slucSVzdalenym(parsed,{tiche:true})`).
+Dřív místo toho vyskočila cedulka „Na GitHubu je novější verze — Sloučit?". Když druhý člověk
+jede s automatickým ukládáním, commituje každých pár vteřin a ta cedulka visela na obrazovce
+pořád. **Otázka, na kterou se vždycky odpovídá stejně, není otázka.**
+
+Ptát se nemá proč: sloučení nikdy nesebere rozdělanou práci, jen přidává. Kdo sem sahá, ať
+drží tohle rozdělení:
+
+- **Nic rozdělaného (`!state.dirty && !state.view.edit`) → převzít `jejich` vcelku.** Spor tam
+  nemůže vzniknout, takže se nesmí ozvat vůbec nic. Je to ten nejčastější případ: jeden čte,
+  druhý píše.
+- **Běžný průběh tiše.** `ohlasSlouceni(z,tiche)` v tichém režimu **netoastuje**; jediná stopa
+  je `zapisStopu` — tlačítko `b-sync` blikne (`sync-bliklo`) a popisek nese „Naposledy sloučeno".
+  Popisek se skládá v překreslení hlavičky z `data-title-zaklad`, **ne přičítáním** — jinak by
+  s každým sloučením narostl o další větu.
+- **Spor a oživená entita se hlásí vždycky**, i tiše. Tam něco ustoupilo a to je jediná
+  informace, kterou je opravdu třeba přečíst → banner, ne toast.
+- **Odkládá se jen to, co by překáželo.** Otevřený dialog → `slucPoDialogu` a dožene se to
+  v `closeDialog` (`dokonciOdlozeneSlouceni`). Otevřený editor překážka není: slučuje se,
+  ale nepřekresluje.
+- **Jediná otázka, která zbyla, je `jinyProjekt`** — soubor bez jediného společného ID entity.
+  Sloučení by dva nesouvisející projekty slilo dohromady. Ručně spuštěné sloučení se neptá,
+  to si uživatel řekl sám.
+- **Vlastní commit se nesmí tvářit jako cizí.** `saveToGitHub` bere sha commitu rovnou
+  z odpovědi (`result.commit.sha`); doptávání přes `ghZapamatujCommit()` je jen záloha.
+  Bez toho stihne kontrola proběhnout dřív a aplikace se sloučí sama se sebou.
+- **`ghSha` přežívá obnovení stránky** (je v `sessionStorage` vedle dat). Bez ní by první
+  uložení po F5 narazilo naslepo na cizí zápis.
 
 ## Automatické ukládání na GitHub
 Přepínač v hlavičce vedle Uložit. Stav drží `ghAutoStav` **jen v paměti stránky** — do dat

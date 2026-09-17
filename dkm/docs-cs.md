@@ -1356,10 +1356,35 @@ s tvými — **neukládá**. Rozdělaná práce zůstane, jen se k ní přidá, 
 ostatní. Oproti *Načíst* nic nepřepíše. Když nic nového není, řekne to a nic neudělá.
 Bez nastaveného GitHubu je zašedlé. Z klávesnice **Alt+M** (jako *merge*).
 
-**Že někdo jiný uložil, se dozvíš i bez ukládání.** DKM se jednou za dvě minuty (a při
-návratu do okna) zeptá, jestli se souborem nehnul cizí commit — je to jeden levný dotaz,
-ne stahování dat. Když ano, ukáže se cedulka se jménem a tlačítkem **Sloučit**. Nabízí se
-schválně sloučení, ne načtení: načtení by zahodilo rozdělanou práci.
+**Cizí změny přitečou samy.** DKM se po očku dívá, jestli se souborem nehnul cizí commit
+— je to jeden levný dotaz, ne stahování dat. Ptá se **každých 20 vteřin**, když se u počítače
+pracuje, a **jednou za dvě minuty**, když je klid. Na pozadí (jiná záložka) se neptá vůbec.
+Když někdo uložil, DKM to **sloučí samo**. Nic se neptá.
+
+Ptát se totiž nemá proč: sloučení nikdy nesebere rozdělanou práci, jenom přidává. A když
+zrovna nic rozdělaného nemáš, přebírá se cizí verze rovnou — spor tam nemůže vzniknout.
+
+| Situace | Co se stane |
+|---|---|
+| nemáš nic rozdělaného, druhý uložil | **převezme se jeho verze, potichu** |
+| máš rozdělané, druhý sáhl jinam | **sloučí se, potichu** |
+| oba jste sáhli na totéž pole | sloučí se, tvoje verze vyhraje — a **ukáže se cedulka** |
+| druhý smazal, ty upravil | entita zůstane — a **ukáže se cedulka** |
+| máš otevřený dialog | počká se, až ho zavřeš |
+| máš otevřený editor | sloučí se, ale obrazovka se nepřekreslí — nepřijdeš o kurzor |
+| okno je na pozadí | nic; sloučí se po návratu |
+| na té cestě je **jiný projekt** | **zeptá se** — sám se do toho nepustí |
+
+Řádky označené *potichu* opravdu nic nevypíšou. Jediná stopa je, že tlačítko **↻ Sloučit**
+krátce blikne a v jeho popisku stojí, co a kdy přišlo. Kdo to nehledá, nevšimne si — a to
+je záměr: informace, se kterou stejně nejde nic dělat, nemá přerušovat práci.
+
+Cedulka se objeví jen u těch dvou řádků, kde se něco zahodilo nebo kde výsledek překvapí.
+Nezmizí sama a vypíše, kterých entit a polí se to týká. A **jiný projekt** je jediné místo,
+kde se DKM ptá: soubor, který s tvým projektem nemá společnou ani jednu entitu, by sloučení
+slilo dohromady a rozmotávalo by se to těžko.
+
+*Jiný projekt* pozná DKM podle toho, že nesdílíte ani jedno ID entity.
 
 **Do zprávy commitu se píše jméno** z *Nastavení → Obecné → Tvoje jméno pro komentáře*.
 Když má každý vlastní token, rozliší autory i samotný git.

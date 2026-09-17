@@ -1367,10 +1367,36 @@ meantime is simply added to it. Unlike *Load*, it overwrites nothing. If there i
 it says so and does nothing. Without GitHub set up it is greyed out. From the keyboard
 **Alt+M** (as in *merge*).
 
-**You learn that someone else saved without saving yourself.** Every two minutes (and when you
-return to the window) DKM asks whether a foreign commit touched the file — one cheap request,
-not a download. If so, a notice appears with the name and a **Merge** button. Merging is offered
-on purpose rather than loading: loading would throw away work in progress.
+**Other people's changes arrive by themselves.** DKM keeps an eye on whether a foreign
+commit touched the file — one cheap query, not a data download. It asks **every 20 seconds**
+while someone is working at the machine and **once every two minutes** when things are quiet.
+In a background tab it does not ask at all. When someone has saved, DKM **merges it by
+itself**. It asks nothing.
+
+There is no reason to ask: a merge never takes away work in progress, it only adds. And when
+you have nothing in progress, the other version is simply adopted — no clash can arise there.
+
+| Situation | What happens |
+|---|---|
+| nothing in progress on your side, the other saved | **their version is adopted, quietly** |
+| you have work in progress, they touched something else | **merged, quietly** |
+| you both touched the same field | merged, your version wins — and a **notice appears** |
+| they deleted, you edited | the entity stays — and a **notice appears** |
+| a dialog is open | it waits until you close it |
+| the editor is open | merged, but the screen is not redrawn — you keep your cursor |
+| the window is in the background | nothing; merged when you come back |
+| a **different project** is on that path | **it asks** — it will not do that on its own |
+
+The rows marked *quietly* really print nothing. The only trace is the **↻ Merge** button
+flashing briefly, with what arrived and when in its tooltip. Anyone not looking for it will
+not notice — and that is the point: information you cannot act on should not interrupt work.
+
+The notice appears only for the two rows where something was discarded or where the outcome
+is surprising. It does not disappear on its own and lists the entities and fields concerned.
+And a **different project** is the one place DKM asks: a file that shares not a single entity
+with your project would be fused into it, and untangling that is hard.
+
+DKM recognises a *different project* by your sharing no entity ID at all.
 
 **The commit message carries the name** from *Settings → General → Your name for comments*.
 With a token each, git itself tells the authors apart.
