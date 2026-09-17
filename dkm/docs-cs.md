@@ -1980,6 +1980,10 @@ kdo si ještě nevybral; bez uložené volby se motiv poprvé řídí nastavení
 
 `.dkmpkg` je JSON, který obsahuje **výběr entit + jejich datový model** (jen ty typy, aspekty, seznamy a relační typy, které vybrané entity potřebují). Umožňuje přenést kus jednoho projektu do druhého bez zbytečnosti.
 
+Do téhož souboru jde zabalit i **samotný model bez jediné entity** — `"kind": "model"`
+a prázdné `entities`. Vyrábí se jinde (Nastavení → Model, kap. 28.4) a importuje se
+týmž průvodcem.
+
 ### 28.2 Export balíčku
 
 V bulk režimu vybereš entity, akce **📦 Export balíčku**. Wizard:
@@ -2079,6 +2083,59 @@ Kompletní seznam toho, co se v cílovém projektu objeví — a co ne:
 | Záložky | lišta je tvoje uspořádání (kap. 29.8) |
 | Uložené pohledy, profily exportu, nastavení projektu | patří projektu, ne výseku dat |
 | Odkaz na to, co v balíčku není | atribut, který mířil na typ nebo číselník mimo balíček, se v cíli uvolní — odkaz na cizí identifikátor by nešel ani vybrat, ani opravit |
+
+
+### 28.4 Přenos samotného modelu
+
+**Nastavení → Model → Přenést do jiného projektu → 📦 Vybrat a exportovat.** Je to na to
+zaškrtat a stáhnout — z palety příkazů (**Ctrl+Shift+P**) se tam dá skočit rovnou.
+
+Zaškrtáváš **typy entit, aspekty a typy vazeb**. Entity nejdou — tenhle export je o modelu.
+Když potřebuješ přenést i data, je na to obyčejný balíček (28.2).
+
+**Číselníky a soustavy tagů se přibírají samy.** Co vybrané typy a aspekty potřebují, jede
+s sebou; odškrtnout to nejde, bez toho by byl atribut rozbitý. Zaškrtnutím můžeš přidat
+i takové, které nikdo z výběru nepotřebuje — hodí se, když chceš poslat jen doplněné
+hodnoty do seznamu, který v druhém projektu už existuje.
+
+**Typy se nepřibírají nikdy.** Řetězily by se: typ táhne typ přes relaci a z „pošlu Osobu"
+by byl celý model. Místo toho se vypíšou v rámečku **„Odkazuje se na typy, které ve výběru
+nejsou"**, u každého s důvodem — třeba `Osoba.Zaměstnavatel` nebo `vazba pracuje v`.
+Zaškrtneš je (nebo **Přidat všechny**) a půjdou s sebou.
+
+Když je necháš být, balíček se **nerozbije, jen zvolní**:
+
+- atribut typu *relace* přijde o `targetType` — v cílovém projektu půjde odkázat na cokoli
+- typ vazby přijde o ty typy v `fromTypes`/`toTypes`, které nejsou ve výběru. Pozor:
+  **prázdný seznam znamená „cokoli"**, takže se vazba tímhle rozšíří, ne zúží
+
+Obojí je legitimní volba, jen o ní máš vědět — proto to varování.
+
+### 28.5 Import modelu
+
+Týmž průvodcem jako balíček: **Nastavení → Projekt → Importovat balíček**. Dvě věci se ale
+u modelu chovají jinak:
+
+- **Rychlý režim se nenabízí.** Páruje podle názvu a neptá se; u entit se to přežije,
+  u modelu ne — typ „Osoba", který v druhém projektu znamená něco jiného, by se tiše slil.
+  Změna struktury celého projektu má stát jedno proklikání navíc.
+- **Krok s konflikty se přeskočí**, protože žádné entity nejsou.
+
+Zbytek je stejný: typy a aspekty se párují podle názvu, atributy podle názvu a kompatibilního
+datového typu, u každého si můžeš vybrat *napojit / nový / přeskočit*. Číselníky a soustavy
+tagů se **slučují** — nové hodnoty přibudou, existující zůstanou.
+
+**Opakovaný import týmž souborem nic nezduplikuje.** Všechno se napáruje na to, co už
+v projektu je, a druhý průchod je bez efektu.
+
+#### Na co se to hodí
+
+- **Rozjet nový projekt podle starého** — zaškrtneš celý model, v prázdném projektu ho
+  naimportuješ a začínáš s hotovou strukturou.
+- **Doplnit atributy k existujícímu typu** — v projektu A si k *Osobě* přidáš tři atributy,
+  vyvezeš jen *Osobu* a v projektu B se doplní k té tamní. Co už tam je, zůstane.
+- **Doplnit hodnoty do seznamu nebo soustavy tagů** — zaškrtneš jen ten seznam (v bloku
+  Seznamy) a nic jiného. V cíli se hodnoty přidají k těm, co tam jsou.
 
 ---
 
@@ -2632,6 +2689,10 @@ Ven jde popis toho, jak je projekt postavený.
 
 Hodí se, když model potřebuješ předat vývojáři, architektovi, do Enterprise Architectu,
 nebo si z něj chceš nechat založit databázi.
+
+Na téže obrazovce je i **Přenést do jiného projektu** — to je něco jiného: nevyrábí popis
+pro cizí nástroj, ale `.dkmpkg`, který si přečte druhý DKM a model si z něj poskládá.
+Viz kap. 28.4.
 
 ### 36.2 Přehled modelu
 

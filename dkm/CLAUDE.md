@@ -607,6 +607,36 @@ drží tohle rozdělení:
 - **`ghSha` přežívá obnovení stránky** (je v `sessionStorage` vedle dat). Bez ní by první
   uložení po F5 narazilo naslepo na cizí zápis.
 
+## Přenos modelu: balíček bez entit
+`.dkmpkg` uměl model nést odjakživa — ale jen ten, který si vyžádaly vyvezené entity
+(`orezProjekt` ho odvozuje od nich a prázdný výběr export odmítá). Model-first cesta je
+v Nastavení → Model, sekce `#mdl-prenos`, a končí týmž souborem: `kind:'model'`,
+`entities: []`. **Druhý formát sem nepiš** — import je odladěný a zvládne to beze změny.
+
+- **Číselníky a soustavy tagů se přibírají samy** (`zavislostiModelu`). Jsou to listy
+  stromu, nic dalšího netáhnou, a bez nich je atribut rozbitý — proto `disabled`
+  zaškrtávátko, ne volba. Ručně přidat se dá (`seznamyNavic`, `tagyNavic`): use case
+  „chci poslat jen doplněné hodnoty do seznamu, co v cíli už je".
+- **Typy se nepřibírají nikdy.** Řetězily by se přes `targetType` a `fromTypes`/`toTypes`
+  a z jednoho typu by byl celý model. Místo toho `zavislostiModelu().chybi` (Map
+  typId → důvody) a rámeček, ve kterém se zaškrtnou.
+- **Co se nevzalo, se v `balicekModelu` ořízne, ne ponechá.** Odkaz ven z balíčku by
+  v cíli ukazoval do prázdna. Pozor na význam: prázdné `fromTypes`/`toTypes` znamená
+  „cokoli", takže **ořez vazbu rozšíří**. Proto to varování v UI; přepisovat kvůli tomu
+  `scope` by byla tichá změna dat.
+- **Import balíčku bez entit** (`jeBalicekModelu`) jede vždycky podrobně a přeskakuje krok
+  s konflikty. Rychlý režim páruje podle názvu a neptá se — u modelu by tiše slil dva
+  různé typy téhož jména.
+- **Sekce se překresluje sama sebou** (`prekresliPrenosModelu`), ne přes `render()`:
+  celé Nastavení by přeskočilo odrolování i ohnisko.
+
+## České počítané tvary
+`poctem(n,'mdlHodnota')` — čeština má tři tvary (1 / 2–4 / 5+), angličtina dva. Klíče se
+skládají příponou `1`/`24`/`5`. Nula bere pátý tvar („0 hodnot", „0 values"). Bez toho
+z i18n šablony `'{n} hodnot'` leze „3 hodnot". Kde se počet do věty nevejde bez skloňování
+celé vedlejší věty, dej číslo do závorky za ni („…, které ve výběru nejsou (3)") nebo piš
+popisek a číslo („Typy entit 1 · Aspekty 0") — je to čitelnější než tři varianty věty.
+
 ## Stav okna nepatří do dat ani do úložišť
 Rozbalení sekcí a volba seskupení žijí v `sekceStav` — obyčejné `Map` v paměti stránky.
 Ani `localStorage`, ani `sessionStorage`, ani data projektu: je to **stav okna**, ne nastavení

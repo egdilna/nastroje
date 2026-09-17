@@ -2010,6 +2010,10 @@ chosen yet; with no stored choice the theme first follows the system setting.
 
 `.dkmpkg` is a JSON containing **a selection of entities + their data model** (only types, aspects, lists and relation types the selected entities need). Enables moving a slice of one project to another without extra.
 
+The same file can also carry **the model alone, with no entity at all** — `"kind": "model"`
+and an empty `entities`. It is produced elsewhere (Settings → Model, 28.4) and imported by
+the same wizard.
+
 ### 28.2 Package export
 
 In bulk mode select entities, action **📦 Export package**. Wizard:
@@ -2111,6 +2115,60 @@ The complete list of what shows up in the target project — and what does not:
 | Tabs | the bar is your own arrangement (29.8) |
 | Saved views, export profiles, project settings | they belong to the project, not to a slice of data |
 | A reference to something the package does not contain | an attribute that pointed at a type or select list outside the package is released in the target — a reference to a foreign identifier could be neither picked nor repaired |
+
+
+### 28.4 Transferring the model alone
+
+**Settings → Model → Transfer to another project → 📦 Pick and export.** Tick and download —
+the command palette (**Ctrl+Shift+P**) jumps straight there.
+
+You tick **entity types, aspects and relation types**. Entities are not on offer — this
+export is about the model. To move data as well, use the ordinary package (28.2).
+
+**Value lists and tag sets come along by themselves.** Whatever the selected types and
+aspects need travels with them and cannot be unticked; without it the attribute would be
+broken. Ticking lets you add ones nothing in the selection needs — handy when you only want
+to send topped-up values into a list the other project already has.
+
+**Types are never added automatically.** They would chain: a type pulls a type through a
+relation and "let me send Osoba" becomes the whole model. Instead they are listed in a box
+**"Types are referenced but not selected"**, each with its reason — `Osoba.Zaměstnavatel`,
+say, or `relation pracuje v`. Tick them (or **Add all**) and they come along.
+
+Leave them out and the package is **not broken, only looser**:
+
+- a *relation* attribute loses its `targetType` — in the target project it can point at anything
+- a relation type loses the types in `fromTypes`/`toTypes` that are not selected. Mind this:
+  **an empty list means "anything"**, so this widens the relation rather than narrowing it
+
+Both are legitimate choices; you just want to know about them — hence the warning.
+
+### 28.5 Importing a model
+
+The same wizard as a package: **Settings → Project → Import package**. Two things behave
+differently for a model:
+
+- **The quick mode is not offered.** It matches by name and does not ask; with entities that
+  is survivable, with a model it is not — a type "Osoba" meaning something else in the other
+  project would be silently fused. Changing a whole project's structure is worth one extra click.
+- **The conflicts step is skipped**, since there are no entities.
+
+The rest is the same: types and aspects match by name, attributes by name and compatible data
+type, and for each you pick *link / new / skip*. Value lists and tag sets are **merged** — new
+values are added, existing ones stay.
+
+**Importing the same file again duplicates nothing.** Everything matches what is already in
+the project and the second pass is a no-op.
+
+#### What it is good for
+
+- **Starting a new project from an old one** — tick the whole model, import it into an empty
+  project and begin with the structure ready.
+- **Adding attributes to an existing type** — in project A you add three attributes to
+  *Osoba*, export just *Osoba*, and in project B they are added to the one there. What is
+  already there stays.
+- **Topping up a list or a tag set** — tick just that list (in the Lists block) and nothing
+  else. In the target the values are added to the ones already there.
 
 ---
 
