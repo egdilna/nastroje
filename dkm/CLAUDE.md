@@ -607,6 +607,34 @@ drží tohle rozdělení:
 - **`ghSha` přežívá obnovení stránky** (je v `sessionStorage` vedle dat). Bez ní by první
   uložení po F5 narazilo naslepo na cizí zápis.
 
+## Stav okna nepatří do dat ani do úložišť
+Rozbalení sekcí a volba seskupení žijí v `sekceStav` — obyčejné `Map` v paměti stránky.
+Ani `localStorage`, ani `sessionStorage`, ani data projektu: je to **stav okna**, ne nastavení
+a ne obsah. Do souboru, který si lidé posílají, nemá co dělat, a po F5 se má pohled vrátit
+k tomu, jak je definovaný.
+
+- **Klíčem je pohled, ne obrazovka** (`klicSekci`): uložený pohled podle `savedViewId`, jinak
+  záložka. `state.view` se při každé navigaci staví znovu, takže tam to přežít nemůže — proto
+  ta samostatná mapa.
+- **Obnova jednou na navigaci.** `obnovSekce` si značí `_sekceObnoveno` na objektu pohledu,
+  který `navigateTo` pokaždé vyrobí nový. Kdyby se obnovovalo při každém překreslení, nešlo by
+  seskupení vůbec přepnout — vlastní volba by se hned přepsala tou zapamatovanou.
+- **Zapamatovaný stav přebíjí definici záložky i uloženého pohledu.** Je to tak schválně:
+  „vrať mě, kde jsem byl" je častější než „ukaž mi znovu výchozí". Výjimka je **Přepsat
+  aktuálním** v nastavení — `zapomenSekce(sv.id)`, protože pak má platit nová definice.
+- **Rozbalení se drží zvlášť pro každé seskupení** (`otevreneSekce`): klíče sekcí jsou u data
+  jiné než u tagů.
+
+## Odkaz `?id=` na soukromý repozitář
+GitHub vrací na nedostupný soukromý soubor **404, ne 403** — schválně, aby se soukromé
+repozitáře nedaly vyzvídat. Dřív z toho byl jen toast, ten za 2,5 s zhasl a zůstal prázdný
+Inbox bez vysvětlení; cesta z adresy byla pryč a token se neměl kde zadat.
+
+`loadFromGitHub(ghPath,{zAdresy:true})` proto při neúspěchu otevře `ukazGhTokenDialog`
+(`#dlgghtoken`) s cestou z odkazu a polem na token. **Na opakovaný pokus se `zAdresy` předává
+dál** — když token nestačí, musí se dialog nabídnout znovu, ne nechat člověka zase na prázdnu.
+Token jde jako vždycky **jen do localStorage**, nikdy do dat projektu.
+
 ## Automatické ukládání na GitHub
 Přepínač v hlavičce vedle Uložit. Stav drží `ghAutoStav` **jen v paměti stránky** — do dat
 projektu ani do `localStorage` nepatří, takže po načtení je vždycky vypnuté. Záměr, ne
