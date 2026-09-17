@@ -751,8 +751,17 @@ Výchozí a zůstává výchozí. Karty entit pod sebou.
 **Sekce podle** rozdělí seznam do rozbalovacích skupin podle atributu typu výběr, ano/ne,
 podle typu entity, **podle data** — a to jak podle datumového atributu, tak podle systémového
 **Upraveno** a **Vytvořeno** — nebo **podle tagu**. U každé sekce je vidět, kolik entit
-obsahuje; entity bez hodnoty mají sekci „(bez hodnoty)" na konci. Rozbalení a sbalení si
-pohled pamatuje.
+obsahuje; entity bez hodnoty mají sekci „(bez hodnoty)" na konci.
+
+**Co si pohled pamatuje.** Zvolené seskupení i to, které sekce máš sbalené, drží DKM
+**u toho konkrétního pohledu** — odskočíš na entitu, vrátíš se a je to, jak jsi to nechal.
+Každá záložka a každý uložený pohled má svoje; sbalení se navíc pamatuje zvlášť pro každé
+seskupení, protože sekce podle data a podle tagu spolu nesouvisí.
+
+Drží se to jen **v paměti okna**. Po obnovení stránky (F5) se pohled vrátí k tomu, jak je
+definovaný. Do dat projektu ani do prohlížeče se neukládá nic: je to stav okna, ne nastavení,
+a do souboru, který si lidé posílají, nepatří. Když uložený pohled v nastavení **přepíšeš
+aktuálním**, paměť se pro něj zahodí — platí nová definice.
 
 U dat přibude v liště volba **Sekce po**: dnech, týdnech, měsících nebo letech. Sekce jdou od
 nejnovější a nadpisy jsou lidské — *Dnes*, *Včera*, *středa 9. září 2026*, *září 2026*.
@@ -1418,6 +1427,15 @@ Zapnutí nad rozdělanou prací uloží rovnou, nečeká se na další změnu.
 `?id={base64ghPath}` v URL → DKM při startu automaticky načte projekt z GitHubu přes API.
 Odkaz vygeneruje **Nastavení → GitHub → Odkaz**. Šikovné pro sdílení nebo pro záložku
 v prohlížeči. Na privátní repozitář je potřeba token uložený v prohlížeči.
+
+**Když token chybí nebo nestačí**, DKM se na to zeptá rovnou — ukáže dialog s cestou z odkazu
+a polem na token. Zadáš ho a projekt se otevře; cestu nemusíš nikde opisovat. Když token
+nestačí, dialog se nabídne znovu.
+
+Pozor na jednu vlastnost GitHubu: na soubor v soukromém repozitáři, na který nemáš přístup,
+odpovídá **404 stejně jako na neexistující soubor** — schválně, aby se soukromé repozitáře
+nedaly vyzvídat. Z hlášky se tedy nepozná, jestli je špatně cesta, nebo chybí oprávnění.
+Token se ukládá **jen do tvého prohlížeče** (localStorage), nikdy do dat projektu.
 
 ### 21.6 URL parametr pro načtení z libovolné adresy
 

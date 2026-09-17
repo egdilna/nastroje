@@ -759,7 +759,17 @@ The default, and it stays the default. Entity cards below each other.
 **Sections by** splits the list into collapsible groups by a select or yes/no attribute, by
 entity type, **by date** — either a date attribute or the system **Updated** and **Created** —
 or **by tag**. Each section shows how many entities it holds; entities without a value get a
-"(no value)" section at the end. The view remembers what you collapsed.
+"(no value)" section at the end.
+
+**What the view remembers.** The chosen grouping and which sections you collapsed are kept
+**per view** — jump to an entity, come back, and it is as you left it. Every tab and every
+saved view has its own; collapsing is remembered separately for each grouping, since sections
+by date and by tag have nothing to do with each other.
+
+It lives **in the window's memory only**. After a page reload (F5) the view returns to how it
+is defined. Nothing goes into the project data or into the browser: this is window state, not
+a setting, and it does not belong in a file people send each other. Overwriting a saved view
+with the current one in Settings drops its memory — the new definition applies.
 
 For dates the toolbar adds a **Sections by** granularity: day, week, month or year. Sections run
 newest first and the headings are human — *Today*, *Yesterday*, *Wednesday 9 September 2026*,
@@ -1430,6 +1440,15 @@ Switching it on with unsaved work saves right away; it does not wait for the nex
 `?id={base64ghPath}` in the URL → DKM auto-loads the project from GitHub via the API on
 startup. **Settings → GitHub → Link** generates the link. Handy for sharing or for a browser
 bookmark. A private repo needs a token stored in the browser.
+
+**When the token is missing or insufficient**, DKM asks right there — a dialog with the path
+from the link and a field for the token. Enter it and the project opens; you never copy the
+path anywhere. If the token is not enough, the dialog comes back.
+
+Mind one GitHub trait: for a file in a private repository you cannot reach, it answers **404
+just as it does for a missing file** — on purpose, so private repositories cannot be probed.
+The message alone therefore cannot tell you whether the path is wrong or the permission is
+missing. The token is stored **in your browser only** (localStorage), never in the project data.
 
 ### 21.6 URL parameter for loading from any address
 

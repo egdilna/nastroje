@@ -156,6 +156,7 @@ chybí řádek v `SCR_NASTAVENI` a tady v tabulce.
 | `#dlgtblcols` | Sloupce tabulky |
 | `#dlgcmdpal` | Paleta příkazů (Ctrl+Shift+P, F1) |
 | `#dlgwikipal` | Výběr entity pro wiki odkaz (Ctrl+Shift+K v markdownovém poli) |
+| `#dlgghtoken` | Zadání GitHub tokenu, když projekt otevřený přes `?id=` nejde načíst |
 
 ### Hromadné akce
 
