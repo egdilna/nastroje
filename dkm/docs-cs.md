@@ -855,8 +855,8 @@ Klikneš **☑ Výběr** v toolbaru (klávesa V). Karty entit získají checkbox
 
 **Výběr po akci zůstává.** Nad týmiž entitami se skoro vždycky dělá ještě něco dalšího —
 archivovat a hned zpátky, nastavit atribut a přidat aspekt. Z výběru vypadnou jen entity,
-které akce opravdu smazala. Zrušíš ho tlačítkem **Odznačit vše** nebo vypnutím režimu výběru
-(klávesa V, Esc).
+které akce opravdu smazala. Zrušíš ho tlačítkem **Odznačit vše** (klávesa Shift+X) nebo
+vypnutím režimu výběru (klávesa X, Esc).
 
 Entita, která po akci z aktuálního seznamu zmizí (třeba se archivuje), **ve výběru zůstane**
 a lišta to řekne: `Vybráno: 5 · z toho 2 mimo tento seznam`. Díky tomu jde na tutéž pětici
@@ -2353,7 +2353,9 @@ i se zapnutým Caps Lockem a na rozložení, kde ta klávesa píše jiné písme
 |---------|------|
 | f | Fokus na hledání |
 | / | Fokus na hledání |
-| v | Přepnout režim výběru |
+| x | Přepnout režim výběru |
+| Shift+X | Odznačit vše vybrané — v režimu výběru zůstaneš |
+| v | Přepnout režim výběru (totéž co `x`, starší zvyk) |
 
 ### Detail
 

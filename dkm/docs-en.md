@@ -864,8 +864,8 @@ Click **☑ Select** in toolbar (V key). Entity cards get a checkbox. Pick which
 
 **The selection survives the action.** You almost always do something else with the same
 entities — archive them and bring them straight back, set an attribute and add an aspect. Only
-entities the action actually deleted drop out. Clear it with **Deselect all** or by leaving
-selection mode (key V, Esc).
+entities the action actually deleted drop out. Clear it with **Deselect all** (key Shift+X) or
+by leaving selection mode (key X, Esc).
 
 An entity that disappears from the current list after the action (archived, for instance)
 **stays selected** and the bar says so: `Selected: 5 · 2 of them outside this list`. So you can
@@ -2389,7 +2389,9 @@ saves even with Caps Lock on and on layouts where that key types a different let
 |----------|--------|
 | f | Focus search |
 | / | Focus search |
-| v | Toggle selection mode |
+| x | Toggle selection mode |
+| Shift+X | Deselect everything — you stay in selection mode |
+| v | Toggle selection mode (same as `x`, the older habit) |
 
 ### Detail
 

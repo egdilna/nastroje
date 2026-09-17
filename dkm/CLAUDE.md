@@ -630,6 +630,16 @@ v Nastavení → Model, sekce `#mdl-prenos`, a končí týmž souborem: `kind:'m
 - **Sekce se překresluje sama sebou** (`prekresliPrenosModelu`), ne přes `render()`:
   celé Nastavení by přeskočilo odrolování i ohnisko.
 
+## Režim výběru: X i V
+Přepíná ho `prepniVyber()` — jedno místo pro klávesu, tlačítko v liště i paletu. **Vypnutí
+vždycky zahodí i výběr**; nechat ho ležet schovaný by znamenalo, že příští zapnutí najde
+zaškrtnuté entity, o kterých už nikdo neví.
+
+`X` je novější, `V` tam bylo dřív a zůstává — ubírat ho by zbytečně rozbilo zvyk.
+`Shift+X` odznačí, ale z režimu **nevyskočí**: kdo si vybral špatně, chce vybírat dál.
+Holé klávesy se čtou přes `ev.key.toLowerCase()`, takže shift se musí testovat zvlášť
+(`ev.shiftKey`), ne přes velikost písmene.
+
 ## České počítané tvary
 `poctem(n,'mdlHodnota')` — čeština má tři tvary (1 / 2–4 / 5+), angličtina dva. Klíče se
 skládají příponou `1`/`24`/`5`. Nula bere pátý tvar („0 hodnot", „0 values"). Bez toho
