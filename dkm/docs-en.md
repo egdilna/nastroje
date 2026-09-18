@@ -1240,6 +1240,7 @@ groups:
 |---|---|
 | **Create** | New entity, **New into Inbox**, Quick add to Inbox, and **New entity of each type** separately ("New: Contract") |
 | **Entity** | commands for the entity currently open — exactly the ones it has as buttons in the detail: Edit, Duplicate, Add relation, Comments, Export / print, Ask AI, Standalone window, To / From Inbox, Change type, Archive or Restore, Delete |
+| **Bulk on selected (n)** | **every bulk action** from the selection bar — change type, add / remove aspect, set / clear attribute, add relation, merge entities, export, AI, to / from Inbox, archive or restore, delete |
 | **List** | search, advanced filters, clear filters, save view, selection mode, preview beside the list and the display switch (list, table, Kanban, calendar, timeline) |
 | **Action** | save, load, export data, **import TSV**, **import a .dkmpkg package**, clipboard, load from URL, panels, AI, theme and language |
 | **Navigation** | the tabs from the bar, Inbox / All / Archive, All comments and **every settings section** |
@@ -1249,6 +1250,12 @@ groups:
 
 Commands that have a keyboard shortcut show it on the right. The **Entity** and **List**
 groups are offered only where they make sense — in a detail and above a list respectively.
+
+**Bulk actions** appear as soon as at least one entity is selected — **including away from the
+list**: pick three, jump into a detail, and it is still the same selection. **The count sits in
+the group name** ("Bulk on selected (3)"), because a palette command runs without the selection
+bar in front of you, and *Delete* should not run without a number. *Merge entities* shows from
+two selected up. Whatever deletes or archives asks just as it does from the bar.
 
 ### 19.3 Matching
 
