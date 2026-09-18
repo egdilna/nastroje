@@ -799,6 +799,24 @@ Tlačítko **Uložit PNG do GitHub** na kartě Výstup (Alt+P) — a stejné tla
 
 Stejný název znamená, že se **starší verze obrázku přepíše**. To je záměr: odkazy na obrázek (například z wiki nebo dokumentace) zůstávají platné a vždy ukazují na aktuální podobu diagramu.
 
+### Adresa obrázku a Markdown
+
+Hned nad náhledem je na kartě Výstup adresa obrázku na `raw.githubusercontent.com` a tři tlačítka:
+
+| Tlačítko | Co udělá |
+|----------|----------|
+| Kopírovat URL | Zkopíruje adresu obrázku do schránky |
+| Kopírovat Markdown | Zkopíruje `![název diagramu](adresa)` — rovnou k vložení do wiki nebo README |
+| Otevřít obrázek | Otevře adresu v novém panelu |
+
+```
+https://raw.githubusercontent.com/egdilna/diagramy/main/architektura/P%C5%99ihl%C3%A1%C5%A1en%C3%AD.png
+```
+
+Adresa se skládá z cesty v repozitáři a názvu diagramu, takže je vidět **ještě před prvním uložením** — je jasné, kam obrázek půjde. Mezery a diakritika v názvu se zakódují, aby odkaz v Markdownu držel celý. Větev se zjistí z repozitáře (`default_branch`); než odpoví, zobrazí se `main` a adresa se pak sama opraví. Po uložení se u tlačítek objeví potvrzení „✔ Uloženo v HH:MM" — po přejmenování diagramu zmizí, protože adresa už míří na jiný soubor.
+
+U **soukromého repozitáře** raw adresa bez přihlášení nefunguje; pro veřejný repozitář je to trvalý odkaz, který po každém uložení ukazuje aktuální podobu diagramu.
+
 ### Statická adresa projektu
 
 Tlačítko **Kopírovat odkaz** dá adresu ve tvaru:
@@ -825,6 +843,7 @@ Když je nastavená cesta na GitHub, ukládá tlačítko **Uložit projekt** i z
 | Zkopírovat zdroj | Alt+C | Vloží PlantUML kód do schránky (fallback na výběr v textarea + Ctrl+C) |
 | Uložit projekt | Alt+S | Uloží projekt do GitHub repozitáře, nebo (bez nastavené cesty) stáhne `.pup` JSON |
 | Uložit PNG do GitHub | Alt+P | Uloží obrázek diagramu vedle souboru projektu v repozitáři |
+| Kopírovat URL / Markdown obrázku | — | Raw adresa obrázku v repozitáři, samotná nebo jako `![název](adresa)` |
 | Načíst z GitHub / Uložit do GitHub | Alt+G | Dialog nastavení GitHub (token, cesta, odkaz) |
 | Vložit do schránky | Ctrl+Shift+S | Zkopíruje JSON projektu do schránky |
 | Načíst projekt | Alt+O | Otevře libovolný soubor s autodetekcí (.pup / .pupe / .puml) |

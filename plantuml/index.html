@@ -130,6 +130,11 @@ ul.issues li.warn{border-color:#a60;background:#fed}
 .no-selection{font-style:italic;color:#666}
 .kbd{font-family:monospace;background:#eee;border:1px solid #aaa;border-radius:2px;padding:0 .3em;font-size:.85em}
 input[type=file]{display:none}
+/* Obrázek diagramu v GitHub repozitáři (karta Výstup) */
+#ghImagePanel{margin:.6em 0;padding:.5em .6em;background:#f4f7fb;border:1px solid #ccd4e0;border-radius:4px}
+#ghImagePanel .row-actions{display:flex;gap:.4em;flex-wrap:wrap;margin-top:.4em}
+#ghImageUrl{width:100%;font-family:monospace;font-size:.85em;padding:.35em;border:1px solid #888;border-radius:3px;box-sizing:border-box;background:#fff}
+#ghImageSaved{font-size:.85em;color:#063;font-weight:bold}
 /* Paleta příkazů */
 #btnPalette{margin-left:.5em}
 #dlgPalette{width:46em;max-width:94vw;padding:0;overflow:hidden}
@@ -292,6 +297,17 @@ hr{border:none;border-top:1px solid #ddd;margin:1em 0}
         <button id="btnProject" accesskey="i" data-i18n="btn.project" data-i18n-title="tip.project" title="Promítat v novém okně (Alt+I)">Promítat</button>
         <button id="btnDownloadPng" accesskey="e" data-i18n="btn.downloadPng" data-i18n-title="tip.downloadPng" title="Stáhnout PNG (Alt+E)">Stáhnout PNG</button>
         <button id="btnSavePngGithub" accesskey="p" data-i18n="btn.savePngGithub" data-i18n-title="tip.savePngGithub" title="Uložit PNG do stejné složky v GitHub repozitáři (Alt+P)">Uložit PNG do GitHub</button>
+      </div>
+      <div id="ghImagePanel" role="group" aria-labelledby="ghImageLabel">
+        <label id="ghImageLabel" for="ghImageUrl" data-i18n="gh.imageUrlLabel">Adresa obrázku v repozitáři (raw):</label>
+        <input type="text" id="ghImageUrl" readonly spellcheck="false" aria-describedby="ghImageHelp">
+        <div class="row-actions">
+          <button type="button" id="btnCopyImageUrl" data-i18n="gh.copyImageUrl">Kopírovat URL</button>
+          <button type="button" id="btnCopyImageMd" data-i18n="gh.copyImageMd">Kopírovat Markdown</button>
+          <button type="button" id="btnOpenImageUrl" data-i18n="gh.openImage">Otevřít obrázek</button>
+          <span id="ghImageSaved" role="status" aria-live="polite"></span>
+        </div>
+        <div class="help" id="ghImageHelp"></div>
       </div>
       <div id="diagramPreview" data-i18n-aria="aria.renderedDiagram" aria-label="Vykreslený diagram">
         <p class="muted" data-i18n="section.noPreview">Klikněte na „Načíst / aktualizovat náhled" pro zobrazení diagramu.</p>
@@ -1172,6 +1188,16 @@ const I18N = {
       pngSaved: (name) => 'Obrázek ' + name + ' uložen do GitHubu.',
       pngError: (msg) => 'Chyba při ukládání PNG do GitHubu: ' + msg,
       pngRenderError: 'Nepodařilo se získat obrázek z plantuml.com (síť nebo CORS).',
+      imageUrlLabel: 'Adresa obrázku v repozitáři (raw):',
+      copyImageUrl: 'Kopírovat URL',
+      copyImageMd: 'Kopírovat Markdown',
+      openImage: 'Otevřít obrázek',
+      imageHelp: (file) => 'Na této adrese bude obrázek „' + file + '" po uložení tlačítkem „Uložit PNG do GitHub". ' +
+        'Adresa se nemění, takže odkaz z dokumentace ukazuje vždy na aktuální podobu diagramu. U soukromého repozitáře raw adresa bez přihlášení nefunguje.',
+      imageNoPath: 'Cesta k souboru projektu na GitHubu zatím není nastavená — adresu obrázku spočítáme, jakmile ji vyplníte v nastavení GitHub (Alt+G).',
+      imageUrlCopied: 'Adresa obrázku zkopírována do schránky.',
+      imageMdCopied: 'Markdown s obrázkem zkopírován do schránky.',
+      imageSavedNow: (time) => 'Uloženo v ' + time,
       conflict: 'Soubor byl mezitím v repozitáři změněn. Načtěte ho znovu a uložení zopakujte.'
     },
     // === STATUS HLÁŠKY ====
@@ -1766,6 +1792,16 @@ const I18N = {
       pngSaved: (name) => 'Image ' + name + ' saved to GitHub.',
       pngError: (msg) => 'Error saving the PNG to GitHub: ' + msg,
       pngRenderError: 'Could not fetch the image from plantuml.com (network or CORS).',
+      imageUrlLabel: 'Image address in the repository (raw):',
+      copyImageUrl: 'Copy URL',
+      copyImageMd: 'Copy Markdown',
+      openImage: 'Open the image',
+      imageHelp: (file) => 'The image “' + file + '” will live at this address once you press “Save PNG to GitHub”. ' +
+        'The address never changes, so a link from your documentation always shows the current diagram. For a private repository the raw address does not work without signing in.',
+      imageNoPath: 'The GitHub path to the project file is not set yet — the image address appears as soon as you fill it in the GitHub settings (Alt+G).',
+      imageUrlCopied: 'Image address copied to the clipboard.',
+      imageMdCopied: 'Markdown with the image copied to the clipboard.',
+      imageSavedNow: (time) => 'Saved at ' + time,
       conflict: 'The file has changed in the repository in the meantime. Load it again and repeat the save.'
     },
     status: {
@@ -8673,6 +8709,7 @@ function renderCurrentDiagram(){
   renderDiagramStatus(d);
   renderVersions(d);
   renderValidation(d);
+  renderGhImagePanel(d);
   try { if(source) source.value = generatePuml(d); }
   catch(e){ if(source) source.value = '! Chyba při generování: ' + e.message; debug('Generování PUML', e.stack || e.message); }
 }
@@ -14858,6 +14895,116 @@ function ghPngPathFor(diagram, parsed){
   return (parsed.dir ? parsed.dir + '/' : '') + safe + '.png';
 }
 
+// --- Adresa obrázku na raw.githubusercontent.com -------------------
+// Raw adresa potřebuje větev, kterou z cesty „owner/repo/…" nepoznáme. Zjistíme
+// ji z API (`default_branch`) a držíme v paměti, ať se na každý překreslení
+// nechodí na síť. Když se zeptat nedá (chybí token u soukromého repozitáře,
+// offline), použijeme „main" — v drtivé většině repozitářů sedí a uživatel
+// adresu vidí, takže si případný rozdíl opraví.
+const ghBranchCache = new Map();
+function ghKnownBranch(parsed){
+  return ghBranchCache.get(parsed.owner + '/' + parsed.repo) || 'main';
+}
+async function ghEnsureBranch(parsed){
+  const key = parsed.owner + '/' + parsed.repo;
+  if(ghBranchCache.has(key)) return ghBranchCache.get(key);
+  try {
+    const res = await fetch(GH_API + '/repos/' + parsed.owner + '/' + parsed.repo, {headers: ghHeaders()});
+    if(res.ok){
+      const info = await res.json();
+      if(info && info.default_branch){
+        ghBranchCache.set(key, info.default_branch);
+        return info.default_branch;
+      }
+    }
+  } catch(err){ debug('ghEnsureBranch', err.message); }
+  return 'main';
+}
+
+// Adresa obrázku diagramu. Mezery a diakritiku v názvu je nutné zakódovat,
+// jinak odkaz v Markdownu skončí useknutý na první mezeře.
+function ghImageUrlFor(diagram, parsed, branch){
+  const pngPath = ghPngPathFor(diagram, parsed);
+  return 'https://raw.githubusercontent.com/' + parsed.owner + '/' + parsed.repo + '/' +
+    (branch || ghKnownBranch(parsed)) + '/' + encodeURI(pngPath);
+}
+// Markdown obrázku: ![název](adresa). Hranaté závorky v názvu se escapují,
+// aby neukončily popisek dřív, než má.
+function ghImageMarkdownFor(diagram, url){
+  const alt = String(diagram.name || 'diagram').replace(/([\[\]])/g, '\\$1');
+  return '![' + alt + '](' + url + ')';
+}
+
+// Blok s adresou obrázku na kartě Výstup. Volá se při každém překreslení
+// diagramu, takže reaguje na přejmenování i na změnu cesty v nastavení.
+function renderGhImagePanel(d){
+  const panel = document.getElementById('ghImagePanel');
+  if(!panel) return;
+  const urlEl = document.getElementById('ghImageUrl');
+  const helpEl = document.getElementById('ghImageHelp');
+  const savedEl = document.getElementById('ghImageSaved');
+  const buttons = ['btnCopyImageUrl','btnCopyImageMd','btnOpenImageUrl'].map(id => document.getElementById(id));
+  const parsed = parseGhPath(ghCurrentPath());
+  const pngPath = (d && parsed) ? ghPngPathFor(d, parsed) : '';
+  if(savedEl && savedEl.dataset.forPath !== pngPath){
+    savedEl.textContent = '';
+    savedEl.dataset.forPath = pngPath;
+  }
+  if(!d || !parsed){
+    if(urlEl) urlEl.value = '';
+    if(helpEl) helpEl.textContent = L.gh.imageNoPath;
+    buttons.forEach(b => { if(b) b.disabled = true; });
+    return;
+  }
+  const url = ghImageUrlFor(d, parsed);
+  if(urlEl) urlEl.value = url;
+  if(helpEl) helpEl.textContent = L.gh.imageHelp(pngPath.split('/').pop());
+  buttons.forEach(b => { if(b) b.disabled = false; });
+  // Větev doplníme, jakmile ji API prozradí — adresa se pak sama opraví.
+  ghEnsureBranch(parsed).then(branch => {
+    const current = getCurrentDiagram();
+    if(!current || current.id !== d.id) return;
+    const fresh = ghImageUrlFor(d, parsed, branch);
+    if(urlEl && urlEl.value !== fresh) urlEl.value = fresh;
+  });
+}
+
+// Kopírování do schránky se stejným tichým fallbackem, jaký používá zbytek
+// aplikace — kopírování nemá uživatele obtěžovat dialogem.
+async function ghCopyText(text, okMsg){
+  try {
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      await navigator.clipboard.writeText(text);
+      status(okMsg, 'success');
+      return;
+    }
+    throw new Error('clipboard API unavailable');
+  } catch(err){
+    debug('ghCopyText', err.message);
+    const field = document.getElementById('ghImageUrl');
+    if(field){ field.value = text; field.focus(); field.select(); }
+    status(L.gh.copyManually, 'error');
+  }
+}
+function copyGhImageUrl(){
+  const d = getCurrentDiagram();
+  const parsed = parseGhPath(ghCurrentPath());
+  if(!d || !parsed){ status(L.gh.imageNoPath, 'error'); return; }
+  ghCopyText(ghImageUrlFor(d, parsed), L.gh.imageUrlCopied);
+}
+function copyGhImageMarkdown(){
+  const d = getCurrentDiagram();
+  const parsed = parseGhPath(ghCurrentPath());
+  if(!d || !parsed){ status(L.gh.imageNoPath, 'error'); return; }
+  ghCopyText(ghImageMarkdownFor(d, ghImageUrlFor(d, parsed)), L.gh.imageMdCopied);
+}
+function openGhImageUrl(){
+  const d = getCurrentDiagram();
+  const parsed = parseGhPath(ghCurrentPath());
+  if(!d || !parsed){ status(L.gh.imageNoPath, 'error'); return; }
+  window.open(ghImageUrlFor(d, parsed), '_blank');
+}
+
 // Zjistí cestu k projektu; když chybí, upozorní a otevře nastavení GitHubu.
 function ghRequirePath(){
   const path = ghCurrentPath();
@@ -14931,8 +15078,19 @@ async function savePngToGitHub(){
   const pngPath = ghPngPathFor(d, target.parsed);
   const pngTarget = {owner: target.parsed.owner, repo: target.parsed.repo, path: pngPath, dir: target.parsed.dir};
   try {
-    await ghPutFile(pngTarget, ghBytesToBase64(blobBuffer),
+    const result = await ghPutFile(pngTarget, ghBytesToBase64(blobBuffer),
       'PlantUML editor: obrázek diagramu ' + (d.name || '') + ' — ' + new Date().toISOString().slice(0, 19).replace('T', ' '));
+    // GitHub v odpovědi vrací download_url — z něj si vezmeme skutečnou větev,
+    // takže zobrazená raw adresa je po prvním uložení zaručeně správná.
+    const downloadUrl = result && result.content && result.content.download_url;
+    const branch = downloadUrl && downloadUrl.match(/^https:\/\/raw\.githubusercontent\.com\/[^/]+\/[^/]+\/([^/]+)\//);
+    if(branch) ghBranchCache.set(target.parsed.owner + '/' + target.parsed.repo, decodeURIComponent(branch[1]));
+    renderGhImagePanel(d);
+    const savedEl = document.getElementById('ghImageSaved');
+    if(savedEl){
+      savedEl.dataset.forPath = pngPath;
+      savedEl.textContent = '✔ ' + L.gh.imageSavedNow(new Date().toLocaleTimeString(getLang() === 'en' ? 'en-GB' : 'cs-CZ'));
+    }
     ghStatus(L.gh.pngSaved(pngPath.split('/').pop()), 'success');
   } catch(err){
     debug('savePngToGitHub (upload)', err.message);
@@ -15001,6 +15159,8 @@ function ghCommitPathFromDialog(){
   if(value) ghRememberPath(value);
   else { if(state.project) delete state.project.ghPath; ghSetStoredPath(''); }
   ghUpdateLinkField();
+  // Adresa obrázku na kartě Výstup se odvozuje z téže cesty.
+  try { renderGhImagePanel(getCurrentDiagram()); } catch(e){ debug('renderGhImagePanel', e.message); }
 }
 
 // Start aplikace: token do pole, případný ?gh= parametr přebíjí uloženou cestu
@@ -16461,6 +16621,7 @@ function openHelp(){
       'Once the path is set, “Load from GitHub” reads the project from the repository and “Save to GitHub” writes it back — every save is a normal commit, so version history builds up by itself. With the path set, the save button and Alt+S save to the repository instead of downloading a .pup file; without it the original download stays.',
       'The “Copy link” button gives you a static address of the form …/plantuml/?gh=<encoded path>. Opening it loads the project straight from the repository, so you can bookmark it or share it with the team.',
       'The “Save PNG to GitHub” button on the Output tab (Alt+P) renders the current diagram and stores the image in the same folder as the project file, named after the diagram. The same name means each save overwrites the previous version of the image, so links to the image stay valid.',
+      'Right above the preview, the Output tab shows the raw.githubusercontent.com address of that image, with buttons to copy the address, to copy it as Markdown (![diagram name](address)) and to open it. The address is derived from the repository path and the diagram name, so it is there before the first save; the branch is read from the repository. For a private repository the raw address does not work without signing in.',
       'A new project deliberately forgets the GitHub path, so that saving cannot overwrite an existing repository file with an empty project.');
     make('Keyboard shortcuts',
       'Command palette: F1 or Ctrl+Shift+P opens it, Shift+F1 explains it. In Firefox use F1 — Ctrl+Shift+P is taken by the private window there.',
@@ -16537,6 +16698,7 @@ function openHelp(){
       'Když je cesta nastavená, tlačítko „Načíst z GitHub" projekt z repozitáře přečte a „Uložit do GitHub" ho zapíše zpět — každé uložení je běžný commit, takže historie verzí vzniká sama. S nastavenou cestou ukládá do repozitáře i tlačítko „Uložit projekt" a zkratka Alt+S; bez ní zůstává původní stažení souboru .pup.',
       'Tlačítko „Kopírovat odkaz" dá statickou adresu ve tvaru …/plantuml/?gh=<zakódovaná cesta>. Po jejím otevření se projekt načte rovnou z repozitáře — dá se uložit do záložek nebo poslat kolegům.',
       'Tlačítko „Uložit PNG do GitHub" na kartě Výstup (Alt+P) vykreslí aktuální diagram a obrázek uloží do stejné složky jako soubor projektu, pod názvem diagramu. Stejný název znamená, že se starší verze obrázku přepíše, takže odkazy na obrázek zůstávají platné.',
+      'Hned nad náhledem karta Výstup ukazuje adresu tohoto obrázku na raw.githubusercontent.com a vedle ní tlačítka pro zkopírování adresy, pro zkopírování v Markdownu (![název diagramu](adresa)) a pro otevření obrázku. Adresa se odvozuje z cesty v repozitáři a názvu diagramu, takže je vidět ještě před prvním uložením; větev se načte z repozitáře. U soukromého repozitáře raw adresa bez přihlášení nefunguje.',
       'Nový projekt cestu na GitHub záměrně zapomene, aby uložení nepřepsalo existující soubor v repozitáři prázdným projektem.');
     make('Klávesové zkratky',
       'Paleta příkazů: otevře ji F1 nebo Ctrl+Shift+P, Shift+F1 k ní ukáže nápovědu. Ve Firefoxu použijte F1 — Ctrl+Shift+P si tam bere anonymní okno.',
@@ -16822,6 +16984,14 @@ function paletteStaticCommands(){
   add('output.pngGithub', 'output', cz('Uložit PNG do GitHub', 'Save PNG to GitHub'),
     cz('Uloží obrázek do stejné složky jako soubor projektu.', 'Saves the image into the same folder as the project file.'),
     'Alt+P', () => savePngToGitHub(), palHasDiagram);
+  add('output.copyImageUrl', 'output', cz('Kopírovat adresu obrázku v GitHubu', 'Copy the GitHub image address'),
+    cz('Raw adresa PNG v repozitáři — nemění se, tak se dá dát do dokumentace.', 'The raw address of the PNG in the repository — it never changes, so it can go into your documentation.'),
+    '', () => copyGhImageUrl(), palHasDiagram);
+  add('output.copyImageMd', 'output', cz('Kopírovat Markdown s obrázkem', 'Copy Markdown with the image'),
+    cz('Vloží do schránky ![název diagramu](adresa obrázku).', 'Puts ![diagram name](image address) on the clipboard.'),
+    '', () => copyGhImageMarkdown(), palHasDiagram);
+  add('output.openImageUrl', 'output', cz('Otevřít obrázek z GitHubu', 'Open the image from GitHub'), '', '',
+    () => openGhImageUrl(), palHasDiagram);
   add('output.downloadPuml', 'output', cz('Stáhnout .puml', 'Download .puml'), '', 'Alt+U', () => downloadPumlAction(), palHasDiagram);
   add('output.copySource', 'output', cz('Zkopírovat zdrojový kód', 'Copy the source code'), '', 'Alt+C', () => copySourceAction(), palHasDiagram);
   add('output.focusSource', 'output', cz('Přejít na zdrojový kód', 'Go to the source code'),
@@ -17332,6 +17502,9 @@ function init(){
   // Zavření Escapem projde rovnou přes událost close — cestu z pole si i tak zapamatujeme.
   document.getElementById('dlgGithub').addEventListener('close', ghCommitPathFromDialog);
   document.getElementById('btnSavePngGithub').addEventListener('click', savePngToGitHub);
+  document.getElementById('btnCopyImageUrl').addEventListener('click', copyGhImageUrl);
+  document.getElementById('btnCopyImageMd').addEventListener('click', copyGhImageMarkdown);
+  document.getElementById('btnOpenImageUrl').addEventListener('click', openGhImageUrl);
   // Přepínač jazyka — uložení do localStorage a překreslení UI.
   const langSel = document.getElementById('langSelect');
   if(langSel){

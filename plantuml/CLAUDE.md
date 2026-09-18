@@ -131,6 +131,11 @@ Projekt (`.pup`) i PNG diagramů se ukládají přes **GitHub Contents API**.
   Soubory > 1 MB nemají `content` v odpovědi — `ghFetchText` pro ně sáhne na Blob API.
 - PNG jde do **stejné složky** jako projekt, název = `safeBaseName(diagram.name)` — shodný
   s názvem při stažení, takže se starší verze obrázku přepíše (to je požadované chování).
+- Raw adresu obrázku staví `ghImageUrlFor` a zobrazuje `renderGhImagePanel` (karta Výstup).
+  Cesta se **musí** protáhnout `encodeURI` — názvy diagramů mají mezery i diakritiku.
+  Větev raw adresa potřebuje, ale z `ghPath` ji nezjistíš: `ghEnsureBranch` ji načte
+  z API (`default_branch`) do `ghBranchCache`, po uložení PNG se upřesní z `download_url`
+  v odpovědi; než odpověď dorazí, platí `main`.
 - `saveProjectAction()` je za tlačítkem „Uložit projekt" i za Alt+S: s nastavenou cestou
   ukládá do repozitáře, bez ní stahuje `.pup`.
 - Hlášky jdou přes `ghStatus()` (dialog + globální status pruh) a mají vlastní slovník
