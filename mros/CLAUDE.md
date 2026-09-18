@@ -231,7 +231,7 @@ s tlačítkem *Použít vložený kód*.
    schránky i do historie;
 2. posluchači událostí `copy` a `cut` na `document` (`zachytKopii()`) — zachytí každé
    Ctrl+C **uvnitř stránky**, ve výběru textu i ve formulářovém poli;
-3. tlačítkem *Ze schránky* v liště plochy, klávesou **Ctrl+Shift+V** nebo příkazem
+3. tlačítkem *Ze schránky* — úplně prvním v liště plochy, ještě před přepínačem panelu —, klávesou **Ctrl+Shift+V** nebo příkazem
    v paletě (`zeSchrankyDoHistorie()`) — jediná cesta pro to, co bylo zkopírováno mimo
    stránku.
 
