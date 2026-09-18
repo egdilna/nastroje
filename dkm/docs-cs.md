@@ -1015,8 +1015,8 @@ Vypnout to jde v **Nastavení → Obecné → Nabízet wiki odkazy při uložen�
 ### 15.5 Zkratky v markdownových polích
 
 Značky se nemusí psát ručně. Ve **víceřádkových (Markdown) atributech při editaci entity**
-— v atributech z typu, z aspektu i ve vlastních — a v poli pro rychlé přidání do Inboxu
-fungují tyhle zkratky:
+— v atributech z typu, z aspektu i ve vlastních —, v poli pro rychlé přidání do Inboxu
+a **v komentářích** (v novém i při jejich editaci) fungují tyhle zkratky:
 
 | Zkratka | Co udělá |
 |---------|----------|
@@ -1075,6 +1075,16 @@ V detailu entity sekce **💬 Komentáře**. Formulář nahoře:
 - Tlačítko **Přidat komentář** (nebo Ctrl+Enter v textarea)
 
 Seznam komentářů: každý má autora, datum, Markdown obsah, štítek „upraveno" pokud editován, tlačítka **✎ Upravit** (inline editace) a **× Smazat**. Řazení od nejnovějšího.
+
+**Komentář je plnohodnotné markdownové pole.** Kromě Markdownu v něm funguje
+**CriticMarkup** (kap. 16.1b) i **wiki odkazy `[[Název]]`** — a to při psaní, ne jen při
+zobrazení. Všechny zkratky z kap. 15.5 tu platí, **Ctrl+Shift+K** včetně: otevře našeptávač,
+ve kterém entitu najdeš podle názvu i podle typu a Enter vloží `[[odkaz]]`. Totéž platí při
+editaci už napsaného komentáře.
+
+Odkaz v komentáři je **odkaz jako každý jiný**: cílová entita ho vidí v sekci *Odkazuje sem*
+(označený 💬) a při přejmenování se přepíše i tam. Víc komentářů téže entity dá v *Odkazuje
+sem* jeden řádek, ne pokaždé nový.
 
 **Klávesa `c` v detailu** skočí focusem na comment input.
 

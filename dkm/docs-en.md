@@ -1025,8 +1025,8 @@ You can switch it off in **Settings → General → Suggest wiki links when savi
 ### 15.5 Shortcuts in Markdown fields
 
 You do not have to type the marks by hand. These shortcuts work in **multi-line (Markdown)
-attributes while editing an entity** — from the type, from an aspect and custom ones alike —
-and in the quick-add field on the Inbox:
+attributes while editing an entity** — from the type, from an aspect and custom ones alike —,
+in the quick-add field on the Inbox and **in comments** (both new ones and when editing one):
 
 | Shortcut | What it does |
 |----------|--------------|
@@ -1087,6 +1087,16 @@ In entity detail, the **💬 Comments** section. Form on top:
 - **Add comment** button (or Ctrl+Enter in textarea)
 
 Comment list: each has author, date, Markdown content, "edited" label if edited, **✎ Edit** (inline editing) and **× Delete** buttons. Sorted newest-first.
+
+**A comment is a full Markdown field.** Besides Markdown it takes **CriticMarkup** (16.1b) and
+**wiki links `[[Name]]`** — while typing, not only when displayed. Every shortcut from 15.5
+applies here, **Ctrl+Shift+K** included: it opens the picker where you find an entity by name
+or by type, and Enter inserts the `[[link]]`. The same holds when editing a comment already
+written.
+
+A link in a comment is **a link like any other**: the target entity shows it under *Referenced
+by* (marked 💬) and renaming rewrites it there too. Several comments on the same entity give
+one row under *Referenced by*, not one each.
 
 **Key `c` in detail** focuses the comment input.
 

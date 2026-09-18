@@ -630,6 +630,23 @@ v Nastavení → Model, sekce `#mdl-prenos`, a končí týmž souborem: `kind:'m
 - **Sekce se překresluje sama sebou** (`prekresliPrenosModelu`), ne přes `render()`:
   celé Nastavení by přeskočilo odrolování i ohnisko.
 
+## Komentář je markdownové pole jako každé jiné
+Vykresloval se přes `renderMD` odjakživa (wiki odkazy i CriticMarkup), ale psalo se do něj
+naslepo — `pripojZkratkyMd` na něm nevisel. Teď visí na `#cmt-new` i na `.cmt-edit-ta`;
+kdo přidá další místo, kde se píše Markdown, ať ho tam přidá taky, i s řádkem nápovědy
+(`mdZkratkyStrucne`).
+
+Pořadí posluchačů na `#cmt-new` je záměrné: `pripojZkratkyMd` se pověsí **první** a nehodící
+se klávesy pouští dál, takže Ctrl+Enter (odeslat) i po něm funguje. Ctrl+K se v poli chytí
+dřív než globální „skoč do hledání", protože posluchač pole je v cílové fázi.
+
+**Odkaz v komentáři je odkaz jako každý jiný.** `getRelsTo` prochází i `e.comments`
+(`kind:'wikilink'`, `scopeLabel:'💬'`) a `prejmenujWikiOdkazy` přepisuje `c.content`.
+Bez toho odkaz vedl jen jedním směrem — vykreslil se, ale cíl o něm nevěděl — a přejmenování
+nechalo v diskusi viset rozbitý `[[Starý název]]`. U komentářů se dává **jeden řádek na
+entitu** (`some`, ne `forEach`): atributy mají každý svoje jméno, u komentářů by to byly dva
+stejné řádky.
+
 ## Režim výběru: X i V
 Přepíná ho `prepniVyber()` — jedno místo pro klávesu, tlačítko v liště i paletu. **Vypnutí
 vždycky zahodí i výběr**; nechat ho ležet schovaný by znamenalo, že příští zapnutí najde
