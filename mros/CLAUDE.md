@@ -337,7 +337,9 @@ Registr `NASTROJE` — položka `{ n, i, b, w, v, f, skryt }` (název, ikona, ba
 2. `f: (telo, okno) => { … }` staví obsah přes `el()`.
 3. Nezapisuj do `VYCHOZI_NASTROJE`, pokud nejde o jádrovou funkci — uživatel si nástroj
    zapne v *Nastavení → Nástroje* (`zapnuty(klic)`).
-4. Vypnuté nástroje se neukazují v panelu ani v paletě.
+4. Vypnuté nástroje se neukazují v bočním panelu ani v hlavní nabídce. **V paletě
+   příkazů jsou všechny** — zaškrtávátko v nastavení řídí, co je po ruce, ne co jde
+   otevřít; vypnutý nástroj má v paletě poznámku *není v panelu*.
 
 `nastaveni` a `napoveda` mají `skryt: true` — jsou trvale v patičce panelu.
 
