@@ -308,6 +308,7 @@ body.prezentace #mrizka>li.soukrome{display:none}
         <div class="datum"><span id="stav-plocha"></span></div>
       </div>
       <div class="odsun" role="toolbar" aria-label="Akce plochy">
+        <button class="tl" id="tl-schranka" title="Uložit obsah systémové schránky do historie (Ctrl+Shift+V)">📋 Ze schránky</button>
         <button class="tl" id="tl-hledat" title="Hledání ve všem">🔍 Hledat</button>
         <button class="tl" id="tl-paleta" title="Paleta příkazů (F1 nebo Ctrl+Shift+P)">⌨ Příkazy</button>
         <button class="tl" id="tl-okna" title="Seznam všech oken (Shift+F6)">🪟 Okna</button>
@@ -2159,10 +2160,63 @@ function zkopirovat(text,hlaska){
   if(!text) return hlas("Není co kopírovat");
   navigator.clipboard?.writeText(text); doSchranky(text); hlas(hlaska||"Zkopírováno");
 }
+/* Vrací true, když v historii přibyl nový záznam. Dvakrát totéž za sebou historii jen
+   zaplevelí — u shodného posledního záznamu se posune jen čas. */
 function doSchranky(text){
-  if(!text) return;
-  S.schranka.unshift({text:String(text).slice(0,4000),kdy:Date.now()});
-  S.schranka=S.schranka.slice(0,50); ulozit();
+  const t=String(text||"").slice(0,4000);
+  if(!t.trim()) return false;
+  if(S.schranka[0]&&S.schranka[0].text===t){ S.schranka[0].kdy=Date.now(); ulozit(); obnovitSchranku(); return false; }
+  S.schranka.unshift({text:t,kdy:Date.now()});
+  S.schranka=S.schranka.slice(0,50); ulozit(); obnovitSchranku();
+  return true;
+}
+/* Naslouchat systémové schránce prohlížeč nedovolí: o kopírování v jiném programu ani
+   v iframu cizí aplikace se stránka nedozví a číst schránku na pozadí nesmí. Zachytit jde
+   kopírování uvnitř prostředí (události copy a cut) — na zbytek je tlačítko Ze schránky. */
+function zachytKopii(){
+  const a=document.activeElement;
+  /* z pole na heslo se nezapisuje nic — token do GitHubu ani heslo šifrované poznámky
+     nemají co dělat v historii, která se ukládá do repozitáře */
+  if(a&&a.tagName==="INPUT"&&a.type==="password") return;
+  const vPoli=a&&typeof a.selectionStart==="number"&&a.selectionStart!==a.selectionEnd
+    ? String(a.value).slice(a.selectionStart,a.selectionEnd) : "";
+  doSchranky(vPoli||String(document.getSelection()||""));
+}
+/* obsah schránky do historie — přes Clipboard API, a když ho prohlížeč nepustí, ručně */
+async function zeSchrankyDoHistorie(){
+  let text;
+  try{
+    if(!navigator.clipboard||!navigator.clipboard.readText) throw new Error("bez čtení schránky");
+    text=await navigator.clipboard.readText();
+  }catch(e){ return nahradniSchranka(); }
+  if(!text||!text.trim()) return hlas("Schránka je prázdná");
+  ohlasitUlozeni(doSchranky(text),text);
+}
+function ohlasitUlozeni(nove,text){
+  const ukazka=String(text).trim().replace(/\s+/g," ").slice(0,60);
+  hlas((nove?"Uloženo do historie schránky: ":"V historii už to je: ")+ukazka);
+}
+/* Firefox čtení schránky neumí a Safari se ptá — náhradní pole na ruční vložení */
+function nahradniSchranka(){
+  otevritOkno({klic:"schranka-vlozit",nazev:"Vložit ze schránky",ikona:"📋",sirka:460,vyska:330,escZavre:true,obsah:t=>{
+    const ta=el("textarea",{"aria-label":"Obsah schránky",placeholder:"Sem vložte obsah schránky (Ctrl+V)"});
+    t.append(el("p",{class:"tichy"},"Prohlížeč nedovolil číst schránku sám. Vložte obsah do pole a potvrďte."),ta,
+      el("button",{class:"btn",style:"margin-top:10px",onclick:()=>{
+        if(!ta.value.trim()) return hlas("Pole je prázdné");
+        const nove=doSchranky(ta.value); zavritOkno("schranka-vlozit"); ohlasitUlozeni(nove,ta.value);
+      }},"Uložit do historie"));
+    setTimeout(()=>ta.focus(),60);
+  }});
+}
+/* otevřené okno historie se překreslí samo, ale ne pod rukama toho, kdo je zrovna v něm */
+let obnovaSchranky=null;
+function obnovitSchranku(){
+  if(!obnovaSchranky) return;
+  if(!document.body.contains(obnovaSchranky.t)){ obnovaSchranky=null; return; }
+  /* jen když nikdo zrovna nemá v okně vybrané tlačítko — o fokus na něm by přišel */
+  if(document.activeElement?.closest?.("button,input,select,textarea")
+    &&obnovaSchranky.t.contains(document.activeElement)) return;
+  obnovaSchranky.kresli();
 }
 function prejmenovat(i){
   const o=objekt(i); const n=prompt("Nový název dlaždice:",o.nazev);
@@ -2747,13 +2801,39 @@ const NASTROJE={
   }},
   stitky:{n:"Štítky",i:"🏷️",b:"#c2569a",f:(t)=>spravaStitku(t,"n-stitky")},
   schranka:{n:"Historie schránky",i:"📋",b:"#8d7b68",f:(t)=>{
-    if(!S.schranka.length) return t.append(el("p",{class:"tichy"},"Schránka je prázdná. Naplní se, když z prostředí něco zkopírujete."));
-    const ul=el("ul",{class:"seznam"});
-    S.schranka.forEach((z,n)=>ul.append(el("li",{},
-      el("span",{class:"rostouci"},el("div",{style:"font-size:12.5px"},z.text.slice(0,120)),el("div",{class:"tichy"},cas(z.kdy))),
-      el("button",{class:"btn druhy mini",onclick:()=>{navigator.clipboard?.writeText(z.text);hlas("Zkopírováno");}},"Kopírovat"),
-      el("button",{class:"btn druhy mini",onclick:()=>{const o=vytvorit("text","Ze schránky",{text:z.text});otevritObjekt(o.id);}},"Na plochu"))));
-    t.append(ul,el("button",{class:"btn nebezpecny mini",style:"margin-top:12px",onclick:()=>{S.schranka=[];ulozit();zavritOkno("n-schranka");hlas("Historie vymazána");}},"Vymazat historii"));
+    const kresli=()=>{
+      t.innerHTML="";
+      const lista=el("div",{class:"pruh"},
+        el("button",{class:"btn mini",onclick:zeSchrankyDoHistorie},"📋 Přidat obsah schránky"));
+      if(S.schranka.length) lista.append(el("button",{class:"btn nebezpecny mini",
+        onclick:()=>{ if(!confirm("Vymazat celou historii schránky?")) return;
+          S.schranka=[]; ulozit(); kresli(); hlas("Historie vymazána"); }},"Vymazat historii"));
+      t.append(lista);
+      if(!S.schranka.length) return t.append(el("p",{class:"tichy"},
+        "Historie je prázdná. Naplní se, když v prostředí něco zkopírujete — tlačítkem Zkopírovat "
+        +"i klávesou Ctrl+C. Co jste zkopírovali jinde (v aplikaci v okně, v jiné kartě, v jiném "
+        +"programu), sem dostanete tlačítkem Ze schránky v liště plochy nebo klávesou Ctrl+Shift+V."));
+      const ul=el("ul",{class:"seznam"});
+      S.schranka.forEach((z,n)=>{
+        const vice=z.text.includes("\n");
+        ul.append(el("li",{},
+          el("span",{class:"rostouci"},
+            /* víceřádkový text by se v náhledu slil do jedné věty — oddělíme řádky tečkou */
+            el("div",{style:"font-size:12.5px"},z.text.replace(/\s*\n\s*/g," · ").slice(0,120)),
+            el("div",{class:"tichy"},cas(z.kdy)+(vice?" · "+textNaPolozky(z.text).length+" řádků":""))),
+          el("button",{class:"btn druhy mini",onclick:()=>{navigator.clipboard?.writeText(z.text);hlas("Zkopírováno");}},"Kopírovat"),
+          el("button",{class:"btn druhy mini",onclick:()=>{const o=vytvorit("text","Ze schránky",{text:z.text});otevritObjekt(o.id);}},"Jako poznámku"),
+          vice?el("button",{class:"btn druhy mini",onclick:()=>{
+            const o=vytvorit("seznam","Ze schránky",{polozky:textNaPolozky(z.text)}); otevritObjekt(o.id);
+          }},"Řádky jako seznam"):null,
+          el("button",{class:"o-btn","aria-label":"Odstranit záznam z historie",title:"Odstranit z historie",
+            onclick:()=>{ S.schranka.splice(n,1); ulozit(); kresli(); hlas("Záznam odstraněn");
+              $(".seznam button",t)?.focus(); }},"🗑")));
+      });
+      t.append(ul);
+    };
+    obnovaSchranky={t,kresli};
+    kresli();
   }},
   kos:{n:"Koš",i:"🗑️",b:"#5b6470",f:(t)=>{
     if(!S.kos.length) return t.append(el("p",{class:"tichy"},"Koš je prázdný."));
@@ -2826,6 +2906,8 @@ const NASTROJE={
       ["Shift + F6","Nabídka všech oken včetně skrytých — výběrem jde okno do popředí (totéž jako tlačítko Okna v liště)"],
       ["F2","Přejmenovat vybranou dlaždici"],
       ["F4","Přepnout okno dlaždice mezi zobrazením a úpravami"],
+      ["Ctrl + Shift + V","Uložit obsah systémové schránky do historie (totéž jako tlačítko Ze schránky v liště plochy)"],
+      ["Ctrl + C","Kopírování kdekoli v prostředí se zároveň zapíše do historie schránky"],
       ["Šipky","Pohyb mezi dlaždicemi podle jejich rozložení"],["Home / End","První / poslední dlaždice"],
       ["Tab","Pohyb mezi ovládacími prvky"],["Enter nebo mezerník","Otevřít vybranou dlaždici"],
       ["Alt + Enter","Nabídka vybrané dlaždice"],["Delete","Přesunout vybranou dlaždici do koše"],
@@ -2850,7 +2932,8 @@ const NASTROJE={
       ["Které nástroje se zobrazují","Nastavení → záložka Nástroje: zaškrtávací seznam"],
       ["Citace předpisů, glosář, převod tabulek, QR kód, šifrovaná poznámka","Nastavení → Nástroje: zapněte je v seznamu, pak se objeví v bočním panelu i v paletě"],
       ["Barvy, názvy, tvary, písmo","Nastavení → Názvy, Barvy, Tvary a písmo"],
-      ["Zálohy a GitHub","Nastavení → Data, nebo tlačítko s obláčkem dole v panelu"]];
+      ["Zálohy a GitHub","Nastavení → Data, nebo tlačítko s obláčkem dole v panelu"],
+      ["Historie schránky","Boční panel → Historie schránky. Sbírá, co v prostředí zkopírujete tlačítkem i klávesou Ctrl+C; co jste zkopírovali jinde — v aplikaci v okně, v jiné kartě nebo v jiném programu — přidá tlačítko Ze schránky v liště plochy (Ctrl+Shift+V). Záznam jde uložit jako poznámku, víceřádkový i jako kontrolní seznam, a jednotlivě smazat"]];
     const ul2=el("ul",{class:"seznam"});
     kde.forEach(([a,b])=>ul2.append(el("li",{},el("span",{class:"rostouci"},el("div",{style:"font-weight:600"},a),el("div",{class:"tichy"},b)))));
     t.append(ul2);
@@ -4501,6 +4584,7 @@ function prikazy(){
     {n:"Nápověda a zkratky",i:"❓",z:"Shift+F1",f:()=>otevritNastroj("napoveda")},
     {n:"Přeskočit na další okno",i:"🪟",z:"Ctrl+F6",f:()=>dalsiOkno(1)},
     {n:"Seznam všech oken",i:"\u{1F5D4}",z:"Shift+F6",f:nabidkaOken},
+    {n:"Uložit obsah schránky do historie",i:"📋",z:"Ctrl+Shift+V",f:zeSchrankyDoHistorie},
     {n:"Uložit do GitHubu",i:"☁️",f:()=>otevritNastroj("github")},
     {n:"Stáhnout zálohu",i:"⤓",f:()=>stahnout("prostredi-"+dnes()+".json",kUlozeni(),"application/json")},
     {n:"Zavřít všechna okna",i:"✕",f:()=>{$$(".okno").forEach(w=>w.remove());kreslitPanel();hlas("Okna zavřena");}},
@@ -4624,6 +4708,7 @@ document.addEventListener("keydown",e=>{
   // Paleta příkazů — hlavní vstup do všeho
   if((e.ctrlKey&&e.shiftKey&&e.key.toLowerCase()==="p")||(e.key==="F1"&&!e.shiftKey)){e.preventDefault();otevritPaletu();return;}
   if(e.key==="F1"&&e.shiftKey){e.preventDefault();otevritNastroj("napoveda");return;}
+  if(e.ctrlKey&&e.shiftKey&&e.key.toLowerCase()==="v"&&!vPoli){e.preventDefault();zeSchrankyDoHistorie();return;}
   if(e.key==="F6"&&e.ctrlKey){e.preventDefault();dalsiOkno(e.shiftKey?-1:1);return;}
   if(e.key==="F6"&&e.shiftKey){e.preventDefault();nabidkaOken();return;}
   if(e.key==="F9"){e.preventDefault(); e.shiftKey?prepnoutPanel():prepnoutFokus(); return;}
@@ -4641,6 +4726,9 @@ $("#tl-nove-2").addEventListener("click",novaDlazdice);
 $("#tl-paleta").addEventListener("click",otevritPaletu);
 $("#tl-okna").addEventListener("click",nabidkaOken);
 $("#tl-hledat").addEventListener("click",()=>otevritNastroj("hledani"));
+$("#tl-schranka").addEventListener("click",zeSchrankyDoHistorie);
+document.addEventListener("copy",zachytKopii);
+document.addEventListener("cut",zachytKopii);
 $("#nova-plocha").addEventListener("click",novaPlocha);
 $("#tl-nastaveni").addEventListener("click",()=>otevritNastroj("nastaveni"));
 $("#tl-napoveda").addEventListener("click",()=>otevritNastroj("napoveda"));

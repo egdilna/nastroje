@@ -225,6 +225,30 @@ nevyžaduje režim úprav. Čtení schránky jde přes `navigator.clipboard.read
 když ho prohlížeč nepustí (Firefox ho neumí, Safari se ptá), nabídne se náhradní pole
 s tlačítkem *Použít vložený kód*.
 
+**Historie schránky** (`S.schranka`, 50 záznamů po 4000 znacích) se plní třemi cestami:
+
+1. tlačítky *Zkopírovat* v prostředí — přes `zkopirovat()`, které zapíše do systémové
+   schránky i do historie;
+2. posluchači událostí `copy` a `cut` na `document` (`zachytKopii()`) — zachytí každé
+   Ctrl+C **uvnitř stránky**, ve výběru textu i ve formulářovém poli;
+3. tlačítkem *Ze schránky* v liště plochy, klávesou **Ctrl+Shift+V** nebo příkazem
+   v paletě (`zeSchrankyDoHistorie()`) — jediná cesta pro to, co bylo zkopírováno mimo
+   stránku.
+
+**Naslouchat systémové schránce prohlížeč nedovolí** a nedovolí to žádným trikem:
+událost o kopírování v jiném programu ani v iframu cizí aplikace se ke stránce nedostane
+a čtení schránky na pozadí je zakázané. Proto ta třetí cesta: `readText()` po kliknutí
+(tedy s gestem uživatele), a když ho prohlížeč nepustí — Firefox ho neumí, Safari se ptá —
+nabídne `nahradniSchranka()` okno s polem na ruční vložení.
+
+`zachytKopii()` **přeskakuje pole `input[type=password]`** (token do GitHubu, heslo
+šifrované poznámky). Historie je součást stavu a putuje do repozitáře, takže co se do ní
+zapíše, to se uloží; tohle je jediná výjimka, ostatní obsah se zapisuje bez ptaní.
+
+`doSchranky()` vrací `true`, když opravdu přibyl záznam — shodný text hned za sebou jen
+posune čas u prvního. Po každém zápisu volá `obnovitSchranku()`, které překreslí otevřené
+okno historie; nedělá to, když je v okně zaostřené tlačítko, aby uživatel nepřišel o fokus.
+
 **Vkládání ze schránky** obsluhují `textNaPolozky()` (víceřádkový text → položky
 seznamu, rozezná odrážky, číslování i `[x]`) a `mdOdkaz()` s `vlozitMdOdkaz()`
 (odkaz v Markdownu → název a adresa). Obojí visí na události `paste` a zasáhne jen
