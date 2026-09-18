@@ -795,7 +795,17 @@ Soubory větší než 1 MB se čtou přes Git Blob API, takže velké projekty f
 
 ### Ukládání obrázků (PNG)
 
-Tlačítko **Uložit PNG do GitHub** na kartě Výstup (Alt+P) — a stejné tlačítko v dialogu nastavení — vykreslí aktuální diagram přes `plantuml.com` a výsledné PNG uloží **do stejné složky jako soubor projektu**, pod názvem diagramu (`Přihlášení uživatele` → `Přihlášení uživatele.png`).
+Tlačítko **Uložit PNG do GitHub** na kartě Výstup (Alt+P) — a stejné tlačítko v dialogu nastavení — vykreslí aktuální diagram přes `plantuml.com` a výsledné PNG uloží **do stejné složky jako soubor projektu**.
+
+Název souboru vzniká z názvu diagramu **bez diakritiky a bez mezer** — mezery a speciální znaky nahradí pomlčka, aby adresa zůstala čitelná a nemusela se procentně kódovat:
+
+| Diagram | Soubor |
+|---------|--------|
+| Průběh procesů vyřazování | `Prubeh-procesu-vyrazovani.png` |
+| Přihlášení uživatele | `Prihlaseni-uzivatele.png` |
+| Diagram #1 (v2.0) | `Diagram-1-v2-0.png` |
+
+Soubory stahované na disk (Stáhnout PNG, `.puml`, projekt) si původní český název **ponechávají** — zjednodušují se jen názvy, které končí v adrese.
 
 Stejný název znamená, že se **starší verze obrázku přepíše**. To je záměr: odkazy na obrázek (například z wiki nebo dokumentace) zůstávají platné a vždy ukazují na aktuální podobu diagramu.
 
@@ -810,10 +820,10 @@ Hned nad náhledem je na kartě Výstup adresa obrázku na `raw.githubuserconten
 | Otevřít obrázek | Otevře adresu v novém panelu |
 
 ```
-https://raw.githubusercontent.com/egdilna/diagramy/main/architektura/P%C5%99ihl%C3%A1%C5%A1en%C3%AD.png
+https://raw.githubusercontent.com/egdilna/diagramy/main/architektura/Prihlaseni-uzivatele.png
 ```
 
-Adresa se skládá z cesty v repozitáři a názvu diagramu, takže je vidět **ještě před prvním uložením** — je jasné, kam obrázek půjde. Mezery a diakritika v názvu se zakódují, aby odkaz v Markdownu držel celý. Větev se zjistí z repozitáře (`default_branch`); než odpoví, zobrazí se `main` a adresa se pak sama opraví. Po uložení se u tlačítek objeví potvrzení „✔ Uloženo v HH:MM" — po přejmenování diagramu zmizí, protože adresa už míří na jiný soubor.
+Adresa se skládá z cesty v repozitáři a názvu diagramu, takže je vidět **ještě před prvním uložením** — je jasné, kam obrázek půjde. Název obrázku je bez diakritiky a mezer (viz výše); zbytek cesty, který jste zadali v nastavení, se pro jistotu procentně kóduje, aby odkaz v Markdownu držel celý. Větev se zjistí z repozitáře (`default_branch`); než odpoví, zobrazí se `main` a adresa se pak sama opraví. Po uložení se u tlačítek objeví potvrzení „✔ Uloženo v HH:MM" — po přejmenování diagramu zmizí, protože adresa už míří na jiný soubor.
 
 U **soukromého repozitáře** raw adresa bez přihlášení nefunguje; pro veřejný repozitář je to trvalý odkaz, který po každém uložení ukazuje aktuální podobu diagramu.
 

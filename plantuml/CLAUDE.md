@@ -129,8 +129,11 @@ Projekt (`.pup`) i PNG diagramů se ukládají přes **GitHub Contents API**.
   `unescape(encodeURIComponent())`); `initGitHubFromUrl()` se volá na konci `init()`.
 - `ghPutFile` si vždy nejdřív načte SHA (`ghFetchMeta`), jinak GitHub přepis odmítne.
   Soubory > 1 MB nemají `content` v odpovědi — `ghFetchText` pro ně sáhne na Blob API.
-- PNG jde do **stejné složky** jako projekt, název = `safeBaseName(diagram.name)` — shodný
-  s názvem při stažení, takže se starší verze obrázku přepíše (to je požadované chování).
+- PNG jde do **stejné složky** jako projekt, název = `slugFileName(diagram.name)` — bez
+  diakritiky, mezery a speciální znaky nahrazené pomlčkou (kvůli čitelné adrese).
+  Stejný diagram dá vždy stejný název, takže se starší verze obrázku přepíše (záměr).
+  Pozor na rozdíl: soubory **stahované na disk** používají `safeBaseName`, který český
+  název zachová. Slug patří jen tam, kde název končí v URL.
 - Raw adresu obrázku staví `ghImageUrlFor` a zobrazuje `renderGhImagePanel` (karta Výstup).
   Cesta se **musí** protáhnout `encodeURI` — názvy diagramů mají mezery i diakritiku.
   Větev raw adresa potřebuje, ale z `ghPath` ji nezjistíš: `ghEnsureBranch` ji načte
