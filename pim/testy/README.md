@@ -34,6 +34,7 @@ upravte v `lib.mjs`.
 | `kanban.mjs` | Prázdné sloupce kanbanu a jejich výška. |
 | `limit-vse.mjs`, `limit-pohledu.mjs` | Strop na počet vykreslených řádků seznamu. |
 | `filtr-v-pohledu.mjs` | Rychlé hledání uvnitř uloženého pohledu. |
+| `filtr-vazeb.mjs` | Filtry Má vazbu z / na: filtrování, uložený pohled a hromadný výběr nad výsledkem. |
 | `hromadny-export.mjs` | Hromadný výběr drží entity i po překreslení seznamu. |
 | `vyber-entity.mjs` | Dialog Vybrat entitu hledá i podle typu a bez diakritiky. |
 | `pristupnost-vyberu.mjs` | Položky v dialogu Vybrat entitu začínají názvem entity a `aria-selected` znamená vybráno. |
