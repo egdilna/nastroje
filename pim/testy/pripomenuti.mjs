@@ -61,13 +61,13 @@ const dlg = await stranka.evaluate(() => {
     hodnota: (document.getElementById('dialog-datum-input') || {}).value,
     titulek: (document.getElementById('dialog-datum-title') || {}).textContent,
     popis: (document.getElementById('dialog-datum-popis') || {}).textContent,
-    fokusVPoli: document.activeElement && document.activeElement.id === 'dialog-datum-input'
+    fokusVPoli: document.activeElement && document.activeElement.id === 'dialog-datum-text'
   };
 });
 ok(s, dlg.otevreno, 'dialog se otevřel', dlg);
 ok(s, dlg.hodnota === '2026-01-10', 'předvyplnil stávající datum', dlg);
 ok(s, /Alfa/.test(dlg.popis), 'a říká, které entity se týká', dlg);
-ok(s, dlg.fokusVPoli, 'fokus je rovnou v poli data', dlg);
+ok(s, dlg.fokusVPoli, 'fokus je rovnou v poli pro termín slovy', dlg);
 
 nadpis('Potvrzení uloží a vrátí fokus');
 await stranka.evaluate(() => {
@@ -119,8 +119,62 @@ await stranka.waitForTimeout(500);
 ok(s, (await pripomenuti('r1')) === '2026-01-10', 'prázdné datum připomenutí nesmaže', await pripomenuti('r1'));
 ok(s, await stranka.evaluate(() => document.getElementById('dialog-datum').open),
   'a dialog zůstane otevřený, aby šlo datum doplnit');
-ok(s, /Vyberte datum/.test(await stranka.evaluate(() => document.getElementById('alert-region').textContent)),
+ok(s, /Zadejte termín slovy nebo vyberte datum/.test(
+  await stranka.evaluate(() => document.getElementById('alert-region').textContent)),
   'odečítač se dozví proč');
+
+nadpis('Termín slovy');
+await priprav();
+await stranka.click('button.rem-resched[data-rem-id="r1"]');
+await stranka.waitForTimeout(400);
+ok(s, await stranka.evaluate(() => !!document.getElementById('dialog-datum-text')),
+  'dialog má pole pro termín slovy');
+
+// „zítra" musí naplnit pole s datem a ukázat náhled
+await stranka.fill('#dialog-datum-text', 'zítra');
+await stranka.waitForTimeout(350);
+const zitra = await stranka.evaluate(() => {
+  const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() + 1);
+  const p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate());
+});
+ok(s, (await stranka.evaluate(() => document.getElementById('dialog-datum-input').value)) === zitra,
+  '„zítra" naplní pole s datem', { ocekavano: zitra, ma: await stranka.evaluate(() => document.getElementById('dialog-datum-input').value) });
+ok(s, /^→ /.test(await stranka.evaluate(() => document.getElementById('dialog-datum-nahled').textContent)),
+  'a ukáže náhled, jak text pochopil',
+  await stranka.evaluate(() => document.getElementById('dialog-datum-nahled').textContent));
+
+await stranka.click('#datum-ok');
+await stranka.waitForTimeout(700);
+ok(s, (await pripomenuti('r1')) === zitra, '„zítra" se uloží', await pripomenuti('r1'));
+
+// nesrozumitelný text neuloží nic
+await priprav();
+await stranka.click('button.rem-resched[data-rem-id="r3"]');
+await stranka.waitForTimeout(400);
+await stranka.fill('#dialog-datum-text', 'nějaká hatmatilka');
+await stranka.waitForTimeout(350);
+ok(s, /nerozumím/i.test(await stranka.evaluate(() => document.getElementById('dialog-datum-nahled').textContent)),
+  'nesrozumitelnému textu řekne, že mu nerozumí',
+  await stranka.evaluate(() => document.getElementById('dialog-datum-nahled').textContent));
+ok(s, await stranka.evaluate(() => document.getElementById('dialog-datum-text').getAttribute('aria-invalid') === 'true'),
+  'a označí pole jako chybné pro odečítač');
+await stranka.click('#datum-ok');
+await stranka.waitForTimeout(500);
+ok(s, (await pripomenuti('r3')) === '2026-03-30', 'a nic neuloží', await pripomenuti('r3'));
+ok(s, await stranka.evaluate(() => document.getElementById('dialog-datum').open), 'dialog zůstane otevřený');
+
+// další tvary, které umí parseNaturalDate
+await priprav();
+for (const [zadani, popis] of [['za 3 dny', 'za 3 dny'], ['dnes', 'dnes'], ['2027-03-15', 'ISO datum']]) {
+  await stranka.evaluate(() => document.querySelectorAll('dialog[open]').forEach(d => d.close()));
+  await stranka.click('button.rem-resched[data-rem-id="r2"]');
+  await stranka.waitForTimeout(350);
+  await stranka.fill('#dialog-datum-text', zadani);
+  await stranka.waitForTimeout(300);
+  const vyplneno = await stranka.evaluate(() => document.getElementById('dialog-datum-input').value);
+  ok(s, /^\d{4}-\d{2}-\d{2}$/.test(vyplneno), '„' + popis + '" se vyhodnotí na datum', vyplneno);
+}
 
 nadpis('Odstranit');
 await priprav();

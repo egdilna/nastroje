@@ -41,6 +41,7 @@ upravte v `lib.mjs`.
 | `skryte-ukoly.mjs` | Skrytí hotových úkolů přežije zaškrtnutí dalšího. |
 | `klavesy.mjs` | Klávesové zkratky a accesskey se nepřekrývají. |
 | `pripomenuti.mjs` | Tabulka termínů, přeplánování dialogem a návrat fokusu po překreslení. |
+| `ukoly-termin.mjs` | Tlačítko ⏰ Termín v Úkolech: společný dialog, zadání slovy, mazání termínu. |
 | `staticky-prohlizec.mjs` | Vygenerovaný offline prohlížeč se načte a ukazuje totéž. |
 
 ## Psaní nové sady

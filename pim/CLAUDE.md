@@ -205,7 +205,12 @@ připomenutí tiše smazalo. Přeplánování má proto vlastní dialog (`otevri
 je vedle Odstranit i Přeplánovat. Obě akce nastaví `updated_at`, zavolají `save()`, překreslí
 **a vrátí fokus** — po překreslení se na nic nespoléhej, řádek už může být jinde.
 
-`otevriDialogData({ titul, popis, hodnota, onOk, onZavreni })` je obecný dialog na výběr data.
+`otevriDialogData({ titul, popis, hodnota, onOk, onVymazat, onZavreni })` je obecný dialog na
+zadání data — používá ho přeplánování v Připomenutích i tlačítko ⏰ Termín v pohledu Úkoly.
+Má pole pro **termín slovy**, které vyhodnocuje `parseNaturalDate()` a `combineDateWithOriginalTime()`,
+tedy tentýž parser jako přeplánování v Kalendáři. **Druhý parser dat nepiš** — když má něco
+rozumět „zítra" nebo „za 3 dny", vede cesta přes `parseNaturalDate`.
+
 Nativní kalendář neotevírej sám přes `showPicker()` — spolkne první Escape a dialog pak nejde
 zrušit jedním stiskem.
 Pohled je **jen v aplikaci, ne v šabloně prohlížeče** — `reminder_at` je ale v `GLOBAL_FIELDS`

@@ -423,6 +423,14 @@ Its own command (and an item in the View menu): opens the **All** view with no f
 by last change descending and capped at **100 rows**. It is a shortcut to "what was I just
 doing"; you can search and filter in it as usual.
 
+## ⏰ Task deadline
+
+In the **Tasks** view every task has an **⏰ Termín** (Deadline) button. It opens the same dialog
+as rescheduling in Reminders — including the field for typing the date in words. A task that
+already has a deadline also gets **Vymazat termín** (Clear deadline); a task without one does
+not. After saving, the list is re-rendered (it is sorted by deadline, so the task may move) and
+focus returns to the button on the same task.
+
 ## 🔔 Reminders
 
 A view of every entity with the **Reminder (date)** attribute filled in, sorted by date. Each
@@ -431,6 +439,14 @@ row shows the entity, the date, a status (*overdue* / *today* / *future*) and ac
 The date is only printed in the table. To change it use **📅 Přeplánovat** (Reschedule), which
 opens a dialog with a date picker — confirm with *Změnit* or Enter; `Esc` and *Zrušit* change
 nothing. **Odstranit** (Remove) clears the reminder on that entity (the entity itself stays).
+
+The dialog offers two ways in. At the top is **Termín slovy** (date in words), where you type
+naturally — `zítra`, `pondělí`, `za 3 dny`, `za 2 týdny`, `15.6.`, `2026-07-01`. As you type it
+is evaluated, fills the date field below it and shows a preview (`→ 15. 6. 2026`), so you can
+see how it was understood; input it cannot parse is reported and nothing is saved. Below is the
+ordinary **Nebo datum z kalendáře** (or a date from the calendar) field.
+
+It is the same parser the Calendar's reschedule uses, so both understand the same wording.
 
 After either action the list is re-rendered and focus returns to the button on the same entity,
 so you can carry on with the keyboard. A rescheduled row moves according to its new date.
