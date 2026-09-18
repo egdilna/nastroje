@@ -1842,10 +1842,15 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
 <dialog id="dialog-datum" aria-labelledby="dialog-datum-title">
   <h2 id="dialog-datum-title">Přeplánovat</h2>
   <p class="meta" id="dialog-datum-popis"></p>
-  <label for="dialog-datum-input">Nové datum</label>
+  <label for="dialog-datum-text">Termín slovy</label>
+  <input type="text" id="dialog-datum-text" autocomplete="off"
+         placeholder="zítra, pondělí, za 3 dny, 15.6., 2026-07-01">
+  <p class="meta" id="dialog-datum-nahled" aria-live="polite"></p>
+  <label for="dialog-datum-input">Nebo datum z kalendáře</label>
   <input type="date" id="dialog-datum-input">
   <div class="btn-group" style="margin-top:1em;">
     <button type="button" class="primary" id="datum-ok">Změnit</button>
+    <button type="button" id="datum-vymazat" hidden>Vymazat termín</button>
     <button type="button" id="datum-cancel">Zrušit</button>
   </div>
 </dialog>
@@ -7945,34 +7950,75 @@ function openQuickTagEditor(entityId) {
 // Přehled všech připomenutí (entity s reminder_at), seřazeno podle data.
 // Dialog na výběr data. Používá ho přeplánování v pohledu Připomenutí; je psaný
 // obecně, aby šel použít i jinde.
-//   opts: { titul, popis, hodnota (ISO yyyy-mm-dd), onOk(iso), onZavreni() }
+//   opts: { titul, popis, hodnota (ISO yyyy-mm-dd), onOk(iso), onVymazat(), onZavreni() }
+//
+// Termín jde zadat slovy („zítra", „za 3 dny", „15.6.") — vyhodnocuje to
+// parseNaturalDate, tedy tentýž parser, jaký má přeplánování v Kalendáři.
+// Napsaný text rovnou plní pole s datem, takže je pořád jen jeden zdroj pravdy
+// a uživatel vidí (a odečítač přečte), jak byl text pochopen.
 function otevriDialogData(opts) {
   opts = opts || {};
   const d = document.getElementById('dialog-datum');
   if (!d) return;
   const inp = document.getElementById('dialog-datum-input');
+  const txt = document.getElementById('dialog-datum-text');
+  const nahled = document.getElementById('dialog-datum-nahled');
+  const btnVymazat = document.getElementById('datum-vymazat');
   document.getElementById('dialog-datum-title').textContent = opts.titul || 'Vybrat datum';
   document.getElementById('dialog-datum-popis').textContent = opts.popis || '';
   inp.value = opts.hodnota || '';
+  txt.value = '';
+  nahled.textContent = '';
+  btnVymazat.hidden = !opts.onVymazat;
 
   let potvrzeno = false;
+
+  // Vrátí ISO datum z napsaného textu, nebo null. Prázdný text = nic nezkoušel.
+  function zTextu() {
+    const zadani = txt.value.trim();
+    if (!zadani) return null;
+    const datum = parseNaturalDate(zadani);
+    return datum ? combineDateWithOriginalTime(datum, null) : false;
+  }
+
+  txt.oninput = () => {
+    const vysledek = zTextu();
+    if (vysledek === null) { nahled.textContent = ''; txt.setAttribute('aria-invalid', 'false'); return; }
+    if (vysledek === false) {
+      nahled.textContent = 'Tomuhle datu nerozumím.';
+      txt.setAttribute('aria-invalid', 'true');
+      return;
+    }
+    inp.value = vysledek.slice(0, 10);
+    nahled.textContent = '→ ' + fmtDate(vysledek);
+    txt.setAttribute('aria-invalid', 'false');
+  };
+
   function potvrd() {
-    if (!inp.value) { alertMsg('Vyberte datum.'); inp.focus(); return; }
+    if (zTextu() === false) {
+      alertMsg('Datu „' + txt.value.trim() + '" nerozumím. Zkuste např. zítra, pondělí, 15.6.');
+      txt.focus();
+      return;
+    }
+    if (!inp.value) { alertMsg('Zadejte termín slovy nebo vyberte datum.'); txt.focus(); return; }
     potvrzeno = true;
     d.close();
     if (opts.onOk) opts.onOk(inp.value);
   }
   document.getElementById('datum-ok').onclick = potvrd;
   document.getElementById('datum-cancel').onclick = () => d.close();
-  // Enter v poli potvrdí – jinak by dialog jen zavřel formulář bez akce.
-  inp.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); potvrd(); } };
+  btnVymazat.onclick = () => { potvrzeno = true; d.close(); if (opts.onVymazat) opts.onVymazat(); };
+  // Enter v kterémkoli poli potvrdí – jinak by dialog jen zavřel formulář bez akce.
+  const naEnter = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); potvrd(); } };
+  inp.onkeydown = naEnter;
+  txt.onkeydown = naEnter;
   d.onclose = () => { if (!potvrzeno && opts.onZavreni) opts.onZavreni(); };
 
   d.showModal();
   // Nativní kalendář se schválně neotevírá sám: spolkl by první Escape, takže by
-  // se dialog nedal zrušit jedním stiskem. Fokus je v poli, datum jde napsat
-  // z klávesnice a kalendář si uživatel otevře sám.
-  inp.focus();
+  // se dialog nedal zrušit jedním stiskem. Fokus jde do pole pro termín slovy —
+  // je to rychlejší cesta a datum z kalendáře zůstává hned pod ním.
+  txt.focus();
 }
 
 function renderRemindersView(main) {
@@ -9998,7 +10044,7 @@ function renderTasks(main) {
   main.querySelectorAll('button[data-task-reschedule]').forEach(b => {
     b.onclick = (ev) => { ev.preventDefault(); ev.stopPropagation();
       const e = findEntity(b.dataset.taskReschedule); if (!e) return;
-      openQuickReminderEditorForDeadline(e);
+      openQuickReminderEditorForDeadline(e, b);
     };
   });
 
@@ -10011,25 +10057,31 @@ function renderTasks(main) {
   if (pm) pm.onchange = () => { tf.priorityMin = pm.value; render(); };
 }
 
-// Rychlý editor termínu (deadline) – reuse dialogu
-function openQuickReminderEditorForDeadline(e) {
+// Rychlý editor termínu (deadline) v pohledu Úkoly – stejný dialog jako
+// přeplánování v Připomenutích, včetně zadání termínu slovy.
+function openQuickReminderEditorForDeadline(e, vratFokusNa) {
   if (!e.attributes) e.attributes = {};
-  const existing = document.getElementById('quick-deadline-dialog');
-  if (existing) existing.remove();
-  const d = document.createElement('dialog');
-  d.id = 'quick-deadline-dialog';
-  d.setAttribute('aria-labelledby','qdl-title');
-  const cur = e.attributes.deadline ? String(e.attributes.deadline).slice(0,10) : '';
-  d.innerHTML = '<h2 id="qdl-title">Termín: ' + escapeHtml(getDisplayTitle(e)) + '</h2>' +
-    '<label for="qdl-input">Termín (datum)</label><input type="date" id="qdl-input" value="' + escapeHtml(cur) + '">' +
-    '<div class="btn-group" style="margin-top:0.6em;"><button type="button" class="primary" id="qdl-save">Uložit</button><button type="button" id="qdl-clear">Vymazat</button><button type="button" id="qdl-cancel">Zrušit</button></div>';
-  document.body.appendChild(d);
-  d.querySelector('#qdl-save').onclick = () => { const v = d.querySelector('#qdl-input').value; if (v) e.attributes.deadline = v; e.updated_at = nowIso(); save(); d.close(); d.remove(); render(); toast('Termín uložen.'); };
-  d.querySelector('#qdl-clear').onclick = () => { delete e.attributes.deadline; e.updated_at = nowIso(); save(); d.close(); d.remove(); render(); toast('Termín vymazán.'); };
-  d.querySelector('#qdl-cancel').onclick = () => { d.close(); d.remove(); };
-  d.addEventListener('close', () => d.remove());
-  d.showModal();
-  setTimeout(() => { const i = d.querySelector('#qdl-input'); if (i) i.focus(); }, 50);
+  const cur = e.attributes.deadline ? String(e.attributes.deadline).slice(0, 10) : '';
+  const poAkci = () => {
+    e.updated_at = nowIso();
+    save();
+    render();
+    // Seznam se řadí podle termínu, takže řádek po změně skočí jinam. Fokus
+    // vrátíme na tlačítko téže entity, jinak spadne na <body>.
+    setTimeout(() => {
+      const cil = document.querySelector('button[data-task-reschedule="' + e.id + '"]') ||
+        document.querySelector('button[data-task-reschedule]');
+      if (cil) cil.focus();
+    }, 60);
+  };
+  otevriDialogData({
+    titul: 'Termín úkolu',
+    popis: getDisplayTitle(e) + (cur ? ' — nyní ' + fmtDate(cur) : ' — zatím bez termínu'),
+    hodnota: cur,
+    onOk: (iso) => { e.attributes.deadline = iso; poAkci(); toast('Termín nastaven na ' + fmtDate(iso) + '.'); },
+    onVymazat: cur ? () => { delete e.attributes.deadline; poAkci(); toast('Termín vymazán.'); } : null,
+    onZavreni: () => { if (vratFokusNa && vratFokusNa.focus) vratFokusNa.focus(); }
+  });
 }
 
 function taskRowHtml(e, isOverdue) {

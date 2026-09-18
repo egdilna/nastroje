@@ -422,6 +422,14 @@ Vlastní příkaz (a položka v nabídce Zobrazení): otevře pohled **Vše** be
 podle času poslední změny sestupně a omezený na **100 řádků**. Je to zkratka k „co jsem
 naposledy dělal"; dál se v něm dá normálně hledat a filtrovat.
 
+## ⏰ Termín úkolu
+
+V pohledu **Úkoly** je u každého úkolu tlačítko **⏰ Termín**. Otevře stejný dialog jako
+přeplánování v Připomenutích — včetně pole pro zadání termínu slovy. U úkolu, který termín
+už má, je navíc tlačítko **Vymazat termín**; u úkolu bez termínu se nenabízí. Po uložení se
+seznam překreslí (řadí se podle termínu, takže úkol může skočit jinam) a fokus se vrátí na
+tlačítko u téhož úkolu.
+
 ## 🔔 Připomenutí
 
 Pohled se všemi entitami, které mají vyplněný atribut **Připomenutí (datum)**, seřazenými
@@ -430,6 +438,14 @@ podle data. U každé je vidět entita, datum, stav (*Po termínu* / *Dnes* / *B
 Datum je v tabulce jen vypsané. Změnit ho jde tlačítkem **📅 Přeplánovat**, které otevře
 dialog s výběrem nového data — potvrdíte tlačítkem *Změnit* nebo Enterem, `Esc` a *Zrušit*
 nezmění nic. **Odstranit** připomenutí u entity zruší (samotná entita zůstane).
+
+V dialogu jsou dvě cesty, jak termín zadat. Nahoře je pole **Termín slovy**, kam se píše
+přirozeně — `zítra`, `pondělí`, `za 3 dny`, `za 2 týdny`, `15.6.`, `2026-07-01`. Jak píšete,
+text se rovnou vyhodnocuje, plní pole s datem pod ním a zobrazí se náhled (`→ 15. 6. 2026`),
+takže je vidět, jak byl pochopen; nesrozumitelnému zadání to řekne a nic neuloží. Pod tím je
+běžné pole **Nebo datum z kalendáře**, když je pohodlnější vybrat.
+
+Vyhodnocuje to stejný parser jako přeplánování v Kalendáři, takže obojí rozumí témuž.
 
 Po obou akcích se seznam překreslí a fokus se vrátí na tlačítko u téže entity, takže jde
 plynule pokračovat klávesnicí. Řádek se po přeplánování přesune podle nového data.
