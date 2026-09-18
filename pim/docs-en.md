@@ -349,6 +349,35 @@ In the **All** view, under "Filters", is a collapsible **Advanced attribute filt
    - `is empty`, `is not empty`, `is checked`, `is unchecked`
 3. **Value** — adaptive by type (text, number, date, select with options, checkbox)
 
+### Má vazbu z / Má vazbu na (linked from / linked to)
+
+Two filters that ask about a link to a **specific entity**. You pick it with a button (the usual
+*Select entity* dialog opens) and clear the filter with the ✕ next to it.
+
+| Filter | Finds |
+|---|---|
+| **Má vazbu na** (linked to) | entities that link to the chosen entity — typically *everything belonging to a project* |
+| **Má vazbu z** (linked from) | entities the chosen entity links to |
+
+Links from the **Vazby** section and attributes of type *relation* count. Text mentions (wiki
+links, includes) do not — the app tracks those separately as *Odkazy*.
+
+The main reason this exists: filter everything belonging to one project and run **bulk
+operations** on it (archive, export, send to the AI). The filter can be saved as a view and
+works in the static viewer too.
+
+### No tags at all, not in any project
+
+Two tidy-up filters — they find what does not belong anywhere.
+
+- **— nemá žádný tag —** (no tag at all) is an option in the *Nemá tag* select, right below
+  "no restriction". It finds entities with not a single tag. Excluding one specific tag still
+  works in the same select.
+- **Projekt** is its own select with *Není v žádném projektu* (not in any project) and
+  *Je v nějakém projektu* (in some project). It counts the **"is part of"** link to an entity
+  with the *Project* aspect — the same reasoning the project dashboard uses. A "related to"
+  link to a project is not enough.
+
 Filters combine with **AND** logic.
 
 **Saved views** keep the complete filter — aspect, tags (including "doesn't have tag"), task status, priority, deadline and advanced attribute filters. The filter survives toggling selection mode. Tag comparison is case-insensitive.

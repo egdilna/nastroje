@@ -5183,6 +5183,35 @@ async function deleteEntity(id) {
   db.entities.forEach(x => { if (x.links) x.links = x.links.filter(l => l.to !== id); });
   saveDebounced();
 }
+// Množina id entit, na které daná entita ukazuje — vazbou ze sekce Vazby nebo
+// atributem typu relation. Textové zmínky (wiki odkazy, include) sem schválně
+// nepatří: ty aplikace vede zvlášť jako „Odkazy", ne jako vazby.
+function idsVazebZ(id) {
+  const zdroj = findEntity(id);
+  const out = new Set();
+  if (!zdroj) return out;
+  (zdroj.links || []).forEach(l => { if (l && l.to) out.add(l.to); });
+  if (zdroj.attributes && typeof collectAllFields === 'function') {
+    collectAllFields(zdroj).forEach(f => {
+      if (f.field.type !== 'relation') return;
+      const v = zdroj.attributes[f.field.key];
+      if (!v) return;
+      (Array.isArray(v) ? v : [v]).forEach(x => { if (x) out.add(x); });
+    });
+  }
+  out.delete(id);
+  return out;
+}
+
+// Množina id entit, které ukazují na danou entitu. Protistrana idsVazebZ.
+function idsVazebNa(id) {
+  const out = new Set();
+  getInverseLinks(id).forEach(r => out.add(r.from.id));
+  getInverseRelations(id).forEach(r => out.add(r.from.id));
+  out.delete(id);
+  return out;
+}
+
 function getInverseLinks(id) {
   const r = [];
   db.entities.forEach(e => {
@@ -6937,6 +6966,21 @@ function applySavedView(v) {
       return true;
     });
   }
+  // Nemá žádný tag
+  if (f.tagNot === FILTR_ZADNY_TAG) r = r.filter(e => !(e.tags || []).length);
+  else if (f.tagNot) { const _nt = String(f.tagNot).toLowerCase(); r = r.filter(e => !(e.tags || []).some(t => String(t).toLowerCase() === _nt)); }
+  // Příslušnost k projektu
+  if (f.project === 'none') r = r.filter(e => getEntityParentProjects(e).length === 0);
+  else if (f.project === 'any') r = r.filter(e => getEntityParentProjects(e).length > 0);
+  // Vazba na konkrétní entitu. Množina se spočítá jednou, ne pro každou entitu.
+  if (f.linkTo) {
+    const ukazujiNa = idsVazebNa(f.linkTo);
+    r = r.filter(e => ukazujiNa.has(e.id));
+  }
+  if (f.linkFrom) {
+    const cile = idsVazebZ(f.linkFrom);
+    r = r.filter(e => cile.has(e.id));
+  }
   // Vazby
   if (f.relations) {
     r = r.filter(e => {
@@ -7013,6 +7057,17 @@ function describeFilter(f) {
   if (f.relations) {
     const labels = { orphans:'sirotci', noIncoming:'bez příchozích', noOutgoing:'bez odchozích', hasIncoming:'s příchozími', hasOutgoing:'s odchozími' };
     p.push(labels[f.relations] || f.relations);
+  }
+  if (f.tagNot === FILTR_ZADNY_TAG) p.push('bez tagů');
+  if (f.project === 'none') p.push('mimo projekty');
+  else if (f.project === 'any') p.push('v nějakém projektu');
+  if (f.linkFrom) {
+    const zdroj = findEntity(f.linkFrom);
+    p.push('má vazbu z „' + (zdroj ? getDisplayTitle(zdroj) : f.linkFrom) + '"');
+  }
+  if (f.linkTo) {
+    const cil = findEntity(f.linkTo);
+    p.push('má vazbu na „' + (cil ? getDisplayTitle(cil) : f.linkTo) + '"');
   }
   if (f.confidence) p.push('důvěra: ' + f.confidence);
   if (Array.isArray(f.attrFilters) && f.attrFilters.length > 0) {
@@ -9472,7 +9527,15 @@ function renderAll(main) {
       '<div class="filter-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(14em,1fr));gap:0.5em;margin-top:0.5em;">' +
         '<div><label for="filter-aspect">Aspekt</label><select id="filter-aspect"><option value="">— všechny —</option>' + aspectOpts + '</select></div>' +
         '<div><label for="filter-tag">Tag</label><select id="filter-tag"><option value="">— všechny —</option>' + tagOpts + '</select></div>' +
-        '<div><label for="filter-tag-not">Nemá tag</label><select id="filter-tag-not"><option value="">— bez omezení —</option>' + tagOpts + '</select></div>' +
+        '<div><label for="filter-tag-not">Nemá tag</label><select id="filter-tag-not">' +
+          '<option value="">— bez omezení —</option>' +
+          '<option value="' + FILTR_ZADNY_TAG + '">— nemá žádný tag —</option>' +
+          tagOpts + '</select></div>' +
+        '<div><label for="filter-project">Projekt</label><select id="filter-project">' +
+          '<option value="">— libovolně —</option>' +
+          '<option value="none">Není v žádném projektu</option>' +
+          '<option value="any">Je v nějakém projektu</option>' +
+        '</select></div>' +
         '<div><label for="filter-attach">Přílohy</label><select id="filter-attach">' +
           '<option value="">— libovolně —</option>' +
           '<option value="yes">Má přílohu</option>' +
@@ -9544,6 +9607,27 @@ function renderAll(main) {
           '<option value="hasIncoming">Má příchozí vazby</option>' +
           '<option value="hasOutgoing">Má odchozí vazby</option>' +
         '</select></div>' +
+        (function () {
+          // Vazba na konkrétní entitu. Výběr jde přes stejný dialog jako všude jinde
+          // (openRelationPicker), proto tlačítko místo selectu — entit můžou být
+          // tisíce a do rozbalovátka se nehodí.
+          const pole = (id, popisek, hodnota, napoveda) => {
+            const ent = hodnota ? findEntity(hodnota) : null;
+            return '<div><label for="' + id + '-btn">' + popisek + '</label>' +
+              '<div style="display:flex;gap:0.3em;align-items:center;">' +
+                '<button type="button" id="' + id + '-btn" data-vazba-vyber="' + id + '" ' +
+                  'style="flex:1 1 auto;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" ' +
+                  'title="' + escapeHtml(napoveda) + '">' +
+                  (ent ? escapeHtml(getDisplayTitle(ent)) : '— libovolná —') + '</button>' +
+                (ent ? '<button type="button" data-vazba-zrusit="' + id + '" ' +
+                  'aria-label="Zrušit filtr ' + escapeHtml(popisek) + '" title="Zrušit">✕</button>' : '') +
+              '</div></div>';
+          };
+          return pole('filter-link-from', 'Má vazbu z', (state.filter || {}).linkFrom,
+                 'Entity, na které vybraná entita ukazuje vazbou – např. co je součástí projektu') +
+                 pole('filter-link-to', 'Má vazbu na', (state.filter || {}).linkTo,
+                 'Entity, které ukazují vazbou na vybranou entitu');
+        })() +
         '<div><label for="filter-confidence">Důvěra</label><select id="filter-confidence">' +
           '<option value="">— libovolná —</option>' +
           (Object.entries(CONFIDENCE_LEVELS || {}).map(([k,v]) =>
@@ -9574,6 +9658,7 @@ function renderAll(main) {
     sdl = document.getElementById('filter-deadline'),
     sct = document.getElementById('filter-content'),
     srl = document.getElementById('filter-relations'),
+    spj = document.getElementById('filter-project'),
     scf = document.getElementById('filter-confidence');
   if (!state._allSort) state._allSort = { key: 'updated', dir: 'desc' };
   // Obnova hodnot filtrů z state.filter (aby přežily re-render, např. při zapnutí režimu výběru)
@@ -9593,6 +9678,7 @@ function renderAll(main) {
     if (sdl) sdl.value = fl.deadline || '';
     if (sct) sct.value = fl.content || '';
     if (srl) srl.value = fl.relations || '';
+    if (spj) spj.value = fl.project || '';
     if (scf) scf.value = fl.confidence || '';
   })();
 
@@ -9606,11 +9692,17 @@ function renderAll(main) {
     else if (sib.value === 'out') r = r.filter(e => !e.inbox);
     // Aspekt + tag + text
     r = searchEntities(it.value, { aspect: sa.value, tag: st.value }).filter(e => r.includes(e));
-    // Nemá tag (vylučující filtr)
-    if (stn && stn.value) {
+    // Nemá tag (vylučující filtr), nebo rovnou „nemá žádný tag"
+    if (stn && stn.value === FILTR_ZADNY_TAG) {
+      r = r.filter(e => !(e.tags || []).length);
+    } else if (stn && stn.value) {
       const notTag = stn.value;
       r = r.filter(e => !(e.tags || []).includes(notTag));
     }
+    // Příslušnost k projektu – přes getEntityParentProjects, tedy stejnou úvahu,
+    // jakou používá dashboard projektu (vazba „je součástí" na entitu s aspektem Projekt).
+    if (spj && spj.value === 'none') r = r.filter(e => getEntityParentProjects(e).length === 0);
+    else if (spj && spj.value === 'any') r = r.filter(e => getEntityParentProjects(e).length > 0);
     // Přílohy
     if (fa && fa.value === 'yes') r = r.filter(e => e.attachments && e.attachments.length > 0);
     else if (fa && fa.value === 'no') r = r.filter(e => !e.attachments || e.attachments.length === 0);
@@ -9692,6 +9784,15 @@ function renderAll(main) {
       });
     }
     // Vazby
+    // Vazba na konkrétní entitu (množina se spočítá jednou)
+    if (state.filter.linkTo) {
+      const ukazujiNa = idsVazebNa(state.filter.linkTo);
+      r = r.filter(e => ukazujiNa.has(e.id));
+    }
+    if (state.filter.linkFrom) {
+      const cile = idsVazebZ(state.filter.linkFrom);
+      r = r.filter(e => cile.has(e.id));
+    }
     if (srl.value) {
       r = r.filter(e => {
         const inLinks = getInverseLinks(e.id).length + getInverseRelations(e.id).length;
@@ -9734,7 +9835,10 @@ function renderAll(main) {
     if (sdl.value) n++;
     if (sct.value) n++;
     if (srl.value) n++;
+    if (spj && spj.value) n++;
     if (scf.value) n++;
+    if (state.filter.linkFrom) n++;
+    if (state.filter.linkTo) n++;
     if (Array.isArray(state.filter.attrFilters)) n += state.filter.attrFilters.length;
     return n;
   }
@@ -9756,6 +9860,7 @@ function renderAll(main) {
     state.filter.deadline = sdl.value || '';
     state.filter.content = sct.value || '';
     state.filter.relations = srl.value || '';
+    state.filter.project = (spj && spj.value) || '';
     state.filter.confidence = scf.value || '';
     let r = applyAllFilters();
     r = sortEntitiesBy(r, state._allSort);
@@ -9778,7 +9883,7 @@ function renderAll(main) {
     });
   }
 
-  [it, sa, st, stn, fa, sar, sib, su, sc, sts, spr, sdl, sct, srl, scf].forEach(el => {
+  [it, sa, st, stn, fa, sar, sib, su, sc, sts, spr, sdl, sct, srl, spj, scf].forEach(el => {
     if (!el) return;
     if (el.tagName === 'INPUT') el.oninput = update;
     el.onchange = update;
@@ -9788,14 +9893,44 @@ function renderAll(main) {
     state._allLimit = Number(limitSelect.value) || 0;
     update();
   };
+
+  // Filtry „Má vazbu z / na" – výběr entity přes společný dialog.
+  // Po volbě se překresluje celý pohled: popisek tlačítka i křížek na zrušení
+  // jsou součástí HTML, ne hodnotou pole, takže samotné update() by nestačilo.
+  const klicVazby = { 'filter-link-from': 'linkFrom', 'filter-link-to': 'linkTo' };
+  document.querySelectorAll('button[data-vazba-vyber]').forEach(btn => {
+    btn.onclick = () => {
+      const klic = klicVazby[btn.dataset.vazbaVyber];
+      if (!klic) return;
+      openRelationPicker({
+        fieldLabel: btn.dataset.vazbaVyber === 'filter-link-from' ? 'má vazbu z' : 'má vazbu na',
+        multiple: false,
+        currentIds: state.filter[klic] ? [state.filter[klic]] : [],
+        onSelect: (ids) => {
+          const id = Array.isArray(ids) ? ids[0] : ids;
+          if (!id) return;
+          state.filter[klic] = id;
+          render();
+        }
+      });
+    };
+  });
+  document.querySelectorAll('button[data-vazba-zrusit]').forEach(btn => {
+    btn.onclick = () => {
+      const klic = klicVazby[btn.dataset.vazbaZrusit];
+      if (!klic) return;
+      delete state.filter[klic];
+      render();
+    };
+  });
   document.getElementById('filter-reset').onclick = () => {
     state.filter = { aspect:'', tag:'', text:'', status:'', attrFilters: [] };
     it.value = ''; sa.value = ''; st.value = ''; if (stn) stn.value = ''; if (fa) fa.value = ''; sar.value = 'active';
     sib.value = ''; su.value = ''; sc.value = '';
     sts.value = ''; spr.value = ''; sdl.value = '';
-    sct.value = ''; srl.value = ''; scf.value = '';
+    sct.value = ''; srl.value = ''; if (spj) spj.value = ''; scf.value = '';
     renderAttrFiltersList();
-    update();
+    render();   // i tlačítka filtrů vazeb
   };
   // === POKROČILÉ FILTRY ATRIBUTŮ ===
   if (!Array.isArray(state.filter.attrFilters)) state.filter.attrFilters = [];
@@ -13073,6 +13208,10 @@ function renderDetail(main, id) {
 }
 
 // Vrátí projekty, jejichž je entita součástí (přes partOf vazbu na entitu s aspektem Project).
+// Zvláštní hodnota selectu „Nemá tag": ne konkrétní tag, ale „žádný tag".
+// Řetězec je schválně takový, aby se nedal splést se skutečným tagem.
+const FILTR_ZADNY_TAG = '\u241F__BEZ_TAGU__\u241F';
+
 function getEntityParentProjects(entity) {
   const out = [];
   const seen = new Set();
@@ -32355,6 +32494,35 @@ async function deleteEntity(id) {
   db.entities.forEach(x => { if (x.links) x.links = x.links.filter(l => l.to !== id); });
   saveDebounced();
 }
+// Množina id entit, na které daná entita ukazuje — vazbou ze sekce Vazby nebo
+// atributem typu relation. Textové zmínky (wiki odkazy, include) sem schválně
+// nepatří: ty aplikace vede zvlášť jako „Odkazy", ne jako vazby.
+function idsVazebZ(id) {
+  const zdroj = findEntity(id);
+  const out = new Set();
+  if (!zdroj) return out;
+  (zdroj.links || []).forEach(l => { if (l && l.to) out.add(l.to); });
+  if (zdroj.attributes && typeof collectAllFields === 'function') {
+    collectAllFields(zdroj).forEach(f => {
+      if (f.field.type !== 'relation') return;
+      const v = zdroj.attributes[f.field.key];
+      if (!v) return;
+      (Array.isArray(v) ? v : [v]).forEach(x => { if (x) out.add(x); });
+    });
+  }
+  out.delete(id);
+  return out;
+}
+
+// Množina id entit, které ukazují na danou entitu. Protistrana idsVazebZ.
+function idsVazebNa(id) {
+  const out = new Set();
+  getInverseLinks(id).forEach(r => out.add(r.from.id));
+  getInverseRelations(id).forEach(r => out.add(r.from.id));
+  out.delete(id);
+  return out;
+}
+
 function getInverseLinks(id) {
   const r = [];
   db.entities.forEach(e => {
@@ -32908,6 +33076,21 @@ function applySavedView(v) {
       return true;
     });
   }
+  // Nemá žádný tag
+  if (f.tagNot === FILTR_ZADNY_TAG) r = r.filter(e => !(e.tags || []).length);
+  else if (f.tagNot) { const _nt = String(f.tagNot).toLowerCase(); r = r.filter(e => !(e.tags || []).some(t => String(t).toLowerCase() === _nt)); }
+  // Příslušnost k projektu
+  if (f.project === 'none') r = r.filter(e => getEntityParentProjects(e).length === 0);
+  else if (f.project === 'any') r = r.filter(e => getEntityParentProjects(e).length > 0);
+  // Vazba na konkrétní entitu. Množina se spočítá jednou, ne pro každou entitu.
+  if (f.linkTo) {
+    const ukazujiNa = idsVazebNa(f.linkTo);
+    r = r.filter(e => ukazujiNa.has(e.id));
+  }
+  if (f.linkFrom) {
+    const cile = idsVazebZ(f.linkFrom);
+    r = r.filter(e => cile.has(e.id));
+  }
   // Vazby
   if (f.relations) {
     r = r.filter(e => {
@@ -32981,6 +33164,17 @@ function describeFilter(f) {
   if (f.relations) {
     const labels = { orphans:'sirotci', noIncoming:'bez příchozích', noOutgoing:'bez odchozích', hasIncoming:'s příchozími', hasOutgoing:'s odchozími' };
     p.push(labels[f.relations] || f.relations);
+  }
+  if (f.tagNot === FILTR_ZADNY_TAG) p.push('bez tagů');
+  if (f.project === 'none') p.push('mimo projekty');
+  else if (f.project === 'any') p.push('v nějakém projektu');
+  if (f.linkFrom) {
+    const zdroj = findEntity(f.linkFrom);
+    p.push('má vazbu z „' + (zdroj ? getDisplayTitle(zdroj) : f.linkFrom) + '"');
+  }
+  if (f.linkTo) {
+    const cil = findEntity(f.linkTo);
+    p.push('má vazbu na „' + (cil ? getDisplayTitle(cil) : f.linkTo) + '"');
   }
   if (f.confidence) p.push('důvěra: ' + f.confidence);
   if (Array.isArray(f.attrFilters) && f.attrFilters.length > 0) {
@@ -33850,7 +34044,15 @@ function renderAll(main) {
       '<div class="filter-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(14em,1fr));gap:0.5em;margin-top:0.5em;">' +
         '<div><label for="filter-aspect">Aspekt</label><select id="filter-aspect"><option value="">— všechny —</option>' + aspectOpts + '</select></div>' +
         '<div><label for="filter-tag">Tag</label><select id="filter-tag"><option value="">— všechny —</option>' + tagOpts + '</select></div>' +
-        '<div><label for="filter-tag-not">Nemá tag</label><select id="filter-tag-not"><option value="">— bez omezení —</option>' + tagOpts + '</select></div>' +
+        '<div><label for="filter-tag-not">Nemá tag</label><select id="filter-tag-not">' +
+          '<option value="">— bez omezení —</option>' +
+          '<option value="' + FILTR_ZADNY_TAG + '">— nemá žádný tag —</option>' +
+          tagOpts + '</select></div>' +
+        '<div><label for="filter-project">Projekt</label><select id="filter-project">' +
+          '<option value="">— libovolně —</option>' +
+          '<option value="none">Není v žádném projektu</option>' +
+          '<option value="any">Je v nějakém projektu</option>' +
+        '</select></div>' +
         '<div><label for="filter-attach">Přílohy</label><select id="filter-attach">' +
           '<option value="">— libovolně —</option>' +
           '<option value="yes">Má přílohu</option>' +
@@ -33922,6 +34124,27 @@ function renderAll(main) {
           '<option value="hasIncoming">Má příchozí vazby</option>' +
           '<option value="hasOutgoing">Má odchozí vazby</option>' +
         '</select></div>' +
+        (function () {
+          // Vazba na konkrétní entitu. Výběr jde přes stejný dialog jako všude jinde
+          // (openRelationPicker), proto tlačítko místo selectu — entit můžou být
+          // tisíce a do rozbalovátka se nehodí.
+          const pole = (id, popisek, hodnota, napoveda) => {
+            const ent = hodnota ? findEntity(hodnota) : null;
+            return '<div><label for="' + id + '-btn">' + popisek + '</label>' +
+              '<div style="display:flex;gap:0.3em;align-items:center;">' +
+                '<button type="button" id="' + id + '-btn" data-vazba-vyber="' + id + '" ' +
+                  'style="flex:1 1 auto;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" ' +
+                  'title="' + escapeHtml(napoveda) + '">' +
+                  (ent ? escapeHtml(getDisplayTitle(ent)) : '— libovolná —') + '</button>' +
+                (ent ? '<button type="button" data-vazba-zrusit="' + id + '" ' +
+                  'aria-label="Zrušit filtr ' + escapeHtml(popisek) + '" title="Zrušit">✕</button>' : '') +
+              '</div></div>';
+          };
+          return pole('filter-link-from', 'Má vazbu z', (state.filter || {}).linkFrom,
+                 'Entity, na které vybraná entita ukazuje vazbou – např. co je součástí projektu') +
+                 pole('filter-link-to', 'Má vazbu na', (state.filter || {}).linkTo,
+                 'Entity, které ukazují vazbou na vybranou entitu');
+        })() +
         '<div><label for="filter-confidence">Důvěra</label><select id="filter-confidence">' +
           '<option value="">— libovolná —</option>' +
           (Object.entries(CONFIDENCE_LEVELS || {}).map(([k,v]) =>
@@ -33944,6 +34167,7 @@ function renderAll(main) {
     sdl = document.getElementById('filter-deadline'),
     sct = document.getElementById('filter-content'),
     srl = document.getElementById('filter-relations'),
+    spj = document.getElementById('filter-project'),
     scf = document.getElementById('filter-confidence');
   if (!state._allSort) state._allSort = { key: 'updated', dir: 'desc' };
 
@@ -33957,11 +34181,17 @@ function renderAll(main) {
     else if (sib.value === 'out') r = r.filter(e => !e.inbox);
     // Aspekt + tag + text
     r = searchEntities(it.value, { aspect: sa.value, tag: st.value }).filter(e => r.includes(e));
-    // Nemá tag (vylučující filtr)
-    if (stn && stn.value) {
+    // Nemá tag (vylučující filtr), nebo rovnou „nemá žádný tag"
+    if (stn && stn.value === FILTR_ZADNY_TAG) {
+      r = r.filter(e => !(e.tags || []).length);
+    } else if (stn && stn.value) {
       const notTag = stn.value;
       r = r.filter(e => !(e.tags || []).includes(notTag));
     }
+    // Příslušnost k projektu – přes getEntityParentProjects, tedy stejnou úvahu,
+    // jakou používá dashboard projektu (vazba „je součástí" na entitu s aspektem Projekt).
+    if (spj && spj.value === 'none') r = r.filter(e => getEntityParentProjects(e).length === 0);
+    else if (spj && spj.value === 'any') r = r.filter(e => getEntityParentProjects(e).length > 0);
     // Přílohy
     if (fa && fa.value === 'yes') r = r.filter(e => e.attachments && e.attachments.length > 0);
     else if (fa && fa.value === 'no') r = r.filter(e => !e.attachments || e.attachments.length === 0);
@@ -34043,6 +34273,15 @@ function renderAll(main) {
       });
     }
     // Vazby
+    // Vazba na konkrétní entitu (množina se spočítá jednou)
+    if (state.filter.linkTo) {
+      const ukazujiNa = idsVazebNa(state.filter.linkTo);
+      r = r.filter(e => ukazujiNa.has(e.id));
+    }
+    if (state.filter.linkFrom) {
+      const cile = idsVazebZ(state.filter.linkFrom);
+      r = r.filter(e => cile.has(e.id));
+    }
     if (srl.value) {
       r = r.filter(e => {
         const inLinks = getInverseLinks(e.id).length + getInverseRelations(e.id).length;
@@ -34080,7 +34319,10 @@ function renderAll(main) {
     if (sdl.value) n++;
     if (sct.value) n++;
     if (srl.value) n++;
+    if (spj && spj.value) n++;
     if (scf.value) n++;
+    if (state.filter.linkFrom) n++;
+    if (state.filter.linkTo) n++;
     return n;
   }
 
@@ -34109,7 +34351,7 @@ function renderAll(main) {
     });
   }
 
-  [it, sa, st, stn, fa, sar, sib, su, sc, sts, spr, sdl, sct, srl, scf].forEach(el => {
+  [it, sa, st, stn, fa, sar, sib, su, sc, sts, spr, sdl, sct, srl, spj, scf].forEach(el => {
     if (!el) return;
     if (el.tagName === 'INPUT') el.oninput = update;
     el.onchange = update;
@@ -34119,13 +34361,43 @@ function renderAll(main) {
     state._allLimit = Number(limitSelect.value) || 0;
     update();
   };
+
+  // Filtry „Má vazbu z / na" – výběr entity přes společný dialog.
+  // Po volbě se překresluje celý pohled: popisek tlačítka i křížek na zrušení
+  // jsou součástí HTML, ne hodnotou pole, takže samotné update() by nestačilo.
+  const klicVazby = { 'filter-link-from': 'linkFrom', 'filter-link-to': 'linkTo' };
+  document.querySelectorAll('button[data-vazba-vyber]').forEach(btn => {
+    btn.onclick = () => {
+      const klic = klicVazby[btn.dataset.vazbaVyber];
+      if (!klic) return;
+      openRelationPicker({
+        fieldLabel: btn.dataset.vazbaVyber === 'filter-link-from' ? 'má vazbu z' : 'má vazbu na',
+        multiple: false,
+        currentIds: state.filter[klic] ? [state.filter[klic]] : [],
+        onSelect: (ids) => {
+          const id = Array.isArray(ids) ? ids[0] : ids;
+          if (!id) return;
+          state.filter[klic] = id;
+          render();
+        }
+      });
+    };
+  });
+  document.querySelectorAll('button[data-vazba-zrusit]').forEach(btn => {
+    btn.onclick = () => {
+      const klic = klicVazby[btn.dataset.vazbaZrusit];
+      if (!klic) return;
+      delete state.filter[klic];
+      render();
+    };
+  });
   document.getElementById('filter-reset').onclick = () => {
     state.filter = { aspect:'', tag:'', text:'', status:'' };
     it.value = ''; sa.value = ''; st.value = ''; if (stn) stn.value = ''; if (fa) fa.value = ''; sar.value = 'active';
     sib.value = ''; su.value = ''; sc.value = '';
     sts.value = ''; spr.value = ''; sdl.value = '';
-    sct.value = ''; srl.value = ''; scf.value = '';
-    update();
+    sct.value = ''; srl.value = ''; if (spj) spj.value = ''; scf.value = '';
+    render();   // i tlačítka filtrů vazeb
   };
   const bulkBtn = document.getElementById('bulk-toggle');
   if (bulkBtn) bulkBtn.onclick = () => bulkToggle(!_bulk.active);
@@ -34958,6 +35230,10 @@ function renderDetail(main, id) {
 }
 
 // Vrátí projekty, jejichž je entita součástí (partOf → Project).
+// Zvláštní hodnota selectu „Nemá tag": ne konkrétní tag, ale „žádný tag".
+// Řetězec je schválně takový, aby se nedal splést se skutečným tagem.
+const FILTR_ZADNY_TAG = '\u241F__BEZ_TAGU__\u241F';
+
 function getEntityParentProjects(entity) {
   const out = [];
   const seen = new Set();

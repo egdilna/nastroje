@@ -347,6 +347,33 @@ V kartě **Vše** je v sekci „Filtry" rozbalovací podsekce **Pokročilé filt
    - `je prázdné`, `není prázdné`, `je zaškrtnuto`, `není zaškrtnuto`
 3. **Hodnota** — adaptivní podle typu (text, číslo, datum, select s options, checkbox)
 
+### Má vazbu z / Má vazbu na
+
+Dva filtry, které se ptají na vazbu ke **konkrétní entitě**. Vyberete ji tlačítkem (otevře se
+obvyklý dialog *Vybrat entitu*), křížkem vedle filtr zrušíte.
+
+| Filtr | Najde |
+|---|---|
+| **Má vazbu na** | entity, které ukazují vazbou na vybranou entitu — typicky *všechno, co patří k projektu* |
+| **Má vazbu z** | entity, na které ukazuje vybraná entita |
+
+Počítají se vazby ze sekce **Vazby** a atributy typu *relation*. Textové zmínky (wiki odkazy,
+include) ne — ty aplikace vede zvlášť jako *Odkazy*.
+
+Hlavní důvod, proč to existuje: vyfiltrovat si všechno k jednomu projektu a pustit na to
+**hromadné operace** (archivovat, exportovat, poslat umělé inteligenci). Filtr se dá uložit
+jako pohled a funguje i ve statickém prohlížeči.
+
+### Nemá žádný tag, Není v žádném projektu
+
+Dva filtry na úklid — najdou, co někam nezapadá.
+
+- **Nemá žádný tag** je volba v selectu *Nemá tag* (hned pod „bez omezení"). Najde entity,
+  které nemají ani jeden tag. Vyloučení konkrétního tagu funguje ve stejném selectu dál.
+- **Projekt** je vlastní select s volbami *Není v žádném projektu* a *Je v nějakém projektu*.
+  Počítá se vazba **„je součástí"** na entitu s aspektem *Projekt* — tedy stejná úvaha, jakou
+  používá dashboard projektu. Vazba „souvisí s" na projekt tedy nestačí.
+
 Filtry se kombinují logikou **AND**.
 
 **Uložené pohledy** uchovají kompletní filtr — aspekt, tagy (včetně „nemá tag"), stav úkolu, prioritu, termín i pokročilé filtry atributů. Filtr přežije i zapnutí režimu výběru. Porovnání tagů nerozlišuje velikost písmen.
