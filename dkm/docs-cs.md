@@ -1227,6 +1227,7 @@ Vypisovat všechny příkazy nemá cenu, seznam roste s aplikací. Drží se tě
 |---|---|
 | **Vytvořit** | Nová entita, **Nová do Inboxu**, Rychlé přidání do Inboxu a **Nová entita každého typu** zvlášť („Nová: Smlouva") |
 | **Entita** | příkazy k právě otevřené entitě — přesně ty, co má v detailu za tlačítka: Upravit, Duplikovat, Přidat vazbu, Komentáře, Export / tisk, Zeptat se AI, V samostatném okně, Do / Z Inboxu, Změnit typ, Archivovat nebo Obnovit, Smazat |
+| **Hromadně s vybranými (n)** | **všechny hromadné akce** z lišty výběru — změnit typ, přidat / odebrat aspekt, nastavit / vyprázdnit atribut, přidat vazbu, sloučit entity, export, AI, do / z Inboxu, archivovat nebo obnovit, smazat |
 | **Seznam** | hledání, pokročilé filtry, vyčištění filtrů, uložení pohledu, režim výběru, náhled vedle seznamu a přepnutí zobrazení (seznam, tabulka, Kanban, kalendář, časová osa) |
 | **Akce** | uložit, načíst, export dat, **import TSV**, **import balíčku .dkmpkg**, schránka, načtení z adresy, panely, AI, motiv a jazyk |
 | **Navigace** | záložky z lišty, Inbox / Vše / Archiv, Všechny komentáře a **každá sekce nastavení** |
@@ -1236,6 +1237,12 @@ Vypisovat všechny příkazy nemá cenu, seznam roste s aplikací. Drží se tě
 
 Příkazy, které mají klávesovou zkratku, ji mají vypsanou vpravo. Skupiny **Entita** a
 **Seznam** se nabízejí jen tam, kde dávají smysl — v detailu, respektive nad seznamem.
+
+**Hromadné akce** se nabízejí, jakmile je vybraná aspoň jedna entita — a to **i mimo seznam**:
+když si vybereš tři a odskočíš do detailu, je to pořád tentýž výběr. **Počet je v názvu
+skupiny** („Hromadně s vybranými (3)"), protože příkaz z palety se pouští, aniž bys měl lištu
+výběru na očích, a *Smazat* se bez čísla pouštět nemá. *Sloučit entity* se objeví až od dvou
+vybraných. Co maže nebo archivuje, se ptá stejně jako z lišty.
 
 ### 19.3 Hledání
 

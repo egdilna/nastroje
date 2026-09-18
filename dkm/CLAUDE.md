@@ -647,6 +647,19 @@ nechalo v diskusi viset rozbitý `[[Starý název]]`. U komentářů se dává *
 entitu** (`some`, ne `forEach`): atributy mají každý svoje jméno, u komentářů by to byly dva
 stejné řádky.
 
+## Hromadné akce patří i do palety
+`getBulkActions()` je jediný zdroj — lišta výběru i paleta z něj berou totéž, takže nová akce
+naskočí na obou místech sama. Ikony jsou vedle v `BULK_IKONY`, **ne v `getBulkActions`**:
+v rozbalovátku v liště by z nich byl vizuální šum (a odečítač je čte nahlas), v paletě má
+naopak ikonu každý řádek.
+
+- **Nabízí se všude, kde výběr existuje**, ne jen nad seznamem. Kdo si vybere tři entity
+  a odskočí do detailu, má pořád tentýž výběr.
+- **Počet je v názvu kategorie** (`cmdCatBulk`), ne v položce. Z palety se akce pouští, aniž
+  by byla lišta výběru na očích, a „smazat" se bez čísla pouštět nemá. V názvu kategorie se
+  navíc na číslo nehledá, takže nepřekáží.
+- `merge` se s jednou vybranou vynechá — `bulkMerge` by jen řekl ne.
+
 ## Režim výběru: X i V
 Přepíná ho `prepniVyber()` — jedno místo pro klávesu, tlačítko v liště i paletu. **Vypnutí
 vždycky zahodí i výběr**; nechat ho ležet schovaný by znamenalo, že příští zapnutí najde
