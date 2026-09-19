@@ -163,7 +163,30 @@ Tok:
   Volej po **každé** změně dat.
 - `naplanovatSync()` — commit 8 s po poslední změně; dále při skrytí karty,
   při zavření a pojistkou každé 2 minuty.
-- `ghUlozit(tise)` / `ghNacist()` — Contents API, `ghSha` se drží v paměti.
+- `ghUlozit(tise)` / `ghNacist(odkud)` — `ghSha` se drží v paměti.
+
+**Mez 1 MB je v tomhle toku past, na kterou se dá naletět.** Contents API vydá obsah
+souboru jen do 1 MB; u většího vrátí `content: ""` a `encoding: "none"`, takže naivní
+`atob(sr.content)` dá prázdný řetězec a `JSON.parse` spadne — prostředí se tváří jako
+poškozené, ačkoli je v repozitáři celé. Stačí k tomu jedna dlaždice typ `soubor`
+s PDF (base64 nafoukne soubor o třetinu). Proto:
+
+- čtení jde přes `ghObsahSouboru(sr)` — když obsah nedorazí, dotáhne ho z Git Data API
+  podle SHA blobu (`git/blobs/{sha}`, až 100 MB);
+- zápis nad `GH_MEZ` (1 MB) jde přes `ghUlozitVelke()` — blob → strom → commit → ref;
+  Contents API zůstává pro běžná malá uložení;
+- base64 se dělá `textDoBase64()` / `base64DoTextu()` nad `TextEncoder`em a po blocích,
+  ne `btoa(unescape(encodeURIComponent(…)))` — ten na několikamegabajtovém řetězci
+  vyrábí obří mezikopie.
+
+**Pojistka proti přepsání:** `ghNacteno` je `false`, dokud nevíme, co v souboru je.
+`ghUlozit()` v tom stavu **neuloží nic** — jinak by jedno neúspěšné načtení tiše
+přepsalo celé prostředí prázdným. Nastaví se po úspěšném načtení, když soubor ještě
+neexistuje, nebo když uživatel přepsání výslovně potvrdí tlačítkem v okně GitHubu.
+
+**Obnova:** `ghHistorieOkno()` vypíše commity souboru (`commits?path=…`) a umí kteroukoli
+verzi načíst (`ghNacist(sha)`); do repozitáře se zapíše, až když uživatel dá *Uložit nyní*.
+Každé uložení je commit, takže starší stav je vždy po ruce.
 - `kUlozeni()` — serializace **bez sekce `github`**. Token se do repozitáře nesmí
   dostat: GitHub takový commit odmítne ochranou proti únikům údajů a soubor pak vůbec
   nevznikne (tato chyba už jednou byla, nezaveď ji znovu).
