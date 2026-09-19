@@ -129,6 +129,10 @@ Projekt (`.pup`) i PNG diagramů se ukládají přes **GitHub Contents API**.
   `unescape(encodeURIComponent())`); `initGitHubFromUrl()` se volá na konci `init()`.
 - `ghPutFile` si vždy nejdřív načte SHA (`ghFetchMeta`), jinak GitHub přepis odmítne.
   Soubory > 1 MB nemají `content` v odpovědi — `ghFetchText` pro ně sáhne na Blob API.
+  **Zápis tohle ošetřené nemá**: `ghPutFile` jede vždy přes Contents API, takže u projektu
+  nebo PNG nad 1 MB může uložení skončit chybou od GitHubu (data se neztratí, jen se
+  neuloží a hláška to řekne). Kdyby na to někdo narazil, řešením je commit z Git Data API
+  — vzor `ghUlozitVelke()` v `mros/index.html`, postup v kořenovém `CLAUDE.md`.
 - PNG jde do **stejné složky** jako projekt, název = `slugFileName(diagram.name)` — bez
   diakritiky, mezery a speciální znaky nahrazené pomlčkou (kvůli čitelné adrese).
   Stejný diagram dá vždy stejný název, takže se starší verze obrázku přepíše (záměr).

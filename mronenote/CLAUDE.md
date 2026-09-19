@@ -44,6 +44,12 @@ Push je **odložený**: `ghPushSoon(delay)` s `GH_IDLE = 3000` ms a stropem `GH_
 `ghPending()` hlídá rozpracovaný stav, `ghUpdateBadge()`/`ghStateText()` ukazují stav v liště.
 Když přidáš operaci měnící data, zavolej `touch()` — na něj navazuje autosave i push.
 
+`ghPull` nesmí spoléhat na `content` z Contents API: to vydá obsah jen u souboru do 1 MB,
+u většího vrátí prázdný řetězec a blok by vypadal jako poškozený. Chybějící obsah se proto
+dotáhne z `git/blobs/{sha}`. `ghNacteno` je pojistka proti přepsání — dokud nevíme, co
+v souboru je, `ghPush` neuloží **nic** (jinak by neúspěšné načtení plus odložený push
+přepsaly celý blok) a `ghStateText()` to hlásí v liště. Podrobněji v kořenovém `CLAUDE.md`.
+
 ## Režimy a ochrana úprav
 `setMode(m)` přepíná **úpravy / čtení** (`isView()`), `guardEdit()` blokuje editační akce ve
 čtení a pole v `EDIT_ONLY` se skrývají. Nová editační akce patří do `EDIT_ONLY` a musí volat

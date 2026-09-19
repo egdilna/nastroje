@@ -3732,6 +3732,9 @@ var GHKEY='mronenote.github.v1';
 var gh={owner:'',repo:'',path:'',branch:'',token:'',auto:true};
 var ghSha=null;        /* SHA poslední známé verze souboru – kvůli konfliktům */
 var ghTimer=null, ghBusy=false, ghDirty=false;
+/* Dokud nevíme, co v souboru na GitHubu je, nesmíme ho přepsat — jinak by jedno
+   neúspěšné načtení tiše zahodilo celý blok. */
+var ghNacteno=false;
 var ghLastSave=0;   /* čas posledního úspěšného uložení */
 var ghTick=null;
 
@@ -3796,7 +3799,7 @@ function ghPull(silent){
   var url=ghApi()+(gh.branch?('?ref='+encodeURIComponent(gh.branch)):'');
   fetch(url,{headers:ghHeaders(),cache:'no-store'})
     .then(function(r){
-      if(r.status===404){ ghSha=null;
+      if(r.status===404){ ghSha=null; ghNacteno=true;   /* není co přepsat */
         ghSetStatus('Soubor na GitHubu zatím není. Uloží se při prvním uložení.');
         if(!silent) say('Soubor na GitHubu zatím neexistuje.');
         return null; }
@@ -3806,7 +3809,18 @@ function ghPull(silent){
     .then(function(j){
       if(!j) return;
       ghSha=j.sha;
-      var txt=b64dec(j.content||'');
+      /* Contents API vydá obsah jen u souboru do 1 MB; u většího vrátí prázdný
+         řetězec a encoding "none". Obsah se pak musí vzít z Git Data API podle SHA
+         blobu (do 100 MB) — bez toho by JSON.parse('') vypadal jako poškozený blok. */
+      if(j.content) return b64dec(j.content);
+      return fetch('https://api.github.com/repos/'+encodeURIComponent(gh.owner)+'/'+
+                   encodeURIComponent(gh.repo)+'/git/blobs/'+j.sha,
+                   {headers:ghHeaders(),cache:'no-store'})
+        .then(function(rb){ if(!rb.ok) throw new Error(ghErrText(rb.status)); return rb.json(); })
+        .then(function(b){ return b64dec(b.content||''); });
+    })
+    .then(function(txt){
+      if(txt===undefined) return;
       var o=JSON.parse(txt);
       var loaded = o.sections ? o : o.nb;
       if(!loaded||!loaded.sections) throw new Error('Soubor nemá očekávanou strukturu.');
@@ -3814,7 +3828,7 @@ function ghPull(silent){
       undoStack=[]; redoStack=[];
       var first=allPages()[0];
       curPageId=first?first.page.id:null; curSecId=first?first.section.id:null;
-      ghDirty=false; ghLastSave=0;
+      ghDirty=false; ghLastSave=0; ghNacteno=true;
       renderAll();
       if(nb&&nb.settings) nb.settings.mode='view';   /* ať setMode nespouští autosave */
       setMode('view');
@@ -3834,6 +3848,12 @@ function ghPull(silent){
 function ghPush(silent){
   if(!ghReady()){ if(!silent) say('Nejprve nastavte synchronizaci s GitHubem.'); return; }
   if(!nb){ return; }
+  if(!ghNacteno){
+    clearTimeout(ghTimer); ghFirstChange=0;
+    ghSetStatus('Neuloženo — soubor na GitHubu se nepodařilo načíst. Ukládání je zastavené, aby se blok nepřepsal. Zkuste Načíst z GitHubu.');
+    if(!silent) say('Ukládání zastaveno — soubor na GitHubu se nepodařilo načíst, blok by se přepsal.');
+    return;
+  }
   if(ghBusy){ ghDirty=true; return; }
   ghBusy=true;
   ghSetStatus('Ukládám na GitHub…');
@@ -3927,6 +3947,9 @@ function ghAgo(t){
 /* text stavu do dolní lišty i do nabídky Soubor */
 function ghStateText(){
   if(!ghReady()) return 'GitHub není nastaven';
+  /* zastavené ukládání musí být vidět i mimo dialog nastavení — jinak by uživatel
+     psal do bloku a nevěděl, že se nic neukládá */
+  if(!ghNacteno) return 'ukládání zastaveno — soubor se nepodařilo načíst';
   if(ghBusy) return 'ukládám…';
   if(ghPending()) return 'neuložené změny';
   if(ghLastSave) return 'uloženo '+ghAgo(ghLastSave);
