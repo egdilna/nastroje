@@ -149,6 +149,21 @@ přečte JSON, CSV i TSV a formát pozná sám. Sloupce citací jsou navržené 
 aby přežily kolečko export → import; sloupec *Citace* je jen pro čtení,
 data nesou strukturované sloupce.
 
+**Jedna dlaždice** má vlastní dvojici: *Exportovat jako JSON* (`stahnout()` nad celým
+objektem dlaždice) a `dlazdiceZeDat(d)` s oknem `vlozitDlazdiciZeSouboru()`. Vložená
+dlaždice dostane **nové id**, `plocha: S.aktivni`, `rodic: null` a pořadí na konec,
+takže originál zůstane, kde je, a soubor jde vložit opakovaně. `dlazdiceZeDat` přijme
+jednu dlaždici i pole dlaždic, ověří `TYPY[typ]`, doplní chybějící `obsah`
+přes `vychoziObsah()` a zálohu celého prostředí (`{objekty:[…]}`) odmítne s odkazem
+na *Nastavení → Data*. Akce visí na třech místech: v nabídce dlaždice hned pod exportem,
+v okně *Nová dlaždice* a v paletě.
+
+**Pořadí ploch** drží `seraditPlochy()`: první plocha je domovská a zůstává na místě,
+zbytek se řadí abecedně přes `localeCompare(…, "cs")`. Řadí se **uložené pole**, takže
+stejné pořadí platí v panelu, v paletě, v nabídkách i při přepínání klávesou F8.
+Volá se po načtení stavu, po založení plochy a po přejmenování — ale až na události
+`change`, ne `input`, jinak by seznam poskakoval při každém napsaném písmenu.
+
 ---
 
 ## 6. Úložiště — jen GitHub
