@@ -524,6 +524,7 @@ function zapnuty(k){
 const KLIC="prostredi-konfigurace-v1";
 let nesynchronizovano=false;
 function velikostDat(){ return new Blob([JSON.stringify(S)]).size; }
+function velikostText(b){ return b<1024?b+" B":b<1048576?(b/1024).toFixed(1)+" kB":(b/1048576).toFixed(2)+" MB"; }
 function ulozitKonfiguraci(){
   try{ localStorage.setItem(KLIC,JSON.stringify({github:S.github})); }
   catch(e){ log("Přístup k repozitáři nelze uložit",e.message); }
@@ -803,7 +804,8 @@ function nahled(o){
     case "citace": return esc((c.text||"").slice(0,160))+(c.zdroj?`<div class="tichy">— ${esc(c.zdroj)}</div>`:"");
     case "odkaz": case "aplikace":
       return c.url?"":"<span class='tichy'>Bez adresy — otevřete a doplňte</span>";
-    case "soubor": return `<span class="tichy">${esc(c.nazevSouboru||"Bez souboru")}</span>`;
+    case "soubor": return `<span class="tichy">${esc(c.nazevSouboru||"Bez souboru")}${
+      (c.data||c.text)?" · "+velikostText((c.data||c.text).length):""}</span>`;
     case "slozka": { const n=deti(o.id).length; return `<span class="tichy">${n?n+" "+sklonovanePolozky(n):"prázdná složka"}</span>`; }
     case "sezeni": return `<span class="tichy">${(c.okna||[]).length} oken v sezení</span>`;
     case "hodiny": return `<div class="hodiny-velke" data-hodiny="1">--:--</div>`;
@@ -2103,11 +2105,17 @@ function editor(o,t,w){
           c.text="";
         }
         if(o.nazev===TYPY.soubor.n) o.nazev=f.name;
-        ulozP(); hlas("Soubor uložen do prostředí"); zavritOkno("obj-"+o.id); otevritObjekt(o.id);
+        ulozP();
+        /* soubor se ukládá do JSON prostředí, a base64 ho nafoukne o třetinu —
+           ať uživatel ví, o kolik prostředí povyrostlo */
+        hlas("Soubor uložen do prostředí — "+velikostText(c.data?c.data.length:c.text.length)
+          +" v souboru prostředí"+(f.size>5e6?". Velké soubory prostředí zpomalují, zvažte odkaz místo vložení.":""));
+        zavritOkno("obj-"+o.id); otevritObjekt(o.id);
       });
       t.append(el("label",{class:"pole"},el("span",{},"Nahrát soubor"),inp));
       if(c.nazevSouboru) t.append(el("div",{class:"karta"},
-        el("strong",{},c.nazevSouboru), el("div",{class:"tichy"},c.mime||"neznámý typ"),
+        el("strong",{},c.nazevSouboru),
+        el("div",{class:"tichy"},(c.mime||"neznámý typ")+" · "+velikostText((c.data||c.text||"").length)+" v prostředí"),
         el("div",{class:"pruh",style:"margin-top:10px"},
           el("button",{class:"btn mini",onclick:()=>{
             if(c.data) { const a=el("a",{href:c.data,download:c.nazevSouboru}); a.click(); }
@@ -2847,13 +2855,37 @@ const NASTROJE={
     const poc={}; S.objekty.forEach(o=>poc[o.typ]=(poc[o.typ]||0)+1);
     t.append(el("div",{class:"karta"},
       el("strong",{},S.objekty.length+" dlaždic na "+S.plochy.length+" plochách"),
-      el("div",{class:"tichy"},"v koši "+S.kos.length+" · připomínek "+S.pripominky.length+" · velikost dat "+
-        (new Blob([JSON.stringify(S)]).size/1024).toFixed(1)+" kB")));
+      el("div",{class:"tichy"},"v koši "+S.kos.length+" · připomínek "+S.pripominky.length+
+        " · velikost dat "+velikostText(velikostDat()))));
     t.append(el("h3",{class:"nadpis"},"Podle typu"));
     const ul=el("ul",{class:"seznam"});
     Object.entries(poc).sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>ul.append(el("li",{},
       el("span",{class:"ikonka"},TYPY[k].i),el("span",{class:"rostouci"},TYPY[k].n),el("strong",{},String(v)))));
     t.append(ul);
+    /* co prostředí nafukuje — vložený soubor v dlaždici umí JSON zvětšit o megabajty */
+    t.append(el("h3",{class:"nadpis"},"Co zabírá nejvíc"));
+    const vel=x=>new Blob([JSON.stringify(x)]).size;
+    const celek=velikostDat();
+    const casti=[["Dlaždice",vel(S.objekty)],["Koš",vel(S.kos)],["Historie schránky",vel(S.schranka)],
+      ["Plochy, štítky a nastavení",Math.max(0,celek-vel(S.objekty)-vel(S.kos)-vel(S.schranka))]];
+    const ulC=el("ul",{class:"seznam"});
+    casti.filter(([,b])=>b>0).sort((a,b)=>b[1]-a[1]).forEach(([n,bajtu])=>{
+      const pct=celek?Math.round(bajtu/celek*100):0;
+      ulC.append(el("li",{},el("span",{class:"rostouci"},el("div",{style:"font-weight:600"},n),
+        el("div",{class:"postup",role:"img","aria-label":n+" "+pct+" procent"},el("i",{style:"width:"+pct+"%"}))),
+        el("strong",{},velikostText(bajtu))));
+    });
+    t.append(ulC);
+    const nejvetsi=S.objekty.map(o=>({o,b:vel(o)})).sort((a,b)=>b.b-a.b).slice(0,6).filter(x=>x.b>1024);
+    if(nejvetsi.length){
+      t.append(el("h3",{class:"nadpis"},"Největší dlaždice"));
+      const ulN=el("ul",{class:"seznam"});
+      nejvetsi.forEach(({o,b})=>ulN.append(el("li",{},el("span",{class:"ikonka"},o.ikona),
+        el("button",{class:"rostouci",style:"text-align:left",onclick:()=>otevritObjekt(o.id)},
+          el("div",{style:"font-weight:600"},o.nazev),el("div",{class:"tichy"},TYPY[o.typ].n)),
+        el("strong",{},velikostText(b)))));
+      t.append(ulN);
+    }
     t.append(el("h3",{class:"nadpis"},"Naposledy změněné"));
     const ul2=el("ul",{class:"seznam"});
     [...S.objekty].sort((a,b)=>b.zmeneno-a.zmeneno).slice(0,8).forEach(o=>ul2.append(el("li",{},
@@ -4430,7 +4462,8 @@ function nastaveniOkno(t){
     }
     if(akt==="data"){
       obsah.append(el("p",{class:"tichy"},"Celé prostředí je jeden soubor JSON — plochy, dlaždice, nastavení i koš. Ukládá se do GitHubu; v prohlížeči se drží jen přístup k repozitáři, takže tu nejsou žádné limity velikosti."),
-        el("div",{class:"karta"},"Velikost prostředí: "+(velikostDat()/1024).toFixed(1)+" kB"));
+        el("div",{class:"karta"},"Velikost prostředí: "+velikostText(velikostDat())
+          +" — rozpad podle dlaždic najdete v nástroji Přehled prostředí"));
       obsah.append(el("div",{class:"pruh"},
         el("button",{class:"btn mini",onclick:()=>stahnout("prostredi-"+dnes()+".json",kUlozeni(),"application/json")},"Stáhnout zálohu"),
         el("button",{class:"btn druhy mini",onclick:()=>otevritNastroj("github")},"Synchronizace s GitHubem")));
@@ -4488,6 +4521,8 @@ function vykreslitStav(){
 function stavUlozeni(t){ stavText=t; stavRelativni=false; vykreslitStav(); }
 function stavUlozenoNyni(){ posledniUlozeni=Date.now(); stavRelativni=true; vykreslitStav(); }
 setInterval(()=>{ if(stavRelativni) vykreslitStav(); },60000);
+/* true, až když víme, co v souboru v repozitáři opravdu je — teprve pak ho smíme přepsat */
+let ghNacteno=false;
 function ghPripraven(){ return !!(S.github.repo&&S.github.token); }
 function ghAuto(){ return ghPripraven()&&S.github.autoUlozit!==false; }
 function naplanovatSync(){
@@ -4496,27 +4531,71 @@ function naplanovatSync(){
   stavUlozeni("Čeká na uložení do GitHubu…");
   ghCasovac=setTimeout(()=>{ ghUlozit(true); }, 8000);
 }
-async function ghApi(cesta,volby={}){
+async function ghFetch(cesta,volby={}){
   const g=S.github;
-  const r=await fetch(`https://api.github.com/repos/${g.repo}/contents/${cesta}`,
+  const r=await fetch(`https://api.github.com/repos/${g.repo}/${cesta}`,
     {...volby,headers:{Authorization:"Bearer "+g.token,Accept:"application/vnd.github+json",...(volby.headers||{})}});
   if(!r.ok) throw new Error(r.status+" "+(await r.text()).slice(0,200));
   return r.json();
+}
+const ghApi=(cesta,volby)=>ghFetch("contents/"+cesta,volby);
+/* base64 po blocích a přes TextEncoder — u velkého prostředí (vložený soubor v dlaždici)
+   by btoa(unescape(encodeURIComponent(…))) pracoval s několikamegabajtovými mezikopiemi */
+const textDoBase64=t=>bytyDoBase64(new TextEncoder().encode(t));
+const base64DoTextu=b=>new TextDecoder().decode(base64DoBytu(String(b).replace(/\s+/g,"")));
+/* Contents API vydá obsah jen u souboru do 1 MB; u většího vrátí prázdný řetězec
+   a encoding "none" — obsah se pak musí vzít z Git Data API podle SHA blobu (do 100 MB).
+   Přesně na tomhle se dřív rozbilo načtení prostředí, do kterého přibyl vložený soubor. */
+async function ghObsahSouboru(sr){
+  if(sr.content&&sr.encoding==="base64") return base64DoTextu(sr.content);
+  const blob=await ghFetch("git/blobs/"+sr.sha);
+  if(blob.encoding!=="base64") throw new Error("nečekané kódování blobu: "+blob.encoding);
+  return base64DoTextu(blob.content);
 }
 function kUlozeni(){
   const kopie={...S}; delete kopie.github;   // přístup k repozitáři zůstává jen v prohlížeči
   return JSON.stringify(kopie,null,2);
 }
+/* Soubor nad 1 MB neuloží Contents API — musí se poskládat commit z Git Data API. */
+const GH_MEZ=1000000;
+async function ghUlozitVelke(text,zprava){
+  const g=S.github, vetev=g.vetev||"main";
+  const ref=await ghFetch("git/ref/heads/"+vetev);
+  const rodic=ref.object.sha;
+  const rodicCommit=await ghFetch("git/commits/"+rodic);
+  const blob=await ghFetch("git/blobs",{method:"POST",
+    body:JSON.stringify({content:textDoBase64(text),encoding:"base64"})});
+  const strom=await ghFetch("git/trees",{method:"POST",
+    body:JSON.stringify({base_tree:rodicCommit.tree.sha,
+      tree:[{path:g.cesta,mode:"100644",type:"blob",sha:blob.sha}]})});
+  const commit=await ghFetch("git/commits",{method:"POST",
+    body:JSON.stringify({message:zprava,tree:strom.sha,parents:[rodic]})});
+  await ghFetch("git/refs/heads/"+vetev,{method:"PATCH",body:JSON.stringify({sha:commit.sha})});
+  return blob.sha;
+}
 async function ghUlozit(tise){
   const g=S.github;
   if(!ghPripraven()){ if(!tise) hlas("Vyplňte repozitář a token"); return false; }
+  /* pojistka proti přepsání: dokud nevíme, co v souboru je, nesmíme ho přepsat —
+     jinak by neúspěšné načtení tiše zahodilo celé prostředí */
+  if(!ghNacteno){
+    stavUlozeni("Neuloženo — obsah repozitáře se zatím nepodařilo načíst");
+    log("GitHub: uložení zastaveno, soubor nebyl načten");
+    if(!tise) hlas("Uložení zastaveno — soubor v repozitáři se nepodařilo načíst, prostředí by se přepsalo");
+    return false;
+  }
   if(ghBezi){ ghCeka=true; return false; }
   ghBezi=true; stavUlozeni("Ukládám do GitHubu…");
   try{
-    if(!ghSha){ try{ ghSha=(await ghApi(g.cesta+"?ref="+g.vetev)).sha; }catch{ ghSha=null; } }
-    const obsah=btoa(unescape(encodeURIComponent(kUlozeni())));
-    const r=await ghApi(g.cesta,{method:"PUT",body:JSON.stringify({message:"Uložení prostředí "+new Date().toISOString(),content:obsah,branch:g.vetev,sha:ghSha})});
-    ghSha=r.content?.sha||null; ghCeka=false; nesynchronizovano=false;
+    const text=kUlozeni(), zprava="Uložení prostředí "+new Date().toISOString();
+    if(new TextEncoder().encode(text).length>GH_MEZ){
+      ghSha=await ghUlozitVelke(text,zprava);
+    }else{
+      if(!ghSha){ try{ ghSha=(await ghApi(g.cesta+"?ref="+g.vetev)).sha; }catch{ ghSha=null; } }
+      const r=await ghApi(g.cesta,{method:"PUT",body:JSON.stringify({message:zprava,content:textDoBase64(text),branch:g.vetev,sha:ghSha})});
+      ghSha=r.content?.sha||null;
+    }
+    ghCeka=false; nesynchronizovano=false;
     stavUlozenoNyni();
     log("GitHub: uloženo"); if(!tise) hlas("Uloženo do GitHubu");
     return true;
@@ -4526,17 +4605,53 @@ async function ghUlozit(tise){
     return false;
   }finally{ ghBezi=false; }
 }
-async function ghNacist(){
+async function ghNacist(odkud){
   const g=S.github;
   let sr;
-  try{ sr=await ghApi(g.cesta+"?ref="+g.vetev); }
+  try{ sr=await ghApi(g.cesta+"?ref="+(odkud||g.vetev)); }
   catch(e){ if(/^404/.test(e.message)){ const x=new Error("nenalezeno"); x.chybi=true; throw x; } throw e; }
-  ghSha=sr.sha;
-  const d=JSON.parse(decodeURIComponent(escape(atob(sr.content.replace(/\n/g,"")))));
+  const text=await ghObsahSouboru(sr);
+  let d;
+  try{ d=JSON.parse(text); }
+  catch(e){
+    const x=new Error("soubor v repozitáři není platný JSON — "+e.message
+      +". Starší verzi najdete v historii souboru.");
+    x.poskozeno=true; throw x;
+  }
+  if(!odkud) ghSha=sr.sha;   /* u starší verze si SHA nepamatujeme, patří jinému commitu */
+  ghNacteno=true;
   prevzitStav(d);
   posledniUlozeni=Date.now();
   stavRelativni=true; stavText="";
   vykreslitStav();
+}
+/* Každé uložení je commit, takže z historie souboru jde vytáhnout libovolná starší verze. */
+async function ghHistorieOkno(){
+  const g=S.github;
+  otevritOkno({klic:"gh-historie",nazev:"Historie prostředí v repozitáři",ikona:"\u{1F553}",sirka:640,vyska:560,escZavre:true,obsah:t=>{
+    const stav=el("div",{class:"vysledek"},"Načítám seznam commitů…");
+    const box=el("div",{});
+    t.append(el("p",{class:"tichy"},"Každé uložení prostředí je jeden commit. Vyberte verzi, načte se do prostředí "
+      +"— do repozitáře se zapíše, až když pak dáte Uložit nyní."),stav,box);
+    ghFetch("commits?path="+encodeURIComponent(g.cesta)+"&sha="+encodeURIComponent(g.vetev||"main")+"&per_page=30")
+      .then(seznam=>{
+        stav.textContent=seznam.length?seznam.length+" posledních uložení":"Pro tento soubor nejsou žádné commity.";
+        const ul=el("ul",{class:"seznam"});
+        seznam.forEach(c=>ul.append(el("li",{},
+          el("span",{class:"rostouci"},
+            el("div",{style:"font-weight:600"},cas(new Date(c.commit.committer.date).getTime())),
+            el("div",{class:"tichy"},c.sha.slice(0,7)+" · "+(c.commit.message||"").slice(0,70))),
+          el("button",{class:"btn druhy mini",onclick:async()=>{
+            if(!confirm("Nahradit současné prostředí verzí z "+cas(new Date(c.commit.committer.date).getTime())+"?")) return;
+            stav.textContent="Načítám verzi…";
+            try{ await ghNacist(c.sha); stav.textContent="Verze načtena. Zkontrolujte ji a pak dejte Uložit nyní.";
+              hlas("Starší verze prostředí načtena"); }
+            catch(e){ stav.textContent="Nepodařilo se: "+e.message; }
+          }},"Načíst tuto verzi"))));
+        box.append(ul);
+      })
+      .catch(e=>{ stav.textContent="Nepodařilo se načíst historii: "+e.message; });
+  }});
 }
 function githubOkno(t){
   const g=S.github;
@@ -4554,7 +4669,9 @@ function githubOkno(t){
   auto.addEventListener("change",()=>{ g.autoUlozit=auto.checked; ulozit();
     hlas(auto.checked?"Automatické ukládání zapnuto":"Automatické ukládání vypnuto"); });
   t.append(el("label",{class:"radek"},auto,el("span",{},"Ukládat automaticky (8 s po poslední změně, při skrytí karty a při zavření)")));
-  const stav=el("div",{class:"vysledek"},ghPripraven()?(g.autoUlozit?"Automatické ukládání je zapnuté.":"Připraveno, ukládá se ručně."):"Vyplňte repozitář a token.");
+  const stav=el("div",{class:"vysledek"},!ghPripraven()?"Vyplňte repozitář a token."
+    :!ghNacteno?"Soubor z repozitáře se nepodařilo načíst. Ukládání je zastavené, aby se nepřepsal — zkuste Načíst z GitHubu, nebo si starší verzi vezměte z historie."
+    :(g.autoUlozit?"Automatické ukládání je zapnuté.":"Připraveno, ukládá se ručně."));
   const hl=x=>{stav.textContent=x;log("GitHub",x);};
   t.append(el("div",{class:"pruh",style:"margin-top:10px"},
     el("button",{class:"btn mini",onclick:async()=>{ hl("Ukládám…"); hl(await ghUlozit()?"Uloženo do GitHubu.":"Uložení selhalo — zkontrolujte údaje a oprávnění tokenu."); }},"⤒ Uložit nyní"),
@@ -4568,7 +4685,17 @@ function githubOkno(t){
       try{ const r=await fetch("https://api.github.com/repos/"+g.repo,{headers:{Authorization:"Bearer "+g.token}});
         hl(r.ok?"Spojení funguje, repozitář nalezen.":"Nepodařilo se: "+r.status);
       }catch(e){ hl("Chyba: "+e.message); }
-    }},"Ověřit spojení")),stav);
+    }},"Ověřit spojení"),
+    el("button",{class:"btn druhy mini",onclick:()=>{
+      if(!ghPripraven()) return hl("Vyplňte repozitář a token.");
+      ghHistorieOkno();
+    }},"\u{1F553} Historie a obnova")),stav);
+  if(!ghNacteno&&ghPripraven()) t.append(el("div",{class:"pruh",style:"margin-top:10px"},
+    el("button",{class:"btn nebezpecny mini",onclick:async()=>{
+      if(!confirm("Přepsat soubor v repozitáři současným obsahem prostředí? Co je v něm teď, zůstane jen v historii commitů.")) return;
+      ghNacteno=true; hl("Ukládám…");
+      hl(await ghUlozit()?"Uloženo do GitHubu.":"Uložení selhalo.");
+    }},"Přesto přepsat souborem z prohlížeče")));
 }
 
 /* ============================================================
@@ -4767,13 +4894,14 @@ if(ghPripraven()){
   stavUlozeni("Načítám z GitHubu…");
   ghNacist().catch(e=>{
     if(e.chybi){
+      ghNacteno=true;   /* soubor ještě není, přepsat se nedá nic */
       stavUlozeni("Nové prostředí — soubor vznikne prvním uložením");
       log("GitHub: soubor zatím neexistuje, vytvoří se při prvním uložení");
       hlas("Repozitář připojen, soubor s prostředím zatím neexistuje");
     } else {
-      stavUlozeni("Načtení z GitHubu selhalo");
+      stavUlozeni("Načtení selhalo — ukládání zastaveno, aby se soubor nepřepsal");
       log("GitHub chyba",e.message);
-      hlas("Načtení z GitHubu selhalo — zkontrolujte nastavení");
+      hlas("Načtení z GitHubu selhalo. Ukládání je zastavené, aby se prostředí v repozitáři nepřepsalo prázdným.");
       otevritNastroj("github");
     }
   });
