@@ -158,6 +158,14 @@ přes `vychoziObsah()` a zálohu celého prostředí (`{objekty:[…]}`) odmítn
 na *Nastavení → Data*. Akce visí na třech místech: v nabídce dlaždice hned pod exportem,
 v okně *Nová dlaždice* a v paletě.
 
+**Nabídky dlaždic** staví `polozkyDlazdic(seznam)` — položky řadí abecedně, aby v menu
+fungovalo psaní prvního písmene, popisek nese název, typ a případnou složku a výběr
+přepne na plochu dlaždice a otevře ji. `nabidkaDlazdicPlochy()` bere `vsePlose(S.aktivni)`
+(tedy i dlaždice ve složkách — menu je index plochy), `nabidkaVsechDlazdic()` staví
+skupiny po plochách přes `rychleMenuSkupiny()`. Skupina je `<ul role="group">` s popiskem
+plus viditelný nadpis s `aria-hidden`, takže se název plochy neopakuje v každé položce
+a šipky ho přeskočí (jedou jen po `[role=menuitem]`).
+
 **Pořadí ploch** drží `seraditPlochy()`: první plocha je domovská a zůstává na místě,
 zbytek se řadí abecedně přes `localeCompare(…, "cs")`. Řadí se **uložené pole**, takže
 stejné pořadí platí v panelu, v paletě, v nabídkách i při přepínání klávesou F8.
@@ -451,6 +459,17 @@ Pravé tlačítko zůstává na volné ploše (nová dlaždice) a na ploše v bo
 Zásada: **jen funkční klávesy**, žádné kombinace kolidující s prohlížečem, žádné
 Alt+číslo ani Ctrl+písmeno. Vše ostatní jde přes paletu a nabídku.
 
+Výjimkou jsou **přístupové klávesy** (`accesskey`) — ty neřeší prostředí, ale prohlížeč
+(Ctrl+Alt+písmeno na macOS, Alt+písmeno ve Windows). Musí viset na prvku, který je
+v dokumentu, zaostřitelný a **vykreslený**: `display:none` ani `visibility:hidden` je
+vypnou, kdežto `.jenproctecku` (clip na 1 px) je nechá fungovat. Proto mají `I` a `A`
+schované tlačítko `#ak-dlazdice` a `#ak-vse` nad `#dlazdice-obal` — lišta plochy zůstává,
+jak je. Pozor při testování: **stisk přístupové klávesy nejde simulovat** — Chromium ji
+vyhodnocuje dřív, než se synteticky poslaná klávesa dostane ke stránce, takže ani na holé
+stránce s `<button accesskey>` nic nespustí. Testuj proto podmínky (prvek vykreslený,
+zaostřitelný, s popiskem) a chování obsluhy po kliknutí; samotnou klávesu ověří až člověk.
+Každá akce na přístupové klávese musí být dostupná i jinak — v paletě a v hlavní nabídce.
+
 | Klávesa | Akce |
 |---|---|
 | F1 | paleta příkazů (druhá zkratka Ctrl+Shift+P) |
@@ -464,6 +483,7 @@ Alt+číslo ani Ctrl+písmeno. Vše ostatní jde přes paletu a nabídku.
 | Shift+F6 | nabídka všech oken včetně skrytých — výběrem jde okno do popředí (`nabidkaOken()`, totéž jako tlačítko Okna v liště) |
 | šipky, Home, End | pohyb mezi dlaždicemi |
 | Enter, mezerník | otevřít dlaždici |
+| přístupová klávesa N / I / A | vytvořit dlaždici (`#tl-nove`) / dlaždice na této ploše (`nabidkaDlazdicPlochy()`) / všechny dlaždice po plochách (`nabidkaVsechDlazdic()`) |
 | Alt+Enter | nabídka dlaždice |
 | Delete | do koše |
 | Ctrl+←/→ | změna pořadí dlaždice |
