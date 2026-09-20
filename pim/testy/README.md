@@ -39,6 +39,7 @@ upravte v `lib.mjs`.
 | `vyber-entity.mjs` | Dialog Vybrat entitu hledá i podle typu a bez diakritiky. |
 | `pristupnost-vyberu.mjs` | Položky v dialogu Vybrat entitu začínají názvem entity a `aria-selected` znamená vybráno. |
 | `anotace.mjs` | Inline anotace `(>text)` se nevykreslují doslova a nejdou do exportu. |
+| `odznak-a-seznam.mjs` | Odznak ☐N u názvu entity a editor seznamu (sbalování, udělat úkol). |
 | `skryte-ukoly.mjs` | Skrytí hotových úkolů přežije zaškrtnutí dalšího. |
 | `klavesy.mjs` | Klávesové zkratky a accesskey se nepřekrývají. |
 | `pripomenuti.mjs` | Tabulka termínů, přeplánování dialogem a návrat fokusu po překreslení. |

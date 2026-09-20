@@ -227,6 +227,31 @@ nic nezmění.
 smazáním se zeptá na potvrzení (stejně jako u celého obsahu) a číslo v závorce se přepočítá
 při psaní, takže vždycky ukazuje, kolik úkolů se smaže.
 
+## Odznaky u názvu entity
+
+Kdekoli se entita zobrazuje jako odkaz, můžou být za názvem dva malé odznaky:
+
+| Odznak | Význam |
+|---|---|
+| `☐N` | počet **nedokončených markdownových úkolů** (`- [ ] …`) |
+| `💬N` | počet komentářů |
+
+Úkoly jsou vždy první. Počítají se z těla entity i z textových atributů — stejně jako
+filtr *Má nedokončený MD úkol*, takže odznak a filtr nikdy neukazují něco jiného.
+Když je vše hotové, odznak zmizí.
+
+## Editor seznamu
+
+V **section-edit režimu** se pod každým markdownovým seznamem objeví tlačítko pro jeho
+úpravu. Editor ukazuje seznam i s vnořením a u každé položky nabízí posun, odsazení,
+vložení, rozdělení, sloučení a smazání.
+
+- **▾ / ▸** u položky, která má podřízené, je sbalí nebo rozbalí. Je to jen stav zobrazení
+  v editoru, do uloženého markdownu se nijak nepromítne a sbalené položky se uloží taky.
+- **☐ úkol** udělá z položky markdownový úkol — doplní jen `[ ] ` na začátek textu.
+  Odrážku ani odsazení neřeší, ty si drží editor sám. U položky, která už úkol je
+  (`[ ]` i `[x]`), se tlačítko nenabízí.
+
 ## Editor tabulky
 
 V **section-edit režimu** (přepínač `d` v read modu nebo tlačítko „Editovat sekce") se pod každou markdown tabulkou objeví tlačítko **📊 Upravit tabulku**. Otevře přístupný dialog s gridem:
