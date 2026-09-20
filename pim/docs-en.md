@@ -229,6 +229,31 @@ into the entity with **💾 Uložit sekci** (Save section) — only that writes 
 asks for confirmation first (same as over the whole content) and the number in brackets is
 recomputed as you type, so it always shows how many tasks will go.
 
+## Badges next to an entity's title
+
+Wherever an entity is shown as a link, up to two small badges may follow its title:
+
+| Badge | Meaning |
+|---|---|
+| `☐N` | number of **unfinished markdown tasks** (`- [ ] …`) |
+| `💬N` | number of comments |
+
+Tasks always come first. They are counted from the entity body and from text attributes —
+the same as the *Má nedokončený MD úkol* filter, so the badge and the filter never disagree.
+When everything is done, the badge disappears.
+
+## List editor
+
+In **section-edit mode** a button appears below every markdown list to edit it. The editor
+shows the list with its nesting and offers moving, indenting, inserting, splitting, merging
+and deleting for each item.
+
+- **▾ / ▸** on an item that has children collapses or expands them. It is only a display
+  state in the editor — it does not reach the saved markdown and collapsed items are saved too.
+- **☐ úkol** (make task) turns the item into a markdown task — it only adds `[ ] ` at the
+  start of the text. The bullet and indentation are handled by the editor itself. On an item
+  that is already a task (`[ ]` or `[x]`) the button is not offered.
+
 ## Table editor
 
 In **section-edit mode** (toggle `d` in read mode or the "Edit sections" button), below each markdown table a **📊 Edit table** button appears. It opens an accessible dialog with a grid:
