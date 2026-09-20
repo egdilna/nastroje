@@ -698,6 +698,10 @@ function editorStitku(o){
 
 /* ---------- práce s objekty ---------- */
 const objekt = i=>S.objekty.find(o=>o.id===i);
+/* nesplněné úkoly s termínem napříč všemi dlaždicemi typu ukoly, seřazené podle data */
+const ukolySTerminem = ()=>S.objekty.filter(o=>o.typ==="ukoly")
+  .flatMap(o=>(o.obsah.ukoly||[]).filter(u=>!u.hotovo&&u.termin).map(u=>({u,zdroj:o})))
+  .sort((a,b)=>String(a.u.termin).localeCompare(String(b.u.termin)));
 const naPlose = p=>S.objekty.filter(o=>o.plocha===p&&!o.rodic).sort((a,b)=>a.poradi-b.poradi);
 const vsePlose = p=>S.objekty.filter(o=>o.plocha===p);
 const deti = r=>S.objekty.filter(o=>o.rodic===r).sort((a,b)=>a.poradi-b.poradi);
@@ -971,29 +975,28 @@ function rychleMenuSkupiny(klic,nazev,ikona,skupiny,prazdno){
   }});
 }
 /* Položky menu z dlaždic — řadí se abecedně, aby fungovalo psaní prvního písmene
-   v nabídce. Výběr přepne na plochu dlaždice a otevře ji. */
+   v nabídce. Výběr přepne na plochu dlaždice a otevře ji.
+   Obě nabídky berou `naPlose()`, tedy jen to, co je na ploše opravdu vidět; obsah složek
+   do nich nepatří — složka je v seznamu jedna položka a dovnitř se jde jejím otevřením. */
 function polozkyDlazdic(seznam){
-  return [...seznam].sort((a,b)=>String(a.nazev||"").localeCompare(String(b.nazev||""),"cs")).map(o=>{
-    const ve=o.rodic?(objekt(o.rodic)||{}).nazev:null;
-    return [o.ikona||TYPY[o.typ].i,
-      o.nazev+" \u00b7 "+TYPY[o.typ].n+(ve?" \u2014 ve složce "+ve:""),
+  return [...seznam].sort((a,b)=>String(a.nazev||"").localeCompare(String(b.nazev||""),"cs"))
+    .map(o=>[o.ikona||TYPY[o.typ].i, o.nazev+" \u00b7 "+TYPY[o.typ].n,
       ()=>{
         if(o.plocha!==S.aktivni){ S.aktivni=o.plocha; ulozit(); kreslitPlochu(); kreslitPanel(); }
         otevritObjekt(o.id);
-      }];
-  });
+      }]);
 }
-/* Přístupová klávesa I — co je na téhle ploše. Včetně dlaždic ve složkách, menu je index. */
+/* Přístupová klávesa I — co je vidět na téhle ploše. */
 function nabidkaDlazdicPlochy(){
   const p=S.plochy.find(x=>x.id===S.aktivni)||S.plochy[0];
   rychleMenu("nabidka-dlazdic","Dlaždice na ploše "+(p?p.nazev:""),"▦",
-    polozkyDlazdic(vsePlose(S.aktivni)),"Na této ploše zatím žádná dlaždice není");
+    polozkyDlazdic(naPlose(S.aktivni)),"Na této ploše zatím žádná dlaždice není");
 }
-/* Přístupová klávesa A — všechny dlaždice, seskupené po plochách. */
+/* Přístupová klávesa A — dlaždice všech ploch, seskupené po plochách. */
 function nabidkaVsechDlazdic(){
   rychleMenuSkupiny("nabidka-vse-dlazdice","Všechny dlaždice po plochách","\u{1F5C2}",
     S.plochy.map(p=>[(p.ikona||"\u{1F5C2}")+" "+p.nazev+(p.id===S.aktivni?" \u2014 aktivní":""),
-      polozkyDlazdic(vsePlose(p.id))]),
+      polozkyDlazdic(naPlose(p.id))]),
     "Zatím nemáte žádné dlaždice");
 }
 function nabidkaPloch(){
@@ -2639,6 +2642,8 @@ const NASTROJE={
     const box=el("div",{});
     const kresli=()=>{
       box.innerHTML="";
+      /* do kalendáře patří i to, co má termín — nesplněné úkoly ze všech dlaždic */
+      const ukoly=ukolySTerminem();
       const prvni=(m.getDay()+6)%7, dni=new Date(m.getFullYear(),m.getMonth()+1,0).getDate();
       box.append(el("div",{class:"radek"},
         el("button",{class:"o-btn",onclick:()=>{m.setMonth(m.getMonth()-1);kresli();},"aria-label":"Předchozí měsíc"},"‹"),
@@ -2651,27 +2656,51 @@ const NASTROJE={
       for(let d=1;d<=dni;d++){
         const iso=`${m.getFullYear()}-${String(m.getMonth()+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
         const pr=S.pripominky.filter(p=>p.datum===iso);
+        const uk=ukoly.filter(x=>x.u.termin===iso);
         const td=el("td",{style:iso===dnes()?"background:color-mix(in srgb,var(--akcent) 20%,transparent);font-weight:700":""});
-        td.append(el("button",{style:"width:100%;text-align:left",onclick:()=>{
+        /* den má vlastní popisek, jinak by odečítač přečetl jen číslo */
+        const popisDne=new Date(iso+"T12:00:00").toLocaleDateString("cs-CZ",{day:"numeric",month:"long"})
+          +(iso===dnes()?", dnes":"")
+          +(pr.length?", připomínka: "+pr.map(x=>x.text).join(", "):"")
+          +(uk.length?", nesplněných úkolů "+uk.length+": "+uk.map(x=>x.u.text).join(", "):"")
+          +(pr.length||uk.length?"":", nic")+". Tlačítkem zapíšete připomínku.";
+        td.append(el("button",{style:"width:100%;text-align:left","aria-label":popisDne,onclick:()=>{
           const x=prompt("Připomínka na "+iso+":",pr[0]?.text||"");
           if(x==null) return;
           S.pripominky=S.pripominky.filter(p=>p.datum!==iso);
           if(x.trim()) S.pripominky.push({datum:iso,text:x.trim()});
           ulozit(); kresli();
-        }},String(d),pr.length?el("div",{class:"tichy",style:"font-size:10px"},pr[0].text.slice(0,14)):null));
+        }},String(d),
+          pr.length?el("div",{class:"tichy",style:"font-size:10px"},pr[0].text.slice(0,14)):null,
+          uk.length?el("div",{class:"tichy",style:"font-size:10px"},
+            "🎯 "+uk[0].u.text.slice(0,12)+(uk.length>1?" +"+(uk.length-1):"")):null));
         tr.append(td);
         if((prvni+d)%7===0){tb.append(tr);tr=el("tr",{});}
       }
       tb.append(tr); tab.append(tb); box.append(tab);
-      const bud=S.pripominky.filter(p=>p.datum>=dnes()).sort((a,b)=>a.datum.localeCompare(b.datum));
-      if(bud.length){
-        box.append(el("h3",{class:"nadpis"},"Nadcházející"));
-        const ul=el("ul",{class:"seznam"});
-        bud.forEach(p=>ul.append(el("li",{},el("span",{class:"ikonka"},"🔔"),el("span",{class:"rostouci"},p.text),
-          el("span",{class:"tichy"},p.datum),
-          el("button",{class:"o-btn",onclick:()=>{S.pripominky=S.pripominky.filter(x=>x!==p);ulozit();kresli();},"aria-label":"Smazat připomínku"},"✕"))));
-        box.append(ul);
-      }
+      const radekPripominky=p=>el("li",{},el("span",{class:"ikonka"},"🔔"),
+        el("span",{class:"rostouci"},el("div",{},p.text),el("div",{class:"tichy"},"připomínka · "+p.datum)),
+        el("button",{class:"o-btn",onclick:()=>{S.pripominky=S.pripominky.filter(x=>x!==p);ulozit();kresli();},
+          "aria-label":"Smazat připomínku "+p.text},"✕"));
+      const radekUkolu=x=>el("li",{},el("span",{class:"ikonka"},x.zdroj.ikona||"🎯"),
+        el("span",{class:"rostouci"},el("div",{},x.u.text||"(bez textu)"),
+          el("div",{class:"tichy"},x.zdroj.nazev+(x.u.priorita?" · priorita "+x.u.priorita:"")+" · "+x.u.termin)),
+        el("button",{class:"btn druhy mini",onclick:()=>otevritObjekt(x.zdroj.id)},"Otevřít"));
+      const sekce=(nadpis,polozky)=>{
+        if(!polozky.length) return;
+        box.append(el("h3",{class:"nadpis"},nadpis+" ("+polozky.length+")"));
+        const ul=el("ul",{class:"seznam"}); polozky.forEach(x=>ul.append(x)); box.append(ul);
+      };
+      sekce("Po termínu",ukoly.filter(x=>x.u.termin<dnes()).map(radekUkolu));
+      /* připomínky a úkoly dohromady v čase — kalendář má ukazovat jeden sled, ne dva seznamy */
+      const bud=[...S.pripominky.filter(p=>p.datum>=dnes()).map(p=>({datum:p.datum,radek:()=>radekPripominky(p)})),
+        ...ukoly.filter(x=>x.u.termin>=dnes()).map(x=>({datum:x.u.termin,radek:()=>radekUkolu(x)}))]
+        .sort((a,b)=>a.datum.localeCompare(b.datum));
+      sekce("Nadcházející",bud.map(x=>x.radek()));
+      if(!bud.length&&!ukoly.length)
+        box.append(el("p",{class:"tichy",style:"margin-top:14px"},
+          "Žádné připomínky ani úkoly s termínem. Připomínku zapíšete klepnutím na den, "
+          +"úkoly s termínem vznikají v dlaždici Úkoly s termíny."));
     };
     kresli(); t.append(box);
   }},
@@ -3045,8 +3074,8 @@ const NASTROJE={
       ["F2","Přejmenovat vybranou dlaždici"],
       ["F4","Přepnout okno dlaždice mezi zobrazením a úpravami"],
       ["Přístupová klávesa N","Nová dlaždice — nabídka všeho, co jde založit; vzniká vždy na aktuální ploše"],
-      ["Přístupová klávesa I","Nabídka dlaždic na aktuální ploše, včetně těch ve složkách"],
-      ["Přístupová klávesa A","Nabídka všech dlaždic seskupených po plochách; výběr přepne plochu a dlaždici otevře"],
+      ["Přístupová klávesa I","Nabídka dlaždic na aktuální ploše — jen těch, které jsou na ní vidět"],
+      ["Přístupová klávesa A","Nabídka dlaždic všech ploch, seskupená po plochách; výběr přepne plochu a dlaždici otevře. Obsah složek v ní není, složka je jedna položka"],
       ["Ctrl + Shift + V","Uložit obsah systémové schránky do historie (totéž jako první tlačítko v liště plochy, Ze schránky)"],
       ["Ctrl + C","Kopírování kdekoli v prostředí se zároveň zapíše do historie schránky"],
       ["Šipky","Pohyb mezi dlaždicemi podle jejich rozložení"],["Home / End","První / poslední dlaždice"],
