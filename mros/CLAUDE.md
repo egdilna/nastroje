@@ -86,7 +86,7 @@ Pořadí sekcí v `prostredi.html`:
   nástroje             NASTROJE = { … } + Object.assign(NASTROJE, { … })
   nastavení            nastaveniOkno novaPlocha spravaStitku
   GitHub               stav* gh* kUlozeni githubOkno
-  paleta               prikazy otevritPaletu filtrPalety kreslitPaletu
+  paleta               prikazy paletaShoda otevritPaletu filtrPalety kreslitPaletu spustitZPalety
   systém               rozlozitOkna prepnoutPanel dalsiOkno dalsiPlocha otevritNabidku
   klávesnice + start
 ```
@@ -430,8 +430,30 @@ rozbijí regulární výrazy.
 | Lišta okna aplikace, ovládání okna, akce plochy, patička | `role="toolbar"`, `ozivitListu()` |
 | Okno | `article` + `aria-labelledby` → `h5` |
 | Dlaždice | `div role="button"`, `aria-label` = **typ, pak název**, pak stav a štítky |
-| Paleta příkazů | `role="dialog" aria-modal` (jediné modální místo) |
+| Paleta příkazů | nativní `<dialog>` + `showModal()` (jediné modální místo), vstup `role="combobox"` nad `role="listbox"` s `role="option"`, výběr přes `aria-activedescendant` |
 | Přepínače velikosti dlaždice | tlačítka s `aria-pressed` v `role="group"` |
+
+**Paleta příkazů jede stejnou technickou cestou jako ostatní nástroje v repozitáři**
+(`pim`, `dkm`, `plantuml`) — kdo ji bude měnit, ať tu shodu nerozbíjí:
+
+- nativní `<dialog id="paleta">` otevřený `showModal()`; Escape, fokusová past i pozadí
+  (`::backdrop`) tím padají na prohlížeč, ruční je jen zavření kliknutím mimo obsah;
+- vstup `role="combobox"` s `aria-controls` a `aria-activedescendant` nad `<ul role="listbox">`
+  s položkami `<li role="option" aria-selected>`; položka **není tlačítko**, listbox si
+  klávesy řeší sám;
+- patička s počtem (`role="status"`) a nápovědou kláves v `<kbd>`;
+- příkaz má `{id, kat, n, i, z, napoveda, f}`; `id` je stabilní klíč (nedávné, ladění),
+  `kat` kategorie z `PALETA_KATEGORIE` řazená podle `PALETA_PORADI`;
+- hledání: `paletaNormalizuj()` (malá písmena, bez diakritiky, s mapou zpět na původní
+  pozice), `paletaSkoreTokenu()` (začátek názvu → začátek slova → kdekoli v názvu →
+  jinde v datech příkazu → písmena za sebou), více slov se spojuje a **všechna musí
+  sednout**; shoda se zvýrazní `<mark>` skládáním uzlů, nikdy `innerHTML`;
+- klávesy ve vstupu: šipky, Home, End, PageUp/PageDown po osmi, Enter spustí;
+- `spustitZPalety()` **nejdřív zavře dialog a teprve pak (v `setTimeout`) spustí akci** —
+  jinak by modální dialog bral fokus oknu, které příkaz otevře;
+- naposledy použité drží `paletaPosledni` a jsou nahoře. Na rozdíl od plantuml se
+  **neukládají**: jediné úložiště mros je GitHub a kvůli pořadí v paletě nemá smysl
+  dělat commit, do `localStorage` patří jen přístup k repozitáři.
 
 `ozivitMenu()` řeší šipky, Home/End, hledání podle prvního písmene a roving tabindex.
 `ozivitListu()` řeší šipky doleva/doprava a jediný vstup tabulátorem.
