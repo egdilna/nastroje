@@ -158,11 +158,17 @@ přes `vychoziObsah()` a zálohu celého prostředí (`{objekty:[…]}`) odmítn
 na *Nastavení → Data*. Akce visí na třech místech: v nabídce dlaždice hned pod exportem,
 v okně *Nová dlaždice* a v paletě.
 
+**Kalendář** nežije jen z `S.pripominky`: `ukolySTerminem()` posbírá napříč dlaždicemi
+typu `ukoly` všechny **nesplněné úkoly s termínem** a kalendář je ukazuje v mřížce
+(značka 🎯 v buňce dne a popisek dne s počty a názvy), v sekci *Po termínu* a promíchané
+s připomínkami v sekci *Nadcházející*. Kontrolní seznam termíny nemá, takže do kalendáře
+nevstupuje. Úkol z kalendáře jde otevřít v jeho dlaždici; kalendář sám obsah dlaždic nemění.
+
 **Nabídky dlaždic** staví `polozkyDlazdic(seznam)` — položky řadí abecedně, aby v menu
-fungovalo psaní prvního písmene, popisek nese název, typ a případnou složku a výběr
-přepne na plochu dlaždice a otevře ji. `nabidkaDlazdicPlochy()` bere `vsePlose(S.aktivni)`
-(tedy i dlaždice ve složkách — menu je index plochy), `nabidkaVsechDlazdic()` staví
-skupiny po plochách přes `rychleMenuSkupiny()`. Skupina je `<ul role="group">` s popiskem
+fungovalo psaní prvního písmene, popisek nese název a typ a výběr přepne na plochu
+dlaždice a otevře ji. Obě nabídky berou `naPlose()`, tedy **jen to, co je na ploše
+vidět** — obsah složek do nich nepatří, složka je jedna položka a dovnitř se jde jejím
+otevřením. `nabidkaVsechDlazdic()` staví skupiny po plochách přes `rychleMenuSkupiny()`. Skupina je `<ul role="group">` s popiskem
 plus viditelný nadpis s `aria-hidden`, takže se název plochy neopakuje v každé položce
 a šipky ho přeskočí (jedou jen po `[role=menuitem]`).
 
