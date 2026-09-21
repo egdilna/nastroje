@@ -561,6 +561,7 @@ Importované položky dostanou automaticky příznak `Import z: [název zdrojov�
 | Přidat příznak | Přidá tag ke všem vybraným položkám |
 | Odebrat příznak | Odebere tag ze vybraných položek |
 | Nahradit příznak | Nahradí jeden tag jiným |
+| Sjednotit zápis | Přepíše varianty lišící se jen velikostí písmen na nejčastější zápis (Nástroje → Správa příznaků) |
 
 ### Výběr položek
 
@@ -649,6 +650,8 @@ Model se automaticky ukládá do prohlížeče po každé změně.
 ### Sdílené příznaky
 
 Příznaky (tagy) jsou sdílené mezi prvky, vazbami, úkoly, poznámkami i ADR. Umožňuje to snadné propojování souvisejících položek.
+
+**Velikost písmen nerozhoduje.** „Společné prvky“, „společné prvky“ i „SPOLEČNÉ PRVKY“ jsou jeden a tentýž příznak — ve filtrech, v nabídce příznaků, ve vyhledávání, v hromadných operacích i v exportu podle příznaku. Při zadání příznaku se navíc použije zápis, který už je v modelu zavedený; tlačítko **Sjednotit zápis** v Nástrojích → Správa příznaků přepíše starší varianty na nejčastější zápis.
 
 ### Markdown podpora
 
