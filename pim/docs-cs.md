@@ -227,6 +227,32 @@ nic nezmění.
 smazáním se zeptá na potvrzení (stejně jako u celého obsahu) a číslo v závorce se přepočítá
 při psaní, takže vždycky ukazuje, kolik úkolů se smaže.
 
+## Pořadí výsledků hledání
+
+Hledá se pořád ve všem — v názvu, tazích, aspektu, atributech, obsahu i komentářích —
+ale **výsledky se řadí podle toho, kde se hledaný výraz našel**:
+
+| Pořadí | Kde se výraz našel |
+|---|---|
+| 1. | na **začátku názvu** |
+| 2. | na **začátku slova v názvu** |
+| 3. | kdekoli v názvu |
+| 4. | v tagu nebo v názvu aspektu |
+| 5. | v atributu |
+| 6. | v obsahu nebo v komentáři |
+
+U víceslovného dotazu se sčítá nejlepší nález za každé slovo, takže entita, která má
+v názvu celý dotaz, je nad tou, co ho má rozesetý po textu. Při stejném skóre rozhoduje
+čas poslední změny (novější napřed).
+
+Platí to pro **rychlé hledání v záhlaví**, pohled **Hledání**, pohled **Vše**, hledání
+uvnitř uloženého pohledu i pro **paletu příkazů** (tam navíc shoda v názvu přebije shodu
+v tagu nebo aspektu).
+
+V seznamech, které mají řazení podle sloupců (Vše, uložené pohledy), platí relevance jen
+**dokud si sami nezvolíte řazení** — kliknutí na hlavičku sloupce má přednost. Změna
+hledaného textu se vrátí k relevanci. Bez hledaného textu se nic nemění, řadí se jako dřív.
+
 ## Odznaky u názvu entity
 
 Kdekoli se entita zobrazuje jako odkaz, můžou být za názvem dva malé odznaky:

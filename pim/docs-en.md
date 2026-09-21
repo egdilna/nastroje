@@ -229,6 +229,32 @@ into the entity with **💾 Uložit sekci** (Save section) — only that writes 
 asks for confirmation first (same as over the whole content) and the number in brackets is
 recomputed as you type, so it always shows how many tasks will go.
 
+## Ordering of search results
+
+Search still covers everything — title, tags, aspect, attributes, body and comments — but
+**results are ordered by where the term was found**:
+
+| Rank | Where the term was found |
+|---|---|
+| 1. | at the **start of the title** |
+| 2. | at the **start of a word in the title** |
+| 3. | anywhere in the title |
+| 4. | in a tag or an aspect label |
+| 5. | in an attribute |
+| 6. | in the body or a comment |
+
+For a multi-word query the best hit per word is summed, so an entity with the whole query in
+its title ranks above one that has it scattered through the text. Equal scores are broken by
+last change (newer first).
+
+This applies to the **header quick search**, the **Search** view, the **All** view, searching
+inside a saved view, and the **command palette** (where a title match also outranks a tag or
+aspect match).
+
+In lists with column sorting (All, saved views) relevance applies only **until you choose a
+sort yourself** — clicking a column header wins. Changing the search text returns to relevance.
+With no search text nothing changes; sorting works as before.
+
 ## Badges next to an entity's title
 
 Wherever an entity is shown as a link, up to two small badges may follow its title:
