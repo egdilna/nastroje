@@ -6844,6 +6844,27 @@ function migrateTagsToLowerCase() {
 }
 
 // ==== SEARCH ====
+// Kde se hledané slovo našlo. Vyšší číslo = důležitější shoda; výsledky hledání
+// se pak řadí tak, aby entity se shodou v NÁZVU byly nad těmi, co to mají jen
+// v obsahu. Co se najde, se tím nemění — mění se jen pořadí.
+const SHODA_NAZEV_ZACATEK = 1000;
+const SHODA_NAZEV_SLOVO   = 800;
+const SHODA_NAZEV         = 600;
+const SHODA_TAG_ASPEKT    = 300;
+const SHODA_ATRIBUT       = 150;
+const SHODA_OBSAH         = 50;
+
+// Skóre entit z posledního hledání: id → skóre. Drží se stranou od entit
+// schválně — cokoli přidaného na entitu by se propsalo do exportu i na GitHub.
+const _skoreShody = new Map();
+
+function skoreSlovaVNazvu(slovo, nazev) {
+  const i = nazev.indexOf(slovo);
+  if (i < 0) return 0;
+  if (i === 0) return SHODA_NAZEV_ZACATEK;
+  return /[\s\-–—/(:,.„"']/.test(nazev[i - 1]) ? SHODA_NAZEV_SLOVO : SHODA_NAZEV;
+}
+
 function searchEntities(query, filters = {}) {
   let r = db.entities;
   if (filters.aspect) r = r.filter(e => e.aspects && e.aspects.includes(filters.aspect));
@@ -6857,6 +6878,7 @@ function searchEntities(query, filters = {}) {
     if (raw) {
       // Rozdělit na slova podle mezer; každé slovo musí být v entitě obsaženo
       const words = raw.split(/\s+/).filter(w => w.length > 0);
+      _skoreShody.clear();
       r = r.filter(e => {
         // Pro zabezpečené entity: hledáme jen v názvu, tagech, aspektech, NE v body/atributech
         const isSec = isSecuredEntity(e);
@@ -6882,7 +6904,33 @@ function searchEntities(query, filters = {}) {
           });
         }
         const haystack = haystackParts.join(' ').toLowerCase();
-        return words.every(w => haystack.includes(w));
+        if (!words.every(w => haystack.includes(w))) return false;
+
+        // Kde se která část dotazu našla. Sčítá se nejlepší nález za každé slovo,
+        // takže entita s dotazem v názvu přebije tu, co ho má rozesetý po obsahu.
+        const nazev = (getDisplayTitle(e) || '').toLowerCase();
+        const tagyAspekty = [
+          ...(e.tags || []),
+          ...(e.aspects || []).map(a => aspectLabel(a) || a)
+        ].join(' ').toLowerCase();
+        const atributy = isSec ? '' : Object.values(e.attributes || {}).map(v => String(v)).join(' ').toLowerCase();
+        let skore = 0;
+        for (const w of words) {
+          const vNazvu = skoreSlovaVNazvu(w, nazev);
+          if (vNazvu) { skore += vNazvu; continue; }
+          if (tagyAspekty.includes(w)) { skore += SHODA_TAG_ASPEKT; continue; }
+          if (atributy.includes(w)) { skore += SHODA_ATRIBUT; continue; }
+          skore += SHODA_OBSAH;
+        }
+        _skoreShody.set(e.id, skore);
+        return true;
+      });
+      // Při stejném skóre rozhoduje čas změny (novější napřed) — stejně jako
+      // u řazení 'relevance', ať rychlé hledání a seznam dávají totéž pořadí.
+      r = r.slice().sort((a, b) => {
+        const rozdil = (_skoreShody.get(b.id) || 0) - (_skoreShody.get(a.id) || 0);
+        if (rozdil !== 0) return rozdil;
+        return String(b.updated_at || '').localeCompare(String(a.updated_at || ''));
       });
     }
   }
@@ -9500,6 +9548,15 @@ function sortEntitiesBy(entities, sort) {
       default: return '';
     }
   }
+  // Relevance: nejdřív shoda v názvu, pak v tazích a atributech, nakonec v obsahu.
+  // Skóre naplnilo poslední hledání; při shodě rozhoduje čas změny.
+  if (sort.key === 'relevance') {
+    return [...entities].sort((a, b) => {
+      const rozdil = (_skoreShody.get(b.id) || 0) - (_skoreShody.get(a.id) || 0);
+      if (rozdil !== 0) return rozdil;
+      return String(b.updated_at || '').localeCompare(String(a.updated_at || ''));
+    });
+  }
   list.sort((a, b) => {
     const va = val(a), vb = val(b);
     if (va < vb) return -1 * dir;
@@ -9870,6 +9927,7 @@ function renderAll(main) {
 
   function update() {
     // Ulož všechny hodnoty filtrů do state.filter (jediný zdroj pravdy, přežije re-render i uložení pohledu)
+    if ((state.filter.text || '') !== (it.value || '')) state._allSortRucni = false;
     state.filter.text = it.value || '';
     state.filter.aspect = sa.value || '';
     state.filter.tag = st.value || '';
@@ -9888,7 +9946,10 @@ function renderAll(main) {
     state.filter.project = (spj && spj.value) || '';
     state.filter.confidence = scf.value || '';
     let r = applyAllFilters();
-    r = sortEntitiesBy(r, state._allSort);
+    // Při hledání dává smysl nejdřív relevance (název před obsahem). Jakmile si
+    // uživatel klikne na vlastní řazení, jeho volba platí — dokud nezmění dotaz.
+    const hleda = (state.filter.text || '').trim().length > 0;
+    r = sortEntitiesBy(r, (hleda && !state._allSortRucni) ? { key: 'relevance', dir: 'desc' } : state._allSort);
     const out = document.getElementById('all-results');
     const sumEl = document.getElementById('filters-summary');
     const active = countActiveFilters();
@@ -9904,7 +9965,9 @@ function renderAll(main) {
     attachEntityRowHandlers(out);
     bulkAttachHandlers(document);
     attachSortHandlers(out, state._allSort, (newSort) => {
-      state._allSort = newSort; update();
+      state._allSort = newSort;
+      state._allSortRucni = true;   // od teď platí volba uživatele
+      update();
     });
   }
 
@@ -12376,7 +12439,8 @@ function renderSavedView(main, id) {
       const nalezene = new Set(searchEntities(hledany, {}).map(e => e.id));
       r = r.filter(e => nalezene.has(e.id));
     }
-    r = sortEntitiesBy(r, state._viewSort[id]);
+    if (!state._viewSortRucni) state._viewSortRucni = {};
+    r = sortEntitiesBy(r, (hledany && !state._viewSortRucni[id]) ? { key: 'relevance', dir: 'desc' } : state._viewSort[id]);
     const limit = Number(state._viewLimit[id]) || 0;
     const zobrazene = limit > 0 ? r.slice(0, limit) : r;
     const orezano = zobrazene.length < r.length;
@@ -12394,12 +12458,19 @@ function renderSavedView(main, id) {
     attachEntityRowHandlers(out);
     bulkAttachHandlers(document);
     attachSortHandlers(out, state._viewSort[id], (newSort) => {
-      state._viewSort[id] = newSort; prekresliVysledky();
+      state._viewSort[id] = newSort;
+      if (!state._viewSortRucni) state._viewSortRucni = {};
+      state._viewSortRucni[id] = true;
+      prekresliVysledky();
     });
   }
   prekresliVysledky();
 
   if (filtrInput) filtrInput.oninput = () => {
+    if ((state._viewFilter[id] || '') !== (filtrInput.value || '')) {
+      if (!state._viewSortRucni) state._viewSortRucni = {};
+      state._viewSortRucni[id] = false;   // nový dotaz = zpátky k relevanci
+    }
     state._viewFilter[id] = filtrInput.value || '';
     prekresliVysledky();
   };
@@ -25012,7 +25083,9 @@ function paletaSestavEntity() {
       return {
         id: e.id, titul: titul, archived: !!e.archived,
         hint: [popisAspektu, e.updated_at ? fmtRelative(e.updated_at) : ''].filter(Boolean).join(' · '),
-        _hledat: paletaNorm(titul + ' ' + popisAspektu + ' ' + (e.tags || []).join(' '))
+        // Název a zbytek zvlášť: shoda v názvu musí přebít shodu v tagu nebo aspektu.
+        _hledat: paletaNorm(titul),
+        _hledatOstatni: paletaNorm(popisAspektu + ' ' + (e.tags || []).join(' '))
       };
     });
 }
@@ -25101,7 +25174,13 @@ function paletaVysledky(dotazSurovy) {
     } else {
       const s = [];
       _paleta.entity.forEach(e => {
-        const sk = paletaSkore(slova, e._hledat);
+        // Nejdřív název; když tam dotaz není, zkusí se tagy a aspekt, ale se
+        // srážkou, aby takový nález nikdy nepředběhl shodu v názvu.
+        let sk = paletaSkore(slova, e._hledat);
+        if (sk === 0) {
+          const jinde = paletaSkore(slova, e._hledat + ' ' + e._hledatOstatni);
+          sk = jinde > 0 ? Math.max(1, Math.round(jinde / 10)) : 0;
+        }
         if (sk > 0) { e._sk = sk; s.push({ sk, e }); }
       });
       // Při shodě skóre vyhrává novější entita – pole je seřazené podle času,
@@ -33027,6 +33106,27 @@ function migrateTagsToLowerCase() {
 }
 
 // ==== SEARCH ====
+// Kde se hledané slovo našlo. Vyšší číslo = důležitější shoda; výsledky hledání
+// se pak řadí tak, aby entity se shodou v NÁZVU byly nad těmi, co to mají jen
+// v obsahu. Co se najde, se tím nemění — mění se jen pořadí.
+const SHODA_NAZEV_ZACATEK = 1000;
+const SHODA_NAZEV_SLOVO   = 800;
+const SHODA_NAZEV         = 600;
+const SHODA_TAG_ASPEKT    = 300;
+const SHODA_ATRIBUT       = 150;
+const SHODA_OBSAH         = 50;
+
+// Skóre entit z posledního hledání: id → skóre. Drží se stranou od entit
+// schválně — cokoli přidaného na entitu by se propsalo do exportu i na GitHub.
+const _skoreShody = new Map();
+
+function skoreSlovaVNazvu(slovo, nazev) {
+  const i = nazev.indexOf(slovo);
+  if (i < 0) return 0;
+  if (i === 0) return SHODA_NAZEV_ZACATEK;
+  return /[\s\-–—/(:,.„"']/.test(nazev[i - 1]) ? SHODA_NAZEV_SLOVO : SHODA_NAZEV;
+}
+
 function searchEntities(query, filters = {}) {
   let r = db.entities;
   if (filters.aspect) r = r.filter(e => e.aspects && e.aspects.includes(filters.aspect));
@@ -33037,11 +33137,24 @@ function searchEntities(query, filters = {}) {
   if (filters.status) r = r.filter(e => e.attributes && e.attributes.status === filters.status);
   if (query) {
     const q = query.toLowerCase().trim();
-    if (q) r = r.filter(e => {
-      const haystack = [e.title, e.body, ...(e.tags||[]),
-        ...Object.values(e.attributes||{}).map(v => String(v))].join(' ').toLowerCase();
-      return haystack.includes(q);
-    });
+    if (q) {
+      _skoreShody.clear();
+      r = r.filter(e => {
+        const haystack = [e.title, e.body, ...(e.tags||[]),
+          ...Object.values(e.attributes||{}).map(v => String(v))].join(' ').toLowerCase();
+        if (!haystack.includes(q)) return false;
+        const nazev = (getDisplayTitle(e) || '').toLowerCase();
+        let skore = skoreSlovaVNazvu(q, nazev);
+        if (!skore) skore = (e.tags || []).join(' ').toLowerCase().includes(q) ? SHODA_TAG_ASPEKT : SHODA_OBSAH;
+        _skoreShody.set(e.id, skore);
+        return true;
+      });
+      r = r.slice().sort((a, b) => {
+        const rozdil = (_skoreShody.get(b.id) || 0) - (_skoreShody.get(a.id) || 0);
+        if (rozdil !== 0) return rozdil;
+        return String(b.updated_at || '').localeCompare(String(a.updated_at || ''));
+      });
+    }
   }
   return r;
 }
@@ -34062,6 +34175,15 @@ function sortEntitiesBy(entities, sort) {
       default: return '';
     }
   }
+  // Relevance: nejdřív shoda v názvu, pak v tazích a atributech, nakonec v obsahu.
+  // Skóre naplnilo poslední hledání; při shodě rozhoduje čas změny.
+  if (sort.key === 'relevance') {
+    return [...entities].sort((a, b) => {
+      const rozdil = (_skoreShody.get(b.id) || 0) - (_skoreShody.get(a.id) || 0);
+      if (rozdil !== 0) return rozdil;
+      return String(b.updated_at || '').localeCompare(String(a.updated_at || ''));
+    });
+  }
   list.sort((a, b) => {
     const va = val(a), vb = val(b);
     if (va < vb) return -1 * dir;
@@ -34398,7 +34520,10 @@ function renderAll(main) {
     state.filter.aspect = sa.value;
     state.filter.tag = st.value;
     let r = applyAllFilters();
-    r = sortEntitiesBy(r, state._allSort);
+    // Při hledání dává smysl nejdřív relevance (název před obsahem). Jakmile si
+    // uživatel klikne na vlastní řazení, jeho volba platí — dokud nezmění dotaz.
+    const hleda = (state.filter.text || '').trim().length > 0;
+    r = sortEntitiesBy(r, (hleda && !state._allSortRucni) ? { key: 'relevance', dir: 'desc' } : state._allSort);
     const out = document.getElementById('all-results');
     const sumEl = document.getElementById('filters-summary');
     const active = countActiveFilters();
@@ -34414,7 +34539,9 @@ function renderAll(main) {
     attachEntityRowHandlers(out);
     bulkAttachHandlers(document);
     attachSortHandlers(out, state._allSort, (newSort) => {
-      state._allSort = newSort; update();
+      state._allSort = newSort;
+      state._allSortRucni = true;   // od teď platí volba uživatele
+      update();
     });
   }
 
