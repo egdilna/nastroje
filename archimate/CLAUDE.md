@@ -76,6 +76,14 @@ Příznaky jsou průřezová vlastnost (`updatePříznakySuggestions`, `addTagTo
 Pozor: **část identifikátorů je česky s diakritikou** (`Příznaky`) — je to zavedená konvence
 tohoto souboru, neopravuj ji na ASCII, rozbil bys volání napříč 18 tisíci řádky.
 
+**Příznaky se porovnávají bez ohledu na velikost písmen.** Nikde nesrovnávej hodnoty
+příznaků přímo (`===`, `includes`, `Set`) — vždy přes pomocné funkce
+`klíčPříznaku`, `rozdělPříznaky`, `sjednoťPříznaky`, `máPříznak`, `přidejPříznak`,
+`odeberPříznak`, `nahraďPříznak`. Seznamy příznaků (datalist, filtry, export podle
+příznaku) staví `seznamPříznaků(zdroje)` nad `indexPříznaků(zdroje)`; při zadání nového
+příznaku se `kanonickýPříznak()` drží zápisu, který už v modelu převažuje.
+`sjednotitZápisPříznaků()` přepíše existující varianty na ten převažující zápis.
+
 ## Import CSV
 `detectDelimiter`, `parseCSV`, `autoMapCsvColumns`, `normalizeElementType`, `getLayerForType`,
 `importElementsFromCsv` — s náhledem a mapováním sloupců, vstup ze souboru i ze schránky.

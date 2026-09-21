@@ -554,6 +554,7 @@ Imported items automatically get the tag `Import from: [source model name]`.
 | Add tag | Adds tag to all selected items |
 | Remove tag | Removes tag from selected items |
 | Replace tag | Replaces one tag with another |
+| Unify spelling | Rewrites variants differing only in letter case to the most frequent spelling (Tools → Tag Management) |
 
 ### Item Selection
 
@@ -642,6 +643,8 @@ Tasks, notes, and ADR can be linked to model elements and relationships. Linked 
 ### Shared Tags
 
 Tags are shared between elements, relationships, tasks, notes, and ADR. This enables easy linking of related items.
+
+**Tags are case-insensitive.** "Shared elements", "shared elements" and "SHARED ELEMENTS" are one and the same tag — in filters, tag suggestions, search, bulk operations and export by tag. When you enter a tag, the spelling already established in the model is reused; the **Unify spelling** button in Tools → Tag Management rewrites older variants to the most frequent spelling.
 
 ### Markdown Support
 

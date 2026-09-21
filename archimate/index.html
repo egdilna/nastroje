@@ -2273,6 +2273,12 @@
                         </div>
                     </div>
                     
+                    <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee;">
+                        <strong data-i18n="unifyTagCase">Sjednotit zápis příznaků</strong>
+                        <p style="color: #666; font-size: 13px; margin: 5px 0 8px;" data-i18n="unifyTagCaseDesc">Příznaky se porovnávají bez ohledu na velikost písmen. Tímto se varianty jako „Společné prvky“ a „společné prvky“ přepíší na nejčastější zápis.</p>
+                        <button type="button" class="btn-secondary" onclick="sjednotitZápisPříznaků()" data-i18n="unifyTagCaseButton">Sjednotit zápis</button>
+                    </div>
+                    
                     <div id="tool-tag-result" style="display:none; margin-top: 15px; padding: 10px; border-radius: 4px;"></div>
                 </div>
                 
@@ -3453,6 +3459,11 @@
             replaceInElements: 'Nahradit v prvcích',
             replaceInRelationships: 'Nahradit ve vazbách',
             replaceEverywhere: 'Nahradit všude',
+            unifyTagCase: 'Sjednotit zápis příznaků',
+            unifyTagCaseDesc: 'Příznaky se porovnávají bez ohledu na velikost písmen. Tímto se varianty jako „Společné prvky“ a „společné prvky“ přepíší na nejčastější zápis.',
+            unifyTagCaseButton: 'Sjednotit zápis',
+            unifyTagCaseDone: '✅ Zápis příznaků sjednocen: upraveno položek: {0}',
+            unifyTagCaseNone: 'ℹ️ Příznaky jsou už zapsané jednotně.',
             
             bulkTagManagement: 'Hromadná správa příznaků',
             bulkTagDesc: 'Přidání nebo odebrání příznaku z vybraných prvků nebo vazeb.',
@@ -4133,6 +4144,11 @@
             replaceInElements: 'Replace in elements',
             replaceInRelationships: 'Replace in relationships',
             replaceEverywhere: 'Replace everywhere',
+            unifyTagCase: 'Unify tag spelling',
+            unifyTagCaseDesc: 'Tags are compared case-insensitively. This rewrites variants such as "Shared elements" and "shared elements" to the most frequent spelling.',
+            unifyTagCaseButton: 'Unify spelling',
+            unifyTagCaseDone: '✅ Tag spelling unified: items changed: {0}',
+            unifyTagCaseNone: 'ℹ️ Tags are already spelled consistently.',
             
             bulkTagManagement: 'Bulk Tag Management',
             bulkTagDesc: 'Add or remove tags from selected elements or relationships.',
@@ -5557,7 +5573,7 @@
         const stereotype = document.getElementById('element-stereotype').value.trim();
         const name = document.getElementById('element-name').value.trim();
         const určuje = document.getElementById('element-určuje').value.trim();
-        const příznaky = document.getElementById('element-příznaky').value.trim();
+        const příznaky = sjednoťPříznaky(rozdělPříznaky(document.getElementById('element-příznaky').value).map(tag => kanonickýPříznak(tag))).join(', ');
         const description = document.getElementById('element-description').value.trim();
         
         if (!id || !layer || !type || !name) {
@@ -5780,31 +5796,133 @@
         ).join('');
     }
     
+    // ============================================
+    // Příznaky (tagy) — porovnání nezávislé na velikosti písmen
+    // ============================================
+
+    // Klíč pro porovnání: "Společné prvky" a "společné prvky" jsou jeden příznak.
+    function klíčPříznaku(tag) {
+        return (tag === null || tag === undefined ? '' : String(tag)).trim().toLocaleLowerCase('cs');
+    }
+
+    // Rozdělí textové pole příznaků (oddělené čárkou) na jednotlivé příznaky.
+    function rozdělPříznaky(text) {
+        if (!text) return [];
+        return String(text).split(',').map(t => t.trim()).filter(t => t);
+    }
+
+    // Odstraní duplicity nezávisle na velikosti písmen; ponechá první zápis.
+    function sjednoťPříznaky(seznam) {
+        const viděné = new Map();
+        (seznam || []).forEach(tag => {
+            const klíč = klíčPříznaku(tag);
+            if (!klíč || viděné.has(klíč)) return;
+            viděné.set(klíč, String(tag).trim());
+        });
+        return [...viděné.values()];
+    }
+
+    // Má položka daný příznak? Porovnává se nezávisle na velikosti písmen.
+    function máPříznak(příznaky, tag) {
+        const klíč = klíčPříznaku(tag);
+        if (!klíč) return false;
+        return rozdělPříznaky(příznaky).some(t => klíčPříznaku(t) === klíč);
+    }
+
+    // Přidá příznak, pokud tam v jakékoli velikosti písmen ještě není.
+    function přidejPříznak(příznaky, tag) {
+        const nový = kanonickýPříznak(tag);
+        if (!nový || máPříznak(příznaky, nový)) return příznaky || '';
+        return sjednoťPříznaky([...rozdělPříznaky(příznaky), nový]).join(', ');
+    }
+
+    // Odebere příznak v jakékoli velikosti písmen.
+    function odeberPříznak(příznaky, tag) {
+        const klíč = klíčPříznaku(tag);
+        if (!klíč) return příznaky || '';
+        return rozdělPříznaky(příznaky).filter(t => klíčPříznaku(t) !== klíč).join(', ');
+    }
+
+    // Nahradí všechny varianty zápisu starého příznaku novým.
+    function nahraďPříznak(příznaky, starý, nový) {
+        const klíč = klíčPříznaku(starý);
+        if (!klíč) return příznaky || '';
+        return sjednoťPříznaky(rozdělPříznaky(příznaky).map(t => klíčPříznaku(t) === klíč ? nový : t)).join(', ');
+    }
+
+    // Index příznaků v modelu: klíč → varianty zápisu s počtem výskytů.
+    // Zdroje: 'prvky', 'vazby', 'poznámky', 'adr', 'úkoly'.
+    function indexPříznaků(zdroje) {
+        const použité = zdroje || ['prvky', 'vazby', 'poznámky', 'adr', 'úkoly'];
+        const index = new Map();
+        const přidej = (tag) => {
+            const klíč = klíčPříznaku(tag);
+            if (!klíč) return;
+            const název = String(tag).trim();
+            if (!index.has(klíč)) index.set(klíč, new Map());
+            const varianty = index.get(klíč);
+            varianty.set(název, (varianty.get(název) || 0) + 1);
+        };
+        if (použité.includes('prvky') && typeof elements !== 'undefined') {
+            elements.forEach(e => rozdělPříznaky(e.příznaky).forEach(přidej));
+        }
+        if (použité.includes('vazby') && typeof relationships !== 'undefined') {
+            relationships.forEach(r => rozdělPříznaky(r.příznaky).forEach(přidej));
+        }
+        if (použité.includes('poznámky') && typeof notes !== 'undefined') {
+            notes.forEach(n => (Array.isArray(n.tags) ? n.tags : []).forEach(přidej));
+        }
+        if (použité.includes('adr') && typeof adrRecords !== 'undefined') {
+            adrRecords.forEach(a => (Array.isArray(a.tags) ? a.tags : []).forEach(přidej));
+        }
+        if (použité.includes('úkoly') && typeof tasks !== 'undefined') {
+            tasks.forEach(úkol => (Array.isArray(úkol.tags) ? úkol.tags : []).forEach(přidej));
+        }
+        return index;
+    }
+
+    // Při shodném počtu výskytů vyhrává varianta s velkým počátečním písmenem,
+    // teprve pak abeceda.
+    function lepšíVarianta(a, b) {
+        const velké = (text) => Boolean(text) && text[0] !== text[0].toLocaleLowerCase('cs');
+        if (velké(a) !== velké(b)) return velké(a);
+        return String(a).localeCompare(String(b), 'cs') < 0;
+    }
+
+    // Z variant zápisu vybere tu nejčastější.
+    function nejčastějšíVarianta(varianty, výchozí) {
+        let nejlepší = výchozí || '';
+        let nejlepšíPočet = varianty.get(nejlepší) || 0;
+        varianty.forEach((počet, název) => {
+            if (počet > nejlepšíPočet || (počet === nejlepšíPočet && lepšíVarianta(název, nejlepší))) {
+                nejlepší = název;
+                nejlepšíPočet = počet;
+            }
+        });
+        return nejlepší;
+    }
+
+    // Zavedený zápis příznaku — pokud už v modelu existuje jiná velikost písmen,
+    // použije se ta nejčastější, aby se jeden příznak nerozpadal na varianty.
+    function kanonickýPříznak(tag) {
+        const název = (tag === null || tag === undefined ? '' : String(tag)).trim();
+        if (!název) return '';
+        const varianty = indexPříznaků().get(klíčPříznaku(název));
+        return varianty ? nejčastějšíVarianta(varianty, název) : název;
+    }
+
+    // Seznam příznaků v modelu v jednotném zápisu, seřazený česky.
+    function seznamPříznaků(zdroje) {
+        const seznam = [];
+        indexPříznaků(zdroje).forEach(varianty => seznam.push(nejčastějšíVarianta(varianty, '')));
+        return seznam.sort((a, b) => a.localeCompare(b, 'cs'));
+    }
+
     function updatePříznakySuggestions() {
         const datalist = document.getElementById('příznaky-suggestions');
         
-        // Gather all individual tags from elements and relationships
-        const allTags = new Set();
-        
-        elements.forEach(e => {
-            if (e.příznaky) {
-                e.příznaky.split(',').forEach(tag => {
-                    const trimmed = tag.trim();
-                    if (trimmed) allTags.add(trimmed);
-                });
-            }
-        });
-        
-        relationships.forEach(r => {
-            if (r.příznaky) {
-                r.příznaky.split(',').forEach(tag => {
-                    const trimmed = tag.trim();
-                    if (trimmed) allTags.add(trimmed);
-                });
-            }
-        });
-        
-        datalist.innerHTML = [...allTags].sort().map(tag => 
+        // Příznaky napříč modelem, sjednocené bez ohledu na velikost písmen
+        datalist.innerHTML = seznamPříznaků(['prvky', 'vazby']).map(tag => 
             `<option value="${escapeHtml(tag)}">`
         ).join('');
         
@@ -5835,58 +5953,10 @@
     }
     
     function updatePříznakyFilters() {
-        // Gather all unique tags from elements, relationships, notes and ADR
-        const allTags = new Set();
-        
-        elements.forEach(e => {
-            if (e.příznaky) {
-                e.příznaky.split(',').forEach(tag => {
-                    const trimmed = tag.trim();
-                    if (trimmed) allTags.add(trimmed);
-                });
-            }
-        });
-        
-        relationships.forEach(r => {
-            if (r.příznaky) {
-                r.příznaky.split(',').forEach(tag => {
-                    const trimmed = tag.trim();
-                    if (trimmed) allTags.add(trimmed);
-                });
-            }
-        });
-        
-        // Also gather tags from notes
-        notes.forEach(n => {
-            if (n.tags && Array.isArray(n.tags)) {
-                n.tags.forEach(tag => {
-                    const trimmed = tag.trim();
-                    if (trimmed) allTags.add(trimmed);
-                });
-            }
-        });
-        
-        // Also gather tags from ADR
-        adrRecords.forEach(a => {
-            if (a.tags && Array.isArray(a.tags)) {
-                a.tags.forEach(tag => {
-                    const trimmed = tag.trim();
-                    if (trimmed) allTags.add(trimmed);
-                });
-            }
-        });
-        
-        // Also gather tags from tasks
-        tasks.forEach(task => {
-            if (task.tags && Array.isArray(task.tags)) {
-                task.tags.forEach(tag => {
-                    const trimmed = tag.trim();
-                    if (trimmed) allTags.add(trimmed);
-                });
-            }
-        });
-        
-        const sortedTags = [...allTags].sort();
+        // Příznaky napříč prvky, vazbami, poznámkami, ADR i úkoly —
+        // varianty lišící se jen velikostí písmen jsou jeden příznak
+        const sortedTags = seznamPříznaků();
+        const klíčeTagů = new Set(sortedTags.map(klíčPříznaku));
         
         // Update element příznaky filter
         const elementSelect = document.getElementById('filter-příznaky');
@@ -5899,7 +5969,7 @@
             option.textContent = tag;
             elementSelect.appendChild(option);
         });
-        if (elementCurrentValue && (elementCurrentValue === '__empty__' || allTags.has(elementCurrentValue))) {
+        if (elementCurrentValue && (elementCurrentValue === '__empty__' || klíčeTagů.has(klíčPříznaku(elementCurrentValue)))) {
             elementSelect.value = elementCurrentValue;
         }
         
@@ -5914,7 +5984,7 @@
             option.textContent = tag;
             relSelect.appendChild(option);
         });
-        if (relCurrentValue && (relCurrentValue === '__empty__' || allTags.has(relCurrentValue))) {
+        if (relCurrentValue && (relCurrentValue === '__empty__' || klíčeTagů.has(klíčPříznaku(relCurrentValue)))) {
             relSelect.value = relCurrentValue;
         }
         
@@ -5960,6 +6030,64 @@
     // Tools - Tag Management
     // ============================================
     
+    // Přepíše všechny varianty zápisu příznaku na tu nejčastější.
+    function sjednotitZápisPříznaků() {
+        const index = indexPříznaků();
+        const kanonické = new Map();
+        index.forEach((varianty, klíč) => kanonické.set(klíč, nejčastějšíVarianta(varianty, '')));
+        
+        const kanonický = (tag) => kanonické.get(klíčPříznaku(tag)) || String(tag).trim();
+        let upraveno = 0;
+        
+        const projdiText = (položka) => {
+            const nové = sjednoťPříznaky(rozdělPříznaky(položka.příznaky).map(kanonický)).join(', ');
+            if (nové !== (položka.příznaky || '')) {
+                položka.příznaky = nové;
+                upraveno++;
+            }
+        };
+        const projdiPole = (položka) => {
+            if (!Array.isArray(položka.tags)) return;
+            const nové = sjednoťPříznaky(položka.tags.map(kanonický));
+            if (nové.join('\u0000') !== položka.tags.join('\u0000')) {
+                položka.tags = nové;
+                upraveno++;
+            }
+        };
+        
+        elements.forEach(projdiText);
+        relationships.forEach(projdiText);
+        notes.forEach(projdiPole);
+        adrRecords.forEach(projdiPole);
+        tasks.forEach(projdiPole);
+        
+        const resultDiv = document.getElementById('tool-tag-result');
+        resultDiv.style.display = 'block';
+        
+        if (upraveno === 0) {
+            resultDiv.style.background = '#e7f3fe';
+            resultDiv.style.border = '1px solid #b6daff';
+            resultDiv.innerHTML = `<strong>${t('unifyTagCaseNone')}</strong>`;
+            return;
+        }
+        
+        renderElementsTable();
+        renderRelationshipsTable();
+        updatePříznakySuggestions();
+        updatePříznakyFilters();
+        if (typeof renderTasksTable === 'function') renderTasksTable();
+        if (typeof renderAdrTable === 'function') renderAdrTable();
+        if (typeof renderNotesTable === 'function') renderNotesTable();
+        saveToLocalStorage();
+        logChange(currentLanguage === 'cs'
+            ? `sjednocen zápis příznaků (upraveno položek: ${upraveno})`
+            : `unified tag spelling (items changed: ${upraveno})`);
+        
+        resultDiv.style.background = '#d4edda';
+        resultDiv.style.border = '1px solid #c3e6cb';
+        resultDiv.innerHTML = `<strong>${t('unifyTagCaseDone', upraveno)}</strong>`;
+    }
+    
     function removeTagFrom(scope) {
         const tagSelect = document.getElementById('tool-tag-select');
         const tag = tagSelect.value;
@@ -5977,8 +6105,7 @@
         if (scope === 'elements' || scope === 'all') {
             elements.forEach(e => {
                 if (e.příznaky) {
-                    const tags = e.příznaky.split(',').map(t => t.trim()).filter(t => t && t !== tag);
-                    const newPříznaky = tags.join(', ');
+                    const newPříznaky = odeberPříznak(e.příznaky, tag);
                     if (newPříznaky !== e.příznaky) {
                         e.příznaky = newPříznaky;
                         elementsAffected++;
@@ -5991,8 +6118,7 @@
         if (scope === 'relationships' || scope === 'all') {
             relationships.forEach(r => {
                 if (r.příznaky) {
-                    const tags = r.příznaky.split(',').map(t => t.trim()).filter(t => t && t !== tag);
-                    const newPříznaky = tags.join(', ');
+                    const newPříznaky = odeberPříznak(r.příznaky, tag);
                     if (newPříznaky !== r.příznaky) {
                         r.příznaky = newPříznaky;
                         relationshipsAffected++;
@@ -6040,15 +6166,9 @@
         // Replace in elements
         if (scope === 'elements' || scope === 'all') {
             elements.forEach(e => {
-                if (e.příznaky) {
-                    const tags = e.příznaky.split(',').map(t => t.trim());
-                    const idx = tags.indexOf(oldTag);
-                    if (idx !== -1) {
-                        tags[idx] = newTag;
-                        // Remove duplicates
-                        e.příznaky = [...new Set(tags)].join(', ');
-                        elementsAffected++;
-                    }
+                if (máPříznak(e.příznaky, oldTag)) {
+                    e.příznaky = nahraďPříznak(e.příznaky, oldTag, newTag);
+                    elementsAffected++;
                 }
             });
         }
@@ -6056,15 +6176,9 @@
         // Replace in relationships
         if (scope === 'relationships' || scope === 'all') {
             relationships.forEach(r => {
-                if (r.příznaky) {
-                    const tags = r.příznaky.split(',').map(t => t.trim());
-                    const idx = tags.indexOf(oldTag);
-                    if (idx !== -1) {
-                        tags[idx] = newTag;
-                        // Remove duplicates
-                        r.příznaky = [...new Set(tags)].join(', ');
-                        relationshipsAffected++;
-                    }
+                if (máPříznak(r.příznaky, oldTag)) {
+                    r.příznaky = nahraďPříznak(r.příznaky, oldTag, newTag);
+                    relationshipsAffected++;
                 }
             });
         }
@@ -6119,11 +6233,9 @@
             return;
         }
         
-        // Helper function to check if item has the tag
+        // Porovnání příznaků nezávisle na velikosti písmen
         function hasTag(příznaky) {
-            if (!příznaky) return false;
-            const tags = příznaky.split(',').map(t => t.trim());
-            return tags.includes(tag);
+            return máPříznak(příznaky, tag);
         }
         
         let html = '';
@@ -6269,7 +6381,7 @@
     
     function executeBulkTagAction() {
         const action = document.getElementById('bulk-tag-action').value;
-        const tag = document.getElementById('bulk-tag-value').value.trim();
+        const tag = kanonickýPříznak(document.getElementById('bulk-tag-value').value);
         const resultDiv = document.getElementById('bulk-tag-result');
         const source = document.getElementById('bulk-tag-source').value;
         
@@ -6293,22 +6405,14 @@
                 
                 if (action === 'add') {
                     // Add tag
-                    if (!e.příznaky || !e.příznaky.trim()) {
-                        e.příznaky = tag;
+                    if (!máPříznak(e.příznaky, tag)) {
+                        e.příznaky = přidejPříznak(e.příznaky, tag);
                         affected++;
-                    } else {
-                        const tags = e.příznaky.split(',').map(t => t.trim());
-                        if (!tags.includes(tag)) {
-                            tags.push(tag);
-                            e.příznaky = tags.join(', ');
-                            affected++;
-                        }
                     }
                 } else {
                     // Remove tag
                     if (e.příznaky) {
-                        const tags = e.příznaky.split(',').map(t => t.trim()).filter(t => t && t !== tag);
-                        const newPříznaky = tags.join(', ');
+                        const newPříznaky = odeberPříznak(e.příznaky, tag);
                         if (newPříznaky !== e.příznaky) {
                             e.příznaky = newPříznaky;
                             affected++;
@@ -6322,22 +6426,14 @@
                 
                 if (action === 'add') {
                     // Add tag
-                    if (!r.příznaky || !r.příznaky.trim()) {
-                        r.příznaky = tag;
+                    if (!máPříznak(r.příznaky, tag)) {
+                        r.příznaky = přidejPříznak(r.příznaky, tag);
                         affected++;
-                    } else {
-                        const tags = r.příznaky.split(',').map(t => t.trim());
-                        if (!tags.includes(tag)) {
-                            tags.push(tag);
-                            r.příznaky = tags.join(', ');
-                            affected++;
-                        }
                     }
                 } else {
                     // Remove tag
                     if (r.příznaky) {
-                        const tags = r.příznaky.split(',').map(t => t.trim()).filter(t => t && t !== tag);
-                        const newPříznaky = tags.join(', ');
+                        const newPříznaky = odeberPříznak(r.příznaky, tag);
                         if (newPříznaky !== r.příznaky) {
                             r.příznaky = newPříznaky;
                             affected++;
@@ -6829,11 +6925,7 @@
             if (filterPříznaky === '__empty__') {
                 filtered = filtered.filter(e => !e.příznaky || !e.příznaky.trim());
             } else {
-                filtered = filtered.filter(e => {
-                    if (!e.příznaky) return false;
-                    const tags = e.příznaky.split(',').map(t => t.trim());
-                    return tags.includes(filterPříznaky);
-                });
+                filtered = filtered.filter(e => máPříznak(e.příznaky, filterPříznaky));
             }
         }
         if (searchText) {
@@ -6880,11 +6972,7 @@
             if (filterPříznaky === '__empty__') {
                 filtered = filtered.filter(r => !r.příznaky || !r.příznaky.trim());
             } else {
-                filtered = filtered.filter(r => {
-                    if (!r.příznaky) return false;
-                    const tags = r.příznaky.split(',').map(t => t.trim());
-                    return tags.includes(filterPříznaky);
-                });
+                filtered = filtered.filter(r => máPříznak(r.příznaky, filterPříznaky));
             }
         }
         if (searchText) {
@@ -7171,11 +7259,7 @@
             if (filterPříznaky === '__empty__') {
                 filteredElements = filteredElements.filter(e => !e.příznaky || !e.příznaky.trim());
             } else {
-                filteredElements = filteredElements.filter(e => {
-                    if (!e.příznaky) return false;
-                    const tags = e.příznaky.split(',').map(t => t.trim());
-                    return tags.includes(filterPříznaky);
-                });
+                filteredElements = filteredElements.filter(e => máPříznak(e.příznaky, filterPříznaky));
             }
         }
         
@@ -7701,7 +7785,7 @@
         const type = document.getElementById('rel-type').value;
         const name = document.getElementById('rel-name').value.trim();
         const description = document.getElementById('rel-description').value.trim();
-        const příznaky = document.getElementById('rel-příznaky').value.trim();
+        const příznaky = sjednoťPříznaky(rozdělPříznaky(document.getElementById('rel-příznaky').value).map(tag => kanonickýPříznak(tag))).join(', ');
         
         if (!sourceId || !targetId || !type) {
             alert(t('fillRelationshipRequired'));
@@ -7980,11 +8064,7 @@
             if (filterPříznaky === '__empty__') {
                 filteredRelationships = filteredRelationships.filter(r => !r.příznaky || !r.příznaky.trim());
             } else {
-                filteredRelationships = filteredRelationships.filter(r => {
-                    if (!r.příznaky) return false;
-                    const tags = r.příznaky.split(',').map(t => t.trim());
-                    return tags.includes(filterPříznaky);
-                });
+                filteredRelationships = filteredRelationships.filter(r => máPříznak(r.příznaky, filterPříznaky));
             }
         }
         
@@ -8610,26 +8690,8 @@
         const select = document.getElementById('export-tag-select');
         if (!select) return;
         
-        // Gather all tags from elements and relationships
-        const allTags = new Set();
-        elements.forEach(e => {
-            if (e.příznaky) {
-                e.příznaky.split(',').forEach(tag => {
-                    const trimmed = tag.trim();
-                    if (trimmed) allTags.add(trimmed);
-                });
-            }
-        });
-        relationships.forEach(r => {
-            if (r.příznaky) {
-                r.příznaky.split(',').forEach(tag => {
-                    const trimmed = tag.trim();
-                    if (trimmed) allTags.add(trimmed);
-                });
-            }
-        });
-        
-        const sortedTags = [...allTags].sort((a, b) => a.localeCompare(b, 'cs'));
+        // Příznaky prvků a vazeb, sjednocené bez ohledu na velikost písmen
+        const sortedTags = seznamPříznaků(['prvky', 'vazby']);
         
         select.innerHTML = `<option value="">${t('selectTagPlaceholder')}</option>`;
         sortedTags.forEach(tag => {
@@ -8651,24 +8713,15 @@
             return;
         }
         
-        const filteredElements = elements.filter(e => {
-            if (!e.příznaky) return false;
-            return e.příznaky.split(',').map(t => t.trim()).includes(selectedTag);
-        });
+        const filteredElements = elements.filter(e => máPříznak(e.příznaky, selectedTag));
         
-        const filteredRelationships = relationships.filter(r => {
-            if (!r.příznaky) return false;
-            return r.příznaky.split(',').map(t => t.trim()).includes(selectedTag);
-        });
+        const filteredRelationships = relationships.filter(r => máPříznak(r.příznaky, selectedTag));
         
         statsDiv.innerHTML = t('exportTagStats', filteredElements.length, filteredRelationships.length);
     }
     
     function getItemsByTag(tag) {
-        const filteredElements = elements.filter(e => {
-            if (!e.příznaky) return false;
-            return e.příznaky.split(',').map(t => t.trim()).includes(tag);
-        });
+        const filteredElements = elements.filter(e => máPříznak(e.příznaky, tag));
         
         // Get element IDs for relationship filtering
         const elementIds = new Set(filteredElements.map(e => e.id));
@@ -8676,10 +8729,7 @@
         // Include relationships that have the tag OR connect filtered elements
         const filteredRelationships = relationships.filter(r => {
             // Include if relationship has the tag
-            if (r.příznaky) {
-                const tags = r.příznaky.split(',').map(t => t.trim());
-                if (tags.includes(tag)) return true;
-            }
+            if (máPříznak(r.příznaky, tag)) return true;
             // Include if both source and target are in filtered elements
             if (elementIds.has(r.sourceId) && elementIds.has(r.targetId)) return true;
             return false;
@@ -10602,14 +10652,7 @@
     }
     
     function addTagToPříznaky(existingPříznaky, newTag) {
-        if (!existingPříznaky || !existingPříznaky.trim()) {
-            return newTag;
-        }
-        const tags = existingPříznaky.split(',').map(t => t.trim());
-        if (!tags.includes(newTag)) {
-            tags.push(newTag);
-        }
-        return tags.join(', ');
+        return přidejPříznak(existingPříznaky, newTag);
     }
     
     function parseArchiMateXMLForMerge(xmlContent) {
@@ -11263,7 +11306,8 @@
             const name = nameCol !== '' ? row[parseInt(nameCol)] || '' : '';
             const description = docCol !== '' ? row[parseInt(docCol)] || '' : '';
             const stereotype = specCol !== '' ? row[parseInt(specCol)] || '' : '';
-            const příznaky = tagsCol !== '' ? row[parseInt(tagsCol)] || '' : '';
+            const příznakySurové = tagsCol !== '' ? row[parseInt(tagsCol)] || '' : '';
+            const příznaky = sjednoťPříznaky(rozdělPříznaky(příznakySurové).map(tag => kanonickýPříznak(tag))).join(', ');
             const určuje = určujeCol !== '' ? row[parseInt(určujeCol)] || '' : '';
             const layer = getLayerForType(type);
             
@@ -12146,15 +12190,13 @@
                 }
             });
         } else if (action === 'addTags') {
-            const newTags = document.getElementById('bulk-element-tags').value.split(',').map(t => t.trim()).filter(t => t);
+            const newTags = sjednoťPříznaky(rozdělPříznaky(document.getElementById('bulk-element-tags').value)).map(kanonickýPříznak);
             if (newTags.length === 0) return;
             
             selectedElementIds.forEach(id => {
                 const el = elements.find(e => e.id === id);
                 if (el) {
-                    const existingTags = el.příznaky ? el.příznaky.split(',').map(t => t.trim()).filter(t => t) : [];
-                    const mergedTags = [...new Set([...existingTags, ...newTags])];
-                    el.příznaky = mergedTags.join(', ');
+                    el.příznaky = sjednoťPříznaky([...rozdělPříznaky(el.příznaky), ...newTags]).join(', ');
                     updated++;
                 }
             });
@@ -12461,15 +12503,13 @@
                 }
             });
         } else if (action === 'addTags') {
-            const newTags = document.getElementById('bulk-rel-tags').value.split(',').map(t => t.trim()).filter(t => t);
+            const newTags = sjednoťPříznaky(rozdělPříznaky(document.getElementById('bulk-rel-tags').value)).map(kanonickýPříznak);
             if (newTags.length === 0) return;
             
             selectedRelationshipIds.forEach(id => {
                 const rel = relationships.find(r => r.id === id);
                 if (rel) {
-                    const existingTags = rel.příznaky ? rel.příznaky.split(',').map(t => t.trim()).filter(t => t) : [];
-                    const mergedTags = [...new Set([...existingTags, ...newTags])];
-                    rel.příznaky = mergedTags.join(', ');
+                    rel.příznaky = sjednoťPříznaky([...rozdělPříznaky(rel.příznaky), ...newTags]).join(', ');
                     updated++;
                 }
             });
@@ -14744,7 +14784,7 @@
             assignee: document.getElementById('task-assignee').value.trim(),
             reporter: document.getElementById('task-reporter').value.trim(),
             dueDate: document.getElementById('task-due-date').value,
-            tags: document.getElementById('task-tags').value.split(',').map(s => s.trim()).filter(s => s),
+            tags: sjednoťPříznaky(rozdělPříznaky(document.getElementById('task-tags').value).map(tag => kanonickýPříznak(tag))),
             description: document.getElementById('task-description').value.trim(),
             currentState: currentState,
             linkedElements: getMultiSelectValues('task-linked-elements'),
@@ -15568,7 +15608,7 @@
             },
             linkedElements: getMultiSelectValues('adr-linked-elements'),
             linkedRelationships: getMultiSelectValues('adr-linked-relationships'),
-            tags: document.getElementById('adr-tags').value.split(',').map(s => s.trim()).filter(s => s),
+            tags: sjednoťPříznaky(rozdělPříznaky(document.getElementById('adr-tags').value).map(tag => kanonickýPříznak(tag))),
             links: links
         };
         
@@ -15794,7 +15834,7 @@
                 supersededBy: getMultiSelectValues('adr-superseded-by'),
                 relatedTo: getMultiSelectValues('adr-related-to')
             },
-            tags: document.getElementById('adr-tags').value.split(',').map(s => s.trim()).filter(s => s),
+            tags: sjednoťPříznaky(rozdělPříznaky(document.getElementById('adr-tags').value).map(tag => kanonickýPříznak(tag))),
             links: links,
             statusHistory: existing?.statusHistory || []
         };
@@ -16322,7 +16362,7 @@
         const editId = document.getElementById('note-edit-id').value;
         const name = document.getElementById('note-name').value.trim();
         const author = document.getElementById('note-author').value.trim();
-        const tags = document.getElementById('note-tags').value.split(',').map(s => s.trim()).filter(s => s);
+        const tags = sjednoťPříznaky(rozdělPříznaky(document.getElementById('note-tags').value).map(tag => kanonickýPříznak(tag)));
         const content = document.getElementById('note-content').value;
         const linkedElements = getMultiSelectValues('note-linked-elements');
         const linkedRelationships = getMultiSelectValues('note-linked-relationships');
