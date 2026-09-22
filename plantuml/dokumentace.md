@@ -864,8 +864,16 @@ Když je nastavená cesta na GitHub, ukládá tlačítko **Uložit projekt** i z
 
 ### Spolehlivost importu .puml
 
-- **Vlastní výstup**: spolehlivý round-trip (export a opětovný import dává stejný model)
-- **Cizí PUML**: best-effort, složitější konstrukce mohou být vynechány
+Typ diagramu se rozpoznává ve třech krocích, od nejspolehlivějšího:
+
+1. **Obal `@start<typ>`** — `@startebnf`, `@startmindmap`, `@startwbs`, `@startgantt`, `@startchronology`. Jednoznačné určení, má vždy přednost.
+2. **Značka editoru** — do každého vlastního výstupu uvnitř `@startuml` se zapisuje komentářový řádek `' puml-editor:type=<typ>`. PlantUML řádky začínající apostrofem ignoruje, do obrázku se tedy nepromítne, ale import podle něj pozná typ na jistotu.
+3. **Markery v obsahu** — pro cizí soubory. Zkoušejí se od nejspecifičtějších (`nwdiag {`, `robust "…"`, `[*] -->`) k nejobecnějším.
+
+Podle toho:
+
+- **Vlastní výstup**: round-trip u **všech čtrnácti typů** — vyexportovaný `.puml` se naimportuje jako tentýž typ a vygeneruje znovu shodný zdroj.
+- **Cizí PUML**: best-effort, složitější konstrukce mohou být vynechány. Typ, který editor nezná (`@startjson`, `@startsalt`, …), import odmítne s hláškou, která ho pojmenuje — místo aby vyrobil poloprázdný diagram jiného typu.
 
 Akce v aktivitních diagramech podporují tři syntaktické varianty (moderní `:text; <<stereo>>`, starou prefixovou `<<stereo>>#color:text;` a velmi starou suffixovou `:text<`). Po importu doporučujeme zkontrolovat Validaci a data upřesnit ve formulářích.
 

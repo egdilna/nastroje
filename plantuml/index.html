@@ -1214,6 +1214,7 @@ const I18N = {
       fileReadError: 'Chyba při čtení souboru.',
       fileTypeUnknown: 'Nelze rozpoznat typ souboru. Očekává se projekt (.pup) nebo PUML (.puml).',
       fileNotValidProject: 'Soubor neobsahuje validní projekt.',
+      diagramTypeNotImportable: (what) => 'Typ diagramu „' + what + '" editor zatím neumí naimportovat. Diagram je možné vytvořit ručně a zdroj použít jako předlohu.',
       fileNotValidPupe: 'Soubor neobsahuje platný balíček .pupe.',
       pupeNotJson: (msg) => 'Soubor .pupe není platný JSON: ' + msg,
       diagramTypeUnknown: 'Nepodařilo se rozpoznat typ diagramu v souboru.',
@@ -1816,6 +1817,7 @@ const I18N = {
       fileReadError: 'File read error.',
       fileTypeUnknown: 'Unknown file type. Expected a project (.pup) or PUML (.puml).',
       fileNotValidProject: 'The file does not contain a valid project.',
+      diagramTypeNotImportable: (what) => 'The editor cannot import the diagram type “' + what + '” yet. You can create the diagram manually and use the source as a template.',
       fileNotValidPupe: 'The file is not a valid .pupe bundle.',
       pupeNotJson: (msg) => '.pupe file is not valid JSON: ' + msg,
       diagramTypeUnknown: 'Could not detect the diagram type in the file.',
@@ -5933,6 +5935,11 @@ function generatePuml(diagram){
                : (diagram.type === 'wbs')     ? 'wbs'
                : 'uml';
   out.push('@start' + wrapKw);
+  // Značka pro zpětný import. Obal @startmindmap/@startwbs typ prozradí sám,
+  // uvnitř @startuml ho ale musí říct někdo jiný — jinak se diagram nasazení
+  // naimportuje jako sekvenční a komponentový jako class. Řádek začínající
+  // apostrofem je pro PlantUML komentář, do obrázku se tedy nepromítne.
+  if(wrapKw === 'uml') out.push("' " + PUML_TYPE_HINT + diagram.type);
 
   // Title – kaskáda projekt → diagram (diagram má přednost).
   // Pokud obsahuje newline, použijeme blokovou variantu `title ... end title`.
@@ -7507,20 +7514,663 @@ function genTiming(model, diagram){
 }
 
 // === PARSERY (best-effort) ====================================
-function parsePuml(source){
-  const text = source.replace(/^\s*@startuml.*$/m,'').replace(/^\s*@enduml.*$/m,'').trim();
-  const t = '\n' + text + '\n';
-  if(/\n\s*(start|stop|:.*?;|if\s*\(|while\s*\(|repeat\b|fork\b|partition\b|\|[^\|]+\|)/.test(t)) return parseActivity(text);
-  if(/\n\s*(class\s+|interface\s+|abstract\s+(class\s+)?|enum\s+|struct\s+|annotation\s+|entity\s+)/.test(t)) return parseClass(text);
-  if(/\n\s*(usecase\s+|:[A-Za-z].*:\s+as\b|rectangle\s+)/.test(t)) return parseUseCase(text);
-  if(/\n\s*(participant\s+|boundary\s+|control\s+|database\s+|->|-->|->>)/.test(t)) return parseSequence(text);
-  if(/\n\s*actor\s+/.test(t)){
-    if(/\n\s*usecase\s+/.test(t)) return parseUseCase(text);
-    return parseSequence(text);
+// Typ diagramu se poznává ve třech krocích, od nejspolehlivějšího:
+//   1. **Obal `@start<typ>`** (ebnf, mindmap, wbs, gantt, chronology) je
+//      jednoznačné určení. Dřív se nečetl vůbec — proto se EBNF s alternativami
+//      na víc řádcích importovalo jako aktivitní diagram a zbytek se nenačetl.
+//   2. **Značka editoru** `' puml-editor:type=<typ>` uvnitř `@startuml`.
+//      Generátor ji píše do každého vlastního výstupu, takže se vlastní export
+//      naimportuje vždy jako přesně ten typ, kterým byl (PlantUML řádek
+//      začínající apostrofem ignoruje).
+//   3. **Markery v obsahu** — pro cizí soubory. Pořadí je podstatné:
+//      `interface "X" as Y` je i v komponentovém diagramu a `database "DB" as D`
+//      i v diagramu nasazení, takže se obojí musí zkusit dřív než class
+//      a sequence — jinak se importují jako špatný typ.
+const PUML_TYPE_HINT = 'puml-editor:type=';
+// Obaly, které PlantUML zná. `type: null` = formát, který editor needituje.
+const PUML_WRAPPERS = {
+  ebnf: 'ebnf', mindmap: 'mindmap', wbs: 'wbs', gantt: 'gantt', chronology: 'timeline',
+  json: null, yaml: null, salt: null, ditaa: null, dot: null, creole: null,
+  board: null, mermaid: null, regex: null, latex: null, math: null, ascii: null
+};
+
+// Vrátí {type, kw} podle obalu, nebo null když jde o @startuml (rozhodne obsah).
+function detectPumlWrapper(source){
+  const m = String(source || '').match(/@start([A-Za-z]+)/);
+  if(!m) return null;
+  const kw = m[1].toLowerCase();
+  if(kw === 'uml') return null;
+  return {type: Object.prototype.hasOwnProperty.call(PUML_WRAPPERS, kw) ? PUML_WRAPPERS[kw] : null, kw: kw};
+}
+
+// Typ podle značky editoru — jistota u vlastních exportů.
+function detectPumlHint(source){
+  const m = String(source || '').match(new RegExp("^\\s*'\\s*" + PUML_TYPE_HINT + "([a-z]+)", 'mi'));
+  if(!m) return null;
+  const type = m[1].toLowerCase();
+  return TYPES.some(t => t.value === type) ? type : null;
+}
+
+// Markery uvnitř @startuml, od nejspecifičtějších. Vrací typ nebo null.
+function detectPumlByContent(t){
+  if(/^[ \t]*nwdiag\s*\{/m.test(t)) return 'network';
+  if(/^[ \t]*(robust|concise|clock|binary|analog)\s+"/m.test(t) || /^[ \t]*@[+-]?\d+\b/m.test(t)) return 'timing';
+  if(/\[\*\]\s*-|-{1,2}[a-z]*-?>\s*\[\*\]/.test(t) || /^[ \t]*state\s+/m.test(t)) return 'state';
+  // Class má vlastní klíčová slova; samotné `interface` nestačí, to má
+  // i komponentový diagram (tohle byla příčina záměny component → class).
+  if(/^[ \t]*(class|abstract|enum|struct|annotation|entity)\s+/m.test(t)) return 'class';
+  const deployKw = /^[ \t]*(node|artifact|storage|stack|card|agent|rectangle|folder|frame|cloud|database|queue|file)\s+"/m.test(t);
+  const compKw = /^[ \t]*(component\s+"|interface\s+")/m.test(t) || /^[ \t]*\[[^\]\n]+\](\s+as\s+[A-Za-z0-9_]+)?\s*$/m.test(t);
+  // Sekvenční zprávy poznáme podle šipky s popiskem — `database "DB" as D`
+  // samo o sobě sekvenční diagram nedělá (tohle byla záměna deployment → sequence).
+  const seqMsg = /^[ \t]*[^\s:]+\s*(->|-->|->>|-\\|--\\)\s*[^\s:]+\s*:/m.test(t);
+  if(!seqMsg && (deployKw || compKw)){
+    if(compKw && !deployKw) return 'component';
+    if(deployKw && !compKw) return 'deployment';
+    // Obojí — rozhodne, čeho je víc (artefakty a uzly táhnou k nasazení).
+    const deployCount = (t.match(/^[ \t]*(node|artifact|storage|stack|card)\s+"/mg) || []).length;
+    const compCount = (t.match(/^[ \t]*(component|interface)\s+"/mg) || []).length;
+    return deployCount > compCount ? 'deployment' : 'component';
   }
+  // Původní pořadí pro čtyři typy, které fungovaly i dřív.
+  if(/\n\s*(start|stop|:.*?;|if\s*\(|while\s*\(|repeat\b|fork\b|partition\b|\|[^\|]+\|)/.test(t)) return 'activity';
+  if(/\n\s*(class\s+|interface\s+|abstract\s+(class\s+)?|enum\s+|struct\s+|annotation\s+|entity\s+)/.test(t)) return 'class';
+  if(/\n\s*(usecase\s+|:[A-Za-z].*:\s+as\b|rectangle\s+)/.test(t)) return 'useCaseMarker';
+  if(/\n\s*(participant\s+|boundary\s+|control\s+|database\s+|->|-->|->>)/.test(t)) return 'sequence';
+  if(/\n\s*actor\s+/.test(t)) return /\n\s*usecase\s+/.test(t) ? 'usecase' : 'sequence';
   return null;
 }
 
+// Parsery podle typu. Co tu není, editor zatím neumí naimportovat — import to
+// řekne rovnou a nevyrobí místo toho poloprázdný diagram jiného typu.
+const PUML_PARSERS = {
+  activity:   (src, body) => parseActivity(body),
+  class:      (src, body) => parseClass(body),
+  usecase:    (src, body) => parseUseCase(body),
+  sequence:   (src, body) => parseSequence(body),
+  state:      (src, body) => parseState(body),
+  component:  (src, body) => parseComponent(body),
+  deployment: (src, body) => parseDeployment(body),
+  ebnf:       (src) => parseEbnf(src),
+  mindmap:    (src) => parseMindmapLike(src, 'mindmap'),
+  wbs:        (src) => parseMindmapLike(src, 'wbs'),
+  gantt:      (src) => parseGantt(src),
+  timeline:   (src) => parseTimeline(src),
+  network:    (src, body) => parseNetwork(body),
+  timing:     (src, body) => parseTiming(body)
+};
+
+function parsePuml(source){
+  const wrap = detectPumlWrapper(source);
+  if(wrap){
+    if(!wrap.type) return {unsupported: true, type: null, kw: wrap.kw};
+    const parser = PUML_PARSERS[wrap.type];
+    return parser ? parser(source, source) : {unsupported: true, type: wrap.type, kw: wrap.kw};
+  }
+  const text = source.replace(/^\s*@startuml.*$/m,'').replace(/^\s*@enduml.*$/m,'').trim();
+  const t = '\n' + text + '\n';
+  let type = detectPumlHint(source) || detectPumlByContent(t);
+  if(type === 'useCaseMarker') type = 'usecase';
+  if(!type) return null;
+  const parser = PUML_PARSERS[type];
+  if(!parser) return {unsupported: true, type: type, kw: null};
+  return parser(source, text);
+}
+
+// --- Společné pomůcky parserů ---------------------------------
+// Rozebere deklarační řádek typu `component "Název" as alias <<stereo>> #color {`.
+// Vrací null, když řádek deklarace není.
+function parseDeclarationLine(line){
+  const m = line.match(/^([A-Za-z]+)\s+(?:"((?:[^"\\]|\\.)*)"|([A-Za-z0-9_]+))(?:\s+as\s+([A-Za-z0-9_]+))?((?:\s+<<[^>]*>>|\s+#[A-Za-z0-9_]+)*)\s*(\{)?\s*$/);
+  if(!m) return null;
+  const decoration = m[5] || '';
+  const stereo = decoration.match(/<<([^>]*)>>/);
+  const color = decoration.match(/#([A-Za-z0-9_]+)/);
+  const quoted = m[2] !== undefined ? m[2].replace(/\\"/g, '"') : null;
+  return {
+    keyword: m[1].toLowerCase(),
+    name: quoted !== null ? quoted : m[3],
+    alias: m[4] || m[3] || null,
+    stereotype: stereo ? stereo[1].trim() : '',
+    color: color ? color[1] : '',
+    opensBlock: !!m[6]
+  };
+}
+// Rozebere řádek vazby `a --> b : popisek` (šipku vrací i s barvou).
+function parseRelationLine(line){
+  const m = line.match(/^([A-Za-z0-9_]+|\[\*\])\s+([-.=|o*<>\[\]#A-Za-z]*[-.][-.=|o*<>\[\]#A-Za-z]*)\s+([A-Za-z0-9_]+|\[\*\])\s*(?::\s*(.*))?$/);
+  if(!m) return null;
+  const arrow = m[2];
+  if(!/[-.]/.test(arrow)) return null;
+  const colored = extractArrowColor(arrow);
+  return {from: m[1], arrow: colored.cleaned, color: colored.color, to: m[3], label: (m[4] || '').trim()};
+}
+// Řádky těla diagramu bez obalu, hlaviček a komentářů.
+function pumlBodyLines(source, startKw, endKw){
+  const re = new RegExp('@start' + startKw + '[^\\n]*\\n([\\s\\S]*?)(?:@end' + endKw + '|$)');
+  const m = String(source || '').match(re);
+  const body = m ? m[1] : String(source || '');
+  const lines = [];
+  let inStyle = false, inBlock = null;
+  body.split(/\r?\n/).forEach(raw => {
+    const line = raw.trim();
+    if(/^<style>/.test(line)){ inStyle = true; return; }
+    if(inStyle){ if(/^<\/style>/.test(line)) inStyle = false; return; }
+    if(inBlock){ if(new RegExp('^(end\\s*)?' + inBlock + '$', 'i').test(line)) inBlock = null; return; }
+    if(/^(header|footer)$/i.test(line)){ inBlock = line.toLowerCase(); return; }
+    if(/^title$/i.test(line)){ inBlock = 'title'; return; }
+    lines.push(raw);
+  });
+  return lines;
+}
+// Hlavičkové direktivy, které se do modelu nepromítají (title jde do settings).
+function pumlHeaderDirective(line, settings){
+  const t = line.trim();
+  const title = t.match(/^title\s+(.+)$/i);
+  if(title){ settings.title = title[1].trim(); return true; }
+  const caption = t.match(/^caption\s+(.+)$/i);
+  if(caption){ settings.caption = caption[1].trim(); return true; }
+  const lang = t.match(/^language\s+([A-Za-z]{2})$/i);
+  if(lang){ settings.language = lang[1].toLowerCase(); return true; }
+  const theme = t.match(/^!theme\s+(\S+)/i);
+  if(theme){ settings.theme = theme[1]; return true; }
+  return /^(skinparam|!|hide\b|show\b|scale\b|left to right direction|top to bottom direction|autonumber\b|'|@)/i.test(t);
+}
+
+// === PARSER: EBNF ============================================
+// Pravidla `název = výraz ;`. Středník uvnitř řetězce ani speciální sekvence
+// pravidlo neukončuje, proto se tělo prochází po znacích. Komentář `(* … *)`
+// těsně před pravidlem se uloží jako komentář pravidla, uvnitř výrazu zůstane.
+function parseEbnf(source){
+  const m = String(source || '').match(/@startebnf[^\n]*\n([\s\S]*?)(?:@endebnf|$)/);
+  const body = m ? m[1] : String(source || '');
+  const rules = [];
+  const settings = {};
+  let pending = [];
+  let buf = '';
+  let i = 0;
+  const n = body.length;
+  function flushRule(){
+    const txt = buf.trim();
+    buf = '';
+    if(!txt) return;
+    const eq = txt.indexOf('=');
+    if(eq < 0){ pending = []; return; }
+    // Kromě `=` se v praxi píše i `::=` nebo `:=` — dvojtečky patří k oddělovači.
+    const name = txt.slice(0, eq).replace(/:+$/, '').trim().replace(/\s+/g, '_');
+    const expression = txt.slice(eq + 1).replace(/\s*\r?\n\s*/g, ' ').trim();
+    if(!name) return;
+    rules.push({id: uid('er'), name: name, expression: expression, comment: pending.join(' ').trim()});
+    pending = [];
+  }
+  while(i < n){
+    // Hlavičkové direktivy hledáme jen mimo rozepsané pravidlo.
+    if(!buf.trim() && (i === 0 || body[i-1] === '\n')){
+      const rest = body.slice(i);
+      const tm = rest.match(/^[ \t]*title[ \t]+([^\n]*)/i);
+      if(tm){ settings.title = tm[1].trim(); i += tm[0].length; continue; }
+      const dm = rest.match(/^[ \t]*(!pragma|!theme|!option|skinparam|hide|scale)[^\n]*/i);
+      if(dm){ i += dm[0].length; continue; }
+    }
+    const c = body[i];
+    if(c === '(' && body[i+1] === '*'){
+      const end = body.indexOf('*)', i + 2);
+      const stop = end < 0 ? n : end + 2;
+      const text = body.slice(i + 2, end < 0 ? n : end).trim();
+      if(buf.trim()) buf += body.slice(i, stop);   // komentář uvnitř výrazu zůstává
+      else pending.push(text);                      // komentář před pravidlem
+      i = stop;
+      continue;
+    }
+    if(c === '"' || c === "'" || c === '?'){
+      const end = body.indexOf(c, i + 1);
+      const stop = end < 0 ? n : end + 1;
+      buf += body.slice(i, stop);
+      i = stop;
+      continue;
+    }
+    if(c === ';'){ flushRule(); i++; continue; }
+    buf += c;
+    i++;
+  }
+  flushRule();
+  return {type: 'ebnf', model: {rules: rules}, settings: settings};
+}
+
+// === PARSER: MINDMAP a WBS ===================================
+// Hloubku určuje počet znaků markeru, `+`/`-` u mindmapy stranu, `-` u WBS
+// opačnou stranu, `_` znamená uzel bez rámečku. Víceřádkový text je
+// `marker:první řádek` … `;`.
+function parseMindmapLike(source, kind){
+  const lines = pumlBodyLines(source, kind, kind);
+  const settings = {};
+  const roots = [];
+  const stack = [];   // [{level, node}]
+  let multi = null;   // rozepsaný víceřádkový uzel
+  function attach(node, level){
+    while(stack.length && stack[stack.length-1].level >= level) stack.pop();
+    if(stack.length) stack[stack.length-1].node.children.push(node);
+    else roots.push(node);
+    stack.push({level: level, node: node});
+  }
+  lines.forEach(raw => {
+    const line = raw.trim();
+    if(multi){
+      if(line === ';' || /;$/.test(line)){
+        const last = line.replace(/;$/, '');
+        if(last) multi.text += '\n' + last;
+        multi = null;
+      } else {
+        multi.text += '\n' + raw;
+      }
+      return;
+    }
+    if(!line) return;
+    const m = line.match(/^([*+-]+)(_?)((?:<<[^>]*>>|\[#[^\]]*\])?)(:?)\s*(.*)$/);
+    if(!m){ pumlHeaderDirective(line, settings); return; }
+    const marker = m[1];
+    const deco = m[3] || '';
+    const stereo = deco.match(/<<([^>]*)>>/);
+    const color = deco.match(/\[#?([^\]]*)\]/);
+    const node = {
+      id: uid(kind === 'wbs' ? 'wb' : 'mn'),
+      text: m[5] || '',
+      color: color ? color[1].replace(/^#/, '') : '',
+      stereotype: stereo ? stereo[1].trim() : '',
+      boxless: m[2] === '_',
+      children: []
+    };
+    if(kind === 'mindmap') node.side = marker[0] === '-' ? 'left' : (marker[0] === '+' ? 'right' : 'auto');
+    else node.opposite = marker[0] === '-';
+    attach(node, marker.length);
+    if(m[4] === ':') multi = node;   // začátek víceřádkového textu
+  });
+  const model = {roots: roots, stereotypes: []};
+  if(!roots.length) model.roots = emptyModelFor(kind).roots;
+  return {type: kind, model: model, settings: settings};
+}
+
+// === PARSER: NETWORK (nwdiag) ================================
+// Blok `nwdiag { … }` se sítěmi, skupinami a uzly. Atributy uzlu jsou
+// v hranatých závorkách (`web01 [address = "10.0.0.1"]`), hodnoty v uvozovkách.
+function parseNetwork(text){
+  const settings = {};
+  const model = {networks: [], groups: [], peerLinks: []};
+  let current = null;        // rozpracovaná síť nebo skupina
+  function attrsOf(raw){
+    const res = {};
+    String(raw || '').split(',').forEach(part => {
+      const m = part.match(/\s*([A-Za-z_]+)\s*=\s*"?([^",]*)"?\s*/);
+      if(m) res[m[1].toLowerCase()] = m[2].trim();
+    });
+    return res;
+  }
+  text.split(/\r?\n/).forEach(raw => {
+    const line = raw.trim().replace(/;$/, '');
+    if(!line || /^nwdiag\s*\{$/.test(line)) return;
+    if(line === '}'){ current = null; return; }
+    let m;
+    if((m = line.match(/^network\s+(\S*)\s*\{$/))){
+      current = {id: uid('nw'), name: m[1] || 'net', address: '', color: '', nodes: []};
+      model.networks.push(current);
+      return;
+    }
+    if((m = line.match(/^group\s*(\S*)\s*\{$/))){
+      current = {id: uid('ng'), name: m[1] || '', color: '', description: '', nodeNames: [], __group: true};
+      model.groups.push(current);
+      return;
+    }
+    if((m = line.match(/^(address|color|description)\s*=\s*"([^"]*)"$/))){
+      if(current) current[m[1]] = m[2];
+      else settings['default_' + m[1]] = m[2];
+      return;
+    }
+    if((m = line.match(/^default_\w+\s*=\s*"([^"]*)"$/))) return;   // globální barvy
+    if((m = line.match(/^(\S+)\s*--\s*(\S+)$/))){
+      model.peerLinks.push({id: uid('pl'), from: m[1], to: m[2]});
+      return;
+    }
+    if((m = line.match(/^([A-Za-z0-9_\-.]+)(?:\s*\[([^\]]*)\])?$/))){
+      const name = m[1];
+      const at = attrsOf(m[2]);
+      if(current && current.__group){ current.nodeNames.push(name); return; }
+      if(current){
+        current.nodes.push({id: uid('nd'), name: name, address: at.address || '',
+          description: at.description || '', shape: at.shape || ''});
+        return;
+      }
+      return;
+    }
+    pumlHeaderDirective(line, settings);
+  });
+  model.groups.forEach(g => { delete g.__group; });
+  return {type: 'network', model: model, settings: settings};
+}
+
+// === PARSER: TIMING ==========================================
+// Deklarace signálů, rámce `@čas` a v nich stavy `alias is hodnota`.
+// Poznámky a zvýraznění se čtou také; zprávy mezi signály jen v základním tvaru.
+function parseTiming(text){
+  const settings = {};
+  const participants = [], frames = [], notes = [], highlights = [];
+  const byAlias = {};
+  const model = {participants: participants, frames: frames, notes: notes, highlights: highlights,
+    constraints: [], hideTimeAxis: false, dateFormat: ''};
+  let frame = null;
+  const SIG_KW = {robust:'robust', concise:'concise', clock:'clock', binary:'binary', analog:'analog'};
+  text.split(/\r?\n/).forEach(raw => {
+    const line = raw.trim();
+    if(!line) return;
+    let m;
+    if(/^hide\s+time-axis$/i.test(line)){ model.hideTimeAxis = true; return; }
+    if((m = line.match(/^use\s+date\s+format\s+"([^"]*)"/i))){ model.dateFormat = m[1]; return; }
+    if((m = line.match(/^(robust|concise|clock|binary|analog)\s+"((?:[^"\\]|\\.)*)"\s+as\s+(\S+)(.*)$/i))){
+      const p = {id: uid('tp'), sigType: SIG_KW[m[1].toLowerCase()], name: m[2].replace(/\\"/g, '"'), alias: m[3]};
+      const rest = m[4] || '';
+      const per = rest.match(/with\s+period\s+(\d+)/i);   if(per) p.period = parseInt(per[1], 10);
+      const pul = rest.match(/pulse\s+(\d+)/i);           if(pul) p.pulse = parseInt(pul[1], 10);
+      const off = rest.match(/offset\s+(\d+)/i);          if(off) p.offset = parseInt(off[1], 10);
+      const bet = rest.match(/between\s+(-?\d+)\s+and\s+(-?\d+)/i);
+      if(bet) p.between = [parseInt(bet[1], 10), parseInt(bet[2], 10)];
+      participants.push(p);
+      byAlias[p.alias] = p;
+      return;
+    }
+    if((m = line.match(/^@(\S+)$/))){
+      frame = {id: uid('tf'), time: m[1], states: [], messages: []};
+      frames.push(frame);
+      return;
+    }
+    if((m = line.match(/^(\S+)\s+is\s+(.+)$/i))){
+      const p = byAlias[m[1]];
+      if(p){
+        if(!frame){ frame = {id: uid('tf'), time: '0', states: [], messages: []}; frames.push(frame); }
+        frame.states.push({participantId: p.id, value: m[2].trim().replace(/^"|"$/g, '')});
+        return;
+      }
+    }
+    if((m = line.match(/^(\S+?)(?:@(\S+))?\s*->\s*(\S+?)(?:@(\S+))?\s*(?::\s*(.*))?$/))){
+      const from = byAlias[m[1]], to = byAlias[m[3]];
+      if(from && to && frame){
+        frame.messages.push({fromId: from.id, toId: to.id, label: (m[5] || '').trim()});
+        return;
+      }
+    }
+    if((m = line.match(/^note\s+(\w+)\s+of\s+(\S+)\s*:\s*(.*)$/i))){
+      const p = byAlias[m[2]];
+      if(p){ notes.push({id: uid('tn'), participantId: p.id, position: m[1].toLowerCase(), text: m[3].trim()}); return; }
+    }
+    if((m = line.match(/^highlight\s+(\S+)\s+to\s+(\S+)\s*(?:#(\S+))?\s*(?::\s*(.*))?$/i))){
+      highlights.push({id: uid('th'), from: m[1], to: m[2], color: m[3] || '', label: (m[4] || '').trim()});
+      return;
+    }
+    pumlHeaderDirective(line, settings);
+  });
+  return {type: 'timing', model: model, settings: settings};
+}
+
+// === PARSER: STATE ===========================================
+function parseState(text){
+  const lines = text.split(/\r?\n/);
+  const settings = {};
+  const states = [];
+  const transitions = [];
+  const byAlias = {};
+  const stack = [];          // aliasy otevřených kompozitních stavů
+  let concurrentNext = false;
+  function ensureState(alias, name){
+    if(alias === '[*]') return '__start__';
+    if(byAlias[alias]) {
+      if(name && !byAlias[alias].name) byAlias[alias].name = name;
+      return byAlias[alias].id;
+    }
+    const st = {id: uid('st'), alias: alias, name: name || alias, stereotype: '', color: '',
+      description: '', entryAction: '', exitAction: '',
+      parentId: stack.length ? byAlias[stack[stack.length-1]].id : null};
+    byAlias[alias] = st;
+    states.push(st);
+    return st.id;
+  }
+  lines.forEach(raw => {
+    const line = raw.trim();
+    if(!line) return;
+    if(line === '}'){ stack.pop(); return; }
+    if(line === '--' || line === '||'){ concurrentNext = true; return; }
+    const decl = parseDeclarationLine(line);
+    if(decl && decl.keyword === 'state'){
+      const id = ensureState(decl.alias, decl.name);
+      const st = byAlias[decl.alias];
+      st.stereotype = decl.stereotype;
+      st.color = decl.color;
+      if(concurrentNext){ st.concurrent = true; concurrentNext = false; }
+      if(decl.opensBlock) stack.push(decl.alias);
+      return;
+    }
+    const rel = parseRelationLine(line);
+    if(rel){
+      const dir = rel.arrow.match(/^-([a-z]+)->$/);
+      transitions.push({
+        id: uid('tr'),
+        from: rel.from === '[*]' ? '__start__' : ensureState(rel.from),
+        to: rel.to === '[*]' ? '__end__' : ensureState(rel.to),
+        event: rel.label,
+        color: rel.color,
+        direction: dir ? dir[1] : 'down'
+      });
+      return;
+    }
+    // `alias : text`, včetně `entry /` a `exit /`
+    const desc = line.match(/^([A-Za-z0-9_]+)\s*:\s*(.*)$/);
+    if(desc && byAlias[desc[1]]){
+      const st = byAlias[desc[1]];
+      const entry = desc[2].match(/^entry\s*\/\s*(.*)$/i);
+      const exit = desc[2].match(/^exit\s*\/\s*(.*)$/i);
+      if(entry) st.entryAction = entry[1].trim();
+      else if(exit) st.exitAction = exit[1].trim();
+      else st.description = st.description ? st.description + '\n' + desc[2] : desc[2];
+      return;
+    }
+    pumlHeaderDirective(line, settings);
+  });
+  // Přechody mířící na neznámý alias by zůstaly viset — stav doplníme.
+  return {type: 'state', model: {states: states, transitions: transitions, notes: []}, settings: settings};
+}
+
+// === PARSER: COMPONENT =======================================
+const COMP_KW_TO_STEREO = {component:'component', database:'database', queue:'queue', cloud:'cloud',
+  node:'node', folder:'folder', frame:'frame', file:'file'};
+const COMP_ARROW_TO_TYPE = {'-':'provide', '--':'line', '..>':'use', '..|>':'realization',
+  '--|>':'inheritance', '*--':'composition', 'o--':'aggregation', '-->':'association'};
+function parseComponent(text){
+  const settings = {};
+  const components = [], interfaces = [], groups = [], relationships = [];
+  const byAlias = {};
+  const groupStack = [];
+  text.split(/\r?\n/).forEach(raw => {
+    const line = raw.trim();
+    if(!line) return;
+    if(line === '}'){ groupStack.pop(); return; }
+    if(/-\[hidden\]-/.test(line)) return;          // pomocná vazba pro layout
+    const short = line.match(/^\[([^\]]+)\]\s*(?:as\s+([A-Za-z0-9_]+))?$/);
+    if(short){
+      const alias = short[2] || generateAlias(short[1], Object.keys(byAlias));
+      const c = {id: uid('cp'), name: short[1], alias: alias, stereotype: 'component', color: '',
+        groupId: groupStack.length ? groupStack[groupStack.length-1] : null};
+      byAlias[alias] = c; components.push(c);
+      return;
+    }
+    const decl = parseDeclarationLine(line);
+    if(decl){
+      const groupId = groupStack.length ? groupStack[groupStack.length-1] : null;
+      if(decl.opensBlock){
+        const g = {id: uid('gr'), name: decl.name, groupType: decl.keyword === 'package' ? 'package' : decl.keyword};
+        groups.push(g);
+        groupStack.push(g.id);
+        return;
+      }
+      if(decl.keyword === 'interface'){
+        const i = {id: uid('if'), name: decl.name, alias: decl.alias, groupId: groupId};
+        byAlias[decl.alias] = i; interfaces.push(i);
+        return;
+      }
+      if(COMP_KW_TO_STEREO[decl.keyword]){
+        const c = {id: uid('cp'), name: decl.name, alias: decl.alias,
+          stereotype: COMP_KW_TO_STEREO[decl.keyword], color: decl.color, groupId: groupId};
+        byAlias[decl.alias] = c; components.push(c);
+        return;
+      }
+    }
+    const rel = parseRelationLine(line);
+    if(rel && byAlias[rel.from] && byAlias[rel.to]){
+      relationships.push({id: uid('rl'), sourceId: byAlias[rel.from].id, targetId: byAlias[rel.to].id,
+        type: COMP_ARROW_TO_TYPE[rel.arrow] || 'association', label: rel.label, color: rel.color});
+      return;
+    }
+    pumlHeaderDirective(line, settings);
+  });
+  return {type: 'component',
+    model: {components: components, interfaces: interfaces, groups: groups, relationships: relationships, notes: []},
+    settings: settings};
+}
+
+// === PARSER: DEPLOYMENT ======================================
+function parseDeployment(text){
+  const settings = {};
+  const nodes = [], relationships = [];
+  const byAlias = {};
+  const stack = [];
+  text.split(/\r?\n/).forEach(raw => {
+    const line = raw.trim();
+    if(!line) return;
+    if(line === '}'){ stack.pop(); return; }
+    if(/-\[hidden\]-/.test(line)) return;
+    const decl = parseDeclarationLine(line);
+    if(decl && DEPLOY_TYPES.some(d => d.kw === decl.keyword)){
+      const n = {id: uid('nd'), name: decl.name, alias: decl.alias,
+        nodeType: (DEPLOY_TYPES.find(d => d.kw === decl.keyword) || {value:'node'}).value,
+        stereotype: decl.stereotype, color: decl.color,
+        parentId: stack.length ? stack[stack.length-1] : null};
+      byAlias[decl.alias] = n;
+      nodes.push(n);
+      if(decl.opensBlock) stack.push(n.id);
+      return;
+    }
+    const rel = parseRelationLine(line);
+    if(rel && byAlias[rel.from] && byAlias[rel.to]){
+      relationships.push({id: uid('rl'), sourceId: byAlias[rel.from].id, targetId: byAlias[rel.to].id,
+        linkType: /\.\./.test(rel.arrow) ? 'dashed' : 'solid', label: rel.label, color: rel.color});
+      return;
+    }
+    pumlHeaderDirective(line, settings);
+  });
+  return {type: 'deployment', model: {nodes: nodes, relationships: relationships, notes: []}, settings: settings};
+}
+
+// === PARSER: TIMELINE (chronology) ===========================
+function parseTimeline(source){
+  const settings = {};
+  const events = [];
+  pumlBodyLines(source, 'chronology', 'chronology').forEach(raw => {
+    const line = raw.trim();
+    if(!line) return;
+    const ev = line.match(/^\[([^\]]+)\]\s+happens\s+(?:on|at)\s+(\S+)\s*(?::\s*(.*))?$/i);
+    if(ev){
+      events.push({id: uid('ev'), label: ev[1].trim(), date: ev[2].trim(), description: (ev[3] || '').trim()});
+      return;
+    }
+    // Zkrácený zápis `2026-01-01 : popis`, který PlantUML také bere.
+    const plain = line.match(/^(\d{4}-\d{2}-\d{2})\s*:\s*(.*)$/);
+    if(plain){
+      events.push({id: uid('ev'), label: plain[2].trim() || plain[1], date: plain[1], description: ''});
+      return;
+    }
+    pumlHeaderDirective(line, settings);
+  });
+  return {type: 'timeline', model: {events: events}, settings: settings};
+}
+
+// === PARSER: GANTT ===========================================
+function parseGantt(source){
+  const settings = {};
+  const tasks = [], milestones = [], closedDays = [], holidays = [];
+  const byAlias = {};
+  const model = {projectStart: '', printScale: 'daily', tasks: tasks, milestones: milestones,
+    closedDays: closedDays, holidays: holidays};
+  const pending = [];   // vazby se dopočítají, až budou známé všechny aliasy
+  pumlBodyLines(source, 'gantt', 'gantt').forEach(raw => {
+    const line = raw.trim();
+    if(!line) return;
+    let m;
+    if((m = line.match(/^project\s+starts?\s+(?:on\s+)?(\S+)/i))){ model.projectStart = m[1].replace(/^\[|\]$/g,''); return; }
+    if((m = line.match(/^printscale\s+(\w+)/i))){ model.printScale = m[1].toLowerCase(); return; }
+    if((m = line.match(/^(\w+)\s+are\s+closed/i))){ closedDays.push(m[1][0].toUpperCase() + m[1].slice(1).toLowerCase()); return; }
+    if((m = line.match(/^(\d{4}-\d{2}-\d{2})\s+is\s+closed\s*(?:and\s+named\s+\[?([^\]']*)\]?)?\s*(?:'\s*(.*))?$/i))){
+      // Popisek svátku generátor píše jako komentář za direktivu (PlantUML pro
+      // něj nemá syntaxi), proto se čte i to, co je za apostrofem.
+      holidays.push({date: m[1], label: (m[2] || m[3] || '').trim()}); return;
+    }
+    if((m = line.match(/^today\s+is\s+(\S+)(?:\s+and\s+is\s+colored\s+in\s+(\S+))?/i))){
+      model.markToday = true; if(m[2]) model.todayColor = m[2]; return;
+    }
+    // Úloha: [Popisek] as [alias] lasts N days
+    if((m = line.match(/^\[([^\]]+)\](?:\s+as\s+\[([^\]]+)\])?\s+lasts?\s+(\d+)\s+days?/i))){
+      const alias = m[2] || m[1];
+      const t = {id: uid('tk'), label: m[1].trim(), alias: alias.trim(), duration: parseInt(m[3], 10) || 1,
+        startMode: 'none', startDate: '', refTaskId: null, refPoint: 'end', offset: 0, color: ''};
+      byAlias[t.alias] = t;
+      tasks.push(t);
+      return;
+    }
+    // Milník: [Popisek] happens at [ref]'s end / happens on DATE
+    if((m = line.match(/^\[([^\]]+)\](?:\s+as\s+\[([^\]]+)\])?\s+happens\s+(.*)$/i))){
+      const ms = {id: uid('ms'), label: m[1].trim(), alias: (m[2] || m[1]).trim(),
+        mode: 'absolute', date: '', refTaskId: null, refPoint: 'end'};
+      const rest = m[3];
+      const atRef = rest.match(/^at\s+\[([^\]]+)\]'s\s+(start|end)/i);
+      const onDate = rest.match(/^(?:on|at)\s+(\d{4}-\d{2}-\d{2})/i);
+      if(atRef){ ms.mode = 'after'; pending.push({obj: ms, ref: atRef[1], point: atRef[2].toLowerCase(), kind: 'ms'}); }
+      else if(onDate){ ms.date = onDate[1]; }
+      milestones.push(ms);
+      byAlias[ms.alias] = ms;
+      return;
+    }
+    // Termín úlohy
+    if((m = line.match(/^\[([^\]]+)\]\s+starts?\s+(.*)$/i))){
+      const ref = byAlias[m[1].trim()];
+      if(!ref) return;
+      const rest = m[2];
+      let mm;
+      if((mm = rest.match(/^(\d{4}-\d{2}-\d{2})/))){ ref.startMode = 'absolute'; ref.startDate = mm[1]; return; }
+      if((mm = rest.match(/^at\s+\[([^\]]+)\]'s\s+(start|end)/i))){
+        ref.startMode = 'after'; ref.refPoint = mm[2].toLowerCase();
+        pending.push({obj: ref, ref: mm[1], point: mm[2].toLowerCase(), kind: 'task', offset: 0});
+        return;
+      }
+      if((mm = rest.match(/^(\d+)\s+days?\s+(after|before)\s+\[([^\]]+)\]'s\s+(start|end)/i))){
+        ref.startMode = 'after'; ref.refPoint = mm[4].toLowerCase();
+        pending.push({obj: ref, ref: mm[3], point: mm[4].toLowerCase(), kind: 'task',
+          offset: (mm[2].toLowerCase() === 'before' ? -1 : 1) * parseInt(mm[1], 10)});
+        return;
+      }
+      return;
+    }
+    if((m = line.match(/^\[([^\]]+)\]\s+is\s+colored\s+in\s+(\S+)/i))){
+      const ref = byAlias[m[1].trim()]; if(ref) ref.color = m[2]; return;
+    }
+    if((m = line.match(/^\[([^\]]+)\]\s+is\s+(\d+)%\s+completed/i))){
+      const ref = byAlias[m[1].trim()]; if(ref) ref.completion = parseInt(m[2], 10); return;
+    }
+    pumlHeaderDirective(line, settings);
+  });
+  pending.forEach(p => {
+    const target = byAlias[p.ref];
+    if(!target) return;
+    p.obj.refTaskId = target.id;
+    p.obj.refPoint = p.point;
+    if(p.kind === 'task') p.obj.offset = p.offset || 0;
+  });
+  return {type: 'gantt', model: model, settings: settings};
+}
 function parseActivity(text){
   const lines = text.split(/\r?\n/);
   const root = {children:[], swimlanes:[]};
@@ -11787,7 +12437,7 @@ function renderGanttTree(d, root){
   ms.appendChild(el('h4',null,'Milníky'));
   const mul = el('ul',{'aria-label':'Milníky'});
   (m.milestones||[]).forEach((mlst, idx) => {
-    if(!shouldShowInTree(d, ml.id)) return;
+    if(!shouldShowInTree(d, mlst.id)) return;
     const li = el('li');
     const path = ['milestones', idx];
     const isSel = pathEqual(state.selectedPath, path);
@@ -13120,7 +13770,7 @@ function renderTimingTree(d, root){
     ns.appendChild(el('h4',null,'Poznámky'));
     const nul = el('ul',{'aria-label':'Poznámky'});
     (m.notes||[]).forEach((n, idx) => {
-      if(!shouldShowInTree(d, nt.id)) return;
+      if(!shouldShowInTree(d, n.id)) return;
       const li = el('li');
       const path = ['notes', idx];
       const isSel = pathEqual(state.selectedPath, path);
@@ -16390,12 +17040,21 @@ async function importPumlText(text, fileName){
       status(L.status.diagramTypeUnknown, 'error');
       return;
     }
+    // Typ známe, ale parser pro něj zatím nemáme. Lepší je to říct rovnou než
+    // naimportovat poloprázdný diagram jiného typu.
+    if(result.unsupported){
+      const what = result.type ? (L.types[result.type] || result.type) : ('@start' + result.kw);
+      status(L.status.diagramTypeNotImportable(what), 'error');
+      return;
+    }
     const defaultName = (fileName || 'Importováno').replace(/\.[^.]+$/,'');
     const name = await dlgPrompt(L.dlg.importDiagram, 'Název nového diagramu:',
       defaultName, 'Diagram bude přidán do aktuálního projektu.');
     if(!name) return;
     const dg = newDiagram(result.type, name);
     dg.model = result.model;
+    // Hlavičky (title, caption, jazyk, téma) patří do nastavení diagramu.
+    if(result.settings) dg.settings = Object.assign({}, dg.settings || {}, result.settings);
     if(!state.project) state.project = newProject('Importovaný projekt');
     state.project.diagrams.push(dg);
     state.selectedDiagramId = dg.id;
@@ -16673,7 +17332,7 @@ function openHelp(){
       'The “Download PNG” button downloads the image (if the browser blocks it via CORS, a window opens with the image for manual saving).',
       'The “Download .puml” button saves the source code as a PUML file.');
     make('Import .puml',
-      'The app can reliably re-import its own output (round-trip). Foreign PUML files are imported best-effort — complex constructs may be skipped.',
+      'The app re-imports its own output for all fourteen diagram types (round-trip) — every generated file carries a type marker in a comment, so it comes back as exactly the type it was. Foreign PUML files are imported best-effort: the type is detected from the @start wrapper or from the content, and complex constructs may be skipped.',
       'After importing, check the Validation section and refine the data in the forms if needed.');
     make('Accessibility',
       'The app uses semantic HTML, ARIA, form controls with labels, and a keyboard-navigable structure. Debug output is shown on the page, not in the browser console.');
@@ -16751,7 +17410,7 @@ function openHelp(){
       'Tlačítko „Stáhnout PNG" stáhne obrázek (pokud nedovolí prohlížeč CORS, otevře se okno s obrázkem k ručnímu uložení).',
       'Tlačítko „Stáhnout .puml" uloží zdrojový kód jako PUML soubor.');
     make('Import .puml',
-      'Aplikace umí naimportovat zpět vlastní výstup spolehlivě (round-trip). Cizí PUML soubory se importují „best-effort" – složitější konstrukce mohou být vynechány.',
+      'Aplikace umí naimportovat zpět vlastní výstup u všech čtrnácti typů diagramů (round-trip) — každý vygenerovaný soubor nese v komentáři značku typu, takže se vrátí přesně jako ten typ, kterým byl. Cizí PUML soubory se importují „best-effort": typ se pozná podle obalu @start nebo podle obsahu a složitější konstrukce mohou být vynechány.',
       'Po importu zkontrolujte sekci Validace, případně si data dopřesněte ve formulářích.');
     make('Přístupnost',
       'Aplikace používá semantické HTML, ARIA, formulářové prvky s popisky a klávesnicí ovladatelnou strukturu. Debug výstup se zobrazuje na stránce, nikoli v konzoli prohlížeče.');
@@ -17611,7 +18270,7 @@ function init(){
           } else {
             loadProjectJsonText(text, f.name);
           }
-        } else if(/@startuml/i.test(trimmed) || /^\s*(start|class\s+|interface\s+|actor\s+|participant\s+|usecase\s+)/m.test(trimmed)){
+        } else if(/@start[A-Za-z]/.test(trimmed) || /^\s*(start|class\s+|interface\s+|actor\s+|participant\s+|usecase\s+)/m.test(trimmed)){
           // PUML zdroj
           importPumlText(text, f.name);
         } else {
