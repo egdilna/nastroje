@@ -73,9 +73,23 @@ Stavy diagramu (`DIAGRAM_STATUSES`) se ukládají **jako kód nezávislý na jaz
 Při generování nikdy nevkládej uživatelský text nezpracovaný.
 
 ## Import z PUML
-`parsePuml(source)` a dílčí `parseActivity` / `parseClass` / `parseSequence` / `parseUseCase`
-umí načíst zpět jen **část** typů. Když rozšiřuješ generátor, buď rozšiř i parser, nebo počítej
-s tím, že daný konstrukt nebude zpětně načtený — nesmí ale při importu shodit celý soubor.
+`parsePuml(source)` rozpoznává typ ve třech krocích: **obal** `@start<typ>` (`detectPumlWrapper`),
+**značka** `' puml-editor:type=<typ>`, kterou generátor píše do každého `@startuml` výstupu
+(`detectPumlHint`), a teprve pak **markery v obsahu** (`detectPumlByContent`) pro cizí soubory.
+Parsery jsou v tabulce `PUML_PARSERS`, jeden na typ — dnes má parser **všech 14 typů**.
+
+Na co si dát pozor:
+- Pořadí v `detectPumlByContent` je citlivé. `interface "X" as Y` je i v komponentovém diagramu
+  a `database "DB" as D` i v diagramu nasazení — proto se obojí testuje **dřív** než class
+  a sequence. Dřív bez toho končil component jako class a deployment jako sequence.
+- Značku typu emituje `generatePuml` jen uvnitř `@startuml` (`'` je tam komentář). Wrapper typy
+  ji nepotřebují a v EBNF ani mindmapě by `'` komentář být nemusel.
+- Když rozšiřuješ generátor, rozšiř i parser, nebo počítej s tím, že daný konstrukt nebude
+  zpětně načtený — nesmí ale při importu shodit celý soubor.
+- Typ, na který parser není, vrací `{unsupported:true, type, kw}` a import to uživateli řekne;
+  nikdy nevyrábět poloprázdný diagram jiného typu.
+- Ověřuj round-tripem: model → `generatePuml` → `parsePuml` → `generatePuml` musí dát **shodný**
+  zdroj, a to u všech 14 typů.
 
 ## Nastavení diagramu — volby platné jen pro některé typy
 `openDiagramSettings()` / `saveSettings()` zobrazují a ukládají volby **podmíněně podle typu
