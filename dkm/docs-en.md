@@ -2202,6 +2202,16 @@ the project and the second pass is a no-op.
 
 ### 29.2 Types
 
+**A table** of types: name, number of attributes, number of entities of that type, order and
+actions. It is **a real table with a header row**, not rows that merely look like one — with a
+screen reader you can move by columns and rows and hear which column and which item each cell
+belongs to (see 31.5). Order is changed with **↑↓** in the *Order* column or by dragging a row.
+
+The **Relations** table additionally shows the **inverse name**, which used to be visible only
+in the editor although it is half of what a relation means; hovering the *Scope* cell shows the
+concrete types ("Osoba → Firma").
+
+
 List of types, click to open editor with attributes, icon, name and an optional
 **JSON key** field (see ch. 26.7). Every attribute has the same field.
 
@@ -2488,6 +2498,26 @@ Screen reader-compatible: ARIA combobox, listbox, aria-activedescendant, aria-se
 Cards aren't drag-and-drop (inaccessible to screen readers). Instead a **Move to dropdown** per card.
 
 ---
+
+### 31.5 Tables in Settings
+
+The lists of **entity types, aspects and relation types** are real `<table>`s with a header
+row, not divs arranged into columns. For a screen reader that is the whole difference: in a
+table you can move by rows and by columns, and the reader names the column and the item for
+every cell. Without it a row is just a run of texts and you have to remember what each number
+meant.
+
+Specifically:
+
+- a `<caption>` says what the table holds — visually hidden, because the screen heading sits
+  right above it and nobody wants to hear the same thing twice
+- `<th scope="col">` on every header cell
+- **`<th scope="row">` on the item name** — so moving across columns keeps reminding you which
+  item you are on
+- **buttons carry the item name** in their accessible name ("Edit: Osoba", "Delete: Osoba").
+  Anyone tabbing through instead of using table navigation would otherwise hear only
+  "Edit, Edit, Edit"
+- **↑ on the first row and ↓ on the last are disabled**, not merely ineffective
 
 ## 32. Tips and tricks
 
