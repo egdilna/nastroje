@@ -2169,21 +2169,31 @@ v projektu je, a druhý průchod je bez efektu.
 
 ### 29.2 Typy
 
-Seznam typů, klikem se otevře editor s atributy, ikonou, názvem a nepovinným
+**Tabulka** typů: název, počet atributů, počet entit toho typu, pořadí a akce.
+Tlačítkem **Upravit** se otevře editor s atributy, ikonou, názvem a nepovinným
 polem **Klíč v JSON** (viz kap. 26.7). Totéž pole má i každý atribut.
 
-Pořadí typů měníš tlačítky **↑↓** u každého řádku, nebo řádek chytneš myší
+Je to **opravdová tabulka se záhlavím**, ne řádky, které tabulku připomínají —
+se screen readerem se v ní dá pohybovat po sloupcích i řádcích a u každé buňky
+je slyšet, do kterého sloupce a ke které položce patří (viz kap. 31.3).
+
+Pořadí typů měníš tlačítky **↑↓** ve sloupci *Pořadí*, nebo řádek chytneš myší
 a přetáhneš na jiné místo. Obě cesty dělají totéž — přetahování je tu navíc
 pro toho, komu se s myší pracuje rychleji.
 
 ### 29.3 Aspekty
 
-Analogicky pro aspekty, včetně pole **Klíč v JSON**, včetně změny pořadí
-tlačítky **↑↓** i přetažením.
+Stejná tabulka jako u typů — název, počet atributů, počet entit, pořadí, akce —
+a editor včetně pole **Klíč v JSON**. Pořadí se mění tlačítky **↑↓** i přetažením.
 
 ### 29.4 Vazby
 
-Definice relačních typů: název, opačný název, scope, povolené typy zdroje / cíle
+**Tabulka** typů vazeb: název, **opačný název**, rozsah, kolikrát je vazba použitá,
+pořadí a akce. Opačný název byl dřív vidět až v editoru, i když je to půlka významu
+vazby. V buňce *Rozsah* najedeš myší a v popisku se ukážou konkrétní typy
+(„Osoba → Firma").
+
+Editor pak nabídne název, opačný název, rozsah, povolené typy zdroje / cíle
 a **Klíč v JSON**.
 
 ### 29.5 Seznamy
@@ -2449,6 +2459,26 @@ Screen reader-kompatibilní: ARIA combobox, listbox, aria-activedescendant, aria
 ### 31.4 Kanban
 
 Karty nejsou drag-and-drop (nedostupné pro screen reader). Místo toho **dropdown Přesunout do** pro každou kartu.
+
+### 31.5 Tabulky v nastavení
+
+Seznamy **typů entit, aspektů a typů vazeb** jsou opravdové `<table>` se záhlavím,
+ne divy poskládané do sloupců. Pro screen reader je to zásadní rozdíl: v tabulce
+se dá pohybovat po řádcích i sloupcích a čtečka u každé buňky řekne, do kterého
+sloupce a ke které položce patří. Bez toho je z řádku jen řada textů za sebou,
+u které si člověk musí pamatovat, co které číslo znamená.
+
+Konkrétně:
+
+- `<caption>` popisuje, co tabulka obsahuje — vizuálně skrytá, protože nadpis
+  obrazovky stojí hned nad ní a dvakrát totéž číst nikdo nechce
+- `<th scope="col">` v záhlaví u každého sloupce
+- **`<th scope="row">` u názvu položky** — díky tomu čtečka při pohybu po sloupcích
+  pokaždé připomene, o kterou položku jde
+- **tlačítka nesou název položky** ve svém přístupném jméně („Upravit: Osoba",
+  „Smazat: Osoba"). Kdo prochází tabulátorem místo navigace po tabulce, slyší
+  jinak jen „Upravit, Upravit, Upravit"
+- **↑ u prvního a ↓ u posledního řádku jsou zakázané**, ne jen bez efektu
 
 ---
 

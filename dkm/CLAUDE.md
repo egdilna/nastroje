@@ -647,6 +647,23 @@ nechalo v diskusi viset rozbitý `[[Starý název]]`. U komentářů se dává *
 entitu** (`some`, ne `forEach`): atributy mají každý svoje jméno, u komentářů by to byly dva
 stejné řádky.
 
+## Seznamy v nastavení jsou opravdové tabulky
+Typy entit, aspekty a typy vazeb staví `rsTabulka(popis,sloupce,radky)` — `<table>`
+s `<caption>`, `<th scope="col">` v záhlaví a **`<th scope="row">` u názvu položky**.
+Bez toho je to pro odečítač jen řada textů za sebou. **Nikdy z toho nedělej divy
+naskládané do sloupců**, ani když by to vypadalo stejně.
+
+- `sloupce` jsou **jen ty uprostřed**; Název, Pořadí a Akce doplňuje sama funkce.
+- **Tlačítka nesou název položky v `aria-label`** („Upravit: Osoba"). Kdo prochází
+  tabulátorem místo navigace po tabulce, slyší jinak jen „Upravit, Upravit, Upravit".
+- `<caption>` je vizuálně skrytá (`.sr-lbl`): nadpis obrazovky stojí hned nad tabulkou.
+- **Bez položek se tabulka nekreslí vůbec** — prázdné záhlaví bez řádků nic neříká.
+- `.slay>*{min-width:0}`: položka gridu je jinak široká aspoň jako obsah, takže by
+  široká tabulka roztáhla celé nastavení a stránka by přetékala vodorovně. Odrolování
+  si obstará `.rs-tab-box` sama.
+- Číselníky a soustavy tagů tabulku nemají schválně — tam se edituje na místě
+  (název + textarea s hodnotami), ne přes seznam a editor.
+
 ## Hromadné akce patří i do palety
 `getBulkActions()` je jediný zdroj — lišta výběru i paleta z něj berou totéž, takže nová akce
 naskočí na obou místech sama. Ikony jsou vedle v `BULK_IKONY`, **ne v `getBulkActions`**:
