@@ -24,6 +24,7 @@ Nástroj je dostupný také jako samostatný soubor HTML ke stažení a provozov
 - **Export/import projektu** — uložení a načtení projektu ve formátu JSON (texty a hlasy chunků)
 - **Automatické ukládání** — projekt, vybraný hlas i API klíč se ukládají v prohlížeči (localStorage)
 - **Statistiky** — počet chunků, celkový počet znaků a souhrnná délka audia
+- **Správa mých hlasů** — přehled, filtrování, přidávání z knihovny sdílených hlasů a odebírání hlasů účtu ElevenLabs (i hromadně)
 - **Přístupnost** — semantické HTML, ARIA atributy, ovladatelnost klávesnicí, oznamování stavů pro čtečky obrazovky, skip-link na začátku stránky
 
 ### Rozložení aplikace
@@ -32,7 +33,7 @@ Aplikace má jednostránkové rozložení:
 
 | Oblast | Obsah |
 |--------|-------|
-| **Záhlaví** | Název, tlačítko `⚙ Nastavení`, výběr globálního hlasu, tlačítko `▶` pro ukázku hlasu |
+| **Záhlaví** | Název, tlačítka `⚙ Nastavení` a `🎙 Správa mých hlasů`, výběr globálního hlasu, tlačítko `▶` pro ukázku hlasu |
 | **Panel nastavení** | Skryté pole pro API klíč, tlačítka `Uložit klíč` a `Načíst hlasy` |
 | **Stavový řádek** | Průběh akcí, chyby a potvrzení (informace oranžově, úspěch zeleně, chyba červeně) |
 | **Lišta nástrojů** | Globální akce nad celým projektem (přidat, generovat vše, přehrát vše, export, stažení atd.) |
@@ -245,12 +246,53 @@ Slouží pro převzetí zkontrolovaného textu zpět do nadřazené aplikace (te
 
 ---
 
+## Správa mých hlasů
+
+Tlačítko **🎙 Správa mých hlasů** v záhlaví otevře okno se dvěma záložkami (mezi nimi se přepíná šipkami vlevo/vpravo). Používá stejný API klíč jako zbytek aplikace. Nahoře je stavový řádek, který čtečka obrazovky průběžně ohlašuje, a — pokud to klíč dovolí — obsazenost slotů pro vlastní hlasy podle tarifu („obsazeno 12 z 30, volných 18“).
+
+> ⚠ **Smazání vlastních hlasů je nevratné.** Klonované, navržené a profesionální hlasy, které jste vytvořili, jsou po odebrání trvale pryč a nejde je nijak obnovit. Hlasy přidané z knihovny lze kdykoli přidat znovu. Výchozí hlasy ElevenLabs odebrat nejde.
+
+### Moje hlasy
+
+- Po otevření se načtou **všechny hlasy účtu** (po stránkách po 100, s ukazatelem průběhu).
+- Tabulka ukazuje název, kategorii (výchozí, klonovaný, navržený, profesionální, z knihovny), jazyk a popisky, ID hlasu a tlačítka **▶ Ukázka** a **✕ Odebrat**. Vlastní hlasy jsou označeny **⚠ nevratné**.
+- Nad tabulkou je okamžité **hledání** (název, popisky, ID; nezáleží na diakritice), **filtr kategorie** a **řazení** podle názvu nebo kategorie.
+- **Hromadné odebrání:** zaškrtněte hlasy (nebo „Vybrat všechny zobrazené“) a stiskněte **Odebrat vybrané…**. Potvrzovací okno vypíše hlasy z knihovny zvlášť a vlastní hlasy zvlášť jmenovitě; vlastní hlasy vyžadují navíc zaškrtnutí „Rozumím, že… budou trvale smazány“. Lze také odebrat jen hlasy z knihovny.
+- Před odebráním nabízí okno **export seznamu hlasů do JSON** (`voice_id`, `name`, `category`, `z_knihovny`, `public_owner_id`, `original_voice_id`) — podle něj lze omylem odebrané hlasy z knihovny dohledat a přidat zpět. Stejný export je i v liště nad tabulkou.
+- Hlasy se odebírají postupně s krátkým odstupem; při překročení limitu rychlosti (HTTP 429) aplikace počká a zkusí to znovu. Na konci se zobrazí **souhrn** s počtem úspěchů, chyb a jejich důvody a přesune se na něj fokus.
+
+### Knihovna sdílených hlasů
+
+- Vyhledávání podle textu, **jazyka (výchozí čeština)**, pohlaví, věku, přízvuku, kategorie a účelu použití; výsledky lze řadit (trendy, nejvíc přidávané, nejvíc používané, nejnovější). Výsledky jsou po 30 na stránku.
+- U výsledku je název a popis, jazyk a přízvuk, pohlaví a věk, oblíbenost a ukázka. Hlasy, které už máte, jsou označeny **✓ v mých hlasech** a přidat je nejde.
+- **Přidání:** tlačítko **+ Přidat…** (nebo zaškrtnutí více hlasů a **Přidat vybrané…**) otevře okno s editovatelným názvem pro každý hlas, předvyplněným původním jménem. Okno upozorní, pokud vybraných hlasů je víc než volných slotů; při dosažení limitu tarifu se přidávání zastaví se srozumitelnou hláškou.
+- Po přidání i odebrání se seznam mých hlasů i výběr hlasu v editoru aktualizuje bez nového načítání.
+
+### Ukázky a klávesnice
+
+Všechny ukázky hrají jedním společným přehrávačem — spuštění nové ukázky zastaví předchozí, opětovné stisknutí tlačítka ji zastaví. **Escape** nejdřív ukončí přehrávání ukázky, teprve další Escape zavře okno.
+
+### Chybové hlášky
+
+| Situace | Hláška |
+|---|---|
+| HTTP 401 | Neplatný API klíč |
+| HTTP 403 | Klíč nemá oprávnění — v ElevenLabs povolte klíči přístup k „Voices“ (čtení i zápis) |
+| HTTP 429 | Omezení rychlosti — hromadné operace čekají a opakují automaticky |
+| Síť | Nepodařilo se spojit s ElevenLabs (výpadek, nebo blokace prohlížečem) |
+
+Technický detail chyby se vypisuje do konzole prohlížeče (API klíč nikdy).
+
+---
+
 ## Klávesové zkratky
 
 | Zkratka | Kontext | Akce |
 |---------|---------|------|
 | **Enter** | v textu chunku | Rozdělí chunk v místě kurzoru na dva chunky |
 | **Shift+Enter** | v textu chunku | Běžný nový řádek v rámci jednoho chunku |
+| **Escape** | ve Správě mých hlasů | Ukončí přehrávání ukázky; bez přehrávání zavře okno |
+| **← / →** | na záložkách Správy hlasů | Přepnutí mezi Moje hlasy a Knihovnou |
 | **Tab** | kdekoli | Standardní pohyb fokusu mezi ovládacími prvky |
 | **Skip-link** | na začátku stránky | Přeskočit na seznam chunků (zviditelní se při fokusu) |
 
@@ -278,6 +320,11 @@ Aplikace volá tyto endpointy:
 |----------|------|
 | `GET https://api.elevenlabs.io/v1/voices` | Načtení seznamu dostupných hlasů |
 | `POST https://api.elevenlabs.io/v1/text-to-speech/{voice_id}` | Generování audia z textu |
+| `GET https://api.elevenlabs.io/v2/voices` | Správa hlasů: všechny hlasy účtu po stránkách (`voice_type=community` k rozlišení hlasů z knihovny) |
+| `DELETE https://api.elevenlabs.io/v1/voices/{voice_id}` | Odebrání hlasu |
+| `GET https://api.elevenlabs.io/v1/shared-voices` | Vyhledávání v knihovně sdílených hlasů |
+| `POST https://api.elevenlabs.io/v1/voices/add/{public_user_id}/{voice_id}` | Přidání hlasu z knihovny (`new_name`) |
+| `GET https://api.elevenlabs.io/v1/user/subscription` | Obsazenost slotů (`voice_slots_used`, `voice_limit`) |
 
 Použitý model: **`eleven_multilingual_v2`**. Voice settings: `stability: 0.5`, `similarity_boost: 0.75`.
 
