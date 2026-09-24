@@ -1,7 +1,7 @@
 # CLAUDE.md — TTS Editor (ElevenLabs Proof Reader)
 
 ## Co to je
-Jednosouborový nástroj (`index.html`, ~1789 řádků, ~61 kB) pro přípravu mluveného slova:
+Jednosouborový nástroj (`index.html`, ~3000 řádků) pro přípravu mluveného slova:
 text se rozdělí na **chunky**, ke každému se přes **ElevenLabs API** vygeneruje audio,
 uživatel je poslechne, opraví text, znovu vygeneruje a nakonec vše spojí a stáhne
 (ZIP jednotlivých MP3, nebo spojený WAV/MP3).
@@ -14,9 +14,9 @@ uživatel je poslechne, opraví text, znovu vygeneruje a nakonec vše spojí a s
 ## Struktura souboru
 Jeden `<script>` členěný bannery — nový kód patří do odpovídající sekce:
 `─── STATE / ELEMENTS / SETTINGS PANEL TOGGLE / HELPERS / STATUS / ANNOUNCE / LOCAL STORAGE /
-API KEY / LOAD VOICES / TTS GENERATION / CHUNK MANAGEMENT / RENDER / IMPORT TEXT / PLAY ALL /
+API KEY / ELEVENLABS API / LOAD VOICES / TTS GENERATION / CHUNK MANAGEMENT / RENDER / IMPORT TEXT / PLAY ALL /
 GENERATE ALL / CLEAR AUDIO / OUTPUT / EXPORT / IMPORT PROJECT / DOWNLOAD ALL AUDIO (ZIP) /
-MERGE ALL AUDIO TO WAV / MERGE ALL AUDIO TO MP3 / INIT ───`
+MERGE ALL AUDIO TO WAV / MERGE ALL AUDIO TO MP3 / SPRÁVA HLASŮ / INIT ───`
 
 ## API klíč a perzistence
 | Klíč | Obsah |
@@ -28,6 +28,24 @@ MERGE ALL AUDIO TO WAV / MERGE ALL AUDIO TO MP3 / INIT ───`
 **Klíč zůstává výhradně v prohlížeči uživatele.** Nikdy ho nelogguj, neposílej nikam jinam než
 na ElevenLabs API, nedávej do exportovaného JSON projektu ani do URL. Panel s nastavením je
 schovaný pod „⚙ Nastavení“ a po otevření přesouvá fokus na první prvek.
+
+## Volání API
+Sekce `ELEVENLABS API`: `elevenApi(cesta, {method, params, body})` pro JSON endpointy (klíč ze
+`state.apiKey`, české hlášky přes `chybaApiCesky`, detail do konzole) a `elevenApiSOpakovanim`
+pro hromadné operace (při 429 čeká a opakuje). Nová JSON volání stav na nich; `generateTTS` vrací
+blob a má vlastní `fetch`.
+
+## Správa hlasů (sekce `SPRÁVA HLASŮ`)
+Modální `#hlasy-dialog` se záložkami Moje hlasy / Knihovna, stav v objektu `hlasy`.
+- Moje hlasy: `/v2/voices` přes všechny stránky; hlasy z knihovny se rozlišují druhým průchodem
+  s `voice_type=community` (`hlasy.knihovnaIds`). Když ten selže, **všechny nevýchozí hlasy se
+  berou jako vlastní** (přísnější potvrzení) — tuhle bezpečnou výchozí volbu neobracej.
+- `druhHlasu()`: `premade` (nenabízet odebrání), `knihovna` (souhrnné potvrzení), `vlastni`
+  (jmenovitý výpis + zaškrtnutí souhlasu; smazání je nevratné).
+- Po přidání/odebrání se mění lokální `hlasy.moje` a `synchronizovatHlavniHlasy()` přepíše
+  `state.voices` i všechny selecty — nic se znovu nenačítá.
+- Jeden sdílený přehrávač ukázek (`ukazka`); Escape v dialogu nejdřív zastaví ukázku.
+- Hromadné operace sekvenčně s odstupem 350 ms, na konci souhrn s fokusem.
 
 ## Datový model
 Chunk: `{ id, text, voiceId (volitelný — jinak globální hlas), audio (Blob/URL), done, duration }`.

@@ -325,6 +325,7 @@ Hlavní funkce:
 - Hromadné stahování všech MP3 v ZIP
 - Spojení a stažení v WAV nebo MP3
 - Nastavení API klíče ElevenLabs (uložen jen lokálně)
+- Správa mých hlasů: filtrování, hromadné odebírání a přidávání hlasů z knihovny sdílených hlasů
 
 ---
 
