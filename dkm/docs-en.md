@@ -260,6 +260,23 @@ away, because there the order never meant anything.
 At the very bottom there is a discreet line with the **ID, when the entity was created and
 when it last changed**.
 
+**The `o` key opens the entity's link** in a new tab — a fast way out of the detail without
+reaching for the mouse. It looks in two steps, in this order:
+
+1. **URL attributes** (from the type, from an aspect, custom ones alike). Somebody named that
+   one a link, so it wins.
+2. If none of those is filled, **text and Markdown attributes** — both `[label](address)` and a
+   bare address written into a sentence count. A full stop or comma at the end is not taken as
+   part of the address.
+
+It opens only when there is **exactly one**. With more, DKM says so and lets you click the one
+you mean — guessing is worse than asking. With none it says that too. Only `http`, `https` and
+`mailto` open; an address without a scheme that looks like a domain (`priklad.cz/neco`) gets
+`https://` added. Comments are not searched.
+
+The same sits in the command palette as **Open the link** — offered only when there is
+something to open.
+
 In a narrow window, in the preview beside the list and in the standalone window the columns
 stack: attributes first, then the tabs, and that line last.
 - **Relations** — where the entity points: classic relations grouped by relation type, but
@@ -2425,6 +2442,7 @@ saves even with Caps Lock on and on layouts where that key types a different let
 | Shortcut | Action |
 |----------|--------|
 | e | Edit |
+| o | Open the entity link in a new tab |
 | r | Add relation (opens the dialog) |
 | c | New comment — switches to the 💬 Comments tab and focuses the box |
 

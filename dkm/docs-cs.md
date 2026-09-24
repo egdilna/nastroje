@@ -256,6 +256,23 @@ neznamenalo.
 
 Úplně dole je nenápadný řádek s **ID, kdy entita vznikla a kdy se naposledy změnila**.
 
+**Klávesa `o` otevře odkaz entity** v nové kartě — rychlá cesta ven z detailu bez hledání
+myší. Hledá se ve dvou krocích, a v tomhle pořadí:
+
+1. **Atributy typu URL** (z typu, z aspektu i vlastní). Je to odkaz, který někdo jako odkaz
+   pojmenoval, takže má přednost.
+2. Když žádný takový vyplněný není, **textové a markdownové atributy** — počítá se
+   `[popis](adresa)` i holá adresa napsaná do věty. Tečka nebo čárka na konci se nebere
+   jako součást adresy.
+
+Otevře se, jen když je **přesně jeden**. Když jich je víc, DKM to napíše a nechá tě
+kliknout na ten pravý — hádat, který jsi myslel, je horší než se zeptat. Když žádný
+není, řekne to taky. Otevírá se jen `http`, `https` a `mailto`; adresa bez schématu,
+která vypadá jako doména (`priklad.cz/neco`), se doplní na `https://`. Komentáře se
+neprohledávají.
+
+Totéž je i v paletě příkazů jako **Otevřít odkaz** — nabídne se, jen když je co otevřít.
+
 V úzkém okně, v náhledu vedle seznamu a v samostatném okně se sloupce poskládají pod sebe:
 nejdřív atributy, pak karty, nakonec ten řádek.
 - **Vazby** — kam entita odkazuje: klasické vazby seskupené podle typu vazby, ale taky
@@ -2391,6 +2408,7 @@ i se zapnutým Caps Lockem a na rozložení, kde ta klávesa píše jiné písme
 | e | Editovat |
 | r | Přidat vazbu (otevře dialog) |
 | c | Nový komentář — přepne na kartu 💬 Komentáře a zaostří pole |
+| o | Otevřít odkaz entity v nové kartě (viz 14.4) |
 
 ### Editor
 

@@ -647,6 +647,20 @@ nechalo v diskusi viset rozbitý `[[Starý název]]`. U komentářů se dává *
 entitu** (`some`, ne `forEach`): atributy mají každý svoje jméno, u komentářů by to byly dva
 stejné řádky.
 
+## Klávesa O: odkaz entity
+`odkazyEntity(e)` vrací `{zAtributu, zTextu}` a `otevriOdkazEntity` z nich bere **atributy
+typu URL, a teprve když žádný není, text**. Je to odkaz, který někdo jako odkaz pojmenoval;
+slévat obojí dohromady by znamenalo, že se do výběru připlete adresa z poznámky.
+
+- **Otevírá se jen při přesně jednom.** Víc odkazů schválně neotvírá ten první — hádat, který
+  z nich uživatel myslel, je horší než říct, že jich je víc.
+- `odkazKOtevreni` pouští jen `http`, `https` a `mailto`. **Bez schématu bere jen to, co
+  vypadá jako doména**; kdyby se každý text řešil přes `new URL(x,location.href)`, stala by
+  se na hostované stránce z každé poznámky platná relativní adresa na sebe sama.
+- Holé adresy hledá i v textu, **přestože je `renderMD` nelinkuje** — najít se dají, i když
+  nejsou klikací.
+- Komentáře se neprohledávají: odkaz v diskusi není odkaz entity.
+
 ## Seznamy v nastavení jsou opravdové tabulky
 Typy entit, aspekty a typy vazeb staví `rsTabulka(popis,sloupce,radky)` — `<table>`
 s `<caption>`, `<th scope="col">` v záhlaví a **`<th scope="row">` u názvu položky**.
