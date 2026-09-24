@@ -43,6 +43,7 @@ upravte v `lib.mjs`.
 | `odznak-a-seznam.mjs` | Odznak ☐N u názvu entity a editor seznamu (sbalování, udělat úkol). |
 | `skryte-ukoly.mjs` | Skrytí hotových úkolů přežije zaškrtnutí dalšího. |
 | `klavesy.mjs` | Klávesové zkratky a accesskey se nepřekrývají. |
+| `klavesa-url.mjs` | Klávesa `o` otevře jediný URL atribut, jinak jen oznámí proč ne. |
 | `pripomenuti.mjs` | Tabulka termínů, přeplánování dialogem a návrat fokusu po překreslení. |
 | `ukoly-termin.mjs` | Tlačítko ⏰ Termín v Úkolech: společný dialog, zadání slovy, mazání termínu. |
 | `staticky-prohlizec.mjs` | Vygenerovaný offline prohlížeč se načte a ukazuje totéž. |
