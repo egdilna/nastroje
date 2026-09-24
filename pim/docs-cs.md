@@ -561,6 +561,7 @@ plynule pokračovat klávesnicí. Řádek se po přeplánování přesune podle 
 | `c` | Přidat komentář |
 | `d` | (read, pokud má nadpisy) Přepnout režim editace sekcí |
 | `a` | (read) Přepnout anotační režim |
+| `o` | Otevřít jediný vyplněný atribut typu **URL** (jako kliknutí na odkaz) |
 | `x` / `Alt+Shift+X` | (read) Otevřít Export / tisk |
 | `Alt+Shift+G` | (read) Poslat obsah entity umělé inteligenci (jen s nastaveným klíčem) |
 | `z` | (u entity s aspektem „Sledování času") Spustit/zastavit timer |
@@ -631,6 +632,11 @@ Za název lze přidat parametry oddělené `&`: `columns` (výběr sloupců), `f
 **OR seznam přes `|`**: u `=`, `*` a `!=` můžete uvést víc hodnot oddělených svislítkem — `filter=Kód=A|B|C` znamená „Kód je A **nebo** B **nebo** C". Funguje i na **počítaných sloučených polích**. (Pozn.: `Kód=A, Kód=B` je AND a nevrátí nic, protože buňka nemůže mít dvě hodnoty zároveň — pro „jednu z hodnot" použijte `|`.)
 
 ## URL atributy — kopírovací tlačítka
+
+V detailu entity otevře klávesa **`o`** jediný vyplněný atribut typu URL — stejně, jako
+byste klikli na jeho odkaz (nové okno, `noopener`). Když entita žádný takový atribut nemá
+nebo jich má víc, nic se neotevře a aplikace jen řekne proč; mezi víc adresami schválně
+nehádá. Počítají se jen atributy typu URL, ne odkazy v obsahu.
 
 U každého URL atributu (např. `url` u Záložky) jsou v read modu vedle samotné URL dvě tlačítka:
 - **📋 URL** — zkopíruje čistou URL

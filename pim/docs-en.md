@@ -564,6 +564,7 @@ so you can carry on with the keyboard. A rescheduled row moves according to its 
 | `c` | Add a comment |
 | `d` | (read, if it has headings) Toggle section-edit mode |
 | `a` | (read) Toggle annotation mode |
+| `o` | Open the single filled **URL** attribute (same as clicking the link) |
 | `x` / `Alt+Shift+X` | (read) Open Export / print |
 | `Alt+Shift+G` | (read) Send the entity body to the artificial intelligence (only with a key set) |
 | `z` | (entity with "Time tracking" aspect) Start/stop timer |
@@ -634,6 +635,11 @@ After the name you can add parameters separated by `&`: `columns` (column select
 **OR list via `|`**: for `=`, `*`, and `!=` you can give several values separated by a pipe — `filter=Code=A|B|C` means "Code is A **or** B **or** C". It also works on **computed (composed) fields**. (Note: `Code=A, Code=B` is AND and returns nothing, since a cell can't hold two values at once — use `|` for "one of these values".)
 
 ## URL attributes — copy buttons
+
+In an entity's detail the **`o`** key opens the single filled URL attribute — exactly as if
+you clicked its link (new window, `noopener`). If the entity has no such attribute or has
+several, nothing opens and the app just says why; it deliberately does not guess between
+several addresses. Only URL attributes count, not links in the body.
 
 For every URL attribute (e.g. `url` on a Bookmark), in read mode there are two buttons next to the URL itself:
 - **📋 URL** — copies the raw URL
