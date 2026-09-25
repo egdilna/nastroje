@@ -495,6 +495,9 @@
   .hlasy-stav[data-type="error"] { color: #e74c3c; }
   .hlasy-stav[data-type="ok"] { color: var(--success); }
   #hlasy-prubeh { width: 100%; height: 0.6rem; margin-bottom: 0.5rem; accent-color: var(--accent); }
+  .hlasy-text-ukazky { margin-bottom: 0.8rem; }
+  .hlasy-text-ukazky textarea { width: 100%; resize: vertical; }
+  .napoveda { font-size: 0.78rem; color: var(--text-dim); }
   .hlasy-zalozky { display: flex; gap: 0.3rem; border-bottom: 1px solid var(--border); margin-bottom: 0.8rem; }
   .hlasy-zalozky [role="tab"] {
     background: transparent; color: var(--text-dim); border: 1px solid transparent;
@@ -672,6 +675,11 @@
   </div>
   <div id="hlasy-stav" class="hlasy-stav" role="status" aria-live="polite" aria-atomic="true"></div>
   <progress id="hlasy-prubeh" aria-label="Průběh operace" hidden></progress>
+  <div class="hlasy-pole hlasy-text-ukazky">
+    <label for="ukazka-text">Text ukázky — co mají hlasy při ▶ Ukázka vyslovit</label>
+    <textarea id="ukazka-text" rows="2" aria-describedby="ukazka-text-napoveda"></textarea>
+    <span id="ukazka-text-napoveda" class="napoveda">Prázdné pole = původní ukázka od ElevenLabs. Vlastní text se generuje přes API a čerpá kredit; stejná ukázka se podruhé negeneruje. Text platí i pro tlačítko ▶ v záhlaví.</span>
+  </div>
 
   <div class="hlasy-zalozky" role="tablist" aria-label="Části správy hlasů">
     <button type="button" role="tab" id="zalozka-moje" aria-selected="true" aria-controls="panel-moje">Moje hlasy</button>
@@ -880,6 +888,7 @@ const state = {
 const STORAGE_KEY_API   = 'tts_editor_api_key';
 const STORAGE_KEY_VOICE = 'tts_editor_voice_id';
 const STORAGE_KEY_PROJ  = 'tts_editor_project';
+const STORAGE_KEY_UKAZKA = 'tts_editor_preview_text';
 
 // ─── ELEMENTS ───────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
@@ -1173,7 +1182,8 @@ voiceSelect.addEventListener('change', () => {
 
 btnPreviewVoice.addEventListener('click', async () => {
   if (!state.selectedVoiceId) { setStatus('Vyberte hlas.', 'error'); return; }
-  const previewText = 'Toto je ukázka vybraného hlasu pro váš TTS editor.';
+  const previewText = (localStorage.getItem(STORAGE_KEY_UKAZKA) || '').trim()
+    || 'Toto je ukázka vybraného hlasu pro váš TTS editor.';
   await generateAndPlay(-1, previewText, false);
 });
 
@@ -2238,6 +2248,7 @@ function prehratUkazku(url, tlacitko) {
   tlacitko.setAttribute('aria-label', `Zastavit ukázku: ${tlacitko.dataset.nazev}`);
   ukazka.audio.src = url;
   ukazka.audio.play().catch(e => {
+    if (e.name === 'AbortError') return; // přehrávání bylo zastaveno dřív, než se rozjelo
     console.error('Ukázku hlasu nelze přehrát:', e);
     zastavitUkazku();
     hlasyStav('Ukázku se nepodařilo přehrát.', 'error');
@@ -2245,19 +2256,50 @@ function prehratUkazku(url, tlacitko) {
 }
 ukazka.audio.addEventListener('ended', zastavitUkazku);
 
+// Vlastní text ukázky (uložený v localStorage, sdílený s tlačítkem ▶ v záhlaví)
+const ukazkaText = $('ukazka-text');
+ukazkaText.value = localStorage.getItem(STORAGE_KEY_UKAZKA) || '';
+ukazkaText.addEventListener('input', () => localStorage.setItem(STORAGE_KEY_UKAZKA, ukazkaText.value));
+const ukazkaCache = new Map(); // "voice_id\ntext" → objectURL, ať se stejná ukázka neplatí dvakrát
+
+async function spustitUkazku(v, b) {
+  if (ukazka.tlacitko === b) { zastavitUkazku(); hlasyStav('Ukázka zastavena.'); return; }
+  if (b.dataset.generuje) return;
+  const text = ukazkaText.value.trim();
+  if (!text) {
+    if (v.preview_url) prehratUkazku(v.preview_url, b);
+    else hlasyStav(`Hlas ${v.name} nemá původní ukázku — zadejte text ukázky.`, 'error');
+    return;
+  }
+  const klic = `${v.voice_id}\n${text}`;
+  let url = ukazkaCache.get(klic);
+  if (!url) {
+    zastavitUkazku();
+    b.dataset.generuje = '1';
+    hlasyStav(`Generuji ukázku hlasu ${v.name}…`);
+    try {
+      url = URL.createObjectURL(await generateTTS(text, v.voice_id));
+      ukazkaCache.set(klic, url);
+    } catch (e) {
+      console.error('Ukázku vlastního textu nelze vygenerovat:', v.voice_id, e);
+      if (!v.preview_url) { hlasyStav(`Ukázku se nepodařilo vygenerovat: ${e.message}`, 'error'); return; }
+      hlasyStav(`Vlastní text s tímto hlasem vygenerovat nejde (${e.message}), přehrávám původní ukázku.`, 'error');
+      url = v.preview_url;
+    } finally {
+      delete b.dataset.generuje;
+    }
+  }
+  prehratUkazku(url, b);
+}
+
 function tlacitkoUkazky(v) {
   const b = document.createElement('button');
   b.type = 'button';
   b.className = 'btn-secondary';
   b.dataset.nazev = v.name;
-  if (!v.preview_url) {
-    b.textContent = 'bez ukázky';
-    b.disabled = true;
-    return b;
-  }
   b.textContent = '▶ Ukázka';
   b.setAttribute('aria-label', `Přehrát ukázku: ${v.name}`);
-  b.addEventListener('click', () => prehratUkazku(v.preview_url, b));
+  b.addEventListener('click', () => spustitUkazku(v, b));
   return b;
 }
 

@@ -270,6 +270,8 @@ Tlačítko **🎙 Správa mých hlasů** v záhlaví otevře okno se dvěma zál
 
 ### Ukázky a klávesnice
 
+Pole **Text ukázky** nad záložkami určuje, co mají hlasy při ▶ Ukázka vyslovit: vlastní text se vygeneruje přes API daným hlasem (čerpá kredit, stejná kombinace hlasu a textu se podruhé negeneruje) a platí i pro tlačítko ▶ v záhlaví; text se pamatuje v prohlížeči (`tts_editor_preview_text`). Prázdné pole = původní ukázka od ElevenLabs. Když hlas z knihovny s vlastním textem vygenerovat nejde, přehraje se jeho původní ukázka.
+
 Všechny ukázky hrají jedním společným přehrávačem — spuštění nové ukázky zastaví předchozí, opětovné stisknutí tlačítka ji zastaví. **Escape** nejdřív ukončí přehrávání ukázky, teprve další Escape zavře okno.
 
 ### Chybové hlášky
