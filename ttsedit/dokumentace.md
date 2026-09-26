@@ -9,7 +9,7 @@ Nástroj je dostupný také jako samostatný soubor HTML ke stažení a provozov
 
 ## Přehled funkcí
 
-**TTS Editor** je webový nástroj pro převod textu na řeč (Text-to-Speech) s využitím cloudové služby [ElevenLabs](https://elevenlabs.io/). Slouží k pohodlnému korektorskému předčítání delších textů — text se rozdělí na menší úseky (chunky), pro každý se vygeneruje audio a výsledek lze poslechnout, stáhnout po částech nebo spojit do jednoho souboru WAV/MP3.
+**TTS Editor** je webový nástroj pro převod textu na řeč (Text-to-Speech) s využitím cloudové služby [ElevenLabs](https://elevenlabs.io/) nebo hlasů **Google Chirp 3 HD** z Google Cloud Text-to-Speech. Slouží k pohodlnému korektorskému předčítání delších textů — text se rozdělí na menší úseky (chunky), pro každý se vygeneruje audio a výsledek lze poslechnout, stáhnout po částech nebo spojit do jednoho souboru WAV/MP3.
 
 ### Klíčové funkce
 
@@ -24,6 +24,7 @@ Nástroj je dostupný také jako samostatný soubor HTML ke stažení a provozov
 - **Export/import projektu** — uložení a načtení projektu ve formátu JSON (texty a hlasy chunků)
 - **Automatické ukládání** — projekt, vybraný hlas i API klíč se ukládají v prohlížeči (localStorage)
 - **Statistiky** — počet chunků, celkový počet znaků a souhrnná délka audia
+- **Dvě služby** — v každém projektu lze zvolit ElevenLabs, nebo Google Chirp 3 HD; volba se ukládá do projektu
 - **Správa mých hlasů** — přehled, filtrování, přidávání z knihovny sdílených hlasů a odebírání hlasů účtu ElevenLabs (i hromadně)
 - **Přístupnost** — semantické HTML, ARIA atributy, ovladatelnost klávesnicí, oznamování stavů pro čtečky obrazovky, skip-link na začátku stránky
 
@@ -53,6 +54,21 @@ Pro generování hlasu je nutný vlastní API klíč ze služby [ElevenLabs](htt
 4. Klikněte na **Načíst hlasy** — z účtu se stáhne seznam dostupných hlasů a naplní se rozbalovací nabídka.
 
 API klíč zůstává jen ve vašem prohlížeči. Neodesílá se nikam kromě samotného API ElevenLabs při volání.
+
+### Služba projektu: ElevenLabs, nebo Google Chirp 3 HD
+
+V záhlaví je výběr **Služba**. Určuje, přes kterou službu se v tomto projektu generuje řeč; volba se ukládá do projektu (v prohlížeči i do exportovaného JSON, pole `provider`). Starší projekty bez tohoto pole se otevřou jako ElevenLabs.
+
+Pro Google:
+
+1. V Google Cloud konzoli zapněte v projektu **Cloud Text-to-Speech API** a vytvořte **API klíč** (doporučeno omezit ho jen na toto API a na adresu stránky).
+2. V **⚙ Nastavení** vložte klíč do pole **API klíč Google Cloud (Text-to-Speech)** a stiskněte **Uložit klíče** — oba klíče se ukládají stejně, jen v prohlížeči.
+3. Ve výběru **Služba** zvolte **Google Chirp 3 HD**. Hlasy se načtou samy (jinak tlačítkem **Načíst hlasy vybrané služby**).
+4. Vedle služby se objeví výběr **Jazyk** (výchozí čeština) a výběr hlasu nabízí jen hlasy **Chirp 3 HD** daného jazyka.
+
+Všechno ostatní — generování chunku i všech chunků, per-chunk hlas, ukázka ▶, přehrávání, ZIP, spojené WAV i MP3 — funguje stejně jako u ElevenLabs. Každá služba si pamatuje svůj globální hlas. Hlas chunku zvolený v druhé službě zůstane uložený, ale dokud je projekt přepnutý jinam, chunk mluví globálním hlasem. Už vygenerované audio se přepnutím služby nemaže.
+
+Omezení Googlu: jeden požadavek smí mít nejvýš 5000 bajtů textu (zhruba 2500–5000 znaků češtiny); delší chunk aplikace odmítne s výzvou k rozdělení. Chirp 3 HD neumí SSML, posílá se prostý text. **Správa mých hlasů** se týká jen ElevenLabs.
 
 ### Výběr globálního hlasu
 
@@ -309,8 +325,11 @@ Data se ukládají v `localStorage` pod těmito klíči:
 | Klíč | Obsah |
 |------|-------|
 | `tts_editor_api_key` | API klíč ElevenLabs |
-| `tts_editor_voice_id` | ID naposledy vybraného globálního hlasu |
-| `tts_editor_project` | JSON projekt — `id`, `text`, `done` a `voiceId` všech chunků |
+| `tts_editor_voice_id` | ID naposledy vybraného globálního hlasu ElevenLabs |
+| `tts_editor_google_api_key` | API klíč Google Cloud |
+| `tts_editor_google_voice_id` | Naposledy vybraný globální hlas Google |
+| `tts_editor_google_lang` | Vybraný jazyk hlasů Google |
+| `tts_editor_project` | JSON projekt — služba (`provider`) a `id`, `text`, `done`, `voiceId` všech chunků |
 
 Vygenerované audio se v `localStorage` **neukládá** — po obnovení stránky je třeba audio znovu vygenerovat (nebo se pracuje s dříve staženým souborem).
 
@@ -327,6 +346,8 @@ Aplikace volá tyto endpointy:
 | `GET https://api.elevenlabs.io/v1/shared-voices` | Vyhledávání v knihovně sdílených hlasů |
 | `POST https://api.elevenlabs.io/v1/voices/add/{public_user_id}/{voice_id}` | Přidání hlasu z knihovny (`new_name`) |
 | `GET https://api.elevenlabs.io/v1/user/subscription` | Obsazenost slotů (`voice_slots_used`, `voice_limit`) |
+| `GET https://texttospeech.googleapis.com/v1/voices` | Google: seznam hlasů (používají se jen `Chirp3-HD`) |
+| `POST https://texttospeech.googleapis.com/v1/text:synthesize` | Google: generování MP3 (klíč v hlavičce `X-Goog-Api-Key`) |
 
 Použitý model: **`eleven_multilingual_v2`**. Voice settings: `stability: 0.5`, `similarity_boost: 0.75`.
 

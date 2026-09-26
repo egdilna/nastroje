@@ -572,6 +572,20 @@
       <button class="btn-secondary" id="btn-toggle-settings" type="button" aria-expanded="false" aria-controls="api-settings-panel">⚙ Nastavení</button>
       <button class="btn-secondary" id="btn-sprava-hlasu" type="button" aria-haspopup="dialog">🎙 Správa mých hlasů</button>
       <div class="voice-row">
+        <label for="provider-select">Služba:</label>
+        <select id="provider-select" aria-describedby="provider-hint" style="min-width:0">
+          <option value="elevenlabs">ElevenLabs</option>
+          <option value="google">Google Chirp 3 HD</option>
+        </select>
+        <span id="provider-hint" hidden>Služba pro generování řeči v tomto projektu. Ukládá se do projektu.</span>
+      </div>
+      <div class="voice-row" id="google-lang-row" hidden>
+        <label for="google-lang-select">Jazyk:</label>
+        <select id="google-lang-select" style="min-width:0">
+          <option value="cs-CZ">čeština (cs-CZ)</option>
+        </select>
+      </div>
+      <div class="voice-row">
         <label for="voice-select">Hlas:</label>
         <select id="voice-select" aria-label="Výběr hlasu pro TTS">
           <option value="">— nejprve načtěte hlasy —</option>
@@ -589,8 +603,12 @@
         <input type="password" id="api-key-input" autocomplete="off" placeholder="sk-...">
       </div>
       <div class="settings-row">
-        <button class="btn-secondary" id="btn-save-key" type="button">Uložit klíč</button>
-        <button class="btn-secondary" id="btn-load-voices" type="button">Načíst hlasy</button>
+        <label for="google-key-input">API klíč Google Cloud (Text-to-Speech):</label>
+        <input type="password" id="google-key-input" autocomplete="off" placeholder="AIza...">
+      </div>
+      <div class="settings-row">
+        <button class="btn-secondary" id="btn-save-key" type="button">Uložit klíče</button>
+        <button class="btn-secondary" id="btn-load-voices" type="button">Načíst hlasy vybrané služby</button>
       </div>
     </div>
   </div>
@@ -878,6 +896,10 @@ const state = {
   apiKey: '',
   voices: [],        // [{voice_id, name}]
   selectedVoiceId: '',
+  provider: 'elevenlabs', // služba projektu: 'elevenlabs' | 'google'
+  googleKey: '',
+  googleLang: 'cs-CZ',
+  voicesBySource: { elevenlabs: [], google: [] }, // načtené hlasy obou služeb; state.voices = hlasy aktivní služby
   chunks: [],        // [{id, text, audioBlob, audioUrl, status}]
   isGenerating: false,
   stopRequested: false,
@@ -889,10 +911,24 @@ const STORAGE_KEY_API   = 'tts_editor_api_key';
 const STORAGE_KEY_VOICE = 'tts_editor_voice_id';
 const STORAGE_KEY_PROJ  = 'tts_editor_project';
 const STORAGE_KEY_UKAZKA = 'tts_editor_preview_text';
+const STORAGE_KEY_GOOGLE_API   = 'tts_editor_google_api_key';
+const STORAGE_KEY_GOOGLE_VOICE = 'tts_editor_google_voice_id';
+const STORAGE_KEY_GOOGLE_LANG  = 'tts_editor_google_lang';
+
+const NAZVY_SLUZEB = { elevenlabs: 'ElevenLabs', google: 'Google Chirp 3 HD' };
+// Hlasy Google se jmenují „cs-CZ-Chirp3-HD-Achernar“; ID hlasů ElevenLabs tvar s jazykem nemají
+const jeGoogleHlas = id => /^[a-z]{2,3}-[A-Z]{2,3}-/.test(id || '');
+const hlasPatriSluzbe = id => !!id && (state.provider === 'google') === jeGoogleHlas(id);
+const klicSluzby = () => state.provider === 'google' ? state.googleKey : state.apiKey;
+const klicUlozeniHlasu = () => state.provider === 'google' ? STORAGE_KEY_GOOGLE_VOICE : STORAGE_KEY_VOICE;
 
 // ─── ELEMENTS ───────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const apiKeyInput    = $('api-key-input');
+const googleKeyInput = $('google-key-input');
+const providerSelect = $('provider-select');
+const googleLangRow  = $('google-lang-row');
+const googleLangSelect = $('google-lang-select');
 const btnSaveKey     = $('btn-save-key');
 const btnLoadVoices  = $('btn-load-voices');
 const btnToggleSettings = $('btn-toggle-settings');
@@ -1042,6 +1078,100 @@ async function elevenApiSOpakovanim(cesta, volby, poCekani = () => {}) {
   }
 }
 
+// ─── GOOGLE CLOUD TTS (Chirp 3 HD) ───────────────────────────────────────────
+// Klíč jde v hlavičce X-Goog-Api-Key, nikdy v URL. Používají se jen hlasy Chirp 3 HD.
+const GOOGLE_API = 'https://texttospeech.googleapis.com';
+const GOOGLE_MAX_BAJTU = 5000; // limit vstupu jednoho požadavku text:synthesize
+
+function chybaGoogleCesky(status, data) {
+  const err = data?.error || {};
+  const duvod = (err.details || []).map(d => d.reason).filter(Boolean).join(' ');
+  const detail = err.message ? ` Detail: ${err.message}` : '';
+  if (/API_KEY_INVALID/.test(duvod) || (status === 400 && /API key not valid/i.test(err.message || '')))
+    return 'Neplatný API klíč Google. Zkontrolujte klíč v Nastavení.';
+  if (/SERVICE_DISABLED/.test(duvod) || /has not been used|is disabled/i.test(err.message || ''))
+    return 'V projektu Google Cloud není zapnuté Cloud Text-to-Speech API. Zapněte ho v konzoli Google Cloud.' + detail;
+  switch (status) {
+    case 401: return 'Neplatný API klíč Google (HTTP 401).';
+    case 403: return 'API klíč Google nemá oprávnění (HTTP 403) — zkontrolujte, že klíč smí volat Cloud Text-to-Speech API a že jeho omezení na weby povolují tuto stránku.' + detail;
+    case 429: return 'Vyčerpaná kvóta nebo příliš mnoho požadavků na Google (HTTP 429). Chvíli počkejte.';
+    default:  return `Chyba Google TTS (HTTP ${status}).` + detail;
+  }
+}
+
+async function googleApi(cesta, { method = 'GET', body = null } = {}) {
+  if (!state.googleKey) throw new Error('Chybí API klíč Google. Uložte ho v Nastavení.');
+  const headers = { 'X-Goog-Api-Key': state.googleKey };
+  if (body) headers['Content-Type'] = 'application/json';
+  let resp;
+  try {
+    resp = await fetch(GOOGLE_API + cesta, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  } catch (e) {
+    console.error('Google TTS — síťová chyba:', method, cesta, e);
+    throw new Error('Síťová chyba: nepodařilo se spojit s Google (výpadek připojení, nebo prohlížeč požadavek zablokoval — CORS).');
+  }
+  if (resp.ok) return resp.json();
+  const data = await resp.json().catch(() => null);
+  console.error('Google TTS — chyba API:', method, cesta, resp.status, data);
+  throw new Error(chybaGoogleCesky(resp.status, data));
+}
+
+const nazevJazyka = (() => {
+  let dn = null;
+  try { dn = new Intl.DisplayNames(['cs'], { type: 'language' }); } catch (e) { /* starší prohlížeč */ }
+  return kod => { try { return dn ? dn.of(kod) : kod; } catch (e) { return kod; } };
+})();
+
+async function nacistGoogleHlasy() {
+  const d = await googleApi('/v1/voices');
+  const pohlavi = { FEMALE: 'žena', MALE: 'muž', NEUTRAL: 'neutrální' };
+  return (d.voices || [])
+    .filter(v => /Chirp3-HD/.test(v.name))
+    .map(v => {
+      const languageCode = v.languageCodes?.[0] || v.name.split('-').slice(0, 2).join('-');
+      const jmeno = v.name.split('Chirp3-HD-').pop();
+      return {
+        voice_id: v.name,
+        name: `${jmeno} — ${pohlavi[v.ssmlGender] || 'hlas'} (${languageCode})`,
+        languageCode,
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'cs'));
+}
+
+function naplnitJazykyGoogle() {
+  const kody = [...new Set(state.voicesBySource.google.map(v => v.languageCode))];
+  if (!kody.length) return;
+  const polozky = kody.map(k => ({ k, n: nazevJazyka(k) === k ? k : `${nazevJazyka(k)} — ${k}` })).sort((a, b) => a.n.localeCompare(b.n, 'cs'));
+  googleLangSelect.innerHTML = '';
+  polozky.forEach(({ k, n }) => {
+    const o = document.createElement('option');
+    o.value = k;
+    o.textContent = n;
+    googleLangSelect.appendChild(o);
+  });
+  if (!kody.includes(state.googleLang)) state.googleLang = kody.includes('cs-CZ') ? 'cs-CZ' : polozky[0].k;
+  googleLangSelect.value = state.googleLang;
+}
+
+async function generateTTSGoogle(text, voiceId) {
+  const bajtu = new TextEncoder().encode(text).length;
+  if (bajtu > GOOGLE_MAX_BAJTU) {
+    throw new Error(`Text je pro Google příliš dlouhý (${bajtu} bajtů, nejvýš ${GOOGLE_MAX_BAJTU}). Rozdělte chunk.`);
+  }
+  const languageCode = voiceId.split('-').slice(0, 2).join('-');
+  const d = await googleApi('/v1/text:synthesize', { method: 'POST', body: {
+    input: { text },
+    voice: { languageCode, name: voiceId },
+    audioConfig: { audioEncoding: 'MP3' },
+  } });
+  if (!d.audioContent) throw new Error('Google nevrátil žádné audio.');
+  const bin = atob(d.audioContent);
+  const bajty = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bajty[i] = bin.charCodeAt(i);
+  return new Blob([bajty], { type: 'audio/mpeg' });
+}
+
 // ─── LOCAL STORAGE ───────────────────────────────────────────────────────────
 function loadFromStorage() {
   const key = localStorage.getItem(STORAGE_KEY_API) || '';
@@ -1050,10 +1180,13 @@ function loadFromStorage() {
     apiKeyInput.value = key;
     setStatus('API klíč načten z úložiště.', 'ok');
   }
-  state.selectedVoiceId = localStorage.getItem(STORAGE_KEY_VOICE) || '';
+  state.googleKey = localStorage.getItem(STORAGE_KEY_GOOGLE_API) || '';
+  googleKeyInput.value = state.googleKey;
+  state.googleLang = localStorage.getItem(STORAGE_KEY_GOOGLE_LANG) || 'cs-CZ';
   // Load project
   try {
     const proj = JSON.parse(localStorage.getItem(STORAGE_KEY_PROJ) || 'null');
+    if (proj?.provider === 'google') state.provider = 'google';
     if (proj && Array.isArray(proj.chunks)) {
       proj.chunks.forEach(c => {
         addChunkFromData(c.text || '', c.id, c.done, c.voiceId);
@@ -1062,10 +1195,13 @@ function loadFromStorage() {
       updateChunksUI();
     }
   } catch(e) { /* ignore */ }
+  state.selectedVoiceId = localStorage.getItem(klicUlozeniHlasu()) || '';
+  obnovitOvladaniSluzby();
 }
 
 function saveProjectToStorage() {
   const proj = {
+    provider: state.provider,
     chunks: state.chunks.map(c => ({ id: c.id, text: c.text, done: c.done, voiceId: c.voiceId }))
   };
   localStorage.setItem(STORAGE_KEY_PROJ, JSON.stringify(proj));
@@ -1074,26 +1210,86 @@ function saveProjectToStorage() {
 // ─── API KEY ─────────────────────────────────────────────────────────────────
 btnSaveKey.addEventListener('click', () => {
   const key = apiKeyInput.value.trim();
-  if (!key) { setStatus('Zadejte API klíč.', 'error'); return; }
+  const gKey = googleKeyInput.value.trim();
+  if (!key && !gKey) { setStatus('Zadejte API klíč.', 'error'); return; }
   state.apiKey = key;
+  state.googleKey = gKey;
   localStorage.setItem(STORAGE_KEY_API, key);
-  setStatus('API klíč uložen.', 'ok');
-  announce('API klíč byl uložen.');
+  localStorage.setItem(STORAGE_KEY_GOOGLE_API, gKey);
+  const ulozene = [key && 'ElevenLabs', gKey && 'Google'].filter(Boolean).join(' a ');
+  setStatus(`API klíč uložen (${ulozene}).`, 'ok');
+  announce(`API klíč byl uložen: ${ulozene}.`);
 });
+
+// ─── SLUŽBA PROJEKTU (ElevenLabs / Google) ──────────────────────────────────
+function obnovitOvladaniSluzby() {
+  providerSelect.value = state.provider;
+  googleLangRow.hidden = state.provider !== 'google';
+  document.title = `TTS Editor — ${NAZVY_SLUZEB[state.provider]}`;
+}
+
+// Přepne službu projektu: jiný seznam hlasů, jiný uložený globální hlas.
+// Hlasy chunků z druhé služby zůstanou uložené, jen se do návratu používá globální hlas.
+function nastavitSluzbu(sluzba, { nacist = true } = {}) {
+  state.provider = sluzba === 'google' ? 'google' : 'elevenlabs';
+  obnovitOvladaniSluzby();
+  state.selectedVoiceId = localStorage.getItem(klicUlozeniHlasu()) || '';
+  obnovitSeznamHlasu();
+  saveProjectToStorage();
+  if (nacist && klicSluzby() && !state.voicesBySource[state.provider].length) loadVoices();
+}
+
+providerSelect.addEventListener('change', () => {
+  nastavitSluzbu(providerSelect.value);
+  const bezKlice = klicSluzby() ? '' : ' Chybí API klíč — zadejte ho v Nastavení.';
+  setStatus(`Projekt teď používá službu ${NAZVY_SLUZEB[state.provider]}.${bezKlice}`, bezKlice ? 'error' : 'ok');
+  announce(`Služba ${NAZVY_SLUZEB[state.provider]}.${bezKlice}`);
+});
+
+googleLangSelect.addEventListener('change', () => {
+  state.googleLang = googleLangSelect.value;
+  localStorage.setItem(STORAGE_KEY_GOOGLE_LANG, state.googleLang);
+  // globální hlas přepni na první hlas nového jazyka
+  const prvni = state.voicesBySource.google.find(v => v.languageCode === state.googleLang);
+  if (prvni && !state.selectedVoiceId.startsWith(state.googleLang + '-')) state.selectedVoiceId = prvni.voice_id;
+  obnovitSeznamHlasu();
+  announce(`Jazyk ${googleLangSelect.selectedOptions[0]?.textContent || ''}, ${state.voices.length} hlasů.`);
+});
+
+// Naplní state.voices z načtených hlasů aktivní služby. U Googlu jen vybraný jazyk
+// plus hlasy, které už projekt používá (ať v chunku nezmizí).
+function obnovitSeznamHlasu() {
+  const vse = state.voicesBySource[state.provider];
+  if (state.provider === 'google') {
+    const pouzite = new Set(state.chunks.map(c => c.voiceId).filter(Boolean));
+    if (state.selectedVoiceId) pouzite.add(state.selectedVoiceId);
+    state.voices = vse.filter(v => v.languageCode === state.googleLang || pouzite.has(v.voice_id));
+  } else {
+    state.voices = vse;
+  }
+  populateVoiceSelect();
+  refreshChunkVoiceSelects();
+}
 
 // ─── LOAD VOICES ─────────────────────────────────────────────────────────────
 btnLoadVoices.addEventListener('click', loadVoices);
 
 async function loadVoices() {
-  if (!state.apiKey) { setStatus('Nejprve uložte API klíč.', 'error'); return; }
-  setStatus('Načítám hlasy z ElevenLabs…', 'info');
+  if (!klicSluzby()) { setStatus(`Nejprve uložte API klíč pro ${NAZVY_SLUZEB[state.provider]}.`, 'error'); return; }
+  const sluzba = state.provider;
+  setStatus(`Načítám hlasy z ${NAZVY_SLUZEB[sluzba]}…`, 'info');
   btnLoadVoices.disabled = true;
   try {
-    const data = await elevenApi('/v1/voices');
-    state.voices = (data.voices || []).sort((a,b) => a.name.localeCompare(b.name, 'cs'));
-    populateVoiceSelect();
-    refreshChunkVoiceSelects();
-    setStatus(`Načteno ${state.voices.length} hlasů.`, 'ok');
+    if (sluzba === 'google') {
+      state.voicesBySource.google = await nacistGoogleHlasy();
+      naplnitJazykyGoogle();
+    } else {
+      const data = await elevenApi('/v1/voices');
+      state.voicesBySource.elevenlabs = (data.voices || []).sort((a,b) => a.name.localeCompare(b.name, 'cs'));
+    }
+    if (state.provider !== sluzba) return; // mezitím se služba přepnula
+    obnovitSeznamHlasu();
+    setStatus(`Načteno ${state.voices.length} hlasů (${NAZVY_SLUZEB[sluzba]}).`, 'ok');
     announce(`Načteno ${state.voices.length} hlasů.`);
   } catch(e) {
     setStatus(`Chyba načítání hlasů: ${e.message}`, 'error');
@@ -1130,7 +1326,7 @@ function populateVoiceSelect() {
     if (!voiceSelect.value && state.voices.length) voiceSelect.selectedIndex = 0;
   }
   state.selectedVoiceId = voiceSelect.value;
-  localStorage.setItem(STORAGE_KEY_VOICE, state.selectedVoiceId);
+  localStorage.setItem(klicUlozeniHlasu(), state.selectedVoiceId);
 }
 
 function populateChunkVoiceSelect(sel, selectedVoiceId) {
@@ -1175,7 +1371,7 @@ function populateChunkVoiceSelect(sel, selectedVoiceId) {
 
 voiceSelect.addEventListener('change', () => {
   state.selectedVoiceId = voiceSelect.value;
-  localStorage.setItem(STORAGE_KEY_VOICE, state.selectedVoiceId);
+  localStorage.setItem(klicUlozeniHlasu(), state.selectedVoiceId);
   // Aktualizuj popisek globálního hlasu ve všech chunk-selectech
   refreshChunkVoiceSelects();
 });
@@ -1188,7 +1384,12 @@ btnPreviewVoice.addEventListener('click', async () => {
 });
 
 // ─── TTS GENERATION ──────────────────────────────────────────────────────────
+// Služba se pozná podle tvaru ID hlasu, takže ukázky ve Správě hlasů jdou vždy na ElevenLabs.
 async function generateTTS(text, voiceId) {
+  return jeGoogleHlas(voiceId) ? generateTTSGoogle(text, voiceId) : generateTTSElevenLabs(text, voiceId);
+}
+
+async function generateTTSElevenLabs(text, voiceId) {
   const resp = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
     method: 'POST',
     headers: {
@@ -1240,14 +1441,14 @@ function sortedVoices() {
 }
 
 async function generateAndPlay(chunkId, text, store) {
-  if (!state.apiKey)  { setStatus('Chybí API klíč.', 'error'); return; }
+  if (!klicSluzby()) { setStatus(`Chybí API klíč pro ${NAZVY_SLUZEB[state.provider]}.`, 'error'); return; }
   if (!text.trim())   { setStatus('Prázdný text.', 'error'); return; }
 
-  // Zjisti hlas: chunk-specific, nebo globální
+  // Zjisti hlas: chunk-specific (jen pokud patří aktivní službě), nebo globální
   let voiceId = state.selectedVoiceId;
   if (chunkId >= 0) {
     const chunk = state.chunks.find(c => c.id === chunkId);
-    if (chunk?.voiceId) voiceId = chunk.voiceId;
+    if (hlasPatriSluzbe(chunk?.voiceId)) voiceId = chunk.voiceId;
   }
   if (!voiceId) { setStatus('Vyberte hlas.', 'error'); return; }
 
@@ -1764,7 +1965,7 @@ btnPlayAll.addEventListener('click', async () => {
 
 // ─── GENERATE ALL ─────────────────────────────────────────────────────────────
 btnGenerateAll.addEventListener('click', async () => {
-  if (!state.apiKey) { setStatus('Chybí API klíč.', 'error'); return; }
+  if (!klicSluzby()) { setStatus(`Chybí API klíč pro ${NAZVY_SLUZEB[state.provider]}.`, 'error'); return; }
   if (!state.selectedVoiceId) { setStatus('Vyberte hlas.', 'error'); return; }
   if (state.isGenerating) return;
   state.isGenerating = true;
@@ -1857,6 +2058,7 @@ btnExport.addEventListener('click', () => {
   const proj = {
     version: 1,
     exportedAt: new Date().toISOString(),
+    provider: state.provider,
     chunks: state.chunks.map(c => ({ id: c.id, text: c.text, done: c.done, voiceId: c.voiceId }))
   };
   const blob = new Blob([JSON.stringify(proj, null, 2)], { type: 'application/json' });
@@ -1882,12 +2084,13 @@ fileInput.addEventListener('change', async () => {
     state.chunks.forEach(c => { if (c.audioUrl) URL.revokeObjectURL(c.audioUrl); });
     state.chunks = [];
     state.nextId = 1;
-    proj.chunks.forEach(c => addChunkFromData(c.text || '', c.id));
+    proj.chunks.forEach(c => addChunkFromData(c.text || '', c.id, c.done, c.voiceId));
     state.nextId = (Math.max(0, ...state.chunks.map(c => c.id)) + 1);
-    saveProjectToStorage();
     renderChunks();
-    setStatus(`Projekt importován: ${state.chunks.length} chunků.`, 'ok');
-    announce(`Projekt importován: ${state.chunks.length} chunků.`);
+    nastavitSluzbu(proj.provider || 'elevenlabs');
+    const sluzba = NAZVY_SLUZEB[state.provider];
+    setStatus(`Projekt importován: ${state.chunks.length} chunků, služba ${sluzba}.`, 'ok');
+    announce(`Projekt importován: ${state.chunks.length} chunků, služba ${sluzba}.`);
   } catch(e) {
     setStatus(`Chyba importu: ${e.message}`, 'error');
   }
@@ -2426,9 +2629,8 @@ async function nacistMojeHlasy() {
 
 // Hlavní výběr hlasu v editoru drží stejný seznam
 function synchronizovatHlavniHlasy() {
-  state.voices = hlasy.moje.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'cs'));
-  populateVoiceSelect();
-  refreshChunkVoiceSelects();
+  state.voicesBySource.elevenlabs = hlasy.moje.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'cs'));
+  if (state.provider === 'elevenlabs') obnovitSeznamHlasu();
 }
 
 // ── Vykreslení mých hlasů ──
@@ -3035,7 +3237,7 @@ async function spustitPridani(seznam) {
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 loadFromStorage();
 renderChunks();
-if (state.apiKey) {
+if (klicSluzby()) {
   loadVoices();
 }
 </script>
