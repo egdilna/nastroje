@@ -77,6 +77,46 @@ akce a posledních `PALETA_NEDAVNYCH` změněných entit.
 
 Paleta je **jen v aplikaci, ne v šabloně prohlížeče** — většina jejích příkazů edituje.
 
+## Anotace a obsah nadpisů: indexy odstavců se počítají dvakrát
+
+Inline anotace `(>text)` se do těla zapisují podle **indexu odstavce**, a ten index
+vzniká na dvou nezávislých místech, která se musí shodovat:
+
+1. `extractBodyParagraphRanges(body)` — odstavce zdroje i s čísly řádků
+   (`{ text, startLine, endLine }`). `extractBodyParagraphs()` je jen jeho texty
+   a `paragrafProRadek(rozsahy, radek)` vrací index odstavce pro daný řádek.
+2. `setupAnnotations()` — pořadí potomků `#body-rendered` (s `ul/ol → li`
+   a `table → tr`), které dostanou `data-paragraph-index` a `id="p-block-N"`.
+
+Rozejdou-li se, anotace tiše skončí u cizího odstavce. Stalo se to tak, že
+`renderBlock()` balil do `<p>` i samostatný blokový výstup (blok kódu, transkluze,
+tabulka databáze) — prohlížeč neplatné vnoření `<p><pre>…</pre></p>` rozdělí na
+`<p></p><pre>…</pre><p></p>` a každý takový blok přidal **dva prázdné odstavce**.
+Proto `jeSamostatnyBlokovyVystup()` v `renderBlock()` (v aplikaci **i v šabloně
+prohlížeče**) a proti stejné chybě i filtr prázdných obalů v `setupAnnotations()`.
+
+Další pravidla, která musí platit:
+
+- **Cílový řádek se nehledá podle textu.** Zápis jde přes `radekProAnotaciOdstavce()`
+  (poslední řádek odstavce) a `radekSAnotaci()`. Hledání podle textu brávalo poslední
+  shodu, takže u dvou stejných odstavců trefilo ten druhý a u nenalezeného textu
+  spadla anotace na konec dokumentu.
+- **Anotace nesmí rozbít Markdown.** V řádku tabulky jde do poslední buňky (za koncové
+  svislítko by řádek přestal být řádkem tabulky); ohradník bloku kódu, vodorovná linka
+  a oddělovač hlavičky ji nenesou vůbec — `radekUneseAnotaci()` je odmítne a tlačítko
+  **+ Anotace** se u nich nezobrazí.
+- `stripInlineAnnotations()` je **řádkově zachovávající** (dělí na `\n`, mapuje, spojuje),
+  takže řádek *i* očištěného textu je pořád řádek *i* zdroje. Kdo to poruší, rozbije
+  všechno výše.
+
+`setupObsahNadpisu()` (sekce **Nadpisy** nad sekcí Obsah) staví obsah dokumentu z DOM
+a musí běžet **až po `setupAnnotations()`**: nadpisy tam dostávají `id="p-block-N"`
+a obsah na ně odkazuje. V obráceném pořadí si obě funkce `id` přepíšou a odkazy
+nikam nevedou. Sekce je i v šabloně prohlížeče.
+
+Sada `pim/testy/anotace-umisteni.mjs` porovnává počty odstavců a anchorů a kontroluje,
+kam přesně anotace spadla; `pim/testy/obsah-nadpisu.mjs` hlídá cíle odkazů v obsahu.
+
 ## Archivace: co kam patří
 Archivované entity (`e.archived`) se **nezobrazují v běžných sekcích detailu** — ve Vazbách,
 v dashboardu projektu (kanban, cíle, lidé a organizace) ani v úkolech a účastnících schůzky.

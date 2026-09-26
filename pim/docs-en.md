@@ -182,6 +182,17 @@ When typing in a Markdown field (entity body, sections, scratchpad), these short
 
 If the content (or a Markdown attribute) contains checked tasks `- [x]`, a button appears to **hide them in the preview** — the text is unchanged, completed items are just tidied away.
 
+## Headings section — table of contents
+
+Above the **Content** section in the entity detail there is a collapsed **Headings**
+section: a table of contents built from the headings in the body. Items are indented
+by heading level, and clicking one jumps to that place in the text (expanding a
+collapsed section on the way).
+
+The list is built from what is on screen, so it also contains headings from included
+content (`{{include:…}}`). If an entity has fewer than two headings, the section is
+not shown at all.
+
 ## Scratchpad
 
 Quick notes, snippets, and temporary ideas outside the database. Open it with the **📌 Scratchpad** button or the `Alt+Shift+V` shortcut. Content is saved automatically in the browser and persists between sessions (it is not part of the database or exports).
@@ -198,7 +209,9 @@ Annotations are short notes attached to individual lines or paragraphs of conten
 
 **Enable annotation mode**: key `a` in detail read mode, or the **📝 Annotations** button. In the mode, each line shows a **+ Annotation** button that appends `(>…)` to the end of that line.
 
-**Annotation unit = one line**. For a normal paragraph this means the entire paragraph; for a **bullet/ordered list** it's a **single `<li>`**; for a **table** it's a **single `<tr>`**.
+**Annotation unit = one line**. For a normal paragraph this means the entire paragraph; for a **bullet/ordered list** it's a **single `<li>`**; for a **table** it's a **single `<tr>`**. In a table row the annotation goes **into the last cell**, so the row stays a table row.
+
+**Where an annotation cannot go**: a **code block** (```` ``` ```` fences) and a **horizontal rule** (`---`) offer no **+ Annotation** button — inserting `(>…)` would turn them into an ordinary paragraph and the content would render differently from how it is written. Attach the annotation to a surrounding paragraph instead.
 
 **Where annotations show and where they don't**:
 - **Display and include** (`{{include:…}}`) — the annotation renders as a bubble
