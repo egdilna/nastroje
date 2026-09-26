@@ -22,12 +22,22 @@ MERGE ALL AUDIO TO WAV / MERGE ALL AUDIO TO MP3 / SPRÁVA HLASŮ / INIT ──�
 | Klíč | Obsah |
 |---|---|
 | `tts_editor_api_key` | **API klíč ElevenLabs** |
-| `tts_editor_voice_id` | naposledy vybraný hlas |
+| `tts_editor_voice_id` | naposledy vybraný hlas ElevenLabs |
+| `tts_editor_google_api_key` | **API klíč Google Cloud** (stejná pravidla jako klíč ElevenLabs) |
+| `tts_editor_google_voice_id`, `tts_editor_google_lang` | globální hlas a jazyk pro Google |
 | `tts_editor_project` | rozpracovaný projekt (text chunků, ne audio) |
 
 **Klíč zůstává výhradně v prohlížeči uživatele.** Nikdy ho nelogguj, neposílej nikam jinam než
 na ElevenLabs API, nedávej do exportovaného JSON projektu ani do URL. Panel s nastavením je
 schovaný pod „⚙ Nastavení“ a po otevření přesouvá fokus na první prvek.
+
+## Dvě služby (sekce `SLUŽBA PROJEKTU` a `GOOGLE CLOUD TTS`)
+`state.provider` (`'elevenlabs'` | `'google'`) patří projektu — ukládá se do `tts_editor_project`
+i do exportu (`provider`), chybějící = ElevenLabs. `state.voicesBySource` drží hlasy obou služeb,
+`state.voices` je vždy seznam aktivní služby (`obnovitSeznamHlasu()`). `generateTTS()` rozhoduje
+podle tvaru ID: hlas Googlu je `cs-CZ-Chirp3-HD-Jméno` (`jeGoogleHlas`). Hlas chunku z jiné
+služby se nemaže, jen se nepoužije (`hlasPatriSluzbe`). Google klíč jde v hlavičce
+`X-Goog-Api-Key`, nikdy v URL; limit 5000 bajtů na požadavek se hlídá předem.
 
 ## Volání API
 Sekce `ELEVENLABS API`: `elevenApi(cesta, {method, params, body})` pro JSON endpointy (klíč ze

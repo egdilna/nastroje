@@ -324,7 +324,8 @@ Hlavní funkce:
 - Import projektu z JSON
 - Hromadné stahování všech MP3 v ZIP
 - Spojení a stažení v WAV nebo MP3
-- Nastavení API klíče ElevenLabs (uložen jen lokálně)
+- Dvě služby pro řeč: ElevenLabs nebo Google Chirp 3 HD (volba se ukládá do projektu)
+- Nastavení API klíčů ElevenLabs a Google (uloženy jen lokálně)
 - Správa mých hlasů: filtrování, hromadné odebírání a přidávání hlasů z knihovny sdílených hlasů
 
 ---
