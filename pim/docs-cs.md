@@ -181,6 +181,16 @@ Když píšete v markdownovém poli (tělo entity, sekce, odkládací prostor), 
 
 Pokud má obsah (nebo markdownový atribut) zaškrtnuté úkoly `- [x]`, objeví se tlačítko pro jejich **skrytí v náhledu** — text se nezmění, jen se přehledně schovají splněné položky.
 
+## Sekce Nadpisy — obsah dokumentu
+
+Nad sekcí **Obsah** v detailu entity je sbalená sekce **Nadpisy**: obsah dokumentu
+poskládaný z nadpisů obsahu. Položky jsou odsazené podle úrovně nadpisu a klepnutím
+se skočí na příslušné místo v textu (a sbalená sekce se cestou rozbalí).
+
+Seznam se staví z toho, co je na obrazovce — jsou v něm tedy i nadpisy z vloženého
+obsahu (`{{include:…}}`). Když má entita méně než dva nadpisy, sekce se vůbec
+nezobrazuje.
+
 ## Odkládací prostor
 
 Rychlé poznámky, výstřižky a dočasné nápady mimo databázi. Otevřete tlačítkem **📌 Odkládací prostor** nebo zkratkou `Alt+Shift+V`. Obsah se ukládá automaticky do prohlížeče a přetrvává mezi sezeními (není součástí databáze ani exportu).
@@ -197,7 +207,9 @@ Anotace jsou krátké poznámky k jednotlivým řádkům či odstavcům obsahu. 
 
 **Zapnutí anotačního režimu**: klávesa `a` v read modu detailu nebo tlačítko **📝 Anotace**. V režimu se u každého řádku objeví tlačítko **+ Anotace**, které přidá `(>…)` na konec toho řádku.
 
-**Jednotka anotace = jeden řádek**. Pro normální odstavec to znamená celý odstavec; pro **bullet/ordered list** je to **jednotlivá `<li>`**; pro **tabulku** je to **jednotlivý `<tr>`**.
+**Jednotka anotace = jeden řádek**. Pro normální odstavec to znamená celý odstavec; pro **bullet/ordered list** je to **jednotlivá `<li>`**; pro **tabulku** je to **jednotlivý `<tr>`**. U řádku tabulky se anotace vkládá **do poslední buňky**, aby řádek zůstal řádkem tabulky.
+
+**Kam anotace nejde**: **blok kódu** (ohradníky ```` ``` ````) a **vodorovná linka** (`---`) tlačítko **+ Anotace** nenabízejí — vložení `(>…)` by z nich udělalo obyčejný odstavec a obsah by se vykreslil jinak, než jak je napsaný. Anotaci připojte k okolnímu odstavci.
 
 **Kde se anotace zobrazí a kde ne**:
 - **Zobrazení a include** (`{{include:…}}`) — anotace se vyrenderuje jako bublina
