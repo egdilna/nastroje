@@ -182,6 +182,32 @@ When typing in a Markdown field (entity body, sections, scratchpad), these short
 
 If the content (or a Markdown attribute) contains checked tasks `- [x]`, a button appears to **hide them in the preview** — the text is unchanged, completed items are just tidied away.
 
+## 📁 Project filter
+
+The **Tasks**, **Calendar**, **Tags**, **Flags**, **Links** and **Comments** views have
+a **📁 Project** dropdown at the top. Pick one of the **non-archived** projects and the
+view shows only what belongs to it.
+
+**The choice is shared across all of those views.** Set it once and walk through the
+tasks, the calendar, the tags and the comments for that project without picking it
+again each time. That it is on is visible in the dropdown and in the line below the
+heading. Turn it off with **— all projects —**, or from the command palette
+(**Clear project filter**); the palette also offers **Filter to project: …** for each
+project.
+
+**What belongs to a project**: the project itself and everything filed under it with
+the **part of** relation — including through intermediate entities. A task under a
+meeting under the project counts. In **Links**, a link is shown when at least one of
+its ends belongs to the project, so the links that connect the project to its
+surroundings do not disappear.
+
+In the **All** view's filters (and therefore in **Last 100 changed**, which is the same
+view) the concrete projects sit in the **Project** filter next to *Not in any project* /
+*In some project*. That filter can be stored in a saved view.
+
+When a project is deleted or archived the filter switches itself off, so the view does
+not silently stay empty.
+
 ## Tasks and interactive elements in comments
 
 Comments are rendered as Markdown, so **Markdown tasks** `- [ ] something` work

@@ -181,6 +181,31 @@ Když píšete v markdownovém poli (tělo entity, sekce, odkládací prostor), 
 
 Pokud má obsah (nebo markdownový atribut) zaškrtnuté úkoly `- [x]`, objeví se tlačítko pro jejich **skrytí v náhledu** — text se nezmění, jen se přehledně schovají splněné položky.
 
+## 📁 Filtr podle projektu
+
+Pohledy **Úkoly**, **Kalendář**, **Tagy**, **Příznaky**, **Vazby** a **Komentáře** mají
+nahoře rozbalovací seznam **📁 Projekt**. Vyberete jeden z **nearchivovaných** projektů
+a pohled ukazuje jen to, co k němu patří.
+
+**Volba je společná pro všechny tyto pohledy.** Nastavíte ji jednou a projdete si
+podle ní úkoly, kalendář, tagy i komentáře, aniž byste ji pokaždé vybírali znovu.
+Že je zapnutá, je vidět v selectu a ve větě pod nadpisem. Vypnete ji volbou
+**— všechny projekty —**, nebo z palety příkazů (**Zrušit filtr projektu**);
+v paletě je i **Filtrovat na projekt: …** pro každý projekt.
+
+**Co všechno patří k projektu**: projekt sám a všechno, co je do něj zařazené vazbou
+**je součástí** — a to i přes mezičlánky. Úkol pod schůzkou pod projektem se tedy
+započítá. Ve **Vazbách** se ukáže vazba, jejíž aspoň jeden konec k projektu patří,
+aby nezmizely právě ty, které projekt spojují s okolím.
+
+Ve filtrech pohledu **Vše** (a tedy i v **Posledních 100 změněných**, což je tentýž
+pohled) najdete konkrétní projekty ve filtru **Projekt** vedle voleb
+*Není v žádném projektu* / *Je v nějakém projektu*. Ten filtr se dá uložit do
+vlastního pohledu.
+
+Když projekt smažete nebo archivujete, filtr se sám vypne — pohled tedy nezůstane
+tiše prázdný.
+
 ## Úkoly a interaktivní prvky v komentářích
 
 Komentáře se vykreslují jako Markdown, takže v nich fungují i **markdownové úkoly**
