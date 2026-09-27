@@ -313,6 +313,12 @@ body.theme-dark .anno-original blockquote { background: #2a2a2a; }
 .anno-flash { animation: commentAnchorFlash 1.5s ease-out; }
 .anno-target-flash { animation: commentAnchorFlash 1.5s ease-out; }
 
+/* Filtr podle projektu (Úkoly, Kalendář, Tagy, Příznaky, Vazby, Komentáře) */
+.projekt-filtr { display: inline-flex; align-items: center; gap: 0.4em; margin: 0.3em 0; flex-wrap: wrap; }
+.projekt-filtr label { font-weight: 600; }
+.projekt-filtr select { max-width: 22em; }
+p.projekt-filtr-popis { margin: 0.2em 0 0.6em; }
+
 /* Obsah dokumentu (TOC) v sekci Nadpisy */
 ol.toc-seznam { list-style: none; padding-left: 0; margin: 0.3em 0 0; }
 ol.toc-seznam li { margin: 0.15em 0; line-height: 1.4; }
@@ -7099,6 +7105,11 @@ function applySavedView(v) {
   // Příslušnost k projektu
   if (f.project === 'none') r = r.filter(e => getEntityParentProjects(e).length === 0);
   else if (f.project === 'any') r = r.filter(e => getEntityParentProjects(e).length > 0);
+  else if (f.project) {
+    // Konkrétní projekt: entita v něm, i přes mezičlánky (viz idsVProjektu).
+    const ids = idsVProjektu(f.project);
+    r = r.filter(e => ids.has(e.id));
+  }
   // Vazba na konkrétní entitu. Množina se spočítá jednou, ne pro každou entitu.
   if (f.linkTo) {
     const ukazujiNa = idsVazebNa(f.linkTo);
@@ -7188,6 +7199,10 @@ function describeFilter(f) {
   if (f.tagNot === FILTR_ZADNY_TAG) p.push('bez tagů');
   if (f.project === 'none') p.push('mimo projekty');
   else if (f.project === 'any') p.push('v nějakém projektu');
+  else if (f.project) {
+    const proj = findEntity(f.project);
+    p.push('projekt: ' + (proj ? getDisplayTitle(proj) : f.project));
+  }
   if (f.linkFrom) {
     const zdroj = findEntity(f.linkFrom);
     p.push('má vazbu z „' + (zdroj ? getDisplayTitle(zdroj) : f.linkFrom) + '"');
@@ -9676,6 +9691,8 @@ function renderAll(main) {
           '<option value="">— libovolně —</option>' +
           '<option value="none">Není v žádném projektu</option>' +
           '<option value="any">Je v nějakém projektu</option>' +
+          projektyProFiltr().map(p => '<option value="' + escapeHtml(p.id) + '">📁 ' +
+            escapeHtml(getDisplayTitle(p)) + '</option>').join('') +
         '</select></div>' +
         '<div><label for="filter-attach">Přílohy</label><select id="filter-attach">' +
           '<option value="">— libovolně —</option>' +
@@ -9844,6 +9861,11 @@ function renderAll(main) {
     // jakou používá dashboard projektu (vazba „je součástí" na entitu s aspektem Projekt).
     if (spj && spj.value === 'none') r = r.filter(e => getEntityParentProjects(e).length === 0);
     else if (spj && spj.value === 'any') r = r.filter(e => getEntityParentProjects(e).length > 0);
+    else if (spj && spj.value) {
+      // Konkrétní projekt: i přes mezičlánky (úkol pod schůzkou pod projektem).
+      const idsProj = idsVProjektu(spj.value);
+      r = r.filter(e => idsProj.has(e.id));
+    }
     // Přílohy
     if (fa && fa.value === 'yes') r = r.filter(e => e.attachments && e.attachments.length > 0);
     else if (fa && fa.value === 'no') r = r.filter(e => !e.attachments || e.attachments.length === 0);
@@ -10143,6 +10165,90 @@ function renderAll(main) {
   sar.value = 'active'; update();
 }
 
+// ==== FILTR PODLE PROJEKTU (sdílený napříč pohledy) ====
+// Jedna volba pro pohledy Úkoly, Kalendář, Tagy, Příznaky, Vazby a Komentáře.
+// Je schválně SPOLEČNÁ: nastaví se jednou a platí ve všech, aby šlo projít
+// „všechno k jednomu projektu" bez opakovaného vybírání. Že je zapnutá, je
+// vidět v selectu na začátku každého z těch pohledů.
+
+// Nearchivované projekty pro nabídku, abecedně.
+function projektyProFiltr() {
+  return db.entities
+    .filter(e => !e.archived && (e.aspects || []).includes('Project'))
+    .sort((a, b) => getDisplayTitle(a).localeCompare(getDisplayTitle(b), 'cs'));
+}
+
+// Id entit patřících pod projekt: projekt sám a všechno, co je do něj zařazené
+// vazbou „je součástí" — a to i přes mezičlánky (úkol pod schůzkou pod projektem).
+// Průchod se opakuje, dokud přibývá; hlídač zastaví i při cyklu ve vazbách.
+function idsVProjektu(idProjektu) {
+  const out = new Set();
+  if (!idProjektu || !findEntity(idProjektu)) return out;
+  out.add(idProjektu);
+  let zmena = true, straz = 0;
+  while (zmena && straz++ < 50) {
+    zmena = false;
+    db.entities.forEach(e => {
+      if (out.has(e.id)) return;
+      if ((e.links || []).some(l => l.type === 'partOf' && out.has(l.to))) { out.add(e.id); zmena = true; }
+    });
+  }
+  return out;
+}
+
+// Vybraný projekt, nebo null. Smazaný či archivovaný projekt se z filtru
+// zapomene — jinak by pohledy tiše ukazovaly prázdno a nebylo by proč.
+function aktivniProjektFiltru() {
+  if (!state.projektFiltr) return null;
+  const p = findEntity(state.projektFiltr);
+  if (!p || p.archived || !(p.aspects || []).includes('Project')) { state.projektFiltr = ''; return null; }
+  return p;
+}
+
+// Množina id pro aktuální filtr, nebo null, když se nefiltruje.
+// Pohled si ji vyzvedne jednou a pak se ptá jí, ne téhle funkce.
+function idsAktivnihoProjektu() {
+  const p = aktivniProjektFiltru();
+  return p ? idsVProjektu(p.id) : null;
+}
+
+// Select do hlavičky pohledu. `idPrvku` musí být v rámci stránky jedinečné.
+function projektFiltrHtml(idPrvku) {
+  const projekty = projektyProFiltr();
+  const vybrano = state.projektFiltr || '';
+  return '<div class="projekt-filtr">' +
+    '<label for="' + escapeHtml(idPrvku) + '">📁 Projekt</label> ' +
+    '<select id="' + escapeHtml(idPrvku) + '" data-projekt-filtr>' +
+      '<option value="">— všechny projekty —</option>' +
+      projekty.map(p => '<option value="' + escapeHtml(p.id) + '"' +
+        (p.id === vybrano ? ' selected' : '') + '>' + escapeHtml(getDisplayTitle(p)) + '</option>').join('') +
+    '</select>' +
+    (projekty.length === 0 ? ' <span class="meta">(žádný nearchivovaný projekt)</span>' : '') +
+  '</div>';
+}
+
+// Napojení selectu. Po změně se pohled překreslí, takže fokus se musí vrátit
+// na nový prvek — starý už v DOM není.
+function napojProjektFiltr(root) {
+  root.querySelectorAll('select[data-projekt-filtr]').forEach(sel => {
+    const idPrvku = sel.id;
+    sel.onchange = () => {
+      state.projektFiltr = sel.value || '';
+      render();
+      const novy = document.getElementById(idPrvku);
+      if (novy) novy.focus();
+    };
+  });
+}
+
+// Věta pod nadpis: co se právě filtruje. Prázdná, když se nefiltruje.
+function projektFiltrPopis() {
+  const p = aktivniProjektFiltru();
+  if (!p) return '';
+  return '<p class="meta projekt-filtr-popis">Filtrováno na projekt <strong>' +
+    escapeHtml(getDisplayTitle(p)) + '</strong> — entity zařazené do něj vazbou „je součástí", i přes mezičlánky.</p>';
+}
+
 // ==== VIEW: ÚKOLY ====
 function taskDeadlineInfo(iso) {
   // Vrátí { cls, label, order } podle naléhavosti termínu (order: menší = urgentnější)
@@ -10172,11 +10278,12 @@ const PRIORITY_CLS = { urgent:'pri-urgent', high:'pri-high', normal:'pri-normal'
 
 // Sbalitelná sekce v pohledu Úkoly: nehotové markdown úkoly ze všech entit,
 // seskupené podle entity a v ní podle pole (Tělo/atribut) a nadpisu.
-function buildMdTasksOverviewSection() {
+function buildMdTasksOverviewSection(idsProjektu) {
   const entitiesWithTasks = [];
   let grandTotal = 0;
   db.entities.forEach(e => {
     if (e.archived) return;
+    if (idsProjektu && !idsProjektu.has(e.id)) return;
     const groups = collectUnfinishedMdTasks(e);
     if (groups.length === 0) return;
     let cnt = 0;
@@ -10216,7 +10323,9 @@ function buildMdTasksOverviewSection() {
 }
 
 function renderTasks(main) {
-  const allTasks = db.entities.filter(e => e.aspects && e.aspects.includes('Task') && !e.archived);
+  const idsProjektu = idsAktivnihoProjektu();
+  const allTasks = db.entities.filter(e => e.aspects && e.aspects.includes('Task') && !e.archived
+    && (!idsProjektu || idsProjektu.has(e.id)));
 
   // Filtr (state.taskFilter)
   if (!state.taskFilter) state.taskFilter = { hideDone:false, onlyDeadline:false, priorityMin:'' };
@@ -10265,6 +10374,7 @@ function renderTasks(main) {
 
   // Filtr panel
   html += '<div class="task-filters btn-group" role="group" aria-label="Filtry úkolů">' +
+    projektFiltrHtml('tf-projekt') +
     '<label><input type="checkbox" id="tf-hide-done"' + (tf.hideDone?' checked':'') + '> Skrýt hotové/zrušené</label>' +
     '<label><input type="checkbox" id="tf-only-deadline"' + (tf.onlyDeadline?' checked':'') + '> Jen s termínem</label>' +
     '<label>Min. priorita: <select id="tf-priority-min">' +
@@ -10286,10 +10396,12 @@ function renderTasks(main) {
   ).join('');
 
   main.innerHTML = '<h1>Úkoly</h1><p class="meta">Celkem ' + allTasks.length + ' úkolů' + (tasks.length !== allTasks.length ? ', zobrazeno ' + tasks.length : '') + '.</p>' +
+    projektFiltrPopis() +
     (html || '<div class="empty">Žádné úkoly. Vytvořte stiskem „Nová entita“ a aspektem „Úkol“.</div>') +
-    buildMdTasksOverviewSection();
+    buildMdTasksOverviewSection(idsProjektu);
 
   attachEntityRowHandlers(main);
+  napojProjektFiltr(main);
 
   // Zapamatovat sbalení
   main.querySelectorAll('details[data-task-section]').forEach(d => {
@@ -10392,9 +10504,11 @@ function taskRowHtml(e, isOverdue) {
 }
 
 function renderCalendar(main) {
+  const idsProjektu = idsAktivnihoProjektu();
   const items = [];
   db.entities.forEach(e => {
     if (e.archived) return;
+    if (idsProjektu && !idsProjektu.has(e.id)) return;
     const ds = [];
     if (e.attributes.deadline) ds.push({ key:'Termín', iso:e.attributes.deadline, icon: '⏰' });
     if (e.attributes.start) ds.push({ key:'Začátek', iso:e.attributes.start, icon: '▶' });
@@ -10539,6 +10653,8 @@ function renderCalendar(main) {
   main.innerHTML =
     '<h1>📅 Kalendář</h1>' +
     '<p class="meta">Vše s datem (termíny, začátky, cíle, narozeniny, rozhodnutí).</p>' +
+    projektFiltrHtml('cal-projekt') +
+    projektFiltrPopis() +
     stats +
     '<section class="cal-section">' +
       '<h2>📌 Dnes a následujících 7 dnů</h2>' +
@@ -10557,6 +10673,7 @@ function renderCalendar(main) {
     (totalItems === 0 ? '<div class="empty">Nic není nadatováno.</div>' : '');
 
   attachEntityRowHandlers(main);
+  napojProjektFiltr(main);
 
   // Handler pro tlačítka Přeplánovat
   main.querySelectorAll('button.cal-reschedule-btn').forEach(btn => {
@@ -10744,6 +10861,10 @@ function renderLinksView(main) {
 
   // Aplikovat filtry
   let filtered = allLinks;
+  // Vazba patří k projektu, když k němu patří aspoň jeden z jejích konců —
+  // jinak by se ztratily právě ty vazby, které projekt spojují s okolím.
+  const idsProjektu = idsAktivnihoProjektu();
+  if (idsProjektu) filtered = filtered.filter(l => idsProjektu.has(l.from.id) || idsProjektu.has(l.to.id));
   if (f.kind) filtered = filtered.filter(l => l.kind === f.kind);
   if (f.type) {
     filtered = filtered.filter(l => l.kind === 'link' && l.type === f.type);
@@ -10784,6 +10905,7 @@ function renderLinksView(main) {
         '<input type="search" id="lf-from" list="lf-entity-list" value="' + escapeHtml(f.from) + '" placeholder="Začněte psát název"></div>' +
       '<div><label for="lf-to">Do entity</label>' +
         '<input type="search" id="lf-to" list="lf-entity-list" value="' + escapeHtml(f.to) + '" placeholder="Začněte psát název"></div>' +
+      '<div>' + projektFiltrHtml('lf-projekt') + '</div>' +
     '</div>' +
     '<datalist id="lf-entity-list">' + entityOptions + '</datalist>' +
     '<div class="btn-group" style="margin-top:0.5em;"><button id="lf-reset">Reset filtrů</button></div>' +
@@ -10825,6 +10947,7 @@ function renderLinksView(main) {
 
   // Handlery
   attachEntityRowHandlers(main);
+  napojProjektFiltr(main);
   function reload() { renderLinksView(main); }
   document.getElementById('lf-kind').onchange = (ev) => { f.kind = ev.target.value; reload(); };
   document.getElementById('lf-type').onchange = (ev) => { f.type = ev.target.value; reload(); };
@@ -11480,9 +11603,11 @@ function extractTokens(entity) {
 // ==== POHLED: VŠECHNY KOMENTÁŘE ====
 function renderCommentsView(main) {
   // Sebrat všechny komentáře ze všech entit
+  const idsProjektu = idsAktivnihoProjektu();
   const all = [];
   db.entities.forEach(e => {
     if (e.archived) return;
+    if (idsProjektu && !idsProjektu.has(e.id)) return;
     (e.comments || []).forEach(c => {
       all.push({ entity: e, comment: c });
     });
@@ -11504,6 +11629,8 @@ function renderCommentsView(main) {
 
   main.innerHTML = '<h1>Komentáře</h1>' +
     '<p>Nejnovější komentáře napříč všemi entitami (' + filtered.length + ' z ' + all.length + ').</p>' +
+    projektFiltrHtml('cv-projekt') +
+    projektFiltrPopis() +
     '<div class="toolbar" role="search">' +
       '<label for="cv-filter">Hledat v komentářích, autorovi nebo entitě</label>' +
       '<input type="search" id="cv-filter" value="' + escapeHtml(filterText) + '">' +
@@ -11532,6 +11659,7 @@ function renderCommentsView(main) {
   };
   attachEntityRowHandlers(main);
   attachMarkdownLinkHandlers(main);
+  napojProjektFiltr(main);
 }
 
 // ==== POHLED: NAJÍT / NAHRADIT ====
@@ -11700,10 +11828,17 @@ function replaceInEntity(entity, place, find, replace, caseSensitive) {
 
 // ==== TAGY ====
 function renderTags(main) {
+  const idsProjektu = idsAktivnihoProjektu();
   const counts = {};
-  db.entities.forEach(e => { if (!e.archived) (e.tags || []).forEach(t => counts[t] = (counts[t] || 0) + 1); });
+  db.entities.forEach(e => {
+    if (e.archived) return;
+    if (idsProjektu && !idsProjektu.has(e.id)) return;
+    (e.tags || []).forEach(t => counts[t] = (counts[t] || 0) + 1);
+  });
   const tags = Object.entries(counts).sort((a,b) => b[1] - a[1]);
   main.innerHTML = '<h1>Tagy</h1><p>Celkem ' + tags.length + ' unikátních tagů.</p>' +
+    projektFiltrHtml('tag-projekt') +
+    projektFiltrPopis() +
     (tags.length === 0
       ? '<div class="empty">Zatím žádné tagy.</div>'
       : '<table><caption class="sr-only">Seznam tagů</caption><thead><tr><th scope="col">Tag</th><th scope="col">Počet</th><th scope="col">Akce</th></tr></thead><tbody>' +
@@ -11711,6 +11846,7 @@ function renderTags(main) {
           '<td><button data-rename-tag="' + escapeHtml(t) + '">Přejmenovat</button> <button data-delete-tag="' + escapeHtml(t) + '">Smazat</button></td></tr>').join('') +
         '</tbody></table>');
   attachEntityRowHandlers(main);
+  napojProjektFiltr(main);
   main.querySelectorAll('button[data-rename-tag]').forEach(b => {
     b.onclick = async () => {
       const old = b.dataset.renameTag;
@@ -12366,9 +12502,20 @@ function renderFlagsView(main) {
     if (a) a.onclick = (ev) => { ev.preventDefault(); setView('settings'); };
     return;
   }
+  const idsProjektu = idsAktivnihoProjektu();
   const all = findAllEntitiesWithFlags();
+  if (idsProjektu) {
+    const zbyle = new Set();
+    flags.forEach(em => {
+      all.byEmoji[em] = all.byEmoji[em].filter(x => idsProjektu.has(x.entity.id));
+      all.byEmoji[em].forEach(x => zbyle.add(x.entity.id));
+    });
+    all.totalEntities = zbyle.size;
+  }
   let html = '<h2>🏳️‍🌈 Příznaky</h2>' +
-    '<p class="meta">Sledovaná emoji: ' + flags.join(' ') + '. Celkem ' + all.totalEntities + ' entit obsahuje alespoň jeden příznak.</p>';
+    '<p class="meta">Sledovaná emoji: ' + flags.join(' ') + '. Celkem ' + all.totalEntities + ' entit obsahuje alespoň jeden příznak.</p>' +
+    projektFiltrHtml('flags-projekt') +
+    projektFiltrPopis();
   const presentFlags = flags.filter(em => all.byEmoji[em].length > 0);
   if (presentFlags.length === 0) {
     html += '<div class="empty">Žádné entity zatím neobsahují žádný z příznakových emoji.</div>';
@@ -12390,6 +12537,7 @@ function renderFlagsView(main) {
     }
   }
   main.innerHTML = html;
+  napojProjektFiltr(main);
   main.querySelectorAll('a[data-entity]').forEach(a => {
     a.onclick = (ev) => {
       ev.preventDefault();
@@ -25106,6 +25254,28 @@ function paletaSestavPrikazy() {
     run: otevriPosledniZmeny
   });
   pridej({ id: 'prejit-zpet', label: '← Zpět', klavesa: 'b', kategorie: 'Přejít', keywords: 'navrat historie', run: () => goBack() });
+
+  // --- Filtr podle projektu (Úkoly, Kalendář, Tagy, Příznaky, Vazby, Komentáře) ---
+  const _projFiltr = aktivniProjektFiltru();
+  if (_projFiltr) {
+    pridej({
+      id: 'projekt-filtr-zrusit', label: '📁 Zrušit filtr projektu (' + getDisplayTitle(_projFiltr) + ')',
+      kategorie: 'Filtr projektu', zakladni: true,
+      hint: 'Pohledy Úkoly, Kalendář, Tagy, Příznaky, Vazby a Komentáře zase ukážou všechno',
+      keywords: 'projekt filtr zrusit vypnout vse',
+      run: () => { state.projektFiltr = ''; render(); toast('Filtr projektu zrušen.'); }
+    });
+  }
+  projektyProFiltr().forEach(p => {
+    if (_projFiltr && p.id === _projFiltr.id) return;
+    pridej({
+      id: 'projekt-filtr:' + p.id, label: '📁 Filtrovat na projekt: ' + getDisplayTitle(p),
+      kategorie: 'Filtr projektu',
+      hint: 'Úkoly, Kalendář, Tagy, Příznaky, Vazby a Komentáře jen k tomuto projektu',
+      keywords: 'projekt filtr omezit jen',
+      run: () => { state.projektFiltr = p.id; render(); toast('Filtrováno na projekt „' + getDisplayTitle(p) + '".'); }
+    });
+  });
 
   // --- Uložené pohledy ---
   (db.savedViews || []).forEach(v => {

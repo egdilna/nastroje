@@ -77,6 +77,34 @@ akce a posledních `PALETA_NEDAVNYCH` změněných entit.
 
 Paleta je **jen v aplikaci, ne v šabloně prohlížeče** — většina jejích příkazů edituje.
 
+## Filtr podle projektu je sdílený stav
+
+`state.projektFiltr` (id projektu, nebo prázdno) platí najednou pro pohledy **Úkoly,
+Kalendář, Tagy, Příznaky, Vazby a Komentáře** — schválně, aby šlo projít „všechno
+k jednomu projektu" bez opakovaného vybírání. Nový pohled, který má filtr nabídnout,
+potřebuje tři věci:
+
+1. `const idsProjektu = idsAktivnihoProjektu();` a vlastní filtrování (`null` = nefiltruje se),
+2. `projektFiltrHtml('<jedinečné-id>')` a `projektFiltrPopis()` do HTML,
+3. `napojProjektFiltr(main)` po `innerHTML` — select po změně překresluje, takže se
+   **vrací fokus** na nový prvek (stejná past jako u Připomenutí).
+
+`idsVProjektu()` je **tranzitivní** přes vazbu `partOf`: projekt sám a všechno pod ním,
+i přes mezičlánky. Dashboard projektu naproti tomu bere jen přímé potomky — to je
+záměrný rozdíl, ne nedopatření. Ve Vazbách se filtruje na „aspoň jeden konec patří
+k projektu", jinak by zmizely právě spojnice projektu s okolím.
+
+`aktivniProjektFiltru()` filtr **sám vypne**, když projekt zmizí nebo se archivuje.
+Bez toho by pohledy tiše ukazovaly prázdno a nebylo by z čeho poznat proč.
+
+Ve filtrech pohledu Vše je projekt součástí `state.filter.project` (`''` / `'none'` /
+`'any'` / id projektu) a filtruje se **na dvou místech**: v `applyFilters()` a v živém
+filtrování seznamu podle DOM (proměnná `spj`). Kdo sáhne na jedno, musí i na druhé.
+
+Filtr je **jen v aplikaci, ne v šabloně prohlížeče**.
+
+Hlídá to `pim/testy/filtr-projektu.mjs`.
+
 ## Interaktivní markdown: zdroj textu se musí táhnout s prvkem
 
 Zaškrtávátko úkolu, inline výběr `(!a/|b!)` i tlačítko **→ Entita** zapisují zpátky
