@@ -182,6 +182,20 @@ When typing in a Markdown field (entity body, sections, scratchpad), these short
 
 If the content (or a Markdown attribute) contains checked tasks `- [x]`, a button appears to **hide them in the preview** — the text is unchanged, completed items are just tidied away.
 
+## Tasks and interactive elements in comments
+
+Comments are rendered as Markdown, so **Markdown tasks** `- [ ] something` work
+inside them: the checkbox can be ticked right in the comment, and so do the
+**inline select** `(!a/|b!)` and the **→ Entity** button.
+
+**This edits the comment.** Ticking rewrites `[ ]` to `[x]` in the comment text
+and the comment is marked as edited ("(edited …)" appears next to the date).
+No other comment and no entity content is touched.
+
+Comments in the **💬 Comments around this entity** section belong to other
+entities and are shown as plain text — nothing there can be ticked. Edit them in
+the detail of the entity they belong to.
+
 ## Headings section — table of contents
 
 Above the **Content** section in the entity detail there is a collapsed **Headings**

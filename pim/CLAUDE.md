@@ -77,6 +77,31 @@ akce a posledních `PALETA_NEDAVNYCH` změněných entit.
 
 Paleta je **jen v aplikaci, ne v šabloně prohlížeče** — většina jejích příkazů edituje.
 
+## Interaktivní markdown: zdroj textu se musí táhnout s prvkem
+
+Zaškrtávátko úkolu, inline výběr `(!a/|b!)` i tlačítko **→ Entita** zapisují zpátky
+do zdrojového textu. Který text to je, říká `ctx.taskSource` při renderu
+(`data-md-task-source` / `data-md-source` v DOM) a rozluští `mdZdrojText()` /
+`mdZapisZdroj()` v `attachMarkdownTaskHandlers()`:
+
+| Zdroj | Kam se zapisuje |
+|---|---|
+| chybí / `body` | `entity.body` |
+| `attr:klíč` | `entity.attributes[klíč]` |
+| `comment:id` | `entity.comments[…].content` (+ jeho `updated_at`) |
+
+**Nový kontext, ve kterém se renderuje markdown entity, musí `taskSource` nastavit.**
+Bez něj se dřív spadlo na `entity.body` — a protože komentáře se renderují bez něj,
+přepnutí inline výběru v komentáři tiše přepsalo tělo entity a komentáře se
+nedotklo. Proto `mdZdrojText()` u neznámého zdroje vrací `null` a nezapisuje se nic.
+
+Prvky se napojují na kořen, který dostane `attachMarkdownTaskHandlers(root, entity)`,
+a `entity` musí být ta, které text patří. Komentáře okolních entit (`renderRelatedCommentsFlat`)
+se proto vypisují přes `escapeHtml()` jako prostý text — patří cizí entitě a žádné
+interaktivní prvky v nich vzniknout nesmí.
+
+Hlídá to `pim/testy/ukoly-v-komentarich.mjs` (kanárci na tělo i na druhý komentář).
+
 ## Anotace a obsah nadpisů: indexy odstavců se počítají dvakrát
 
 Inline anotace `(>text)` se do těla zapisují podle **indexu odstavce**, a ten index

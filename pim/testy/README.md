@@ -42,6 +42,7 @@ upravte v `lib.mjs`.
 | `anotace.mjs` | Inline anotace `(>text)` se nevykreslují doslova a nejdou do exportu. |
 | `anotace-umisteni.mjs` | Anotace skončí u toho odstavce, na kterém se klepnulo — i za blokem kódu, transkluzí a u dvou stejných odstavců. |
 | `obsah-nadpisu.mjs` | Sekce Nadpisy: pořadí, odsazení a to, že odkazy míří na existující nadpis. |
+| `ukoly-v-komentarich.mjs` | Úkoly a inline výběr v komentáři zapisují do toho komentáře, ne do těla entity. |
 | `odznak-a-seznam.mjs` | Odznak ☐N u názvu entity a editor seznamu (sbalování, udělat úkol). |
 | `skryte-ukoly.mjs` | Skrytí hotových úkolů přežije zaškrtnutí dalšího. |
 | `klavesy.mjs` | Klávesové zkratky a accesskey se nepřekrývají. |
