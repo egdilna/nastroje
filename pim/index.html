@@ -8535,9 +8535,46 @@ function attachMarkdownLinkHandlers(root) {
   });
 }
 
-// Interaktivní MD task checkboxy: kliknutí přepne [ ] ↔ [x] ve zdroji
-// Zdrojem je buď entity.body (default) nebo entity.attributes[attrKey], 
-// rozlišeno přes data-md-task-source atribut na checkboxu.
+// Zdroj textu pro interaktivní prvky v markdownu: tělo entity (výchozí),
+// hodnota atributu (attr:klíč) nebo text komentáře (comment:id). Vrací null,
+// když zdroj neznáme — pak se radši nezapíše nic. Dřív se u neznámého zdroje
+// spadlo na tělo entity, takže přepnutí inline výběru v komentáři přepsalo
+// tělo entity a komentáře se ani nedotklo.
+function mdZdrojText(entity, zdroj) {
+  if (!entity) return null;
+  if (!zdroj || zdroj === 'body') return entity.body || '';
+  if (zdroj.indexOf('attr:') === 0) return (entity.attributes && entity.attributes[zdroj.slice(5)]) || '';
+  if (zdroj.indexOf('comment:') === 0) {
+    const k = (entity.comments || []).find(x => x.id === zdroj.slice(8));
+    return k ? (k.content || '') : null;
+  }
+  return null;
+}
+
+// Zapíše text zpátky do zdroje. Vrací false, když se nemá kam zapsat.
+// U komentáře nastaví i jeho updated_at — zaškrtnutí úkolu je opravdu změna
+// komentáře a v seznamu se to má poznat.
+function mdZapisZdroj(entity, zdroj, text) {
+  if (!entity) return false;
+  if (!zdroj || zdroj === 'body') { entity.body = text; return true; }
+  if (zdroj.indexOf('attr:') === 0) {
+    if (!entity.attributes) entity.attributes = {};
+    entity.attributes[zdroj.slice(5)] = text;
+    return true;
+  }
+  if (zdroj.indexOf('comment:') === 0) {
+    const k = (entity.comments || []).find(x => x.id === zdroj.slice(8));
+    if (!k) return false;
+    k.content = text;
+    k.updated_at = nowIso();
+    return true;
+  }
+  return false;
+}
+
+// Interaktivní MD task checkboxy: kliknutí přepne [ ] ↔ [x] ve zdroji.
+// Zdrojem je entity.body (default), entity.attributes[klíč] nebo text
+// komentáře — rozlišeno přes data-md-task-source / data-md-source.
 function attachMarkdownTaskHandlers(root, entity) {
   if (!entity) return;
   root.querySelectorAll('input[type="checkbox"][data-md-task]').forEach(cb => {
@@ -8545,12 +8582,8 @@ function attachMarkdownTaskHandlers(root, entity) {
       const idx = Number(cb.dataset.mdTask);
       if (isNaN(idx)) return;
       const source = cb.dataset.mdTaskSource || 'body';
-      let text;
-      if (source === 'body') text = entity.body || '';
-      else if (source.startsWith('attr:')) {
-        const k = source.slice(5);
-        text = (entity.attributes && entity.attributes[k]) || '';
-      } else return;
+      const text = mdZdrojText(entity, source);
+      if (text == null) return;
 
       // Najít N-tý výskyt `\[[ xX]\]` a přepnout
       // Reset indexu pro každý input zvlášť - každý source má vlastní counter
@@ -8564,11 +8597,7 @@ function attachMarkdownTaskHandlers(root, entity) {
         return match;
       });
       if (newText === text) return;
-      if (source === 'body') entity.body = newText;
-      else if (source.startsWith('attr:')) {
-        const k = source.slice(5);
-        entity.attributes[k] = newText;
-      }
+      if (!mdZapisZdroj(entity, source, newText)) return;
       entity.updated_at = nowIso();
       saveDebounced();
       // Re-render: přepočtou se countery i checkboxy. V read módu detail.
@@ -8581,12 +8610,8 @@ function attachMarkdownTaskHandlers(root, entity) {
       const idx = Number(sel.dataset.mdInlineSelect);
       if (isNaN(idx)) return;
       const source = sel.dataset.mdSource || 'body';
-      let text;
-      if (source === 'body') text = entity.body || '';
-      else if (source.startsWith('attr:')) {
-        const k = source.slice(5);
-        text = (entity.attributes && entity.attributes[k]) || '';
-      } else return;
+      const text = mdZdrojText(entity, source);
+      if (text == null) return;
       // Najít N-tý výskyt (!...!), přepsat
       const re = /\(!([^!()]+?)!\)/g;
       let count = 0;
@@ -8597,11 +8622,7 @@ function attachMarkdownTaskHandlers(root, entity) {
         return '(!' + parts.map((p, i) => (i === chosenIdx ? '|' : '') + p).join('/') + '!)';
       });
       if (newText === text) return;
-      if (source === 'body') entity.body = newText;
-      else if (source.startsWith('attr:')) {
-        const k = source.slice(5);
-        entity.attributes[k] = newText;
-      }
+      if (!mdZapisZdroj(entity, source, newText)) return;
       entity.updated_at = nowIso();
       saveDebounced();
       // Žádný re-render – select je už visually changed
@@ -8613,12 +8634,8 @@ function attachMarkdownTaskHandlers(root, entity) {
       const idx = Number(btn.dataset.mdFixSelect);
       if (isNaN(idx)) return;
       const source = btn.dataset.mdSource || 'body';
-      let text;
-      if (source === 'body') text = entity.body || '';
-      else if (source.startsWith('attr:')) {
-        const k = source.slice(5);
-        text = (entity.attributes && entity.attributes[k]) || '';
-      } else return;
+      const text = mdZdrojText(entity, source);
+      if (text == null) return;
       // Najít N-tý výskyt (!...!), nahradit jen vybranou hodnotou
       const re = /\(!([^!()]+?)!\)/g;
       let count = 0;
@@ -8629,11 +8646,7 @@ function attachMarkdownTaskHandlers(root, entity) {
         return sel ? sel.slice(1) : parts[0];
       });
       if (newText === text) return;
-      if (source === 'body') entity.body = newText;
-      else if (source.startsWith('attr:')) {
-        const k = source.slice(5);
-        entity.attributes[k] = newText;
-      }
+      if (!mdZapisZdroj(entity, source, newText)) return;
       entity.updated_at = nowIso();
       save();
       toast('✓ Výběr zafixován.');
@@ -8646,12 +8659,8 @@ function attachMarkdownTaskHandlers(root, entity) {
       const idx = Number(btn.dataset.mdTaskConvert);
       if (isNaN(idx)) return;
       const source = btn.dataset.mdTaskSource || 'body';
-      let text;
-      if (source === 'body') text = entity.body || '';
-      else if (source.startsWith('attr:')) {
-        const k = source.slice(5);
-        text = (entity.attributes && entity.attributes[k]) || '';
-      } else return;
+      const text = mdZdrojText(entity, source);
+      if (text == null) return;
       // Najít N-tý task řádek
       const lines = text.split('\n');
       let count = 0;
@@ -8685,11 +8694,7 @@ function attachMarkdownTaskHandlers(root, entity) {
       // Nahradit řádek wiki linkem
       lines[lineIdx] = taskPrefix + '[' + (checked ? 'x' : ' ') + '] [[' + taskText + ']]';
       const newText = lines.join('\n');
-      if (source === 'body') entity.body = newText;
-      else if (source.startsWith('attr:')) {
-        const k = source.slice(5);
-        entity.attributes[k] = newText;
-      }
+      mdZapisZdroj(entity, source, newText);
       entity.updated_at = nowIso();
       save();
       const projMsg = parentProjects.length > 0 ? ' Zděděno projektů: ' + parentProjects.length + '.' : '';
@@ -18556,7 +18561,12 @@ function renderCommentItem(entityId, c) {
   const timeStr = fmtDateTime(c.created_at);
   const editedStr = edited ? ' <span class="meta">(upraveno ' + escapeHtml(fmtRelative(c.updated_at)) + ')</span>' : '';
   // Renderuj obsah jako markdown (wiki linky, #N reference, atd.)
-  const renderedContent = renderMarkdown(c.content || '', { ctx: { depth: 1, includeStack: new Set() } });
+  // taskSource říká interaktivním prvkům (zaškrtávátka úkolů, inline výběr), že
+  // zdrojem textu je TENTO komentář. Bez něj byly úkoly v komentáři jen na čtení
+  // a inline výběr dokonce zapisoval do těla entity — tiše a do cizího textu.
+  const renderedContent = renderMarkdown(c.content || '', {
+    ctx: { depth: 1, includeStack: new Set(), taskSource: 'comment:' + c.id }
+  });
   return '<article class="comment markdown' + (edited ? ' comment-edited' : '') + '" aria-label="Komentář od ' + escapeHtml(c.author || 'anonym') + '" id="comment-' + escapeHtml(c.id) + '" data-comment-id="' + escapeHtml(c.id) + '">' +
     '<div class="comment-meta">' +
       '<span><span class="comment-author">' + escapeHtml(c.author || '(bez autora)') + '</span> · <time datetime="' + escapeHtml(c.created_at) + '">' + escapeHtml(timeStr) + '</time>' + editedStr + '</span>' +
@@ -18608,6 +18618,8 @@ function renderEditComments(entity) {
   const sorted = [...list].sort((a,b) => a.created_at.localeCompare(b.created_at));
   c.innerHTML = '<div class="comments-list">' + sorted.map(co => renderCommentItem(entity.id, co)).join('') + '</div>';
   attachCommentHandlers(c, entity);
+  // Úkoly v komentářích jdou zaškrtnout i v editaci entity.
+  attachMarkdownTaskHandlers(c, entity);
 }
 
 function openCommentDialog(entity, existing) {

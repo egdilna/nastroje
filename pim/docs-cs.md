@@ -181,6 +181,20 @@ Když píšete v markdownovém poli (tělo entity, sekce, odkládací prostor), 
 
 Pokud má obsah (nebo markdownový atribut) zaškrtnuté úkoly `- [x]`, objeví se tlačítko pro jejich **skrytí v náhledu** — text se nezmění, jen se přehledně schovají splněné položky.
 
+## Úkoly a interaktivní prvky v komentářích
+
+Komentáře se vykreslují jako Markdown, takže v nich fungují i **markdownové úkoly**
+`- [ ] něco`: zaškrtávátko jde zaškrtnout přímo v komentáři a stejně tak funguje
+**inline výběr** `(!a/|b!)` i tlačítko **→ Entita**.
+
+**Je to změna komentáře.** Zaškrtnutí přepíše `[ ]` na `[x]` v textu komentáře
+a komentář se označí jako upravený (u data se objeví „(upraveno …)"). Jiného
+komentáře ani obsahu entity se to nedotkne.
+
+Komentáře v sekci **💬 Komentáře v okolí entity** patří jiným entitám a vypisují
+se jen jako text — zaškrtnout se v nich nedá nic. Upravte je v detailu té entity,
+ke které patří.
+
 ## Sekce Nadpisy — obsah dokumentu
 
 Nad sekcí **Obsah** v detailu entity je sbalená sekce **Nadpisy**: obsah dokumentu
