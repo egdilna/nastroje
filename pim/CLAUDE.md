@@ -77,6 +77,31 @@ akce a posledních `PALETA_NEDAVNYCH` změněných entit.
 
 Paleta je **jen v aplikaci, ne v šabloně prohlížeče** — většina jejích příkazů edituje.
 
+## Sekce detailu: rozbalení a odškrtávání úkolů
+
+Čtyři sekce pod obsahem jsou **`<details open>`**: Nedokončené položky, Příznaky,
+Komentáře v textu (CriticMarkup) a Anotace. `open` v HTML je jen výchozí stav —
+`render()` si před překreslením dělá snapshot `details.section-collapsible`
+(klíč = `id`, jinak text summary) a po překreslení ho obnoví, takže co uživatel
+sbalí, zůstane sbalené. Pozor: summary s počtem („Nedokončené položky (3)") mění
+klíč, jakmile se počet změní — pak se snapshot netrefí a platí výchozí `open`.
+
+Zaškrtávátka v Nedokončených položkách zapisují přes `odskrtniMdUkolNaRadku()`:
+`collectUnfinishedMdTasks()` vrací u každého úkolu `sourceName` (`body` /
+`attr:klíč`, stejné názvosloví jako `mdZdrojText()`/`mdZapisZdroj()`) a `line`,
+takže **se nic nehledá podle textu ani se nepočítá N-tý výskyt**. Shoda textu se
+jen ověří jako pojistka a při neshodě se **nezapíše nic** — dva stejně znějící
+úkoly jsou přesně ta situace, kde počítání pořadím tiše trefí jiný řádek.
+
+Zaškrtávátka mají vlastní třídu `md-sekce-ukol` a atributy `data-mdt-*`, aby se
+nepletla s `data-md-task` z `attachMarkdownTaskHandlers()` (ta jedou přes N-tý
+výskyt v textu). Kdo přidá další interaktivní seznam nad textem entity, ať drží
+stejný princip: **řádek, ne pořadí**.
+
+Seznam je i v šabloně prohlížeče, ale tam **bez zaškrtávátek** — prohlížeč needituje.
+
+Hlídá to `pim/testy/sekce-detailu.mjs`.
+
 ## Filtr podle projektu je sdílený stav
 
 `state.projektFiltr` (id projektu, nebo prázdno) platí najednou pro pohledy **Úkoly,

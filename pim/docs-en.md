@@ -182,6 +182,34 @@ When typing in a Markdown field (entity body, sections, scratchpad), these short
 
 If the content (or a Markdown attribute) contains checked tasks `- [x]`, a button appears to **hide them in the preview** — the text is unchanged, completed items are just tidied away.
 
+## Sections in the entity detail
+
+Below the entity body there are sections computed from its text. Four of them are
+**expanded straight away** — they are meant to be seen, not clicked open:
+
+| Section | What is in it |
+|---|---|
+| **Unfinished items (N)** | Unchecked `- [ ]` tasks from the body and text fields, grouped by field and heading |
+| **Flags (N)** | Occurrences of the tracked flag emoji, with buttons to change and remove them |
+| **💬 N comments in text** | CriticMarkup comments `{>>…<<}` from the body |
+| **Annotations** | Inline annotations `(>…)` from the body |
+
+Collapsing or expanding is remembered while you stay on the entity — after a redraw
+they come back the way you left them.
+
+### Ticking tasks off the list
+
+In **Unfinished items** every task has a **checkbox**. Ticking it marks the task done
+right in the source text (`- [ ]` → `- [x]`) — you do not have to open the entity body
+for that. The task text is clickable too, not just the box.
+
+A finished task disappears from the list (it is a list of *unfinished* ones) and the
+count in the header drops. The write goes to exactly the line the task came from, so
+two identically worded tasks never get mixed up — and a task from a text attribute is
+written back into that attribute, not into the body. If the text changed in the
+meantime so that the task is no longer on its line, nothing is written and you are
+told so.
+
 ## 📁 Project filter
 
 The **Tasks**, **Calendar**, **Tags**, **Flags**, **Links** and **Comments** views have

@@ -313,6 +313,11 @@ body.theme-dark .anno-original blockquote { background: #2a2a2a; }
 .anno-flash { animation: commentAnchorFlash 1.5s ease-out; }
 .anno-target-flash { animation: commentAnchorFlash 1.5s ease-out; }
 
+/* Seznam nedokončených markdownových úkolů v detailu — zaškrtnutelný */
+ul.md-tasks-list li.md-task-item { margin: 0.15em 0; }
+ul.md-tasks-list li.md-task-item label { display: inline-flex; align-items: baseline; gap: 0.45em; cursor: pointer; }
+ul.md-tasks-list li.md-task-item label:hover .md-task-text { text-decoration: underline; }
+
 /* Filtr podle projektu (Úkoly, Kalendář, Tagy, Příznaky, Vazby, Komentáře) */
 .projekt-filtr { display: inline-flex; align-items: center; gap: 0.4em; margin: 0.3em 0; flex-wrap: wrap; }
 .projekt-filtr label { font-weight: 600; }
@@ -8587,6 +8592,45 @@ function mdZapisZdroj(entity, zdroj, text) {
   return false;
 }
 
+// Označí markdownový úkol na konkrétním řádku zdroje za hotový. Řádek dodává
+// collectUnfinishedMdTasks(), takže se nic nehledá podle textu; shoda textu se
+// jen ověří, aby se nezapsalo do něčeho, co se mezitím změnilo.
+// Vrací false, když řádek není nezaškrtnutý úkol nebo text nesedí.
+function odskrtniMdUkolNaRadku(entity, zdroj, radekIdx, ocekavanyText) {
+  const text = mdZdrojText(entity, zdroj);
+  if (text == null) return false;
+  const radky = text.split('\n');
+  const radek = radky[radekIdx];
+  if (typeof radek !== 'string') return false;
+  const m = radek.match(/^(\s*(?:[-*+]|\d+\.)\s+)\[\s\](\s+.*)$/);
+  if (!m) return false;
+  if (ocekavanyText != null && m[2].trim() !== ocekavanyText) return false;
+  radky[radekIdx] = m[1] + '[x]' + m[2];
+  if (!mdZapisZdroj(entity, zdroj, radky.join('\n'))) return false;
+  entity.updated_at = nowIso();
+  return true;
+}
+
+// Napojí zaškrtávátka v sekci Nedokončené položky. Po uložení se překresluje —
+// hotový úkol ze seznamu nedokončených zmizí, proto krátká hláška, aby bylo
+// jasné, že to není chyba.
+function napojUkolyVSekci(root, entity) {
+  root.querySelectorAll('input.md-sekce-ukol').forEach(cb => {
+    cb.onchange = () => {
+      const povedlo = odskrtniMdUkolNaRadku(entity, cb.dataset.mdtSource,
+        Number(cb.dataset.mdtLine), cb.dataset.mdtText);
+      if (!povedlo) {
+        cb.checked = false;
+        alertMsg('Úkol se nepodařilo najít — text se mezitím změnil. Zkuste to znovu po překreslení.');
+        return;
+      }
+      save();
+      render();
+      toast('Úkol označen jako hotový.');
+    };
+  });
+}
+
 // Interaktivní MD task checkboxy: kliknutí přepne [ ] ↔ [x] ve zdroji.
 // Zdrojem je entity.body (default), entity.attributes[klíč] nebo text
 // komentáře — rozlišeno přes data-md-task-source / data-md-source.
@@ -13743,7 +13787,7 @@ function renderDetailRead(main, e) {
   // Seznam CriticMarkup komentářů v těle
   const criticComments = e.body ? extractCriticComments(e.body) : [];
   const criticListHtml = criticComments.length > 0
-    ? '<details class="critic-comments-list"><summary>💬 ' + criticComments.length + ' komentář' + (criticComments.length === 1 ? '' : criticComments.length < 5 ? 'e' : 'ů') + ' v textu</summary><ol>' +
+    ? '<details open class="critic-comments-list"><summary>💬 ' + criticComments.length + ' komentář' + (criticComments.length === 1 ? '' : criticComments.length < 5 ? 'e' : 'ů') + ' v textu</summary><ol>' +
         criticComments.map((c, i) => '<li><strong>#' + (i+1) + '</strong>: ' + escapeHtml(c) + '</li>').join('') +
       '</ol></details>'
     : '';
@@ -13854,14 +13898,22 @@ function renderDetailRead(main, e) {
       const mdGroups = collectUnfinishedMdTasks(e);
       const total = countUnfinishedMdTasks(e);
       if (total === 0) return '';
-      let h = '<details class="section-collapsible md-tasks-section"><summary>Nedokončené položky (' + total + ')</summary><h3>Nedokončené položky (' + total + ')</h3>';
+      let h = '<details open class="section-collapsible md-tasks-section"><summary>Nedokončené položky (' + total + ')</summary><h3>Nedokončené položky (' + total + ')</h3>';
       mdGroups.forEach(g => {
         h += '<div class="md-tasks-group" style="margin-top:0.6em;"><strong>' + escapeHtml(g.fieldLabel) + '</strong>';
         g.sections.forEach(s => {
           if (s.heading) h += '<div class="meta" style="margin-top:0.3em;">' + escapeHtml(s.heading) + '</div>';
-          h += '<ul style="list-style:none;padding-left:0.5em;">';
+          h += '<ul class="md-tasks-list" style="list-style:none;padding-left:0.5em;">';
           s.tasks.forEach(t => {
-            h += '<li>☐ ' + escapeHtml(t.text) + '</li>';
+            // Zaškrtnutí rovnou odsud — úkol nese svůj zdroj i číslo řádku,
+            // takže se při zápisu nic nehledá podle textu.
+            h += '<li class="md-task-item"><label>' +
+              '<input type="checkbox" class="md-sekce-ukol"' +
+                ' data-mdt-source="' + escapeHtml(g.sourceName) + '"' +
+                ' data-mdt-line="' + (t.line - 1) + '"' +
+                ' data-mdt-text="' + escapeHtml(t.text) + '">' +
+              ' <span class="md-task-text">' + escapeHtml(t.text) + '</span>' +
+            '</label></li>';
           });
           h += '</ul>';
         });
@@ -13876,7 +13928,7 @@ function renderDetailRead(main, e) {
       if (flags.length === 0) return '';
       const scan = scanEntityForFlags(e, flags);
       if (scan.total === 0) return '';
-      let h = '<details class="section-collapsible" id="entity-flags-section"><summary>Příznaky (' + scan.total + ')</summary><h3>Příznaky (' + scan.total + ')</h3>';
+      let h = '<details open class="section-collapsible" id="entity-flags-section"><summary>Příznaky (' + scan.total + ')</summary><h3>Příznaky (' + scan.total + ')</h3>';
       const presentFlags = flags.filter(em => scan.byEmoji[em].length > 0);
       presentFlags.forEach(em => {
         const items = scan.byEmoji[em];
@@ -13904,7 +13956,7 @@ function renderDetailRead(main, e) {
     (function() {
       const annoHtml = renderAnnotationsList(e);
       if (!annoHtml) return '';
-      return '<details class="section-collapsible"><summary>Anotace</summary><h3>Anotace</h3>' + annoHtml + '</details>';
+      return '<details open class="section-collapsible"><summary>Anotace</summary><h3>Anotace</h3>' + annoHtml + '</details>';
     })() +
     (function() {
       const ownCnt = (e.comments || []).length;
@@ -14291,6 +14343,7 @@ function renderDetailRead(main, e) {
     });
   }
   attachMarkdownTaskHandlers(main, e);
+  napojUkolyVSekci(main, e);
   attachAttachmentReadHandlers(main, e);
   if (isDatabase) attachDatabaseReadHandlers(main, e);
   if (isStructuredDoc) { const _db = document.getElementById('doc-edit-btn'); if (_db) _db.onclick = () => { state.docEdit = { entityId: e.id }; render(); }; }
@@ -35939,13 +35992,13 @@ function renderDetailRead(main, e) {
     (function() {
       const annoHtml = renderAnnotationsList(e);
       if (!annoHtml) return '';
-      return '<details class="section-collapsible"><summary>Anotace</summary><h3>Anotace</h3>' + annoHtml + '</details>';
+      return '<details open class="section-collapsible"><summary>Anotace</summary><h3>Anotace</h3>' + annoHtml + '</details>';
     })() +
     (function() {
       const mdGroups = collectUnfinishedMdTasks(e);
       const total = countUnfinishedMdTasks(e);
       if (total === 0) return '';
-      let h = '<details class="section-collapsible md-tasks-section"><summary>Nedokončené položky (' + total + ')</summary><h3>Nedokončené položky (' + total + ')</h3>';
+      let h = '<details open class="section-collapsible md-tasks-section"><summary>Nedokončené položky (' + total + ')</summary><h3>Nedokončené položky (' + total + ')</h3>';
       mdGroups.forEach(g => {
         h += '<div class="md-tasks-group" style="margin-top:0.6em;"><strong>' + escapeHtml(g.fieldLabel) + '</strong>';
         g.sections.forEach(s => {
