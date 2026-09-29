@@ -181,6 +181,33 @@ Když píšete v markdownovém poli (tělo entity, sekce, odkládací prostor), 
 
 Pokud má obsah (nebo markdownový atribut) zaškrtnuté úkoly `- [x]`, objeví se tlačítko pro jejich **skrytí v náhledu** — text se nezmění, jen se přehledně schovají splněné položky.
 
+## Sekce v detailu entity
+
+Pod obsahem entity jsou sekce, které se počítají z jejího textu. Čtyři z nich jsou
+**rozbalené hned** — mají být vidět, ne se k nim proklikávat:
+
+| Sekce | Co je v ní |
+|---|---|
+| **Nedokončené položky (N)** | Nezaškrtnuté `- [ ]` úkoly z obsahu a textových polí, seskupené podle pole a nadpisu |
+| **Příznaky (N)** | Výskyty sledovaných příznakových emoji, s tlačítky na změnu a odstranění |
+| **💬 N komentářů v textu** | CriticMarkup komentáře `{>>…<<}` z obsahu |
+| **Anotace** | Inline anotace `(>…)` z obsahu |
+
+Sbalení nebo rozbalení si aplikace pamatuje, dokud jste u entity — po překreslení
+zůstanou tak, jak jste je nechali.
+
+### Odškrtávání úkolů ze seznamu
+
+V **Nedokončených položkách** má každý úkol **zaškrtávátko**. Zaškrtnutím se úkol
+označí za hotový přímo ve zdrojovém textu (`- [ ]` → `- [x]`) — nemusíte kvůli tomu
+otevírat obsah entity. Klepnout jde i na text úkolu, ne jen na čtvereček.
+
+Hotový úkol ze seznamu zmizí (je to seznam *nedokončených*) a počet v hlavičce klesne.
+Zapisuje se přesně na ten řádek, ze kterého úkol pochází, takže dva stejně znějící
+úkoly se nepletou — a úkol z textového atributu se zapíše do atributu, ne do obsahu.
+Když se text mezitím změní tak, že úkol na svém řádku není, aplikace **nezapíše nic**
+a řekne to.
+
 ## 📁 Filtr podle projektu
 
 Pohledy **Úkoly**, **Kalendář**, **Tagy**, **Příznaky**, **Vazby** a **Komentáře** mají
