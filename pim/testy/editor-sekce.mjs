@@ -108,5 +108,54 @@ await p.click('#lint-save');
 await p.waitForTimeout(800);
 ok((await p.evaluate(() => findEntity('e2').body)) === 'Upravené tělo.', 'lint nad celým tělem ukládá dál do entity');
 
+console.log('=== POŘADÍ TLAČÍTEK: Uložit a Zrušit před nástroji ===');
+await priprav();
+const poradi = await p.evaluate(() => {
+  const w = document.querySelector('.section-edit-wrapper');
+  const prvky = Array.from(w.children);
+  const idx = (sel) => prvky.findIndex(el => el.matches(sel));
+  const ulozit = w.querySelector('#sec-edit-save');
+  const zrusit = w.querySelector('#sec-edit-cancel');
+  const prvniNastroj = w.querySelector('.md-field-actions button');
+  return {
+    textarea: idx('textarea'),
+    btnGroup: prvky.findIndex(el => el.contains(ulozit)),
+    nastroje: idx('.md-field-actions'),
+    vyber: idx('.md-selection-actions'),
+    // Pořadí ve skutečném dokumentu (a tedy i pro Tab a odečítač obrazovky)
+    ulozitPredNastroji: prvniNastroj
+      ? !!(ulozit.compareDocumentPosition(prvniNastroj) & Node.DOCUMENT_POSITION_FOLLOWING) : null,
+    zrusitPredNastroji: prvniNastroj
+      ? !!(zrusit.compareDocumentPosition(prvniNastroj) & Node.DOCUMENT_POSITION_FOLLOWING) : null
+  };
+});
+ok(poradi.btnGroup === poradi.textarea + 1, 'Uložit a Zrušit jsou hned pod textareou (' + JSON.stringify(poradi) + ')');
+ok(poradi.btnGroup < poradi.nastroje && poradi.nastroje < poradi.vyber,
+  'pořadí je textarea → Uložit/Zrušit → nástroje → akce nad výběrem');
+ok(poradi.ulozitPredNastroji === true && poradi.zrusitPredNastroji === true,
+  'obě tlačítka jsou v pořadí dokumentu před prvním nástrojem (Tab i odečítač)');
+// Po přepsání lišty nástrojů (přepočítává se při psaní) musí pořadí zůstat
+await p.evaluate(() => {
+  const ta = document.getElementById('sec-edit-ta');
+  ta.value = ta.value + '\n- [x] další hotový';
+  ta.dispatchEvent(new Event('input', { bubbles: true }));
+});
+await p.waitForTimeout(400);
+const poPsani = await p.evaluate(() => {
+  const w = document.querySelector('.section-edit-wrapper');
+  const prvky = Array.from(w.children);
+  return {
+    btnGroup: prvky.findIndex(el => el.contains(w.querySelector('#sec-edit-save'))),
+    nastroje: prvky.findIndex(el => el.matches('.md-field-actions')),
+    nastroju: w.querySelectorAll('.md-field-actions button').length
+  };
+});
+ok(poPsani.btnGroup < poPsani.nastroje && poPsani.nastroju > 0,
+  'pořadí drží i po přepočítání lišty nástrojů při psaní (' + JSON.stringify(poPsani) + ')');
+// A tlačítka pořád fungují
+await p.click('#sec-edit-cancel');
+await p.waitForTimeout(400);
+ok(!(await vSekci()), 'Zrušit na novém místě pořád zavírá editor sekce');
+
 console.log(chyby.length ? chyby.join('\n') : 'ŽÁDNÉ CHYBY');
 await b.close();
