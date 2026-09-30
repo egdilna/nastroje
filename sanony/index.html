@@ -87,14 +87,21 @@ input[type=file]{font:inherit;font-size:13px}
 pre#log{white-space:pre-wrap;word-break:break-word;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.2);border-radius:4px;padding:10px;max-height:24rem;overflow:auto;font-size:12.5px;font-family:var(--mono)}
 
 /* ---------- společné pro položky ---------- */
-[data-item]{background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;cursor:pointer;display:block;position:relative;border-radius:3px;width:100%;text-align:left;text-decoration:none}
+.karta{position:relative;border-radius:3px}
+[data-item]{background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;cursor:pointer;text-decoration:none}
 [data-item]:focus{outline:none}
-[data-item]:focus-visible .surface,[data-item].kbfocus .surface{outline:3px solid var(--focus);outline-offset:3px}
+/* průhledná vrstva přes celou dlaždici, aby klikání fungovalo jako dosud */
+[data-item]::after{content:"";position:absolute;left:0;top:0;right:0;bottom:0;z-index:1}
+.karta:has([data-item]:focus-visible) .surface,
+.karta:has([data-item].kbfocus) .surface{outline:3px solid var(--focus);outline-offset:3px}
+/* jen pro odečítač: podrobnosti k dlaždici, na obrazovce neviditelné */
+.jen-pro-odecitac{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
+  white-space:nowrap;clip-path:inset(50%);border:0}
 .surface{transition:transform .16s ease}
 /* Název položky je nadpis h6 kvůli odečítači – na dlaždicích i ve všech seznamech.
    :where má nulovou specifičnost, takže vzhled dál určují třídy a nic se nemění. */
 :where(h6){margin:0;font:inherit}
-[data-item]:hover .surface{transform:translateY(-3px)}
+.karta:hover .surface{transform:translateY(-3px)}
 button.b:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,nav.crumbs button:focus-visible,nav.crumbs a:focus-visible,summary:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 
 .tiles{list-style:none;margin:0;padding:0;display:grid;gap:24px}
@@ -179,11 +186,11 @@ button.b:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-v
   margin:0 0 9px;opacity:.6}
 .sheet .propoj ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
 .sheet .propoj li{margin:0}
-.sheet .propoj a.odkud{display:block;font:inherit;font-size:13.5px;text-align:left;width:100%;cursor:pointer;
-  text-decoration:none;
+.sheet .propoj .odkud{position:relative;display:block;font-size:13.5px;text-align:left;width:100%;cursor:pointer;
   background:rgba(0,0,0,.06);color:#22262a;border:1px solid rgba(0,0,0,.24);border-radius:4px;padding:7px 10px}
-.sheet .propoj a.odkud:hover{background:rgba(0,0,0,.13)}
-.sheet .propoj a.odkud:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.sheet .propoj .odkud:hover{background:rgba(0,0,0,.13)}
+.sheet .propoj .odkud a{color:inherit;text-decoration:none}
+.sheet .propoj .odkud:has(a:focus-visible){outline:3px solid var(--focus);outline-offset:2px}
 .sheet .propoj .odkud-nazev{display:block;font:inherit}
 .sheet .propoj .kde{display:block;font-family:var(--mono);font-size:11px;opacity:.62;margin-top:3px}
 .tray.klid{border-color:rgba(255,255,255,.3)}
@@ -1237,14 +1244,35 @@ function naVlastniKlik(a, akce){
 
 /* Položky archivu jsou odkazy, ne tlačítka: mají skutečnou adresu, odečítač je hlásí
    jako odkaz a dají se otevřít v novém panelu. */
+/* Nadpis nesmí být uvnitř odkazu s aria-label: takový odkaz odečítač vykreslí jako
+   jedinou položku, obsah nahradí popiskem a vnořený nadpis se do seznamu nadpisů
+   vůbec nedostane. Proto je to obráceně – <h6><a>Název</a></h6> – a klikací je celá
+   dlaždice díky průhledné vrstvě přes ni. Podrobnosti nese aria-describedby, aby
+   název nadpisu zůstal krátký. */
 function mkPolozka(trida, vnitrek, popisek, adr, akce){
+  var karta = document.createElement("div");
+  karta.className = "karta";
+  karta.innerHTML = '<span class="surface ' + trida + '">' + vnitrek + '</span>';
+
+  var h = karta.querySelector("h6");
   var a = document.createElement("a");
   a.href = adr;
   a.dataset.item = "";
-  a.setAttribute("aria-label", popisek);
-  a.innerHTML = '<span class="surface ' + trida + '">' + vnitrek + '</span>';
+  a.textContent = h.textContent;
+  h.textContent = "";
+  h.appendChild(a);
+
+  var pod = document.createElement("span");
+  pod.className = "jen-pro-odecitac";
+  pod.id = novyId("po");
+  pod.textContent = popisek;
+  /* aria-describedby si text vezme i ze skrytého uzlu; bez toho by se četl dvakrát */
+  pod.setAttribute("aria-hidden", "true");
+  karta.appendChild(pod);
+  a.setAttribute("aria-describedby", pod.id);
+
   naVlastniKlik(a, akce);
-  return a;
+  return karta;
 }
 
 /* Ovládací prvek, který někam v archivu vede, je odkaz; vzhledem se od tlačítka neliší. */
@@ -1753,16 +1781,32 @@ function vykresliPropojenoSem(box, seznam){
   d.appendChild(h);
   var ul = document.createElement("ul");
   seznam.forEach(function(pr){
+    /* i tady obaluje nadpis odkaz, ne naopak – jinak by se nadpis k odečítači nedostal */
     var li = document.createElement("li");
+    var box2 = document.createElement("div");
+    box2.className = "odkud";
+    var nad = document.createElement("h6");
+    nad.className = "odkud-nazev";
     var b = document.createElement("a");
-    b.className = "odkud";
+    b.dataset.item = "";
     b.href = adresaUzlu(pr.folder);
-    b.innerHTML = '<h6 class="odkud-nazev">' + esc(nazevPropojeni(pr)) + '</h6>' +
-      '<span class="kde">' + esc(popisUmisteni(pr.folder)) + '</span>';
-    b.setAttribute("aria-label", nazevPropojeni(pr) + ", uloženo " + popisUmisteni(pr.folder) +
-      ". Otevřete klávesou Enter místo, kde propojení leží.");
+    b.textContent = nazevPropojeni(pr);
+    var pod = document.createElement("span");
+    pod.className = "jen-pro-odecitac";
+    pod.id = novyId("po");
+    pod.textContent = "Uloženo " + popisUmisteni(pr.folder) +
+      ". Otevřete klávesou Enter místo, kde propojení leží.";
+    pod.setAttribute("aria-hidden", "true");
+    b.setAttribute("aria-describedby", pod.id);
     naVlastniKlik(b, function(){ prejdi(normCesta(pr.folder)); });
-    li.appendChild(b);
+    nad.appendChild(b);
+    box2.appendChild(nad);
+    var kde = document.createElement("span");
+    kde.className = "kde";
+    kde.textContent = popisUmisteni(pr.folder);
+    box2.appendChild(kde);
+    box2.appendChild(pod);
+    li.appendChild(box2);
     ul.appendChild(li);
   });
   d.appendChild(ul);

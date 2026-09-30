@@ -6,6 +6,21 @@ jsou zaznamenány v tomto souboru.
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/)
 a nástroj se drží [sémantického verzování](https://semver.org/lang/cs/).
 
+## [1.7.0] - 2026-09-30
+
+### Opraveno
+
+- **Nadpisy se k odečítači nedostaly, přestože v kódu byly.** Nadpis byl vnořený
+  v odkazu, který nese `aria-label` — a takový odkaz odečítač v režimu čtení vykreslí
+  jako jedinou položku, jejíž obsah popisek nahradí. Vnořený nadpis se proto do seznamu
+  nadpisů nedostal. Nyní je to obráceně, `<h6><a>Název</a></h6>`:
+  - klikací zůstává celá dlaždice, o to se stará průhledná vrstva přes ni;
+  - podrobnosti k položce přebírá `aria-describedby`, takže nadpis v seznamu nadpisů
+    nese jen krátký název, ne celou větu s počty a nápovědou ke klávese Enter;
+  - stejně opravena i sekce „Propojeno sem“ v detailu souboru a odkazu.
+- Vzhled ani ovládání se nemění: dlaždice se otevírá klikem kdekoli, Ctrl otevře nový
+  panel, Enter i šipky fungují dál. Ověřeno pixelovým srovnáním pěti obrazovek.
+
 ## [1.6.0] - 2026-09-30
 
 ### Opraveno
@@ -181,6 +196,7 @@ a nástroj se drží [sémantického verzování](https://semver.org/lang/cs/).
 - Označení offline kopie zůstává zachováno na konci titulku:
   `Byty · Nájmy · Můj archiv (offline kopie)`.
 
+[1.7.0]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.6.0]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.5.0]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.4.0]: https://github.com/egdilna/nastroje/tree/main/sanony
