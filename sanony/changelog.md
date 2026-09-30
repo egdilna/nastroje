@@ -6,6 +6,41 @@ jsou zaznamenány v tomto souboru.
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/)
 a nástroj se drží [sémantického verzování](https://semver.org/lang/cs/).
 
+## [1.5.0] - 2026-09-30
+
+### Přidáno
+
+- **Offline kopie jen části archivu.** Dosud šlo uložit jen celý archiv z nastavení;
+  nově je v režimu Správy na obrazovce kartotéky, šanonu i desek tlačítko
+  „Uložit offline (ZIP)“, které uloží jen to místo a jeho obsah.
+  - Cesty zůstávají celé, aby se struktura vykreslila ve správných úrovních, takže se
+    k výřezu přibalí i místa nadřazená — jinak by se k němu v kopii nedalo doklikat.
+    Sourozenecká místa ani zbytek archivu uvnitř nejsou.
+  - Kopie se otevře rovnou na místě, ze kterého byla pořízena, a v hlavičce i titulku
+    okna se hlásí jako „offline výřez: Byty“, aby ji nešlo splést s kopií celého archivu.
+  - Propojení, která míří mimo výřez, se po uložení spočítají a vypíšou; v kopii pak
+    zůstanou slepá.
+  - Název souboru nese místo výřezu, například `archiv-Muj-archiv-Byty-2026-09-30.zip`.
+- **Popis desek** je vidět v seznamu desek v šanonu a **popis souboru či odkazu**
+  na jeho dlaždici v deskách — vizuálně i v popisu pro odečítač. Dlouhý popis se zkrátí
+  třemi tečkami (dva řádky u desek, tři u souborů).
+
+### Změněno
+
+- **Štítky se všude vypisují abecedně** podle češtiny a bez ohledu na velikost písmen —
+  v editoru položky, ve filtru hledání, ve správě štítků i na samotných položkách,
+  kde se dosud držely pořadí, v jakém byly zaškrtnuty.
+- **Název položky je nadpis `h6`** u kartotéky, šanonu, desek, souborů, odkazů
+  i propojení, takže odečítač je najde procházením nadpisů. Položky zůstávají odkazy,
+  nadpis je uvnitř nich. Vzhled se nemění — ověřeno pixelovým srovnáním.
+
+### Opraveno
+
+- `folder.json` větší než 1 MB šel načíst jen zdánlivě: Contents API u takového souboru
+  obsah nevydá a archiv se tvářil jako poškozený, ačkoli v repozitáři byl celý. Nově se
+  v takovém případě dotáhne podle SHA přes Git Data API. Totéž platí pro stažení
+  a zkopírování obsahu velkého souboru, které dosud skončily chybou.
+
 ## [1.4.0] - 2026-09-16
 
 ### Přidáno
@@ -119,6 +154,7 @@ a nástroj se drží [sémantického verzování](https://semver.org/lang/cs/).
 - Označení offline kopie zůstává zachováno na konci titulku:
   `Byty · Nájmy · Můj archiv (offline kopie)`.
 
+[1.5.0]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.4.0]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.3.0]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.2.0]: https://github.com/egdilna/nastroje/tree/main/sanony
