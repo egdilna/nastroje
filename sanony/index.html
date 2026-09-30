@@ -91,6 +91,9 @@ pre#log{white-space:pre-wrap;word-break:break-word;background:rgba(0,0,0,.35);bo
 [data-item]:focus{outline:none}
 [data-item]:focus-visible .surface,[data-item].kbfocus .surface{outline:3px solid var(--focus);outline-offset:3px}
 .surface{transition:transform .16s ease}
+/* Název položky je nadpis h6 kvůli odečítači. :where má nulovou specifičnost,
+   takže vzhled dál určují třídy dlaždic a nic se graficky nemění. */
+:where([data-item] h6){margin:0;font:inherit}
 [data-item]:hover .surface{transform:translateY(-3px)}
 button.b:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,nav.crumbs button:focus-visible,nav.crumbs a:focus-visible,summary:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 
@@ -160,6 +163,11 @@ button.b:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-v
   border:2px solid #9aa7b3;border-radius:8px;transform:rotate(-38deg);opacity:.75}
 .sheet a.url{color:#0b4f9e;word-break:break-all}
 .doc-flag{font-family:var(--mono);font-size:11px;margin-top:6px;color:#7a2408;font-weight:700}
+/* popis na dlaždici: nejvýš tři řádky, zbytek se odmlčí třemi tečkami */
+.doc-popis{font-size:12px;line-height:1.42;margin-top:7px;opacity:.8;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.folder-popis{font-size:12px;line-height:1.42;margin-top:7px;opacity:.78;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 
 /* ---------- propojení (vnitřní odkaz na jinou položku archivu) ---------- */
 .doc.propojeni{background:linear-gradient(150deg,#efe6d2 0%,var(--paper) 60%)}
@@ -737,12 +745,19 @@ function castiTitulku(){
   return nadrazeny ? [u[u.length-1], nadrazeny] : [u[u.length-1]];
 }
 
+/* Kopie celého archivu, nebo jen jeho výřez – uživatel to musí poznat na první pohled. */
+function oznaceniOffline(){
+  if (!OFFLINE) return "";
+  var k = normCesta(OFFLINE.koren || "");
+  return k ? ("offline výřez: " + posledni(k)) : "offline kopie";
+}
+
 function nastavTitulek(){
   var n = nazevArchivu();
-  var archiv = OFFLINE ? (n + " (offline kopie)") : n;
+  var archiv = OFFLINE ? (n + " (" + oznaceniOffline() + ")") : n;
   document.title = castiTitulku().concat([archiv]).join(" \u00b7 ");
   var br = document.querySelector(".brand");
-  if (br) br.textContent = OFFLINE ? (n + " \u00b7 offline kopie") : n;
+  if (br) br.textContent = OFFLINE ? (n + " \u00b7 " + oznaceniOffline()) : n;
 }
 
 function ulozNazev(){
@@ -796,6 +811,20 @@ function kontrola(potrebaToken){
 
 function ziskejSoubor(nazev){ return api("/repos/" + cfg.repo + "/contents/" + encCesta(nazev) + refParam()); }
 
+/* Contents API vydá obsah jen do 1 MB; u většího vrátí prázdno a encoding "none".
+   Data v repozitáři jsou přitom celá, jen je nutné je dotáhnout podle SHA jako blob. */
+function obsahSouboru(d){
+  if (d && d.content && d.encoding !== "none") return Promise.resolve(base64NaBytes(d.content));
+  if (d && d.sha){
+    log("Obsah nedorazil přes Contents API, dotahuji blob podle SHA.");
+    return api("/repos/" + cfg.repo + "/git/blobs/" + d.sha).then(function(b){
+      if (!b || !b.content) throw new Error("obsah nelze načíst ani jako blob");
+      return base64NaBytes(b.content);
+    });
+  }
+  return Promise.reject(new Error("obsah nelze načíst"));
+}
+
 function ulozSoubor(nazev, base64, zprava, sha){
   var telo = { message: zprava, content: base64 };
   if (cfg.vetev) telo.branch = cfg.vetev;
@@ -818,19 +847,21 @@ function nacti(zachovatPohled){
     }
     log("Ve složce nalezeno " + Object.keys(shaMapa).length + " souborů.");
     return ziskejSoubor("folder.json").then(function(d){
-      metaSha = d.sha;
-      metadata = JSON.parse(new TextDecoder().decode(base64NaBytes(d.content)));
-      if (!metadata || !Array.isArray(metadata.files)) metadata = { files: [] };
-      if (!Array.isArray(metadata.nodes)) metadata.nodes = [];
-      if (!Array.isArray(metadata.tags)) metadata.tags = [];
-      if (!Array.isArray(metadata.links)) metadata.links = [];
-      if (typeof metadata.title !== "string") metadata.title = "";
-      doplnUzly();
-      nacteno = true;
-      if (!zachovatPohled) pohled = { typ:"kartoteky", cesta:"", nazev:"" };
-      stav(cfg.token ? "Archiv načten." : "Archiv načten. Bez tokenu jej lze jen prohlížet.", "ok");
-      otevriCilZUrl();
-      vykresli();
+      return obsahSouboru(d).then(function(bajty){
+        metaSha = d.sha;
+        metadata = JSON.parse(new TextDecoder().decode(bajty));
+        if (!metadata || !Array.isArray(metadata.files)) metadata = { files: [] };
+        if (!Array.isArray(metadata.nodes)) metadata.nodes = [];
+        if (!Array.isArray(metadata.tags)) metadata.tags = [];
+        if (!Array.isArray(metadata.links)) metadata.links = [];
+        if (typeof metadata.title !== "string") metadata.title = "";
+        doplnUzly();
+        nacteno = true;
+        if (!zachovatPohled) pohled = { typ:"kartoteky", cesta:"", nazev:"" };
+        stav(cfg.token ? "Archiv načten." : "Archiv načten. Bez tokenu jej lze jen prohlížet.", "ok");
+        otevriCilZUrl();
+        vykresli();
+      });
     }).catch(function(e){
       if (e.status === 404){
         metadata = null; metaSha = null; nacteno = true;
@@ -957,7 +988,17 @@ function barvaUzlu(cesta){
   return sada[0];
 }
 
-function stitkySeznam(){ return (metadata && Array.isArray(metadata.tags)) ? metadata.tags : []; }
+/* Štítky se všude vypisují abecedně podle češtiny; velikost písmen nerozhoduje.
+   Shodují-li se názvy až na velikost, rozhodne doplňkové porovnání, ať je pořadí stálé. */
+function porovnejStitky(a, b){
+  var x = String(a && a.name || ""), y = String(b && b.name || "");
+  return x.localeCompare(y, "cs", { sensitivity:"accent" }) || x.localeCompare(y, "cs");
+}
+
+function stitkySeznam(){
+  if (!metadata || !Array.isArray(metadata.tags)) return [];
+  return metadata.tags.slice().sort(porovnejStitky);
+}
 
 function najdiStitek(id){
   var s = stitkySeznam();
@@ -967,7 +1008,7 @@ function najdiStitek(id){
 
 function stitkyObj(ids){
   if (!Array.isArray(ids)) return [];
-  return ids.map(najdiStitek).filter(function(x){ return !!x; });
+  return ids.map(najdiStitek).filter(function(x){ return !!x; }).sort(porovnejStitky);
 }
 
 function barvaZ12(id){
@@ -1282,7 +1323,7 @@ function vykresliKartoteky(s){
       var soub = souboryV(cesta, true).length;
       var li = document.createElement("li");
       var t = mkPolozka("cabinet",
-        '<span class="cab-plate" style="background:' + b.css + ';color:' + kontrastniText(b.css) + '">' + esc(nazev) + '</span>' +
+        '<h6 class="cab-plate" style="background:' + b.css + ';color:' + kontrastniText(b.css) + '">' + esc(nazev) + '</h6>' +
         stitkyHtml(u.tags, 3) +
         '<span class="drawer"></span><span class="drawer"></span><span class="drawer"></span>' +
         '<span class="cab-count">' + soub + '</span>',
@@ -1317,6 +1358,7 @@ function vykresliSkrin(s){
       "Nový odkaz na web přímo v kartotéce " + posledni(cesta)));
     bar.appendChild(tlacitko("Nové propojení", "", function(){ otevriEditPropojeni(null, cesta); },
       "Nové propojení přímo v kartotéce " + posledni(cesta)));
+    bar.appendChild(tlacitkoVyrez(cesta));
     s.appendChild(bar);
   }
 
@@ -1373,7 +1415,7 @@ function vykresliSkrin(s){
         var vyska = 150 + (hash(snazev) % 26);
         var li = document.createElement("li");
         var t = mkPolozka("binder",
-          '<span class="binder-label">' + esc(snazev) + '</span>' + stitkyPasky(su.tags),
+          '<h6 class="binder-label">' + esc(snazev) + '</h6>' + stitkyPasky(su.tags),
           "Šanon " + snazev + ", barva " + b.nazev + ", police " + pnazev + ". " +
           pocetSlov(desek,"desky") + ", " + pocetSlov(soub,"soubor") + stitkyText(su.tags) +
           ". Otevřete klávesou Enter.",
@@ -1426,6 +1468,7 @@ function vykresliSanon(s){
       "Nový odkaz na web přímo v šanonu " + posledni(cesta)));
     bar.appendChild(tlacitko("Nové propojení", "", function(){ otevriEditPropojeni(null, cesta); },
       "Nové propojení přímo v šanonu " + posledni(cesta)));
+    bar.appendChild(tlacitkoVyrez(cesta));
     s.appendChild(bar);
   }
 
@@ -1448,13 +1491,15 @@ function vykresliSanon(s){
       var li = document.createElement("li");
       var t = mkPolozka("folder",
         '<span class="folder-tab" style="background:' + db.tab + ';width:' + sirka + '%"></span>' +
-        '<span class="folder-name">' + esc(dnazev) + '</span>' +
+        '<h6 class="folder-name">' + esc(dnazev) + '</h6>' +
         '<span class="folder-meta">' + pocetSlov(soub,"soubor") +
           (prop ? " \u00b7 " + pocetSlov(prop,"propojeni") : "") + '</span>' +
+        (du.description ? '<span class="folder-popis">' + esc(du.description) + '</span>' : '') +
         stitkyHtml(du.tags, 0, true) +
         (pozn.length ? '<span class="folder-postit" style="background:' +
           postitBarva(pozn[0].color).css + '"></span>' : ''),
         "Desky " + dnazev + ", barva " + db.nazev + ", šanon " + posledni(cesta) + ". " +
+        (du.description ? du.description + " " : "") +
         pocetSlov(soub,"soubor") + (prop ? ", " + pocetSlov(prop,"propojeni") : "") +
         stitkyText(du.tags) +
         (pozn.length ? ", " + pozn.length + " " +
@@ -1557,6 +1602,7 @@ function vykresliDesky(s){
       "Upravit popis, barvu a štítky desek " + posledni(cesta)));
     bar.appendChild(tlacitko("Přilepit poznámku", "", function(){ otevriPostit(poznamkaNaUzel(cesta), null); },
       "Přilepit lepicí poznámku na desky " + posledni(cesta)));
+    bar.appendChild(tlacitkoVyrez(cesta));
     s.appendChild(bar);
   }
 
@@ -1586,14 +1632,16 @@ function dlazdiceSouboru(f, kdeNazev){
   var li = document.createElement("li");
   var b = mkPolozka("doc" + (odkaz ? " odkaz" : ""),
     '<span class="doc-icon" aria-hidden="true">' + t.ikona + '</span>' +
-    '<span class="doc-name">' + esc(f.name) + '</span>' +
+    '<h6 class="doc-name">' + esc(f.name) + '</h6>' +
     '<span class="doc-meta">' + esc(popisek) + '</span>' +
+    (f.description ? '<span class="doc-popis">' + esc(f.description) + '</span>' : '') +
     stitkyHtml(f.tags, 0, true) +
     (f.locked ? '<span class="doc-flag">uzamčeno</span>' : '') +
     (chybi ? '<span class="doc-flag">chybí v repozitáři</span>' : '') +
     (pozn.length ? '<span class="doc-postit" style="background:' + postitBarva(pozn[0].color).css + '"></span>' : ''),
     (odkaz ? ("Odkaz na web " + f.name + ", adresa " + hostZUrl(f.url))
            : ("Soubor " + f.name + ", typ " + t.nazev + ", verze " + (f.version || 1))) +
+    (f.description ? ". " + f.description : "") +
     (kdeNazev ? ", desky " + kdeNazev : "") + stitkyText(f.tags) +
     (pozn.length ? ", " + pozn.length + " " + pluralCz(pozn.length,"poznámka","poznámky","poznámek") : "") +
     (f.locked ? ", uzamčeno" : "") + (chybi ? ", chybí v repozitáři" : "") +
@@ -1609,7 +1657,7 @@ function dlazdicePropojeni(p){
   var li = document.createElement("li");
   var b = mkPolozka("doc propojeni",
     '<span class="doc-icon" aria-hidden="true">' + IKONA_PROPOJENI + '</span>' +
-    '<span class="doc-name">' + esc(nazev) + '</span>' +
+    '<h6 class="doc-name">' + esc(nazev) + '</h6>' +
     '<span class="doc-cil">' + esc(cilPopis(p)) + '</span>' +
     (p.description ? '<span class="doc-meta">' + esc(p.description) + '</span>' : '') +
     (chybi ? '<span class="doc-flag">cíl v archivu chybí</span>' : ''),
@@ -1708,7 +1756,8 @@ function vykresliSoubor(s){
       (zamek ? ' &middot; uzamčeno' : '') + '</p>' +
     '<p class="popis">' + (f.description ? esc(f.description) : '<em>Bez popisu.</em>') + '</p>' +
     (chybi ? '<p class="chyba">' + (OFFLINE
-        ? "Tento soubor není součástí offline kopie."
+        ? ("Tento soubor není součástí této offline " +
+           (normCesta(OFFLINE.koren || "") ? "kopie výřezu." : "kopie."))
         : "Nesrovnalost: soubor v repozitáři chybí, je evidován pouze v metadatech.") + '</p>' : '') +
     '<dl>' +
       '<dt>Verze</dt><dd>' + esc(String(f.version || 1)) + '</dd>' +
@@ -2065,6 +2114,14 @@ function vykresliNesrovnalosti(s){
 }
 
 /* ---- správa uzlu (tlačítka pod dlaždicí) ---- */
+/* Uložení offline kopie jen toho místa, které je právě otevřené. */
+function tlacitkoVyrez(cesta){
+  var b = tlacitko("Uložit offline (ZIP)", "", function(){ exportZip(cesta); },
+    "Uložit offline kopii " + mistoSlovy(cesta) + " jako ZIP, bez zbytku archivu");
+  b.dataset.export = "";
+  return b;
+}
+
 function spravaUzlu(cesta){
   var d = document.createElement("div");
   d.className = "spravabtns";
@@ -3441,9 +3498,10 @@ function vykresliNastaveni(s){
     "Otevře se poklepáním na index.html, funguje bez internetu a nedá se v ní nic měnit.";
   f3.appendChild(p3);
   var a3 = document.createElement("div");
-  var bzip = tlacitko("Uložit offline kopii (ZIP)", "primary", exportZip,
+  var bzip = tlacitko("Uložit offline kopii (ZIP)", "primary", function(){ exportZip(""); },
     "Uložit offline kopii celého archivu jako ZIP");
   bzip.id = "btn-zip";
+  bzip.dataset.export = "";
   a3.appendChild(bzip);
   a3.appendChild(tlacitko("Načíst znovu", "", function(){ nacti(); }));
   a3.appendChild(tlacitko("Založit folder.json", "", zalozMetadata));
@@ -3478,9 +3536,8 @@ function stahnout(nazev){
   if (!kontrola(false)) return;
   if (jeOdkaz(najdi(nazev))){ stav("Odkaz na web nelze stáhnout.", "err"); return; }
   stav("Stahuji " + nazev + ".");
-  ziskejSoubor(nazev).then(function(d){
-    if (!d.content) throw new Error("Soubor je příliš velký pro přímé stažení přes API.");
-    var blob = new Blob([base64NaBytes(d.content)], { type: mime(nazev) });
+  stahniBytes(nazev).then(function(bajty){
+    var blob = new Blob([bajty], { type: mime(nazev) });
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = nazev;
@@ -3513,8 +3570,8 @@ function kopirovat(nazev){
   if (!kontrola(false)) return;
   if (jeOdkaz(najdi(nazev))){ stav("Odkaz na web nemá obsah ke zkopírování.", "err"); return; }
   if (!textovy(nazev)){ stav("Do schránky lze zkopírovat pouze textový soubor.", "err"); return; }
-  ziskejSoubor(nazev).then(function(d){
-    var text = new TextDecoder().decode(base64NaBytes(d.content));
+  stahniBytes(nazev).then(function(bajty){
+    var text = new TextDecoder().decode(bajty);
     return navigator.clipboard.writeText(text).then(function(){
       stav("Obsah souboru " + nazev + " byl zkopírován.", "ok");
     });
@@ -4312,25 +4369,61 @@ function zipVytvor(polozky){
 
 /* Obsah souboru z GitHubu; nad 1 MB přes Git Blob API. */
 function stahniBytes(nazev){
-  return ziskejSoubor(nazev).then(function(d){
-    if (d.content) return base64NaBytes(d.content);
-    if (d.sha){
-      return api("/repos/" + cfg.repo + "/git/blobs/" + d.sha).then(function(b){
-        if (!b || !b.content) throw new Error("obsah nelze načíst");
-        return base64NaBytes(b.content);
-      });
-    }
-    throw new Error("obsah nelze načíst");
-  });
+  return ziskejSoubor(nazev).then(obsahSouboru);
 }
 
-function offlineIndex(seznam){
+/* Metadata pro offline kopii jednoho místa archivu.
+   Cesty zůstávají celé, aby se struktura vykreslila ve správných úrovních; proto se
+   k místu přibalí i místa nadřazená, jinak by se k němu v kopii nedalo doklikat. */
+function vyrezMetadat(koren){
+  koren = normCesta(koren || "");
+  if (!koren) return metadata;
+  function pod(c){
+    c = normCesta(c);
+    return c === koren || c.indexOf(koren + "/") === 0;
+  }
+  var nadrazene = {}, akt = [];
+  casti(koren).forEach(function(x){ akt.push(x); nadrazene[akt.join("/")] = true; });
+  return {
+    version: 1,
+    folder: metadata.folder,
+    title: metadata.title,
+    updated: metadata.updated,
+    tags: metadata.tags,
+    nodes: uzly().filter(function(x){ var c = normCesta(x.path); return pod(c) || nadrazene[c]; }),
+    links: propojeniSeznam().filter(function(x){ return pod(x.folder); }),
+    files: metadata.files.filter(function(x){ return pod(x.folder); })
+  };
+}
+
+/* Kolik propojení ve výřezu míří na něco, co se do něj nevešlo. */
+function propojeniMimoVyrez(meta){
+  return meta.links.filter(function(pr){
+    if (pr.targetType === "uzel"){
+      return !meta.nodes.some(function(x){ return normCesta(x.path) === normCesta(pr.targetPath); });
+    }
+    return !meta.files.some(function(x){ return x.name === pr.targetName; });
+  }).length;
+}
+
+function mistoSlovy(koren){
+  koren = normCesta(koren || "");
+  return koren ? ((UROVNE[hloubka(koren)-1] || "místo") + " " + posledni(koren)) : "celý archiv";
+}
+
+function exportTlacitka(vypnout){
+  Array.prototype.slice.call(document.querySelectorAll("[data-export]"))
+    .forEach(function(b){ b.disabled = vypnout; });
+}
+
+function offlineIndex(seznam, koren, meta){
   var data = {
     nazev: nazevArchivu(),
     repo: cfg.repo,
     vetev: cfg.vetev,
     vytvoreno: new Date().toISOString(),
-    metadata: metadata,
+    koren: normCesta(koren || ""),
+    metadata: meta,
     soubory: seznam.map(function(f){
       return { name: f.name, size: (velikostiRepo[f.name] !== undefined ? velikostiRepo[f.name] : f.size) };
     })
@@ -4341,19 +4434,25 @@ function offlineIndex(seznam){
          SNIMEK_BODY + "\n</body>\n</html>\n";
 }
 
-function exportZip(){
+/* koren prázdný = celý archiv, jinak cesta ke kartotéce, šanonu či deskám. */
+function exportZip(koren){
   if (!kontrola(false)) return;
   if (!metadata){ stav("Není co exportovat.", "err"); return; }
+  koren = normCesta(koren || "");
+  if (koren && !najdiUzel(koren)){ stav("Místo " + koren + " v archivu není.", "err"); return; }
 
-  var seznam = metadata.files.filter(function(f){
+  var meta = vyrezMetadat(koren);
+  var kde = mistoSlovy(koren);
+  var mimo = koren ? propojeniMimoVyrez(meta) : 0;
+
+  var seznam = meta.files.filter(function(f){
     return !jeOdkaz(f) && Object.prototype.hasOwnProperty.call(shaMapa, f.name);
   });
-  var pocetOdkazu = metadata.files.filter(jeOdkaz).length;
-  var chybi = metadata.files.length - seznam.length - pocetOdkazu;
+  var pocetOdkazu = meta.files.filter(jeOdkaz).length;
+  var chybi = meta.files.length - seznam.length - pocetOdkazu;
   var polozky = [], i = 0;
-  var tl = el("btn-zip");
-  if (tl) tl.disabled = true;
-  stav("Připravuji offline kopii, " + pocetSlov(seznam.length, "soubor") + ".");
+  exportTlacitka(true);
+  stav("Připravuji offline kopii \u2013 " + kde + ", " + pocetSlov(seznam.length, "soubor") + ".");
 
   function dalsi(){
     if (i >= seznam.length) return Promise.resolve();
@@ -4369,29 +4468,33 @@ function exportZip(){
   dalsi().then(function(){
     stav("Sestavuji ZIP.");
     var enc = new TextEncoder();
-    polozky.unshift({ name:"index.html", data: enc.encode(offlineIndex(seznam)) });
-    polozky.push({ name:"folder.json", data: enc.encode(JSON.stringify(metadata, null, 2)) });
+    polozky.unshift({ name:"index.html", data: enc.encode(offlineIndex(seznam, koren, meta)) });
+    polozky.push({ name:"folder.json", data: enc.encode(JSON.stringify(meta, null, 2)) });
     /* Aby GitHub Pages nepustilo na složku Jekyll a nevynechalo soubory
        začínající podtržítkem. Na jiných serverech soubor nevadí. */
     polozky.push({ name:".nojekyll", data: new Uint8Array(0) });
     return zipVytvor(polozky);
   }).then(function(blob){
-    var zaklad = (metadata.title || cfg.slozka || cfg.repo).replace(/[^0-9A-Za-zÀ-ž_-]+/g, "-").replace(/^-+|-+$/g, "");
-    var jmeno = "archiv-" + (zaklad || "kopie") + "-" + new Date().toISOString().slice(0,10) + ".zip";
+    function cistY(t){ return String(t).replace(/[^0-9A-Za-zÀ-ž_-]+/g, "-").replace(/^-+|-+$/g, ""); }
+    var zaklad = cistY(metadata.title || cfg.slozka || cfg.repo);
+    var jmeno = "archiv-" + (zaklad || "kopie") +
+                (koren ? "-" + (cistY(posledni(koren)) || "vyrez") : "") +
+                "-" + new Date().toISOString().slice(0,10) + ".zip";
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = jmeno;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function(){ URL.revokeObjectURL(a.href); }, 8000);
-    stav("Offline kopie byla uložena jako " + jmeno +
+    stav("Offline kopie (" + kde + ") byla uložena jako " + jmeno +
          (chybi ? ". " + chybi + " " + pluralCz(chybi,"soubor v repozitáři chybí a v kopii není",
-            "soubory v repozitáři chybí a v kopii nejsou","souborů v repozitáři chybí a v kopii nejsou") : "."), "ok");
+            "soubory v repozitáři chybí a v kopii nejsou","souborů v repozitáři chybí a v kopii nejsou") : ".") +
+         (mimo ? " " + pocetSlov(mimo,"propojeni") + " míří mimo výřez a v kopii " +
+            pluralCz(mimo,"zůstane slepé","zůstanou slepá","zůstanou slepá") + "." : ""), "ok");
     oznam("Offline kopie uložena");
   }).catch(function(e){
     stav("Export se nezdařil: " + e.message, "err");
   }).then(function(){
-    var t2 = el("btn-zip");
-    if (t2) t2.disabled = false;
+    exportTlacitka(false);
   });
 }
 
@@ -4438,11 +4541,16 @@ if (OFFLINE){
   doplnUzly();
   nacteno = true;
   cilOffline();
+  /* bez cíle v adrese se výřez otevře tam, odkud byl pořízen */
+  if (!cilZUrl && normCesta(OFFLINE.koren || "")) cilZUrl = { cesta: normCesta(OFFLINE.koren) };
   otevriCilZUrl();
   rezimOffline();
+  var kOff = normCesta(OFFLINE.koren || "");
   log("Offline kopie z " + datum(OFFLINE.vytvoreno) + ".");
   vykresli();
-  stav("Offline kopie ze dne " + datum(OFFLINE.vytvoreno) + ".");
+  stav((kOff ? ("Offline výřez \u2013 " + mistoSlovy(kOff) + ", pořízen ")
+             : "Offline kopie ze dne ") + datum(OFFLINE.vytvoreno) +
+       (kOff ? ". Zbytek archivu v této kopii není." : "."));
   return;
 }
 
