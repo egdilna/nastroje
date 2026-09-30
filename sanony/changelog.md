@@ -6,6 +6,28 @@ jsou zaznamenány v tomto souboru.
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/)
 a nástroj se drží [sémantického verzování](https://semver.org/lang/cs/).
 
+## [1.8.0] - 2026-09-30
+
+### Změněno
+
+- **Desky v šanonu už nejsou dlaždice v mřížce, ale svazek papírových desek.**
+  Šanon se otevře a uvnitř na kovové liště mechaniky leží desky přes sebe:
+  - jazýček s názvem navazuje přímo na tělo desek — je to jeden kus papíru — a u každých
+    dalších se posune do jiné polohy, jako když se štítky v kartotéce střídají,
+    aby nestály nad sebou;
+  - desky se o kus překrývají, takže to čte jako stoh, ne jako seznam řádků;
+    tělo má světlo shora, přehyb u hřbetu a znatelnou spodní hranu papíru;
+  - najetím myší se desky vysunou ze svazku;
+  - vnitřek svazku má barvu šanonu, jen ztmavenou, takže je vidět, ve kterém šanonu jste;
+  - popis, počty, štítky i nalepený papírek se vejdou na jeden řádek desek;
+  - v režimu Správy se svazek rozestoupí, aby tlačítka pod deskami nezakrývaly jazýčky.
+- **Šanony na polici jsou vyšší a různě tlusté.** Hřbet je tím tlustší, čím víc desek
+  a souborů šanon obsahuje, takže je plnost vidět na první pohled. Police je vyšší,
+  hřbet má výraznější stínování zleva doprava, kovové výztuhy nahoře i dole a štítek
+  zasazený do kovového rámečku.
+
+Ostatní obrazovky — kartotéky i desky — zůstávají beze změny; ověřeno pixelovým srovnáním.
+
 ## [1.7.0] - 2026-09-30
 
 ### Opraveno
@@ -196,6 +218,7 @@ a nástroj se drží [sémantického verzování](https://semver.org/lang/cs/).
 - Označení offline kopie zůstává zachováno na konci titulku:
   `Byty · Nájmy · Můj archiv (offline kopie)`.
 
+[1.8.0]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.7.0]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.6.0]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.5.0]: https://github.com/egdilna/nastroje/tree/main/sanony
