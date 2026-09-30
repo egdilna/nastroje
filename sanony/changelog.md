@@ -6,6 +6,33 @@ jsou zaznamenány v tomto souboru.
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/)
 a nástroj se drží [sémantického verzování](https://semver.org/lang/cs/).
 
+## [1.6.0] - 2026-09-30
+
+### Opraveno
+
+- **Nadpisy `h6` chyběly ve čtyřech seznamech.** Verze 1.5.0 je doplnila jen na dlaždicích;
+  názvy položek ve volných listech, v sekci „Propojeno sem“, ve výsledcích hledání
+  a v nesrovnalostech v nastavení zůstaly obyčejnými `div` a `span`. Nyní je nadpisem
+  název položky na všech osmi místech, kde se zobrazuje.
+- **Výsledky hledání se neskládaly.** `.res` byl `<span>` bez `display:block`, takže se
+  název, cesta i popis slévaly do jednoho řádku a nedodržely se rozměry ani odsazení —
+  táž vada, jaká se v 1.4.0 opravovala u dlaždic desek a souborů.
+- Hlášku o obnovení archivu vzápětí přebíjelo „Archiv načten.“ z následného načtení,
+  takže potvrzení nebylo vidět.
+
+### Přidáno
+
+- **Zápis nad 1 MB.** Contents API takový soubor neuloží; větší obsah se nově poskládá
+  jako commit z Git Data API (blob → strom nad dosavadním stromem → commit → posun větve).
+  Platí pro `folder.json` i pro nahrávané soubory, protože rozhoduje `ulozSoubor()`.
+- **Pojistka proti přepsání.** Dokud se `folder.json` opravdu nenačte, nástroj neuloží nic.
+  Neúspěšné načtení by jinak nechalo běžet zastaralý stav a zápisem by archiv přepsalo.
+  Důvod zastavení je vidět v běžném stavovém řádku a ukládání jde v nastavení vědomě
+  povolit — kdyby to nešlo, poškozený archiv by nebylo jak opravit.
+- **Historie archivu.** V nastavení jde vypsat posledních 30 commitů souboru `folder.json`
+  a kteroukoli starší podobu archivu obnovit. Obnovení se ukládá jako nový commit,
+  takže se současný stav neztrácí.
+
 ## [1.5.0] - 2026-09-30
 
 ### Přidáno
@@ -154,6 +181,7 @@ a nástroj se drží [sémantického verzování](https://semver.org/lang/cs/).
 - Označení offline kopie zůstává zachováno na konci titulku:
   `Byty · Nájmy · Můj archiv (offline kopie)`.
 
+[1.6.0]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.5.0]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.4.0]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.3.0]: https://github.com/egdilna/nastroje/tree/main/sanony
