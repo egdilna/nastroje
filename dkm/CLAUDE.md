@@ -665,6 +665,22 @@ Import TSV proto do složeného atributu **nezapisuje** (`resolveAttrZapis`) a s
 na něj míří, hlásí jako nenaimportovaný. Dřív se do něj hodnota uložila a tiše ležela
 v datech, protože ji nikdo nečte.
 
+## Generátor textu: tentýž zápis jako složené atributy
+`generatorText(e,sablona)` volá `slozenyText` s falešným `def` — zápis `((Atribut))`,
+`((Typ / Atribut))` i metapole jsou tím pádem **jedny**, ne druhá sada pravidel.
+Druhý parser šablon nikam nepiš.
+
+Jediný rozdíl: `slozenyText(e,def,vlastnikId,doSlozenych)` s `doSlozenych=true` dosadí
+i **složené atributy**, a to o jedno patro (rekurzivní volání posílá `false`). U atributu
+samotného se složený ze složeného schválně nepočítá — šablona by se mohla zacyklit —,
+ale do výstupu generátoru složená pole patří; je to to hlavní, co z nich lidi chtějí dostat.
+
+## Chybějící klíče parita cs×en nechytí
+`i18n.mjs` porovnává jen klíče mezi jazyky. Když klíč zmizí v **obou**, obě strany si
+pořád odpovídají a v UI svítí syrový název (`expTgtDoc`). Na to je `klice.mjs`: vytáhne
+`t('…')` z kódu a porovná s `I18N`. Skládané klíče (`t('op_'+x)`) hlásí jako falešné
+poplachy — ty se ignorují. Spouštěj obojí.
+
 ## Import z tabulky má dvě fáze
 `otevriNahledMapovani(text)` → `provedImportTSV(text,volba)`. Dřív se mapovalo naslepo
 a rovnou zapisovalo. **Do dat se nesmí sáhnout dřív, než uživatel vidí, co kam půjde.**
