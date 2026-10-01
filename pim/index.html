@@ -313,6 +313,17 @@ body.theme-dark .anno-original blockquote { background: #2a2a2a; }
 .anno-flash { animation: commentAnchorFlash 1.5s ease-out; }
 .anno-target-flash { animation: commentAnchorFlash 1.5s ease-out; }
 
+.tag-nabidka { margin: 0.5em 0; }
+details.tag-nabidka { padding: 0.3em 0.6em; border: 1px solid #ccc; border-radius: 4px; }
+body.theme-dark details.tag-nabidka, body.theme-dark fieldset.tag-nabidka { border-color: #444; }
+.tag-nabidka summary { cursor: pointer; font-size: 0.9em; color: #555; }
+body.theme-dark .tag-nabidka summary { color: #bbb; }
+.tag-nabidka-seznam { max-height: 13em; overflow: auto; margin-top: 0.3em; columns: 13em; }
+.tag-nabidka-polozka { display: block; margin: 0.15em 0; break-inside: avoid; }
+.tag-nabidka-polozka input { width: auto; margin-right: 0.35em; vertical-align: baseline; }
+.tag-nabidka-popis { margin-top: 0.3em; font-size: 0.85em; }
+.tag-nabidka-pocet { font-variant-numeric: tabular-nums; }
+
 /* Tagová matice nad vazbami entity */
 dialog.tag-matice-dialog { width: 96vw; max-width: 96vw; height: 92vh; max-height: 92vh; display: flex; flex-direction: column; padding: 0.8em; }
 dialog.tag-matice-dialog[open] { display: flex; }
@@ -782,7 +793,7 @@ body.theme-dark .event-tasks-table th, body.theme-dark .event-tasks-table td { b
 .event-tasks-add-card { padding: 0.7em 0.9em; background: #fff; border-radius: 4px; border: 1px solid #ccc; }
 body.theme-dark .event-tasks-add-card { background: #1a1a1a; border-color: #444; }
 .event-tasks-add-card h4 { margin-top: 0; font-size: 1em; }
-.event-tasks-add-card input, .event-tasks-add-card select { width: 100%; box-sizing: border-box; margin: 0.2em 0; }
+.event-tasks-add-card input:not([type="checkbox"]):not([type="radio"]), .event-tasks-add-card select { width: 100%; box-sizing: border-box; margin: 0.2em 0; }
 /* Question answers section */
 .question-answers-section { margin: 1em 0; padding: 0.6em 0.8em; background: #fff8e6; border-left: 4px solid #d4a000; border-radius: 0 4px 4px 0; }
 body.theme-dark .question-answers-section { background: #2a2511; border-left-color: #d4a000; }
@@ -14275,17 +14286,21 @@ function renderDetailRead(main, e) {
   });
   // Rychlé přidání úkolu v projektu
   const quickTaskInp = document.getElementById('proj-quick-task-title');
+  napojTagyNabidku(main, 'proj-task-tag');
+  napojTagyNabidku(main, 'proj-ent-tag');
   const quickTaskBtn = document.getElementById('proj-quick-task-add');
   if (quickTaskInp && quickTaskBtn) {
     function doAdd() {
       const title = quickTaskInp.value.trim();
       if (!title) { quickTaskInp.focus(); return; }
       // Vytvořit nový úkol
+      const tagy = vybraneTagy('proj-task-tag');
       const newTask = newEntity({
         title: title,
         aspects: ['Task'],
         attributes: { status: 'todo' },
-        links: [{ to: e.id, type: 'partOf' }]
+        links: [{ to: e.id, type: 'partOf' }],
+        tags: tagy
       });
       // Parsování markdown odkazu v názvu (např. [Text](https://...))
       tryExtractMarkdownLinkFromTitle(newTask);
@@ -14306,6 +14321,7 @@ function renderDetailRead(main, e) {
       }, 50);
       let msg = '✓ Úkol „' + newTask.title + '" přidán do projektu';
       if (parsed) msg += ' (termín: ' + parsed.deadline + ')';
+      if (tagy.length > 0) msg += ', tagy: ' + tagy.join(', ');
       toast(msg, 3500);
       playSound('save-entity');
     }
@@ -14324,14 +14340,16 @@ function renderDetailRead(main, e) {
       if (!title) { quickEntInp.focus(); return; }
       const aspect = quickEntAsp.value || 'Note';
       const attrs = (aspect === 'Task') ? { status: 'todo' } : {};
-      const newEnt = newEntity({ title: title, aspects: [aspect], attributes: attrs, links: [{ to: e.id, type: 'partOf' }] });
+      const tagy = vybraneTagy('proj-ent-tag');
+      const newEnt = newEntity({ title: title, aspects: [aspect], attributes: attrs, links: [{ to: e.id, type: 'partOf' }], tags: tagy });
       tryExtractMarkdownLinkFromTitle(newEnt);
       db.entities.push(newEnt);
       save();
       quickEntInp.value = '';
       render();
       setTimeout(() => { const i2 = document.getElementById('proj-quick-ent-title'); if (i2) i2.focus(); }, 50);
-      toast('✓ Entita „' + newEnt.title + '" přidána do projektu', 3500);
+      toast('✓ Entita „' + newEnt.title + '" přidána do projektu' +
+        (tagy.length > 0 ? ', tagy: ' + tagy.join(', ') : ''), 3500);
       playSound('save-entity');
     }
     quickEntBtn.onclick = doAddEnt;
@@ -14945,6 +14963,81 @@ function extractCriticComments(text) {
     out.push(m[1].trim());
   }
   return out;
+}
+
+// ==== NABÍDKA TAGŮ PŘI ZAKLÁDÁNÍ ENTITY U JINÉ ENTITY ====
+// Když se zakládá úkol nebo entita „u" schůzky nebo projektu, skoro vždycky má
+// mít tytéž tagy jako ta schůzka či projekt — a často i tagy toho, co už k nim
+// patří. Ručně je doklikat znamená je nejdřív někde vyčíst, takže se na ně
+// zapomíná. Proto se nabídnou rovnou u formuláře.
+//
+// Tagy entity samotné jsou předzaškrtnuté, tagy z okolí jen nabídnuté. Kolik je
+// zaškrtnutých, je vidět i ve sbaleném stavu — jinak by se tagy přidávaly, aniž
+// by to uživatel viděl.
+
+// [{ tag, vlastni, pocet }] — vlastní = tag té entity (předzaškrtne se),
+// pocet = u kolika entit v okolí (včetně té entity) se tag vyskytuje.
+// Řazení: nejdřív vlastní tagy entity, pak zbytek podle četnosti a abecedy.
+function tagyZOkoliEntity(e) {
+  if (!e) return [];
+  const vlastni = new Set(e.tags || []);
+  const pocty = new Map();
+  const zapocti = (ent) => (ent.tags || []).forEach(t => pocty.set(t, (pocty.get(t) || 0) + 1));
+  zapocti(e);
+  tmSousedniEntity(e).forEach(s => zapocti(s.entita));
+  return [...pocty.keys()].sort((a, b) => {
+    const va = vlastni.has(a) ? 0 : 1, vb = vlastni.has(b) ? 0 : 1;
+    if (va !== vb) return va - vb;
+    const ra = pocty.get(b) - pocty.get(a);
+    if (ra !== 0) return ra;
+    return a.localeCompare(b, 'cs');
+  }).map(t => ({ tag: t, vlastni: vlastni.has(t), pocet: pocty.get(t) }));
+}
+
+// Zaškrtávátka tagů do formuláře. `trida` odlišuje jednotlivé formuláře na téže
+// stránce, `jakoDetails` zabalí seznam do rozbalovacího bloku (pro místa, kde je
+// formulář vidět pořád a seznam by zabíral místo).
+function tagyNabidkaHtml(e, trida, jakoDetails) {
+  const polozky = tagyZOkoliEntity(e);
+  if (polozky.length === 0) return '';
+  const vybrano = polozky.filter(p => p.vlastni).length;
+  const seznam = '<div class="tag-nabidka-seznam">' +
+    polozky.map(p =>
+      '<label class="tag-nabidka-polozka"><input type="checkbox" class="' + escapeHtml(trida) + '"' +
+        ' data-tag="' + escapeHtml(p.tag) + '"' + (p.vlastni ? ' checked' : '') + '> ' +
+        escapeHtml(p.tag) +
+        (p.vlastni ? '' : ' <span class="meta">(' + p.pocet + '×)</span>') +
+      '</label>').join('') +
+    '</div>' +
+    '<div class="meta tag-nabidka-popis">Zaškrtnuté jsou tagy této entity. Ostatní jsou z věcí, ' +
+      'které na ni mají vazbu — nabízejí se, ale nepřidají se samy.</div>';
+  const pocitadlo = '<span class="tag-nabidka-pocet" data-tag-pocet-pro="' + escapeHtml(trida) + '">' +
+    vybrano + ' z ' + polozky.length + '</span>';
+  if (jakoDetails) {
+    return '<details class="tag-nabidka"><summary>🏷 Tagy (' + pocitadlo + ' zaškrtnuto)</summary>' +
+      seznam + '</details>';
+  }
+  return '<fieldset class="tag-nabidka" style="margin:0.5em 0;padding:0.4em 0.6em;border:1px solid #ccc;border-radius:4px;">' +
+    '<legend style="padding:0 0.3em;font-size:0.9em;color:#555;">🏷 Tagy (' + pocitadlo + ' zaškrtnuto)</legend>' +
+    seznam + '</fieldset>';
+}
+
+// Počítadlo ve (sbalené) hlavičce musí jít s tím, co je zaškrtnuté — jinak by
+// se u sbaleného bloku přidaly tagy, o kterých uživatel neví.
+function napojTagyNabidku(root, trida) {
+  const pocet = root.querySelector('[data-tag-pocet-pro="' + trida + '"]');
+  const vse = Array.from(root.querySelectorAll('input.' + trida));
+  if (!pocet || vse.length === 0) return;
+  const prekresli = () => {
+    pocet.textContent = vse.filter(c => c.checked).length + ' z ' + vse.length;
+  };
+  vse.forEach(c => c.addEventListener('change', prekresli));
+  prekresli();
+}
+
+// Zaškrtnuté tagy daného formuláře.
+function vybraneTagy(trida) {
+  return Array.from(document.querySelectorAll('input.' + trida + ':checked')).map(c => c.dataset.tag);
 }
 
 // ==== TAGOVÁ MATICE NAD VAZBAMI ENTITY ====
@@ -17963,6 +18056,7 @@ function renderEventTasksSection(entity) {
               '<div class="meta" style="margin-top:0.3em;font-size:0.85em;">Defaultně všechny zaškrtnuté. Odškrtněte ty, do kterých úkol nepatří.</div>' +
             '</fieldset>'
           : '') +
+        tagyNabidkaHtml(entity, 'ev-new-task-tag', false) +
         '<button type="button" class="primary" id="ev-add-new-task">+ Vytvořit úkol</button>' +
       '</div>' +
       '<div class="event-tasks-add-card">' +
@@ -17983,6 +18077,7 @@ function renderEventTasksSection(entity) {
               '<div class="meta" style="margin-top:0.3em;font-size:0.85em;">Defaultně všechny zaškrtnuté.</div>' +
             '</fieldset>'
           : '') +
+        tagyNabidkaHtml(entity, 'ev-new-ent-tag', false) +
         '<button type="button" class="primary" id="ev-add-new-ent">+ Vytvořit entitu</button>' +
       '</div>' +
       (projectTasks.length > 0
@@ -18206,6 +18301,9 @@ function attachEventTasksHandlers(main, entity) {
       });
     };
   });
+  // Počítadlo zaškrtnutých tagů u obou formulářů
+  napojTagyNabidku(document, 'ev-new-task-tag');
+  napojTagyNabidku(document, 'ev-new-ent-tag');
   // Nový úkol
   const addNewBtn = document.getElementById('ev-add-new-task');
   const titleEl = document.getElementById('ev-new-task-title');
@@ -18219,7 +18317,8 @@ function attachEventTasksHandlers(main, entity) {
     const result = createQuickTaskFromText({
       rawTitle: raw,
       projectIds: selectedPids,
-      eventMentionIds: [entity.id]
+      eventMentionIds: [entity.id],
+      tags: vybraneTagy('ev-new-task-tag')
     });
     if (result) {
       titleEl.value = '';
@@ -18243,7 +18342,8 @@ function attachEventTasksHandlers(main, entity) {
     const links = [{ to: entity.id, type: 'mentions' }];
     selectedPids.forEach(pid => { if (pid) links.push({ to: pid, type: 'partOf' }); });
     const attrs = (aspect === 'Task') ? { status: 'todo' } : {};
-    const newEnt = newEntity({ title: raw, aspects: [aspect], attributes: attrs, links: links });
+    const tagy = vybraneTagy('ev-new-ent-tag');
+    const newEnt = newEntity({ title: raw, aspects: [aspect], attributes: attrs, links: links, tags: tagy });
     tryExtractMarkdownLinkFromTitle(newEnt);
     db.entities.push(newEnt);
     save();
@@ -18251,6 +18351,7 @@ function attachEventTasksHandlers(main, entity) {
     render();
     let msg = '✓ Entita „' + newEnt.title + '" vytvořena';
     if (selectedPids.length > 0) msg += ' (' + selectedPids.length + ' projekt' + (selectedPids.length === 1 ? '' : 'y') + ')';
+    if (tagy.length > 0) msg += ', tagy: ' + tagy.join(', ');
     toast(msg, 3500);
     playSound('save-entity');
   }
@@ -19434,6 +19535,7 @@ function renderProjectDashboard(project) {
       '<input type="text" id="proj-quick-task-title" placeholder="Název úkolu (lze: zítra, pondělí, 15.6., odkaz [text](url))">' +
       '<button type="button" id="proj-quick-task-add" class="primary">Přidat úkol</button>' +
     '</div>' +
+    tagyNabidkaHtml(project, 'proj-task-tag', true) +
     '<p class="meta" style="margin:0.3em 0 0;">Vytvoří úkol a propojí ho s tímto projektem vazbou „je součástí". Detail projektu zůstane otevřený.</p>' +
   '</div>';
   // Obecné rychlé přidání entity
@@ -19445,6 +19547,7 @@ function renderProjectDashboard(project) {
       '<select id="proj-quick-ent-aspect">' + quickEntityAspectOptions('Note') + '</select>' +
       '<button type="button" id="proj-quick-ent-add" class="primary">Přidat entitu</button>' +
     '</div>' +
+    tagyNabidkaHtml(project, 'proj-ent-tag', true) +
     '<p class="meta" style="margin:0.3em 0 0;">Vytvoří entitu zvoleného aspektu a propojí ji s tímto projektem vazbou „je součástí".</p>' +
   '</div>';
 
@@ -23163,7 +23266,8 @@ function createQuickTaskFromText(opts) {
   if (deadline) attrs.deadline = deadline;
 
   const e = newEntity({
-    title, aspects: ['Task'], attributes: attrs, links
+    title, aspects: ['Task'], attributes: attrs, links,
+    tags: Array.from(new Set(opts.tags || []))
   });
   // Pokud byl název ve formátu markdown odkazu [Název](url), převést na záložku
   // (rozšíří aspekty o Bookmark, atribut url a tělo se odkazem). Aspekt Task zůstává.

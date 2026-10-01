@@ -77,6 +77,29 @@ akce a posledních `PALETA_NEDAVNYCH` změněných entit.
 
 Paleta je **jen v aplikaci, ne v šabloně prohlížeče** — většina jejích příkazů edituje.
 
+## Nabídka tagů při zakládání entity
+
+`tagyNabidkaHtml(e, trida, jakoDetails)` + `napojTagyNabidku(root, trida)` +
+`vybraneTagy(trida)` jsou zaškrtávátka tagů do formulářů „nový úkol / nová entita"
+u schůzky a u projektu. Kandidáty dává `tagyZOkoliEntity(e)`: tagy entity samotné
+(předzaškrtnuté) a tagy všeho, co na ni má vazbu, přes **týž** `tmSousedniEntity()`
+jako tagová matice — jedno místo, jedna definice okolí.
+
+Dvě věci, které musí platit:
+
+- **Nepředzaškrtávej nic z okolí.** Předzaškrtnuté jsou jen vlastní tagy té entity;
+  zbytek je nabídka. Jinak by nová entita tiše dostávala tagy, které jí nepatří.
+- **Počet zaškrtnutých musí být vidět i u sbaleného bloku** (`data-tag-pocet-pro`,
+  přepočítává `napojTagyNabidku`). U projektu je blok `<details>` a sbalený —
+  bez živého počtu v hlavičce by se tagy přidávaly, aniž by o nich uživatel věděl.
+
+Nový formulář, který tohle chce, potřebuje vlastní `trida`, aby se zaškrtávátka
+nepletla s jiným formulářem na téže stránce.
+
+Je to **jen v aplikaci**, ne v šabloně prohlížeče.
+
+Hlídá to `pim/testy/tagy-pri-zalozeni.mjs`.
+
 ## Tagová matice: rozdělaná práce stranou od dat
 
 `otevriTagovouMatici(entityId)` je tabulka tagů nad okolím jedné entity. Dvě věci,
