@@ -115,6 +115,7 @@ chybí řádek v `SCR_NASTAVENI` a tady v tabulce.
 | `#dlgclipout` | Vložení projektu do schránky |
 | `#dlgclipin` | Načtení projektu ze schránky |
 | `#dlgimptsv` | Import z tabulky |
+| `#dlgimpmap` | Náhled mapování sloupců před importem z tabulky |
 | `#dlgtext` | Textový náhled ke zkopírování |
 
 ### Export
