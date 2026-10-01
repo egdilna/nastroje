@@ -217,7 +217,8 @@ those are outputs for someone else, not your working environment.
 
 ### 4.4 Entity card in list
 
-- **Type icon** + **entity name** (e.g. 👤 *Paul Newman*)
+- **State emoji** (📌 pinned, 🔒 locked) + **type icon** + **entity name**
+  (e.g. 📌 🔒 👤 *Paul Newman*)
 - **Badge** with type name, 📥 Inbox, 📦 Archive, and aspects (◎ *VIP*)
 - **Snippet** — brief excerpt from the first textarea attribute
 - **Values of "Show in list" attributes** — if any are enabled
@@ -226,6 +227,12 @@ those are outputs for someone else, not your working environment.
 
 Clicking a card anywhere outside links and buttons opens the detail. The name itself is
 a real link, so middle-click or Ctrl+click opens it in a new tab.
+
+**The emoji are part of the heading, not just a picture next to it.** They used to be hidden
+from screen readers (`aria-hidden`), so the eye saw the type icon in the heading but anyone
+moving through the list by headings heard the bare name only. Now a screen reader reads them
+the same way the eye sees them — in the table row, the Kanban card, the timeline entry and the
+calendar chip as well. The entity detail heading carries the same emoji.
 
 ### 4.5 Entity detail
 
@@ -259,6 +266,47 @@ away, because there the order never meant anything.
 
 At the very bottom there is a discreet line with the **ID, when the entity was created and
 when it last changed**.
+
+**📌 Pin** pulls an entity to the front. A pinned entity sorts to the top **in every view** —
+list, table, Kanban, timeline, and also inside each collapsible section and each Kanban column
+separately. Within both groups (pinned / the rest) the sort you picked in the bar or by clicking
+a table header still applies.
+
+Worth knowing about pinning:
+
+- **A pin is order, not content.** It does not change the modified date, so a pinned record
+  does not jump to the top of Recently changed just because you pinned it.
+- **A locked entity can be pinned and unpinned.** The lock protects content; the pin is a
+  label on the shelf, not a change of information — just like locking and unlocking itself.
+- **On the Recently changed tab a pinned entity survives the cut.** It is moved to the front
+  before the list is trimmed to its limit.
+- Pinning and unpinning work **in bulk** and from the **command palette** too; in a list a
+  pinned entity is marked with 📌 right at the start of its heading and with a **Pinned** badge.
+- Pinning travels into the **static viewer**: the generated page sorts the same way.
+
+**🔒 Lock** turns an entity into a finished record: it cannot be edited, deleted, archived,
+moved to the Inbox, retyped, given an aspect or a relation, dragged in Kanban — and neither
+a table nor a package import will overwrite it. You unlock it in the same place.
+
+The lock is **the author's intent, not a permission**: anyone who opens the project can
+unlock it. It is for records you consider closed and do not want to touch by accident, not
+protection from someone else.
+
+What the lock does **not** stop, and why:
+
+- **Comments.** A locked record can still be commented on — discussing it is not changing it.
+- **Link repair.** Renaming another entity rewrites `[[Old name]]` inside a locked one too;
+  leaving a broken link there would be worse. The same goes for pruning a relation to a
+  deleted entity.
+- **Merging from GitHub.** That is not your action but a reconciliation of two versions of
+  the same file. If the lock blocked merging, the two copies would diverge for good. The lock
+  does not stop the other person from changing the entity — it stops **you** from doing it by
+  accident.
+
+**Bulk actions skip locked entities** and tell you how many. If every selected entity is
+locked, the action does not run at all. Read-only actions are the exception — export and AI
+go through. Locking and unlocking work in bulk too; locking does not change the modified date,
+so fifty closed records do not jump to the top of Recently changed.
 
 **The `o` key opens the entity's link** in a new tab — a fast way out of the detail without
 reaching for the mouse. It looks in two steps, in this order:
@@ -895,6 +943,9 @@ Bulk toolbar shows count selected + action dropdown:
 - **📤 From Inbox** — remove from Inbox
 - **📦 Archive / Restore**
 - **🗑 Delete**
+- **📌 Pin / Unpin** — pulls the selected to the front in every view (see 4.5); works on locked
+  entities too and does not change the modified date
+- **🔒 Lock / Unlock** — closes the selected against changes (see 4.5)
 - **🏷 Assign type**
 - **◎ Add aspect / Remove aspect**
 - **↔ Add relation** — bulk-adds relation to all
@@ -1256,8 +1307,8 @@ groups:
 | Group | What is in it |
 |---|---|
 | **Create** | New entity, **New into Inbox**, Quick add to Inbox, and **New entity of each type** separately ("New: Contract") |
-| **Entity** | commands for the entity currently open — exactly the ones it has as buttons in the detail: Edit, Duplicate, Add relation, Comments, Export / print, Ask AI, Standalone window, To / From Inbox, Change type, Archive or Restore, Delete |
-| **Bulk on selected (n)** | **every bulk action** from the selection bar — change type, add / remove aspect, set / clear attribute, add relation, merge entities, export, AI, to / from Inbox, archive or restore, delete |
+| **Entity** | commands for the entity currently open — exactly the ones it has as buttons in the detail: Edit, Duplicate, Add relation, Comments, Export / print, Ask AI, Standalone window, **Pin / Unpin**, **Lock / Unlock**, To / From Inbox, Change type, Archive or Restore, Delete |
+| **Bulk on selected (n)** | **every bulk action** from the selection bar — change type, add / remove aspect, set / clear attribute, add relation, merge entities, export, AI, to / from Inbox, **pin / unpin**, **lock / unlock**, archive or restore, delete |
 | **List** | search, advanced filters, clear filters, save view, selection mode, preview beside the list and the display switch (list, table, Kanban, calendar, timeline) |
 | **Action** | save, load, export data, **import TSV**, **import a .dkmpkg package**, clipboard, load from URL, panels, AI, theme and language |
 | **Navigation** | the tabs from the bar, Inbox / All / Archive, All comments and **every settings section** |
