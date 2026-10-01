@@ -182,6 +182,25 @@ When typing in a Markdown field (entity body, sections, scratchpad), these short
 
 If the content (or a Markdown attribute) contains checked tasks `- [x]`, a button appears to **hide them in the preview** — the text is unchanged, completed items are just tidied away.
 
+## Tags when creating an entity at a meeting or a project
+
+When creating a task or an entity **at a meeting** (Meeting tasks → *+ Add task*) or
+**at a project** (project dashboard → *+ New task / + New entity in this project*),
+**tag checkboxes** are offered next to the project choices:
+
+- **the tags of that meeting or project** — these are **pre-ticked**;
+- **the tags of things linked to it** (tasks, documents, the parent project…) —
+  these are only offered, never added by themselves. Each shows how many times it
+  occurs in the neighbourhood.
+
+At a meeting the list sits in the card; at a project it sits in a collapsible
+**🏷 Tags** block, because that form is always visible on the dashboard. **The header
+shows how many tags are ticked** ("2 of 6 ticked") and the number follows your
+ticking — so even with the block collapsed you know what the new entity will get.
+The tags used also appear in the confirmation message.
+
+If there is no tag anywhere in the neighbourhood, the block is not shown at all.
+
 ## 🏷 Link tags (matrix)
 
 The **🏷 Link tags…** button in the **Links** section of an entity detail (and the

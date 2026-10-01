@@ -181,6 +181,24 @@ Když píšete v markdownovém poli (tělo entity, sekce, odkládací prostor), 
 
 Pokud má obsah (nebo markdownový atribut) zaškrtnuté úkoly `- [x]`, objeví se tlačítko pro jejich **skrytí v náhledu** — text se nezmění, jen se přehledně schovají splněné položky.
 
+## Tagy při zakládání entity u schůzky a u projektu
+
+Když zakládáte úkol nebo entitu **u schůzky** (sekce Úkoly schůzky → *+ Přidat úkol*)
+nebo **u projektu** (dashboard projektu → *+ Nový úkol / + Nová entita do tohoto
+projektu*), nabídnou se vedle voleb projektů i **zaškrtávátka s tagy**:
+
+- **tagy té schůzky či projektu** — ty jsou **předzaškrtnuté**;
+- **tagy věcí, které na ni mají vazbu** (úkoly, dokumenty, nadřazený projekt…) —
+  ty se jen nabízejí, samy se nepřidají. U každého je počet výskytů v okolí.
+
+U schůzky je seznam přímo v kartě, u projektu v **rozbalovacím bloku 🏷 Tagy**,
+protože formulář je na dashboardu vidět pořád. **V hlavičce bloku je vidět, kolik
+tagů je zaškrtnutých** („2 z 6 zaškrtnuto") a číslo se mění, jak zaškrtáváte —
+takže i se sbaleným blokem víte, co nová entita dostane. Použité tagy jsou
+nakonec i v hlášce po vytvoření.
+
+Když v okolí není ani jeden tag, blok se vůbec nezobrazí.
+
 ## 🏷 Tagy vazeb (matice)
 
 Tlačítko **🏷 Tagy vazeb…** v sekci **Vazby** v detailu entity (a stejný příkaz
