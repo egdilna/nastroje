@@ -181,6 +181,27 @@ Když píšete v markdownovém poli (tělo entity, sekce, odkládací prostor), 
 
 Pokud má obsah (nebo markdownový atribut) zaškrtnuté úkoly `- [x]`, objeví se tlačítko pro jejich **skrytí v náhledu** — text se nezmění, jen se přehledně schovají splněné položky.
 
+## 🏷 Tagy vazeb (matice)
+
+Tlačítko **🏷 Tagy vazeb…** v sekci **Vazby** v detailu entity (a stejný příkaz
+v paletě) otevře tabulku, ve které jsou:
+
+- **řádky** — entita sama a **všechny entity na ni navázané oběma směry**:
+  strukturované vazby, relace v atributech i odkazy v textu (wiki, include).
+  **Včetně těch, které nemají žádný tag** — právě ty se při ručním tagování
+  nejčastěji přehlédnou;
+- **sloupce** — **jen tagy, které se v tomhle okolí někde vyskytují**, ne všechny
+  tagy databáze. U každého je počet („4/19"), takže je hned vidět, co má skoro
+  všechno a co jediná entita.
+
+Zaškrtáváním se tagy přidávají a odebírají. **Do dat se nesahá, dokud nedáte
+Uložit** — změněné buňky jsou zvýrazněné, dole běží počítadlo („+3 tagy, −1 tag
+u 3 entit") a **Zrušit beze změn** nechá data přesně tak, jak byla. Uloží se jen
+entity, které se opravdu změnily.
+
+Záhlaví řádků i sloupců se při posouvání drží na místě a po mřížce se dá chodit
+**šipkami**. Archivované entity se v matici nezobrazují.
+
 ## Sekce v detailu entity
 
 Pod obsahem entity jsou sekce, které se počítají z jejího textu. Čtyři z nich jsou

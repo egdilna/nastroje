@@ -313,6 +313,36 @@ body.theme-dark .anno-original blockquote { background: #2a2a2a; }
 .anno-flash { animation: commentAnchorFlash 1.5s ease-out; }
 .anno-target-flash { animation: commentAnchorFlash 1.5s ease-out; }
 
+/* Tagová matice nad vazbami entity */
+dialog.tag-matice-dialog { width: 96vw; max-width: 96vw; height: 92vh; max-height: 92vh; display: flex; flex-direction: column; padding: 0.8em; }
+dialog.tag-matice-dialog[open] { display: flex; }
+.tm-hlavicka h2 { margin: 0 0 0.2em; }
+.tm-hlavicka p { margin: 0 0 0.5em; }
+.tm-obal { flex: 1 1 auto; overflow: auto; border: 1px solid #ccc; border-radius: 4px; }
+body.theme-dark .tm-obal { border-color: #444; }
+table.tm-tabulka { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; }
+table.tm-tabulka th, table.tm-tabulka td { border-bottom: 1px solid #e3e3e3; border-right: 1px solid #e3e3e3; padding: 0.25em 0.5em; }
+body.theme-dark table.tm-tabulka th, body.theme-dark table.tm-tabulka td { border-color: #3a3a3a; }
+table.tm-tabulka thead th { position: sticky; top: 0; z-index: 2; background: #f3f3f3; vertical-align: bottom; font-weight: 600; }
+body.theme-dark table.tm-tabulka thead th { background: #2a2a2a; }
+table.tm-tabulka th.tm-radek, table.tm-tabulka th.tm-roh { box-shadow: 2px 0 4px rgba(0,0,0,0.10); }
+table.tm-tabulka th.tm-radek { position: sticky; left: 0; z-index: 1; background: #fafafa; text-align: left; font-weight: 400; white-space: nowrap; max-width: 30em; overflow: hidden; text-overflow: ellipsis; }
+body.theme-dark table.tm-tabulka th.tm-radek { background: #1f1f1f; }
+table.tm-tabulka th.tm-roh { left: 0; z-index: 3; background: #ececec; text-align: left; }
+body.theme-dark table.tm-tabulka th.tm-roh { background: #333; }
+.tm-sloupec { white-space: nowrap; }
+.tm-sloupec .tm-tag { display: block; }
+.tm-sloupec .tm-pocet { display: block; font-weight: 400; }
+td.tm-bunka { text-align: center; }
+td.tm-bunka.tm-zmeneno { background: #fff3c4; }
+body.theme-dark td.tm-bunka.tm-zmeneno { background: #4a3f12; }
+tr.tm-stred th.tm-radek, tr.tm-stred td { background: #eaf2fb; font-weight: 600; }
+body.theme-dark tr.tm-stred th.tm-radek, body.theme-dark tr.tm-stred td { background: #1e2a38; }
+table.tm-tabulka tbody tr:hover td { background: #f6f6f6; }
+body.theme-dark table.tm-tabulka tbody tr:hover td { background: #262626; }
+table.tm-tabulka input[type="checkbox"]:focus-visible { outline: 3px solid #0b6; outline-offset: 1px; }
+.tm-pata { display: flex; align-items: center; justify-content: space-between; gap: 1em; flex-wrap: wrap; margin-top: 0.6em; }
+
 /* Seznam nedokončených markdownových úkolů v detailu — zaškrtnutelný */
 ul.md-tasks-list li.md-task-item { margin: 0.15em 0; }
 ul.md-tasks-list li.md-task-item label { display: inline-flex; align-items: baseline; gap: 0.45em; cursor: pointer; }
@@ -13981,6 +14011,9 @@ function renderDetailRead(main, e) {
     (refsHtml ? '<details class="section-collapsible"><summary>Odkazy</summary><h3>Odkazy</h3>' + refsHtml + '</details>' : '') +
     (attachmentsHtml ? '<details open class="section-collapsible"><summary>Přílohy (' + e.attachments.length + ')</summary><h3>Přílohy (' + e.attachments.length + ')</h3>' + attachmentsHtml + '</details>' : '') +
     ((linksHtml || inverseHtml) ? '<details open class="section-collapsible"><summary>Vazby</summary><h3>Vazby</h3>' +
+      '<div class="btn-group" style="margin-bottom:0.5em;">' +
+        '<button type="button" id="btn-tag-matice" title="Porovnat a upravit tagy všech navázaných entit najednou">🏷 Tagy vazeb…</button>' +
+      '</div>' +
       (linksHtml ? '<p><strong>Odchozí vazby</strong></p>' + linksHtml : '') +
       (inverseHtml ? '<p style="margin-top:1em;"><strong>Příchozí vazby</strong></p>' + inverseHtml : '') +
     '</details>' : '') +
@@ -14072,6 +14105,8 @@ function renderDetailRead(main, e) {
   { const _b = document.getElementById('btn-duplicate'); if (_b) _b.onclick = () => duplicateEntity(e); }
   const btnStandaloneTop = document.getElementById('btn-open-standalone');
   if (btnStandaloneTop) btnStandaloneTop.onclick = () => openEntityInStandaloneWindow(e.id);
+  { const _tm = document.getElementById('btn-tag-matice');
+    if (_tm) _tm.onclick = () => otevriTagovouMatici(e.id); }
   const btnCopyLink = document.getElementById('btn-copy-entity-link');
   if (btnCopyLink) btnCopyLink.onclick = async () => {
     const link = buildEntityShareLink(e);
@@ -14910,6 +14945,229 @@ function extractCriticComments(text) {
     out.push(m[1].trim());
   }
   return out;
+}
+
+// ==== TAGOVÁ MATICE NAD VAZBAMI ENTITY ====
+// Tabulka, kde řádky jsou entity navázané na tuhle (oběma směry) a sloupce tagy,
+// které se mezi nimi vyskytují. Smysl je vidět na jednom místě, KDO tag má a kdo
+// ne — po jedné entitě se to neuhlídá. Schválně se nevypisují všechny tagy
+// databáze (jsou jich stovky), jen ty, co v tomhle okolí někde jsou.
+//
+// Změny se drží stranou a do dat se zapíšou AŽ tlačítkem Uložit. Zrušit beze
+// změn nechá data netknutá.
+
+// Sousední entity: všechno, co s entitou souvisí vazbou v obou směrech — tedy
+// totéž, co ukazuje sekce Vazby v detailu: strukturované vazby, relace
+// v atributech i odkazy v textu (wiki, include). Bez duplicit, bez archivovaných
+// (ty detail v běžných sekcích schválně schovává) a bez entity samotné.
+function tmSousedniEntity(e) {
+  const mapa = new Map();   // id → { entita, popisy: Set }
+  const pridej = (ent, popis) => {
+    if (!ent || ent.id === e.id || ent.archived) return;
+    if (!mapa.has(ent.id)) mapa.set(ent.id, { entita: ent, popisy: new Set() });
+    mapa.get(ent.id).popisy.add(popis);
+  };
+
+  // Odchozí strukturované vazby
+  (e.links || []).forEach(l => {
+    const t = findEntity(l.to);
+    const ti = RELATION_TYPES[l.type];
+    pridej(t, '→ ' + (ti ? ti.label : l.type));
+  });
+  // Odchozí relace v atributech
+  collectAllFields(e).forEach(f => {
+    if (f.field.type !== 'relation') return;
+    const v = e.attributes && e.attributes[f.field.key];
+    if (!v) return;
+    normalizeRelationValue(v).forEach(id => pridej(findEntity(id), '→ ' + f.field.label));
+  });
+  // Odchozí odkazy v textu
+  const odkazy = collectEntityOutgoingReferences(e);
+  (odkazy.wikis || []).forEach(t => pridej(t, '→ zmiňuje'));
+  (odkazy.includes || []).forEach(t => pridej(t, '→ vkládá'));
+
+  // Příchozí strukturované vazby a relace
+  getInverseLinks(e.id).forEach(({ from, link }) => {
+    const ti = RELATION_TYPES[link.type];
+    pridej(from, '← ' + (ti ? (ti.inverseLabel || ti.label) : link.type));
+  });
+  getInverseRelations(e.id).forEach(({ from, fieldLabel }) => pridej(from, '← ' + fieldLabel));
+  // Příchozí odkazy v textu
+  const zText = getInverseTextReferences(e);
+  (zText.wikiFrom || []).forEach(x => pridej(x, '← zmiňuje'));
+  (zText.includeFrom || []).forEach(x => pridej(x, '← vkládá'));
+  (zText.databaseFrom || []).forEach(x => pridej(x, '← databáze'));
+
+  return [...mapa.values()].sort((a, b) =>
+    getDisplayTitle(a.entita).localeCompare(getDisplayTitle(b.entita), 'cs'));
+}
+
+function otevriTagovouMatici(entityId) {
+  const e = findEntity(entityId);
+  if (!e) return;
+  const sousedi = tmSousedniEntity(e);
+  if (sousedi.length === 0) {
+    alertMsg('Tahle entita nemá žádné vazby, není co porovnávat.');
+    return;
+  }
+  // Řádky: nejdřív entita sama (aby šel tag rozšířit i z ní na okolí), pak sousedi.
+  const radky = [{ entita: e, popis: '(tato entita)', stred: true }]
+    .concat(sousedi.map(s => ({ entita: s.entita, popis: [...s.popisy].join(', '), stred: false })));
+
+  // Sloupce: jen tagy, které se v tomhle okolí někde vyskytují.
+  const cetnost = new Map();
+  radky.forEach(r => (r.entita.tags || []).forEach(t => cetnost.set(t, (cetnost.get(t) || 0) + 1)));
+  const sloupce = [...cetnost.keys()].sort((a, b) => a.localeCompare(b, 'cs'));
+  if (sloupce.length === 0) {
+    alertMsg('Ani tahle entita, ani nic z jejího okolí nemá žádný tag — matice by byla prázdná.');
+    return;
+  }
+
+  // Pracovní stav: id entity → Set tagů. Do dat se nesahá, dokud se neuloží.
+  const stav = new Map();
+  const puvodni = new Map();
+  radky.forEach(r => {
+    stav.set(r.entita.id, new Set(r.entita.tags || []));
+    puvodni.set(r.entita.id, new Set(r.entita.tags || []));
+  });
+
+  const stary = document.getElementById('dialog-tag-matice');
+  if (stary) stary.remove();
+  const d = document.createElement('dialog');
+  d.id = 'dialog-tag-matice';
+  d.className = 'tag-matice-dialog';
+  d.setAttribute('aria-labelledby', 'tm-nadpis');
+
+  const hlavickaSloupcu = sloupce.map((t, si) =>
+    '<th scope="col" class="tm-sloupec"><span class="tm-tag">' + escapeHtml(t) + '</span>' +
+    '<span class="meta tm-pocet" id="tm-pocet-' + si + '">' + (cetnost.get(t) || 0) + '/' + radky.length + '</span></th>'
+  ).join('');
+
+  const telo = radky.map((r, ri) => {
+    const titul = getDisplayTitle(r.entita);
+    const aspekty = (r.entita.aspects || []).map(a => aspectLabel(a)).join(', ');
+    // Název entity musí být první — kvůli hledání po písmenech odečítačem.
+    return '<tr' + (r.stred ? ' class="tm-stred"' : '') + '>' +
+      '<th scope="row" class="tm-radek">' + escapeHtml(titul) +
+        ' <span class="meta">' + escapeHtml(r.popis + (aspekty ? ' · ' + aspekty : '')) + '</span></th>' +
+      sloupce.map((t, si) =>
+        '<td class="tm-bunka"><input type="checkbox" data-tm-r="' + ri + '" data-tm-s="' + si + '"' +
+        ((r.entita.tags || []).indexOf(t) >= 0 ? ' checked' : '') +
+        ' aria-label="' + escapeHtml('Tag ' + t + ' u entity ' + titul) + '"></td>').join('') +
+    '</tr>';
+  }).join('');
+
+  d.innerHTML =
+    '<div class="tm-hlavicka">' +
+      '<h2 id="tm-nadpis">🏷 Tagy vazeb — ' + escapeHtml(getDisplayTitle(e)) + '</h2>' +
+      '<p class="meta">' + radky.length + ' entit, ' + sloupce.length + ' tagů z jejich okolí. ' +
+        'Sloupce jsou jen tagy, které se tu někde vyskytují. Archivované entity se nezobrazují. ' +
+        'Změny se do dat zapíšou až tlačítkem Uložit.</p>' +
+    '</div>' +
+    '<div class="tm-obal" tabindex="0">' +
+      '<table class="tm-tabulka"><caption class="sr-only">Tagy entit navázaných na ' + escapeHtml(getDisplayTitle(e)) + '</caption>' +
+        '<thead><tr><th scope="col" class="tm-roh">Entita</th>' + hlavickaSloupcu + '</tr></thead>' +
+        '<tbody>' + telo + '</tbody>' +
+      '</table>' +
+    '</div>' +
+    '<div class="tm-pata">' +
+      '<strong id="tm-zmeny" aria-live="polite">Beze změn</strong>' +
+      '<div class="btn-group">' +
+        '<button type="button" class="primary" id="tm-ulozit">💾 Uložit</button>' +
+        '<button type="button" id="tm-zrusit">✕ Zrušit beze změn</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(d);
+
+  const tabulka = d.querySelector('.tm-tabulka');
+
+  // Kolik se toho změnilo — počítá se z pracovního stavu proti původnímu.
+  function spocitejZmeny() {
+    let pridano = 0, odebrano = 0, entit = 0;
+    radky.forEach(r => {
+      const nove = stav.get(r.entita.id), stare = puvodni.get(r.entita.id);
+      let zmena = false;
+      nove.forEach(t => { if (!stare.has(t)) { pridano++; zmena = true; } });
+      stare.forEach(t => { if (!nove.has(t)) { odebrano++; zmena = true; } });
+      if (zmena) entit++;
+    });
+    return { pridano, odebrano, entit };
+  }
+  function prekresliStav() {
+    const z = spocitejZmeny();
+    const el = d.querySelector('#tm-zmeny');
+    el.textContent = (z.pridano === 0 && z.odebrano === 0)
+      ? 'Beze změn'
+      : '+' + z.pridano + ' tagů, −' + z.odebrano + ' tagů u ' + z.entit +
+        (z.entit === 1 ? ' entity' : z.entit < 5 ? ' entit' : ' entit');
+    // Počty ve hlavičkách sloupců jedou podle pracovního stavu, ne podle dat.
+    sloupce.forEach((t, si) => {
+      let n = 0;
+      radky.forEach(r => { if (stav.get(r.entita.id).has(t)) n++; });
+      const p = d.querySelector('#tm-pocet-' + si);
+      if (p) p.textContent = n + '/' + radky.length;
+    });
+  }
+
+  tabulka.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.onchange = () => {
+      const r = radky[Number(cb.dataset.tmR)];
+      const t = sloupce[Number(cb.dataset.tmS)];
+      const set = stav.get(r.entita.id);
+      if (cb.checked) set.add(t); else set.delete(t);
+      cb.closest('td').classList.toggle('tm-zmeneno', puvodni.get(r.entita.id).has(t) !== cb.checked);
+      prekresliStav();
+    };
+  });
+
+  // Pohyb po tabulce šipkami — bez toho se v mřížce zaškrtávátek nedá orientovat.
+  tabulka.onkeydown = (ev) => {
+    const cb = ev.target;
+    if (!cb.dataset || cb.dataset.tmR === undefined) return;
+    const dr = { ArrowUp: -1, ArrowDown: 1 }[ev.key] || 0;
+    const ds = { ArrowLeft: -1, ArrowRight: 1 }[ev.key] || 0;
+    if (dr === 0 && ds === 0) return;
+    const r = Math.min(Math.max(Number(cb.dataset.tmR) + dr, 0), radky.length - 1);
+    const s = Math.min(Math.max(Number(cb.dataset.tmS) + ds, 0), sloupce.length - 1);
+    const cil = tabulka.querySelector('input[data-tm-r="' + r + '"][data-tm-s="' + s + '"]');
+    if (cil) { ev.preventDefault(); cil.focus(); }
+  };
+
+  function zavri() { d.close(); d.remove(); }
+
+  d.querySelector('#tm-zrusit').onclick = () => {
+    const z = spocitejZmeny();
+    if (z.pridano === 0 && z.odebrano === 0) { zavri(); return; }
+    confirmDialog('Zahodit neuložené změny tagů (+' + z.pridano + ', −' + z.odebrano + ')?', () => zavri());
+  };
+  d.querySelector('#tm-ulozit').onclick = () => {
+    const z = spocitejZmeny();
+    if (z.pridano === 0 && z.odebrano === 0) { zavri(); toast('Nic se nezměnilo.'); return; }
+    radky.forEach(r => {
+      const ent = findEntity(r.entita.id);
+      if (!ent) return;
+      const nove = stav.get(r.entita.id), stare = puvodni.get(r.entita.id);
+      let zmena = false;
+      nove.forEach(t => { if (!stare.has(t)) zmena = true; });
+      stare.forEach(t => { if (!nove.has(t)) zmena = true; });
+      if (!zmena) return;
+      // Původní pořadí tagů se zachová, nové se přidají na konec — ať je diff malý.
+      const vysledek = (ent.tags || []).filter(t => nove.has(t));
+      nove.forEach(t => { if (vysledek.indexOf(t) < 0) vysledek.push(t); });
+      ent.tags = vysledek;
+      ent.updated_at = nowIso();
+    });
+    save();
+    zavri();
+    render();
+    toast('Tagy uloženy: +' + z.pridano + ', −' + z.odebrano + ' u ' + z.entit + ' entit.', 4000);
+  };
+  // Escape nesmí zahodit rozdělanou práci bez zeptání.
+  d.addEventListener('cancel', (ev) => { ev.preventDefault(); d.querySelector('#tm-zrusit').click(); });
+
+  d.showModal();
+  const prvni = tabulka.querySelector('input[type="checkbox"]');
+  if (prvni) setTimeout(() => prvni.focus(), 50);
 }
 
 // ===== ARCHIVOVANÉ POLOŽKY V DETAILU =====
@@ -25308,6 +25566,14 @@ function paletaSestavPrikazy() {
     keywords: 'nedavne posledni zmeny cas historie aktualni', zakladni: true,
     run: otevriPosledniZmeny
   });
+  if (ent) {
+    pridej({
+      id: 'tag-matice', label: '🏷 Tagy vazeb (matice)', kategorie: 'Entita',
+      hint: 'Porovnat a upravit tagy všech entit navázaných na tuhle',
+      keywords: 'tagy vazby matice stitky hromadne porovnat',
+      run: () => otevriTagovouMatici(ent.id)
+    });
+  }
   pridej({ id: 'prejit-zpet', label: '← Zpět', klavesa: 'b', kategorie: 'Přejít', keywords: 'navrat historie', run: () => goBack() });
 
   // --- Filtr podle projektu (Úkoly, Kalendář, Tagy, Příznaky, Vazby, Komentáře) ---

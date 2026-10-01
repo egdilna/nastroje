@@ -77,6 +77,34 @@ akce a posledních `PALETA_NEDAVNYCH` změněných entit.
 
 Paleta je **jen v aplikaci, ne v šabloně prohlížeče** — většina jejích příkazů edituje.
 
+## Tagová matice: rozdělaná práce stranou od dat
+
+`otevriTagovouMatici(entityId)` je tabulka tagů nad okolím jedné entity. Dvě věci,
+které se nesmí porušit:
+
+1. **Do `db` se nesahá, dokud se nezmáčkne Uložit.** Rozdělaná práce žije
+   v `stav` (id → Set tagů) proti `puvodni`; teprve Uložit přepíše `e.tags`
+   a `updated_at`, a to **jen u entit, které se opravdu liší**. Zbytečně zvednuté
+   `updated_at` je tichá změna dat jako každá jiná.
+2. **Sloupce jsou jen tagy z tohohle okolí**, ne `getAllTags()`. V reálné bázi
+   jsou tagů stovky a matice přes všechny je nepoužitelná — to byl důvod, proč
+   vznikla takhle a ne jako obecná matice nad libovolným výběrem.
+
+Řádky staví `tmSousedniEntity(e)`: strukturované vazby, relace v atributech
+i odkazy v textu (wiki/include), **oběma směry**, bez archivovaných a bez
+duplicit — tedy totéž, co ukazuje sekce Vazby v detailu. Entita sama je první
+řádek a její tagy se počítají do sloupců; bez toho by nešlo rozšířit tag
+z projektu na jeho části, což je ten hlavní případ užití.
+
+**Není to vyskakovací okno prohlížeče.** `openEntityInStandaloneWindow()` otevírá
+novou instanci aplikace s vlastním `db` načteným zvlášť z GitHubu — zápis tagů
+odtamtud by byl druhá, nesesynchronizovaná kopie dat. Proto modální `<dialog>`
+přes celou obrazovku ve stejné instanci. Escape je odchycený, aby nezahodil
+rozdělanou práci bez zeptání.
+
+Hlídá to `pim/testy/tagova-matice.mjs` (kanárci na entity mimo okolí i na
+nezměněné řádky).
+
 ## Sekce detailu: rozbalení a odškrtávání úkolů
 
 Čtyři sekce pod obsahem jsou **`<details open>`**: Nedokončené položky, Příznaky,
