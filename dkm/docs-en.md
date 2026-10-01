@@ -2433,6 +2433,8 @@ saves even with Caps Lock on and on layouts where that key types a different let
 |----------|--------|
 | f | Focus search |
 | / | Focus search |
+| j | Next entity in the list |
+| k | Previous entity in the list |
 | x | Toggle selection mode |
 | Shift+X | Deselect everything — you stay in selection mode |
 | v | Toggle selection mode (same as `x`, the older habit) |

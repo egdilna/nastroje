@@ -2397,6 +2397,8 @@ i se zapnutým Caps Lockem a na rozložení, kde ta klávesa píše jiné písme
 |---------|------|
 | f | Fokus na hledání |
 | / | Fokus na hledání |
+| j | Další entita v seznamu |
+| k | Předchozí entita v seznamu |
 | x | Přepnout režim výběru |
 | Shift+X | Odznačit vše vybrané — v režimu výběru zůstaneš |
 | v | Přepnout režim výběru (totéž co `x`, starší zvyk) |

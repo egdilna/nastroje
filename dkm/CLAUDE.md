@@ -665,6 +665,16 @@ Import TSV proto do složeného atributu **nezapisuje** (`resolveAttrZapis`) a s
 na něj míří, hlásí jako nenaimportovaný. Dřív se do něj hodnota uložila a tiše ležela
 v datech, protože ji nikdo nečte.
 
+## J a K po seznamu: ohnisko, ne vlastní výběr
+`skocVSeznamu(smer)` **jen přesune ohnisko** na odkaz s názvem další entity (`.ecard`
+i `.tv-row`, v obou je to první `a[href^="#entity/"]`). Nezavádí se žádný „vybraný
+řádek" — Enter tím pádem entitu otevře sám, odečítač ji přečte, a nevzniká druhý pojem
+výběru vedle zaškrtávátek u hromadných akcí.
+
+**Šipky na tohle schválně nejsou**: v režimu prohlížení si je bere odečítač obrazovky
+a brát mu je by rozbilo čtení stránky. Na kraji se seznam **nepřetáčí** — skok z konce
+na začátek je u dlouhého seznamu spíš nehoda než záměr.
+
 ## Generátor textu: tentýž zápis jako složené atributy
 `generatorText(e,sablona)` volá `slozenyText` s falešným `def` — zápis `((Atribut))`,
 `((Typ / Atribut))` i metapole jsou tím pádem **jedny**, ne druhá sada pravidel.
