@@ -45,6 +45,7 @@ upravte v `lib.mjs`.
 | `ukoly-v-komentarich.mjs` | Úkoly a inline výběr v komentáři zapisují do toho komentáře, ne do těla entity. |
 | `filtr-projektu.mjs` | Sdílený filtr podle projektu v šesti pohledech + konkrétní projekt ve filtrech pohledu Vše. |
 | `sekce-detailu.mjs` | Rozbalené sekce detailu a odškrtávání úkolů ze seznamu Nedokončené položky (na řádek, ne na pořadí). |
+| `tagova-matice.mjs` | Tagy vazeb: řádky, sloupce, a hlavně že se do dat nesáhne dřív než na Uložit. |
 | `odznak-a-seznam.mjs` | Odznak ☐N u názvu entity a editor seznamu (sbalování, udělat úkol). |
 | `skryte-ukoly.mjs` | Skrytí hotových úkolů přežije zaškrtnutí dalšího. |
 | `klavesy.mjs` | Klávesové zkratky a accesskey se nepřekrývají. |

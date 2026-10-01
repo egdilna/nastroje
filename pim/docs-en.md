@@ -182,6 +182,27 @@ When typing in a Markdown field (entity body, sections, scratchpad), these short
 
 If the content (or a Markdown attribute) contains checked tasks `- [x]`, a button appears to **hide them in the preview** — the text is unchanged, completed items are just tidied away.
 
+## 🏷 Link tags (matrix)
+
+The **🏷 Link tags…** button in the **Links** section of an entity detail (and the
+same command in the palette) opens a table where:
+
+- **rows** are the entity itself and **every entity linked to it in either
+  direction**: structured links, relation attributes and references in text (wiki,
+  include). **Including the ones with no tags at all** — those are exactly the ones
+  that get missed when tagging by hand;
+- **columns** are **only the tags that occur somewhere in that neighbourhood**, not
+  every tag in the database. Each carries a count ("4/19"), so it is immediately
+  visible which tag nearly everything has and which only one entity has.
+
+Ticking adds and removes tags. **Nothing is written to the data until you press
+Save** — changed cells are highlighted, a counter runs at the bottom ("+3 tags, −1
+tag on 3 entities"), and **Cancel without changes** leaves the data exactly as it
+was. Only entities that actually changed are written.
+
+Row and column headers stay in place while scrolling and the grid can be walked
+with the **arrow keys**. Archived entities are not shown in the matrix.
+
 ## Sections in the entity detail
 
 Below the entity body there are sections computed from its text. Four of them are
