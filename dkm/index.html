@@ -1164,7 +1164,7 @@ expExclude:'Vyřadit jednotlivé entity',expExcludedN:'vyřazeno: {n}',expExclud
 expAspects:'Zahrnout aspekty',expAspectsHint:'Odškrtnutý aspekt se do exportu nedostane — ani jeho hodnoty u entit, ani jeho definice v modelu.',
 expScopeEmpty:'Rozsah je po vyřazení prázdný.',
 expGrpDocument:'Dokument',expGrpTable:'Tabulka',expGrpData:'Data pro stroj',expGrpGraph:'Graf',expGrpTransfer:'Přenos',
-expTgtDoc:'Dokument',expTgtDocHint:'Markdown, DOCX, tisk nebo PDF, formátovaný text do schránky. Vybereš si, které sekce entit se vypíšou.',
+expTgtDoc:'Dokument',expTgtGen:'Generátor textu',expTgtGenHint:'Vlastní šablona vykreslená nad každou entitou a slepená do jednoho souboru. Zápis je stejný jako u složených atributů: ((Atribut)), ((Typ / Atribut)) i metapole ((název)), ((typ)), ((id)), ((upraveno)).',genSablona:'Šablona pro jednu entitu',genSablonaHint:'((Atribut)) se nahradí hodnotou. Funguje i ((Typ / Atribut)), metapole ((název)), ((typ)), ((ikona)), ((id)), ((aspekty)), ((vytvořeno)), ((upraveno)) — a složené atributy.',genVic:'Hlavička, patička a formát',genHlavicka:'Hlavička (jednou na začátku)',genPaticka:'Patička (jednou na konci)',genOddelovac:'Oddělovač mezi entitami',genOddelovacHint:'\\n je nový řádek, \\t tabulátor. Prázdné pole slepí texty rovnou za sebe.',genPripona:'Formát souboru',genTxt:'Prostý text',genNahled:'Náhled prvních {n} z {z}',genPrazdnaSablona:'Šablona je prázdná – není co vykreslit.',expTgtDocHint:'Markdown, DOCX, tisk nebo PDF, formátovaný text do schránky. Vybereš si, které sekce entit se vypíšou.',
 expTgtTable:'Tabulka',expTgtTableHint:'XLSX pro Excel, CSV nebo TSV. S výběrem sloupců.',
 expTgtData:'Data se schématem',expTgtDataHint:'JSON + JSON Schema, nebo XML + XSD. Pro strojové zpracování a integrace.',
 expTgtGraph:'Diagram nebo graf',expTgtGraphHint:'PlantUML jako zdroj obrázku, GraphML pro Gephi, yEd a Cytoscape.',
@@ -1649,7 +1649,7 @@ expExclude:'Exclude individual entities',expExcludedN:'excluded: {n}',expExclude
 expAspects:'Include aspects',expAspectsHint:'An unchecked aspect stays out of the export — neither its values on entities nor its definition in the model.',
 expScopeEmpty:'The scope is empty after the exclusions.',
 expGrpDocument:'Document',expGrpTable:'Table',expGrpData:'Data for machines',expGrpGraph:'Graph',expGrpTransfer:'Transfer',
-expTgtDoc:'Document',expTgtDocHint:'Markdown, DOCX, print or PDF, formatted text to the clipboard. You pick which entity sections appear.',
+expTgtDoc:'Document',expTgtGen:'Text generator',expTgtGenHint:'Your own template rendered over every entity and joined into one file. Same notation as composed attributes: ((Attribute)), ((Type / Attribute)) and the meta fields ((name)), ((type)), ((id)), ((updated)).',genSablona:'Template for one entity',genSablonaHint:'((Attribute)) is replaced by its value. ((Type / Attribute)) works too, as do the meta fields ((name)), ((type)), ((icon)), ((id)), ((aspects)), ((created)), ((updated)) \u2014 and composed attributes.',genVic:'Header, footer and format',genHlavicka:'Header (once at the start)',genPaticka:'Footer (once at the end)',genOddelovac:'Separator between entities',genOddelovacHint:'\\n is a newline, \\t a tab. An empty field joins the texts directly.',genPripona:'File format',genTxt:'Plain text',genNahled:'Preview of the first {n} of {z}',genPrazdnaSablona:'The template is empty \u2013 there is nothing to render.',expTgtDocHint:'Markdown, DOCX, print or PDF, formatted text to the clipboard. You pick which entity sections appear.',
 expTgtTable:'Table',expTgtTableHint:'XLSX for Excel, CSV or TSV. With a column picker.',
 expTgtData:'Data with a schema',expTgtDataHint:'JSON + JSON Schema, or XML + XSD. For machine processing and integrations.',
 expTgtGraph:'Diagram or graph',expTgtGraphHint:'PlantUML as the source of a picture, GraphML for Gephi, yEd and Cytoscape.',
@@ -2175,7 +2175,7 @@ return out;
    entity; co se nenajde nebo je prázdné, zmizí bez stopy — v šabloně tak zůstane
    prázdné místo, ne hláška o chybě. Regulární výraz schválně nepustí závorku
    dovnitř, aby si nerozuměl s odkazy v Markdownu `[text](adresa)`. */
-function slozenyText(e,def,vlastnikId){
+function slozenyText(e,def,vlastnikId,doSlozenych){
 const sablona=String((def&&def.template)||'');
 if(!sablona||!e)return'';
 const pole=poleProSlozeny(e);
@@ -2195,7 +2195,11 @@ if(!nalez)nalez=pole.find(x=>klicPole(x.def.name)===k);
 if(!nalez){const mp=metaPole(k);if(mp)return String(mp.hod(e)||'')}
 }
 if(!nalez||nalez.def===def)return'';
-if(nalez.def.type==='composed')return'';   /* složený ze složeného nepočítáme */
+/* Složený ze složeného se u atributu schválně nepočítá — šablona by se mohla
+   zacyklit a výsledek by nikdo nerozmotal. Generátor textu je jiný případ:
+   tam uživatel složená pole používat chce, takže se dosadí, ale **jen o patro
+   níž** (rekurzivní volání má `doSlozenych` false). */
+if(nalez.def.type==='composed')return doSlozenych?slozenyText(e,nalez.def,vlastnikAtributu(e,nalez.def),false):'';
 return hodnotaDoSablony(nalez.def,nalez.hodnota);
 });
 }
@@ -3802,8 +3806,92 @@ if(scope==='all')return state.data.entities.filter(e=>!e.archived);
 return getList();
 }
 
+
+/* =============================================================
+   GENERÁTOR TEXTU
+   Šablona se vykreslí nad každou entitou výběru a slepí do jednoho textu.
+   Zápis je **tentýž `((Atribut))` jako u složených atributů** — kdo umí jedno,
+   umí i druhé, a funguje i `((Typ / Atribut))` a metapole `((název))`, `((typ))`,
+   `((id))`, `((vytvořeno))`, `((upraveno))`, `((aspekty))`, `((ikona))`.
+   Navíc se tu dosadí i složené atributy, protože právě ty do výstupu patří.
+   ============================================================= */
+const GEN_VYCHOZI="## ((název))\n\n((Popis))\n";
+function generatorText(e,sablona){
+return slozenyText(e,{id:'__gen',type:'composed',template:String(sablona||'')},null,true);
+}
+function generatorCely(entity,cfg){
+const casti=[];
+if(cfg.hlavicka&&cfg.hlavicka.trim())casti.push(cfg.hlavicka);
+entity.forEach(e=>casti.push(generatorText(e,cfg.sablona)));
+if(cfg.paticka&&cfg.paticka.trim())casti.push(cfg.paticka);
+return casti.join(cfg.oddelovac==null?'\n':cfg.oddelovac);
+}
+
+function generatorPanel(ctx,box){
+const cfg={sablona:GEN_VYCHOZI,hlavicka:'',paticka:'',oddelovac:'\n',pripona:'md'};
+
+const pole=(kam,popisek,napoveda,idp,radku,klic)=>{
+const f=document.createElement('div');f.className='fld';
+const l=document.createElement('label');l.htmlFor=idp;l.textContent=popisek;f.appendChild(l);
+const ta=document.createElement('textarea');ta.id=idp;ta.rows=radku;ta.value=cfg[klic];
+ta.addEventListener('input',()=>{cfg[klic]=ta.value;prekresli()});
+/* Šablona je markdownové pole jako každé jiné — zkratky i wiki paleta tu platí. */
+pripojZkratkyMd(ta);
+f.appendChild(ta);
+if(napoveda){const h=document.createElement('small');h.className='fhint';h.textContent=napoveda;f.appendChild(h)}
+kam.appendChild(f);
+return ta;
+};
+
+pole(box,t('genSablona'),t('genSablonaHint'),'gen-tpl',6,'sablona');
+
+const det=document.createElement('details');det.className='grp-sec';det.style.marginBottom='.6rem';
+const sum=document.createElement('summary');sum.textContent=t('genVic');det.appendChild(sum);
+const vnitr=document.createElement('div');vnitr.style.padding='0 .7rem .5rem';det.appendChild(vnitr);
+box.appendChild(det);
+pole(vnitr,t('genHlavicka'),'','gen-head',2,'hlavicka');
+pole(vnitr,t('genPaticka'),'','gen-foot',2,'paticka');
+const fOdd=document.createElement('div');fOdd.className='fld';
+const lOdd=document.createElement('label');lOdd.htmlFor='gen-sep';lOdd.textContent=t('genOddelovac');fOdd.appendChild(lOdd);
+const iOdd=document.createElement('input');iOdd.type='text';iOdd.id='gen-sep';iOdd.value='\\n';
+iOdd.addEventListener('input',()=>{cfg.oddelovac=iOdd.value.replace(/\\n/g,'\n').replace(/\\t/g,'\t');prekresli()});
+fOdd.appendChild(iOdd);
+const hOdd=document.createElement('small');hOdd.className='fhint';hOdd.textContent=t('genOddelovacHint');fOdd.appendChild(hOdd);
+vnitr.appendChild(fOdd);
+const fPri=document.createElement('div');fPri.className='fld';
+const lPri=document.createElement('label');lPri.htmlFor='gen-ext';lPri.textContent=t('genPripona');fPri.appendChild(lPri);
+const sPri=document.createElement('select');sPri.id='gen-ext';
+[['md','Markdown (.md)'],['txt',t('genTxt')+' (.txt)'],['csv','CSV (.csv)'],['html','HTML (.html)']].forEach(([v,l])=>{const o=document.createElement('option');o.value=v;o.textContent=l;sPri.appendChild(o)});
+sPri.addEventListener('change',()=>{cfg.pripona=sPri.value});
+fPri.appendChild(sPri);vnitr.appendChild(fPri);
+
+/* --- náhled nad prvními entitami --- */
+const hN=document.createElement('h4');hN.style.margin='.4rem 0 .2rem';box.appendChild(hN);
+const pre=document.createElement('pre');pre.className='jsonk-pre';pre.style.maxHeight='16rem';pre.style.whiteSpace='pre-wrap';box.appendChild(pre);
+const POCET=3;
+function prekresli(){
+const vse=ctx.entities||[];
+const ukazka=vse.slice(0,POCET);
+hN.textContent=t('genNahled',{n:ukazka.length,z:vse.length});
+pre.textContent=ukazka.length?generatorCely(ukazka,cfg):'—';
+}
+prekresli();
+
+return{run:()=>{
+const vse=ctx.entities||[];
+if(!vse.length){toast(t('expScopeEmpty'));return false}
+if(!String(cfg.sablona||'').trim()){toast(t('genPrazdnaSablona'));return false}
+const text=generatorCely(vse,cfg);
+const jm=(state.data.projectName||'dkm').replace(/[^\w\u00C0-\u017F-]+/g,'_').slice(0,40)+'-'+new Date().toISOString().slice(0,10)+'.'+cfg.pripona;
+const mime=cfg.pripona==='html'?'text/html':(cfg.pripona==='csv'?'text/csv':'text/plain');
+modelDownloadFile(jm,text,mime);
+return true;
+},kopirovat:()=>generatorCely(ctx.entities||[],cfg)};
+}
+
 const EXPORT_TARGETS=[
 {id:'doc',group:'document',label:'expTgtDoc',hint:'expTgtDocHint',next:true,run:ctx=>openBulkExportDialog(ctx.entities)},
+{id:'gen',group:'document',label:'expTgtGen',hint:'expTgtGenHint',panel:generatorPanel},
 {id:'table',group:'table',label:'expTgtTable',hint:'expTgtTableHint',panel:tableExportPanel},
 {id:'data',group:'data',label:'expTgtData',hint:'expTgtDataHint',next:true,run:ctx=>openJsonExportDialog(ctx.entities,true)},
 {id:'graph',group:'graph',label:'expTgtGraph',hint:'expTgtGraphHint',next:true,run:ctx=>openPlantumlDialog(ctx.entities)},
@@ -9573,7 +9661,7 @@ const rows=[
 ['🆕 '+t('pkgPrevNewRT'),sim.newRT],
 ['🆕 '+t('pkgPrevNewSL'),sim.newSL],
 ['🆕 '+t('pkgPrevNewTS'),sim.newTS],
-['🆕 '+t('pkgPrevAddedAttrs'),sim.newAttrs],
+['🆕 '+t('pkgPrevNewAttrs'),sim.newAttrs],
 ['🔗 '+t('pkgPrevReusedTypes'),sim.reuseTypes],
 ['🔗 '+t('pkgPrevReusedAspects'),sim.reuseAspects],
 ['📄 '+t('pkgPrevEntitiesAdded'),sim.entitiesNew],
