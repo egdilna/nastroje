@@ -216,7 +216,8 @@ jsou to výstupy pro někoho jiného, ne tvoje pracovní prostředí.
 
 ### 4.4 Karta entity v seznamu
 
-- **Ikona typu** + **název entity** (např. 👤 *Pavel Novák*)
+- **Emotikony stavu** (📌 připnuto, 🔒 zamčeno) + **ikona typu** + **název entity**
+  (např. 📌 🔒 👤 *Pavel Novák*)
 - **Badge** s názvem typu, 📥 Inbox, 📦 Archiv a aspekty (◎ *VIP*)
 - **Snippet** — krátký výtah z první textarea atributu
 - **Hodnoty atributů s „Zobrazit v seznamu"** — pokud jsou nějaké zapnuté
@@ -225,6 +226,12 @@ jsou to výstupy pro někoho jiného, ne tvoje pracovní prostředí.
 
 Kliknutí na kartu kdekoliv mimo odkazy a tlačítka otevře detail. Samotný název je navíc
 skutečný odkaz — jde otevřít prostředním tlačítkem nebo Ctrl+klikem v nové záložce.
+
+**Emotikony jsou součástí nadpisu, ne jen obrázek vedle něj.** Dřív byly schované před
+odečítačem obrazovky (`aria-hidden`), takže oko ikonu typu v nadpisu vidělo, ale kdo se
+po seznamu pohybuje po nadpisech, slyšel jen holé jméno. Teď je odečítač přečte stejně
+jako je vidí oko — a platí to i pro řádek tabulky, kartu v Kanbanu, položku na časové ose
+i štítek v kalendáři. Stejné emotikony nese i nadpis v detailu entity.
 
 ### 4.5 Detail entity
 
@@ -255,6 +262,47 @@ sledu se co zapsalo. Abecedně jde i nabídka tagů v editoru. U vazeb se pořad
 neznamenalo.
 
 Úplně dole je nenápadný řádek s **ID, kdy entita vznikla a kdy se naposledy změnila**.
+
+**📌 Připnout** vytáhne entitu dopředu. Připnutá se řadí nahoru **ve všech pohledech** —
+v seznamu, v tabulce, v Kanbanu, na časové ose, a taky uvnitř každé sbalovací sekce
+a každého sloupce Kanbanu zvlášť. Uvnitř obou skupin (připnuté / ostatní) pak pořád platí
+řazení, které sis zvolil lištou nebo klikem na hlavičku tabulky.
+
+Co o připnutí stojí za to vědět:
+
+- **Připnutí je pořadí, ne obsah.** Nemění datum úpravy, takže ti připnutý záznam nevyskočí
+  nahoru v Naposledy změněných jen proto, žes ho připnul.
+- **Zamčenou entitu jde připnout i odepnout.** Zámek chrání obsah; připínáček je štítek na
+  regálu, ne změna informace — stejně jako samo zamykání a odemykání.
+- **U záložky Naposledy změněné připnutá nepropadne ořezem.** Řadí se dopředu dřív, než se
+  seznam zkrátí na daný počet.
+- Připínat a odepínat jde i **hromadně** a z **palety příkazů**; v seznamu se připnutá pozná
+  podle 📌 hned na začátku nadpisu a podle odznaku **Připnuto**.
+- Do **statického prohlížeče** připnutí cestuje: vygenerovaná stránka řadí stejně.
+
+**🔒 Zamknout** udělá z entity hotový záznam: nejde upravit, smazat, archivovat,
+přesunout do Inboxu, změnit typ, přidat aspekt ani vazbu, přetáhnout v Kanbanu —
+a nepřepíše ji ani import z tabulky nebo z balíčku. Odemkneš ji tamtéž.
+
+Zámek je **záměr autora, ne oprávnění**: odemknout smí kdokoli, kdo projekt otevře.
+Smysl má tam, kde je záznam uzavřený a nechceš do něj omylem ťuknout — ne jako ochrana
+před někým druhým.
+
+Co zámek **nezastaví**, a proč:
+
+- **Komentáře.** Zamčený záznam jde dál komentovat — diskuse o něm není změnou jeho
+  obsahu a často je to po uzavření právě to, co zbývá.
+- **Opravu odkazů.** Když přejmenuješ jinou entitu, `[[Starý název]]` se přepíše i uvnitř
+  zamčené; nechat v ní rozbitý odkaz by bylo horší. Totéž platí pro úklid vazby na
+  smazanou entitu.
+- **Sloučení z GitHubu.** To není tvoje akce, ale srovnání dvou verzí téhož souboru.
+  Kdyby zámek slučování blokoval, obě kopie by se trvale rozešly. Zámek nebrání druhému
+  člověku entitu změnit — brání **tobě** změnit ji omylem.
+
+**V hromadných akcích se zamčené entity přeskočí** a dozvíš se kolik. Když jsou zamčené
+všechny vybrané, akce se vůbec nespustí. Výjimka jsou akce, které jen čtou — export
+a AI projdou normálně. Zamknout i odemknout jde taky hromadně; zamknutí nemění datum
+úpravy, aby ti padesát uzavřených záznamů nevyskočilo nahoru v Naposledy změněných.
 
 **Klávesa `o` otevře odkaz entity** v nové kartě — rychlá cesta ven z detailu bez hledání
 myší. Hledá se ve dvou krocích, a v tomhle pořadí:
@@ -885,6 +933,9 @@ Toolbar hromadných akcí ukazuje počet vybraných + dropdown akcí:
 - **📤 Z Inboxu** — odebere z Inboxu
 - **📦 Archivovat / Obnovit**
 - **🗑 Smazat**
+- **📌 Připnout / Odepnout** — vytáhne vybrané dopředu ve všech pohledech (viz 4.5); projde
+  i na zamčených a nemění datum úpravy
+- **🔒 Zamknout / Odemknout** — uzavře vybrané proti úpravám (viz 4.5)
 - **🏷 Přiřadit typ**
 - **◎ Přidat aspekt / Odebrat aspekt**
 - **↔ Přidat vazbu** — hromadně přidá vazbu ke všem
@@ -1243,8 +1294,8 @@ Vypisovat všechny příkazy nemá cenu, seznam roste s aplikací. Drží se tě
 | Skupina | Co obsahuje |
 |---|---|
 | **Vytvořit** | Nová entita, **Nová do Inboxu**, Rychlé přidání do Inboxu a **Nová entita každého typu** zvlášť („Nová: Smlouva") |
-| **Entita** | příkazy k právě otevřené entitě — přesně ty, co má v detailu za tlačítka: Upravit, Duplikovat, Přidat vazbu, Komentáře, Export / tisk, Zeptat se AI, V samostatném okně, Do / Z Inboxu, Změnit typ, Archivovat nebo Obnovit, Smazat |
-| **Hromadně s vybranými (n)** | **všechny hromadné akce** z lišty výběru — změnit typ, přidat / odebrat aspekt, nastavit / vyprázdnit atribut, přidat vazbu, sloučit entity, export, AI, do / z Inboxu, archivovat nebo obnovit, smazat |
+| **Entita** | příkazy k právě otevřené entitě — přesně ty, co má v detailu za tlačítka: Upravit, Duplikovat, Přidat vazbu, Komentáře, Export / tisk, Zeptat se AI, V samostatném okně, **Připnout / Odepnout**, **Zamknout / Odemknout**, Do / Z Inboxu, Změnit typ, Archivovat nebo Obnovit, Smazat |
+| **Hromadně s vybranými (n)** | **všechny hromadné akce** z lišty výběru — změnit typ, přidat / odebrat aspekt, nastavit / vyprázdnit atribut, přidat vazbu, sloučit entity, export, AI, do / z Inboxu, **připnout / odepnout**, **zamknout / odemknout**, archivovat nebo obnovit, smazat |
 | **Seznam** | hledání, pokročilé filtry, vyčištění filtrů, uložení pohledu, režim výběru, náhled vedle seznamu a přepnutí zobrazení (seznam, tabulka, Kanban, kalendář, časová osa) |
 | **Akce** | uložit, načíst, export dat, **import TSV**, **import balíčku .dkmpkg**, schránka, načtení z adresy, panely, AI, motiv a jazyk |
 | **Navigace** | záložky z lišty, Inbox / Vše / Archiv, Všechny komentáře a **každá sekce nastavení** |

@@ -665,6 +665,61 @@ Import TSV proto do složeného atributu **nezapisuje** (`resolveAttrZapis`) a s
 na něj míří, hlásí jako nenaimportovaný. Dřív se do něj hodnota uložila a tiše ležela
 v datech, protože ji nikdo nečte.
 
+## Zámek entity: jedna brána, ne dvacet záplat
+`e.locked` v datech, `lzeMenit(e)` jako brána. **Nová cesta zápisu musí projít přes ni** —
+stačí jedno zapomenuté místo a zámek je k ničemu. Proto se nezamykají jen tlačítka, ale
+i funkce, do kterých se dá dostat jinudy: `commitEdit`, `deleteEntity`, `openAddRelDialog`,
+`moveEntityKanban`, import z tabulky i z balíčku.
+
+- **Hromadné akce se filtrují na jednom místě** (`runBulkAction` + `BULK_ZAPISUJE`), ne
+  v jednotlivých `bulk*` funkcích. `export` a `ai` ve výčtu schválně nejsou — jen čtou.
+  `unlock` taky ne, jinak by se neměl čeho chytit.
+- `locked` **je ve `SKALARY_ENTITY`**, takže se slučuje jako ostatní vlastnosti. Bez toho
+  by zámek od druhého člověka při sloučení zmizel.
+- **Zamknutí nemění `updatedAt`.** Není to změna obsahu a nemá entitu vystrkovat nahoru
+  v Naposledy změněných; `bulkSimple(…,bezData)` je právě na to.
+- **Co zámek nezastaví: komentáře, opravu wiki odkazů, úklid vazeb a sloučení z GitHubu.**
+  To poslední je důležité: slučování není uživatelská akce, a kdyby ho zámek blokoval,
+  obě kopie souboru by se trvale rozešly.
+- U zamčené entity se tlačítko Upravit **nekreslí**. Zakázané tlačítko, na které se dá
+  klikat jen proto, aby řeklo ne, je horší než žádné.
+
+## Připnutí entity: pořadí, ne obsah
+`e.pinned` a jediné místo, kde se projeví, je **`serazPripnute()`** — stabilní rozdělení
+„připnuté dopředu". Volá ho `getList()` (a z něj žijí seznam, sekce, kanban, kalendář
+i časová osa) a `tableSortList()` (řazení tabulky klikem na hlavičku si seznam přerovnává
+samo, takže si připnuté musí vrátit nahoru taky). Kdo přidá další řazení seznamu entit,
+ať ho tudy protáhne.
+
+- **Řadí se před ořezem** u záložky Naposledy změněné. Opačné pořadí by znamenalo, že
+  připnutá entita vypadne právě tím, že má být nahoře.
+- **Zámek připnutí nebrání** a `pin`/`unpin` proto **nejsou v `BULK_ZAPISUJE`**. Zámek
+  chrání obsah; připínáček je štítek na regálu, stejně jako samo zamykání.
+- **`updatedAt` se nemění** (`bulkSimple(…,bezData)`), ze stejného důvodu jako u zámku.
+- `pinned` je ve `SKALARY_ENTITY`, v `diffEntityFields` i v obou schématech. `locked` tam
+  patří taky — v diffu chyběl.
+- **Data se nikdy nepřerovnávají.** `state.data.entities` zůstává, jak je; řadí se až to,
+  co je vidět.
+
+## Emotikona v nadpisu není ozdoba
+`appendEntityLabel` stavěla ikonu typu jako `aria-hidden`. Oko ji v nadpisu entity vidělo,
+odečítač o ní mlčel — a kdo se po seznamu pohybuje po nadpisech, slyšel jen holé jméno.
+Hlásilo se to opakovaně jako „emotikona se v nadpisu neobjevuje" a pokaždé se to zavřelo
+tím, že na snímku obrazovky tam je. **Nebyla to chyba vykreslení, ale chyba přístupného
+názvu.** `aria-hidden` se tam proto vracet nesmí.
+
+- Emotikony stavu přidává `emotikonyStavu(e)` (📌 připnuto, 🔒 zamčeno) a nasazují se
+  přes `appendEntityLabel(el,e,fallback,{stavy:true})`. Jdou **dovnitř odkazu**, aby byly
+  součástí jeho přístupného názvu, ne vedle něj.
+- `{stavy:true}` má **pět míst se seznamem entit**: karta, řádek tabulky, karta kanbanu,
+  položka časové osy, štítek v kalendáři — plus nadpis detailu. Jinde (vazební odznáčky,
+  komentáře, duplicity, nabídka wiki odkazů) ne: tam je to cizí entita v cizím kontextu
+  a připínáček by jen šuměl.
+- Odznaky **Připnuto** a **Zamčeno** zůstávají vedle nadpisu i tak. Nejsou duplicita:
+  nadpis se čte při pohybu po nadpisech, odznaky až při čtení karty.
+- Prohlížeč má vlastní kopii obojího (`jePripnuta`, `emotikonyStavu`, `serazPripnute`
+  v šabloně). Když měníš jedno, projdi druhé.
+
 ## J a K po seznamu: ohnisko, ne vlastní výběr
 `skocVSeznamu(smer)` **jen přesune ohnisko** na odkaz s názvem další entity (`.ecard`
 i `.tv-row`, v obou je to první `a[href^="#entity/"]`). Nezavádí se žádný „vybraný
@@ -1117,7 +1172,7 @@ Hranice slova se testuje přes `\p{L}` — `\b` by na diakritice selhalo. Nahraz
 Při změně názvu entity nebo formátu textových hodnot na to pamatuj.
 
 ## Lokalizace
-`I18N = {cs:{…}, en:{…}}` s **1125 klíči**, přístup přes `t(k, v)`, jazyk v `dkm-lang`.
+`I18N = {cs:{…}, en:{…}}` s **1244 klíči**, přístup přes `t(k, v)`, jazyk v `dkm-lang`.
 Každý nový text = klíč v obou jazycích. Do UI nikdy nepiš řetězec natvrdo.
 Řetězce jsou **prostý text, ne HTML** — vkládej je přes `textContent`. `importTSVDesc` byl
 psaný se značkami a nasazovaný přes `innerHTML=esc(...)`, takže se `<br>` a `<b>` uživateli
