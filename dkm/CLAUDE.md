@@ -647,6 +647,23 @@ nechalo v diskusi viset rozbitý `[[Starý název]]`. U komentářů se dává *
 entitu** (`some`, ne `forEach`): atributy mají každý svoje jméno, u komentářů by to byly dva
 stejné řádky.
 
+## Složený atribut se nikam neukládá
+`hodnotaProZobrazeni` (detail) i `tableCellValue` (tabulka) volají **tentýž**
+`slozenyText(e,def,vlastnikAtributu(e,def))` — hodnota vzniká při každém vykreslení
+ze šablony, do `e.attributes` se nepíše nikdy. **Nedělej na to „přepočítat"**: nemá to
+co přepočítat a tlačítko by jen zakrylo skutečnou příčinu (chybějící zdrojová hodnota).
+Kdo přidá další místo, kde se atribut zobrazuje, ať jde taky přes `hodnotaProZobrazeni`,
+ne přes `e.attributes[id]`.
+
+Import TSV proto do složeného atributu **nezapisuje** (`resolveAttrZapis`) a sloupec, který
+na něj míří, hlásí jako nenaimportovaný. Dřív se do něj hodnota uložila a tiše ležela
+v datech, protože ji nikdo nečte.
+
+## Import TSV nesmí polykat sloupce
+Sloupec, kterému neodpovídá žádný atribut, se dřív zahodil beze slova — kdo měl v tabulce
+překlep nebo sloupec navíc, přišel o data a nedozvěděl se to. `nepouzite` je sbírá
+a po hlášce o výsledku se vypíšou jménem. Při čistém importu se nehlásí nic.
+
 ## Klávesa O: odkaz entity
 `odkazyEntity(e)` vrací `{zAtributu, zTextu}` a `otevriOdkazEntity` z nich bere **atributy
 typu URL, a teprve když žádný není, text**. Je to odkaz, který někdo jako odkaz pojmenoval;

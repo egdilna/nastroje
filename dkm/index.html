@@ -1180,7 +1180,7 @@ importTSVFile:'Soubor',importTSVPaste:'Vložit ze schránky',importTSVPastePh:'S
 importTSVDelimHint:'Oddělovač se detekuje automaticky (TAB, středník nebo čárka).',
 importTSVProcess:'Naimportovat',importTSVNothingToImport:'Vyber soubor nebo vlož data.',importTSVEmpty:'Tabulka je prázdná.',
 importTSVNeedNameColumn:'Tabulka musí mít sloupec „Název" (nebo „Name"/„Title"/„Jméno").',
-importTSVResult:'Import: přidáno {a}, aktualizováno {u}, přeskočeno {s}.',
+importTSVResult:'Import: přidáno {a}, aktualizováno {u}, přeskočeno {s}.',importTSVNepouzite:'Tyhle sloupce se nenaimportovaly, protože jim neodpovídá žádný atribut: {s}',importTSVSlozene:'Složený atribut se nevyplňuje z tabulky, počítá se ze šablony: {s}',
 aspectAdded:'Aspekt „{name}" přidán. Atributy najdeš ve formuláři výše.',aspectRemoved:'Aspekt „{name}" odebrán.',
 projectActive:'Aktivní projekt',
 projectStorage:'Úložiště projektu',
@@ -1665,7 +1665,7 @@ importTSVFile:'File',importTSVPaste:'Paste from clipboard',importTSVPastePh:'Pas
 importTSVDelimHint:'Delimiter detected automatically (TAB, semicolon or comma).',
 importTSVProcess:'Import',importTSVNothingToImport:'Choose a file or paste data.',importTSVEmpty:'Table is empty.',
 importTSVNeedNameColumn:'Table must have a „Name" column (or „Title"/„Jméno"/„Název").',
-importTSVResult:'Import: added {a}, updated {u}, skipped {s}.',
+importTSVResult:'Import: added {a}, updated {u}, skipped {s}.',importTSVNepouzite:'These columns were not imported because no attribute matches them: {s}',importTSVSlozene:'A composed attribute is not filled from a table, it is computed from its template: {s}',
 aspectAdded:'Aspect „{name}" added. Find its attributes in the form above.',aspectRemoved:'Aspect „{name}" removed.',
 projectActive:'Active project',
 projectStorage:'Project storage',
@@ -4048,10 +4048,23 @@ for(const ty of state.data.entityTypes){const a=ty.attributes.find(x=>(x.name||'
 for(const asp of state.data.aspects){const a=asp.attributes.find(x=>(x.name||'').toLowerCase()===lan);if(a)return a}
 return null;
 }
+/* Do složeného atributu se zapsat nedá — jeho hodnota se počítá ze šablony při
+   každém vykreslení a uložený text by se nikdy nikde neukázal. Sloupec, který na
+   něj míří, se proto hlásí jako nenaimportovaný, ne že by se tiše spolkl. */
+function resolveAttrZapis(ac,typeId,aspectIds){
+const a=resolveAttr(ac,typeId,aspectIds);
+if(a&&a.type==='composed')return{slozeny:true};
+return a;
+}
 
 if(idCol.name<0){toast(t('importTSVNeedNameColumn'));dbg('Import aborted: no name column found in headers: '+headers.join(', '),true);return}
 
 let added=0,updated=0,skipped=0,prejmenovano=0;
+/* Sloupec, který neodpovídá žádnému atributu, se dřív zahodil beze slova — kdo
+   měl v tabulce překlep nebo sloupec navíc, přišel o data a nedozvěděl se to.
+   Teď se vypíše, který to byl a proč. */
+const nepouzite=new Map();
+const neslo=(ac,duvod)=>{const k=ac.header||ac.attrName||'?';if(!nepouzite.has(k))nepouzite.set(k,duvod)};
 const now=new Date().toISOString();
 dataRows.forEach(row=>{
 const name=(row[idCol.name]||'').trim();
@@ -4069,8 +4082,9 @@ const attributes={};
 attrCols.forEach(ac=>{
 let raw=(row[ac.col]||'').trim();
 if(raw==='')return;
-const a=resolveAttr(ac,typeId,aspectIds);
-if(!a)return;
+const a=resolveAttrZapis(ac,typeId,aspectIds);
+if(!a){neslo(ac,'nezname');return}
+if(a.slozeny){neslo(ac,'slozeny');return}
 if(a.type==='yesno'){const lr=raw.toLowerCase();if(['1','true','ano','yes','x'].includes(lr))attributes[a.id]=true;else if(['0','false','ne','no'].includes(lr))attributes[a.id]=false}
 else if(a.type==='number'){const n=Number(raw.replace(',','.'));if(!isNaN(n))attributes[a.id]=n}
 else if(a.type==='relation'){
@@ -4118,6 +4132,13 @@ added++;
 });
 setDirty(true);closeDialog();render();
 toast(t('importTSVResult',{a:added,u:updated,s:skipped}));
+if(nepouzite.size){
+const sl=Array.from(nepouzite.keys());
+const slozene=Array.from(nepouzite.entries()).filter(x=>x[1]==='slozeny').map(x=>x[0]);
+dbg('TSV import: nepoužité sloupce — '+sl.join(', '),true);
+setTimeout(()=>toast(t('importTSVNepouzite',{s:sl.join(', ')}),true),2400);
+if(slozene.length)setTimeout(()=>toast(t('importTSVSlozene',{s:slozene.join(', ')}),true),4800);
+}
 if(prejmenovano)setTimeout(()=>toast(t('wikiRenamedImport',{n:prejmenovano})),1200);
 dbg('TSV import: added='+added+' updated='+updated+' skipped='+skipped+' wikiRenamed='+prejmenovano);
 }
