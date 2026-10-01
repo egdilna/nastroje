@@ -655,6 +655,12 @@ co přepočítat a tlačítko by jen zakrylo skutečnou příčinu (chybějící
 Kdo přidá další místo, kde se atribut zobrazuje, ať jde taky přes `hodnotaProZobrazeni`,
 ne přes `e.attributes[id]`.
 
+**Kdo čte hodnotu atributu pro zobrazení, ať jde přes `hodnotaProZobrazeni`.** Na tohle se
+už jednou naletělo: `collectCardAttrs` (atributy s `showInList` na kartě v seznamu) četl
+`e.attributes[a.id]` syrově, takže karta u složeného atributu hlásila „Nevyplněno", přestože
+detail tutéž hodnotu ukazoval správně. Nejvíc to bylo vidět po importu z tabulky, kde složený
+sloupec v datech schválně není.
+
 Import TSV proto do složeného atributu **nezapisuje** (`resolveAttrZapis`) a sloupec, který
 na něj míří, hlásí jako nenaimportovaný. Dřív se do něj hodnota uložila a tiše ležela
 v datech, protože ji nikdo nečte.
