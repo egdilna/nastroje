@@ -665,6 +665,20 @@ Import TSV proto do složeného atributu **nezapisuje** (`resolveAttrZapis`) a s
 na něj míří, hlásí jako nenaimportovaný. Dřív se do něj hodnota uložila a tiše ležela
 v datech, protože ji nikdo nečte.
 
+## Import z tabulky má dvě fáze
+`otevriNahledMapovani(text)` → `provedImportTSV(text,volba)`. Dřív se mapovalo naslepo
+a rovnou zapisovalo. **Do dat se nesmí sáhnout dřív, než uživatel vidí, co kam půjde.**
+
+- `rozborImportuTSV` je **čistý rozbor** — nic nemění, jen vrátí, jak se hlavičky pochopily.
+- `resolveAttr` je na úrovni modulu, ne vnořená v importu: náhled musí ukázat **totéž**,
+  co pak import opravdu udělá. Dvě kopie téhle logiky nikam nepiš.
+- Rozpoznání závisí na typu řádku, takže `kamPadneSloupec` prochází všechny kombinace
+  typu a aspektů v datech. Jeden výsledek → ukáže se jménem, víc → „podle typu řádku".
+- `volba[col]` je `auto` / `none` / `sys` / `attr`. **`auto` znamená nesahat** — kdyby se
+  i u něj přemapovávalo, shodil by se sloupec Název a import by neměl co pojmenovat.
+- Složené atributy se v nabídce **nenabízejí** a automatická trefa do nich se hlásí.
+- Co uživatel sám odklikne jako „nepoužít", se po importu **nevytýká** — není to chyba.
+
 ## Import TSV nesmí polykat sloupce
 Sloupec, kterému neodpovídá žádný atribut, se dřív zahodil beze slova — kdo měl v tabulce
 překlep nebo sloupec navíc, přišel o data a nedozvěděl se to. `nepouzite` je sbírá
