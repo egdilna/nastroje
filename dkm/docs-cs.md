@@ -1623,6 +1623,7 @@ vypadne. „Zobrazený seznam" se nabízí jen tehdy, když jsi opravdu nad sezn
 | Cíl | Formáty | K čemu |
 |---|---|---|
 | **Dokument** | Markdown, DOCX, tisk / PDF, formátovaný text do schránky | zpráva, přehled, podklad ke čtení (kap. 24) |
+| **Generátor textu** | vlastní šablona → `.md`, `.txt`, `.csv`, `.html` | hromadný výstup přesně v tom tvaru, který si napíšeš (kap. 24.5) |
 | **Tabulka** | XLSX, CSV, TSV — s výběrem sloupců | Excel, úprava a import zpět (kap. 25.1) |
 | **Data se schématem** | JSON + JSON Schema, XML + XSD | strojové zpracování, integrace (kap. 26) |
 | **Diagram nebo graf** | PlantUML, GraphML | obrázek vazeb, nebo graf do Gephi a yEd (kap. 25.3) |
@@ -1671,6 +1672,7 @@ Všech sedm najdeš na jednom místě — **Nastavení → Model** (kap. 36), je
 - **Chci to jen uschovat nebo přenést na jiný počítač** → **Uložit** (kap. 21)
 - **Chci to někomu poslat, ať si to přečte** → Statický prohlížeč (kap. 27) nebo Dokument (kap. 24)
 - **Chci s tím počítat v Excelu** → Tabulka (kap. 25.1)
+- **Žádný hotový formát mi nesedí** → Generátor textu s vlastní šablonou (kap. 24.5)
 - **Chci graf proměřit, ne nakreslit** → Diagram nebo graf → GraphML (kap. 25.3)
 - **Chce to strojově zpracovat kolega nebo skript** → Data se schématem (kap. 26)
 - **Chci část předat do jiného DKM projektu** → Balíček (kap. 28)
@@ -1746,6 +1748,39 @@ položky je součet přes celý výběr, ať víš, kolik toho přibude.
 Ostatní pravidla z 23.3 platí beze změny — prázdné hodnoty se přeskakují, objekty se
 neexportují nikdy.
 
+### 24.5 Generátor textu
+
+Cíl **Generátor textu** ve skupině *Dokument* vykreslí **tvoji vlastní šablonu nad každou
+entitou v rozsahu** a slepí výsledky do jednoho souboru. Hodí se tam, kde hotové formáty
+nesedí: seznam do e-mailu, podklad pro jiný systém, vlastní značkování, řádky do skriptu.
+
+**Zápis je stejný jako u složených atributů** (kap. 7.6), schválně — je to jeden jazyk, ne
+druhá sada pravidel:
+
+- `((Atribut))` se nahradí hodnotou, `((Typ / Atribut))` ji určí jednoznačně
+- metapole `((název))`, `((typ))`, `((ikona))`, `((id))`, `((aspekty))`, `((vytvořeno))`,
+  `((upraveno))` — česky i anglicky, nezávisle na zapnutém jazyce
+- **a navíc složené atributy**: v generátoru se dosadí (o jedno patro), protože právě to
+  z nich lidé většinou chtějí dostat ven
+
+Výchozí šablona je `## ((název))` a pod ní `((Popis))`. Pole je markdownové jako každé jiné —
+platí v něm zkratky i paleta wiki odkazů (kap. 15.5).
+
+Pod **Hlavička, patička a formát** se skrývá zbytek:
+
+| Volba | Co dělá |
+|---|---|
+| **Hlavička** | text jednou na začátku souboru |
+| **Patička** | text jednou na konci |
+| **Oddělovač mezi entitami** | `\n` nový řádek, `\t` tabulátor; prázdné pole slepí texty rovnou za sebe |
+| **Formát souboru** | Markdown `.md`, prostý text `.txt`, CSV `.csv`, HTML `.html` |
+
+Formát mění jen příponu a typ souboru, ne obsah — ten píšeš ty v šabloně. Chceš-li CSV,
+napiš šablonu jako jeden řádek s čárkami a oddělovač nech na novém řádku.
+
+**Náhled nad prvními třemi entitami** se překresluje při psaní, takže je hned vidět, co
+ti z toho leze, než se stáhne celý soubor.
+
 ---
 
 ## 25. Export do tabulky, PlantUML a GraphML
@@ -1782,7 +1817,37 @@ Tlačítko **Import TSV** v hlavičce. Bere soubor (Excel → *Uložit jako* TSV
 vložené ze schránky. Oddělovač se detekuje sám — TAB, středník nebo čárka, podle toho, čeho
 je v prvním řádku nejvíc.
 
-**První řádek je hlavička** a rozhoduje o všem. Sloupce, kterým import nerozumí, tiše ignoruje.
+**První řádek je hlavička** a rozhoduje o všem — ale do dat se nesáhne dřív, než uvidíš,
+jak se pochopila (viz *Náhled mapování sloupců* níž).
+
+#### Náhled mapování sloupců
+
+Po stisku **Naimportovat** se nic neimportuje — nejdřív se otevře tabulka **Náhled mapování
+sloupců**: řádek za každý sloupec tabulky, v něm jeho název, **ukázka hodnoty z prvního
+řádku** a rozbalovátko **Kam**. Nahoře je shrnutí („42 řádků, 7 sloupců, oddělovač TAB").
+
+Rozbalovátko nabízí:
+
+- **Automaticky** — co import rozpoznal sám. U systémového pole to napíše jménem
+  („Automaticky: Název"), u atributu taky („Automaticky: Vlastnost / Popis"). Když rozpoznání
+  závisí na typu řádku (víc typů nebo aspektů má atribut téhož jména), napíše *podle typu
+  řádku* a kolik je možností. Když nerozpoznal nic, je tam *nic – nenaimportuje se*.
+- **nepoužít** — sloupec se přeskočí, i kdyby se rozpoznal.
+- **Systémová pole** — Název, Typ, Aspekty, ID entity, Archiv, Inbox.
+- **libovolný atribut** typu nebo aspektu.
+
+Pod tabulkou se vypíše, **co se nenaimportuje**: sloupce, kterým nic neodpovídá, a zvlášť
+sloupce mířící na **složený atribut** — ten se vždycky počítá ze šablony, takže se z tabulky
+nevyplňuje (kap. 7.6). Co si sám přepneš na *nepoužít*, se ve výčtu neobjeví — to není chyba,
+to je tvoje rozhodnutí.
+
+Teprve tlačítko v dialogu import opravdu spustí. Po něm přijde hláška
+*„Import: přidáno 12, aktualizováno 3, přeskočeno 0"* a za ní znovu seznam sloupců, které
+se nenaimportovaly — tentokrát už jako výsledek, ne jako předpověď. Při čistém importu se
+nehlásí nic.
+
+> Dřív se mapovalo naslepo a sloupec, kterému neodpovídal žádný atribut, se zahodil beze
+> slova. Kdo měl v hlavičce překlep, přišel o data a nedozvěděl se to.
 
 #### Systémové sloupce
 
@@ -2461,7 +2526,7 @@ i se zapnutým Caps Lockem a na rozložení, kde ta klávesa píše jiné písme
 | e | Editovat |
 | r | Přidat vazbu (otevře dialog) |
 | c | Nový komentář — přepne na kartu 💬 Komentáře a zaostří pole |
-| o | Otevřít odkaz entity v nové kartě (viz 14.4) |
+| o | Otevřít odkaz entity v nové kartě (viz 4.5) |
 
 ### Editor
 

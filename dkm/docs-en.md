@@ -1639,6 +1639,7 @@ entities it yields, and "the displayed list" is offered only when you are actual
 | Target | Formats | What for |
 |---|---|---|
 | **Document** | Markdown, DOCX, print / PDF, formatted text to the clipboard | a report, an overview, something to read (ch. 24) |
+| **Text generator** | your own template → `.md`, `.txt`, `.csv`, `.html` | bulk output in exactly the shape you write (ch. 24.5) |
 | **Table** | XLSX, CSV, TSV — with a column picker | Excel, edit and import back (ch. 25.1) |
 | **Data with a schema** | JSON + JSON Schema, XML + XSD | machine processing, integration (ch. 26) |
 | **Diagram or graph** | PlantUML, GraphML | a picture of the relations, or a graph for Gephi and yEd (ch. 25.3) |
@@ -1687,6 +1688,7 @@ All seven live in one place — **Settings → Model** (ch. 36), individually or
 - **I just want to keep it or move it to another computer** → **Save** (ch. 21)
 - **I want to send it to someone to read** → Static viewer (ch. 27) or Document (ch. 24)
 - **I want to do arithmetic in Excel** → Table (ch. 25.1)
+- **No ready-made format fits** → Text generator with your own template (ch. 24.5)
 - **I want to measure the graph, not draw it** → Diagram or graph → GraphML (ch. 25.3)
 - **A colleague or a script needs to process it** → Data with a schema (ch. 26)
 - **I want to hand a part over to another DKM project** → Package (ch. 28)
@@ -1761,6 +1763,41 @@ shows a total across the whole selection, so you know how much it adds.
 
 The other rules from 23.3 apply unchanged — empty values are skipped, objects are never exported.
 
+### 24.5 Text generator
+
+The **Text generator** target in the *Document* group renders **your own template over every
+entity in the scope** and joins the results into one file. It is for the cases the ready-made
+formats do not fit: a list for an e-mail, input for another system, your own markup, rows for
+a script.
+
+**The notation is the same as for composed attributes** (ch. 7.6), deliberately — it is one
+language, not a second set of rules:
+
+- `((Attribute))` is replaced by its value, `((Type / Attribute))` makes it unambiguous
+- the meta fields `((name))`, `((type))`, `((icon))`, `((id))`, `((aspects))`, `((created))`,
+  `((updated))` — in Czech and English alike, whatever language is switched on
+- **and composed attributes on top of that**: the generator substitutes them (one level deep),
+  because getting them out is usually the whole point
+
+The default template is `## ((name))` with `((Description))` below it. The field is a Markdown
+field like any other — its shortcuts and the wiki-link palette work there (ch. 15.5).
+
+**Header, footer and format** hides the rest:
+
+| Option | What it does |
+|---|---|
+| **Header** | text once at the start of the file |
+| **Footer** | text once at the end |
+| **Separator between entities** | `\n` a newline, `\t` a tab; an empty field joins the texts directly |
+| **File format** | Markdown `.md`, plain text `.txt`, CSV `.csv`, HTML `.html` |
+
+The format only changes the extension and the file type, not the content — that is yours to
+write in the template. For CSV, write the template as one comma-separated line and leave the
+separator as a newline.
+
+**A preview over the first three entities** redraws as you type, so you see what comes out
+before the whole file is downloaded.
+
 ---
 
 ## 25. Export to a table, PlantUML and GraphML
@@ -1800,8 +1837,37 @@ The **Import TSV** button in the header. Takes a file (Excel → *Save as* TSV/C
 pasted from the clipboard. The delimiter is detected automatically — TAB, semicolon or comma,
 whichever is most frequent in the first line.
 
-**The first row is the header** and decides everything. Columns the import does not understand
-are silently ignored.
+**The first row is the header** and decides everything — but nothing is written to your data
+before you see how it was understood (see *Column mapping preview* below).
+
+#### Column mapping preview
+
+Pressing **Import** imports nothing yet — first the **Column mapping preview** table opens:
+one row per column of your table, with its name, a **sample value from the first row** and a
+**Target** dropdown. A summary sits above it ("42 rows, 7 columns, delimiter TAB").
+
+The dropdown offers:
+
+- **Automatic** — what the import recognised by itself. For a system field it says so by name
+  ("Automatic: Name"), for an attribute too ("Automatic: Property / Description"). When the
+  match depends on the row's type (several types or aspects have an attribute of the same
+  name), it says *by row type* and how many options there are. When nothing was recognised it
+  says *nothing – will not be imported*.
+- **do not use** — the column is skipped even if it was recognised.
+- **System fields** — Name, Type, Aspects, Entity ID, Archive, Inbox.
+- **any attribute** of a type or an aspect.
+
+Below the table you get a list of **what will not be imported**: columns nothing matches, and
+separately columns pointing at a **composed attribute** — that one is always computed from its
+template, so it is never filled from a table (ch. 7.6). Whatever you switch to *do not use*
+yourself is left out of that list — it is your decision, not a mistake.
+
+Only the dialog's button actually runs the import. Afterwards you get
+*"Import: 12 added, 3 updated, 0 skipped"* followed by the list of columns that were not
+imported — this time as a result, not a prediction. A clean import reports nothing.
+
+> It used to map blindly, and a column no attribute matched was dropped without a word. Anyone
+> with a typo in the header lost data and was never told.
 
 #### System columns
 
