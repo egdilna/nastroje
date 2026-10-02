@@ -1513,9 +1513,20 @@ samo uloží projekt **na GitHub** — do souboru ne, to zůstává na tlačítk
 - **Bez nastaveného GitHubu** je zaškrtávátko nedostupné a zašedlé; napoví to i titulek.
 - **Neukládá po každém úhozu.** Čeká na 2,5 sekundy klidu, takže z deseti napsaných písmen
   vznikne jeden commit, ne deset. Při odchodu ze záložky se čekání nedodrží a odešle se hned.
-- **Nikam se nepamatuje.** Nastavení nejde do projektu ani do prohlížeče, takže po každém
-  načtení stránky je Auto **vypnuté**. Je to schválně — posílat práci samo někam ven se má
-  zapínat vědomě.
+- **Do projektu se nepamatuje.** „Posílám svoji práci ven" je věc toho, kdo u počítače
+  sedí, ne vlastnost projektu, který si lidé posílají mezi sebou. Zapnuté Auto proto
+  s projektem nikam necestuje.
+- **Po načtení se umí zapnout samo, když si o to řekneš.** V *Nastavení → Obecné* je
+  **Po načtení zapnout automatické ukládání na GitHub** — předvolba **jen pro tenhle
+  prohlížeč**, stejně jako jméno pro komentáře a token. Ve výchozím stavu je vypnutá, takže
+  bez zásahu je Auto po načtení vypnuté jako dřív.
+  - Uplatní se, až **je kam ukládat**: projekt musí být napojený na GitHub a token uložený.
+    Když se GitHub doplní až načtením projektu z adresy nebo ze souboru, zapne se v tu chvíli
+    a DKM to napíše — odesílání práce ven nemá probíhat potichu.
+  - **Přepínač v hlavičce je nadřazený.** Co si v průběhu práce vypneš, zůstane vypnuté až
+    do dalšího načtení stránky; předvolba se v téhle session znovu neuplatní.
+  - Zaškrtnutí nebo odškrtnutí předvolby v nastavení **nepřepíná** běžící Auto. Je to
+    předvolba pro příště, ne druhý vypínač.
 - **Ukládá potichu**: žádné „Ukládám…", žádná hláška o úspěchu. **Tón zní** stejně jako
   u ručního uložení — je to jediná zpětná vazba, kterou tiché ukládání má (vypnout se dá
   v Nastavení → Obecné). Chybu naopak řekne nahlas — a **vypne se**.
@@ -2455,6 +2466,9 @@ i přejmenování zůstaneš na kartě Duplicity a seznam se přepočítá.
 
 - **Jazyk** (Čeština / English)
 - **Motiv** — Světlý / Tmavý / Papír / Matrix, totéž co v menu ⚙ Přizpůsobit
+- **Po načtení zapnout automatické ukládání na GitHub** — předvolba, se kterou se Auto
+  v hlavičce zapne samo, jakmile je projekt napojený na GitHub a je uložený token (kap. 21.4).
+  Platí **jen pro tenhle prohlížeč** (klíč `dkm-gh-autosave`), ne pro projekt.
 - **Tvoje jméno pro komentáře** — bere se jako autor u nových komentářů. Ukládá se **jen do tohoto prohlížeče** (klíč `dkm-username`, stejně jako GitHub token), ne do dat projektu — nad jedním projektem tak může pracovat víc lidí a každý se podepíše sám za sebe. Starší projekt, který jméno nesl v datech, ho při načtení jednorázově převezme do prohlížeče (pokud tam ještě žádné není) a z dat ho vypustí.
 - **Nabízet wiki odkazy při uložení entity** — po uložení nabídne názvy jiných entit nalezené ve víceřádkových atributech k převodu na `[[odkaz]]` (viz 15.4). Ukládá se jen do tohoto prohlížeče (klíč `dkm-wiki-suggest`).
 - **Zvuková odezva u ukládání na GitHub** — krátký stoupavý tón po úspěšném uložení, temnější klesavý po neúspěchu. Tóny se generují přímo v prohlížeči přes Web Audio API, nic se nestahuje, takže to funguje i offline. Vedle zaškrtávátka jsou tlačítka, kterými si oba zvuky poslechneš. Ukládá se jen do tohoto prohlížeče (klíč `dkm-sound`).
@@ -2792,7 +2806,7 @@ včetně strojových schémat je v kapitole 37:
 | `dkm-lang` | jazyk rozhraní |
 | `dkm-theme` | grafický motiv |
 | `dkm-username` | jméno autora komentářů |
-| `dkm-autosave`, `dkm-debug`, `dkm-sound`, `dkm-wiki-suggest` | přepínače v Nastavení → Obecné |
+| `dkm-autosave`, `dkm-debug`, `dkm-sound`, `dkm-wiki-suggest`, `dkm-gh-autosave` | přepínače v Nastavení → Obecné |
 | `dkm-ai-provider`, `dkm-ai-key`, `dkm-ai-model` | napojení na AI (viz kap. 35) |
 | `dkm-github-token` | GitHub PAT (per origin) |
 | `dkm-handoff-…` | krátkodobé předání dat do samostatného okna; nespotřebované se uklidí po 10 minutách |

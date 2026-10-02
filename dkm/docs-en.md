@@ -1526,9 +1526,20 @@ Next to the **Save** button is an **AutoSave** checkbox. When it is on, DKM save
 - **Without GitHub set up** the checkbox is disabled and greyed out; the tooltip says why.
 - **It does not save on every keystroke.** It waits for 2.5 seconds of quiet, so ten typed
   letters make one commit, not ten. Leaving the tab does not wait — it sends straight away.
-- **It is not remembered anywhere.** The setting goes neither into the project nor into the
-  browser, so after every page load Auto is **off**. That is deliberate — sending your work
-  somewhere on its own should be switched on consciously.
+- **It is not remembered in the project.** "I am sending my work out" belongs to whoever is
+  sitting at the computer, not to a project people pass around. Auto therefore never travels
+  with the project.
+- **It can switch itself on after a load if you ask it to.** *Settings → General* has
+  **Turn autosave to GitHub on after loading** — a preference for **this browser only**, just
+  like your name for comments and the token. It is off by default, so without doing anything
+  Auto is off after a load exactly as before.
+  - It kicks in once **there is somewhere to save**: the project must be wired to GitHub and
+    a token stored. If GitHub only arrives with a project loaded from a URL or a file, it
+    switches on at that moment and DKM says so — sending work out should not happen silently.
+  - **The header toggle wins.** Whatever you switch off while working stays off until the next
+    page load; the preference is not applied again in that session.
+  - Ticking or unticking the preference does **not** toggle a running Auto. It is a preference
+    for next time, not a second switch.
 - **It saves quietly**: no "Saving…", no success message. **The tone plays** just as it does
   for a manual save — it is the only feedback a quiet save has (it can be switched off in
   Settings → General). A failure, on the other hand, is loud — and
@@ -2492,6 +2503,9 @@ redirected. After a merge or a rename you stay on the Duplicates tab and the lis
 
 - **Language** (Čeština / English)
 - **Theme** — Light / Dark / Paper / Matrix, same as in the ⚙ Customize menu
+- **Turn autosave to GitHub on after loading** — a preference that switches the header Auto
+  on by itself once the project is wired to GitHub and a token is stored (ch. 21.4). It applies
+  to **this browser only** (key `dkm-gh-autosave`), not to the project.
 - **Your name for comments** — used as author of new comments. Stored **in this browser only** (key `dkm-username`, like the GitHub token), not in the project data — so several people can work on the same project and each signs their own comments. An older project that carried the name in its data adopts it into the browser once on load (if none is set there yet) and drops it from the data.
 - **Suggest wiki links when saving an entity** — after saving it offers names of other entities found in multi-line attributes for conversion into a `[[link]]` (see 15.4). Stored in this browser only (key `dkm-wiki-suggest`).
 - **Sound feedback for GitHub saves** — a short rising tone after a successful save, a darker falling one after a failure. The tones are generated in the browser via the Web Audio API, nothing is downloaded, so it works offline too. Next to the checkbox are buttons to hear both. Stored in this browser only (key `dkm-sound`).
@@ -2829,7 +2843,7 @@ both formats, machine-readable schemas included, is in chapter 37:
 | `dkm-lang` | interface language |
 | `dkm-theme` | visual theme |
 | `dkm-username` | comment author name |
-| `dkm-autosave`, `dkm-debug`, `dkm-sound`, `dkm-wiki-suggest` | switches in Settings → General |
+| `dkm-autosave`, `dkm-debug`, `dkm-sound`, `dkm-wiki-suggest`, `dkm-gh-autosave` | switches in Settings → General |
 | `dkm-ai-provider`, `dkm-ai-key`, `dkm-ai-model` | AI connection (see ch. 35) |
 | `dkm-github-token` | GitHub PAT (per origin) |
 | `dkm-handoff-…` | short-lived data handoff to a standalone window; an unconsumed one is cleaned up after 10 minutes |
