@@ -1078,6 +1078,15 @@ Pravidla, na která se dá narazit:
   vybraný, řadí se mezi ostatní a značí se `⚠`.
 - **Hodnota tagu není identifikátor entity.** `deleteEntity` proto tagové atributy
   z úklidu vynechává — jinak by mazání entity ukusovalo tagy.
+- **Uzavřená soustava** (`ts.uzavrena`) znamená, že nový tag smí vzniknout jen v Nastavení.
+  Brána je jedna — `lzePridatTag(ts)` — a prochází jí editor entity i import z tabulky.
+  Příznak je **záporný schválně**: chybějící klíč i `false` znamenají otevřenou soustavu,
+  takže starší data i cizí balíčky se chovají jako dřív. Zaškrtávátko v UI je naopak
+  **kladné** („Povolit přidání…"), protože o tom lidé přemýšlejí tímhle směrem.
+- **Uzavření nesmí polykat data.** Import z tabulky soustavu nerozšíří, ale hodnotu u entity
+  nechá — tag mimo soustavu aplikace odjakživa umí (značí ho `⚠`) — a po importu vypíše,
+  čeho se to týká. Zahodit hodnotu by znamenalo tiše přijít o data kvůli nastavení,
+  o kterém ten, kdo import pouští, nemusí vědět.
 - Odkaz na tag je `#tag/<soustava>/<tag>` (`tagHash`); adresu čte `parseHash` a nastaví
   `state.filters.tagFilter`, takže je sdílitelná. Zrušení filtrů (`zrusFiltry`) musí i tu
   adresu opustit, jinak by se filtr po načtení vrátil.
@@ -1172,7 +1181,7 @@ Hranice slova se testuje přes `\p{L}` — `\b` by na diakritice selhalo. Nahraz
 Při změně názvu entity nebo formátu textových hodnot na to pamatuj.
 
 ## Lokalizace
-`I18N = {cs:{…}, en:{…}}` s **1244 klíči**, přístup přes `t(k, v)`, jazyk v `dkm-lang`.
+`I18N = {cs:{…}, en:{…}}` s **1248 klíči**, přístup přes `t(k, v)`, jazyk v `dkm-lang`.
 Každý nový text = klíč v obou jazycích. Do UI nikdy nepiš řetězec natvrdo.
 Řetězce jsou **prostý text, ne HTML** — vkládej je přes `textContent`. `importTSVDesc` byl
 psaný se značkami a nasazovaný přes `innerHTML=esc(...)`, takže se `<br>` a `<b>` uživateli

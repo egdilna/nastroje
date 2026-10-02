@@ -646,7 +646,7 @@ attrTypeTags:'Tagy',settingsTags:'Tagy',
 settingsTagsDesc:'Soustavy tagů. Atribut typu Tagy se naváže na jednu soustavu a entita si z ní pak zaškrtá, kolik tagů chce. Týž tag může být v různých atributech i v různých typech entit — proklikem se vždycky najde všechno, co ho nese.',
 addTagSet:'Přidat soustavu tagů',tagSetValues:'Tagy (jeden na řádek)',
 attrTagSet:'Soustava tagů',tagSetEmpty:'Tahle soustava zatím nemá žádný tag.',tagSetNone:'Atribut nemá vybranou soustavu tagů.',
-tagAddNew:'Nový tag',tagAdd:'Přidat tag',tagAdded:'Tag {tag} přidán do soustavy {set}.',tagExists:'Tenhle tag už v soustavě je.',
+tagSetOtevrena:'Povolit přidání nového tagu při editaci entity',tagSetOtevrenaHint:'Když je vypnuté, tagy se dají přidávat jen tady v nastavení — ani editor entity, ani import z tabulky soustavu nerozšíří. Hodí se u ustálených číselníků, třeba u seznamu lidí nebo útvarů.',tagSetUzavrenaHlaska:'Uzavřená soustava — nový tag se přidává jen v Nastavení → Tagy.',importTagMimoSoustavu:'Soustava je uzavřená, tyhle tagy se do ní nedoplnily (u entit zůstaly a značí se ⚠): {s}',tagAddNew:'Nový tag',tagAdd:'Přidat tag',tagAdded:'Tag {tag} přidán do soustavy {set}.',tagExists:'Tenhle tag už v soustavě je.',
 tagNothing:'nic nevybráno',tagNotInSet:'Tenhle tag už v soustavě není.',tagChosen:'vybráno {n}',
 tagLinkHint:'Zobrazit všechny entity s tímto tagem',
 detailTags:'Tagy',tagOthers:'dalších entit: {n}',tagNoOthers:'Žádná další entita tenhle tag nemá.',tagShowAll:'Zobrazit v seznamu →',tagShowAllMore:'Zobrazit všech {n} v seznamu →',
@@ -1262,7 +1262,7 @@ attrTypeTags:'Tags',settingsTags:'Tags',
 settingsTagsDesc:'Tag sets. An attribute of type Tags is bound to one set, and an entity then ticks as many of its tags as it likes. The same tag can live in different attributes and different entity types — following it always finds everything that carries it.',
 addTagSet:'Add tag set',tagSetValues:'Tags (one per line)',
 attrTagSet:'Tag set',tagSetEmpty:'This set has no tags yet.',tagSetNone:'The attribute has no tag set selected.',
-tagAddNew:'New tag',tagAdd:'Add tag',tagAdded:'Tag {tag} added to the set {set}.',tagExists:'That tag is already in the set.',
+tagSetOtevrena:'Allow adding a new tag while editing an entity',tagSetOtevrenaHint:'When this is off, tags can only be added here in the settings — neither the entity editor nor a table import will extend the set. Useful for settled code lists, such as people or departments.',tagSetUzavrenaHlaska:'Closed set — a new tag is only added in Settings → Tags.',importTagMimoSoustavu:'The set is closed, so these tags were not added to it (they stayed on the entities and are marked ⚠): {s}',tagAddNew:'New tag',tagAdd:'Add tag',tagAdded:'Tag {tag} added to the set {set}.',tagExists:'That tag is already in the set.',
 tagNothing:'nothing selected',tagNotInSet:'This tag is no longer in the set.',tagChosen:'{n} selected',
 tagLinkHint:'Show all entities with this tag',
 detailTags:'Tags',tagOthers:'other entities: {n}',tagNoOthers:'No other entity has this tag.',tagShowAll:'Show in list →',tagShowAllMore:'Show all {n} in list →',
@@ -2010,6 +2010,10 @@ function hledaciKlic(s){
 return String(s==null?'':s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
 }
 function findTagSet(id){return (state.data.tagSets||[]).find(x=>x.id===id)}
+/* Smí vzniknout nový tag mimo Nastavení → Tagy? Jediná brána — používá ji editor
+   entity i import z tabulky. Vlastnost je **záporná** (`uzavrena`), aby starší data
+   i soustava bez příznaku zůstaly otevřené, tedy tak, jak se nástroj choval vždycky. */
+function lzePridatTag(ts){return !!ts&&!ts.uzavrena}
 
 /* Tagy soustavy navázané na atribut — vždycky abecedně. Pořadí, v jakém tagy
    v soustavě přibyly, nic neznamená: přidávají se i zevnitř entity rychlým
@@ -4382,6 +4386,8 @@ let added=0,updated=0,skipped=0,prejmenovano=0,zamcenych=0;
    měl v tabulce překlep nebo sloupec navíc, přišel o data a nedozvěděl se to.
    Teď se vypíše, který to byl a proč. */
 const nepouzite=new Map();
+/* Tagy, které se kvůli uzavřené soustavě nedoplnily. */
+const mimoSoustavu=new Set();
 const neslo=(ac,duvod)=>{const k=ac.header||ac.attrName||'?';if(!nepouzite.has(k))nepouzite.set(k,duvod)};
 const now=new Date().toISOString();
 dataRows.forEach(row=>{
@@ -4424,6 +4430,10 @@ raw.split(';').map(x=>x.trim()).filter(Boolean).forEach(tg=>{
 if(!ts){hodnoty.push(tg);return}
 const shoda=(ts.tags||[]).find(x=>x.toLowerCase()===tg.toLowerCase());
 if(shoda){if(hodnoty.indexOf(shoda)<0)hodnoty.push(shoda);return}
+/* Uzavřená soustava se nerozšíří ani importem — jinak by zaškrtávátko v nastavení
+   lhalo. Hodnotu u entity ale **nezahazujeme**: zůstane vybraná, v nabídce se značí ⚠
+   a po importu se vypíše, čeho se to týká. Polykat data mlčky se tu nesmí. */
+if(!lzePridatTag(ts)){hodnoty.push(tg);mimoSoustavu.add((ts.name||'?')+': '+tg);return}
 ts.tags=(ts.tags||[]).concat([tg]);hodnoty.push(tg);
 });
 if(hodnoty.length)attributes[a.id]=hodnoty;
@@ -4466,6 +4476,11 @@ const slozene=Array.from(nepouzite.entries()).filter(x=>x[1]==='slozeny').map(x=
 dbg('TSV import: nepoužité sloupce — '+sl.join(', '),true);
 setTimeout(()=>toast(t('importTSVNepouzite',{s:sl.join(', ')}),true),2400);
 if(slozene.length)setTimeout(()=>toast(t('importTSVSlozene',{s:slozene.join(', ')}),true),4800);
+}
+if(mimoSoustavu.size){
+const sl=Array.from(mimoSoustavu);
+dbg('TSV import: tagy mimo uzavřenou soustavu — '+sl.join(', '),true);
+setTimeout(()=>toast(t('importTagMimoSoustavu',{s:sl.join(', ')}),true),3600);
 }
 if(prejmenovano)setTimeout(()=>toast(t('wikiRenamedImport',{n:prejmenovano})),1200);
 dbg('TSV import: added='+added+' updated='+updated+' skipped='+skipped+' wikiRenamed='+prejmenovano);
@@ -8386,6 +8401,13 @@ lab.appendChild(sp);seznam.appendChild(lab);
 });
 if(!vsechny.length&&!navic.length){const p=document.createElement('p');p.className='fhint';p.textContent=t('tagSetEmpty');telo.appendChild(p)}
 telo.appendChild(seznam);
+/* Uzavřená soustava se z editoru nerozšiřuje. Místo pole se řekne proč a kam jít —
+   zakázané pole, do kterého se dá psát jen proto, aby pak řeklo ne, je horší než žádné. */
+if(!lzePridatTag(ts)){
+const zpr=document.createElement('p');zpr.className='fhint';zpr.textContent=t('tagSetUzavrenaHlaska');
+telo.appendChild(zpr);
+return;
+}
 const pridat=document.createElement('div');pridat.className='tag-ed-add';
 const inp=document.createElement('input');inp.type='text';inp.placeholder=t('tagAddNew');inp.setAttribute('aria-label',t('tagAddNew')+' — '+(ts.name||''));
 const btn=document.createElement('button');btn.type='button';btn.className='btn btn-sm';btn.textContent='＋ '+t('tagAdd');
@@ -9963,7 +9985,7 @@ const tsIdMap={};
 (pkg.model.tagSets||[]).forEach(srcTs=>{
 const m=mapping.tagSets&&mapping.tagSets[srcTs.id];if(!m||m.action==='skip')return;
 const srcTags=(srcTs.tags||[]).slice();
-if(m.action==='create'){const nt={id:uid('ts'),name:srcTs.name,tags:srcTags};state.data.tagSets=state.data.tagSets||[];state.data.tagSets.push(nt);tsIdMap[srcTs.id]=nt.id;log.newTS++}
+if(m.action==='create'){const nt=Object.assign({},srcTs,{id:uid('ts'),name:srcTs.name,tags:srcTags});state.data.tagSets=state.data.tagSets||[];state.data.tagSets.push(nt);tsIdMap[srcTs.id]=nt.id;log.newTS++}
 else if(m.action==='merge'){const tgt=(state.data.tagSets||[]).find(x=>x.id===m.targetId);if(tgt){tgt.tags=tgt.tags||[];const have=new Set(tgt.tags);srcTags.forEach(o=>{if(!have.has(o)){have.add(o);tgt.tags.push(o)}});tsIdMap[srcTs.id]=tgt.id}}
 });
 
@@ -14550,6 +14572,15 @@ const lab=document.createElement('label');lab.textContent=t('tagSetValues');f.ap
 const ta=document.createElement('textarea');ta.setAttribute('aria-label',t('tagSetValues'));ta.value=(ts.tags||[]).join('\n');
 ta.addEventListener('input',()=>{ts.tags=ta.value.split('\n').map(x=>x.trim()).filter(Boolean);setDirty(true)});
 f.appendChild(ta);b.appendChild(f);
+/* Zaškrtávátko je formulované kladně („povolit"), i když se v datech drží opak.
+   Výchozí stav je povoleno, takže prázdná vlastnost znamená to, co lidé čekají. */
+const ol=document.createElement('label');ol.style.display='inline-flex';ol.style.alignItems='center';ol.style.gap='.4rem';ol.style.cursor='pointer';ol.style.marginTop='.4rem';
+const ocb=document.createElement('input');ocb.type='checkbox';ocb.checked=lzePridatTag(ts);
+ocb.addEventListener('change',()=>{if(ocb.checked)delete ts.uzavrena;else ts.uzavrena=true;setDirty(true)});
+ol.appendChild(ocb);
+const osp=document.createElement('span');osp.textContent=t('tagSetOtevrena');ol.appendChild(osp);
+b.appendChild(ol);
+const oh=document.createElement('small');oh.className='fhint';oh.style.display='block';oh.textContent=t('tagSetOtevrenaHint');b.appendChild(oh);
 /* Kolikrát je který tag opravdu použitý — ať je vidět, co se smazáním ztratí. */
 const uziti=pouzite.filter(x=>x.tagSetId===ts.id);
 if(uziti.length){

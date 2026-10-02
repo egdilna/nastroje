@@ -502,6 +502,23 @@ ne pořadí klikání.
 Tag, který někdo mezitím ze soustavy vyhodil, se u entity **neztratí** — zůstane
 zaškrtnutý a je označený `⚠`, ať je vidět, že už do soustavy nepatří.
 
+**Uzavřená soustava.** U každé soustavy je v *Nastavení → Tagy* zaškrtávátko
+**Povolit přidání nového tagu při editaci entity**. Ve výchozím stavu je zapnuté a nástroj
+se chová tak, jak je popsané výš. Když ho vypneš, políčko **＋ Přidat tag** se v editoru
+vůbec nenakreslí a na jeho místě stojí věta, kam se pro nový tag jít podívat — zakázané
+pole, do kterého se dá psát jen proto, aby pak řeklo ne, je horší než žádné. Zaškrtávátka
+pro existující tagy zůstávají, vybírat se dá dál.
+
+Hodí se to u soustav, které mají být **ustálený číselník**: seznam lidí, útvarů, spisových
+znaků. Bez toho stačí jeden překlep při vyplňování a v soustavě jsou „Nováková" i „Novákvá"
+a filtr podle člověka přestane sedět.
+
+Uzavření platí i na **import z tabulky**: ten soustavu nerozšíří. Hodnotu u entity ale
+**nezahodí** — zůstane vybraná, v nabídce se značí `⚠` a po importu se vypíše, kterých
+tagů se to týká. Polykat data mlčky je horší než nechat v nich vidět nesrovnalost.
+Import balíčku uzavřený není: tam se přenáší model jako celek a soustava si příznak nese
+s sebou.
+
 **Jak se tagy zobrazují.** Odznáčky jdou **abecedně**, bez ohledu na velikost písmen —
 stejně jako nabídka v editoru a jako uložená hodnota. Pořadí řádků v soustavě tak neurčuje
 nic: tagy vznikají i rychlým přidáním zevnitř entity, takže by nabídka pokaždé vypadala
