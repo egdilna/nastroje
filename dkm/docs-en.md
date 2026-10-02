@@ -506,6 +506,23 @@ alphabet, not the order you clicked.
 A tag someone has meanwhile removed from the set is **not lost** on the entity — it stays
 selected and is marked `⚠` so you can see it no longer belongs to the set.
 
+**A closed set.** Every set has a checkbox in *Settings → Tags*: **Allow adding a new tag
+while editing an entity**. It is on by default and the tool behaves as described above. Turn
+it off and the **＋ Add tag** field is not drawn at all; in its place stands a sentence
+saying where to go for a new tag — a disabled field you can only type into so that it can
+then say no is worse than none. The checkboxes for the existing tags stay, so you can still
+pick from them.
+
+This is for sets that are meant to be a **settled code list**: people, departments, file
+plan codes. Without it one typo while filling a form puts both "Newman" and "Newmann" in the
+set and filtering by person stops matching.
+
+Closing a set also covers a **table import**: it will not extend the set. It does **not**
+throw the value away, though — it stays selected on the entity, is marked `⚠` in the picker,
+and after the import you are told which tags it concerned. Swallowing data silently is worse
+than leaving a visible discrepancy in it. A package import is not covered: there the model
+travels as a whole and the set carries the flag with it.
+
 **Showing tags.** The chips are ordered **alphabetically**, case-insensitively — and so is
 the picker in the editor and the stored value. The order of the lines in the set therefore
 governs nothing: tags also come into being through quick add from inside an entity, so the
