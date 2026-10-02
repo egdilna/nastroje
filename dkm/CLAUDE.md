@@ -42,6 +42,7 @@ rozbije parsování).
 | `dkm-data-v1` (`SK_DATA`) | data projektu |
 | `dkm-session-data` (`SK_SESSION`) | **sessionStorage** — per-záložka, přežije refresh, zavření záložky ne |
 | `dkm-lang`, `dkm-autosave`, `dkm-debug` | nastavení |
+| `dkm-gh-autosave` (`SK_GHAUTO`) | předvolba „po načtení zapnout AutoSave na GitHub“ — per prohlížeč, **ne** v datech projektu |
 | `dkm-theme` (`SK_THEME`) | grafický motiv (`light`/`dark`/`paper`/`matrix`) — per prohlížeč |
 | `dkm-github-token` | GitHub PAT — **nikdy nelogovat, needovat do dat ani do URL** |
 | `dkm-username` (`SK_USERNAME`) | jméno autora komentářů — per prohlížeč, **ne** v datech projektu (`userName()` / `setUserName()`, migrace ze starých dat v `mergeEmpty`) |
@@ -855,9 +856,23 @@ dál** — když token nestačí, musí se dialog nabídnout znovu, ne nechat č
 Token jde jako vždycky **jen do localStorage**, nikdy do dat projektu.
 
 ## Automatické ukládání na GitHub
-Přepínač v hlavičce vedle Uložit. Stav drží `ghAutoStav` **jen v paměti stránky** — do dat
-projektu ani do `localStorage` nepatří, takže po načtení je vždycky vypnuté. Záměr, ne
-opomenutí: automatické odesílání práce ven se má zapínat vědomě.
+Přepínač v hlavičce vedle Uložit. Stav drží `ghAutoStav` **jen v paměti stránky** a do dat
+projektu nepatří: „posílám svoji práci ven" je věc toho, kdo u počítače sedí, ne vlastnost
+projektu, který si lidé posílají mezi sebou.
+
+**Jestli se má po načtení zapnout samo, drží předvolba v prohlížeči** (`dkm-gh-autosave`,
+Nastavení → Obecné) — tedy tam, kde je token i jméno pro komentáře. Výchozí je vypnuto.
+
+- Uplatňuje ji `ghAutoPodleNastaveni()` a **jednou za načtení stránky** (`ghAutoVychoziResen`).
+  Volá se z `bootstrap()` **i z `otevriVychoziZalozku()`**, protože při startu GitHub nastavený
+  být nemusí — projekt se dotahuje až potom. Kdo přidá další cestu k načtení projektu, ať to
+  udělá stejně.
+- **Ruční přepnutí předvolbu přebije** (`ghAutoPrepni` nastaví `ghAutoVychoziResen`). Kdo si
+  autosave v průběhu vypne, nechce ho zpátky, jen co se načte další projekt.
+- **Zaškrtnutí v nastavení nepřepíná běžící Auto.** Je to předvolba pro příště, ne druhý
+  vypínač; dva vypínače na jednu věc jsou past.
+- Zapnutí z předvolby **se ohlásí** (se zpožděním, ať nepřebije hlášku o načtení projektu).
+  Odesílání práce ven nemá probíhat potichu.
 
 - Spouští ho `setDirty(true)` přes `ghAutoNaplanuj()`; mezi změnou a odesláním je
   **2,5 s ticha** (`GHAUTO_PRODLEVA`), jinak by každé písmeno v editoru dělalo commit.
@@ -1181,7 +1196,7 @@ Hranice slova se testuje přes `\p{L}` — `\b` by na diakritice selhalo. Nahraz
 Při změně názvu entity nebo formátu textových hodnot na to pamatuj.
 
 ## Lokalizace
-`I18N = {cs:{…}, en:{…}}` s **1248 klíči**, přístup přes `t(k, v)`, jazyk v `dkm-lang`.
+`I18N = {cs:{…}, en:{…}}` s **1252 klíči**, přístup přes `t(k, v)`, jazyk v `dkm-lang`.
 Každý nový text = klíč v obou jazycích. Do UI nikdy nepiš řetězec natvrdo.
 Řetězce jsou **prostý text, ne HTML** — vkládej je přes `textContent`. `importTSVDesc` byl
 psaný se značkami a nasazovaný přes `innerHTML=esc(...)`, takže se `<br>` a `<b>` uživateli
