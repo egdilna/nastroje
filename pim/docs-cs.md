@@ -220,6 +220,37 @@ entity, které se opravdu změnily.
 Záhlaví řádků i sloupců se při posouvání drží na místě a po mřížce se dá chodit
 **šipkami**. Archivované entity se v matici nezobrazují.
 
+## Úkol, nebo událost? Rozhoduje čas v názvu
+
+Všude, kde se entita zakládá **jen z názvu** — ✓ Rychlý úkol (nástěnka i dialog),
+*+ Nový úkol* u projektu, *✓ Nový úkol* u schůzky — platí jedno pravidlo:
+
+| Co napíšete | Co vznikne |
+|---|---|
+| `odeslat fakturu 30.6.` — **jen den** | **Úkol** s termínem 30. 6. |
+| `porada úterý 10:00` — **den a začátek času** | **Událost** v úterý 10:00–11:00 |
+| `porada úterý 10:00–12:00` — **den a rozsah** | **Událost** v úterý 10:00–12:00 |
+
+Když je zadaný jen začátek, událost trvá **hodinu**. Rozsah jde napsat několika
+způsoby: `10:00–12:00`, `10:00-12:00`, `od 10 do 12`, a za dnem i zkráceně `10-12`.
+Samotný čas bez dne znamená **dnes**. Rozsah přes půlnoc skončí správně až druhý den.
+
+**Neurčitá část dne událost nedělá.** `schůzka ve středu ráno` je pořád úkol
+s termínem na středu a slovo „ráno" zůstane v názvu — není to začátek času a nikam
+by se neuložilo.
+
+Tam, kde aspekt vybíráte sami (*+ Nová entita* u projektu i u schůzky), se nic
+nehádá — platí, co jste zvolili.
+
+### Co se dá napsat do názvu
+
+Den: `dnes`, `zítra`, `pozítří`, `včera`, `za 3 dny`, název dne v týdnu **v prvním
+i ve čtvrtém pádě, s předložkou i bez** (`středa`, `ve středu`, `v sobotu`,
+`příští úterý`), `15.6.`, `15.6.2026`, `2026-07-01`. Předložka před datem se
+vyřízne spolu s ním, takže z `odeslat fakturu do 30.6.` zbude `odeslat fakturu`.
+
+Čas: `10:00`, `v 10:00`, `10h`, `v 10 hodin` a rozsahy výše.
+
 ## Sekce v detailu entity
 
 Pod obsahem entity jsou sekce, které se počítají z jejího textu. Čtyři z nich jsou
@@ -459,7 +490,9 @@ Tohle je vlajková funkce pro **sekretářky a projektové vedoucí**. Pokud má
 **Pod tabulkou** je rozbalovací **+ Přidat úkol** se dvěma variantami:
 
 ### ✓ Nový úkol
-Vytvoří úkol z přirozeného textu (název + případně „zítra v 15:00", „pátek 14:00", „30.6.").
+Vytvoří úkol z přirozeného textu (název + případně „zítra", „v pátek", „30.6.").
+Když je v názvu i čas („úterý 10:00"), vznikne místo úkolu **událost** — viz
+„Úkol, nebo událost?".
 Vazby:
 - Úkol → projekty schůzky: **partOf** (úkol je opravdu součástí projektu)
 - Schůzka → úkol: **mentions** (úkol byl na schůzce zmíněn)
