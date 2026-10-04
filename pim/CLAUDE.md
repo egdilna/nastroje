@@ -77,6 +77,45 @@ akce a posledních `PALETA_NEDAVNYCH` změněných entit.
 
 Paleta je **jen v aplikaci, ne v šabloně prohlížeče** — většina jejích příkazů edituje.
 
+## Jeden parser dat a pravidlo úkol / událost
+
+`natlangParseDateInText(text)` je **jediný parser dat v aplikaci**. `parseTaskDateFromTitle()`
+je jen tenký obal nad ním (vrátí datum bez času). Dřív to byly dvě nezávislé
+implementace, které se lišily: jedna uměla holý den v týdnu a neuměla čas, druhá
+chtěla předložku — a „ve středu" neuměla ani jedna, takže „schůzka ve středu ráno"
+tiše naplánovala na **dnešek**. Třetí parser nepiš.
+
+Parser vrací `{ datum, cas, casKonec, casNepresny, iso, cleaned, cleanedDatum, popis }`.
+Dvě pole na čištění názvu schválně: **kdo čas neukládá, nesmí ho z názvu vyříznout**
+(`cleanedDatum`), jinak se informace ztratí. Termín úkolu je typu `date`, takže
+úkol používá `cleanedDatum`.
+
+Pravidlo, podle kterého se při zakládání z názvu rozhoduje typ entity, žije na
+jednom místě — v `createQuickTaskFromText()`:
+
+| Rozpoznáno | Vznikne |
+|---|---|
+| jen den | `Task`, `deadline` = datum |
+| den + `cas` | `Event`, `start`, `end` = start + `VYCHOZI_DELKA_UDALOSTI` |
+| den + `cas` + `casKonec` | `Event` s tím rozsahem |
+
+Platí to **jen tam, kde aspekt nevybírá uživatel**. Kde je select aspektu
+(+ Nová entita u projektu i u schůzky), se nehádá. Rychlé přidání úkolu
+u projektu proto jede přes týž `createQuickTaskFromText()` — jedno místo,
+jedno pravidlo.
+
+Dvě pasti:
+
+- **Čas se počítá v místním čase.** `pricticMinut()` skládá výsledek z lokálních
+  složek. `toISOString()` by posunul všechny události o posun zóny.
+- **`casNepresny`** („ráno", „večer") **není začátek času.** Událost z něj nevzniká
+  a z názvu se nevyřezává, protože se nikam neukládá.
+
+Volnější vzory jen v kontextu: holý rozsah hodin (`10-12`) se bere **jen když už je
+rozpoznaný den**, jinak by to chytalo „verze 2-3".
+
+Hlídá to `pim/testy/udalost-z-nazvu.mjs`.
+
 ## Nabídka tagů při zakládání entity
 
 `tagyNabidkaHtml(e, trida, jakoDetails)` + `napojTagyNabidku(root, trida)` +

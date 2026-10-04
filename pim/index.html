@@ -1326,7 +1326,8 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
 
 <dialog id="dialog-quick-task" aria-labelledby="dialog-qt-title">
   <h2 id="dialog-qt-title">✓ Rychlý úkol</h2>
-  <p class="meta">Vytvoří úkol bez přepnutí na jeho detail. Termín lze zadat v názvu přirozenou řečí (např. „zavolat Petrovi zítra v 15:00").</p>
+  <p class="meta">Vytvoří úkol bez přepnutí na jeho detail. Termín zadejte v názvu přirozenou řečí („odeslat fakturu 30.6.", „úklid v pátek").
+    Když přidáte i <strong>čas</strong>, vznikne místo úkolu <strong>událost</strong>: „porada úterý 10:00" na hodinu, „porada úterý 10:00–12:00" na ten rozsah.</p>
   <form method="dialog">
     <label for="qt-title">Název úkolu</label>
     <input type="text" id="qt-title" autocomplete="off" required>
@@ -3078,138 +3079,188 @@ function todayIso() {
 // Podporuje: dnes, zítra, pozítří, včera, příští pondělí/úterý/..., za N dnů, v MM:HH,
 //   DD.MM., DD.MM.YYYY, YYYY-MM-DD, "ráno" (06:00), "dopoledne" (10:00), "v poledne" (12:00),
 //   "odpoledne" (15:00), "večer" (19:00), "v noci" (22:00).
+// Rozpoznání data a času v textu (jediný parser dat v aplikaci — viz pim/CLAUDE.md).
+// Vrací null, když se nic nenajde, jinak:
+//   { datum:'YYYY-MM-DD', cas:'HH:MM'|null, casKonec:'HH:MM'|null, casNepresny:bool,
+//     iso, cleaned, cleanedDatum, popis }
+// `cleaned` je text bez data i časů, `cleanedDatum` jen bez data — kdo čas
+// neukládá, nesmí ho z názvu vyříznout, jinak se informace ztratí.
 function natlangParseDateInText(text) {
   if (!text) return null;
   const orig = text;
-  const lower = text.toLowerCase();
-  let dateMatch = null; // { start, end, year, month, day }
-  let timeMatch = null; // { start, end, hour, min }
-
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const dayNames = ['neděli','pondělí','úterý','středu','čtvrtek','pátek','sobotu'];
-  const dayNamesAlt = ['neděle','pondělí','úterý','středa','čtvrtek','pátek','sobota'];
 
-  function dayDelta(targetDow) {
-    // target 0..6 (neděle..sobota)
-    const cur = today.getDay();
-    let diff = targetDow - cur;
-    if (diff <= 0) diff += 7; // "příští"
-    return diff;
-  }
+  const useky = [];   // [start, end] k vyříznutí
+  const usekyDatum = [];
+
   function applyDelta(days) {
     const d = new Date(today); d.setDate(d.getDate() + days);
     return { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() };
   }
-
-  // 1) "dnes"
-  let m = lower.match(/\bdnes\b/);
-  if (m) { dateMatch = { start: m.index, end: m.index + m[0].length, ...applyDelta(0) }; }
-  // 2) "zítra"
-  if (!dateMatch) { m = lower.match(/\bzítra\b/); if (m) dateMatch = { start: m.index, end: m.index + m[0].length, ...applyDelta(1) }; }
-  // 3) "pozítří"
-  if (!dateMatch) { m = lower.match(/\bpozítří\b/); if (m) dateMatch = { start: m.index, end: m.index + m[0].length, ...applyDelta(2) }; }
-  // 4) "včera"
-  if (!dateMatch) { m = lower.match(/\bvčera\b/); if (m) dateMatch = { start: m.index, end: m.index + m[0].length, ...applyDelta(-1) }; }
-  // 5) "za N dnů/dní/den"
-  if (!dateMatch) {
-    m = lower.match(/\bza\s+(\d+)\s+(dní|dnů|den|dny)\b/);
-    if (m) dateMatch = { start: m.index, end: m.index + m[0].length, ...applyDelta(Number(m[1])) };
+  function dayDelta(targetDow) {
+    let diff = targetDow - today.getDay();
+    if (diff <= 0) diff += 7;   // dnešní den znamená až příští týden
+    return diff;
   }
-  // 6) "příští pondělí/úterý/..."
-  if (!dateMatch) {
-    for (let i = 0; i < 7; i++) {
-      const re = new RegExp('(^|\\s)(příští|nejbližší)\\s+' + dayNamesAlt[i] + '(?=$|[\\s.,;])', 'i');
-      m = lower.match(re);
-      if (m) {
-        const offset = m[0].startsWith(' ') ? 1 : 0;
-        dateMatch = { start: m.index + offset, end: m.index + m[0].length, ...applyDelta(dayDelta(i)) };
-        break;
-      }
-    }
-  }
-  // 7) "v pondělí/úterý/..." (nejbližší)
-  if (!dateMatch) {
-    for (let i = 0; i < 7; i++) {
-      // Pozor: \b nefunguje s českými znaky. Místo toho hledáme začátek/mezeru a konec/mezera/.
-      const re = new RegExp('(^|\\s)v\\s+' + dayNames[i] + '(?=$|[\\s.,;])', 'i');
-      m = lower.match(re);
-      if (m) {
-        const offset = m[0].startsWith(' ') ? 1 : 0;
-        dateMatch = { start: m.index + offset, end: m.index + m[0].length, ...applyDelta(dayDelta(i)) };
-        break;
-      }
-    }
-  }
-  // 8) "DD.MM." nebo "DD.MM.YYYY"
-  if (!dateMatch) {
-    m = orig.match(/\b(\d{1,2})\.\s*(\d{1,2})\.(?:\s*(\d{4}))?/);
-    if (m) {
-      const day = Number(m[1]), month = Number(m[2]), year = m[3] ? Number(m[3]) : today.getFullYear();
-      if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
-        let y = year;
-        // Pokud rok není zadaný a datum je v minulosti, posun na příští rok
-        if (!m[3]) {
-          const candidate = new Date(y, month - 1, day);
-          if (candidate < today) y = y + 1;
-        }
-        dateMatch = { start: m.index, end: m.index + m[0].length, year: y, month, day };
-      }
-    }
-  }
-  // 9) "YYYY-MM-DD"
-  if (!dateMatch) {
-    m = orig.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
-    if (m) {
-      dateMatch = { start: m.index, end: m.index + m[0].length, year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) };
-    }
+  // Hranice slova pro češtinu: \b na diakritice nefunguje.
+  const PRED = '(^|[\\s,;(])';
+  const ZA = '(?=$|[\\s,;.!?)])';
+  function najdi(vzor, zdroj) {
+    const m = (zdroj || orig).match(new RegExp(PRED + '(' + vzor + ')' + ZA, 'i'));
+    if (!m) return null;
+    const posun = m[1].length;
+    return { start: m.index + posun, end: m.index + m[0].length, text: m[2] };
   }
 
-  // Čas — "v HH:MM" / "v HH" / "ráno/dopoledne/v poledne/odpoledne/večer/v noci"
-  m = orig.match(/\bv\s+(\d{1,2}):(\d{2})\b/i);
-  if (m) timeMatch = { start: m.index, end: m.index + m[0].length, hour: Number(m[1]), min: Number(m[2]) };
-  if (!timeMatch) {
-    m = orig.match(/\bv\s+(\d{1,2})\s*h(?:od(?:in)?)?\b/i);
-    if (m) timeMatch = { start: m.index, end: m.index + m[0].length, hour: Number(m[1]), min: 0 };
+  // ---- DATUM ----
+  let dateMatch = null, popis = '';
+  function nastavDatum(h, slozky) {
+    dateMatch = slozky;
+    usekyDatum.push([h.start, h.end]);
+    popis = h.text.trim();
   }
-  if (!timeMatch) {
-    const timeWords = [
-      [/\bráno\b/i, 6, 0],
-      [/\bdopoledne\b/i, 10, 0],
-      [/\bv\s+poledne\b/i, 12, 0],
-      [/\bodpoledne\b/i, 15, 0],
-      [/\bvečer\b/i, 19, 0],
-      [/\bv\s+noci\b/i, 22, 0]
+  const relativni = [['dnes', 0], ['zítra', 1], ['zitra', 1], ['pozítří', 2], ['pozitri', 2], ['včera', -1], ['vcera', -1]];
+  for (const [slovo, d] of relativni) {
+    if (dateMatch) break;
+    const h = najdi(slovo);
+    if (h) nastavDatum(h, applyDelta(d));
+  }
+  if (!dateMatch) {
+    const h = najdi('za\\s+(\\d+)\\s+(?:dní|dnů|den|dny|dnu)');
+    if (h) nastavDatum(h, applyDelta(Number(h.text.match(/\d+/)[0])));
+  }
+  // Konkrétní datum: DD.MM.YYYY / DD.MM. / YYYY-MM-DD
+  if (!dateMatch) {
+    const m = orig.match(/(^|[\s,;(])(?:(?:do|od|k|ke|na)\s+)?(\d{1,2})\.\s*(\d{1,2})\.(?:\s*(\d{4}))?/);
+    if (m) {
+      const den = Number(m[2]), mes = Number(m[3]);
+      if (den >= 1 && den <= 31 && mes >= 1 && mes <= 12) {
+        let rok = m[4] ? Number(m[4]) : today.getFullYear();
+        if (!m[4] && new Date(rok, mes - 1, den) < today) rok++;
+        const posun = m[1].length;
+        nastavDatum({ start: m.index + posun, end: m.index + m[0].length, text: m[0] },
+          { year: rok, month: mes, day: den });
+      }
+    }
+  }
+  if (!dateMatch) {
+    const m = orig.match(/(^|[\s,;(])(?:(?:do|od|k|ke|na)\s+)?(\d{4})-(\d{2})-(\d{2})(?=$|[\s,;.])/);
+    if (m) {
+      const posun = m[1].length;
+      nastavDatum({ start: m.index + posun, end: m.index + m[0].length, text: m[0] },
+        { year: Number(m[2]), month: Number(m[3]), day: Number(m[4]) });
+    }
+  }
+  // Den v týdnu — s předložkou i bez ní, v 1. i ve 4. pádě, s diakritikou i bez.
+  // Předložka se vyřízne spolu se dnem, jinak v názvu zůstane viset „v".
+  if (!dateMatch) {
+    const DNY = [
+      [0, ['neděli', 'neděle', 'nedeli', 'nedele']],
+      [1, ['pondělí', 'pondeli']],
+      [2, ['úterý', 'utery']],
+      [3, ['středu', 'středa', 'stredu', 'streda']],
+      [4, ['čtvrtek', 'ctvrtek']],
+      [5, ['pátek', 'patek']],
+      [6, ['sobotu', 'sobota', 'sobotu', 'sobota']]
     ];
-    for (const [re, h, mi] of timeWords) {
-      m = orig.match(re);
-      if (m) { timeMatch = { start: m.index, end: m.index + m[0].length, hour: h, min: mi }; break; }
+    for (const [dow, tvary] of DNY) {
+      if (dateMatch) break;
+      const vzor = '(?:(?:ve|v)\\s+)?(?:(?:příští|pristi|nejbližší|nejblizsi|tento|tuto)\\s+)?(?:' + tvary.join('|') + ')';
+      const h = najdi(vzor);
+      if (h) nastavDatum(h, applyDelta(dayDelta(dow)));
     }
   }
 
-  if (!dateMatch && !timeMatch) return null;
-  // Pokud máme jen čas (bez data), použijeme dnes
-  const dm = dateMatch || { ...applyDelta(0), start: -1, end: -1 };
-  let iso;
-  if (timeMatch) {
-    const dt = new Date(dm.year, dm.month - 1, dm.day, timeMatch.hour, timeMatch.min, 0);
-    iso = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0')
-      + 'T' + String(dt.getHours()).padStart(2,'0') + ':' + String(dt.getMinutes()).padStart(2,'0');
-  } else {
-    iso = dm.year + '-' + String(dm.month).padStart(2,'0') + '-' + String(dm.day).padStart(2,'0');
+  // ---- ČAS ----
+  // Nejdřív rozsah, jinak by se z „10:00–12:00" vzalo jen prvních deset.
+  let cas = null, casKonec = null, casNepresny = false;
+  function platnyCas(h, m) { return h >= 0 && h <= 23 && m >= 0 && m <= 59; }
+  function hhmm(h, m) { return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'); }
+
+  let m = orig.match(/(^|[\s,;(])(?:od\s+)?(\d{1,2}):(\d{2})\s*(?:[-–—]|do|až|az)\s*(\d{1,2}):(\d{2})(?=$|[\s,;.!?)])/i);
+  if (m && platnyCas(Number(m[2]), Number(m[3])) && platnyCas(Number(m[4]), Number(m[5]))) {
+    cas = hhmm(Number(m[2]), Number(m[3]));
+    casKonec = hhmm(Number(m[4]), Number(m[5]));
+    useky.push([m.index + m[1].length, m.index + m[0].length]);
+  }
+  if (!cas) {
+    m = orig.match(/(^|[\s,;(])od\s+(\d{1,2})(?:\s*h(?:od(?:in)?)?)?\s*(?:do|[-–—]|až|az)\s*(\d{1,2})(?:\s*h(?:od(?:in)?)?)?(?=$|[\s,;.!?)])/i);
+    if (m && platnyCas(Number(m[2]), 0) && platnyCas(Number(m[3]), 0)) {
+      cas = hhmm(Number(m[2]), 0);
+      casKonec = hhmm(Number(m[3]), 0);
+      useky.push([m.index + m[1].length, m.index + m[0].length]);
+    }
+  }
+  // Holý rozsah hodin („10-12") jen když už máme den — jinak by to bralo
+  // i „verze 2-3" nebo číselné rozsahy v názvech.
+  if (!cas && dateMatch) {
+    m = orig.match(/(^|[\s,;(])(\d{1,2})\s*[-–—]\s*(\d{1,2})(?:\s*h(?:od(?:in)?)?)?(?=$|[\s,;.!?)])/);
+    if (m && platnyCas(Number(m[2]), 0) && platnyCas(Number(m[3]), 0)) {
+      cas = hhmm(Number(m[2]), 0);
+      casKonec = hhmm(Number(m[3]), 0);
+      useky.push([m.index + m[1].length, m.index + m[0].length]);
+    }
+  }
+  // Jeden čas: „v 10:00", „10:00", „v 10 hodin", „10h"
+  if (!cas) {
+    m = orig.match(/(^|[\s,;(])(?:(?:ve|v)\s+)?(\d{1,2}):(\d{2})(?=$|[\s,;.!?)])/i);
+    if (m && platnyCas(Number(m[2]), Number(m[3]))) {
+      cas = hhmm(Number(m[2]), Number(m[3]));
+      useky.push([m.index + m[1].length, m.index + m[0].length]);
+    }
+  }
+  if (!cas) {
+    m = orig.match(/(^|[\s,;(])(?:(?:ve|v)\s+)?(\d{1,2})\s*h(?:od(?:in)?)?(?=$|[\s,;.!?)])/i);
+    if (m && platnyCas(Number(m[2]), 0)) {
+      cas = hhmm(Number(m[2]), 0);
+      useky.push([m.index + m[1].length, m.index + m[0].length]);
+    }
+  }
+  // Neurčité části dne. Nejsou to „začátky času" — událost z nich nevzniká
+  // a z názvu se nevyřezávají, protože se nikam neukládají.
+  if (!cas) {
+    if (/(^|[\s,;(])(?:ráno|rano|dopoledne|odpoledne|večer|vecer|v\s+poledne|v\s+noci)(?=$|[\s,;.!?)])/i.test(orig)) {
+      casNepresny = true;
+    }
   }
 
-  // Vyříznout všechny rozpoznané části (date + time) – pozadu, aby indexy zůstaly platné
-  const removals = [];
-  if (dateMatch) removals.push([dateMatch.start, dateMatch.end]);
-  if (timeMatch) removals.push([timeMatch.start, timeMatch.end]);
-  removals.sort((a, b) => b[0] - a[0]);
-  let cleaned = orig;
-  removals.forEach(([s, e]) => {
-    if (s >= 0) cleaned = cleaned.slice(0, s) + cleaned.slice(e);
-  });
-  cleaned = cleaned.replace(/\s+/g, ' ').replace(/[,\s]+$/, '').replace(/^[,\s]+/, '').trim();
-  return { iso, cleaned };
+  if (!dateMatch && !cas && !casNepresny) return null;
+  // Samotný čas (bez dne) znamená dnešek.
+  const dm = dateMatch || applyDelta(0);
+  const datum = dm.year + '-' + String(dm.month).padStart(2, '0') + '-' + String(dm.day).padStart(2, '0');
+
+  function vyrizni(seznam) {
+    const r = seznam.slice().sort((a, b) => b[0] - a[0]);
+    let s = orig;
+    r.forEach(([a, b]) => { s = s.slice(0, a) + s.slice(b); });
+    return s.replace(/\s+/g, ' ').replace(/\s+([,.;:])/g, '$1').replace(/[,\s]+$/, '').replace(/^[,\s]+/, '').trim();
+  }
+  return {
+    datum: datum,
+    cas: cas,
+    casKonec: casKonec,
+    casNepresny: casNepresny,
+    iso: cas ? (datum + 'T' + cas) : datum,
+    cleaned: vyrizni(usekyDatum.concat(useky)),
+    cleanedDatum: vyrizni(usekyDatum),
+    popis: popis || (cas || '')
+  };
 }
+
+// Přičte k času minuty a vrátí „YYYY-MM-DDTHH:MM" v MÍSTNÍM čase. Přes
+// toISOString() to nedělej — posunulo by to všechny události o posun zóny.
+function pricticMinut(datum, cas, minut) {
+  const [r, me, d] = datum.split('-').map(Number);
+  const [h, mi] = cas.split(':').map(Number);
+  const dt = new Date(r, me - 1, d, h, mi, 0);
+  dt.setMinutes(dt.getMinutes() + minut);
+  return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0') +
+    'T' + String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0');
+}
+
+// Délka události, když je zadaný jen začátek (minuty).
+const VYCHOZI_DELKA_UDALOSTI = 60;
+
 function escapeHtml(s) {
   if (s === null || s === undefined) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -5046,98 +5097,16 @@ function tryExtractMarkdownLinkFromTitle(entity) {
 
 // Parsuje z názvu úkolu termín v přirozeném jazyce. Vrací { deadline, cleanedTitle, matched }
 // nebo null pokud nic nenalezeno. Volá se při zaškrtnutí aspektu Task.
+// Termín úkolu z názvu. Obal nad natlangParseDateInText — druhý parser dat
+// v aplikaci být nesmí (viz pim/CLAUDE.md). Úkol má termín typu datum, takže
+// se čas neukládá a z názvu se NEVYŘEZÁVÁ, jinak by se informace ztratila.
 function parseTaskDateFromTitle(title) {
   if (!title) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  function offsetDays(n) {
-    const d = new Date(today);
-    d.setDate(d.getDate() + n);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return yyyy + '-' + mm + '-' + dd;
-  }
-  function clean(t, m) {
-    return (t.slice(0, m.index) + t.slice(m.index + m[0].length))
-      .replace(/\s{2,}/g, ' ').replace(/\s+([,.;:])/g, '$1').trim();
-  }
-
-  // 1) DD.MM.YYYY (nejspecifičtější)
-  let m = title.match(/(?:^|\s)(\d{1,2})\.(\d{1,2})\.(\d{4})(?=\s|$|[,;.])/);
-  if (m) {
-    const day = parseInt(m[1], 10), mon = parseInt(m[2], 10), yr = parseInt(m[3], 10);
-    if (day >= 1 && day <= 31 && mon >= 1 && mon <= 12) {
-      return {
-        deadline: yr + '-' + String(mon).padStart(2,'0') + '-' + String(day).padStart(2,'0'),
-        cleanedTitle: clean(title, m), matched: m[0].trim()
-      };
-    }
-  }
-
-  // 2) DD.MM. (bez roku) – aktuální rok, pokud datum je v minulosti, příští rok
-  m = title.match(/(?:^|\s)(\d{1,2})\.(\d{1,2})\.(?=\s|$|[,;])/);
-  if (m) {
-    const day = parseInt(m[1], 10), mon = parseInt(m[2], 10);
-    if (day >= 1 && day <= 31 && mon >= 1 && mon <= 12) {
-      let yr = today.getFullYear();
-      const candidate = new Date(yr, mon - 1, day);
-      if (candidate < today) yr++;
-      return {
-        deadline: yr + '-' + String(mon).padStart(2,'0') + '-' + String(day).padStart(2,'0'),
-        cleanedTitle: clean(title, m), matched: m[0].trim()
-      };
-    }
-  }
-
-  // 3) "dnes" / "zítra" / "zitra"
-  m = title.match(/(?:^|\s)(dnes|zítra|zitra)(?=\s|$|[,;.!?])/i);
-  if (m) {
-    const w = m[1].toLowerCase();
-    return {
-      deadline: offsetDays(w === 'dnes' ? 0 : 1),
-      cleanedTitle: clean(title, m), matched: m[1]
-    };
-  }
-
-  // 4) "N d" (dny) nebo "N t" (týdny)
-  m = title.match(/(?:^|\s)(\d+)\s*([dt])(?=\s|$|[,;.!?])/i);
-  if (m) {
-    const n = parseInt(m[1], 10);
-    const unit = m[2].toLowerCase();
-    return {
-      deadline: offsetDays(unit === 'd' ? n : n * 7),
-      cleanedTitle: clean(title, m), matched: m[0].trim()
-    };
-  }
-
-  // 5) Den v týdnu – nejbližší příští výskyt (i dnešní den znamená příští týden)
-  const weekdays = {
-    'neděle': 0, 'nedele': 0,
-    'pondělí': 1, 'pondeli': 1,
-    'úterý': 2, 'utery': 2,
-    'středa': 3, 'streda': 3,
-    'čtvrtek': 4, 'ctvrtek': 4,
-    'pátek': 5, 'patek': 5,
-    'sobota': 6
-  };
-  for (const word of Object.keys(weekdays)) {
-    const re = new RegExp('(?:^|\\s)(' + word + ')(?=\\s|$|[,;.!?])', 'i');
-    const wm = title.match(re);
-    if (wm) {
-      const targetDow = weekdays[word];
-      const todayDow = today.getDay();
-      let diff = targetDow - todayDow;
-      if (diff <= 0) diff += 7;
-      return {
-        deadline: offsetDays(diff),
-        cleanedTitle: clean(title, wm), matched: wm[1]
-      };
-    }
-  }
-
-  return null;
+  const p = natlangParseDateInText(title);
+  if (!p || !p.datum) return null;
+  return { deadline: p.datum, cleanedTitle: p.cleanedDatum || title, matched: p.popis || p.datum };
 }
+
 // Pokud je nově přidaná vazba `partOf` z Tasku na Task, který je sám v Projektech,
 // přidá `partOf` vazby z tohoto Tasku na ty Projekty (které ještě nemá).
 // Vrací počet přidaných nových vazeb.
@@ -8951,7 +8920,8 @@ function renderDashboard(main) {
           '</form>' +
         '</div>' +
         '<div class="dash-quick-card">' +
-          '<p class="meta">✓ Rychlý úkol — termín lze zadat v názvu přirozenou řečí (např. „zavolat Petrovi zítra v 15:00", „úklid pátek 14:00", „odeslat fakturu 30.6.").</p>' +
+          '<p class="meta">✓ Rychlý úkol — termín zadejte v názvu přirozenou řečí („odeslat fakturu 30.6.", „úklid v pátek"). ' +
+            'Když přidáte i <strong>čas</strong>, vznikne místo úkolu <strong>událost</strong> („porada úterý 10:00" = hodina, „porada úterý 10:00–12:00" = ten rozsah).</p>' +
           '<form id="dash-task-form">' +
             '<label for="dash-task-title" class="sr-only">Název úkolu</label>' +
             '<input type="text" id="dash-task-title" placeholder="Co se má udělat (a kdy)" required>' +
@@ -14294,24 +14264,14 @@ function renderDetailRead(main, e) {
       const title = quickTaskInp.value.trim();
       if (!title) { quickTaskInp.focus(); return; }
       // Vytvořit nový úkol
-      const tagy = vybraneTagy('proj-task-tag');
-      const newTask = newEntity({
-        title: title,
-        aspects: ['Task'],
-        attributes: { status: 'todo' },
-        links: [{ to: e.id, type: 'partOf' }],
-        tags: tagy
+      // Přes týž trychtýř jako ostatní rychlé zakládání — pravidlo úkol/událost
+      // i rozpoznání termínu má být na jednom místě.
+      const vysledek = createQuickTaskFromText({
+        rawTitle: title,
+        projectIds: [e.id],
+        tags: vybraneTagy('proj-task-tag')
       });
-      // Parsování markdown odkazu v názvu (např. [Text](https://...))
-      tryExtractMarkdownLinkFromTitle(newTask);
-      // Parsování termínu z přirozené řeči
-      const parsed = parseTaskDateFromTitle(newTask.title);
-      if (parsed) {
-        newTask.attributes.deadline = parsed.deadline;
-        newTask.title = parsed.cleanedTitle || newTask.title;
-      }
-      db.entities.push(newTask);
-      save();
+      if (!vysledek) return;
       quickTaskInp.value = '';
       render();
       // Vrátit fokus do políčka pro další úkol
@@ -14319,11 +14279,6 @@ function renderDetailRead(main, e) {
         const inp2 = document.getElementById('proj-quick-task-title');
         if (inp2) inp2.focus();
       }, 50);
-      let msg = '✓ Úkol „' + newTask.title + '" přidán do projektu';
-      if (parsed) msg += ' (termín: ' + parsed.deadline + ')';
-      if (tagy.length > 0) msg += ', tagy: ' + tagy.join(', ');
-      toast(msg, 3500);
-      playSound('save-entity');
     }
     quickTaskBtn.onclick = doAdd;
     quickTaskInp.onkeydown = (ev) => {
@@ -18046,7 +18001,7 @@ function renderEventTasksSection(entity) {
           ? '<p class="meta">Schůzka je součástí ' + projects.length + ' projekt' + (projects.length === 1 ? 'u' : projects.length < 5 ? 'ů' : 'ů') + '. Vyberte, do kterých projektů má nový úkol patřit. Schůzka úkol vždy <strong>zmíní</strong> (vazba „mentions").</p>'
           : '<p class="meta">Schůzka není v žádném projektu. Nový úkol bude pouze <strong>zmíněn na schůzce</strong>.</p>') +
         '<label for="ev-new-task-title">Název úkolu</label>' +
-        '<input type="text" id="ev-new-task-title" placeholder="Co se má udělat (s případným „zítra v 15:00")">' +
+        '<input type="text" id="ev-new-task-title" placeholder="Co se má udělat (lze „zítra", „úterý 10:00" → událost)">' +
         (projects.length > 0
           ? '<fieldset class="ev-new-task-projects" style="margin:0.5em 0;padding:0.4em 0.6em;border:1px solid #ccc;border-radius:4px;">' +
               '<legend style="padding:0 0.3em;font-size:0.9em;color:#555;">Součást projektů (partOf)</legend>' +
@@ -19532,11 +19487,12 @@ function renderProjectDashboard(project) {
   h += '<div class="project-quick-task">' +
     '<label for="proj-quick-task-title" style="font-weight:600;">+ Nový úkol do tohoto projektu</label>' +
     '<div class="project-quick-task-row">' +
-      '<input type="text" id="proj-quick-task-title" placeholder="Název úkolu (lze: zítra, pondělí, 15.6., odkaz [text](url))">' +
+      '<input type="text" id="proj-quick-task-title" placeholder="Název (lze: zítra, pondělí, 15.6., úterý 10:00, odkaz [text](url))">' +
       '<button type="button" id="proj-quick-task-add" class="primary">Přidat úkol</button>' +
     '</div>' +
     tagyNabidkaHtml(project, 'proj-task-tag', true) +
-    '<p class="meta" style="margin:0.3em 0 0;">Vytvoří úkol a propojí ho s tímto projektem vazbou „je součástí". Detail projektu zůstane otevřený.</p>' +
+    '<p class="meta" style="margin:0.3em 0 0;">Vytvoří úkol a propojí ho s tímto projektem vazbou „je součástí". ' +
+      'Je-li v názvu i čas („úterý 10:00"), vznikne místo úkolu událost. Detail projektu zůstane otevřený.</p>' +
   '</div>';
   // Obecné rychlé přidání entity
   h += '<div class="project-quick-task">' +
@@ -23238,14 +23194,29 @@ function createQuickTaskFromText(opts) {
   const raw = (opts.rawTitle || '').trim();
   if (!raw) { alertMsg('Zadejte název úkolu.'); return null; }
 
-  // Parsování přirozeného termínu
+  // Pravidlo úkol / událost (jediné místo, kde se o tom rozhoduje):
+  //   jen den                → Úkol s termínem
+  //   den + začátek času     → Událost, konec = začátek + VYCHOZI_DELKA_UDALOSTI
+  //   den + začátek a konec  → Událost s tím rozsahem
+  // Neurčitá část dne („ráno") začátek času není — z té událost nevzniká.
+  const parsed = natlangParseDateInText(raw);
+  const jeUdalost = !!(parsed && parsed.cas);
   let title = raw;
   let deadline = null;
-  const parsed = natlangParseDateInText(raw);
-  if (parsed && parsed.iso) {
-    deadline = parsed.iso;
-    title = (parsed.cleaned || raw).trim();
-    if (!title) title = raw;
+  let zacatek = null, konec = null;
+  if (parsed) {
+    if (jeUdalost) {
+      zacatek = parsed.datum + 'T' + parsed.cas;
+      konec = parsed.casKonec
+        ? parsed.datum + 'T' + parsed.casKonec
+        : pricticMinut(parsed.datum, parsed.cas, VYCHOZI_DELKA_UDALOSTI);
+      // Konec dřív než začátek = rozsah přes půlnoc, patří na další den.
+      if (konec <= zacatek) konec = pricticMinut(parsed.datum, parsed.casKonec || parsed.cas, 24 * 60);
+      title = (parsed.cleaned || raw).trim() || raw;
+    } else {
+      deadline = parsed.datum;
+      title = (parsed.cleanedDatum || raw).trim() || raw;
+    }
   }
 
   // Sestavit vazby úkolu (outgoing) – partOf pro projekty/události
@@ -23262,11 +23233,11 @@ function createQuickTaskFromText(opts) {
   (opts.eventIds || []).forEach(id => addLink(id, 'partOf'));
   (opts.extraLinks || []).forEach(l => addLink(l.to, l.type));
 
-  const attrs = { status: 'todo' };
+  const attrs = jeUdalost ? { start: zacatek, end: konec } : { status: 'todo' };
   if (deadline) attrs.deadline = deadline;
 
   const e = newEntity({
-    title, aspects: ['Task'], attributes: attrs, links,
+    title, aspects: [jeUdalost ? 'Event' : 'Task'], attributes: attrs, links,
     tags: Array.from(new Set(opts.tags || []))
   });
   // Pokud byl název ve formátu markdown odkazu [Název](url), převést na záložku
@@ -23285,11 +23256,12 @@ function createQuickTaskFromText(opts) {
     }
   });
 
-  // Sestavit toast s informací o termínu a vazbách
+  // Hláška musí říct, co vlastně vzniklo — aspekt se tu mohl změnit podle textu.
   const parts = [];
-  if (deadline) {
-    const isDateTime = deadline.includes('T');
-    parts.push(', termín ' + (isDateTime ? fmtDateTime(deadline) : fmtDate(deadline)));
+  if (jeUdalost) {
+    parts.push(', ' + fmtDate(zacatek) + ' ' + zacatek.slice(11) + '–' + konec.slice(11));
+  } else if (deadline) {
+    parts.push(', termín ' + fmtDate(deadline));
   }
   const partOfTargets = [...(opts.projectIds || []), ...(opts.eventIds || [])];
   const mentionTargets = (opts.eventMentionIds || []);
@@ -23307,9 +23279,10 @@ function createQuickTaskFromText(opts) {
     }).filter(Boolean);
     if (titles.length > 0) parts.push(' (zmíněn na: ' + titles.join(', ') + ')');
   }
-  toast('✓ Úkol „' + title + '" vytvořen' + parts.join('') + '.');
+  toast((jeUdalost ? '📅 Událost „' : '✓ Úkol „') + title + '" vytvořen' + (jeUdalost ? 'a' : '') +
+    parts.join('') + '.', 4500);
   playSound('save-entity');
-  return { entity: e, parsedDeadline: deadline };
+  return { entity: e, parsedDeadline: deadline, jeUdalost: jeUdalost };
 }
 
 function openQuickTask(prefilledProject) {

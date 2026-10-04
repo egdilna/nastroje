@@ -47,6 +47,7 @@ upravte v `lib.mjs`.
 | `sekce-detailu.mjs` | Rozbalené sekce detailu a odškrtávání úkolů ze seznamu Nedokončené položky (na řádek, ne na pořadí). |
 | `tagova-matice.mjs` | Tagy vazeb: řádky, sloupce, a hlavně že se do dat nesáhne dřív než na Uložit. |
 | `tagy-pri-zalozeni.mjs` | Nabídka tagů u schůzky a projektu: co je předzaškrtnuté a že se nezaškrtnuté nepřidá. |
+| `udalost-z-nazvu.mjs` | Jeden parser dat a pravidlo úkol/událost podle času v názvu. |
 | `odznak-a-seznam.mjs` | Odznak ☐N u názvu entity a editor seznamu (sbalování, udělat úkol). |
 | `skryte-ukoly.mjs` | Skrytí hotových úkolů přežije zaškrtnutí dalšího. |
 | `klavesy.mjs` | Klávesové zkratky a accesskey se nepřekrývají. |

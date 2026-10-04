@@ -222,6 +222,28 @@ was. Only entities that actually changed are written.
 Row and column headers stay in place while scrolling and the grid can be walked
 with the **arrow keys**. Archived entities are not shown in the matrix.
 
+## Task or event? The time in the title decides
+
+Everywhere an entity is created **from a title alone** — ✓ Quick task (dashboard and
+dialog), *+ New task* at a project, *✓ New task* at a meeting — one rule applies:
+
+| What you type | What you get |
+|---|---|
+| `send invoice 30.6.` — **day only** | **Task** due 30 June |
+| `meeting úterý 10:00` — **day and a start time** | **Event** 10:00–11:00 |
+| `meeting úterý 10:00–12:00` — **day and a range** | **Event** 10:00–12:00 |
+
+With only a start time the event lasts **one hour**. A range can be written as
+`10:00–12:00`, `10:00-12:00`, `od 10 do 12`, or, after a day, simply `10-12`.
+A time with no day means **today**. A range across midnight correctly ends the next day.
+
+**A vague part of the day does not make an event.** `schůzka ve středu ráno` stays a
+task due Wednesday and the word "ráno" (morning) stays in the title — it is not a
+start time and nothing would be stored.
+
+Where you pick the aspect yourself (*+ New entity* at a project or a meeting) nothing
+is guessed — what you chose is what you get.
+
 ## Sections in the entity detail
 
 Below the entity body there are sections computed from its text. Four of them are
