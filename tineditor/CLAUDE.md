@@ -2,7 +2,7 @@
 
 ## Co to je
 Editor formátu **TIN** — JSON zápisu toho, co má (a nemá) AI model dělat pro danou roli či úlohu.
-Jediný soubor `index.html` (~506 řádků, ~29 kB) postavený na Alpine.js. Z rozepsaného TIN
+Jediný soubor `index.html` (~730 řádků, ~41 kB) postavený na Alpine.js. Z rozepsaného TIN
 umí vygenerovat systémový prompt v Markdownu.
 
 **Zdroj pravdy pro formát je `tin-schema.json` (JSON Schema draft 2020-12), popis v `tin-spec.md`
@@ -16,8 +16,21 @@ Tento nástroj jako jediný v repozitáři **nepíše vlastní CSS ani vanilla J
 - `https://unpkg.com/lucide@latest` (ikony přes `data-lucide`).
 
 Drž se toho stylu: nové UI piš Tailwind třídami a Alpine direktivami, nezakládej vlastní
-`<style>` bloky ani ruční DOM manipulaci. Rozhraní je **anglicky** (`<html lang="en">`) —
-na rozdíl od většiny ostatních nástrojů; nové texty piš také anglicky.
+`<style>` bloky ani ruční DOM manipulaci.
+
+## Dvojjazyčné rozhraní (cs / en)
+- Všechny texty rozhraní jsou ve slovníku `TIN_TEXTY` (`en` a `cs`) na začátku skriptu.
+  **Žádný text pro uživatele nepiš natvrdo do markupu ani do `alert`/`confirm`** — přidej klíč
+  do obou jazyků a použij `x-text="t('klic')"`, `:placeholder="t('klic')"`, `:title="t('klic')"`
+  nebo `this.t('klic')` v JS. Text vedle ikony Lucide dávej do `<span x-text>`, ne do prvku s ikonou.
+- Jazyk rozhraní je `uiLang`; přepínač CS/EN v hlavičce, volba v `localStorage`
+  (`tineditor.jazyk`), výchozí podle `navigator.language`. `applyUiLang()` nastaví
+  `<html lang>` a `document.title`.
+- Generovaný prompt má nadpisy v **jazyce obsahu** (`metadata.lang`: `cs*` → česky, `en*` → anglicky,
+  jinak podle rozhraní) přes `pt('klic')`; klíče promptu mají předponu `p`. Nový prázdný TIN dostane
+  `metadata.lang` podle jazyka rozhraní.
+- Technické hodnoty (enum `do`/`dont`/`note`, klíče JSON, ukázkové placeholdery jako
+  `cz.example.role-name`, `text/markdown`) se nepřekládají.
 
 ## Struktura souboru
 | Rozsah | Obsah |
@@ -25,7 +38,8 @@ na rozdíl od většiny ostatních nástrojů; nové texty piš také anglicky.
 | ř. 7–9 | tři CDN skripty |
 | ř. 10–15 | drobný `<style>` (jen doplňky) |
 | ř. 17–252 | markup s `x-data="tinEditor()"`; sekce Metadata, Context, Instruction Sections, Referenced Files, Expected Output, Generated System Prompt |
-| ř. 253–504 | `function tinEditor()` — jediná Alpine komponenta, vrací celý stav i všechny metody |
+| ř. 253–447 | slovník `TIN_TEXTY` (en/cs) a `tinVychoziJazyk()` |
+| ř. 448–konec | `function tinEditor()` — jediná Alpine komponenta, vrací celý stav i všechny metody (včetně `t`, `pt`, `setUiLang`) |
 
 ## Datový model (`this.tin`)
 ```js
@@ -66,4 +80,5 @@ na rozdíl od většiny ostatních nástrojů; nové texty piš také anglicky.
 ## Ověření změny
 Otevři soubor v prohlížeči (CDN vyžaduje online): přidání sekce, podoblasti a instrukcí všech tří
 typů → přidání souboru → vyplnění metadat → generování promptu → download JSON i minify variantu →
-import staženého souboru zpět → ověření výsledného JSON proti `tin-schema.json`.
+import staženého souboru zpět → ověření výsledného JSON proti `tin-schema.json` → přepnutí CS/EN
+(texty, placeholdery, tooltipy, hlášky, ikony zůstanou vykreslené).
