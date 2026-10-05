@@ -731,6 +731,62 @@ výběru vedle zaškrtávátek u hromadných akcí.
 a brát mu je by rozbilo čtení stránky. Na kraji se seznam **nepřetáčí** — skok z konce
 na začátek je u dlouhého seznamu spíš nehoda než záměr.
 
+## Šablona detailu: jeden engine, čtyři výstupy
+`ty.sablonaDetailu` a `asp.sablonaDetailu`. Prázdná = výchozí vzhled; **nic se negeneruje
+dopředu**, kdo šablonu chce, poskládá si ji od nuly.
+
+- **Engine běží před `renderMD` a vyrábí obyčejný Markdown.** `renderMD` nikdy neuvidí
+  blok `dkm:`. Právě proto umí týž výstup obsloužit obrazovku, statický prohlížeč
+  i dokumentový export. Kdyby vyráběl DOM, zůstalo by to navždy jen na obrazovce.
+- **Pole `((…))` řeší `slozenyText`, ne druhý parser.** Platí to i uvnitř `item:` v bloku
+  vazeb — tam se jen vymění entita, pravidla zůstávají. Metapole přibylo jedno:
+  `((odkaz))` / `((link))` je odkaz na entitu **podle id**, ne přes `[[Název]]`.
+- **Syntaxe bloků a parametrů je anglicky**, názvy věcí z modelu zůstávají, jak je napsal
+  uživatel. Šablona leží v datech a cestuje balíčkem do projektu, který může běžet
+  v druhém jazyce — klíčová slova proto musí být jedna, ne dvoje. Metapole jsou
+  dvojjazyčná dál, to pravidlo tu platilo už předtím.
+- **Engine vrací dvojici: Markdown a soupis spotřebovaného.** Odečítá se **typ vazby
+  a směr**, ne celá karta — klíče jsou ty samé, podle kterých karta Vazby odjakživa
+  seskupuje (`a:`/`r:`/`w:`). Vypsání jednoho typu vazby v těle tedy ostatní neschová.
+  Co šablona nevzala, zůstane vpravo; nedá se tím nic ztratit.
+- **Gramatika je plochá schválně.** Žádné výrazy, žádné zanořování bloků, jediná podmínka
+  je `empty:`. Je to důvod, proč nad tím jde postavit formulářový editor — a pojistka
+  proti tomu, aby z toho byla Jinja2.
+- **Chyba nikdy nesmí vyrobit prázdný detail.** Neznámý blok i neznámý parametr se sází
+  jako viditelné upozornění (citace s ⚠) a zbytek dokumentu se dokreslí.
+- **Nadpisy se normalizují** (`normalizujNadpisy`): nejvyšší nadpis šablony je H2, protože
+  H1 je název entity a po detailu se chodí po nadpisech. Posouvá se celé členění najednou.
+
+### `<details>` jsou dva tokeny, ne povolené HTML
+`renderMD` escapuje všechno a pouští ven jen **tokeny**, které si sám vyrobil (wiki odkazy,
+CriticMarkup). `<details>` a `<summary>` jsou další dva tokeny v téže frontě — whitelist
+tím zůstává uzavřený ze své podstaty. Povolit „HTML" by znamenalo pustit `<script>` do
+prohlížeče člověka, kterému pošleš statický prohlížeč. V prohlížeči je to udělané obráceně
+(vrací se zpátky přesný escapovaný tvar), protože tamní `mdRender` má jinou frontu tokenů;
+**efekt musí zůstat stejný**.
+
+V dokumentových výstupech se `<details>` **rozbaluje** (`rozbalDetails`) — papír nic neklikne.
+
+### Editor: text je kanonický, formulář ho skládá
+`rozdelSablonu` → části → `slozSablonu`. Prázdné řádky mezi bloky nejsou část, jinak by byl
+seznam proložený prázdnými textovými částmi. **Blok, kterému parser nerozumí, se nese
+doslova** (`c.zdroj`) a v editoru je jen ke čtení — přepsat něco, čemu nerozumíme, by
+znamenalo to tiše zahodit.
+
+### Prohlížeč dostane šablonu předpočítanou
+`viewerData` ji vyrenderuje **až po `bezSkrytychAtributu`** a nad výřezem: skrytý atribut se
+do souboru, který se posílá dál, nesmí dostat ani oklikou přes `((Atribut))`, a odkazy mají
+mířit jen dovnitř výřezu. Engine se tím nerozdvojí — prohlížeč jen sází hotový Markdown.
+
+### Kam to ještě sahá
+- `buildExportModel` → `sablonaDoExportu`: tělo se vysází ze šablony a sekce, které
+  spotřebovala, se z modelu vyndají. Export grupuje vazby **podle názvu**, ne podle id,
+  proto `spotrebovaneNazvyVazeb`; co se přeložit nedá, se radši nefiltruje.
+- Import balíčku zakládá typ i aspekt **kopií celého objektu** (`Object.assign`), ne výčtem
+  polí — jinak by šablona i `jsonKey` tiše zmizely. U `reuse` se cílová šablona **nepřepisuje**.
+- `renderMD` nově umí **tabulky** (GFM, oddělovací řádek povinný, `<th scope="col">`)
+  a odkaz na `#…` neotvírá novou záložku.
+
 ## Generátor textu: tentýž zápis jako složené atributy
 `generatorText(e,sablona)` volá `slozenyText` s falešným `def` — zápis `((Atribut))`,
 `((Typ / Atribut))` i metapole jsou tím pádem **jedny**, ne druhá sada pravidel.
@@ -1196,7 +1252,7 @@ Hranice slova se testuje přes `\p{L}` — `\b` by na diakritice selhalo. Nahraz
 Při změně názvu entity nebo formátu textových hodnot na to pamatuj.
 
 ## Lokalizace
-`I18N = {cs:{…}, en:{…}}` s **1252 klíči**, přístup přes `t(k, v)`, jazyk v `dkm-lang`.
+`I18N = {cs:{…}, en:{…}}` s **1299 klíči**, přístup přes `t(k, v)`, jazyk v `dkm-lang`.
 Každý nový text = klíč v obou jazycích. Do UI nikdy nepiš řetězec natvrdo.
 Řetězce jsou **prostý text, ne HTML** — vkládej je přes `textContent`. `importTSVDesc` byl
 psaný se značkami a nasazovaný přes `innerHTML=esc(...)`, takže se `<br>` a `<b>` uživateli

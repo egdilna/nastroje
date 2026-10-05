@@ -39,6 +39,7 @@ Uživatelská příručka
 27. [Statický prohlížeč](#27-statický-prohlížeč)
 28. [Přenos částí mezi projekty (balíčky)](#28-přenos-částí-mezi-projekty-balíčky)
 29. [Nastavení](#29-nastavení)
+29b. [Šablona detailu entity](#29b-šablona-detailu-entity)
 30. [Klávesové zkratky](#30-klávesové-zkratky)
 31. [Přístupnost](#31-přístupnost)
 32. [Tipy a triky](#32-tipy-a-triky)
@@ -2482,6 +2483,178 @@ Přehled počtů: entit, typů, atributů, aspektů, vazeb, komentářů.
 ### 29.15 Nápověda
 
 Odkazy na online dokumentaci a repozitář.
+
+---
+
+---
+
+## 29b. Šablona detailu entity
+
+Výchozí detail entity je **univerzální**: atributy po skupinách vlevo, vazby, tagy
+a komentáře v kartách vpravo. Pro práci s daty je to dobré, ale u konkrétního typu to
+někdy nevypadá jako věc, kterou popisuje — číselník chce mít položky vypsané v seznamu
+rovnou v těle, ne schované v kartě vedle.
+
+**Šablonou si detail poskládáš sám.** Je to vlastnost **typu entity** a **aspektu**
+(Nastavení → Typy entit / Aspekty, sekce *Šablona detailu*). Dokud je prázdná, kreslí
+se výchozí vzhled — nic se negeneruje dopředu a nic se nemění samo.
+
+### 29b.1 Jak to funguje
+
+Šablona je **Markdown**. Navíc umí dvě věci:
+
+| Zápis | Co dělá |
+|---|---|
+| `((Atribut))` | dosadí hodnotu — **týž zápis** jako složený atribut a generátor textu (kap. 7.6) |
+| ohraničený blok ```` ```dkm:… ```` | vloží atributy, vazby, tagy, komentáře nebo objekty |
+
+Funguje v ní všechno, co umí Markdown v DKM: `**tučně**`, odrážky, tabulky,
+CriticMarkup a hlavně **wiki odkazy**. `[[Práce s číselníky]]` napsané přímo v šabloně
+se stane odkazem na tu entitu — a objeví se u každé entity toho typu. Je to levný způsob,
+jak dát k typu nápovědu.
+
+**Syntaxe bloků je anglicky, názvy věcí z modelu zůstávají tvoje.** Šablona leží v datech
+a cestuje balíčkem do projektu, který může běžet v angličtině, takže klíčová slova musí být
+jedna, ne dvoje. Název atributu, typu vazby nebo soustavy tagů píšeš tak, jak jsi ho
+pojmenoval. Metapole v `((…))` zůstávají dvojjazyčná (`((název))` i `((name))`), tak to
+v DKM platilo vždycky.
+
+### 29b.2 Editor
+
+Syntaxi **psát nemusíš**. V nastavení je šablona seznam **částí**: každá se dá rozbalit,
+přesunout šipkami ↑↓ a smazat.
+
+- **Text (Markdown)** — obyčejná textarea se zkratkami i paletou wiki odkazů.
+- **Blok** — formulář. Typ vazby a soustavu tagů vybíráš z rozbalovátka, směr přepínačem,
+  atributy vkládáš tlačítkem.
+
+Pod seznamem běží **živý náhled** nad skutečnou entitou, kterou si vybereš.
+
+Kanonicky se ukládá **text**. Tlačítko **Zobrazit jako text** ho ukáže celý — hodí se na
+zkopírování do jiného projektu. Blok, kterému editor nerozumí, se **nese doslova** a ukáže
+se jako řádek *„Neznámý blok"*; editor na něj nesahá, protože přepsat něco, čemu nerozumíme,
+by znamenalo to tiše zahodit.
+
+### 29b.3 Bloky
+
+```dkm:attributes``` — vypíše atributy.
+
+| Parametr | Co dělá |
+|---|---|
+| `only` | jen tyto atributy, oddělené čárkou |
+| `except` | všechny kromě těchto |
+| `style` | `rows` (výchozí) nebo `table` |
+| `empty` | co se vypíše, když nic nezbude |
+| `collapse` | sbalí blok pod zadaný nadpis |
+
+```dkm:relations``` — vypíše navázané entity.
+
+| Parametr | Co dělá |
+|---|---|
+| `type` | název typu vazby nebo vazebního atributu; bez něj všechny |
+| `direction` | `out` (výchozí), `in`, `both` |
+| `target` | jen entity tohoto typu |
+| `sort` | řadit podle atributu navázané entity; bez něj abecedně podle názvu |
+| `item` | řádek jedné položky, výchozí `- ((link))` |
+| `limit` | nejvýš tolik položek |
+| `empty`, `collapse` | jako výše |
+
+**Uvnitř `item` znamená `((…))` atribut navázané entity.** Je to jediná výjimka v celém
+jazyce. `((link))` je odkaz na tu entitu — sází se **podle id**, takže ho přejmenování
+nerozbije.
+
+```dkm:tags``` (`set`, `empty`, `collapse`) · ```dkm:comments``` (`limit`, `empty`,
+`collapse`) · ```dkm:objects``` (`empty`, `collapse`) · ```dkm:aspects``` (`collapse`) —
+ten poslední určuje, **kam se vloží fragmenty připojených aspektů**. Bez něj jdou na konec.
+
+Aspekt bez vlastní šablony přispěje svým výchozím blokem atributů — jinak by přidání
+aspektu k entitě nebylo v detailu vidět vůbec.
+
+### 29b.4 Sbalení: `<details>`
+
+Parametr `collapse` sbalí blok. Pro sbalení obyčejného textu jde do textové části napsat
+`<details>` a `<summary>` ručně — jsou to **jediné dvě HTML značky, které v DKM projdou**.
+Všechno ostatní HTML se dál escapuje, protože statický prohlížeč je soubor, který posíláš
+dál, a cizí značky do něj nepatří.
+
+**V dokumentovém exportu je sbalené rozbalené** — papír nic neklikne. Summary se stane
+tučným odstavcem a obsah jde za ním.
+
+Pro pohyb po nadpisech dej nadpis **nad** `<details>`, ne dovnitř `<summary>`: `summary` je
+svojí podstatou tlačítko a nadpis schovaný ve sbaleném bloku z osnovy zmizí.
+
+### 29b.5 Co se nestane
+
+- **Nadpisy nejdou rozbít.** Šablona začíná na úrovni H2 a nadpisy se při vykreslení
+  posunou tak, aby nejvyšší z nich byl H2 — H1 na stránce je název entity. Členění šablony
+  přitom zůstane, posouvá se celé najednou.
+- **Nic se nedá ztratit.** Co šablona vykreslí v těle, se vedle neopakuje — a **naopak**:
+  co v šabloně nepoužiješ, zůstane vpravo v kartách. Granularita je typ vazby a směr, ne
+  celá karta, takže vypsání jednoho typu vazby v těle ostatní vazby neschová. Totéž platí
+  pro atributy, soustavy tagů, komentáře a objekty.
+- **Výchozí vzhled je na dosah.** U entity se šablonou přibude v liště akcí **🧩 Výchozí
+  vzhled**. Platí do zavření stránky a jen pro tvůj prohlížeč.
+- **Chyba nerozbije detail.** Neznámý blok nebo parametr se vysází jako viditelné
+  upozornění na svém místě a zbytek dokumentu se dokreslí.
+- **Skrytý atribut zůstane skrytý.** Blok `attributes` ho vynechá a do statického
+  prohlížeče se nedostane ani oklikou přes `((Atribut))` — šablona se pro prohlížeč počítá
+  až nad daty, ze kterých jsou skryté atributy vyhozené.
+- **Editace se nemění.** Šablona řídí jen zobrazení; v editoru entity vidíš a měníš
+  všechno jako dřív.
+
+### 29b.6 Kde šablona platí
+
+| | Obrazovka | Statický prohlížeč | Dokumentový export |
+|---|---|---|---|
+| Tělo podle šablony | ✔ | ✔ | ✔ |
+| Odečtení z karet / sekcí | ✔ | ✔ | ✔ |
+| `<details>` | sbalitelné | sbalitelné | rozbalené |
+| Přepínač na výchozí vzhled | ✔ | — | — |
+
+Do statického prohlížeče se šablona **předpočítá** při generování. Prohlížeč je snímek,
+takže v něm není celý engine — jinak by se dvě kopie časem rozešly.
+
+Šablona je součást modelu, takže **cestuje balíčkem** `.dkmpkg` — jak u exportu entit
+(balíček veze typy, které entity používají), tak u přenosu samotného modelu
+(Nastavení → Model). Při importu se nová šablona založí s typem; u typu, který už v cíli
+existuje a jen se použije, se **jeho šablona nepřepisuje**.
+
+### 29b.7 Příklad
+
+````markdown
+> Jak se pracuje s číselníky, popisuje [[Práce s číselníky]].
+
+((Popis))
+
+```dkm:attributes
+only: Správce, Právní základ
+```
+
+## Položky číselníku
+
+```dkm:relations
+direction: in
+type: Položka číselníku
+sort: Kód
+item: - **((Kód))** — ((Název)) · ((Platnost))
+empty: _Číselník zatím nemá žádné položky._
+```
+
+```dkm:attributes
+only: Identifikátor v NKOD, Perioda aktualizace
+style: table
+collapse: Technické údaje
+```
+
+```dkm:aspects
+```
+````
+
+### 29b.8 Co jazyk vědomě neumí
+
+Žádné výrazy, žádná aritmetika, **žádné zanořování bloků**, jediná podmínka je `empty`
+a uvnitř vazeb se nelze dostat o další patro dál (k vazbám navázané entity). Je to tak
+schválně: plochá gramatika je důvod, proč nad ní jde postavit formulářový editor.
 
 ---
 
