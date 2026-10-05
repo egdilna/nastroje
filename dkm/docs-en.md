@@ -2597,7 +2597,7 @@ something we do not understand would mean silently throwing it away.
 |---|---|
 | `only` | only these attributes, comma separated — **and in that order** |
 | `except` | all but these |
-| `style` | `rows` (default), `list` or `table` |
+| `style` | `rows` (default), `list`, `numbered`, `table`, or `h2`…`h6` |
 | `hideempty` | `yes` leaves out attributes with no value |
 | `empty` | what to print when nothing is left |
 | `collapse` | collapses the block under the given heading |
@@ -2606,6 +2606,18 @@ something we do not understand would mean silently throwing it away.
 does not have to match the order in the type settings. Without `only` the model order
 applies as before. Two attributes of the same name (one from the type, one from an aspect)
 both stay, in their relative order.
+
+**Five shapes for the attribute listing:**
+
+- **`rows`** (default) — `**Name:** value`, a multiline value gets its own paragraph.
+- **`list`** — the same as bullets.
+- **`numbered`** — the same as a numbered list.
+- **`table`** — two columns, Attribute name and Value.
+- **`h2`…`h6`** — **the attribute name becomes a heading and the value its body**. That
+  turns an attribute into a full part of the document: write bullets, a table or further
+  headings into the text value and they render as Markdown. An empty value leaves just the
+  heading, so this often goes together with `hideempty`. There is no `h1` — H1 is the
+  entity name.
 
 **`hideempty: yes` drops the whole row**, not just the value: the paragraph in `rows`, the
 bullet in `list`, the table row in `table`. It judges the rendered value, so it also catches
@@ -2623,8 +2635,8 @@ per block: the same attribute can show up empty in one template and be left out 
 | `direction` | `out` (default), `in`, `both` |
 | `target` | only entities of this type |
 | `sort` | sort by an attribute of the linked entity; without it alphabetically by name |
-| `style` | `list` (default), `rows` or `table` |
-| `item` | the line of one item for `list` and `rows`, `((link))` by default |
+| `style` | `list` (default), `rows`, `numbered` or `table` |
+| `item` | the line of one item in `list`, `rows` and `numbered`, `((link))` by default |
 | `columns` | the columns for `table`, comma separated |
 | `limit` | at most this many items |
 | `empty`, `collapse` | as above |
@@ -2635,9 +2647,27 @@ per block: the same attribute can show up empty in one template and be left out 
   `item` yourself it is not doubled. Older templates written as `item: - …` therefore look
   exactly as they did.
 - **`rows`** — one item per line, no bullet.
+- **`numbered`** — a numbered list. The number is added for you; if you write a number or a
+  bullet into `item` yourself, you do not get a second one.
 - **`table`** — a table built from `columns`. A column is either the name of an attribute of
   the linked entity or a meta field (`link`, `name`, `type`…). The header is derived from the
   name; write your own as `Item = link`. The `item` template does not apply to a table.
+
+**A line break in `item` is written as `\n`.** The field is a single line, so there would be
+no other way to put one there. It is exactly what turns each linked entity into its own piece
+of the document:
+
+````
+```dkm:relations
+style: rows
+item: ### ((link))\n((Department)) · ((Phone))
+```
+````
+
+Only the **template** is translated, never the inserted value — text that really contains
+`\n` does not fall apart into two lines. `\t` gives a tab and `\\n` gives a literal `\n`.
+With a bullet or a number only the **first** line of the item gets it; the rest you format
+yourself. In a table `\n` makes no sense and `item` does not apply there anyway.
 
 **Inside `item` and `columns`, `((…))` means an attribute of the linked entity.** That is the
 only exception in the whole language. `((link))` is a link to that entity — written **by id**,
