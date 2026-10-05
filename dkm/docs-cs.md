@@ -2642,6 +2642,13 @@ Bez něj jdou na konec.
 Aspekt bez vlastní šablony přispěje svým výchozím blokem atributů — jinak by přidání
 aspektu k entitě nebylo v detailu vidět vůbec.
 
+**Když šablonu nemá typ, ale má ji připnutý aspekt, použije se i tak.** Aspekt je
+průřezový: kdo si napíše šablonu pro „Spisovou službu", nemá ji psát ještě pěti typům,
+na kterých ten aspekt visí. Chová se to, jako by typ měl šablonu složenou právě z bloku
+`dkm:aspects` — s jedním rozdílem: **karta atributů zůstane** a tělo aspektu přijde pod
+ni. Typ si o vzhled detailu neřekl, takže se mu nic nebere; zmizí jen to, co si tělo
+aspektu samo vzalo. Přepínač na výchozí vzhled je k dispozici jako vždy.
+
 **`heading` říká, jakým nadpisem se vypíše název aspektu.** Výchozí je `2`, tedy H2; dál
 `3`, `4`, `5`, `6` a `none` (bez nadpisu, atributy aspektu se vlijí do textu kolem).
 V editoru je to rozbalovátko *Nadpis s názvem aspektu*. Zápis snese i `h4` nebo `####`;

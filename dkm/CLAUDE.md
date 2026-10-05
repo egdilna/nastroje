@@ -836,6 +836,22 @@ vrací ručně.
 **objekt** vlastníka, ne jeho `id`. S `id` spadne všechno do kategorie „je jinde",
 protože se vlastník nenajde.
 
+### Šablona aspektu platí i bez šablony typu
+`sablonaProEntitu` vrátí `SABLONA_JEN_ASPEKTY` (`` ```dkm:aspects``` ``), když typ šablonu
+nemá, ale některý **připnutý** aspekt ano. Aspekt je průřezový — psát kvůli jedné jeho
+šabloně šablonu všem typům, na kterých visí, je absurdní (hlášeno od uživatele).
+
+- **Implicitní šablona sloupec doplňuje, nenahrazuje.** Běžná šablona typu levý sloupec
+  nahradí celý; tady by tím zmizely atributy typu, o kterých typ nic neřekl. Detail si
+  proto drží příznak `_sabJen` a v tom případě vykreslí **kartu atributů bez
+  spotřebovaných** a tělo pod ni.
+- **Prohlížeč to musí vědět taky** — `viewerData` posílá `__sabAtr` a `__sabJen`, šablona
+  prohlížeče dělá totéž. Bez toho by se soubor pro příjemce chovál jinak než aplikace.
+- **Export nic neřešil**: `sablonaDoExportu` odečítá odjakživa jen spotřebované atributy,
+  takže se zachoval správně sám.
+- Je to **jedno místo** (`sablonaProEntitu`), takže obrazovka, prohlížeč i export jedou
+  z téhož rozhodnutí. Nepiš druhou podmínku jinde.
+
 ### Prohlížeč dostane šablonu předpočítanou
 `viewerData` ji vyrenderuje **až po `bezSkrytychAtributu`** a nad výřezem: skrytý atribut se
 do souboru, který se posílá dál, nesmí dostat ani oklikou přes `((Atribut))`, a odkazy mají

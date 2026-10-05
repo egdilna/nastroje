@@ -2681,6 +2681,14 @@ it they go to the end.
 An aspect with no template of its own contributes its default block of attributes — otherwise
 adding an aspect to an entity would not show in the detail at all.
 
+**When the type has no template but an attached aspect does, it is still used.** An aspect
+is cross-cutting: writing a template for "Records management" should not mean writing one
+for the five types it hangs on as well. It behaves as if the type had a template made of
+just the `dkm:aspects` block — with one difference: **the attributes card stays** and the
+aspect body goes below it. The type never asked for a layout, so nothing is taken from it;
+only what the aspect body itself consumed disappears. The switch to the default layout is
+there as always.
+
 **`heading` says which heading carries the aspect name.** The default is `2`, i.e. H2; then
 `3`, `4`, `5`, `6` and `none` (no heading at all, so the aspect's attributes blend into the
 surrounding text). In the editor it is the *Heading with the aspect name* dropdown. The value
