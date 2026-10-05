@@ -2558,11 +2558,25 @@ by znamenalo to tiše zahodit.
 
 | Parametr | Co dělá |
 |---|---|
-| `only` | jen tyto atributy, oddělené čárkou |
+| `only` | jen tyto atributy, oddělené čárkou — **a v tomhle pořadí** |
 | `except` | všechny kromě těchto |
 | `style` | `rows` (výchozí), `list` nebo `table` |
+| `hideempty` | `yes` vynechá atributy bez hodnoty |
 | `empty` | co se vypíše, když nic nezbude |
 | `collapse` | sbalí blok pod zadaný nadpis |
+
+**`only` je zároveň pořadí.** Kdo si atributy vyjmenuje, říká tím i to, jak mají jít za
+sebou — nemusí se řídit pořadím z nastavení typu. Bez `only` platí pořadí modelu jako dřív.
+Dva atributy téhož názvu (jeden z typu, druhý z aspektu) zůstanou oba a ve svém vzájemném
+pořadí.
+
+**`hideempty: yes` vyhodí celý řádek**, ne jen hodnotu: u `rows` odstavec, u `list` odrážku,
+u `table` řádek tabulky. Posuzuje se vysázená hodnota, takže se pozná i složený atribut,
+ze kterého nic nevyšlo. „Ne" u ano/ne atributu je hodnota, ta zůstane. Když nezbude nic,
+uplatní se `empty`. V editoru je to rozbalovátko *Prázdné atributy*.
+
+Je to totéž co přepínač *Skrýt, když je prázdné* u atributu (kap. 7.5), jen rozhodnuté
+na úrovni bloku: tentýž atribut tak může být v jedné šabloně vidět i prázdný a v jiné ne.
 
 ```dkm:relations``` — vypíše navázané entity.
 

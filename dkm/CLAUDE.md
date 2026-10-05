@@ -759,6 +759,14 @@ dopředu**, kdo šablonu chce, poskládá si ji od nuly.
   šablony psané jako `item: - …` vypadají dál stejně. `table` má vlastní zápis (`columns:`)
   a `item:` se v ní neuplatní. Hodnotu sloupce počítá `sabPoleEntity` přes `slozenyText` —
   druhý způsob, jak se dostat k hodnotě, se nikam nepíše.
+- **`only` je filtr i pořadí.** Výčet v něm přebíjí pořadí modelu (stabilní řazení podle
+  `jen.indexOf`, takže dva atributy téhož jména z typu a z aspektu drží svoje pořadí).
+  Bez `only` se nepřerovnává nic — pravidlo „data se nikdy nepřerovnávají, řadí se až to,
+  co je vidět" platí i tady.
+- **`hideempty` vyhazuje celý řádek, ne hodnotu**, a posuzuje **vysázený** Markdown — jinak
+  by prázdný složený atribut prošel (hodnotu nemá, text se počítá až ze šablony). Vyhozený
+  atribut **zůstává spotřebovaný** (`sp.atributy`): blok si ho vzal, takže se nesmí objevit
+  ještě jednou v kartě vpravo. Ano/ne je hodnota i jako „Ne".
 - **Gramatika je plochá schválně.** Žádné výrazy, žádné zanořování bloků, jediná podmínka
   je `empty:`. Je to důvod, proč nad tím jde postavit formulářový editor — a pojistka
   proti tomu, aby z toho byla Jinja2.
