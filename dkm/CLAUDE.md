@@ -832,7 +832,14 @@ mířit jen dovnitř výřezu. Engine se tím nerozdvojí — prohlížeč jen s
   spotřebovala, se z modelu vyndají. Export grupuje vazby **podle názvu**, ne podle id,
   proto `spotrebovaneNazvyVazeb`; co se přeložit nedá, se radši nefiltruje.
 - Import balíčku zakládá typ i aspekt **kopií celého objektu** (`Object.assign`), ne výčtem
-  polí — jinak by šablona i `jsonKey` tiše zmizely. U `reuse` se cílová šablona **nepřepisuje**.
+  polí — jinak by šablona i `jsonKey` tiše zmizely.
+- **U `reuse` se šablona přenese jen na vyžádání** (`mapping.…[id].prevzitSablonu`). Samo
+  přepsat cizímu projektu vzhled detailu je horší než šablonu nepřenést — ale „nepřepisovat"
+  nesmí znamenat „nedá se to vůbec": do cíle, kde typ už existuje, se jinak šablona
+  nedostane nikdy (hlášeno od uživatele u přenosu modelu). Výchozí hodnotu dává
+  `prevzitSablonuVychozi` **v `autoMapModel`**, ne v UI, aby platila i v rychlém režimu:
+  ano, dokud cíl žádnou nemá. Zaškrtávátko staví `radekPrevzitSablonu` do podřádku
+  mapování atributů (typ i aspekt) a `log.sablony` se hlásí v náhledu i ve výsledku.
 - `renderMD` nově umí **tabulky** (GFM, oddělovací řádek povinný, `<th scope="col">`)
   a odkaz na `#…` neotvírá novou záložku.
 
