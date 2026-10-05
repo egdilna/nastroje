@@ -2592,11 +2592,27 @@ v celém jazyce. `((link))` je odkaz na tu entitu — sází se **podle id**, ta
 přejmenování nerozbije.
 
 ```dkm:tags``` (`set`, `empty`, `collapse`) · ```dkm:comments``` (`limit`, `empty`,
-`collapse`) · ```dkm:objects``` (`empty`, `collapse`) · ```dkm:aspects``` (`collapse`) —
-ten poslední určuje, **kam se vloží fragmenty připojených aspektů**. Bez něj jdou na konec.
+`collapse`) · ```dkm:objects``` (`empty`, `collapse`) · ```dkm:aspects``` (`heading`,
+`collapse`) — ten poslední určuje, **kam se vloží fragmenty připojených aspektů**.
+Bez něj jdou na konec.
 
 Aspekt bez vlastní šablony přispěje svým výchozím blokem atributů — jinak by přidání
 aspektu k entitě nebylo v detailu vidět vůbec.
+
+**`heading` říká, jakým nadpisem se vypíše název aspektu.** Výchozí je `2`, tedy H2; dál
+`3`, `4`, `5`, `6` a `none` (bez nadpisu, atributy aspektu se vlijí do textu kolem).
+V editoru je to rozbalovátko *Nadpis s názvem aspektu*. Zápis snese i `h4` nebo `####`;
+`1` ne — H1 je název entity.
+
+```
+```dkm:aspects
+heading: 4
+```
+```
+
+U aspektu, který **má vlastní šablonu**, se nadpis negeneruje — ten si ji píše sama.
+`heading` jí proto jen **posune celé členění** tak, aby její nejvyšší nadpis vyšel na
+zadanou úroveň; relativní struktura zůstane. Bez parametru se nesahá na nic.
 
 ### 29b.4 Sbalení: `<details>`
 

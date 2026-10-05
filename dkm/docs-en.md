@@ -2630,11 +2630,27 @@ only exception in the whole language. `((link))` is a link to that entity — wr
 so renaming cannot break it.
 
 ```dkm:tags``` (`set`, `empty`, `collapse`) · ```dkm:comments``` (`limit`, `empty`,
-`collapse`) · ```dkm:objects``` (`empty`, `collapse`) · ```dkm:aspects``` (`collapse`) — the
-last one says **where the fragments of the attached aspects go**. Without it they go to the end.
+`collapse`) · ```dkm:objects``` (`empty`, `collapse`) · ```dkm:aspects``` (`heading`,
+`collapse`) — the last one says **where the fragments of the attached aspects go**. Without
+it they go to the end.
 
 An aspect with no template of its own contributes its default block of attributes — otherwise
 adding an aspect to an entity would not show in the detail at all.
+
+**`heading` says which heading carries the aspect name.** The default is `2`, i.e. H2; then
+`3`, `4`, `5`, `6` and `none` (no heading at all, so the aspect's attributes blend into the
+surrounding text). In the editor it is the *Heading with the aspect name* dropdown. The value
+also accepts `h4` or `####`; `1` does not — H1 is the entity name.
+
+```
+```dkm:aspects
+heading: 4
+```
+```
+
+An aspect that **has a template of its own** gets no generated heading — it writes its own.
+There `heading` only **shifts the whole structure** so that its topmost heading lands on the
+level you picked; the relative structure stays. Without the parameter nothing is touched.
 
 ### 29b.4 Collapsing: `<details>`
 
