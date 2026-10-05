@@ -306,6 +306,7 @@ Hlavní funkce:
 - Odkazy na související TINy (kompozice)
 - Volný objekt `extensions` pro rozšíření
 - Import a export JSON, validace proti JSON Schema (draft 2020-12)
+- Dvojjazyčné rozhraní (čeština / angličtina), přepínač CS/EN v hlavičce
 
 Soubory ve složce: `tin-schema.json`, `tin-spec-cs.md`, `tin-spec.md`.
 
