@@ -2556,6 +2556,12 @@ the keywords have to be one set, not two. The name of an attribute, a relation t
 set is whatever you called it. The meta fields in `((…))` stay bilingual (`((name))` as well
 as `((název))`), as they always have in DKM.
 
+**Values are clickable.** `((Areas))` on a *tags* attribute renders the tags as links to
+their filter, `((Owner))` on a relation attribute as a link to that entity — exactly as they
+would appear in the attributes card. This holds both in the template text and inside blocks.
+A composed attribute (ch. 7.6) and the text generator (ch. 24.5) stay plain text instead:
+there the result is a value and a file, where a link back into the app would lead nowhere.
+
 ### 29b.2 The editor
 
 You **do not have to write the syntax**. In the settings a template is a list of **parts**:
@@ -2565,7 +2571,18 @@ each one expands, moves with ↑↓ and can be deleted.
 - **A block** — a form. You pick the relation type and the tag set from a dropdown, the
   direction with a radio, and insert attributes with a button.
 
-Below the list runs a **live preview** over a real entity of your choosing.
+Below the list runs a **live preview** over a real entity of your choosing. It redraws
+**as you type**, on every keystroke — you do not have to leave the field to see the result.
+
+**An empty text part is not stored in the template**, it only waits. When you pick *Add
+part* → *Text (Markdown)*, the field appears at once, but it enters the template only once
+you write something into it; the × discards it. An empty text has no written form in a
+template, so the first redraw would simply lose it.
+
+**A field that resolves nowhere gets flagged.** Under a text part each `((Attribute))` may
+carry one of two hints: *"Not found"* (no such attribute in the model — a typo), or *"Only
+filled in on entities that have the field"* (it exists, but in another type or aspect). It is
+guidance, not an error: the template renders either way.
 
 What gets stored is the **text**. The **Show as text** button reveals all of it — handy for
 copying into another project. A block the editor does not understand is **carried verbatim**

@@ -741,6 +741,11 @@ dopředu**, kdo šablonu chce, poskládá si ji od nuly.
 - **Pole `((…))` řeší `slozenyText`, ne druhý parser.** Platí to i uvnitř `item:` v bloku
   vazeb — tam se jen vymění entita, pravidla zůstávají. Metapole přibylo jedno:
   `((odkaz))` / `((link))` je odkaz na entitu **podle id**, ne přes `[[Název]]`.
+- **Hodnota v šabloně je klikací, ve složeném atributu ne.** `hodnotaDoSablony(attr,v,odkazy)`
+  a `def.odkazy`: s příznakem jdou tagy jako `[tag](#tag/soustava/tag)` (`tagyDoMarkdownu`)
+  a vazby jako `[ikona Název](#entity/id)`. Příznak nesou **jen** syntetické `def`y enginu
+  (`__sab`, `__sl`, `__blok`); složený atribut a generátor textu ho nemají schválně —
+  tam vzniká hodnota, respektive soubor, ve kterém by odkaz do aplikace nikam nevedl.
 - **Syntaxe bloků a parametrů je anglicky**, názvy věcí z modelu zůstávají, jak je napsal
   uživatel. Šablona leží v datech a cestuje balíčkem do projektu, který může běžet
   v druhém jazyce — klíčová slova proto musí být jedna, ne dvoje. Metapole jsou
@@ -777,6 +782,25 @@ V dokumentových výstupech se `<details>` **rozbaluje** (`rozbalDetails`) — p
 seznam proložený prázdnými textovými částmi. **Blok, kterému parser nerozumí, se nese
 doslova** (`c.zdroj`) a v editoru je jen ke čtení — přepsat něco, čemu nerozumíme, by
 znamenalo to tiše zahodit.
+
+**Prázdná textová část nemá zápis, takže musí žít mimo text.** `slozSablonu` ji zahodí
+a editor se při každém překreslení staví znovu z uloženého textu — „Přidat část → Text"
+proto zdánlivě nic neudělalo. Drží ji `_sabNovaCast = {vlastnik, text}` ve stavu stránky
+(klíčované vlastníkem, s vlastním × na zrušení) a do `casti` se promítne jako `rozepsana`.
+Do šablony vstoupí první napsaný znak. **Nedělej z toho prázdnou textovou část v textu** —
+tu by `rozdelSablonu` při dalším čtení stejně nenašel.
+
+**Psaní nesmí volat `render()`.** Textarea má `input` (zapiš do modelu, `zapis()`,
+`prekresliKontrolu()`, `nahledPrekresli()`) a `change` (promoť rozepsanou část a teprve
+tam `uloz()`, tedy i `render()`). Dokud na textarei visel jen `change`, náhled se
+překresloval **až po odskočení z pole** a vypadalo to, že `((Atribut))` nefunguje.
+Celé překreslení tu nejde: sebralo by ohnisko uprostřed slova. Pole bloků naopak `uloz(id)`
+chtějí (mění se jim nabídky), proto si předávají svoje `id` a ohnisko se po `render()`
+vrací ručně.
+
+**Hlášky o polích počítá `rozborSablony(text, vlastnik, null)`** — druhý parametr je
+**objekt** vlastníka, ne jeho `id`. S `id` spadne všechno do kategorie „je jinde",
+protože se vlastník nenajde.
 
 ### Prohlížeč dostane šablonu předpočítanou
 `viewerData` ji vyrenderuje **až po `bezSkrytychAtributu`** a nad výřezem: skrytý atribut se
