@@ -2371,7 +2371,7 @@ return e&&e.attributes?e.attributes[def.id]:undefined;
 
 /* Uzavřený katalog. Co tu není, je obyčejný Markdown. */
 const SABLONA_BLOKY={
-attributes:['only','except','style','hideempty','empty','collapse'],
+attributes:['only','except','style','item','hideempty','empty','collapse'],
 relations:['type','direction','target','sort','style','item','columns','empty','limit','collapse'],
 tags:['set','empty','collapse'],
 comments:['limit','empty','collapse'],
@@ -2462,8 +2462,32 @@ return scalarValueStr(def,v);
 
 /* Buňka tabulky neunese svislítko ani zalomení řádku. */
 function sabBunka(s){return String(s==null?'':s).replace(/\|/g,'\\|').replace(/\n+/g,' ').trim()}
-/* Odrážka se nepřidává tomu, kdo si ji v šabloně položky napsal sám. */
-function sabOdrazka(radek){return /^\s*([-*+]|\d+\.)\s/.test(radek)?radek:'- '+radek}
+/* Odrážka se nepřidává tomu, kdo si ji v šabloně položky napsal sám. U víceřádkové
+   položky se odráží jen první řádek — zbytek si člověk formátuje sám. */
+function sabOdrazka(radek){
+const i=String(radek).indexOf('\n');
+if(i<0)return /^\s*([-*+]|\d+\.)\s/.test(radek)?radek:'- '+radek;
+return sabOdrazka(String(radek).slice(0,i))+String(radek).slice(i);
+}
+/* Šablona řádku je jednořádkové pole, takže nový řádek se do ní musí dát napsat:
+   `\n`. Překládá se **jen v šabloně**, nikdy v dosazené hodnotě — text, který
+   `\n` opravdu obsahuje, se nemá rozpadnout na dva řádky. */
+function sabEscape(s){
+return String(s==null?'':s).replace(/\\([nt\\])/g,(m,c)=>c==='n'?'\n':(c==='t'?'\t':'\\'));
+}
+/* Víceřádkové položky se spojují prázdným řádkem, aby z každé byl vlastní blok
+   (nadpis, odrážky, odstavec). Jednořádkové se spojují po řádcích jako dřív. */
+function sabSpoj(radky){return radky.join(radky.some(x=>/\n/.test(x))?'\n\n':'\n')}
+/* Šablona jednoho řádku atributu. `((label))` a `((value))` jsou název a hodnota
+   toho řádku, všechno ostatní je pole entity jako jinde. Chrání se značkami,
+   protože `slozenyText` by je jinak nenašel a zahodil. */
+const SAB_LBL='\u0001SABLBL\u0001',SAB_VAL='\u0001SABVAL\u0001';
+function sabRadek(sab,e,nazev,hodnota){
+let x=String(sab).replace(/\(\(\s*(label|popisek)\s*\)\)/gi,SAB_LBL)
+.replace(/\(\(\s*(value|hodnota)\s*\)\)/gi,SAB_VAL);
+x=slozenyText(e,{id:'__radek',type:'composed',template:x,odkazy:true},null,true);
+return x.split(SAB_LBL).join(nazev).split(SAB_VAL).join(hodnota);
+}
 /* Sloupec tabulky: `Popisek = pole` nebo jen `pole`. Záhlaví se u metapole doplní
    jeho českým či anglickým názvem, u atributu se bere, jak je napsaný. */
 function sabSloupec(zapis){
@@ -2514,11 +2538,18 @@ return{n:String(def.name||t('attributeName')),v:hodnotaDoMarkdownu(e,def,v)};
    vysázená hodnota, takže se pozná i složený atribut, ze kterého nic nevyšlo. */
 if(bezPrazdnych===1)radky=radky.filter(x=>String(x.v).trim()!=='');
 if(!radky.length)return p.empty||'';
-if(klicSyntaxe(p.style)==='table'){
+const styl=klicSyntaxe(p.style);
+if(styl==='table'){
 return ['| '+t('attributeName')+' | '+t('sabHodnota')+' |','| --- | --- |']
 .concat(radky.map(x=>'| '+sabBunka(x.n)+' | '+sabBunka(x.v)+' |')).join('\n');
 }
-if(klicSyntaxe(p.style)==='list')return radky.map(x=>'- **'+x.n+':** '+sabBunka(x.v)).join('\n');
+/* Vlastní šablona řádku. V tabulce se neuplatní — ta má svůj zápis. */
+if(p.item){
+const sab=sabEscape(p.item);
+const out=radky.map(x=>sabRadek(sab,e,x.n,x.v));
+return sabSpoj(styl==='list'?out.map(sabOdrazka):out);
+}
+if(styl==='list')return radky.map(x=>'- **'+x.n+':** '+sabBunka(x.v)).join('\n');
 /* Víceřádková hodnota dostane vlastní odstavec, jinak by se rozsypala. */
 return radky.map(x=>/\n/.test(x.v)?('**'+x.n+':**\n\n'+x.v):('**'+x.n+':** '+(x.v||''))).join('\n\n');
 }
@@ -2574,9 +2605,9 @@ return [
 }
 /* `rows` a `list` se liší jen tím, jestli řádek dostane odrážku. Kdo si ji
    v šabloně položky napíše sám, druhou nedostane. */
-const sab=p.item||'((link))';
+const sab=p.item?sabEscape(p.item):'((link))';
 const radky=serazene.map(x=>slozenyText(x.ent,{id:'__blok',type:'composed',template:sab,odkazy:true},null,true));
-return (styl==='rows'?radky:radky.map(sabOdrazka)).join('\n');
+return sabSpoj(styl==='rows'?radky:radky.map(sabOdrazka));
 }
 /* Hodnota atributu navázané entity podle názvu — jen pro řazení. */
 function hodnotaPodleJmena(ent,kl){
