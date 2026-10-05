@@ -300,15 +300,15 @@ Webový editor pro TIN (Target Instruction Notation) verze 1.0 — formát, kter
 
 Hlavní funkce:
 - Editace metadat (ID, název, jazyk, verze, účel)
-- Sekce pro pokyny, pravidla, zákazy a oblasti mimo záběr
-- Materiály a jejich kontext
+- Kontext (rozsah a co je mimo rozsah)
+- Sekce a podoblasti s instrukcemi typu DĚLEJ / NEDĚLEJ / POZNÁMKA
+- Odkazované soubory a jejich kontext
 - Definice požadovaného výstupu
-- Odkazy na související TINy (kompozice)
-- Volný objekt `extensions` pro rozšíření
-- Import a export JSON, validace proti JSON Schema (draft 2020-12)
+- Import a export JSON (soubor i schránka, volitelně minifikovaný); formát popisuje JSON Schema (draft 2020-12)
+- Generování systémového promptu v Markdownu
 - Dvojjazyčné rozhraní (čeština / angličtina), přepínač CS/EN v hlavičce
 
-Soubory ve složce: `tin-schema.json`, `tin-spec-cs.md`, `tin-spec.md`.
+Soubory ve složce: `tin-schema.json`, `tin-spec-cs.md`, `tin-spec.md`, uživatelská příručka `docs-cs.md` a `docs-en.md`.
 
 ---
 

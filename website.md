@@ -366,6 +366,9 @@ TIN (Target instruction notation) je standard pro vytváření pokročilých ins
 
 #### Dokumentace
 
+* [Uživatelská příručka editoru v češtině](https://nastroje.egdilna.cz/tineditor/docs-cs.md)
+* [User guide in english](https://nastroje.egdilna.cz/tineditor/docs-en.md)
+
 Existuje [TIN specs description](https://nastroje.egdilna.cz/tineditor/tin-spec.md) a její [neoficiální český překlad](https://nastroje.egdilna.cz/tineditor/tin-spec-cs.md)
 
 ## ✏️MarkDown
