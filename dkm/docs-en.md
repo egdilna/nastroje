@@ -2580,7 +2580,7 @@ something we do not understand would mean silently throwing it away.
 |---|---|
 | `only` | only these attributes, comma separated |
 | `except` | all but these |
-| `style` | `rows` (default) or `table` |
+| `style` | `rows` (default), `list` or `table` |
 | `empty` | what to print when nothing is left |
 | `collapse` | collapses the block under the given heading |
 
@@ -2592,13 +2592,25 @@ something we do not understand would mean silently throwing it away.
 | `direction` | `out` (default), `in`, `both` |
 | `target` | only entities of this type |
 | `sort` | sort by an attribute of the linked entity; without it alphabetically by name |
-| `item` | the line of one item, `- ((link))` by default |
+| `style` | `list` (default), `rows` or `table` |
+| `item` | the line of one item for `list` and `rows`, `((link))` by default |
+| `columns` | the columns for `table`, comma separated |
 | `limit` | at most this many items |
 | `empty`, `collapse` | as above |
 
-**Inside `item`, `((…))` means an attribute of the linked entity.** That is the only
-exception in the whole language. `((link))` is a link to that entity — written **by id**, so
-renaming cannot break it.
+**Three shapes of output:**
+
+- **`list`** (default) — bullets. The bullet is added for you, and if you write one into
+  `item` yourself it is not doubled. Older templates written as `item: - …` therefore look
+  exactly as they did.
+- **`rows`** — one item per line, no bullet.
+- **`table`** — a table built from `columns`. A column is either the name of an attribute of
+  the linked entity or a meta field (`link`, `name`, `type`…). The header is derived from the
+  name; write your own as `Item = link`. The `item` template does not apply to a table.
+
+**Inside `item` and `columns`, `((…))` means an attribute of the linked entity.** That is the
+only exception in the whole language. `((link))` is a link to that entity — written **by id**,
+so renaming cannot break it.
 
 ```dkm:tags``` (`set`, `empty`, `collapse`) · ```dkm:comments``` (`limit`, `empty`,
 `collapse`) · ```dkm:objects``` (`empty`, `collapse`) · ```dkm:aspects``` (`collapse`) — the
@@ -2677,7 +2689,8 @@ only: Owner, Legal basis
 direction: in
 type: Code list item
 sort: Code
-item: - **((Code))** — ((Name)) · ((Validity))
+style: table
+columns: Item = link, Code, Validity
 empty: _This code list has no items yet._
 ```
 

@@ -2543,7 +2543,7 @@ by znamenalo to tiše zahodit.
 |---|---|
 | `only` | jen tyto atributy, oddělené čárkou |
 | `except` | všechny kromě těchto |
-| `style` | `rows` (výchozí) nebo `table` |
+| `style` | `rows` (výchozí), `list` nebo `table` |
 | `empty` | co se vypíše, když nic nezbude |
 | `collapse` | sbalí blok pod zadaný nadpis |
 
@@ -2555,13 +2555,24 @@ by znamenalo to tiše zahodit.
 | `direction` | `out` (výchozí), `in`, `both` |
 | `target` | jen entity tohoto typu |
 | `sort` | řadit podle atributu navázané entity; bez něj abecedně podle názvu |
-| `item` | řádek jedné položky, výchozí `- ((link))` |
+| `style` | `list` (výchozí), `rows` nebo `table` |
+| `item` | řádek jedné položky u `list` a `rows`, výchozí `((link))` |
+| `columns` | sloupce u `table`, oddělené čárkou |
 | `limit` | nejvýš tolik položek |
 | `empty`, `collapse` | jako výše |
 
-**Uvnitř `item` znamená `((…))` atribut navázané entity.** Je to jediná výjimka v celém
-jazyce. `((link))` je odkaz na tu entitu — sází se **podle id**, takže ho přejmenování
-nerozbije.
+**Tři podoby výstupu:**
+
+- **`list`** (výchozí) — odrážky. Odrážka se doplní sama, a když si ji do `item` napíšeš
+  sám, nezdvojí se. Starší šablony psané s `item: - …` proto vypadají dál stejně.
+- **`rows`** — každá položka na vlastní řádek, bez odrážky.
+- **`table`** — tabulka podle `columns`. Sloupec je buď název atributu navázané entity,
+  nebo metapole (`link`, `name`, `type`…). Záhlaví se odvodí z názvu; vlastní popisek
+  napíšeš jako `Položka = link`. Šablona `item` se u tabulky neuplatní.
+
+**Uvnitř `item` i `columns` znamená `((…))` atribut navázané entity.** Je to jediná výjimka
+v celém jazyce. `((link))` je odkaz na tu entitu — sází se **podle id**, takže ho
+přejmenování nerozbije.
 
 ```dkm:tags``` (`set`, `empty`, `collapse`) · ```dkm:comments``` (`limit`, `empty`,
 `collapse`) · ```dkm:objects``` (`empty`, `collapse`) · ```dkm:aspects``` (`collapse`) —
@@ -2636,7 +2647,8 @@ only: Správce, Právní základ
 direction: in
 type: Položka číselníku
 sort: Kód
-item: - **((Kód))** — ((Název)) · ((Platnost))
+style: table
+columns: Položka = link, Kód, Platnost
 empty: _Číselník zatím nemá žádné položky._
 ```
 

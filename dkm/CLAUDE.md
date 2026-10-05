@@ -749,6 +749,11 @@ dopředu**, kdo šablonu chce, poskládá si ji od nuly.
   a směr**, ne celá karta — klíče jsou ty samé, podle kterých karta Vazby odjakživa
   seskupuje (`a:`/`r:`/`w:`). Vypsání jednoho typu vazby v těle tedy ostatní neschová.
   Co šablona nevzala, zůstane vpravo; nedá se tím nic ztratit.
+- **Výstup vazeb má tři podoby** (`style: list | rows | table`). `list` a `rows` se liší
+  jen odrážkou — `sabOdrazka` ji nepřidá tomu, kdo si ji v `item:` napsal sám, takže starší
+  šablony psané jako `item: - …` vypadají dál stejně. `table` má vlastní zápis (`columns:`)
+  a `item:` se v ní neuplatní. Hodnotu sloupce počítá `sabPoleEntity` přes `slozenyText` —
+  druhý způsob, jak se dostat k hodnotě, se nikam nepíše.
 - **Gramatika je plochá schválně.** Žádné výrazy, žádné zanořování bloků, jediná podmínka
   je `empty:`. Je to důvod, proč nad tím jde postavit formulářový editor — a pojistka
   proti tomu, aby z toho byla Jinja2.
@@ -1252,7 +1257,7 @@ Hranice slova se testuje přes `\p{L}` — `\b` by na diakritice selhalo. Nahraz
 Při změně názvu entity nebo formátu textových hodnot na to pamatuj.
 
 ## Lokalizace
-`I18N = {cs:{…}, en:{…}}` s **1299 klíči**, přístup přes `t(k, v)`, jazyk v `dkm-lang`.
+`I18N = {cs:{…}, en:{…}}` s **1301 klíči**, přístup přes `t(k, v)`, jazyk v `dkm-lang`.
 Každý nový text = klíč v obou jazycích. Do UI nikdy nepiš řetězec natvrdo.
 Řetězce jsou **prostý text, ne HTML** — vkládej je přes `textContent`. `importTSVDesc` byl
 psaný se značkami a nasazovaný přes `innerHTML=esc(...)`, takže se `<br>` a `<b>` uživateli
