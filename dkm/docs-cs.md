@@ -2674,8 +2674,19 @@ takže v něm není celý engine — jinak by se dvě kopie časem rozešly.
 
 Šablona je součást modelu, takže **cestuje balíčkem** `.dkmpkg` — jak u exportu entit
 (balíček veze typy, které entity používají), tak u přenosu samotného modelu
-(Nastavení → Model). Při importu se nová šablona založí s typem; u typu, který už v cíli
-existuje a jen se použije, se **jeho šablona nepřepisuje**.
+(Nastavení → Model).
+
+Při importu záleží na tom, co se s typem děje:
+
+- **Typ se zakládá** → šablona se založí s ním, nic se nenastavuje.
+- **Typ už v cíli je a jen se použije** → v průvodci u něj přibude zaškrtávátko
+  *Převzít i šablonu detailu*. Když cíl žádnou šablonu nemá, je **zaškrtnuté** (není
+  co ztratit); když vlastní má, je prázdné a u popisku svítí, že by se přepsala.
+  Totéž platí pro aspekty.
+- **Rychlý režim** se neptá, takže se řídí týmž pravidlem: šablonu doplní tam, kde
+  žádná není, a cizí nikdy nepřepíše.
+
+Kolik šablon se převzalo, je vidět v náhledu importu i ve výsledku.
 
 ### 29b.7 Příklad
 

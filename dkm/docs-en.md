@@ -2715,9 +2715,19 @@ snapshot, so it does not carry the whole engine — two copies would drift apart
 
 A template is part of the model, so it **travels in a `.dkmpkg` package** — both when
 exporting entities (the package carries the types those entities use) and when transferring
-the model alone (Settings → Model). On import a new template is created along with its type;
-for a type that already exists in the target and is merely reused, **its template is not
-overwritten**.
+the model alone (Settings → Model).
+
+On import it depends on what happens to the type:
+
+- **The type is being created** → the template comes with it, nothing to set.
+- **The type already exists in the target and is merely reused** → the wizard adds a
+  *Take the detail template too* checkbox next to it. When the target has no template,
+  it is **ticked** (nothing to lose); when it has one of its own, it is clear and the
+  label says the template would be overwritten. The same goes for aspects.
+- **Quick mode** asks nothing, so it follows the same rule: it fills in a template where
+  there is none and never overwrites someone else's.
+
+How many templates were taken over shows in the import preview and in the result.
 
 ### 29b.7 Example
 
