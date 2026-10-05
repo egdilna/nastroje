@@ -39,6 +39,7 @@ User guide
 27. [Static viewer](#27-static-viewer)
 28. [Moving parts between projects (packages)](#28-moving-parts-between-projects-packages)
 29. [Settings](#29-settings)
+29b. [Entity detail template](#29b-entity-detail-template)
 30. [Keyboard shortcuts](#30-keyboard-shortcuts)
 31. [Accessibility](#31-accessibility)
 32. [Tips and tricks](#32-tips-and-tricks)
@@ -2519,6 +2520,182 @@ Counts overview: entities, types, attributes, aspects, relations, comments.
 ### 29.15 Help
 
 Links to online documentation and repository.
+
+---
+
+---
+
+## 29b. Entity detail template
+
+The default entity detail is **universal**: attributes grouped on the left, relations, tags
+and comments in cards on the right. That is fine for working with data, but for a particular
+type it sometimes does not look like the thing it describes — a code list wants its items
+listed in the body, not tucked away in a card beside it.
+
+**A template lets you lay the detail out yourself.** It belongs to the **entity type** and to
+the **aspect** (Settings → Entity types / Aspects, section *Detail template*). While it is
+empty, the default layout is used — nothing is generated up front and nothing changes by itself.
+
+### 29b.1 How it works
+
+A template is **Markdown**. On top of that it can do two things:
+
+| Notation | What it does |
+|---|---|
+| `((Attribute))` | inserts a value — **the same notation** as a composed attribute and the text generator (ch. 7.6) |
+| a fenced block ```` ```dkm:… ```` | inserts attributes, relations, tags, comments or objects |
+
+Everything DKM's Markdown can do works inside: `**bold**`, lists, tables, CriticMarkup and
+above all **wiki links**. `[[Working with code lists]]` written straight into the template
+becomes a link to that entity — and shows up on every entity of the type. It is a cheap way
+to attach guidance to a type.
+
+**The block syntax is English, the names of things in your model stay yours.** The template
+lives in the data and travels in a package to a project that may run in another language, so
+the keywords have to be one set, not two. The name of an attribute, a relation type or a tag
+set is whatever you called it. The meta fields in `((…))` stay bilingual (`((name))` as well
+as `((název))`), as they always have in DKM.
+
+### 29b.2 The editor
+
+You **do not have to write the syntax**. In the settings a template is a list of **parts**:
+each one expands, moves with ↑↓ and can be deleted.
+
+- **Text (Markdown)** — a plain textarea with the shortcuts and the wiki-link palette.
+- **A block** — a form. You pick the relation type and the tag set from a dropdown, the
+  direction with a radio, and insert attributes with a button.
+
+Below the list runs a **live preview** over a real entity of your choosing.
+
+What gets stored is the **text**. The **Show as text** button reveals all of it — handy for
+copying into another project. A block the editor does not understand is **carried verbatim**
+and shown as an *"Unknown block"* row; the editor leaves it alone, because rewriting
+something we do not understand would mean silently throwing it away.
+
+### 29b.3 The blocks
+
+```dkm:attributes``` — lists attributes.
+
+| Parameter | What it does |
+|---|---|
+| `only` | only these attributes, comma separated |
+| `except` | all but these |
+| `style` | `rows` (default) or `table` |
+| `empty` | what to print when nothing is left |
+| `collapse` | collapses the block under the given heading |
+
+```dkm:relations``` — lists linked entities.
+
+| Parameter | What it does |
+|---|---|
+| `type` | name of a relation type or of a relation attribute; without it, all of them |
+| `direction` | `out` (default), `in`, `both` |
+| `target` | only entities of this type |
+| `sort` | sort by an attribute of the linked entity; without it alphabetically by name |
+| `item` | the line of one item, `- ((link))` by default |
+| `limit` | at most this many items |
+| `empty`, `collapse` | as above |
+
+**Inside `item`, `((…))` means an attribute of the linked entity.** That is the only
+exception in the whole language. `((link))` is a link to that entity — written **by id**, so
+renaming cannot break it.
+
+```dkm:tags``` (`set`, `empty`, `collapse`) · ```dkm:comments``` (`limit`, `empty`,
+`collapse`) · ```dkm:objects``` (`empty`, `collapse`) · ```dkm:aspects``` (`collapse`) — the
+last one says **where the fragments of the attached aspects go**. Without it they go to the end.
+
+An aspect with no template of its own contributes its default block of attributes — otherwise
+adding an aspect to an entity would not show in the detail at all.
+
+### 29b.4 Collapsing: `<details>`
+
+The `collapse` parameter collapses a block. To collapse ordinary prose you can write
+`<details>` and `<summary>` by hand in a text part — they are the **only two HTML tags DKM
+lets through**. All other HTML is still escaped, because the static viewer is a file you send
+to other people and foreign tags do not belong in it.
+
+**In a document export the collapsed parts are expanded** — paper clicks nothing. The summary
+becomes a bold paragraph and the content follows.
+
+For heading navigation put the heading **above** `<details>`, not inside `<summary>`: a
+`summary` is a button by nature, and a heading hidden in a collapsed block disappears from
+the outline.
+
+### 29b.5 What cannot happen
+
+- **Headings cannot be broken.** A template starts at level H2, and headings are shifted on
+  render so the topmost one is H2 — the page's H1 is the entity name. The template's own
+  structure is kept; it moves as a whole.
+- **Nothing can be lost.** What the template renders in the body is not repeated beside it —
+  and **the other way round**: whatever you do not use in the template stays in the cards on
+  the right. The granularity is the relation type and the direction, not a whole card, so
+  rendering one relation type in the body does not hide the others. The same goes for
+  attributes, tag sets, comments and objects.
+- **The default layout is one click away.** An entity with a template gains a **🧩 Default
+  layout** button in the action bar. It lasts until you close the page and applies to your
+  browser only.
+- **An error does not break the detail.** An unknown block or parameter is rendered as a
+  visible warning in its place and the rest of the document is drawn.
+- **A hidden attribute stays hidden.** The `attributes` block leaves it out, and it does not
+  reach the static viewer even through `((Attribute))` — for the viewer the template is
+  rendered over data the hidden attributes have already been stripped from.
+- **Editing does not change.** A template drives display only; in the entity editor you see
+  and change everything as before.
+
+### 29b.6 Where a template applies
+
+| | Screen | Static viewer | Document export |
+|---|---|---|---|
+| Body from the template | ✔ | ✔ | ✔ |
+| Subtracted from cards / sections | ✔ | ✔ | ✔ |
+| `<details>` | collapsible | collapsible | expanded |
+| Switch to the default layout | ✔ | — | — |
+
+For the static viewer the template is **pre-rendered** at generation time. The viewer is a
+snapshot, so it does not carry the whole engine — two copies would drift apart.
+
+A template is part of the model, so it **travels in a `.dkmpkg` package** — both when
+exporting entities (the package carries the types those entities use) and when transferring
+the model alone (Settings → Model). On import a new template is created along with its type;
+for a type that already exists in the target and is merely reused, **its template is not
+overwritten**.
+
+### 29b.7 Example
+
+````markdown
+> Working with code lists is described in [[Working with code lists]].
+
+((Description))
+
+```dkm:attributes
+only: Owner, Legal basis
+```
+
+## Code list items
+
+```dkm:relations
+direction: in
+type: Code list item
+sort: Code
+item: - **((Code))** — ((Name)) · ((Validity))
+empty: _This code list has no items yet._
+```
+
+```dkm:attributes
+only: NKOD identifier, Update period
+style: table
+collapse: Technical details
+```
+
+```dkm:aspects
+```
+````
+
+### 29b.8 What the language deliberately cannot do
+
+No expressions, no arithmetic, **no nesting of blocks**, the only condition is `empty`, and
+inside relations you cannot go one level further (to the relations of the linked entity).
+That is on purpose: a flat grammar is the reason a form editor can be built on top of it.
 
 ---
 
