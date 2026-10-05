@@ -1315,6 +1315,11 @@ psaný se značkami a nasazovaný přes `innerHTML=esc(...)`, takže se `<br>` a
 ukazovaly jako text; strukturu dělej DOM prvky, ne značkami v překladu.
 
 ## Konvence
+- **`<dialog id="dlg">` nenese `aria-labelledby`** a nemá ho dostat zpátky (uživatel si ho
+  nechal sundat — dělalo problémy). Jméno dialogu se tím ztratilo, ale **nadpis zůstává
+  uvnitř** (`.dlg-h > h3#dlg-t`), takže se obsah přečte i tak; `dlg-t` se dál plní
+  v `showDialog` a jeho `id` drží kód, ne přístupnost. Kdo přidá na ten element aria
+  atribut, ať se zeptá.
 - **Dialog se staví do odpojeného `<div>`.** Dokud ho `showDialog()` nevloží do stránky, `document
   .querySelector`/`getElementById` na jeho prvky **vrací null**. Drž si na ně odkazy — `bulkExportPackage`
   na tomhle dlouho tiše padal a export balíčku vůbec neotevřel dialog. Platí i pro první výpočet náhledu.
