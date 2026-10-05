@@ -766,6 +766,18 @@ dopředu**, kdo šablonu chce, poskládá si ji od nuly.
   jako viditelné upozornění (citace s ⚠) a zbytek dokumentu se dokreslí.
 - **Nadpisy se normalizují** (`normalizujNadpisy`): nejvyšší nadpis šablony je H2, protože
   H1 je název entity a po detailu se chodí po nadpisech. Posouvá se celé členění najednou.
+  Normalizace nikdy neposouvá **nahoru** (`min>=2` vrací text, jak je), takže `heading: 4`
+  u aspektů zůstane H4 — jinak by si parametr sama přebila.
+- **Úroveň nadpisu aspektu je parametr, ne konstanta.** `heading:` v bloku `aspects`
+  (`urovenNadpisu`: `2`…`6`, `h4`, `####`, `none`; H1 ne, to je název entity). Aspekt
+  **s vlastní šablonou** nadpis negeneruje, takže se mu členění jen posune
+  (`posunNadpisy(telo,uroven)`) — a **jen když je parametr zadaný**, aby se starým
+  šablonám nic nezměnilo. Chybná hodnota jde přes `sabNeznamaHodnota` jako viditelná
+  hláška, stejně jako neznámý parametr.
+- **Nadpisy jdou do H6 ve všech čtyřech výstupech.** `renderMD`, `mdRender` v prohlížeči
+  a `renderMarkdownBlocksToDocx` (+ styly `Heading5`/`Heading6`) končily u H4 a
+  `renderMdBlock` u H3 — `##### Text` se sázel doslova. Nabídka úrovní musí sahat jen tam,
+  kam dosáhne **i ten nejslabší** z renderů; kdo přidá pátý výstup, ať to ověří.
 
 ### `<details>` jsou dva tokeny, ne povolené HTML
 `renderMD` escapuje všechno a pouští ven jen **tokeny**, které si sám vyrobil (wiki odkazy,
