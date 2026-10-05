@@ -2,7 +2,7 @@
 
 ## Co to je
 Editor formátu **TIN** — JSON zápisu toho, co má (a nemá) AI model dělat pro danou roli či úlohu.
-Jediný soubor `index.html` (~730 řádků, ~41 kB) postavený na Alpine.js. Z rozepsaného TIN
+Jediný soubor `index.html` (~735 řádků, ~42 kB) postavený na Alpine.js. Z rozepsaného TIN
 umí vygenerovat systémový prompt v Markdownu.
 
 **Zdroj pravdy pro formát je `tin-schema.json` (JSON Schema draft 2020-12), popis v `tin-spec.md`
@@ -29,6 +29,7 @@ Drž se toho stylu: nové UI piš Tailwind třídami a Alpine direktivami, nezak
 - Generovaný prompt má nadpisy v **jazyce obsahu** (`metadata.lang`: `cs*` → česky, `en*` → anglicky,
   jinak podle rozhraní) přes `pt('klic')`; klíče promptu mají předponu `p`. Nový prázdný TIN dostane
   `metadata.lang` podle jazyka rozhraní.
+- Ikona otazníku v hlavičce otevírá uživatelskou příručku `docs-<uiLang>.md`.
 - Technické hodnoty (enum `do`/`dont`/`note`, klíče JSON, ukázkové placeholdery jako
   `cz.example.role-name`, `text/markdown`) se nepřekládají.
 
@@ -37,9 +38,9 @@ Drž se toho stylu: nové UI piš Tailwind třídami a Alpine direktivami, nezak
 |---|---|
 | ř. 7–9 | tři CDN skripty |
 | ř. 10–15 | drobný `<style>` (jen doplňky) |
-| ř. 17–252 | markup s `x-data="tinEditor()"`; sekce Metadata, Context, Instruction Sections, Referenced Files, Expected Output, Generated System Prompt |
-| ř. 253–447 | slovník `TIN_TEXTY` (en/cs) a `tinVychoziJazyk()` |
-| ř. 448–konec | `function tinEditor()` — jediná Alpine komponenta, vrací celý stav i všechny metody (včetně `t`, `pt`, `setUiLang`) |
+| ř. 17–255 | markup s `x-data="tinEditor()"`; sekce Metadata, Context, Instruction Sections, Referenced Files, Expected Output, Generated System Prompt |
+| ř. 256–452 | slovník `TIN_TEXTY` (en/cs) a `tinVychoziJazyk()` |
+| ř. 453–konec | `function tinEditor()` — jediná Alpine komponenta, vrací celý stav i všechny metody (včetně `t`, `pt`, `setUiLang`) |
 
 ## Datový model (`this.tin`)
 ```js
@@ -76,6 +77,11 @@ Drž se toho stylu: nové UI piš Tailwind třídami a Alpine direktivami, nezak
   markupu a nezobrazí se, je to tohle.
 - Mazání sekce se ptá přes `confirm()` — zachovej potvrzení u destruktivních akcí.
 - Alpine je načtený s `defer`; nespoléhej na to, že je k dispozici v inline skriptu nad tělem.
+
+## Dokumentace
+- `docs-cs.md` a `docs-en.md` — uživatelská příručka editoru (obsah obou musí odpovídat).
+- `tin-spec.md`, `tin-spec-cs.md`, `tin-schema.json` — specifikace formátu.
+Když měníš chování nebo texty editoru, uprav **obě** příručky.
 
 ## Ověření změny
 Otevři soubor v prohlížeči (CDN vyžaduje online): přidání sekce, podoblasti a instrukcí všech tří
