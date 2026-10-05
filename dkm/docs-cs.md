@@ -2519,6 +2519,12 @@ jedna, ne dvoje. Název atributu, typu vazby nebo soustavy tagů píšeš tak, j
 pojmenoval. Metapole v `((…))` zůstávají dvojjazyčná (`((název))` i `((name))`), tak to
 v DKM platilo vždycky.
 
+**Hodnoty jsou klikací.** `((Oblasti))` u atributu typu *tagy* vysází tagy jako odkazy na
+jejich filtr, `((Garant))` u vazebního atributu jako odkaz na tu entitu — stejně, jako by
+stály v kartě atributů. Platí to v textu šablony i v blocích. Složený atribut (kap. 7.6)
+a generátor textu (kap. 24.5) naopak zůstávají holým textem: tam z toho vzniká hodnota
+a soubor, ve kterém by odkaz do aplikace nikam nevedl.
+
 ### 29b.2 Editor
 
 Syntaxi **psát nemusíš**. V nastavení je šablona seznam **částí**: každá se dá rozbalit,
@@ -2528,7 +2534,18 @@ přesunout šipkami ↑↓ a smazat.
 - **Blok** — formulář. Typ vazby a soustavu tagů vybíráš z rozbalovátka, směr přepínačem,
   atributy vkládáš tlačítkem.
 
-Pod seznamem běží **živý náhled** nad skutečnou entitou, kterou si vybereš.
+Pod seznamem běží **živý náhled** nad skutečnou entitou, kterou si vybereš. Překresluje
+se **při psaní**, po každém znaku — nemusíš z pole odskakovat, aby ses podíval na výsledek.
+
+**Prázdná textová část se do šablony neukládá**, jen čeká. Když dáš *Přidat část* →
+*Text (Markdown)*, pole se objeví hned, ale do šablony se dostane až tím, že do něj něco
+napíšeš; křížkem ji zrušíš. Prázdný text totiž nemá v šabloně žádný zápis, takže by se
+při prvním překreslení sám ztratil.
+
+**Pole, které se nikde nenajde, editor vytkne.** Pod textovou částí svítí u `((Atribut))`
+jedna ze dvou hlášek: *„Nenajde se"* (takový atribut v modelu není — překlep), nebo
+*„Vyplní se jen u entit, které to pole mají"* (existuje, ale v jiném typu či aspektu).
+Je to nápověda, ne chyba: šablona se vysází tak jako tak.
 
 Kanonicky se ukládá **text**. Tlačítko **Zobrazit jako text** ho ukáže celý — hodí se na
 zkopírování do jiného projektu. Blok, kterému editor nerozumí, se **nese doslova** a ukáže
