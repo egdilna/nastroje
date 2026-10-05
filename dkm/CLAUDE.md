@@ -754,7 +754,21 @@ dopředu**, kdo šablonu chce, poskládá si ji od nuly.
   a směr**, ne celá karta — klíče jsou ty samé, podle kterých karta Vazby odjakživa
   seskupuje (`a:`/`r:`/`w:`). Vypsání jednoho typu vazby v těle tedy ostatní neschová.
   Co šablona nevzala, zůstane vpravo; nedá se tím nic ztratit.
-- **Výstup vazeb má tři podoby** (`style: list | rows | table`). `list` a `rows` se liší
+- **Nadpis musí stát ve vlastním bloku** (`oddelNadpisy` na konci `vykresliSablonu`).
+  Všechny čtyři renderery si dokument nejdřív rozdělí prázdnými řádky, takže nadpis
+  uprostřed bloku jim propadne — v DOCX by se `### Něco` vysázelo doslova. Engine proto
+  vyrábí Markdown, který tu past nemá; uvnitř ohraničeného kódu se nesahá na nic.
+- **Nový řádek v `item` je `\n`** (`sabEscape`, k tomu `\t` a `\\`). Překládá se **jen
+  šablona, nikdy dosazená hodnota** — jinak by se text, který `\n` obsahuje, rozpadl.
+  Víceřádkové položky spojuje `sabSpoj` prázdným řádkem (jednořádkové po řádcích jako
+  dřív), odrážku i číslo dává `sabOdrazka`/`sabCislo` jen na první řádek.
+- **`style` u atributů má pět podob, ne tři** (`rows | list | numbered | table | h2…h6`).
+  `h2…h6` sází název jako nadpis a hodnotu jako tělo — tím se do detailu dostane Markdown
+  psaný v textovém atributu. `h1` schválně není, to je název entity. U vazeb přibylo
+  `numbered`; parametr je **týž `style`**, druhý se nikam nepíše.
+- **Blok atributů žádný `item` nemá.** Zkoušelo se to (`((label))`/`((value))`) a uživatel
+  to zamítl — tvar řádku se volí `style`em. Nevracej to.
+- **Výstup vazeb má čtyři podoby** (`style: list | rows | numbered | table`). `list` a `rows` se liší
   jen odrážkou — `sabOdrazka` ji nepřidá tomu, kdo si ji v `item:` napsal sám, takže starší
   šablony psané jako `item: - …` vypadají dál stejně. `table` má vlastní zápis (`columns:`)
   a `item:` se v ní neuplatní. Hodnotu sloupce počítá `sabPoleEntity` přes `slozenyText` —

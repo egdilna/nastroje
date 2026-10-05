@@ -2560,7 +2560,7 @@ by znamenalo to tiše zahodit.
 |---|---|
 | `only` | jen tyto atributy, oddělené čárkou — **a v tomhle pořadí** |
 | `except` | všechny kromě těchto |
-| `style` | `rows` (výchozí), `list` nebo `table` |
+| `style` | `rows` (výchozí), `list`, `numbered`, `table`, nebo `h2`…`h6` |
 | `hideempty` | `yes` vynechá atributy bez hodnoty |
 | `empty` | co se vypíše, když nic nezbude |
 | `collapse` | sbalí blok pod zadaný nadpis |
@@ -2569,6 +2569,17 @@ by znamenalo to tiše zahodit.
 sebou — nemusí se řídit pořadím z nastavení typu. Bez `only` platí pořadí modelu jako dřív.
 Dva atributy téhož názvu (jeden z typu, druhý z aspektu) zůstanou oba a ve svém vzájemném
 pořadí.
+
+**Pět podob výpisu atributů:**
+
+- **`rows`** (výchozí) — `**Název:** hodnota`, víceřádková hodnota dostane vlastní odstavec.
+- **`list`** — totéž jako odrážky.
+- **`numbered`** — totéž jako číslovaný seznam.
+- **`table`** — dva sloupce, Název atributu a Hodnota.
+- **`h2`…`h6`** — **název atributu je nadpis a hodnota tělo pod ním**. Tím se z atributu
+  stane plnohodnotná část dokumentu: do textové hodnoty si napíšeš odrážky, tabulku
+  i další nadpisy a vysází se jako Markdown. Prázdná hodnota nechá jen nadpis, takže
+  se to často kombinuje s `hideempty`. `h1` není — H1 je název entity.
 
 **`hideempty: yes` vyhodí celý řádek**, ne jen hodnotu: u `rows` odstavec, u `list` odrážku,
 u `table` řádek tabulky. Posuzuje se vysázená hodnota, takže se pozná i složený atribut,
@@ -2586,8 +2597,8 @@ na úrovni bloku: tentýž atribut tak může být v jedné šabloně vidět i p
 | `direction` | `out` (výchozí), `in`, `both` |
 | `target` | jen entity tohoto typu |
 | `sort` | řadit podle atributu navázané entity; bez něj abecedně podle názvu |
-| `style` | `list` (výchozí), `rows` nebo `table` |
-| `item` | řádek jedné položky u `list` a `rows`, výchozí `((link))` |
+| `style` | `list` (výchozí), `rows`, `numbered` nebo `table` |
+| `item` | řádek jedné položky u `list`, `rows` a `numbered`, výchozí `((link))` |
 | `columns` | sloupce u `table`, oddělené čárkou |
 | `limit` | nejvýš tolik položek |
 | `empty`, `collapse` | jako výše |
@@ -2597,9 +2608,27 @@ na úrovni bloku: tentýž atribut tak může být v jedné šabloně vidět i p
 - **`list`** (výchozí) — odrážky. Odrážka se doplní sama, a když si ji do `item` napíšeš
   sám, nezdvojí se. Starší šablony psané s `item: - …` proto vypadají dál stejně.
 - **`rows`** — každá položka na vlastní řádek, bez odrážky.
+- **`numbered`** — číslovaný seznam. Číslo se doplní samo; kdo si číslo nebo odrážku
+  napíše do `item` sám, druhé nedostane.
 - **`table`** — tabulka podle `columns`. Sloupec je buď název atributu navázané entity,
   nebo metapole (`link`, `name`, `type`…). Záhlaví se odvodí z názvu; vlastní popisek
   napíšeš jako `Položka = link`. Šablona `item` se u tabulky neuplatní.
+
+**Nový řádek v `item` se píše jako `\n`.** Pole je jednořádkové, takže jinak by do něj
+zalomení nešlo napsat. Hodí se přesně na to, aby z každé navázané entity byl vlastní
+kousek dokumentu:
+
+````
+```dkm:relations
+style: rows
+item: ### ((link))\n((Útvar)) · ((Telefon))
+```
+````
+
+Překládá se **jen šablona, nikdy dosazená hodnota** — text, který `\n` opravdu obsahuje,
+se nerozpadne na dva řádky. Dál platí `\t` pro tabulátor a `\\n`, když chceš `\n` doslova.
+U odrážky a u čísla se odráží jen **první** řádek položky, zbytek si formátuješ sám.
+V tabulce `\n` smysl nedává a `item` se tam neuplatní.
 
 **Uvnitř `item` i `columns` znamená `((…))` atribut navázané entity.** Je to jediná výjimka
 v celém jazyce. `((link))` je odkaz na tu entitu — sází se **podle id**, takže ho
