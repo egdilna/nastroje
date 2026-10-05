@@ -2595,11 +2595,25 @@ something we do not understand would mean silently throwing it away.
 
 | Parameter | What it does |
 |---|---|
-| `only` | only these attributes, comma separated |
+| `only` | only these attributes, comma separated — **and in that order** |
 | `except` | all but these |
 | `style` | `rows` (default), `list` or `table` |
+| `hideempty` | `yes` leaves out attributes with no value |
 | `empty` | what to print when nothing is left |
 | `collapse` | collapses the block under the given heading |
+
+**`only` is also the order.** Listing the attributes says how they follow one another; it
+does not have to match the order in the type settings. Without `only` the model order
+applies as before. Two attributes of the same name (one from the type, one from an aspect)
+both stay, in their relative order.
+
+**`hideempty: yes` drops the whole row**, not just the value: the paragraph in `rows`, the
+bullet in `list`, the table row in `table`. It judges the rendered value, so it also catches
+a composed attribute that came out empty. "No" on a yes/no attribute is a value and stays.
+When nothing is left, `empty` applies. In the editor it is the *Empty attributes* dropdown.
+
+It is the same thing as the *Hide when empty* switch on an attribute (ch. 7.5), only decided
+per block: the same attribute can show up empty in one template and be left out in another.
 
 ```dkm:relations``` — lists linked entities.
 
