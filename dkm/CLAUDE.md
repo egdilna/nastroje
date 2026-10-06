@@ -852,12 +852,11 @@ nemá, ale některý **připnutý** aspekt ano. Aspekt je průřezový — psát
 - Je to **jedno místo** (`sablonaProEntitu`), takže obrazovka, prohlížeč i export jedou
   z téhož rozhodnutí. Nepiš druhou podmínku jinde.
 
-### Náhled vedle seznamu šablonu nekreslí
-`renderDetail(id,{embedded:true})` → `vnorene` → `_sabText` je prázdný. Náhled je na
-prolétnutí a v úzkém panelu se z dokumentu nic nepřečte (uživatel si to vyžádal).
-`_sablonaVypnuta` se u toho **nesahá** — je to vlastnost náhledu, ne volba uživatele,
-takže v plném detailu zůstane přepnuté to, co si přepnul. Samostatné okno entity je
-plný detail (`renderDetail(id)` bez `embedded`), takže šablonu kreslí.
+### Náhled i samostatné okno jedou podle šablony
+Oboje je `renderDetail`, takže šablonu dostanou samy; `vnorene` (náhled) se u šablony
+**nerozlišuje**. Zkusilo se to jednou obrátit — náhled šablonu nekreslil — a uživatel to
+vzal zpátky: v náhledu je šablona užitečná. Nevracej to. `_sablonaVypnuta` je jeden
+příznak pro celou aplikaci, takže vypnutá šablona platí i v náhledu (ověřuje `sab/t10`).
 
 ### Prohlížeč dostane šablonu předpočítanou
 `viewerData` ji vyrenderuje **až po `bezSkrytychAtributu`** a nad výřezem: skrytý atribut se
