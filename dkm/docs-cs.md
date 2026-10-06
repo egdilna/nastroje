@@ -2705,6 +2705,11 @@ svojí podstatou tlačítko a nadpis schovaný ve sbaleném bloku z osnovy zmiz�
 | `<details>` | sbalitelné | sbalitelné | rozbalené |
 | Přepínač na výchozí vzhled | ✔ | — | — |
 
+**Náhled vedle seznamu šablonu nekreslí** — tam je vždycky výchozí detail. Náhled je na
+prolétnutí, co která entita je; v úzkém panelu se z vysázeného dokumentu stejně nic nepřečte.
+Je to vlastnost náhledu, ne volba: přepnutí vzhledu v plném detailu tím zůstane nedotčené.
+Samostatné okno entity je naopak plný detail, takže šablonu kreslí.
+
 Do statického prohlížeče se šablona **předpočítá** při generování. Prohlížeč je snímek,
 takže v něm není celý engine — jinak by se dvě kopie časem rozešly.
 
