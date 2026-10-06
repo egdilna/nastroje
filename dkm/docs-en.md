@@ -2748,6 +2748,12 @@ the outline.
 | `<details>` | collapsible | collapsible | expanded |
 | Switch to the default layout | ✔ | — | — |
 
+**The preview beside the list does not render a template** — it always shows the default
+detail. The preview is for skimming what each entity is; in a narrow panel a typeset document
+would be unreadable anyway. It is a property of the preview, not a choice: switching the
+layout in the full detail stays untouched. A standalone entity window is a full detail, so
+it does render the template.
+
 For the static viewer the template is **pre-rendered** at generation time. The viewer is a
 snapshot, so it does not carry the whole engine — two copies would drift apart.
 

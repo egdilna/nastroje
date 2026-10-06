@@ -852,6 +852,13 @@ nemá, ale některý **připnutý** aspekt ano. Aspekt je průřezový — psát
 - Je to **jedno místo** (`sablonaProEntitu`), takže obrazovka, prohlížeč i export jedou
   z téhož rozhodnutí. Nepiš druhou podmínku jinde.
 
+### Náhled vedle seznamu šablonu nekreslí
+`renderDetail(id,{embedded:true})` → `vnorene` → `_sabText` je prázdný. Náhled je na
+prolétnutí a v úzkém panelu se z dokumentu nic nepřečte (uživatel si to vyžádal).
+`_sablonaVypnuta` se u toho **nesahá** — je to vlastnost náhledu, ne volba uživatele,
+takže v plném detailu zůstane přepnuté to, co si přepnul. Samostatné okno entity je
+plný detail (`renderDetail(id)` bez `embedded`), takže šablonu kreslí.
+
 ### Prohlížeč dostane šablonu předpočítanou
 `viewerData` ji vyrenderuje **až po `bezSkrytychAtributu`** a nad výřezem: skrytý atribut se
 do souboru, který se posílá dál, nesmí dostat ani oklikou přes `((Atribut))`, a odkazy mají
