@@ -460,6 +460,19 @@ Aspekt **Téma (Topic)** je „virtuální entita", která automaticky sbírá o
 
 Entita, která spadá víc způsoby najednou, se v tématu ukáže jen jednou. Archivované entity se ignorují.
 
+## Sekce Odpovědi na otázku 💡
+
+U entity s aspektem **Otázka** je sekce s odpověďmi a tlačítkem na vytvoření nové.
+Zeptá se jen na název — zbytek se doplní sám:
+
+- vazba **`answers`** na otázku,
+- **všechny tagy otázky**,
+- **vazba `partOf` na každý projekt, jehož je otázka součástí** (archivované projekty se nededí),
+- datum zodpovězení.
+
+Odpověď tak rovnou patří tam, kam otázka, a neztratí se z filtrů a pohledů, ve
+kterých otázka je. Co se zdědilo, je vidět v hlášce po vytvoření.
+
 ## Sekce Účastníci schůzky 👥
 
 Sourozenecká sekce k „Úkoly schůzky" pro entity s aspektem **Událost (Event)**. Také vždy editovatelná v read i edit modu.
