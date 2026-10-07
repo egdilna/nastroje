@@ -148,7 +148,7 @@ Below every Markdown field (entity body, text attributes) there is a toolbar:
 
 When you **select text** in a field, a "From selected text" toolbar appears with more actions:
 
-- **📤 To new entity…** — moves the selection into a new entity (as its content) and inserts a **wiki link**, **include**, or **status** in its place. In the dialog you can immediately check which **projects** (taken from the source entity) the new entity should belong to
+- **📤 To new entity…** — moves the selection into a new entity (as its content) and inserts a **wiki link**, **include**, or **status** in its place. The suggested title is the **whole first line of the selection**, however long it is (heading hashes are stripped); you can rewrite it in the dialog. In the dialog you can immediately check which **projects** (taken from the source entity) the new entity should belong to
 - **➕ Critic insert / ➖ Critic delete / 🔄 Critic replace** — wraps the selection in CriticMarkup
 - **🖍 Highlight** — wraps the selection in `{==…==}`
 - **💬 Comment** — adds a `{>>…<<}` comment after the selection (cursor lands inside the comment)

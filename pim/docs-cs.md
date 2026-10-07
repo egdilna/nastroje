@@ -147,7 +147,7 @@ Pod každým markdownovým polem (tělo entity, textové atributy) je lišta s n
 
 Když v poli **označíte text**, objeví se lišta „Z označeného textu" s dalšími akcemi:
 
-- **📤 Do nové entity…** — výběr přesune do nové entity (jako její obsah) a místo něj vloží **wiki odkaz**, **include** nebo **status**. V dialogu můžete rovnou zaškrtnout, do kterých **projektů** (převzatých ze zdrojové entity) má nová entita patřit
+- **📤 Do nové entity…** — výběr přesune do nové entity (jako její obsah) a místo něj vloží **wiki odkaz**, **include** nebo **status**. Jako návrh názvu se předvyplní **celý první řádek výběru**, ať je jakkoli dlouhý (z nadpisu se odeberou mřížky); název jde v dialogu přepsat. V dialogu můžete rovnou zaškrtnout, do kterých **projektů** (převzatých ze zdrojové entity) má nová entita patřit
 - **➕ Critic vložení / ➖ Critic odstranění / 🔄 Critic náhrada** — obalí výběr značkou CriticMarkup
 - **🖍 Zvýraznění** — obalí výběr do `{==…==}`
 - **💬 Komentář** — přidá za výběr komentář `{>>…<<}` (kurzor rovnou uvnitř komentáře)

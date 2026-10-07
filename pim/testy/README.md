@@ -49,6 +49,7 @@ upravte v `lib.mjs`.
 | `tagy-pri-zalozeni.mjs` | Nabídka tagů u schůzky a projektu: co je předzaškrtnuté a že se nezaškrtnuté nepřidá. |
 | `udalost-z-nazvu.mjs` | Jeden parser dat a pravidlo úkol/událost podle času v názvu. |
 | `odpoved-na-otazku.mjs` | Odpověď zdědí tagy i projekty otázky, archivovaný projekt ne. |
+| `nazev-z-vyberu.mjs` | Návrh názvu u akce Do nové entity je celý první řádek výběru, neuseknutý. |
 | `odznak-a-seznam.mjs` | Odznak ☐N u názvu entity a editor seznamu (sbalování, udělat úkol). |
 | `skryte-ukoly.mjs` | Skrytí hotových úkolů přežije zaškrtnutí dalšího. |
 | `klavesy.mjs` | Klávesové zkratky a accesskey se nepřekrývají. |
