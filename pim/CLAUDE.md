@@ -414,7 +414,8 @@ je vedle Odstranit i Přeplánovat. Obě akce nastaví `updated_at`, zavolají `
 **a vrátí fokus** — po překreslení se na nic nespoléhej, řádek už může být jinde.
 
 `otevriDialogData({ titul, popis, hodnota, onOk, onVymazat, onZavreni })` je obecný dialog na
-zadání data — používá ho přeplánování v Připomenutích i tlačítko ⏰ Termín v pohledu Úkoly.
+zadání data — používá ho přeplánování v Připomenutích, tlačítko ⏰ Termín v pohledu Úkoly
+i tlačítko 🔔 Připomenutí v liště detailu entity (`otevriPripomenutiProEntitu()`).
 Má pole pro **termín slovy**, které vyhodnocuje `parseNaturalDate()` a `combineDateWithOriginalTime()`,
 tedy tentýž parser jako přeplánování v Kalendáři. **Druhý parser dat nepiš** — když má něco
 rozumět „zítra" nebo „za 3 dny", vede cesta přes `parseNaturalDate`.

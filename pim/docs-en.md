@@ -670,6 +670,22 @@ focus returns to the button on the same task.
 
 ## 🔔 Reminders
 
+### Reminders straight from the entity detail
+
+The action bar of every entity detail has a **🔔 Připomenutí** (Reminder) button. It opens
+the same date dialog (including the **date in words** field), so a reminder can be set
+without going to the Reminders view.
+
+When a reminder is already set:
+
+- the button shows **its date** (`🔔 24. 12. 2026`) and clicking it changes the reminder —
+  the dialog comes pre-filled,
+- a **🔕 Zrušit připomenutí** (Clear reminder) button appears next to it and removes the
+  reminder straight away, without opening the dialog,
+- it can also be cleared from the dialog with *Vymazat termín*.
+
+The same action is in the command palette.
+
 A view of every entity with the **Reminder (date)** attribute filled in, sorted by date. Each
 row shows the entity, the date, a status (*overdue* / *today* / *future*) and actions.
 

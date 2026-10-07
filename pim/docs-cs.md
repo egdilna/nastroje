@@ -691,6 +691,21 @@ Vyhodnocuje to stejný parser jako přeplánování v Kalendáři, takže obojí
 Po obou akcích se seznam překreslí a fokus se vrátí na tlačítko u téže entity, takže jde
 plynule pokračovat klávesnicí. Řádek se po přeplánování přesune podle nového data.
 
+### Připomenutí přímo z detailu entity
+
+V liště tlačítek v detailu každé entity je **🔔 Připomenutí**. Otevře tentýž dialog
+(tedy i s polem **Termín slovy**), takže připomenutí jde nastavit, aniž byste chodili
+do pohledu Připomenutí.
+
+Když už je připomenutí nastavené:
+
+- tlačítko ukazuje **jeho datum** (`🔔 24. 12. 2026`) a klepnutím se dá změnit — dialog
+  má datum předvyplněné,
+- vedle přibude **🔕 Zrušit připomenutí**, které ho odstraní rovnou, bez otevírání dialogu,
+- zrušit ho jde i v dialogu tlačítkem *Vymazat termín*.
+
+Totéž je v paletě příkazů jako **🔔 Připomenutí**.
+
 ## Klávesové zkratky
 
 ### Globální (kdekoliv kromě editačních polí)

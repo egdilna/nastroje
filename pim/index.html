@@ -10533,6 +10533,41 @@ function openQuickReminderEditorForDeadline(e, vratFokusNa) {
   });
 }
 
+// Nastavení, změna nebo zrušení připomenutí u libovolné entity. Používá týž
+// dialog (a tedy i týž parser přirozeného data) jako termín úkolu a přeplánování
+// v Připomenutích — druhý dialog na datum psát nebudeme.
+function otevriPripomenutiProEntitu(e, vratFokusNa) {
+  if (!e) return;
+  if (!e.attributes) e.attributes = {};
+  const puvodni = e.attributes.reminder_at ? String(e.attributes.reminder_at).slice(0, 10) : '';
+  const poAkci = () => {
+    e.updated_at = nowIso();
+    save();
+    render();
+    // Po překreslení je tlačítko nový prvek, fokus by jinak spadl na <body>.
+    setTimeout(() => {
+      const cil = document.getElementById('btn-reminder');
+      if (cil) cil.focus();
+    }, 60);
+  };
+  otevriDialogData({
+    titul: 'Připomenutí',
+    popis: getDisplayTitle(e) + (puvodni ? ' — nyní ' + fmtDate(puvodni) : ' — zatím bez připomenutí'),
+    hodnota: puvodni,
+    onOk: (iso) => {
+      e.attributes.reminder_at = iso;
+      poAkci();
+      toast('Připomenutí nastaveno na ' + fmtDate(iso) + '.');
+    },
+    onVymazat: puvodni ? () => {
+      delete e.attributes.reminder_at;
+      poAkci();
+      toast('Připomenutí zrušeno.');
+    } : null,
+    onZavreni: () => { if (vratFokusNa && vratFokusNa.focus) vratFokusNa.focus(); }
+  });
+}
+
 function taskRowHtml(e, isOverdue) {
   const done = e.attributes.status === 'done';
   const cancelled = e.attributes.status === 'cancelled';
@@ -13862,6 +13897,13 @@ function renderDetailRead(main, e) {
         '<button id="btn-add-link" accesskey="r" title="Přidat vazbu na existující entitu">+ Vazba</button>' +
         '<button id="btn-create-related" title="Vytvořit novou entitu s vazbou na tuto">+ Související</button>' +
         '<button id="btn-add-comment-top" accesskey="c">+ Komentář</button>' +
+        (function() {
+          const r = (e.attributes || {}).reminder_at;
+          return '<button id="btn-reminder" title="' +
+              (r ? 'Změnit připomenutí (nyní ' + escapeHtml(fmtDate(r)) + ')' : 'Nastavit připomenutí — termín lze zadat i slovy') +
+              '">🔔 ' + (r ? escapeHtml(fmtDate(r)) : 'Připomenutí') + '</button>' +
+            (r ? '<button id="btn-reminder-clear" title="Zrušit připomenutí u této entity">🔕 Zrušit připomenutí</button>' : '');
+        })() +
         '<button id="btn-toggle-anno" aria-pressed="' + (state.annotationMode ? 'true' : 'false') + '" title="Zapnout/vypnout anotační režim (A)">' + (state.annotationMode ? '📝 Ukončit anotace' : '📝 Anotace') + '</button>' +
         ((e.body && (/^#{1,6}\s+/m.test(e.body) || /^\s*\|[\s\-:|]+\|\s*$/m.test(e.body) || /^\s*([-*+]|\d+\.)\s+\S/m.test(e.body)))
           ? '<button id="btn-toggle-sec-edit" aria-pressed="' + (state.sectionEditMode ? 'true' : 'false') + '" title="Zapnout/vypnout editaci sekcí, tabulek a seznamů (D)">' + (state.sectionEditMode ? 'Ukončit editaci sekcí' : 'Editovat sekce') + '</button>'
@@ -14086,6 +14128,18 @@ function renderDetailRead(main, e) {
   { const _b = document.getElementById('btn-duplicate'); if (_b) _b.onclick = () => duplicateEntity(e); }
   const btnStandaloneTop = document.getElementById('btn-open-standalone');
   if (btnStandaloneTop) btnStandaloneTop.onclick = () => openEntityInStandaloneWindow(e.id);
+  { const _br = document.getElementById('btn-reminder');
+    if (_br) _br.onclick = () => otevriPripomenutiProEntitu(e, _br); }
+  { const _brc = document.getElementById('btn-reminder-clear');
+    if (_brc) _brc.onclick = () => {
+      if (!e.attributes || !e.attributes.reminder_at) return;
+      delete e.attributes.reminder_at;
+      e.updated_at = nowIso();
+      save();
+      render();
+      toast('Připomenutí zrušeno.');
+      setTimeout(() => { const n = document.getElementById('btn-reminder'); if (n) n.focus(); }, 60);
+    }; }
   { const _tm = document.getElementById('btn-tag-matice');
     if (_tm) _tm.onclick = () => otevriTagovouMatici(e.id); }
   const btnCopyLink = document.getElementById('btn-copy-entity-link');
@@ -25657,6 +25711,15 @@ function paletaSestavPrikazy() {
     run: otevriPosledniZmeny
   });
   if (ent) {
+    const _rem = (ent.attributes || {}).reminder_at;
+    pridej({
+      id: 'pripomenuti-entity',
+      label: '🔔 Připomenutí' + (_rem ? ': ' + fmtDate(_rem) : '…'),
+      kategorie: 'Entita',
+      hint: _rem ? 'Změnit nebo zrušit připomenutí u této entity' : 'Nastavit připomenutí — termín lze zadat i slovy',
+      keywords: 'pripomenuti upominka termin datum budik',
+      run: () => otevriPripomenutiProEntitu(ent, null)
+    });
     pridej({
       id: 'tag-matice', label: '🏷 Tagy vazeb (matice)', kategorie: 'Entita',
       hint: 'Porovnat a upravit tagy všech entit navázaných na tuhle',
