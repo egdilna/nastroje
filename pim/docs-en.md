@@ -457,6 +457,20 @@ The **Topic** aspect is a "virtual entity" that automatically collects content i
 
 An entity that qualifies in more than one way shows only once. Archived entities are ignored.
 
+## Answers to a question 💡
+
+An entity with the **Question** aspect has an answers section with a button to create
+a new one. It only asks for a title — the rest is filled in automatically:
+
+- the **`answers`** link to the question,
+- **all the tags of the question**,
+- a **`partOf` link to every project the question belongs to** (archived projects are not inherited),
+- the answered-on date.
+
+The answer therefore belongs where the question belongs and does not fall out of the
+filters and views the question is in. What was inherited is shown in the confirmation
+message.
+
 ## Meeting Attendees section 👥
 
 A sibling section to "Meeting tasks" for entities with the **Event** aspect. Also always editable in read and edit mode.
