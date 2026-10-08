@@ -242,7 +242,17 @@ task due Wednesday and the word "ráno" (morning) stays in the title — it is n
 start time and nothing would be stored.
 
 Where you pick the aspect yourself (*+ New entity* at a project or a meeting) nothing
-is guessed — what you chose is what you get.
+is guessed — what you chose is what you get. The date in the title is still filled in,
+into whatever field the chosen aspect has:
+
+| Chosen aspect | Where the date goes |
+|---|---|
+| **Task** | the deadline (date only; any time stays in the title, as a deadline has no time) |
+| **Event** | the start, plus the end if the title carries a time |
+| anything else | nowhere — and the date is **not** cut out of the title, as there would be nothing to store it in |
+
+**Inbox capture** deliberately does not parse a deadline: it creates a Note, which has
+no date field, and cutting the date out of the title would lose it.
 
 ## Sections in the entity detail
 

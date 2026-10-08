@@ -240,7 +240,17 @@ s termínem na středu a slovo „ráno" zůstane v názvu — není to začáte
 by se neuložilo.
 
 Tam, kde aspekt vybíráte sami (*+ Nová entita* u projektu i u schůzky), se nic
-nehádá — platí, co jste zvolili.
+nehádá — platí, co jste zvolili. Datum z názvu se ale doplní i tam, do toho pole,
+které zvolený aspekt má:
+
+| Zvolený aspekt | Kam se datum doplní |
+|---|---|
+| **Úkol** | termín (jen datum; případný čas zůstane v názvu, protože termín čas neumí) |
+| **Událost** | začátek, a je-li v názvu čas, i konec |
+| ostatní | nikam — datum se z názvu **nevyřízne**, nebylo by kam ho uložit |
+
+**Zachycení do Inboxu** termín zámerně neparsuje: vzniká Poznámka, která pole na
+datum nemá, a vyříznout datum z názvu by znamenalo ztratit ho.
 
 ### Co se dá napsat do názvu
 
