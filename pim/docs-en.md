@@ -258,6 +258,23 @@ A toast says what was filled in.
 The date goes **only into an empty field**. A task that already has a deadline is not
 touched on a later edit, and neither is its title.
 
+### Where the date in the title is filled in
+
+| How you create the entity | What decides |
+|---|---|
+| ✓ **Quick task** (dialog, `t`, `Alt+Shift+T`) | a time in the title → Task, or Event |
+| *+ New task* at a project, *✓ New task* at a meeting | the same rule |
+| *+ New entity* — in the navigation, at a project, at a meeting | the chosen aspect |
+| **Create a related entity** | the chosen aspect |
+| **Entity from selected text** (`Ctrl+Shift+M`) | the chosen aspect |
+| **→ Entity** from a markdown task | always Task |
+| **New entity from a template** | the template's aspects (a deadline the template sets itself wins) |
+| + **Quick capture** into the Inbox | nowhere — it creates a Note |
+
+On the paths that insert a **wiki link** into the text (→ Entity from a markdown task,
+entity from selected text) the link points at the **cleaned** title — the one the entity
+was actually created under.
+
 **Inbox capture** deliberately does not parse a deadline: it creates a Note, which has
 no date field, and cutting the date out of the title would lose it.
 
