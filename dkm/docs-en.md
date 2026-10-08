@@ -2468,6 +2468,32 @@ marked `⚠`.
 Manage all saved views: rename, change icon, toggle pin, overwrite with current filter, delete.
 The **↑↓** buttons change their order, and with it the order of their tabs at the top.
 
+### 29.8b Modules — folders of tabs
+
+When the bar gets crowded, tabs can be grouped into **modules**. A module is **a folder of
+tabs and nothing more** — no filter of its own, no behaviour of its own.
+
+- **While there is no module, everything is as before**: one bar and nothing above it.
+- **As soon as you add one**, a row of cards appears above the bar. A single module is drawn
+  too — otherwise a freshly created one could not be found by clicking.
+- For each tab you pick in Settings → Tabs **which module it belongs to**. A tab with no
+  module is **shared** and shows in every module; that is why introducing modules migrates
+  nothing — your existing bar stays as it is, and it suits Inbox or All.
+- **Deleting a module does not delete its tabs**, it only releases them into the shared ones.
+- **Which module is open is window state**, not project settings — it is not written to the
+  file people pass around. The data holds only the list of modules and the tabs' membership.
+- **Alt+1 … Alt+9** walks the tabs **currently visible** in the bar, i.e. the shared ones
+  and those of the open module.
+- **"Open on this one" still applies to the whole project** and is unique. When that tab sits
+  in a module, loading the project switches **that module** as well — otherwise the marked
+  tab could never win.
+- The address still follows the content (`#type/x`, `#tag/…`); the module is not written into
+  it, so a shared link works regardless of modules.
+- **The static viewer mirrors modules** — it reads the same bar, switching included.
+
+A tab pointing at a module that is not in the file (foreign data, hand-edited JSON) is **not
+lost**: on load it is released into the shared ones.
+
 ### 29.8 Tabs
 
 The bar at the top is one list you compose yourself. **Inbox, All and Archive are no
@@ -3149,7 +3175,8 @@ both formats, machine-readable schemas included, is in chapter 37:
 ```
 {
   version, projectName, projectDescription, ghPath,
-  settings: { tabs: [{ id, kind, name?, icon?, typeIds?, aspectId?, tagSetId?, tag?, viewId?, entityId?, typeId?, showCount?, hideEmpty?, isDefault? }] },
+  settings: { tabs: [{ id, kind, modulId?, name?, icon?, typeIds?, aspectId?, tagSetId?, tag?, viewId?, entityId?, typeId?, showCount?, hideEmpty?, isDefault? }],
+             modules: [{ id, name, icon? }] },
   entityTypes: [{ id, name, icon, jsonKey?, attributes: [{ id, name, type, required, showInList, listId?, jsonKey?, ... }] }],
   aspects: [{ id, name, jsonKey?, attributes: [...] }],
   relationTypes: [{ id, name, inverseName, scope, fromTypes, toTypes, jsonKey? }],
@@ -3493,6 +3520,7 @@ and on whoever produces the file:
 | `…attributes[].targetType` | `entityTypes[].id`, or `any` |
 | `relationTypes[].fromTypes[]`, `toTypes[]` | `entityTypes[].id` |
 | `settings.tabs[].typeIds[]`, `aspectId`, `tagSetId`, `viewId`, `entityId`, `typeId` | `entityTypes[].id`, `aspects[].id`, `tagSets[].id`, `savedViews[].id`, `entities[].id` — depending on the tab kind |
+| `settings.tabs[].modulId` | `settings.modules[].id`. An invalid reference is **dropped** by the reader and the tab becomes shared — it must never disappear |
 
 Identifiers are unique within the file. DKM builds them as `prefix_<time><random>`
 (`e_lz3k9a1b2c`), but the format does not require that shape — the string only has to be

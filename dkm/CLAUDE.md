@@ -1184,6 +1184,33 @@ Archiv nejsou výjimka** — nic v liště není napevno. Druhy: `inbox`, `all`,
   nedává smysl. Granularitu drží `state.view.groupDate`, klíč přihrádky nese předponu
   (`d:`, `w:`, `m:`, `y:`), aby se přihrádky různých granularit nepotkaly.
 
+## Moduly jsou složky záložek, nic víc
+`state.data.settings.modules` = `[{id,name,icon?}]` a `zalozka.modulId`. **Žádný filtr,
+žádné vlastní chování** — modul jen rozhoduje, které záložky jsou v liště vidět.
+
+- **Seam je `viditelneZalozky()`**, která nově filtruje i podle modulu. Tím se o moduly
+  samy postaraly výchozí záložka i Alt+1…9; `zalozkyPodleHideEmpty()` je tatáž funkce
+  **bez** filtru modulu a slouží jen tomu, co musí vidět napříč moduly.
+- **Záložka bez `modulId` je společná** a vidí se v každém modulu. Je to to, co dělá
+  zavedení modulů bezmigrační: dosavadní lišta zůstane, jak je.
+- **„Otevírat na této" je jedno pro celý projekt**, takže `vychoziZalozka()` hledá označenou
+  **napříč všemi moduly** a když leží v modulu, **přepne i modul** (uživatel si to vyžádal).
+  Kdyby se hledala jen v aktivním modulu, označená záložka v jiném by nikdy nevyhrála.
+- **Aktivní modul je stav okna** (`_aktivniModul`), ne nastavení projektu — stejné pravidlo
+  jako u rozbalení sekcí. Do dat jde jen seznam modulů a příslušnost záložek.
+- **Index pro přetahování zůstává skutečný index v `tabs`**, ne pořadí po filtru; jinak by
+  se přesouvalo něco jiného, než na co člověk sáhl. Moduly mají vlastní skupinu (`modul`).
+- **Bez modulů se řádek nekreslí vůbec**, s jedním ano. Nově vytvořený modul by se jinak
+  nedal kliknutím najít.
+- **Záložka nesmí zmizet kvůli neexistujícímu modulu.** `migrujModuly` v `mergeEmpty`
+  uvolní `modulId`, který na nic neukazuje, a zahodí prvky bez id i bez názvu (jinak by
+  z `{nesmysl:1}` vznikla prázdná karta). Totéž dělá mazání modulu v nastavení.
+- `normalizujZalozku` **nese `modulId` dál** — jinak by ho přepnutí druhu záložky zahodilo.
+- **Prohlížeč to zrcadlí** (vlastní kopie `moduly`/`aktivniModulId`/`zalozkaVModulu`
+  a vlastní CSS tokeny). Když měníš jedno, projdi druhé.
+- `modules` i `modulId` jsou v `dkmdata-scheme.json`; **balíček záložky nenese**, takže
+  `dkmpkg-scheme.json` se nemění.
+
 ## Zkratky v markdownových polích
 `pripojZkratkyMd(ta)` visí na **té konkrétní textarei**, ne v globálním `keydown`. Musí to
 tak být: globální větev pro Ctrl+K (vyhledávání) se nekouká na Shift, takže by Ctrl+Shift+K
