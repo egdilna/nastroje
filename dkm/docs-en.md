@@ -465,8 +465,41 @@ Added in type editor. Enter:
 - **Required** (checkbox)
 - **Show in list** (checkbox)
 - **Hidden**, **Copying**, **Highlight**, **Hide when empty** (checkboxes, 7.7)
-- Optionally: **Value list** (for select), **Target type** (for relation)
+- Optionally: **Value list** (for select), **Target type** (for relation),
+  **Number automatically** (for a number, 7.1b)
 
+### 7.1b A self-numbering number (autoincrement)
+
+A **number** attribute has a **Number automatically** checkbox. With it, every new entity
+gets the next number in the row, and **Last assigned** appears next to it and can be
+overwritten — numbering can be continued from another row or skipped.
+
+How it works:
+
+- **It is prefilled in the editor** as soon as the type (and the aspects) are known. You see
+  the number before saving and can overwrite it — it is an ordinary field, not a label.
+- **The counter moves only on save.** A cancelled edit does not burn a number, so the row
+  gets no gap just because you changed your mind.
+- **A higher value entered by hand moves the counter**, a lower one does not lower it.
+  Otherwise the next entity would get a number somebody already has.
+- **An empty field is filled in on an old entity too**, when the attribute was added to the
+  type later — just open it in the editor and save. A filled-in number is never overwritten.
+- **A duplicate gets a new number.** A copy with the same number would make nonsense of it.
+- **Table import**: a column with the number wins and moves the counter; a row without one
+  gets a number of its own.
+- **The counter lives in the project data**, on the attribute definition — it has to be
+  shared by everyone who has the project. When two copies of the file are merged, the
+  **higher** value wins, not whoever is saving.
+- **An aspect has its own counter**, independent of the type.
+
+Two things it does not do: it is **not a separate data type** (the value is still an ordinary
+number, so filters, sorting, tables and data exports treat it as one), and it **does not pad
+zeros or add a prefix** — for "FILE-0042", build it with a composed attribute (7.6).
+
+The numbers are not guaranteed to be gapless or unique: two windows can create an entity at
+the same moment and get the same number. Without a server there is no way around it; a merge
+then raises the counter, but the two entities keep the same number. Where the numbers matter,
+check them after an import.
 
 ### 7.2 Aspect attribute
 
@@ -3485,7 +3518,7 @@ definition, not under its name. The shape of the value follows that definition's
 | `text`, `url` | string | |
 | `textarea` | string | rendered as Markdown with CriticMarkup |
 | `date` | string `YYYY-MM-DD` | not a full ISO timestamp — it is the value of an HTML date field |
-| `number` | number | a real number, not a string of digits |
+| `number` | number | a real number, not a string of digits; with `autoInc: true` DKM assigns it from `posledni` (7.1b), but in the data it is still an ordinary number |
 | `yesno` | `true` / `false` | |
 | `select` | string | must be one of the values of the linked select list |
 | `tags` | array of strings | each is one tag from the linked set (`tagSetId`); DKM stores them alphabetically |
