@@ -1010,9 +1010,56 @@ Files are written to the `main` branch and an **existing file is overwritten** (
 
 The two attributes are independent: an entity can have just one of them, or both — each button then saves a different file to a different location.
 
+### Overwrite protection
+
+Until the data in a window has actually been loaded from GitHub, the application
+**uploads nothing** — not even attachments. Without that safeguard a single failed
+load (leaving the window empty) was enough for autosave to overwrite the whole
+file with that emptiness.
+
+What happens:
+
+- **Autosave** stops and writes the reason into the status line: *"There is a file
+  on GitHub that was never loaded in this window."* **Load from GitHub** (File
+  menu) resolves it.
+- **A manual upload** asks whether to really overwrite the file's contents with
+  the data from this window. Confirm and it uploads — that is the path to take
+  after, say, importing a JSON from disk.
+- When the file **does not exist** on GitHub yet, there is nothing to lose and the
+  first upload goes through without asking.
+
+### A standalone entity window, and several windows at once
+
+The **Standalone window** button (🪟) in an entity's detail opens the same entity
+in a new window without navigation, usable side by side with the main window. It
+is a full second instance of the application — the entity can be edited there too.
+
+**The data comes from the window that opened it, not from the network.** The new
+window asks the original one for a copy of the database held in memory, so opening
+it downloads nothing and works offline. GitHub is used only when the original
+window is unavailable — typically when you copy the standalone window's link and
+open it elsewhere or later. Decrypted contents of secured entities are not handed
+over: the new window asks for the password itself.
+
+**The two windows then stay in step.** After a change in one window the other
+picks the data up on its own within about two seconds and says so in the status
+line. A window that is in the middle of editing (detail in edit mode, or an open
+section editor) never overwrites work in progress — it shows a bar with a **Take
+over data** button instead, so you decide.
+
+Two limits worth knowing:
+
+- Synchronization does **not merge** concurrent changes. If both windows change
+  something within the same second, the later change wins.
+- Windows only talk to each other inside one browser and over the **same project**
+  (the same `?id=` parameter). Two different databases never get mixed.
+
 ## FAQ
 
-**Where is my data?** In the browser's `localStorage` under the key `pim_db_v1::DEFAULT` (or `pim_db_v1::ID` for project pages).
+**Where is my data?** Permanently, only in the file on GitHub. In the browser it
+lives in the window's memory; `localStorage` keeps the settings (including the
+GitHub configuration), the token and the scratchpad — not the data. That is why
+closing a window without saving to GitHub loses the changes.
 
 **Can I have multiple separate databases?** Yes, via the URL parameter `?id=NAME`. Each ID has its own storage.
 

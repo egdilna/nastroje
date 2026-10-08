@@ -116,6 +116,68 @@ rozpoznaný den**, jinak by to chytalo „verze 2-3".
 
 Hlídá to `pim/testy/udalost-z-nazvu.mjs`.
 
+## Samostatné okno: data se předávají mezi okny, nestahují znovu
+
+Samostatné okno entity (`openEntityInStandaloneWindow`) je **plnohodnotná druhá
+instance aplikace** — `window.open()` na týž `index.html` s `?detail=…&standalone=1`.
+Data žijí jen v paměti a na GitHubu (`load()` z localStorage schválně nečte, `save()`
+tam schválně nezapisuje — limit ~5 MB), takže nová instance neměla odkud vzít data
+než ze sítě: stahovala celý soubor znovu a při nedostupné síti zůstala prázdná.
+
+Teď si je vezme od okna, které ji otevřelo:
+
+| Kde | Čím |
+|---|---|
+| start samostatného okna | `prevezmiDataZOtviracihoOkna()` ← `window.opener.__pimDejData()` |
+| další změny v obou směrech | `BroadcastChannel`, zprávy `zmena` / `zadost` / `data` |
+
+Pravidla, která se nesmí porušit:
+
+1. **Předává se hluboká kopie, ne živý objekt.** Realm zavřeného okna umírá s ním
+   a sdílené objekty by se staly nepoužitelnými.
+2. **`syncPrevezmiData()` nesmí zavolat `save()`.** Přepsalo by `updated_at`
+   a ohlásilo zpátky změnu, která žádná není — nekonečné ping-pong.
+3. **Kanál se otevírá v `init()`, ne líně při prvním odeslání.** Okno, které zatím
+   nic nezměnilo, musí zprávy druhého okna slyšet. Na tomhle to stálo: lazy kanál
+   znamenal, že čerstvě otevřené samostatné okno neslyšelo nic.
+4. **`getProjectKey()` normalizuje padding base64.** `updateUrlForState()` ukládá
+   `?id=` bez `=` na konci, takže okno otevřené z ručně složeného odkazu drželo
+   jiný klíč než okno po prvním překreslení — dvě jména téhož projektu a okna si
+   nerozuměla. Klíč je zároveň jméno kanálu, takže na jeho stabilitě všechno visí.
+5. **Okno v editaci data samo nepřevezme** (`syncMuzePrevzit()`: edit mód detailu,
+   editace sekce, otevřený `<dialog>`). Ukáže pruh `showCrossTabBanner()`
+   s tlačítkem, které převezme na výslovné přání (`_syncVynucenePrevzeti`).
+
+Co to **neumí**: slučovat souběžné změny. Dvě změny ve dvou oknech během jedné
+sekundy = vyhrává pozdější. Entitní merge by byl jiný řád práce; dokud není,
+patří to do dokumentace jako mez, ne do kódu jako tichý předpoklad.
+
+Na `file://` nefunguje ani `opener`, ani kanál (neprůhledný původ) — tam se okno
+bez řečí vrátí k načtení z GitHubu. Proto sada `pim/testy/samostatne-okno.mjs`
+jako jediná jezdí přes vlastní `http://` server.
+
+Rozšifrovaný obsah zabezpečených entit v `db` není (žije v `_unlockedSecured`),
+takže se předáním nepřenáší — nové okno si o heslo řekne samo. Kdo začne držet
+citlivé věci v `db`, rozbije i tohle.
+
+## Pojistka proti přepsání dat na GitHubu
+
+`ghDataNactena()` je příznak „data v tomhle okně opravdu přišla z GitHubu".
+Dokud je `false`, `GH.upload()` nenahraje **nic** (ani přílohy — kontrola je
+schválně před jejich nahráním). Odemkne ho úspěšné načtení, 404 (soubor neexistuje,
+není co ztratit), převzetí dat z druhého okna, nebo výslovné potvrzení uživatele.
+
+Bez toho stačilo jedno neúspěšné načtení: okno zůstalo prázdné a autosave tím
+prázdnem přepsal celý soubor. `GH.upload()` si navíc před zápisem vždycky dotáhne
+aktuální `sha`, takže **žádná ochrana proti souběhu tu není** — kdo nahrává jako
+druhý, prostě přepíše. Příznak je to jediné, co mezi tím stojí.
+
+`upload(opts)` rozlišuje `opts.autosave`: autosave se nesmí ptát dialogem,
+jen se zastaví a důvod napíše do **běžného stavového řádku** (`statusMsg`),
+ne do nastavení GitHubu, které může být zavřené.
+
+Hlídá to `pim/testy/samostatne-okno.mjs`.
+
 ## Ukončení editace vede přes jedno místo
 
 `ukonciEditaciEntity({ pred, hlaska, zvuk })` dělá pořadí **detekce jmen → read mód
