@@ -239,9 +239,9 @@ Samotný čas bez dne znamená **dnes**. Rozsah přes půlnoc skončí správně
 s termínem na středu a slovo „ráno" zůstane v názvu — není to začátek času a nikam
 by se neuložilo.
 
-Tam, kde aspekt vybíráte sami (*+ Nová entita* u projektu i u schůzky), se nic
-nehádá — platí, co jste zvolili. Datum z názvu se ale doplní i tam, do toho pole,
-které zvolený aspekt má:
+Tam, kde aspekt vybíráte sami — *+ Nová entita* v navigaci, u projektu i u schůzky
+— se nic nehádá: platí, co jste zvolili. Datum z názvu se ale doplní i tam, do toho
+pole, které zvolený aspekt má:
 
 | Zvolený aspekt | Kam se datum doplní |
 |---|---|
@@ -249,17 +249,49 @@ které zvolený aspekt má:
 | **Událost** | začátek, a je-li v názvu čas, i konec |
 | ostatní | nikam — datum se z názvu **nevyřízne**, nebylo by kam ho uložit |
 
-**Zachycení do Inboxu** termín zámerně neparsuje: vzniká Poznámka, která pole na
+U *+ Nová entita* se název píše do editoru, takže datum se doplní **až při
+ukončení editace** — a je jedno, jestli odejdete tlačítkem **Hotovo**, Escapem
+nebo klávesou `U`. Co se doplnilo, oznámí hláška („Z názvu doplněn termín 9. 10.").
+
+Doplňuje se **jen do prázdného pole**. Úkol, který termín už má, se při další
+editaci nezmění — a nezmění se mu ani název.
+
+**Zachycení do Inboxu** termín záměrně neparsuje: vzniká Poznámka, která pole na
 datum nemá, a vyříznout datum z názvu by znamenalo ztratit ho.
 
 ### Co se dá napsat do názvu
 
-Den: `dnes`, `zítra`, `pozítří`, `včera`, `za 3 dny`, název dne v týdnu **v prvním
-i ve čtvrtém pádě, s předložkou i bez** (`středa`, `ve středu`, `v sobotu`,
-`příští úterý`), `15.6.`, `15.6.2026`, `2026-07-01`. Předložka před datem se
-vyřízne spolu s ním, takže z `odeslat fakturu do 30.6.` zbude `odeslat fakturu`.
+**Den v týdnu** v prvním, druhém i čtvrtém pádě, s předložkou i bez ní:
+`středa`, `ve středu`, `v sobotu`, `do pátku`, `od středy`, `na pátek`,
+`do pondělka`, `příští úterý`, `nejpozději v pátek`. Druhý pád (`do pátku`) je
+u termínů nejčastější tvar — dokud ho parser neznal, úkol zůstal bez termínu
+a `udělat do pátku 10:00` si navíc sedlo na dnešek.
 
-Čas: `10:00`, `v 10:00`, `10h`, `v 10 hodin` a rozsahy výše.
+**Relativní den:** `dnes`, `zítra`, `pozítří`, `včera`, a ve druhém pádě taky
+`do zítřka`, `do pozítřka`. Dál `za 3 dny`, `za týden`, `za 2 týdny`, `za měsíc`,
+`za 3 měsíce`.
+
+**Konec týdne a měsíce:** `do konce týdne` je nejbližší **pátek** (v sobotu
+a v neděli ten příští), `do konce měsíce` je **poslední den** tohoto měsíce.
+
+**Konkrétní datum:** `15.6.`, `15.6.2026`, `2026-07-01`, a také se **jménem
+měsíce**: `1. října`, `15. března 2027`, `do 3. června`. Bez roku se bere
+nejbližší budoucí výskyt.
+
+Předložka (`do`, `od`, `na`, `k`, `v`, `ve`) i slovo `nejpozději` se vyřezávají
+spolu s datem, takže z `odeslat fakturu do 30.6.` zbude `odeslat fakturu` a v názvu
+nezůstane viset osamělé „do".
+
+**Čas:** `10:00`, `v 10:00`, `ve 14.30`, `10h`, `v 10 hodin`, `v 9`, `ve 14`,
+`od 9` a rozsahy výše. U holé hodiny je **předložka podmínkou** — bez ní by se za
+čas bralo každé číslo v názvu, takže `Kapitola 10 dopsat` ani `Objednat 3 ks`
+žádný čas nemají. Ze stejného důvodu `v 1. kapitole` není 1:00: tečka za číslem
+čas vylučuje.
+
+Co parser schválně **nerozpozná**: číslo bez předložky a bez dvojtečky
+(`Kapitola 10`), rozsah bez rozpoznaného dne (`verze 2-3`, `Porada 9-11`),
+samotný rok (`Rozpočet na rok 2026`, `Projekt Horizont 2030`) a vypsané řadové
+číslovky (`prvního října`).
 
 ## Sekce v detailu entity
 

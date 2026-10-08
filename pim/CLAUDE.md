@@ -99,10 +99,18 @@ jednom místě — v `createQuickTaskFromText()`:
 | den + `cas` | `Event`, `start`, `end` = start + `VYCHOZI_DELKA_UDALOSTI` |
 | den + `cas` + `casKonec` | `Event` s tím rozsahem |
 
-Platí to **jen tam, kde aspekt nevybírá uživatel**. Kde si aspekt vybral (+ Nová entita u projektu i u schůzky), doplní datum `doplnDatumZNazvuPodleAspektu()` podle zvoleného aspektu: Úkol → `deadline`, Událost → `start`/`end`, ostatní nic a název zůstane celý. **Nová cesta, kterou jde založit entitu, musí jednu z těch dvou funkcí zavolat** — parser byl v pořádku, ale „+ Nová entita" ho prostě nevolala a termín se tiše ztrácel; hlídá to `pim/testy/termin-vsemi-cestami.mjs`. Kde je select aspektu
-(+ Nová entita u projektu i u schůzky), se nehádá. Rychlé přidání úkolu
-u projektu proto jede přes týž `createQuickTaskFromText()` — jedno místo,
-jedno pravidlo.
+Platí to **jen tam, kde aspekt nevybírá uživatel**. Kde si aspekt vybral (+ Nová entita v navigaci, u projektu i u schůzky), doplní datum `doplnDatumZNazvuPodleAspektu()` podle zvoleného aspektu: Úkol → `deadline`, Událost → `start`/`end`, ostatní nic a název zůstane celý. Zapisuje **jen do prázdného pole**, takže se dá volat opakovaně a entitě, která termín už má, nic nepřepíše.
+
+**Nová cesta, kterou jde založit entitu, musí jednu z těch dvou funkcí zavolat.**
+Dvakrát se na tom uklouzlo: nejdřív „+ Nová entita" u projektu a schůzky parser
+vůbec nevolala, potom se ukázalo, že **tlačítko Hotovo mělo vlastní kopii pravidla**,
+která umí jen Úkol a `deadline` — událost s časem v názvu tudy projela bez začátku
+a konce. Kopie pravidla je horší než žádná: vypadá, že to funguje. U „+ Nová entita"
+se název píše do editoru, takže datum doplní až ukončení editace — tlačítko Hotovo
+i `ukonciEditaciEntity()` (Escape, klávesa U) volají tutéž funkci.
+
+Rychlé přidání úkolu u projektu i u schůzky jede přes týž
+`createQuickTaskFromText()` — jedno místo, jedno pravidlo.
 
 Dvě pasti:
 
@@ -112,9 +120,28 @@ Dvě pasti:
   a z názvu se nevyřezává, protože se nikam neukládá.
 
 Volnější vzory jen v kontextu: holý rozsah hodin (`10-12`) se bere **jen když už je
-rozpoznaný den**, jinak by to chytalo „verze 2-3".
+rozpoznaný den**, jinak by to chytalo „verze 2-3". Stejná logika u holé hodiny:
+`v 9`, `ve 14`, `od 9` ano, samotné `9` ne — **předložka je podmínka**, bez ní by
+čas vznikal z každého počtu v názvu („Kapitola 10 dopsat"). A koncová tečka čas
+vylučuje, jinak by `v 1. kapitole` bylo 1:00.
 
-Hlídá to `pim/testy/udalost-z-nazvu.mjs`.
+Co parser umí, se rozhoduje podle toho, jak lidi termíny opravdu píšou. Druhý pád
+dne v týdnu (`do pátku`, `od středy`) je nejčastější tvar vůbec a **dlouho chyběl**:
+úkol zůstal bez termínu a u `udělat do pátku 10:00` se rozpoznal jen čas, takže
+termín tiše sedl na **dnešek** — tatáž třída chyby jako dřív u „ve středu ráno".
+Proto má tabulka `DNY` u každého dne i genitiv a prefix `PREDLOZKA` (`do|od|k|ke|na|v|ve`
+plus volitelné `nejpozději`) je součástí vzoru, ne jen ozdoba: **vyřezává se spolu
+s datem**, jinak v názvu zůstane viset „do".
+
+Dál parser zná jména měsíců (`1. října`, `15. března 2027`), `do zítřka`,
+`za týden` / `za 2 týdny` / `za měsíc`, `do konce týdne` (= nejbližší pátek)
+a `do konce měsíce` (= poslední den měsíce).
+
+Falešné nálezy jsou dražší než chybějící: `Revize smlouvy 2024`, `Verze 2-3`,
+`Rozpočet na rok 2026` ani `Objednat 3 ks` nesmí dát datum. Na to je v sadě
+vlastní blok a každý nový vzor jím musí projít.
+
+Hlídá to `pim/testy/udalost-z-nazvu.mjs` a `pim/testy/termin-vsemi-cestami.mjs`.
 
 ## Samostatné okno: data se předávají mezi okny, nestahují znovu
 
@@ -180,8 +207,16 @@ Hlídá to `pim/testy/samostatne-okno.mjs`.
 
 ## Ukončení editace vede přes jedno místo
 
-`ukonciEditaciEntity({ pred, hlaska, zvuk })` dělá pořadí **detekce jmen → read mód
-→ `save()` → `render()`**. Používá ho tlačítko Hotovo, Escape i klávesa U.
+`ukonciEditaciEntity({ pred, hlaska, zvuk })` dělá pořadí **datum z názvu →
+detekce jmen → read mód → `save()` → `render()`**. Jde tudy Escape a klávesa U.
+
+**Tlačítko Hotovo tudy nejde** — má vlastní, delší průběh (historie trackeru,
+přejmenování a aktualizace odkazů, migrace anotací, zašifrování u aspektu Secured,
+přepočet diagramu) a ten se sem zatím nesložil. Jediné, co mají společné, je
+`doplnDatumZNazvuPodleAspektu()` a `detectAndOfferNamedEntities()`. **Důsledek,
+který je potřeba znát: Escape a klávesa U nepropisují přejmenování do odkazů**
+v ostatních entitách, protože blok s `state._editTitleOriginal` je jen u tlačítka
+Hotovo. Kdo tyhle cesty slučuje, ať začne odtud.
 
 Dřív volalo `detectAndOfferNamedEntities()` jen tlačítko „Hotovo". Escape a U
 uložily a vrátily do read módu, ale detekci tiše přeskočily — kdo z editace

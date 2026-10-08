@@ -131,6 +131,93 @@ ok(soucet, prazdny.deadline === utery && prazdny.title === 'Něco udělat',
   'a termín z názvu v něm funguje taky', prazdny);
 ok(soucet, prazdny.vazba === 'partOf→pz', 'úkol se připojil k projektu', prazdny);
 
+nadpis('+ Nová entita (globální tlačítko): všemi třemi cestami z editace');
+// Tlačítko „+ Nová entita" otevře prázdný editor a název se píše do něj, takže
+// datum z názvu může doplnit jedině ukončení editace. Dřív mělo tlačítko Hotovo
+// vlastní kopii pravidla, která uměla jen Úkol a deadline — událost s časem
+// v názvu („Porada úterý 10:00") projela bez začátku a konce, a Escape ani
+// klávesa U nedoplnily nic.
+const utery1000 = utery + 'T10:00';
+const utery1100 = utery + 'T11:00';
+
+// Založí entitu přes skutečné tlačítko, nastaví název i aspekt v editoru
+// a odejde zvolenou cestou.
+const novaEntitaPres = (nazev, aspekt, odchod) => stranka.evaluate(async ({ nazev, aspekt, odchod }) => {
+  db.entities.length = 0;
+  db.entities.push(newEntity({ id: 'kan', title: 'KANÁREK', aspects: ['Note'], body: 'TELO-KANARKA' }));
+  state.view = 'dashboard'; render();
+  await new Promise(z => setTimeout(z, 200));
+  document.getElementById('btn-new-entity').click();
+  await new Promise(z => setTimeout(z, 500));
+  const t = document.getElementById('d-title');
+  if (!t) return { chyba: 'editor názvu se neotevřel' };
+  t.value = nazev; t.dispatchEvent(new Event('input', { bubbles: true }));
+  await new Promise(z => setTimeout(z, 200));
+  const cb = [...document.querySelectorAll('#d-aspects input[type="checkbox"]')].find(x => x.value === aspekt);
+  if (!cb) return { chyba: 'zaškrtávátko aspektu ' + aspekt + ' nenalezeno' };
+  cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true }));
+  await new Promise(z => setTimeout(z, 400));
+  if (odchod === 'hotovo') {
+    const b = document.getElementById('btn-done');
+    if (!b) return { chyba: 'btn-done chybí' };
+    b.click();
+  } else if (odchod === 'escape') {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  } else if (odchod === 'u') {
+    const ta = document.getElementById('d-body'); if (ta) ta.blur();
+    document.activeElement && document.activeElement.blur && document.activeElement.blur();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'u', bubbles: true }));
+  }
+  await new Promise(z => setTimeout(z, 700));
+  const n = db.entities.find(x => x.id !== 'kan');
+  if (!n) return { chyba: 'entita nevznikla' };
+  const kan = findEntity('kan');
+  return { title: n.title, aspekty: (n.aspects || []).join(','), attr: n.attributes || {},
+    rezim: state.detailMode, kanarek: kan ? kan.title + '|' + kan.body : '(kanárek zmizel)' };
+}, { nazev, aspekt, odchod });
+
+for (const odchod of ['hotovo', 'escape', 'u']) {
+  const u = await novaEntitaPres(NAZEV, 'Task', odchod);
+  if (u.chyba) { ok(soucet, false, '+ Nová entita (' + odchod + ', úkol): ' + u.chyba); }
+  else {
+    ok(soucet, u.attr.deadline === utery && u.title === CISTY,
+      '+ Nová entita → Úkol, odchod ' + odchod + ' → termín ' + utery + ' a čistý název', u);
+    ok(soucet, u.rezim === 'read', '  a editace skončila (read mód)', u.rezim);
+    ok(soucet, u.kanarek === 'KANÁREK|TELO-KANARKA', '  kanárek: cizí entita nedotčená', u.kanarek);
+  }
+  const ev = await novaEntitaPres('Porada úterý 10:00', 'Event', odchod);
+  if (ev.chyba) { ok(soucet, false, '+ Nová entita (' + odchod + ', událost): ' + ev.chyba); }
+  else {
+    ok(soucet, ev.attr.start === utery1000 && ev.attr.end === utery1100,
+      '+ Nová entita → Událost, odchod ' + odchod + ' → ' + utery1000 + '–11:00', ev);
+    ok(soucet, ev.title === 'Porada', '  a z názvu zmizel den i čas', ev.title);
+  }
+}
+
+nadpis('+ Nová entita s aspektem, který termín nemá, název nemění');
+{
+  const pozn = await novaEntitaPres('Zápis z porady 5.6.2025', 'Note', 'hotovo');
+  ok(soucet, pozn.title === 'Zápis z porady 5.6.2025' && !pozn.attr.deadline && !pozn.attr.start,
+    'Poznámka si název nechá celý a nic se jí nedoplní', pozn);
+}
+
+nadpis('Entita, která termín už má, se při další editaci nemění');
+{
+  const r2 = await stranka.evaluate(async () => {
+    db.entities.length = 0;
+    db.entities.push(newEntity({ id: 'hotovy', title: 'Odeslat fakturu 30.6.', aspects: ['Task'],
+      attributes: { deadline: '2026-12-01' } }));
+    setView('detail', { detailId: 'hotovy', detailMode: 'edit' });
+    await new Promise(z => setTimeout(z, 500));
+    const b = document.getElementById('btn-done'); if (b) b.click();
+    await new Promise(z => setTimeout(z, 600));
+    const e = findEntity('hotovy');
+    return { title: e.title, deadline: e.attributes.deadline };
+  });
+  ok(soucet, r2.title === 'Odeslat fakturu 30.6.' && r2.deadline === '2026-12-01',
+    'název ani termín se nepřepsaly (doplňuje se jen do prázdného pole)', r2);
+}
+
 nadpis('Zachycení do Inboxu zůstává bez parsování');
 r = await cesta(`const ta=document.getElementById('quick-text'); ta.value='${NAZEV}';
    (document.getElementById('quick-save')||document.querySelector('#dialog-quick button.primary')).click();`);
