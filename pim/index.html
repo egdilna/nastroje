@@ -2389,7 +2389,12 @@ let suppressStorageEvent = false; // true během vlastního save
 function getProjectKey() {
   try {
     const idParam = new URL(location.href).searchParams.get('id');
-    return idParam ? STORAGE_KEY + '::' + idParam : STORAGE_KEY;
+    // Padding base64 („=" na konci) se zahazuje: updateUrlForState() ho v URL
+    // nenechává, takže okno otevřené z ručně složeného odkazu drželo klíč s ním
+    // a okno po prvním překreslení bez něj. Dvě různá jména téhož projektu —
+    // a okna si pak nepředala data ani neslyšela změny toho druhého.
+    const norm = idParam ? idParam.replace(/=+$/, '') : '';
+    return norm ? STORAGE_KEY + '::' + norm : STORAGE_KEY;
   } catch (e) { return STORAGE_KEY; }
 }
 function isProjectTab() {
@@ -2420,6 +2425,143 @@ function save() {
   saveSettingsLocal();
   debug('Změna zaznamenána (data jen na GitHub): ' + (db.entities ? db.entities.length : 0) + ' entit');
   scheduleAutosaveGh();
+  syncOznamZmenu();
+}
+
+// === POJISTKA PROTI PŘEPSÁNÍ DAT NA GITHUBU ===
+// Dokud není jistota, že data v tomhle okně opravdu přišla z GitHubu (nebo že tam
+// žádná nejsou), nenahrává se nic. Bez toho stačí jedno neúspěšné načtení — okno
+// zůstane prázdné a autosave tím prázdnem přepíše celý soubor.
+let _ghDataNactena = false;
+function ghDataNactena(hodnota) {
+  if (hodnota !== undefined) _ghDataNactena = !!hodnota;
+  return _ghDataNactena;
+}
+
+// === PŘEDÁNÍ DAT A SYNCHRONIZACE MEZI OKNY APLIKACE ===
+// Samostatné okno entity je plnohodnotná druhá instance aplikace. Data žijí jen
+// v paměti a na GitHubu (localStorage je kvůli limitu ~5 MB nedrží), takže nová
+// instance neměla odkud vzít data než ze sítě — i když okno, které ji otevřelo,
+// je má v paměti vedle sebe. Okna stejného původu si je proto předají přímo:
+//   * při startu z window.opener.__pimDejData() (bez sítě),
+//   * dál přes BroadcastChannel, aby se obě okna nerozešla.
+// Na file:// nic z toho nejde (každý soubor má neprůhledný původ) — tam se
+// bez řečí vrátíme k načtení z GitHubu.
+//
+// Předává se vždy hluboká kopie, ne živý objekt: realm zavřeného okna umírá
+// s ním a sdílené objekty by se staly nepoužitelnými. Rozšifrovaný obsah
+// zabezpečených entit v db není (žije v _unlockedSecured), takže se předáním
+// nedostane do druhého okna — to si o heslo řekne samo.
+const SYNC_PREFIX_KANALU = 'pim-sync::';
+const SYNC_ID_OKNA = 'o' + Math.random().toString(36).slice(2, 10);
+let _syncKanal = null;
+let _syncPrebirani = false;      // probíhá převzetí cizích dat – neohlašuj je zpět
+let _syncTimerOznameni = null;
+let _syncVynucenePrevzeti = false; // uživatel si o převzetí řekl tlačítkem v pruhu
+
+function syncKanal() {
+  if (_syncKanal !== null) return _syncKanal;
+  try {
+    if (typeof BroadcastChannel !== 'function') { _syncKanal = false; return false; }
+    _syncKanal = new BroadcastChannel(SYNC_PREFIX_KANALU + getProjectKey());
+    _syncKanal.onmessage = (ev) => { try { syncZprava(ev.data); } catch (e) { debug('Synchronizace oken: ' + e.message); } };
+  } catch (e) {
+    debug('Kanál pro synchronizaci oken nejde otevřít: ' + e.message);
+    _syncKanal = false;
+  }
+  return _syncKanal;
+}
+function syncPosli(zprava) {
+  const k = syncKanal();
+  if (!k) return false;
+  try { k.postMessage(zprava); return true; }
+  catch (e) { debug('Zprávu druhému oknu nejde poslat: ' + e.message); return false; }
+}
+// Ohlášení je odložené: při psaní se save() volá po každém stisku.
+function syncOznamZmenu() {
+  if (_syncPrebirani) return;
+  if (!db || !db.entities || db.entities.length === 0) return;
+  clearTimeout(_syncTimerOznameni);
+  _syncTimerOznameni = setTimeout(() => {
+    _syncTimerOznameni = null;
+    syncPosli({ typ: 'zmena', od: SYNC_ID_OKNA, updated_at: db.updated_at });
+  }, 1000);
+}
+// Sama od sebe data převezme jen okno, které právě nic nepíše. Jinak by si
+// přepsalo rozdělanou práci — tam zůstává pruh s nabídkou.
+function syncMuzePrevzit() {
+  if (state.view === 'detail' && state.detailMode === 'edit') return false;
+  if (state.sectionEditMode) return false;
+  if (document.querySelector('dialog[open]')) return false;
+  return true;
+}
+function syncZprava(m) {
+  if (!m || m.od === SYNC_ID_OKNA) return;
+  if (m.typ === 'zmena') {
+    if (m.updated_at && db && m.updated_at === db.updated_at) return;
+    if (syncMuzePrevzit()) syncPosli({ typ: 'zadost', od: SYNC_ID_OKNA, pro: m.od });
+    else showCrossTabBanner();
+    return;
+  }
+  // Žádost bez adresáta (tlačítko v pruhu) obsluhuje kdokoli, kdo data má.
+  if (m.typ === 'zadost' && (!m.pro || m.pro === SYNC_ID_OKNA)) {
+    if (!db || !db.entities || db.entities.length === 0) return;
+    syncPosli({ typ: 'data', od: SYNC_ID_OKNA, pro: m.od, data: JSON.parse(JSON.stringify(db)) });
+    return;
+  }
+  if (m.typ === 'data' && m.pro === SYNC_ID_OKNA) {
+    if (!m.data || !m.data.entities) return;
+    if (!syncMuzePrevzit() && !_syncVynucenePrevzeti) { showCrossTabBanner(); return; }
+    _syncVynucenePrevzeti = false;
+    syncPrevezmiData(m.data, 'druhého okna aplikace');
+  }
+}
+// Nahrazení dat daty z jiného okna. save() se tu zavolat nesmí: přepsalo by
+// updated_at a ohlásilo zpátky změnu, která žádná není.
+function syncPrevezmiData(nova, zdroj) {
+  _syncPrebirani = true;
+  try {
+    db = nova;
+    if (!db.tags) db.tags = [];
+    if (!db.savedViews) db.savedViews = [];
+    if (!db.customTemplates) db.customTemplates = [];
+    if (!db.customAspects) db.customAspects = [];
+    if (!db.ghMeta) db.ghMeta = {};
+    db.entities.forEach(e => { if (!e.comments) e.comments = []; if (!e.attachments) e.attachments = []; });
+    ghDataNactena(true);
+    const pruh = document.getElementById('crosstab-banner');
+    if (pruh) { pruh.remove(); _crossTabBannerShown = false; }
+    if (state.view === 'detail' && state.detailId && !findEntity(state.detailId)) {
+      setView('dashboard');
+      statusMsg('Entita byla v ' + zdroj + ' smazána. Data převzata (' + db.entities.length + ' entit).');
+      return;
+    }
+    render();
+    statusMsg('Data převzata z ' + zdroj + ' (' + db.entities.length + ' entit).');
+  } finally { _syncPrebirani = false; }
+}
+// Výdej dat oknu, které jsme otevřeli (čte si to samo při startu).
+window.__pimDejData = function () {
+  if (!db || !db.entities || db.entities.length === 0) return null;
+  return { projekt: getProjectKey(), db: JSON.parse(JSON.stringify(db)) };
+};
+function prevezmiDataZOtviracihoOkna() {
+  try {
+    if (!window.opener || window.opener.closed) return false;
+    if (typeof window.opener.__pimDejData !== 'function') return false;
+    const data = window.opener.__pimDejData();
+    if (!data || !data.db || !data.db.entities || data.db.entities.length === 0) return false;
+    // Jiný projekt = jiná data; míchat se nesmí.
+    if (data.projekt !== getProjectKey()) return false;
+    db = data.db;
+    if (!db.ghMeta) db.ghMeta = {};
+    ghDataNactena(true);
+    return true;
+  } catch (e) {
+    // Typicky file:// – neprůhledný původ, čtení z otevíracího okna je zakázané.
+    debug('Data z otevíracího okna převzít nejde: ' + e.message);
+    return false;
+  }
 }
 // Nastavení (bez dat) ukládáme lokálně – je to pár kB, limit prohlížeče to nikdy nepřeteče.
 const SETTINGS_KEY = 'pim_settings_v1';
@@ -2461,7 +2603,7 @@ function scheduleAutosaveGh() {
     _autosaveGhTimer = null;
     window._autosaveSkip = true;
     try {
-      const p = GH.upload();
+      const p = GH.upload({ autosave: true });
       if (p && typeof p.finally === 'function') {
         p.finally(() => { window._autosaveSkip = false; });
       } else {
@@ -26597,12 +26739,20 @@ async function init() {
   setupNav();
   setupKeyboard();
   applyTheme();
+  // Kanál pro synchronizaci oken se otevírá hned, ne až při prvním odeslání:
+  // okno, které zatím nic nezměnilo, musí zprávy druhého okna slyšet.
+  syncKanal();
 
   // URL parametr ?id=base64(owner/repo/cesta) – nebo autoLoadOnStart
   const urlParam = new URL(location.href).searchParams.get('id');
   // Parametr &e= přečteme HNED (dřív, než render/updateUrlForState začne URL přepisovat),
   // jinak by se odkaz na entitu ztratil ještě před skokem.
   const entityJumpParam = new URL(location.href).searchParams.get('e');
+  // Samostatné okno entity: data si vezme přímo z okna, které ho otevřelo, a ze
+  // sítě nenačítá nic. Dřív se chovalo jako každá jiná instance a stahovalo celý
+  // soubor z GitHubu znovu — zbytečně, a při nedostupné síti zůstalo prázdné.
+  const jeSamostatne = new URL(location.href).searchParams.get('standalone') === '1';
+  const prevzatoZOkna = jeSamostatne ? prevezmiDataZOtviracihoOkna() : false;
   let didLoadFromGh = false;
   if (urlParam) {
     try {
@@ -26613,23 +26763,32 @@ async function init() {
         state.settings.github.repo = m[2];
         state.settings.github.path = m[3];
         if (!state.settings.github.branch) state.settings.github.branch = 'main';
-        statusMsg('Načítám z GitHubu…');
-        try {
-          await GH.downloadAndLoad(false, true);
+        if (prevzatoZOkna) {
+          // Data už máme z otevíracího okna, ?id= posloužilo jen k nastavení repozitáře.
           didLoadFromGh = true;
-        } catch (loadErr) {
-          // 401/403/404 obvykle = private repo bez tokenu nebo neplatný token.
-          // Nabídneme uživateli zadat API klíč (a jméno) a zkusit znovu.
-          const st = loadErr && loadErr.status;
-          if (st === 401 || st === 403 || st === 404) {
-            setView('inbox');
-            openGithubTokenOnboarding(m[1], m[2], m[3], state.settings.github.branch);
-          } else {
-            alertMsg('Načtení z GitHubu selhalo: ' + (loadErr.message || loadErr));
+          statusMsg('Data převzata z hlavního okna (' + db.entities.length + ' entit) – bez načítání z GitHubu.');
+        } else {
+          statusMsg('Načítám z GitHubu…');
+          try {
+            await GH.downloadAndLoad(false, true);
+            didLoadFromGh = true;
+          } catch (loadErr) {
+            // 401/403/404 obvykle = private repo bez tokenu nebo neplatný token.
+            // Nabídneme uživateli zadat API klíč (a jméno) a zkusit znovu.
+            const st = loadErr && loadErr.status;
+            if (st === 401 || st === 403 || st === 404) {
+              setView('inbox');
+              openGithubTokenOnboarding(m[1], m[2], m[3], state.settings.github.branch);
+            } else {
+              alertMsg('Načtení z GitHubu selhalo: ' + (loadErr.message || loadErr));
+            }
           }
         }
       }
     } catch (e) { alertMsg('Chybný parametr ?id v URL: ' + e.message); }
+  } else if (prevzatoZOkna) {
+    didLoadFromGh = true;
+    statusMsg('Data převzata z hlavního okna (' + db.entities.length + ' entit) – bez načítání z GitHubu.');
   } else if (state.settings.github && state.settings.github.autoLoadOnStart && GH.isConfigured()) {
     statusMsg('Auto-načítám z GitHubu…');
     try { await GH.downloadAndLoad(false); didLoadFromGh = true; }
@@ -26709,11 +26868,23 @@ function showCrossTabBanner() {
   div.id = 'crosstab-banner';
   div.setAttribute('role', 'alert');
   div.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#f0b400;color:#000;padding:0.75em 1em;z-index:9999;display:flex;justify-content:space-between;align-items:center;gap:1em;flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,0.2);';
-  div.innerHTML = '<span><strong>⚠ Pozor:</strong> data tohoto projektu byla změněna v jiné kartě prohlížeče. Doporučuji obnovit stránku, jinak při dalším uložení přepíšete cizí změny.</span>' +
-    '<span><button id="crosstab-reload" class="primary" style="margin-right:0.5em;">Načíst znovu</button>' +
+  div.innerHTML = '<span><strong>⚠ Pozor:</strong> data tohoto projektu byla změněna v jiném okně aplikace. Dokud je nepřevezmete, přepíšete při dalším uložení cizí změny.</span>' +
+    '<span><button id="crosstab-reload" class="primary" style="margin-right:0.5em;">Převzít data</button>' +
     '<button id="crosstab-dismiss">Zavřít</button></span>';
   document.body.appendChild(div);
-  document.getElementById('crosstab-reload').onclick = () => location.reload();
+  // Převzetí od druhého okna, ne reload: obnovení stránky by stáhlo starší
+  // soubor z GitHubu a o změny z druhého okna bychom přišli.
+  document.getElementById('crosstab-reload').onclick = () => {
+    div.remove(); _crossTabBannerShown = false;
+    _syncVynucenePrevzeti = true;   // uživatel si o to řekl – převezmi i z editace
+    const poslano = syncPosli({ typ: 'zadost', od: SYNC_ID_OKNA });
+    if (!poslano) { location.reload(); return; }
+    setTimeout(() => {
+      if (!_syncVynucenePrevzeti) return;   // data už přišla
+      _syncVynucenePrevzeti = false;
+      statusMsg('Druhé okno neodpovědělo. Zkuste „Načíst z GitHubu" (menu Soubor).');
+    }, 3000);
+  };
   document.getElementById('crosstab-dismiss').onclick = () => { div.remove(); _crossTabBannerShown = false; };
   alertMsg('Pozor: data byla změněna v jiném tabu prohlížeče.');
 }
@@ -27561,6 +27732,7 @@ const GH = {
       db.ghMeta.sha = meta.sha;
       db.ghMeta.lastSyncAt = nowIso();
       db.ghMeta.branch = state.settings.github.branch || 'main';
+      ghDataNactena(true);
       save();
       this._setStatus('ok', 'Načteno z GitHubu (' + db.entities.length + ' entit).');
       if (!silent) toast('✓ Načteno z GitHubu: ' + db.entities.length + ' entit, ' + getAllTags().length + ' tagů, ' + db.savedViews.length + ' pohledů.');
@@ -27574,6 +27746,8 @@ const GH = {
         throw e;
       }
       if (e.status === 404) {
+        // Soubor tam není – není co přepsat, pojistka může povolit nahrání.
+        ghDataNactena(true);
         this._setStatus('error', 'Soubor na GitHubu zatím neexistuje – nahrajte ho stiskem „Nahrát na GitHub".');
         if (!silent) {
           toast('Soubor na GitHubu zatím neexistuje. Nahrajte ho z Nastavení.', 4000);
@@ -27590,7 +27764,8 @@ const GH = {
     }
   },
 
-  async upload() {
+  async upload(opts) {
+    opts = opts || {};
     if (!this.isConfigured()) {
       alertMsg('GitHub není nakonfigurován – Nastavení → GitHub.');
       toast('GitHub není nakonfigurován – Nastavení → GitHub.', 4000);
@@ -27600,6 +27775,40 @@ const GH = {
       alertMsg('Chybí GitHub token.');
       toast('Chybí GitHub token. Zadejte jej v Nastavení.', 4000);
       return false;
+    }
+    // Pojistka proti přepsání: dokud data v okně neprošla načtením z GitHubu,
+    // nenahrávej nic (ani přílohy). Když na GitHubu soubor ještě není, není co
+    // ztratit a pojistka se rovnou odemkne.
+    if (!ghDataNactena()) {
+      let vzdalenyExistuje = true;
+      try {
+        await this._getRemoteFile();
+      } catch (e) {
+        if (e.status === 404) vzdalenyExistuje = false;
+        else {
+          const z = 'Nejde zjistit, co je na GitHubu (' + e.message + '). Nahrání zastaveno, aby se nepřepsala cizí data.';
+          this._setStatus('error', z);
+          statusMsg(z);
+          toast('✗ ' + z, 6000);
+          return false;
+        }
+      }
+      if (!vzdalenyExistuje) {
+        ghDataNactena(true);
+      } else {
+        const z = 'Na GitHubu je soubor, který v tomhle okně nebyl načten – nahrání by ho přepsalo.';
+        this._setStatus('error', z);
+        statusMsg(z + ' Použijte „Načíst z GitHubu" (menu Soubor).');
+        if (opts.autosave) {
+          toast('✗ Autosave zastaven: ' + z, 7000);
+          return false;
+        }
+        if (!confirm(z + '\n\nOpravdu přepsat data na GitHubu obsahem tohoto okna (' + db.entities.length + ' entit)?')) {
+          toast('✗ Nahrání zrušeno. Nejdřív „Načíst z GitHubu".', 6000);
+          return false;
+        }
+        ghDataNactena(true);
+      }
     }
     this._setStatus('syncing');
     toast('Nahrávám na GitHub…', 60000);

@@ -1019,9 +1019,54 @@ Ukládá se do větve `main` a **existující soubor se přepíše** (PIM si sá
 
 Oba atributy jsou nezávislé: entita může mít jen jeden z nich, nebo oba — pak se každým tlačítkem uloží jiný soubor na jiné místo.
 
+### Pojistka proti přepsání dat
+
+Dokud data v okně neprošla načtením z GitHubu, aplikace **nic nenahraje** — ani
+přílohy. Bez té pojistky stačilo jedno neúspěšné načtení (okno zůstalo prázdné)
+a autosave by tím prázdnem přepsal celý soubor.
+
+Co se stane:
+
+- **Autosave** se zastaví a důvod napíše do stavového řádku: *„Na GitHubu je
+  soubor, který v tomhle okně nebyl načten."* Pomůže **Načíst z GitHubu**
+  (menu Soubor).
+- **Ruční nahrání** se zeptá, jestli opravdu přepsat obsah souboru daty z tohoto
+  okna. Po potvrzení se nahraje — to je cesta například po importu JSON ze disku.
+- Když soubor na GitHubu ještě **neexistuje**, není co ztratit a první nahrání
+  proběhne bez ptaní.
+
+### Samostatné okno entity a víc oken naráz
+
+Tlačítko **Samostatné okno** (🪟) v detailu entity otevře tutéž entitu v novém
+okně bez navigace, které jde používat vedle hlavního okna. Je to plnohodnotná
+druhá instance aplikace — dá se v ní entitu i editovat.
+
+**Data se berou z okna, které ho otevřelo, ne ze sítě.** Nové okno si od toho
+původního vyžádá kopii databáze z paměti, takže otevření nic nestahuje a funguje
+i bez připojení. Ze GitHubu se načítá jen tehdy, když původní okno není
+k dispozici — typicky když si odkaz na samostatné okno zkopírujete a otevřete ho
+jinde nebo později. Rozšifrovaný obsah zabezpečených entit se nepředává: nové
+okno se na heslo zeptá samo.
+
+**Obě okna se pak drží v synchronu.** Po změně v jednom okně si druhé okno data
+převezme samo, během asi dvou sekund, a napíše to do stavového řádku. Okno, ve
+kterém se právě edituje (detail v režimu editace nebo rozepsaná sekce), si
+rozdělanou práci nepřepíše — ukáže místo toho pruh s tlačítkem **Převzít data**,
+kterým si o převzetí řeknete sami.
+
+Má to dvě meze, se kterými je dobré počítat:
+
+- Synchronizace **neslučuje** souběžné změny. Když se v obou oknech změní něco
+  během jedné sekundy, převáží ta pozdější změna.
+- Okna si rozumí jen uvnitř jednoho prohlížeče a nad **týmž projektem** (týž
+  parametr `?id=`). Dvě různé databáze se nikdy nepromíchají.
+
 ## Časté otázky
 
-**Kde jsou moje data?** V `localStorage` prohlížeče pod klíčem `pim_db_v1::DEFAULT` (nebo `pim_db_v1::IDP_ID` pro projektové stránky).
+**Kde jsou moje data?** Trvale jedině v souboru na GitHubu. V prohlížeči běží jen
+v paměti okna; v `localStorage` zůstává nastavení (včetně konfigurace GitHubu),
+token a odkládací prostor — ne data. Proto po zavření okna bez uložení na GitHub
+o změny přijdete.
 
 **Mohu mít víc oddělených databází?** Ano, přes URL parametr `?id=NAZEV`. Každý ID má vlastní storage.
 
