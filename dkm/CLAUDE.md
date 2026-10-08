@@ -867,6 +867,18 @@ mířit jen dovnitř výřezu. Engine se tím nerozdvojí — prohlížeč jen s
 - `buildExportModel` → `sablonaDoExportu`: tělo se vysází ze šablony a sekce, které
   spotřebovala, se z modelu vyndají. Export grupuje vazby **podle názvu**, ne podle id,
   proto `spotrebovaneNazvyVazeb`; co se přeložit nedá, se radši nefiltruje.
+- **Z čeho se dokument sestaví, rozhoduje `sel.sablonaRezim`** (`both` | `only` | `off`,
+  čte `sablonaRezim(sel)`). `both` je původní chování, `only` nechá **jen `m.title`
+  s názvem entity a `m.sablonaMd`** (nadpis je rám dokumentu, ne obsah, takže se vynucuje
+  bez ohledu na zaškrtnutí), `off` šablonu nepoužije. Starší `sel.sablona===false` platí
+  dál jako `off` — nikdo ho nenastavoval, ale v kódu byl.
+- **Rámeček staví `sablonaRezimFieldset(sel,maSablonu)`** a je **jeden pro oba dialogy**
+  (jedna entita i výběr). Kreslí se jen když `nekteraMaSablonu(ents)`; bez šablony by to
+  byla volba mezi třemi stejnými výsledky. V režimu `only` zakáže ostatní `fieldset`y
+  (`prekresliZasedeni`) — `fieldset[disabled]` vypne všechno pod sebou, takže se prvky
+  nemusí hlídat po jednom. Volba se **nepamatuje**, platí pro jedno otevření dialogu.
+- **Kontext pro AI přepínač nemá** (`openAiContextDialog` jede dál v `both`). Je to
+  schválně: AI dostává to, co by se vyexportovalo, a šablona je součást toho obrazu.
 - Import balíčku zakládá typ i aspekt **kopií celého objektu** (`Object.assign`), ne výčtem
   polí — jinak by šablona i `jsonKey` tiše zmizely.
 - **U `reuse` se šablona přenese jen na vyžádání** (`mapping.…[id].prevzitSablonu`). Samo

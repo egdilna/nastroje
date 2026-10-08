@@ -1721,7 +1721,26 @@ Všech sedm najdeš na jednom místě — **Nastavení → Model** (kap. 36), je
 
 V detailu entity tlačítko **🖨 Export / tisk**. Otevře dialog se zaškrtávátky pro sekce:
 
-### 24.1 Volitelné sekce
+### 24.1 Z čeho sestavit dokument
+
+Když má entita **šablonu detailu** (kap. 29b), přibude v dialogu nahoře volba, z čeho se
+dokument sestaví. Bez šablony se nenabízí — nebylo by z čeho vybírat.
+
+| Volba | Co udělá |
+|---|---|
+| **Šablona a k ní zbytek** (výchozí) | tělo podle šablony a pod ním zaškrtnuté sekce, které si šablona nevzala |
+| **Jen šablona** | H1 s názvem entity a tělo šablony, nic víc — volby níž se zašedí |
+| **Jen zaškrtnuté** | šablona se nepoužije vůbec |
+
+U *šablony a zbytku* se odečítá to, co si šablona vzala **blokem** (`dkm:attributes`,
+`dkm:relations`, …). Pole `((Atribut))` napsané v textu šablony se za odečtení **nepočítá**,
+takže se atribut vypíše i v sekci atributů; když to nechceš, použij blok, nebo rovnou
+režim *jen šablona*.
+
+Volba platí pro jedno otevření dialogu a je **i u exportu výběru** (kap. 24.4) — tam se
+uplatní na každou entitu, která šablonu má.
+
+### 24.1b Volitelné sekce
 
 - **Záhlaví** — název, ikona typu, badge typu, badges aspektů, badges stavu
 - **Atributy typu** — každý samostatně (checkbox), tlačítka Vše / Nic
