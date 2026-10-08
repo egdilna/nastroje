@@ -3261,15 +3261,53 @@ function natlangParseDateInText(text) {
     usekyDatum.push([h.start, h.end]);
     popis = h.text.trim();
   }
-  const relativni = [['dnes', 0], ['zítra', 1], ['zitra', 1], ['pozítří', 2], ['pozitri', 2], ['včera', -1], ['vcera', -1]];
+  // Předložky, které stojí před datem, se vyřezávají spolu s ním — jinak
+  // v názvu zůstane viset „do" nebo „na". „Nejpozději" taky, je to jen výplň.
+  const PREDLOZKA = '(?:(?:nejpozději|nejpozdeji)\\s+)?(?:(?:ve|v|do|od|k|ke|na|pro)\\s+)?';
+  // 2. pád u relativních dnů („do zítřka") je stejně běžný jako 1. pád.
+  const relativni = [
+    ['dnes', 0], ['dneška', 0], ['dneska', 0],
+    ['zítra', 1], ['zitra', 1], ['zítřka', 1], ['zitrka', 1],
+    ['pozítří', 2], ['pozitri', 2], ['pozítřka', 2], ['pozitrka', 2],
+    ['včera', -1], ['vcera', -1]
+  ];
   for (const [slovo, d] of relativni) {
     if (dateMatch) break;
-    const h = najdi(slovo);
+    const h = najdi(PREDLOZKA + slovo);
     if (h) nastavDatum(h, applyDelta(d));
   }
   if (!dateMatch) {
-    const h = najdi('za\\s+(\\d+)\\s+(?:dní|dnů|den|dny|dnu)');
+    const h = najdi(PREDLOZKA + 'za\\s+(\\d+)\\s+(?:dní|dnů|den|dny|dnu)');
     if (h) nastavDatum(h, applyDelta(Number(h.text.match(/\d+/)[0])));
+  }
+  // „za týden", „za 2 týdny", „za měsíc", „za 3 měsíce"
+  if (!dateMatch) {
+    const h = najdi(PREDLOZKA + 'za\\s+(?:(\\d+)\\s+)?(?:týden|tyden|týdny|tydny|týdnů|tydnu|týdne|tydne)');
+    if (h) {
+      const n = h.text.match(/\d+/);
+      nastavDatum(h, applyDelta(7 * (n ? Number(n[0]) : 1)));
+    }
+  }
+  if (!dateMatch) {
+    const h = najdi(PREDLOZKA + 'za\\s+(?:(\\d+)\\s+)?(?:měsíc|mesic|měsíce|mesice|měsíců|mesicu)');
+    if (h) {
+      const n = h.text.match(/\d+/);
+      const d = new Date(today); d.setMonth(d.getMonth() + (n ? Number(n[0]) : 1));
+      nastavDatum(h, { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() });
+    }
+  }
+  // „do konce měsíce" = poslední den tohoto měsíce, „do konce týdne" = nejbližší
+  // pátek (pracovní čtení; v sobotu a v nedělí ten příští).
+  if (!dateMatch) {
+    const h = najdi('(?:do\\s+)?konce\\s+(?:měsíce|mesice)');
+    if (h) {
+      const d = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      nastavDatum(h, { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() });
+    }
+  }
+  if (!dateMatch) {
+    const h = najdi('(?:do\\s+)?konce\\s+(?:týdne|tydne)');
+    if (h) nastavDatum(h, applyDelta(today.getDay() >= 1 && today.getDay() <= 5 ? 5 - today.getDay() : dayDelta(5)));
   }
   // Konkrétní datum: DD.MM.YYYY / DD.MM. / YYYY-MM-DD
   if (!dateMatch) {
@@ -3293,21 +3331,48 @@ function natlangParseDateInText(text) {
         { year: Number(m[2]), month: Number(m[3]), day: Number(m[4]) });
     }
   }
-  // Den v týdnu — s předložkou i bez ní, v 1. i ve 4. pádě, s diakritikou i bez.
-  // Předložka se vyřízne spolu se dnem, jinak v názvu zůstane viset „v".
+  // Datum se jménem měsíce: „1. října", „15. listopadu 2026", „do 3. března".
+  if (!dateMatch) {
+    // Pořadí je důležité: „července" musí vyhrát nad „červen" (shoda zleva).
+    const TVARY = [
+      ['ledna|leden', 1], ['února|unora|únor|unor', 2], ['března|brezna|březen|brezen', 3],
+      ['dubna|duben', 4], ['května|kvetna|květen|kveten', 5],
+      ['července|cervence|červenec|cervenec', 7], ['června|cervna|červen|cerven', 6],
+      ['srpna|srpen', 8], ['září|zari', 9], ['října|rijna|říjen|rijen', 10],
+      ['listopadu|listopad', 11], ['prosince|prosinec', 12]
+    ];
+    for (const [vzor, mes] of TVARY) {
+      if (dateMatch) break;
+      const re = new RegExp('(^|[\\s,;(])' + PREDLOZKA + '(\\d{1,2})\\.?\\s+(?:' + vzor + ')(?:\\s+(\\d{4}))?(?=$|[\\s,;.!?)])', 'i');
+      const mm = orig.match(re);
+      if (!mm) continue;
+      const den = Number(mm[2]);
+      if (den < 1 || den > 31) continue;
+      let rok = mm[3] ? Number(mm[3]) : today.getFullYear();
+      if (!mm[3] && new Date(rok, mes - 1, den) < today) rok++;
+      const posun = mm[1].length;
+      nastavDatum({ start: mm.index + posun, end: mm.index + mm[0].length, text: mm[0] },
+        { year: rok, month: mes, day: den });
+    }
+  }
+  // Den v týdnu — s předložkou i bez ní, v 1., 2. i ve 4. pádě, s diakritikou i bez.
+  // Předložka se vyřízne spolu se dnem, jinak v názvu zůstane viset „do".
+  // 2. pád („do pátku", „od středy") je u termínů nejčastější tvar vůbec; dokud
+  // tady nebyl, „Dodělat prezentaci do pátku" se nerozpoznalo a s časem v názvu
+  // se termín tiše posadil na dnešek.
   if (!dateMatch) {
     const DNY = [
       [0, ['neděli', 'neděle', 'nedeli', 'nedele']],
-      [1, ['pondělí', 'pondeli']],
-      [2, ['úterý', 'utery']],
-      [3, ['středu', 'středa', 'stredu', 'streda']],
-      [4, ['čtvrtek', 'ctvrtek']],
-      [5, ['pátek', 'patek']],
-      [6, ['sobotu', 'sobota', 'sobotu', 'sobota']]
+      [1, ['pondělí', 'pondeli', 'pondělka', 'pondelka']],
+      [2, ['úterý', 'utery', 'úterka', 'uterka']],
+      [3, ['středu', 'středa', 'středy', 'stredu', 'streda', 'stredy']],
+      [4, ['čtvrtek', 'ctvrtek', 'čtvrtka', 'ctvrtka']],
+      [5, ['pátek', 'patek', 'pátku', 'patku']],
+      [6, ['sobotu', 'sobota', 'soboty']]
     ];
     for (const [dow, tvary] of DNY) {
       if (dateMatch) break;
-      const vzor = '(?:(?:ve|v)\\s+)?(?:(?:příští|pristi|nejbližší|nejblizsi|tento|tuto)\\s+)?(?:' + tvary.join('|') + ')';
+      const vzor = PREDLOZKA + '(?:(?:příští|pristi|příštího|pristiho|nejbližší|nejblizsi|tento|tuto|tohoto)\\s+)?(?:' + tvary.join('|') + ')';
       const h = najdi(vzor);
       if (h) nastavDatum(h, applyDelta(dayDelta(dow)));
     }
@@ -3353,6 +3418,24 @@ function natlangParseDateInText(text) {
   }
   if (!cas) {
     m = orig.match(/(^|[\s,;(])(?:(?:ve|v)\s+)?(\d{1,2})\s*h(?:od(?:in)?)?(?=$|[\s,;.!?)])/i);
+    if (m && platnyCas(Number(m[2]), 0)) {
+      cas = hhmm(Number(m[2]), 0);
+      useky.push([m.index + m[1].length, m.index + m[0].length]);
+    }
+  }
+  // Čas s tečkou („ve 14.30") a holá hodina s předložkou („v 9", „od 14").
+  // Předložka je tady podmínka, ne ozdoba: bez ní by se za čas bral každý
+  // počet v názvu („Kapitola 10 dopsat", „Objednat 3 ks"). A koncová tečka
+  // se nesmí spolknout, jinak by „v 1. kapitole" bylo 1:00.
+  if (!cas) {
+    m = orig.match(/(^|[\s,;(])(?:ve|v|od)\s+(\d{1,2})\.(\d{2})(?=$|[\s,;!?)])/i);
+    if (m && platnyCas(Number(m[2]), Number(m[3]))) {
+      cas = hhmm(Number(m[2]), Number(m[3]));
+      useky.push([m.index + m[1].length, m.index + m[0].length]);
+    }
+  }
+  if (!cas) {
+    m = orig.match(/(^|[\s,;(])(?:ve|v|od)\s+(\d{1,2})(?=$|[\s,;!?)])/i);
     if (m && platnyCas(Number(m[2]), 0)) {
       cas = hhmm(Number(m[2]), 0);
       useky.push([m.index + m[1].length, m.index + m[0].length]);
@@ -15088,6 +15171,18 @@ function ukonciEditaciEntity(opts) {
   opts = opts || {};
   const e = findEntity(state.detailId);
   if (typeof opts.pred === 'function') opts.pred(e);
+  // Termín z názvu i tady: „+ Nová entita" otevře editor a název se píše do něj,
+  // takže tady je jediné místo, kde se o něm dá vědět. Bez toho parser u téhle
+  // cesty nikdy neběžel a vypadalo to, že nefunguje vůbec.
+  // doplnDatumZNazvuPodleAspektu() zapisuje jen do prázdného pole, takže
+  // u entity, která termín už má, se nic nestane.
+  if (e) {
+    const datumZNazvu = doplnDatumZNazvuPodleAspektu(e);
+    if (datumZNazvu) {
+      e.updated_at = nowIso();
+      toast('Z názvu doplněn ' + datumZNazvu + '.', 4000);
+    }
+  }
   const dokonci = () => {
     // Read PŘED save(): autosave guard v edit modu by jinak zablokoval upload.
     state.detailMode = 'read';
@@ -16008,15 +16103,14 @@ function renderDetailEdit(main, e) {
       state._trackerEditOriginalEntityId = null;
       state._trackerEditOriginalValue = null;
     }
-    // Pokud má aspekt Task a nemá deadline, zkus parse z názvu
-    if ((e.aspects || []).includes('Task') && (!e.attributes || !e.attributes.deadline) && e.title) {
-      const parsed = parseTaskDateFromTitle(e.title);
-      if (parsed) {
-        if (!e.attributes) e.attributes = {};
-        e.attributes.deadline = parsed.deadline;
-        e.title = parsed.cleanedTitle || e.title;
+    // Datum z názvu podle aspektu — týmž pravidlem jako všude jinde.
+    // Dřív tady byla vlastní kopie, která umí jen Úkol a deadline: událost
+    // s časem v názvu („Porada úterý 10:00") tudy projela bez začátku a konce.
+    {
+      const datumZNazvu = doplnDatumZNazvuPodleAspektu(e);
+      if (datumZNazvu) {
         e.updated_at = nowIso();
-        toast('Termín rozpoznán: ' + parsed.matched + ' → ' + parsed.deadline, 4000);
+        toast('Z názvu doplněn ' + datumZNazvu + '.', 4000);
       }
     }
     // Přejmenování: pokud se title změnil od vstupu do edit modu, aktualizovat všechny odkazy

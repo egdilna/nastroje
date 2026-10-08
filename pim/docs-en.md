@@ -241,9 +241,9 @@ A time with no day means **today**. A range across midnight correctly ends the n
 task due Wednesday and the word "ráno" (morning) stays in the title — it is not a
 start time and nothing would be stored.
 
-Where you pick the aspect yourself (*+ New entity* at a project or a meeting) nothing
-is guessed — what you chose is what you get. The date in the title is still filled in,
-into whatever field the chosen aspect has:
+Where you pick the aspect yourself — *+ New entity* in the navigation, at a project
+or at a meeting — nothing is guessed: what you chose is what you get. The date in the
+title is still filled in, into whatever field the chosen aspect has:
 
 | Chosen aspect | Where the date goes |
 |---|---|
@@ -251,8 +251,50 @@ into whatever field the chosen aspect has:
 | **Event** | the start, plus the end if the title carries a time |
 | anything else | nowhere — and the date is **not** cut out of the title, as there would be nothing to store it in |
 
+With *+ New entity* the title is typed into the editor, so the date is filled in **when
+you leave editing** — whether you leave with **Done**, with Escape or with the `U` key.
+A toast says what was filled in.
+
+The date goes **only into an empty field**. A task that already has a deadline is not
+touched on a later edit, and neither is its title.
+
 **Inbox capture** deliberately does not parse a deadline: it creates a Note, which has
 no date field, and cutting the date out of the title would lose it.
+
+### What can go in the title
+
+Czech is the input language here, so the examples stay in Czech.
+
+**A weekday** in the nominative, genitive or accusative, with or without a preposition:
+`středa`, `ve středu`, `v sobotu`, `do pátku`, `od středy`, `na pátek`, `do pondělka`,
+`příští úterý`, `nejpozději v pátek`. The genitive (`do pátku`) is the commonest form
+of all for deadlines — while the parser did not know it, the task ended up with no
+deadline, and `udělat do pátku 10:00` additionally landed on today.
+
+**A relative day:** `dnes`, `zítra`, `pozítří`, `včera`, and in the genitive also
+`do zítřka`, `do pozítřka`. Then `za 3 dny`, `za týden`, `za 2 týdny`, `za měsíc`,
+`za 3 měsíce`.
+
+**End of week and month:** `do konce týdne` is the nearest **Friday** (on Saturday and
+Sunday the next one), `do konce měsíce` is the **last day** of the current month.
+
+**An explicit date:** `15.6.`, `15.6.2026`, `2026-07-01`, and also with the **month
+name**: `1. října`, `15. března 2027`, `do 3. června`. Without a year, the nearest
+future occurrence is used.
+
+A preposition (`do`, `od`, `na`, `k`, `v`, `ve`) and the word `nejpozději` are cut out
+together with the date, so `odeslat fakturu do 30.6.` leaves `odeslat fakturu` with no
+dangling "do".
+
+**A time:** `10:00`, `v 10:00`, `ve 14.30`, `10h`, `v 10 hodin`, `v 9`, `ve 14`, `od 9`,
+plus the ranges above. For a bare hour the **preposition is required** — without it
+every number in a title would read as a time, so `Kapitola 10 dopsat` and
+`Objednat 3 ks` carry none. For the same reason `v 1. kapitole` is not 1:00: a full
+stop after the number rules a time out.
+
+What the parser deliberately does **not** recognize: a number with no preposition and
+no colon (`Kapitola 10`), a range without a recognized day (`verze 2-3`, `Porada 9-11`),
+a bare year (`Rozpočet na rok 2026`), and spelled-out ordinals (`prvního října`).
 
 ## Sections in the entity detail
 

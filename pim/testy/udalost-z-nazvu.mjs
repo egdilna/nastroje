@@ -145,6 +145,114 @@ ok(soucet, vProjektu.aspekty === 'Event', 'i u projektu platí totéž pravidlo'
 ok(soucet, vProjektu.vazby === 'partOf→pa', 'událost je součástí projektu', vProjektu);
 ok(soucet, vProjektu.tags === 'projektovy', 'a má vybrané tagy', vProjektu);
 
+nadpis('Dny v týdnu ve 2. pádě a s předložkami do/od/na/k');
+// „do pátku" je u termínů nejčastější tvar vůbec a dřív se nerozpoznal: úkol
+// zůstal bez termínu a s časem v názvu se termín tiše posadil na DNEŠEK.
+const patek = await poDnech(kDni(5));
+const pondeli = await poDnech(kDni(1));
+const ctvrtek = await poDnech(kDni(4));
+for (const [vstup, ocekDatum, ocekNazev] of [
+  ['Udělat do pátku', patek, 'Udělat'],
+  ['Udělat do patku', patek, 'Udělat'],
+  ['Udělat od pátku', patek, 'Udělat'],
+  ['Udělat na pátek', patek, 'Udělat'],
+  ['Udělat k pátku', patek, 'Udělat'],
+  ['Udělat nejpozději v pátek', patek, 'Udělat'],
+  ['Udělat do pondělka', pondeli, 'Udělat'],
+  ['Udělat do pondělí', pondeli, 'Udělat'],
+  ['Udělat do čtvrtka', ctvrtek, 'Udělat'],
+  ['Udělat do středy', await poDnech(kDni(3)), 'Udělat'],
+  ['Udělat do soboty', await poDnech(kDni(6)), 'Udělat'],
+  ['Udělat do neděle', await poDnech(kDni(0)), 'Udělat']
+]) {
+  const p = await rozpoznej(vstup);
+  ok(soucet, p && p.datum === ocekDatum && p.cleanedDatum === ocekNazev,
+    '„' + vstup + '" → ' + ocekDatum + ', název „' + ocekNazev + '"', p);
+}
+
+nadpis('Předložka se vyřezává spolu s datem, v názvu nic nevisí');
+for (const vstup of ['Udělat do pátku', 'Udělat na pátek', 'Udělat do zítřka', 'Udělat za týden']) {
+  const p = await rozpoznej(vstup);
+  ok(soucet, p && !/\s(do|na|od|k|ke|za)$/.test(p.cleanedDatum),
+    '„' + vstup + '" nenechá v názvu viset předložku → „' + (p && p.cleanedDatum) + '"', p);
+}
+
+nadpis('Relativní termíny ve 2. pádě a po týdnech');
+for (const [vstup, ocek] of [
+  ['Udělat do zítřka', await poDnech(1)],
+  ['Udělat do pozítřka', await poDnech(2)],
+  ['Udělat za týden', await poDnech(7)],
+  ['Udělat za 2 týdny', await poDnech(14)],
+  ['Udělat za 3 dny', await poDnech(3)]
+]) {
+  const p = await rozpoznej(vstup);
+  ok(soucet, p && p.datum === ocek, '„' + vstup + '" → ' + ocek, p);
+}
+
+nadpis('Do konce týdne a do konce měsíce');
+{
+  const pKonecM = await rozpoznej('Zaplatit do konce měsíce');
+  const posledni = await stranka.evaluate(() => {
+    const d = new Date(); const k = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    return k.getFullYear() + '-' + String(k.getMonth() + 1).padStart(2, '0') + '-' + String(k.getDate()).padStart(2, '0');
+  });
+  ok(soucet, pKonecM && pKonecM.datum === posledni && pKonecM.cleanedDatum === 'Zaplatit',
+    '„do konce měsíce" → poslední den měsíce (' + posledni + ')', pKonecM);
+  const pKonecT = await rozpoznej('Odeslat do konce týdne');
+  const ocekPatek = (dnes.dow >= 1 && dnes.dow <= 5)
+    ? await poDnech(5 - dnes.dow)
+    : await poDnech(kDni(5));
+  ok(soucet, pKonecT && pKonecT.datum === ocekPatek,
+    '„do konce týdne" → pátek (' + ocekPatek + ')', pKonecT);
+}
+
+nadpis('Datum se jménem měsíce');
+for (const [vstup, ocekMesDen] of [
+  ['Udělat 1. listopadu 2026', '2026-11-01'],
+  ['Udělat 15. března 2027', '2027-03-15'],
+  ['Udělat do 3. června 2027', '2027-06-03'],
+  ['Udělat 24. prosince 2026', '2026-12-24'],
+  ['Udělat 1. července 2027', '2027-07-01'],
+  ['Udělat 1. června 2027', '2027-06-01'],
+  ['Udělat 5. zari 2027', '2027-09-05']
+]) {
+  const p = await rozpoznej(vstup);
+  ok(soucet, p && p.datum === ocekMesDen && p.cleanedDatum === 'Udělat',
+    '„' + vstup + '" → ' + ocekMesDen, p);
+}
+{
+  // Bez roku se bere nejbližší budoucí výskyt, stejně jako u „30.6."
+  const p = await rozpoznej('Udělat 1. října');
+  ok(soucet, p && /-10-01$/.test(p.datum) && p.datum >= dnes.iso,
+    '„1. října" bez roku padne do budoucnosti → ' + (p && p.datum), p);
+}
+
+nadpis('Čas: holá hodina jen s předložkou');
+for (const [vstup, ocekCas] of [
+  ['Porada v 9', '09:00'], ['Porada ve 14', '14:00'], ['Porada od 9', '09:00'],
+  ['Porada v 14.30', '14:30'], ['Porada ve 9:30', '09:30'], ['Porada 9h', '09:00']
+]) {
+  const p = await rozpoznej(vstup);
+  ok(soucet, p && p.cas === ocekCas, '„' + vstup + '" → čas ' + ocekCas, p);
+}
+nadpis('Čas se nesmí hádat z pouhého čísla v názvu');
+for (const vstup of ['Kapitola 10 dopsat', 'Objednat 3 ks papíru', 'Verze 2-3 dokumentace',
+                     'Revize smlouvy 2024', 'Rozpočet na rok 2026', 'Projekt Horizont 2030',
+                     'Dopsat v 1. kapitole', 'Úkol bez data']) {
+  const p = await rozpoznej(vstup);
+  ok(soucet, p === null, '„' + vstup + '" není datum ani čas', p);
+}
+
+nadpis('Den a čas spolu: termín nesmí spadnout na dnešek');
+{
+  const p = await rozpoznej('Udělat do pátku 10:00');
+  ok(soucet, p && p.datum === patek && p.cas === '10:00',
+    '„Udělat do pátku 10:00" → ' + patek + ' 10:00, ne dnešek', p);
+  const p2 = await rozpoznej('Sejít se v pondělí v 9');
+  ok(soucet, p2 && p2.datum === pondeli && p2.cas === '09:00',
+    '„Sejít se v pondělí v 9" → ' + pondeli + ' 09:00', p2);
+}
+
 nadpis('Entity, kterých se to netýká, zůstávají beze změny');
 const kanarek = await stranka.evaluate(() => {
   const p = findEntity('pa');
