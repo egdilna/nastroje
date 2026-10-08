@@ -431,6 +431,35 @@ kvůli tomu, co uvidí člověk, má jít přes něj, ne přes `e.attributes[id]
   modelem a vlastními atributy všech entit a rozlišuje „nenajde se" od „je jinde". Nikdy
   z něj nepočítej, co se vysází — na to je `slozenyText`.
 
+## Samočíslující číslo není další typ atributu
+`a.autoInc` + `a.posledni` na definici atributu typu `number` — **ne nová položka
+`ATYPES`**. Hodnota je dál obyčejné číslo, takže filtry, `opsForType`, řazení, tabulkový
+export, SQL, JSON Schema, XSD, OWL ani XMI se nemusely dotknout; nový typ by znamenal
+novou větev v každém z nich a první zapomenuté místo by tiše degradovalo. Liší se jedna
+jediná věc: odkud se bere hodnota u nové entity.
+
+- **`doplnAutoInc(e)` jen doplňuje prázdná pole** a je idempotentní, proto se volá
+  v `renderEdit` při **každém** překreslení — jinak by se číslo nedoplnilo aspektu, který
+  uživatel přidal až v editoru. Vyplněnou hodnotu nepřepisuje nikdy.
+- **Čítač posouvá až `posunCitace(e)` ve `finishCommitEdit`**, ne předvyplnění. Zrušená
+  editace tím číslo nespálí. Ruční **vyšší** hodnota čítač posune, nižší ho nesnižuje —
+  jinak by další entita dostala obsazené číslo.
+- **Píše se do živé definice**, takže přes `getAllAttrs(e)` (vrací skutečné `attr` objekty),
+  **ne** přes `getAllAttrDefsForEntity` — ta vrací kopie a zápis by se zahodil.
+- **Každá cesta, která zakládá entitu, musí číslo přidělit.** Dnes: editor, import z tabulky
+  (sloupec vyhrává a posune čítač), rychlé založení z výběru entity, duplikát. **Duplikát
+  musí číslo nejdřív zahodit** — kopie se stejným číslem je horší než žádné. `createInbox`
+  typ nemá, takže se ho to netýká.
+- **Import balíčku posune čítač podle naimportovaných entit** (na konci `applyImport`), jinak
+  by další zakládaná entita rozdala číslo podruhé.
+- **Při sloučení vyhrává maximum, ne vítěz střetu.** `MODELOVE_KOLEKCE` berou při kolizi
+  celou moji kopii objektu, takže `posledni` od druhého člověka by zmizelo a čísla by se
+  rozdala dvakrát. `slucProjekty` proto po sloučení modelu srovná `posledni` na maximum
+  obou stran. **Základ se nepočítá** — když ho obě strany snížily, je to záměrný reset.
+- **Žádná garance jedinečnosti to není** a nemá se tak prodávat: dvě okna založí entitu
+  naráz a dostanou totéž číslo. Bez serveru to nejde; dokumentace to říká na rovinu.
+- `autoInc` i `posledni` jsou v **obou schématech** (shodně) a v kap. 37.4.
+
 ## Poznámky z CriticMarkupu
 `criticPoznamky(e)` sbírá `{>>…<<}` z textových atributů (stejná plocha jako wiki odkazy)
 a plní blok na kartě Komentáře; do značky karty se počítají k uživatelským komentářům.

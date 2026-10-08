@@ -861,7 +861,7 @@ attrTemplate:'Šablona (Markdown s ((pole)))',
 attrTemplateHint:'Do ((dvojitých závorek)) napiš název jiného atributu téhle entity — vloží se jeho hodnota. Na velikosti písmen nezáleží. Z jiného aspektu nebo typu přes ((Aspekt / Atribut)). Kromě atributů jdou použít i metadata entity. Česká i anglická jména metadat platí vždycky. Co se nenajde nebo je prázdné, zmizí bez stopy.',
 attrTemplateFields:'K dispozici:',attrTemplateMeta:'Metadata entity:',attrTemplateUnknown:'Nenajde se:',attrTemplateNoEval:'Nevyhodnotí se (složený atribut nebo odkaz sám na sebe):',attrTemplateElsewhere:'Vyplní se jen u entit, které to pole mají:',
 attrComposedNoEdit:'Počítá se ze šablony, nevyplňuje se.',
-attrHidden:'Skrytý',attrHiddenHint:'Nezobrazí se v detailu entity, v tisku ani v exportu jako dokument a nedostane se do offline prohlížeče. V datových exportech zůstává.',
+attrAutoInc:'Číslovat samo',attrPosledni:'Poslední přidělené',attrAutoIncHint:'Nová entita dostane další číslo v řadě. Hodnotu jde přepsat ručně a poslední přidělené číslo je uložené u atributu, takže se dá číslování navázat odjinud nebo přeskočit.',attrHidden:'Skrytý',attrHiddenHint:'Nezobrazí se v detailu entity, v tisku ani v exportu jako dokument a nedostane se do offline prohlížeče. V datových exportech zůstává.',
 attrCopyable:'Kopírování',attrCopyableHint:'Vedle atributu bude tlačítko, které jeho hodnotu zkopíruje do schránky.',
 attrHighlight:'Zvýraznit',attrHighlightHint:'Atribut se v detailu i v offline prohlížeči ukáže ve žlutém rámečku.',
 attrHideEmpty:'Nezobrazovat prázdný',attrHideEmptyHint:'Když není vyplněný, v detailu entity se vůbec neukáže.',
@@ -1347,7 +1347,7 @@ attrTemplate:'Template (Markdown with ((fields)))',
 attrTemplateHint:'Inside ((double parentheses)) write the name of another attribute of this entity — its value is put in. Case does not matter. From another aspect or type via ((Aspect / Attribute)). Besides attributes you can use the entity metadata below; both the Czech and the English metadata names always work. Whatever is not found or is empty disappears without a trace.',
 attrTemplateFields:'Available:',attrTemplateMeta:'Entity metadata:',attrTemplateUnknown:'Not found:',attrTemplateNoEval:'Will not render (a composed attribute, or a reference to itself):',attrTemplateElsewhere:'Only filled in on entities that have the field:',
 attrComposedNoEdit:'Computed from the template, not filled in.',
-attrHidden:'Hidden',attrHiddenHint:'Not shown in the entity detail, in print or in a document export, and it does not reach the offline viewer. It stays in data exports.',
+attrAutoInc:'Number automatically',attrPosledni:'Last assigned',attrAutoIncHint:'A new entity gets the next number in the row. The value can be overwritten by hand, and the last assigned number is stored on the attribute, so numbering can be continued from elsewhere or skipped.',attrHidden:'Hidden',attrHiddenHint:'Not shown in the entity detail, in print or in a document export, and it does not reach the offline viewer. It stays in data exports.',
 attrCopyable:'Copying',attrCopyableHint:'A button next to the attribute copies its value to the clipboard.',
 attrHighlight:'Highlight',attrHighlightHint:'The attribute shows in a yellow box, in the detail and in the offline viewer.',
 attrHideEmpty:'Hide when empty',attrHideEmptyHint:'When it has no value, it is not shown in the entity detail at all.',
@@ -2158,6 +2158,45 @@ return'';
 }
 /* Prázdná hodnota atributu — jedno místo, ať se to všude posuzuje stejně. */
 function prazdnaHodnota(v){return v==null||v===''||(Array.isArray(v)&&!v.length)}
+/* Samočíslující atribut (autoincrement). Není to další typ v `ATYPES`, ale
+   **příznak na čísle** — pro filtry, řazení, tabulky, SQL i JSON Schema je to
+   dál obyčejné číslo, takže se nikde nemusí dopisovat nová větev. Liší se jen
+   tím, odkud se bere hodnota u nové entity. Čítač (`posledni`) leží v definici
+   atributu, tedy v datech projektu: musí být společný všem, kdo projekt mají. */
+function jeAutoInc(a){return !!(a&&a.type==='number'&&a.autoInc)}
+function dalsiCislo(a){const n=Number(a&&a.posledni);return (isNaN(n)?0:n)+1}
+/* Doplní čísla do prázdných samočíslujících atributů entity. Čítač **neposouvá** —
+   ten se hne až při uložení (`posunCitace`), aby zrušená editace číslo nespálila.
+   Idempotentní: co má hodnotu, se nepřepisuje, takže se dá volat při každém
+   překreslení editoru, i když se mezitím přidal aspekt. */
+function doplnAutoInc(e){
+if(!e)return 0;
+let n=0;const obsazena=new Set();
+getAllAttrs(e).forEach(it=>{
+const a=it.attr;
+if(it.source==='custom'||!jeAutoInc(a))return;
+if(!prazdnaHodnota(e.attributes[a.id]))return;
+/* Dvě entity zakládané ve dvou oknech by dostaly totéž číslo; víc než toto
+   se bez serveru udělat nedá, a spor srovná sloučení (bere maximum). */
+let v=dalsiCislo(a);
+while(obsazena.has(a.id+'#'+v))v++;
+obsazena.add(a.id+'#'+v);
+e.attributes[a.id]=v;n++;
+});
+return n;
+}
+/* Po uložení: co je v entitě vyšší než uložené `posledni`, se stane novým
+   `posledni`. Píše se do **živé definice** v `state.data`, ne do kopie z editoru. */
+function posunCitace(e){
+if(!e)return;
+getAllAttrs(e).forEach(it=>{
+const a=it.attr;
+if(it.source==='custom'||!jeAutoInc(a))return;
+const v=Number(e.attributes[a.id]);
+if(isNaN(v))return;
+if(v>(Number(a.posledni)||0)){a.posledni=v;setDirty(true)}
+});
+}
 /* Atributy bez skrytých. Skrytý atribut se neukazuje v detailu, v tisku ani
    v dokumentu a nejde do offline prohlížeče — v datových exportech zůstává,
    protože tam jde o data, ne o to, co má člověk před očima. */
@@ -3564,6 +3603,23 @@ MODELOVE_KOLEKCE.forEach(k=>{
 const pred=JSON.stringify(moje[k]||[]);
 out[k]=slucPodleId(zaklad[k],moje[k],jejich[k],(b,m)=>slKopie(m));
 if(JSON.stringify(out[k])!==pred)zpr.zmenenoModelu++;
+});
+/* U modelu při střetu vyhrává moje kopie celého objektu — jenže čítač
+   samočíslujícího atributu takhle nejde: kdo zakládal entity na druhé straně,
+   posunul `posledni` u sebe a moje nižší hodnota by rozdala čísla podruhé.
+   Bere se proto **maximum obou stran**, ne vítěz. Základ se nepočítá: když ho
+   obě strany snížily, je to záměrný reset. */
+['entityTypes','aspects'].forEach(k=>{
+const naSve=new Map();
+[moje[k]||[],jejich[k]||[]].forEach(sez=>(sez||[]).forEach(o=>(o.attributes||[]).forEach(a=>{
+if(!jeAutoInc(a))return;
+const v=Number(a.posledni)||0;
+if(!naSve.has(a.id)||naSve.get(a.id)<v)naSve.set(a.id,v);
+})));
+(out[k]||[]).forEach(o=>(o.attributes||[]).forEach(a=>{
+if(!jeAutoInc(a)||!naSve.has(a.id))return;
+if((Number(a.posledni)||0)<naSve.get(a.id)){a.posledni=naSve.get(a.id);zpr.zmenenoModelu++}
+}));
 });
 const zB=slPodleId(zaklad.entities),zM=slPodleId(moje.entities),zJ=slPodleId(jejich.entities);
 out.entities=slucPodleId(zaklad.entities,moje.entities,jejich.entities,(b,m,j)=>{
@@ -5013,9 +5069,13 @@ if(wantArch)target.archived=true;
 if(wantInbox)target.inInbox=true;
 if(typeId&&!wantInbox)target.inInbox=false;
 target.updatedAt=now;
+posunCitace(target);
 updated++;
 }else{
 const ne={id:uid('e'),name:name,typeId:typeId,inInbox:!typeId||wantInbox,archived:wantArch,attributes:attributes,customAttributes:[],relations:[],aspects:aspectIds,createdAt:now,updatedAt:now};
+/* Řádek bez sloupce se samočíslujícím atributem dostane číslo sám; když ho
+   tabulka nese, bere se z ní a čítač se posune na ni. */
+doplnAutoInc(ne);posunCitace(ne);
 state.data.entities.push(ne);
 added++;
 }
@@ -8484,6 +8544,8 @@ showDialog(t('convertToType'),body,[
 function renderEdit(){
 const w=document.createElement('div');
 let e;const isNew=state.view.name==='new';
+/* Samočíslující atributy se doplní na konci funkce (`doplnAutoInc(e)`), až je
+   jasné, jaký je typ a jaké aspekty entita má. */
 if(isNew){
 /* Reuse existing draft if it matches current typeId (so re-renders don't wipe data) */
 if(state.view.edit&&state.view.edit.__draft&&(state.view.edit.typeId||null)===(state.view.typeId||null))e=state.view.edit;
@@ -8502,6 +8564,10 @@ else{e=JSON.parse(JSON.stringify(o));if(typeof e.name!=='string')e.name='';state
 state.view.editZaklad=JSON.parse(JSON.stringify(o));}
 }
 
+/* Prázdná samočíslující pole se předvyplní — i u existující entity, protože
+   atribut mohl k typu přibýt později a entita by zůstala bez čísla. Hodnota je
+   normální pole, takže se dá přepsat ručně; čítač se hne až při uložení. */
+doplnAutoInc(e);
 const h=document.createElement('div');h.className='dh';
 const back=document.createElement('button');back.className='btn btn-sm';back.type='button';back.innerHTML='← '+esc(t('cancel'));
 back.addEventListener('click',()=>{state.view.edit=null;if(isNew){navigateTo({name:'list',tab:'all'})}else{navigateTo({name:'detail',entityId:e.id})}});
@@ -8780,6 +8846,7 @@ const nm=prompt(t('selectorCreateNew',{type:tn})+':',(txIn.value||'').trim());
 if(nm===null)return;const nmt=(nm||'').trim();if(!nmt)return;
 const now=new Date().toISOString();
 const ne={id:uid('e'),name:nmt,typeId:typeForCreate.id,inInbox:false,attributes:{},customAttributes:[],relations:[],aspects:[],createdAt:now,updatedAt:now};
+doplnAutoInc(ne);posunCitace(ne);
 state.data.entities.push(ne);setDirty(true);
 if(opts.mode==='multi'){if(!sel.includes(ne.id))sel.push(ne.id);opts.onChange(sel.slice())}
 else{sel=ne.id;opts.onChange(ne.id)}
@@ -9193,6 +9260,10 @@ copy.updatedAt=now;
 if(copy.name&&String(copy.name).trim())copy.name=copy.name+' '+t('copySuffix');
 if(Array.isArray(copy.relations))copy.relations.forEach(r=>{r.id=uid('r')});
 if(Array.isArray(copy.customAttributes))copy.customAttributes.forEach(ca=>{ca.id=uid('ca')});
+/* Samočíslující atribut je identifikátor v řadě — kopie musí dostat **nové**
+   číslo, jinak by ho měly dvě entity. */
+getAllAttrs(copy).forEach(it=>{if(it.source!=='custom'&&jeAutoInc(it.attr))delete copy.attributes[it.attr.id]});
+doplnAutoInc(copy);posunCitace(copy);
 state.data.entities.push(copy);
 setDirty(true);
 toast(t('duplicated'));
@@ -10859,6 +10930,10 @@ else if(v)target.attributes[aid]=entIdMap[v]||(findEntity(v)?v:'');
 /* Import záložky nezakládá. Lišta je uživatelovo uspořádání (kap. 29.8) a import
    cizího balíčku do ní nemá co sahat — přidá se v Nastavení → Záložky. */
 
+/* Naimportované entity nesou čísla z cizího projektu. Čítač se proto posune
+   na nejvyšší z nich, jinak by další zakládaná entita rozdala číslo podruhé. */
+pkg.entities.forEach(srcE=>{const c=findEntity(entIdMap[srcE.id]||srcE.id);if(c)posunCitace(c)});
+
 setDirty(true);
 dbg('Package import done: '+JSON.stringify(log));
 return log;
@@ -12433,6 +12508,8 @@ if(r.kolize.length)toast(t('ghSlucKolize',{n:r.kolize.length}));
 }
 }
 if(idx===-1)state.data.entities.push(e);else state.data.entities[idx]=e;
+/* Čítač se hne teprve teď — zrušená editace číslo nespálí. */
+posunCitace(e);
 const novyNazev=getTitle(e);
 ohlasPrejmenovani(prejmenujWikiOdkazy(staryNazev,novyNazev),novyNazev);
 const id=e.id;state.view.edit=null;state.view.editZaklad=null;
@@ -15323,6 +15400,32 @@ const jin=document.createElement('input');jin.type='text';jin.value=a.jsonKey||'
 jin.placeholder=jsonSlug(a.name,'snake')||t('jsonKeyAuto');jin.setAttribute('aria-label',t('jsonKeyField'));
 jin.addEventListener('change',()=>{const v=jsonSlug(jin.value,'snake');if(v)a.jsonKey=v;else delete a.jsonKey;jin.value=a.jsonKey||'';setDirty(true)});
 jl.appendChild(jin);x.appendChild(jl);
+if(a.type==='number'){
+/* Samočíslování je příznak na čísle, ne další typ — viz `jeAutoInc`. Poslední
+   přidělené číslo je vidět a dá se přepsat, aby šlo číslování navázat odjinud. */
+const fa=document.createElement('div');fa.className='fld';fa.style.flexBasis='100%';fa.style.marginTop='.4rem';
+const al=document.createElement('label');al.style.display='inline-flex';al.style.gap='.3rem';al.style.alignItems='center';
+al.title=t('attrAutoIncHint');
+const ac=document.createElement('input');ac.type='checkbox';ac.checked=!!a.autoInc;
+ac.addEventListener('change',()=>{
+if(ac.checked){a.autoInc=true;if(a.posledni==null)a.posledni=0}
+else{delete a.autoInc;delete a.posledni}
+setDirty(true);render();
+});
+al.appendChild(ac);const asp2=document.createElement('span');asp2.textContent=' '+t('attrAutoInc');al.appendChild(asp2);
+fa.appendChild(al);
+if(a.autoInc){
+const pl=document.createElement('label');pl.style.display='inline-flex';pl.style.gap='.3rem';pl.style.alignItems='center';pl.style.marginLeft='.7rem';
+const psp=document.createElement('span');psp.style.color='var(--mu)';psp.textContent=t('attrPosledni')+':';pl.appendChild(psp);
+const pin=document.createElement('input');pin.type='number';pin.step='1';pin.style.width='7rem';
+pin.value=String(Number(a.posledni)||0);pin.setAttribute('aria-label',t('attrPosledni'));
+pin.addEventListener('change',()=>{const n=Number(pin.value);a.posledni=isNaN(n)?0:n;pin.value=String(a.posledni);setDirty(true)});
+pl.appendChild(pin);fa.appendChild(pl);
+const ah=document.createElement('small');ah.className='fhint';ah.style.display='block';
+ah.textContent=t('attrAutoIncHint');fa.appendChild(ah);
+}
+x.appendChild(fa);
+}
 if(a.type==='composed'){
 const f=document.createElement('div');f.className='fld';f.style.flexBasis='100%';f.style.marginTop='.4rem';
 const lbl=document.createElement('label');lbl.textContent=t('attrTemplate');f.appendChild(lbl);

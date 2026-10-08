@@ -461,7 +461,39 @@ Přidáš v editoru typu. Zadáš:
 - **Povinný** (checkbox)
 - **Zobrazit v seznamu** (checkbox)
 - **Skrytý**, **Kopírování**, **Zvýraznit**, **Nezobrazovat prázdný** (checkboxy, kap. 7.7)
-- Volitelně: **Seznam hodnot** (pro select), **Typ cíle** (pro relation)
+- Volitelně: **Seznam hodnot** (pro select), **Typ cíle** (pro relation),
+  **Číslovat samo** (pro číslo, kap. 7.1b)
+
+### 7.1b Samočíslující číslo (autoincrement)
+
+U atributu typu **číslo** je zaškrtávátko **Číslovat samo**. S ním dostane každá nová
+entita další číslo v řadě a vedle se ukáže **Poslední přidělené**, které jde přepsat —
+číslování se tím dá navázat na jinou řadu nebo přeskočit.
+
+Jak to funguje:
+
+- **Předvyplňuje se v editoru**, hned jak je jasný typ (a aspekty). Vidíš číslo dřív, než
+  uložíš, a můžeš ho přepsat — je to normální pole, ne nápis.
+- **Čítač se posune až při uložení.** Zrušená editace číslo nespálí, takže v řadě nevznikne
+  díra jen proto, že jsi založení rozmyslel.
+- **Ručně zadané vyšší číslo čítač posune**, nižší ho nesnižuje. Jinak by další entita
+  dostala číslo, které už někdo má.
+- **Prázdné pole se doplní i u staré entity**, když atribut k typu přibyl později — stačí ji
+  otevřít v editoru a uložit. Vyplněné číslo se nikdy nepřepisuje.
+- **Duplikát dostane nové číslo.** Kopie se stejným číslem by z něj udělala nesmysl.
+- **Import z tabulky**: sloupec s číslem vyhrává a posune čítač; řádek bez něj dostane
+  číslo sám.
+- **Čítač je v datech projektu**, u definice atributu — musí být společný všem, kdo projekt
+  mají. Při sloučení dvou kopií souboru vyhrává **vyšší** hodnota, ne ten, kdo ukládá.
+- **Aspekt má vlastní čítač**, nezávisle na typu.
+
+Dvě věci, které to nedělá: **není to samostatný datový typ** (hodnota je dál obyčejné číslo,
+takže filtry, řazení, tabulky i datové exporty s ní pracují jako s číslem), a **nedoplňuje
+nuly ani prefix** — kdo chce „SPIS-0042", složí si ho ze složeného atributu (kap. 7.6).
+
+Čísla nejsou zaručeně bez děr a bez duplicit: dvě okna můžou založit entitu naráz a dostanou
+totéž číslo. Bez serveru se to udělat nedá; sloučení pak čítač srovná na vyšší hodnotu, ale
+dvě entity s týmž číslem po sobě zůstanou. Když na číslech záleží, projdi je po importu.
 
 ### 7.2 Atribut aspektu
 
@@ -3431,7 +3463,7 @@ jejím názvem. Tvar hodnoty se řídí typem té definice:
 | `text`, `url` | řetězec | |
 | `textarea` | řetězec | vykresluje se jako Markdown s CriticMarkup |
 | `date` | řetězec `RRRR-MM-DD` | ne plné ISO razítko — je to hodnota HTML pole typu date |
-| `number` | číslo | opravdu číslo, ne řetězec s číslicemi |
+| `number` | číslo | opravdu číslo, ne řetězec s číslicemi; u `autoInc: true` ho přiděluje DKM z `posledni` (kap. 7.1b), ale v datech je to pořád obyčejné číslo |
 | `yesno` | `true` / `false` | |
 | `select` | řetězec | musí být jednou z hodnot navázaného číselníku |
 | `tags` | pole řetězců | každý je jeden tag z navázané soustavy (`tagSetId`); DKM je ukládá abecedně |
