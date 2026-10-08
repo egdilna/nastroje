@@ -2430,6 +2430,32 @@ Tag smazaný ze soustavy se u entit, které ho mají, nemaže — zůstane u nic
 Správa všech uložených pohledů: přejmenovat, změnit ikonu, přepnout pin, přepsat aktuálním filtrem, smazat.
 Tlačítka **↑↓** mění jejich pořadí, a tím i pořadí jejich záložek nahoře.
 
+### 29.8b Moduly — složky záložek
+
+Když se lišta nafoukne, dají se záložky poskládat do **modulů**. Modul je **složka záložek
+a nic víc** — žádný vlastní filtr, žádné vlastní chování.
+
+- **Dokud žádný modul není, je všechno jako dřív**: jedna lišta a nad ní nic.
+- **Jakmile přidáš modul**, objeví se nad lištou řádek karet. Jeden modul se kreslí taky —
+  jinak by se nově vytvořený nedal kliknutím najít.
+- U každé záložky si v Nastavení → Záložky vybereš, **do kterého modulu patří**. Záložka
+  bez modulu je **společná** a vidí se v každém modulu; proto se při zavedení modulů nic
+  nemigruje — dosavadní lišta zůstane, jak je, a hodí se to na Inbox nebo Vše.
+- **Smazání modulu záložky nemaže**, jen je uvolní do společných.
+- **Který modul je otevřený, je stav okna**, ne nastavení projektu — do souboru, který si
+  lidé posílají, se neukládá. V datech je jen seznam modulů a příslušnost záložek.
+- **Alt+1 … Alt+9** jde po záložkách, které jsou v liště **právě vidět**, tedy společných
+  a těch z otevřeného modulu.
+- **„Otevírat na této" platí dál pro celý projekt** a je jedinečné. Když ta záložka leží
+  v modulu, přepne se při načtení projektu **i ten modul** — jinak by označená záložka
+  nikdy nevyhrála.
+- Adresa zůstává podle obsahu (`#type/x`, `#tag/…`), modul se do ní nepíše. Sdílený odkaz
+  tedy funguje bez ohledu na moduly.
+- **Statický prohlížeč moduly zrcadlí** — čte tutéž lištu, včetně přepínání.
+
+Záložka, která ukazuje na modul, co v souboru není (cizí data, ručně upravený JSON), se
+**neztratí**: při načtení se uvolní do společných.
+
 ### 29.8 Záložky
 
 Lišta nahoře je jeden seznam, který si poskládáš sám. **Inbox, Vše ani Archiv nejsou výjimka** —
@@ -3103,7 +3129,8 @@ včetně strojových schémat je v kapitole 37:
 ```
 {
   version, projectName, projectDescription, ghPath,
-  settings: { tabs: [{ id, kind, name?, icon?, typeIds?, aspectId?, tagSetId?, tag?, viewId?, entityId?, typeId?, showCount?, hideEmpty?, isDefault? }] },
+  settings: { tabs: [{ id, kind, modulId?, name?, icon?, typeIds?, aspectId?, tagSetId?, tag?, viewId?, entityId?, typeId?, showCount?, hideEmpty?, isDefault? }],
+             modules: [{ id, name, icon? }] },
   entityTypes: [{ id, name, icon, jsonKey?, attributes: [{ id, name, type, required, showInList, listId?, jsonKey?, ... }] }],
   aspects: [{ id, name, jsonKey?, attributes: [...] }],
   relationTypes: [{ id, name, inverseName, scope, fromTypes, toTypes, jsonKey? }],
@@ -3440,6 +3467,7 @@ ohlídat čtečka i ten, kdo soubor vyrábí:
 | `…attributes[].targetType` | `entityTypes[].id`, nebo `any` |
 | `relationTypes[].fromTypes[]`, `toTypes[]` | `entityTypes[].id` |
 | `settings.tabs[].typeIds[]`, `aspectId`, `tagSetId`, `viewId`, `entityId`, `typeId` | `entityTypes[].id`, `aspects[].id`, `tagSets[].id`, `savedViews[].id`, `entities[].id` — podle druhu záložky |
+| `settings.tabs[].modulId` | `settings.modules[].id`. Neplatný odkaz čtečka **zahodí** a záložka se tím stane společnou — zmizet nesmí |
 
 Identifikátory jsou v rámci souboru jedinečné. DKM tvoří tvar `předpona_<čas><náhoda>`
 (`e_lz3k9a1b2c`), ale formát to nevynucuje — stačí, aby byl řetězec jedinečný a stabilní.
