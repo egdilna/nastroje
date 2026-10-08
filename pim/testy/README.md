@@ -52,6 +52,7 @@ upravte v `lib.mjs`.
 | `nazev-z-vyberu.mjs` | Návrh názvu u akce Do nové entity je celý první řádek výběru, neuseknutý. |
 | `pripomenuti-v-detailu.mjs` | Tlačítko Připomenutí v liště detailu: nastavit slovy, změnit, zrušit. |
 | `termin-vsemi-cestami.mjs` | Termín z názvu funguje VŠEMI cestami zakládání entity, ne jen rychlým úkolem. |
+| `detekce-pri-odchodu.mjs` | Nabídka wiki odkazů naskočí při každém ukončení editace, ne jen při Hotovo. |
 | `odznak-a-seznam.mjs` | Odznak ☐N u názvu entity a editor seznamu (sbalování, udělat úkol). |
 | `skryte-ukoly.mjs` | Skrytí hotových úkolů přežije zaškrtnutí dalšího. |
 | `klavesy.mjs` | Klávesové zkratky a accesskey se nepřekrývají. |

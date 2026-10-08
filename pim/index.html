@@ -14936,6 +14936,28 @@ function detectAndOfferNamedEntities(entity, onDone, opts) {
   next();
 }
 
+// Ukončení editace entity: nejdřív nabídka wiki odkazů na rozpoznaná jména,
+// pak read mód, uložení a překreslení.
+//
+// VŠECHNY cesty ven z editace musí jít tudy. Dřív volalo detekci jen tlačítko
+// „Hotovo", takže Escape i klávesa U uložily, ale nabídku wiki odkazů tiše
+// přeskočily — a kdo z editace odchází Escapem, nedostal ji nikdy.
+function ukonciEditaciEntity(opts) {
+  opts = opts || {};
+  const e = findEntity(state.detailId);
+  if (typeof opts.pred === 'function') opts.pred(e);
+  const dokonci = () => {
+    // Read PŘED save(): autosave guard v edit modu by jinak zablokoval upload.
+    state.detailMode = 'read';
+    save();
+    render();
+    if (opts.hlaska) toast(opts.hlaska);
+    if (opts.zvuk && typeof playSound === 'function') playSound(opts.zvuk);
+  };
+  if (!e) { dokonci(); return; }
+  detectAndOfferNamedEntities(e, dokonci);
+}
+
 function findNthOccurrence(text, needle, startFrom) {
   // case-insensitive
   if (!text || !needle) return -1;
@@ -25375,20 +25397,17 @@ function setupKeyboard() {
       }
     }
 
-    // Esc v edit módu detailu = zpět na read
+    // Esc v edit módu detailu = zpět na read (včetně nabídky wiki odkazů)
     if (ev.key === 'Escape' && state.view === 'detail' && state.detailMode === 'edit') {
-      // Přepnout na read PŘED save() — autosave guard v edit modu by jinak zablokoval upload
-      state.detailMode = 'read';
-      // Anotace žijí v textu (>text); zmigrovat případné staré JSON anotace.
-      const _qaE = findEntity(state.detailId);
-      if (_qaE) {
-        const cnt = migrateAnnotationsToText(_qaE);
-        if (cnt > 0) {
-          save();
-          toast('Anotace převedeny do textu (' + cnt + ').');
+      ukonciEditaciEntity({
+        pred: (e) => {
+          // Anotace žijí v textu (>text); zmigrovat případné staré JSON anotace.
+          if (!e) return;
+          const cnt = migrateAnnotationsToText(e);
+          if (cnt > 0) toast('Anotace převedeny do textu (' + cnt + ').');
         }
-      }
-      render(); ev.preventDefault(); return;
+      });
+      ev.preventDefault(); return;
     }
 
     // Vše ostatní jen MIMO editační pole; v editačních polích slouží accesskey (Alt+Shift+písmeno)
@@ -25517,12 +25536,7 @@ function setupKeyboard() {
     // U v edit módu uloží a vrátí na čtení (mimo editační pole; v poli funguje Ctrl+U)
     else if ((ev.key === 'u') && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey
              && state.view === 'detail' && state.detailMode === 'edit') {
-      // Přepnout na read PŘED save() — autosave guard by jinak zablokoval upload.
-      state.detailMode = 'read';
-      save();
-      render();
-      toast('Uloženo.');
-      playSound('save-entity');
+      ukonciEditaciEntity({ hlaska: 'Uloženo.', zvuk: 'save-entity' });
       ev.preventDefault();
     }
     // r přidá odchozí vazbu na existující entitu

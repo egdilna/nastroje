@@ -116,6 +116,26 @@ rozpoznaný den**, jinak by to chytalo „verze 2-3".
 
 Hlídá to `pim/testy/udalost-z-nazvu.mjs`.
 
+## Ukončení editace vede přes jedno místo
+
+`ukonciEditaciEntity({ pred, hlaska, zvuk })` dělá pořadí **detekce jmen → read mód
+→ `save()` → `render()`**. Používá ho tlačítko Hotovo, Escape i klávesa U.
+
+Dřív volalo `detectAndOfferNamedEntities()` jen tlačítko „Hotovo". Escape a U
+uložily a vrátily do read módu, ale detekci tiše přeskočily — kdo z editace
+odchází Escapem, nabídku wiki odkazů nedostal **nikdy** a vypadalo to, že
+detekce nefunguje vůbec. **Nová cesta ven z editace musí jít přes
+`ukonciEditaciEntity()`.**
+
+Pořadí je závazné: `state.detailMode = 'read'` **před** `save()`, protože autosave
+guard v edit modu plánování uploadu přeskakuje.
+
+Detekce běží i při uložení komentáře (`scope: 'commentOnly'`) a sekce — ty cesty
+byly v pořádku. Naopak odchod na jiný pohled a „Uložit verzi" editaci neukončují,
+takže detekci schválně nespouštějí.
+
+Hlídá to `pim/testy/detekce-pri-odchodu.mjs`.
+
 ## Nabídka tagů při zakládání entity
 
 `tagyNabidkaHtml(e, trida, jakoDetails)` + `napojTagyNabidku(root, trida)` +
