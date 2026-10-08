@@ -10533,6 +10533,49 @@ function openQuickReminderEditorForDeadline(e, vratFokusNa) {
   });
 }
 
+// Doplní datum z názvu do entity, jejíž aspekt UŽ ZVOLIL uživatel — tam se
+// nehádá, co má vzniknout, jen se vyplní pole, které na to je:
+//   Úkol     → termín (datum; čas zůstane v názvu, protože termín je typu date)
+//   Událost  → začátek (a konec, je-li v názvu čas nebo rozsah)
+// U ostatních aspektů se název nechá být: vyříznout z něj datum a nikam ho
+// neuložit by byla ztráta informace.
+// Vrací popis toho, co se doplnilo (pro hlášku), nebo null.
+function doplnDatumZNazvuPodleAspektu(e) {
+  if (!e || !e.title) return null;
+  const aspekty = e.aspects || [];
+  const jeUkol = aspekty.indexOf('Task') >= 0;
+  const jeUdalost = aspekty.indexOf('Event') >= 0;
+  if (!jeUkol && !jeUdalost) return null;
+  const p = natlangParseDateInText(e.title);
+  if (!p || !p.datum) return null;
+  if (!e.attributes) e.attributes = {};
+  // Událost s časem v názvu: čas patří do začátku a konce.
+  if (jeUdalost && p.cas && !e.attributes.start) {
+    e.attributes.start = p.datum + 'T' + p.cas;
+    e.attributes.end = p.casKonec
+      ? p.datum + 'T' + p.casKonec
+      : pricticMinut(p.datum, p.cas, VYCHOZI_DELKA_UDALOSTI);
+    if (e.attributes.end <= e.attributes.start) {
+      e.attributes.end = pricticMinut(p.datum, p.casKonec || p.cas, 24 * 60);
+    }
+    e.title = (p.cleaned || e.title).trim() || e.title;
+    return 'začátek ' + fmtDate(e.attributes.start) + ' ' + e.attributes.start.slice(11) +
+      '–' + e.attributes.end.slice(11);
+  }
+  if (jeUkol && !e.attributes.deadline) {
+    e.attributes.deadline = p.datum;
+    e.title = (p.cleanedDatum || e.title).trim() || e.title;
+    return 'termín ' + fmtDate(p.datum);
+  }
+  if (jeUdalost && !e.attributes.start) {
+    // Událost bez času: aspoň den. Čas si uživatel doplní.
+    e.attributes.start = p.datum + 'T00:00';
+    e.title = (p.cleanedDatum || e.title).trim() || e.title;
+    return 'začátek ' + fmtDate(p.datum);
+  }
+  return null;
+}
+
 // Nastavení, změna nebo zrušení připomenutí u libovolné entity. Používá týž
 // dialog (a tedy i týž parser přirozeného data) jako termín úkolu a přeplánování
 // v Připomenutích — druhý dialog na datum psát nebudeme.
@@ -14352,12 +14395,14 @@ function renderDetailRead(main, e) {
       const tagy = vybraneTagy('proj-ent-tag');
       const newEnt = newEntity({ title: title, aspects: [aspect], attributes: attrs, links: [{ to: e.id, type: 'partOf' }], tags: tagy });
       tryExtractMarkdownLinkFromTitle(newEnt);
+      const datum = doplnDatumZNazvuPodleAspektu(newEnt);
       db.entities.push(newEnt);
       save();
       quickEntInp.value = '';
       render();
       setTimeout(() => { const i2 = document.getElementById('proj-quick-ent-title'); if (i2) i2.focus(); }, 50);
       toast('✓ Entita „' + newEnt.title + '" přidána do projektu' +
+        (datum ? ', ' + datum : '') +
         (tagy.length > 0 ? ', tagy: ' + tagy.join(', ') : ''), 3500);
       playSound('save-entity');
     }
@@ -18354,11 +18399,13 @@ function attachEventTasksHandlers(main, entity) {
     const tagy = vybraneTagy('ev-new-ent-tag');
     const newEnt = newEntity({ title: raw, aspects: [aspect], attributes: attrs, links: links, tags: tagy });
     tryExtractMarkdownLinkFromTitle(newEnt);
+    const datumZNazvu = doplnDatumZNazvuPodleAspektu(newEnt);
     db.entities.push(newEnt);
     save();
     entTitleEl.value = '';
     render();
     let msg = '✓ Entita „' + newEnt.title + '" vytvořena';
+    if (datumZNazvu) msg += ', ' + datumZNazvu;
     if (selectedPids.length > 0) msg += ' (' + selectedPids.length + ' projekt' + (selectedPids.length === 1 ? '' : 'y') + ')';
     if (tagy.length > 0) msg += ', tagy: ' + tagy.join(', ');
     toast(msg, 3500);
@@ -19308,12 +19355,43 @@ function getAllAspectKeys() {
 }
 
 
+// Formuláře „+ Nový úkol" a „+ Nová entita" do projektu. Vlastní funkce proto,
+// že je potřebuje i prázdný projekt, který jinak vrací jen hlášku.
+function projektRychlePridaniHtml(project) {
+  return '<div class="project-quick-task">' +
+    '<label for="proj-quick-task-title" style="font-weight:600;">+ Nový úkol do tohoto projektu</label>' +
+    '<div class="project-quick-task-row">' +
+      '<input type="text" id="proj-quick-task-title" placeholder="Název (lze: zítra, pondělí, 15.6., úterý 10:00, odkaz [text](url))">' +
+      '<button type="button" id="proj-quick-task-add" class="primary">Přidat úkol</button>' +
+    '</div>' +
+    tagyNabidkaHtml(project, 'proj-task-tag', true) +
+    '<p class="meta" style="margin:0.3em 0 0;">Vytvoří úkol a propojí ho s tímto projektem vazbou „je součástí". ' +
+      'Je-li v názvu i čas („úterý 10:00"), vznikne místo úkolu událost. Detail projektu zůstane otevřený.</p>' +
+  '</div>' +
+  '<div class="project-quick-task">' +
+    '<label for="proj-quick-ent-title" style="font-weight:600;">+ Nová entita do tohoto projektu</label>' +
+    '<div class="project-quick-task-row">' +
+      '<input type="text" id="proj-quick-ent-title" placeholder="Název (datum v názvu se doplní do termínu, resp. začátku)">' +
+      '<label class="sr-only" for="proj-quick-ent-aspect">Aspekt</label>' +
+      '<select id="proj-quick-ent-aspect">' + quickEntityAspectOptions('Note') + '</select>' +
+      '<button type="button" id="proj-quick-ent-add" class="primary">Přidat entitu</button>' +
+    '</div>' +
+    tagyNabidkaHtml(project, 'proj-ent-tag', true) +
+    '<p class="meta" style="margin:0.3em 0 0;">Vytvoří entitu zvoleného aspektu a propojí ji s tímto projektem vazbou „je součástí". ' +
+      'Aspekt se tu nehádá — u Úkolu se datum z názvu doplní do termínu, u Události do začátku.</p>' +
+  '</div>';
+}
+
 function renderProjectDashboard(project) {
   const children = db.entities.filter(e =>
     !e.archived && e.links && e.links.some(l => l.to === project.id && l.type === 'partOf'));
   if (children.length === 0) {
+    // I prázdný projekt musí nabídnout rychlé přidání — jinak do něj nejde
+    // založit první úkol odsud a člověk musí oklikou přes vazby.
     return '<section class="project-dashboard"><h3>Dashboard projektu</h3>' +
-      '<p class="meta">Žádné podřízené entity. Připojte úkoly nebo dokumenty vazbou „je součástí".</p></section>';
+      '<p class="meta">Zatím žádné podřízené entity. Přidejte první níže, nebo připojte existující vazbou „je součástí".</p>' +
+      projektRychlePridaniHtml(project) +
+      '</section>';
   }
   const has = (e, ...aspects) => e.aspects && aspects.some(a => e.aspects.includes(a));
 
@@ -19537,29 +19615,7 @@ function renderProjectDashboard(project) {
     '<div class="progress-bar"><div class="progress-bar-fill" style="width:' + pct + '%"></div>' +
     '<div class="progress-bar-label">' + pct + '%</div></div></div>';
 
-  // Rychlé přidání úkolu
-  h += '<div class="project-quick-task">' +
-    '<label for="proj-quick-task-title" style="font-weight:600;">+ Nový úkol do tohoto projektu</label>' +
-    '<div class="project-quick-task-row">' +
-      '<input type="text" id="proj-quick-task-title" placeholder="Název (lze: zítra, pondělí, 15.6., úterý 10:00, odkaz [text](url))">' +
-      '<button type="button" id="proj-quick-task-add" class="primary">Přidat úkol</button>' +
-    '</div>' +
-    tagyNabidkaHtml(project, 'proj-task-tag', true) +
-    '<p class="meta" style="margin:0.3em 0 0;">Vytvoří úkol a propojí ho s tímto projektem vazbou „je součástí". ' +
-      'Je-li v názvu i čas („úterý 10:00"), vznikne místo úkolu událost. Detail projektu zůstane otevřený.</p>' +
-  '</div>';
-  // Obecné rychlé přidání entity
-  h += '<div class="project-quick-task">' +
-    '<label for="proj-quick-ent-title" style="font-weight:600;">+ Nová entita do tohoto projektu</label>' +
-    '<div class="project-quick-task-row">' +
-      '<input type="text" id="proj-quick-ent-title" placeholder="Název entity">' +
-      '<label class="sr-only" for="proj-quick-ent-aspect">Aspekt</label>' +
-      '<select id="proj-quick-ent-aspect">' + quickEntityAspectOptions('Note') + '</select>' +
-      '<button type="button" id="proj-quick-ent-add" class="primary">Přidat entitu</button>' +
-    '</div>' +
-    tagyNabidkaHtml(project, 'proj-ent-tag', true) +
-    '<p class="meta" style="margin:0.3em 0 0;">Vytvoří entitu zvoleného aspektu a propojí ji s tímto projektem vazbou „je součástí".</p>' +
-  '</div>';
+  h += projektRychlePridaniHtml(project);
 
   // Úkoly (kanban) – speciální
   if (totalT > 0) {

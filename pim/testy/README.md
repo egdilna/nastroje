@@ -51,6 +51,7 @@ upravte v `lib.mjs`.
 | `odpoved-na-otazku.mjs` | Odpověď zdědí tagy i projekty otázky, archivovaný projekt ne. |
 | `nazev-z-vyberu.mjs` | Návrh názvu u akce Do nové entity je celý první řádek výběru, neuseknutý. |
 | `pripomenuti-v-detailu.mjs` | Tlačítko Připomenutí v liště detailu: nastavit slovy, změnit, zrušit. |
+| `termin-vsemi-cestami.mjs` | Termín z názvu funguje VŠEMI cestami zakládání entity, ne jen rychlým úkolem. |
 | `odznak-a-seznam.mjs` | Odznak ☐N u názvu entity a editor seznamu (sbalování, udělat úkol). |
 | `skryte-ukoly.mjs` | Skrytí hotových úkolů přežije zaškrtnutí dalšího. |
 | `klavesy.mjs` | Klávesové zkratky a accesskey se nepřekrývají. |

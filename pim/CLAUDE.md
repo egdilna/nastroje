@@ -99,7 +99,7 @@ jednom místě — v `createQuickTaskFromText()`:
 | den + `cas` | `Event`, `start`, `end` = start + `VYCHOZI_DELKA_UDALOSTI` |
 | den + `cas` + `casKonec` | `Event` s tím rozsahem |
 
-Platí to **jen tam, kde aspekt nevybírá uživatel**. Kde je select aspektu
+Platí to **jen tam, kde aspekt nevybírá uživatel**. Kde si aspekt vybral (+ Nová entita u projektu i u schůzky), doplní datum `doplnDatumZNazvuPodleAspektu()` podle zvoleného aspektu: Úkol → `deadline`, Událost → `start`/`end`, ostatní nic a název zůstane celý. **Nová cesta, kterou jde založit entitu, musí jednu z těch dvou funkcí zavolat** — parser byl v pořádku, ale „+ Nová entita" ho prostě nevolala a termín se tiše ztrácel; hlídá to `pim/testy/termin-vsemi-cestami.mjs`. Kde je select aspektu
 (+ Nová entita u projektu i u schůzky), se nehádá. Rychlé přidání úkolu
 u projektu proto jede přes týž `createQuickTaskFromText()` — jedno místo,
 jedno pravidlo.
