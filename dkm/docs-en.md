@@ -1737,7 +1737,27 @@ All seven live in one place — **Settings → Model** (ch. 36), individually or
 
 In entity detail the **🖨 Export / print** button. Opens a dialog with section checkboxes:
 
-### 24.1 Optional sections
+### 24.1 What the document is built from
+
+When the entity has a **detail template** (ch. 29b), the dialog gains a choice at the top of
+what the document is built from. Without a template it is not offered — there would be
+nothing to choose between.
+
+| Choice | What it does |
+|---|---|
+| **The template plus the rest** (default) | the body from the template, and below it the checked sections it did not consume |
+| **The template only** | an H1 with the entity name and the template body, nothing else — the choices below are greyed out |
+| **The checked items only** | the template is not used at all |
+
+With *the template plus the rest*, what gets subtracted is what the template took through a
+**block** (`dkm:attributes`, `dkm:relations`, …). An `((Attribute))` field written in the
+template text does **not** count as consumption, so the attribute is also listed in the
+attributes section; if you do not want that, use a block, or the *template only* mode.
+
+The choice lasts for one opening of the dialog and is **also in the selection export**
+(ch. 24.4), where it applies to every entity that has a template.
+
+### 24.1b Optional sections
 
 - **Header** — name, type icon, type badge, aspect badges, status badges
 - **Type attributes** — individual (checkbox), All / None buttons
