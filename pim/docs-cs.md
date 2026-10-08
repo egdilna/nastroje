@@ -806,6 +806,36 @@ Vazby jsou typované odkazy mezi entitami. Definované typy:
 
 Když vytváříte novou entitu **z existující** — přes wiki odkaz na neexistující entitu, přes `Shift+R` (nová souvislost), nebo přes „📤 Do nové entity…" z označeného textu — nabídne se vám seznam **projektů zdrojové entity** jako předzaškrtnutá políčka. Co necháte zaškrtnuté, do těch projektů nová entita rovnou dostane vazbu `partOf` (je součástí). Když zdrojová entita v žádném projektu není, políčka se nezobrazí.
 
+## Rozpoznání názvů entit v textu
+
+Když v textu napíšete název existující entity a neudělali jste z něj wiki odkaz,
+aplikace se nabídne ho odkazem nahradit. Ptá se po jednom nálezu a u každého máte
+**Ano, nahradit** / **Přeskočit** (jen teď) / **Ignorovat** (natrvalo).
+
+**Kdy se to spustí:**
+
+| Akce | Spustí |
+|---|---|
+| **Hotovo (uložit a zpět)** v editaci | ✓ |
+| **Escape** v editaci | ✓ |
+| klávesa **U** v editaci (mimo editační pole) | ✓ |
+| uložení **komentáře** | ✓ (jen v tom komentáři) |
+| uložení **sekce** | ✓ |
+| odchod na jiný pohled, „Uložit verzi" | ne — editaci to neukončuje |
+
+**Co se prohledává:** obsah entity, textová pole typu *textarea* z aspektů
+a komentáře. Jednořádkové texty, URL, e-maily a vlastní atributy ne — markdown
+v nich stejně nefunguje, takže by tam wiki odkaz nebyl k ničemu.
+
+**Hledá se přesný název.** Čeština skloňuje, takže „mluvil jsem s *Janem
+Škaroupkou*" se nenajde, zatímco „mluvil jsem s *Jan Škaroupka*" ano. Taky se
+přeskakuje text, který už uvnitř wiki odkazu, transkluze, placeholderu nebo URL je.
+
+**Natrvalo ignorovaná jména** se ukládají do prohlížeče pod klíčem
+`pim_detect_ignored_v1` (nejsou součástí databáze). Když jste něco omylem dali
+**Ignorovat**, smažete to v konzoli prohlížeče:
+`localStorage.removeItem('pim_detect_ignored_v1')`.
+
 ## Databázové direktivy `{{database:…}}` a `{{databasetext:…}}`
 
 U entity s aspektem **Databáze** lze její záznamy vložit do textu jiné (nebo téže) entity:

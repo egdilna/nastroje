@@ -804,6 +804,36 @@ Links are typed references between entities. Defined types:
 
 When you create a new entity **from an existing one** — via a wiki link to a non-existent entity, via `Shift+R` (new related entity), or via "📤 To new entity…" from selected text — you're offered the **source entity's projects** as pre-checked boxes. Whichever you leave checked, the new entity immediately gets a `partOf` link into those projects. If the source entity isn't in any project, the boxes don't appear.
 
+## Detecting entity names in text
+
+When you write the name of an existing entity in text without turning it into a wiki
+link, the app offers to replace it with one. It asks about one match at a time, with
+**Yes, replace** / **Skip** (just now) / **Ignore** (permanently).
+
+**When it runs:**
+
+| Action | Runs |
+|---|---|
+| **Done (save and back)** in editing | ✓ |
+| **Escape** in editing | ✓ |
+| the **U** key in editing (outside an edit field) | ✓ |
+| saving a **comment** | ✓ (that comment only) |
+| saving a **section** | ✓ |
+| switching to another view, "Save version" | no — neither ends the editing |
+
+**What is scanned:** the entity body, *textarea* fields from its aspects, and
+comments. Single-line text, URL, e-mail and custom attributes are not — Markdown does
+not work in them anyway, so a wiki link there would be useless.
+
+**The exact name is matched.** Czech declines nouns, so "mluvil jsem s *Janem
+Škaroupkou*" is not found while "mluvil jsem s *Jan Škaroupka*" is. Text that is
+already inside a wiki link, a transclusion, a placeholder or a URL is skipped.
+
+**Permanently ignored names** are stored in the browser under the
+`pim_detect_ignored_v1` key (they are not part of the database). If you hit
+**Ignore** by mistake, clear it from the browser console:
+`localStorage.removeItem('pim_detect_ignored_v1')`.
+
 ## Database directives `{{database:…}}` and `{{databasetext:…}}`
 
 For an entity with the **Database** aspect, its records can be inserted into the text of another (or the same) entity:
