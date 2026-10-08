@@ -256,6 +256,23 @@ nebo klávesou `U`. Co se doplnilo, oznámí hláška („Z názvu doplněn term
 Doplňuje se **jen do prázdného pole**. Úkol, který termín už má, se při další
 editaci nezmění — a nezmění se mu ani název.
 
+### Kde se datum z názvu doplní
+
+| Jak entitu zakládáte | Co rozhoduje |
+|---|---|
+| ✓ **Rychlý úkol** (dialog, `t`, `Alt+Shift+T`) | čas v názvu → Úkol, nebo Událost |
+| *+ Nový úkol* u projektu, *✓ Nový úkol* u schůzky | totéž pravidlo |
+| *+ Nová entita* — v navigaci, u projektu, u schůzky | zvolený aspekt |
+| **Vytvořit související entitu** | zvolený aspekt |
+| **Entita z vybraného textu** (`Ctrl+Shift+M`) | zvolený aspekt |
+| **→ Entita** z markdown úkolu | vždy Úkol |
+| **Nová entita ze šablony** | aspekty šablony (termín, který nastaví sama, má přednost) |
+| + **Rychlé zachycení** do Inboxu | nikde — vzniká Poznámka |
+
+U cest, které vkládají do textu **wiki odkaz** (→ Entita z markdown úkolu, entita
+z vybraného textu), míří odkaz na **uklizený** název — tedy na ten, pod kterým
+entita opravdu vznikla.
+
 **Zachycení do Inboxu** termín záměrně neparsuje: vzniká Poznámka, která pole na
 datum nemá, a vyříznout datum z názvu by znamenalo ztratit ho.
 

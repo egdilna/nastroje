@@ -7490,6 +7490,12 @@ async function instantiateTemplate(tpl) {
       if (r !== null) e.attributes[k] = r;
     }
   }
+  // Název šablony může přijít z {prompt:…}, takže i tady může být datum —
+  // a šablona s aspektem Úkol nebo Událost ho má dostat do pole. Doplňuje se
+  // až po vyhodnocení atributů: co šablona nastavila sama (třeba {today}),
+  // má přednost, protože se zapisuje jen do prázdného pole.
+  const datumZNazvu = doplnDatumZNazvuPodleAspektu(e);
+  if (datumZNazvu) toast('Z názvu doplněn ' + datumZNazvu + '.', 4000);
   return e;
 }
 
@@ -8984,15 +8990,20 @@ function attachMarkdownTaskHandlers(root, entity) {
           newTask.links.push({ to: p.id, type: 'partOf' });
         }
       });
+      // Datum z názvu: „- [ ] zavolat do pátku" má po povýšení na entitu mít
+      // termín, ne ho mít schovaný v názvu. Musí se to stát PŘED složením wiki
+      // odkazu, aby odkaz mířil na uklizený název.
+      const datumZNazvu = doplnDatumZNazvuPodleAspektu(newTask);
       addEntity(newTask);
       // Nahradit řádek wiki linkem
-      lines[lineIdx] = taskPrefix + '[' + (checked ? 'x' : ' ') + '] [[' + taskText + ']]';
+      lines[lineIdx] = taskPrefix + '[' + (checked ? 'x' : ' ') + '] [[' + newTask.title + ']]';
       const newText = lines.join('\n');
       mdZapisZdroj(entity, source, newText);
       entity.updated_at = nowIso();
       save();
       const projMsg = parentProjects.length > 0 ? ' Zděděno projektů: ' + parentProjects.length + '.' : '';
-      toast('Úkol „' + taskText + '" vytvořen jako entita a propojen vazbou „je součástí".' + projMsg, 5000);
+      toast('Úkol „' + newTask.title + '" vytvořen jako entita a propojen vazbou „je součástí".' +
+        (datumZNazvu ? ' Z názvu doplněn ' + datumZNazvu + '.' : '') + projMsg, 5000);
       render();
     };
   });
@@ -23513,17 +23524,23 @@ function doMdExtract(ta, parentEntity, start, end, selected) {
         newEntity.links.push({ to: pid, type: 'partOf', note: '' });
       }
     });
+    // Když si uživatel vybral aspekt Úkol nebo Událost, platí tu totéž pravidlo
+    // jako všude jinde. Pořadí je důležité: název se může uklidit a odkaz
+    // vkládaný do textu pak musí mířit na ten uklizený.
+    const datumZNazvu = doplnDatumZNazvuPodleAspektu(newEntity);
+    const nazevEntity = newEntity.title;
     db.entities.push(newEntity);
-    const replacement = (kind === 'include') ? '{{include:' + name + '}}'
-      : (kind === 'status') ? '{{status:' + name + '}}'
-      : '[[' + name + ']]';
+    const replacement = (kind === 'include') ? '{{include:' + nazevEntity + '}}'
+      : (kind === 'status') ? '{{status:' + nazevEntity + '}}'
+      : '[[' + nazevEntity + ']]';
     ta.value = ta.value.slice(0, start) + replacement + ta.value.slice(end);
     ta.dispatchEvent(new Event('input', { bubbles: true }));
     save();
     cleanup();
     d.close();
     const kindLabel = (kind === 'include') ? 'jako include' : (kind === 'status') ? 'jako status' : 'jako wiki odkaz';
-    toast('Výběr extrahován do entity „' + name + '" (' + kindLabel + ').', 4000);
+    toast('Výběr extrahován do entity „' + nazevEntity + '" (' + kindLabel + ')' +
+      (datumZNazvu ? ' · z názvu doplněn ' + datumZNazvu : '') + '.', 4000);
   }
   function onCancel() {
     cleanup();
@@ -25313,12 +25330,17 @@ function doCreateRelated(currentEntity) {
     newEnt.links.push({ to: pid, type: 'partOf', note: '' });
     addedProj++;
   });
+  // Aspekt si tu vybírá uživatel, takže datum z názvu doplní tatáž funkce
+  // jako u ostatních formulářů — hned, ne až při odchodu z editace.
+  const datumZNazvu = doplnDatumZNazvuPodleAspektu(newEnt);
   addEntity(newEnt);
   saveDebounced();
   document.getElementById('dialog-related').close();
   setView('detail', { detailId: newEnt.id, detailMode: 'edit' });
   const ti = RELATION_TYPES[relType];
-  toast('Vytvořeno „' + name + '" s vazbou „' + (ti ? ti.label : relType) + '"' + (addedProj > 0 ? ' · přidáno do ' + addedProj + ' projekt' + (addedProj === 1 ? 'u' : 'ů') : '') + '.');
+  toast('Vytvořeno „' + newEnt.title + '" s vazbou „' + (ti ? ti.label : relType) + '"' +
+    (addedProj > 0 ? ' · přidáno do ' + addedProj + ' projekt' + (addedProj === 1 ? 'u' : 'ů') : '') +
+    (datumZNazvu ? ' · z názvu doplněn ' + datumZNazvu : '') + '.');
 }
 
 // Potvrzení vytvoření nové entity s možností přidat ji do projektů zdrojové entity.

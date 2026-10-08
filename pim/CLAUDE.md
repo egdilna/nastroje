@@ -112,6 +112,30 @@ i `ukonciEditaciEntity()` (Escape, klávesa U) volají tutéž funkci.
 Rychlé přidání úkolu u projektu i u schůzky jede přes týž
 `createQuickTaskFromText()` — jedno místo, jedno pravidlo.
 
+Úplný seznam cest, kudy entita vzniká, a co u ní platí (vznikl auditem všech
+volání `addEntity()` v aplikaci — hádat se to nedá):
+
+| Cesta | Doplňuje datum | Čím |
+|---|---|---|
+| ✓ Rychlý úkol (dialog) | ano | `createQuickTaskFromText()` |
+| + Nový úkol u projektu, ✓ Nový úkol u schůzky | ano | `createQuickTaskFromText()` |
+| + Nová entita (navigace, paleta, menu, klávesa `n`) | ano, při ukončení editace | tlačítko Hotovo / `ukonciEditaciEntity()` |
+| + Nová entita u projektu i u schůzky | ano | `doplnDatumZNazvuPodleAspektu()` |
+| Vytvořit související entitu (`doCreateRelated`) | ano | `doplnDatumZNazvuPodleAspektu()` |
+| Entita z vybraného textu (`doMdExtract`) | ano | `doplnDatumZNazvuPodleAspektu()` |
+| → Entita z md úkolu (`attachMarkdownTaskHandlers`) | ano, vždy Task | `doplnDatumZNazvuPodleAspektu()` |
+| Entita ze šablony (`instantiateTemplate`) | ano | `doplnDatumZNazvuPodleAspektu()` |
+| Rychlé zachycení do Inboxu | **ne** — Poznámka nemá kam | — |
+| Entita z wiki odkazu `[[Název]]` | ne — bez aspektu | — |
+| Odpověď na otázku (aspekt Answer) | ne — aspekt termín nemá | — |
+| AI „Jako nová entita" | ne — bez aspektu | — |
+| Duplikace entity | ne — atributy se kopírují, pole nejsou prázdná | — |
+
+**Cesty, které vkládají do textu wiki odkaz** (→ Entita z md úkolu, entita
+z vybraného textu), musí datum doplnit **před** složením odkazu a odkaz postavit
+z `e.title`, ne z původního názvu. Jinak odkaz míří na entitu, která se tak
+nejmenuje — uklidili jsme jí název.
+
 Dvě pasti:
 
 - **Čas se počítá v místním čase.** `pricticMinut()` skládá výsledek z lokálních
