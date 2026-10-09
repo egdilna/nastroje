@@ -745,12 +745,16 @@ A **single entity** can override it in its editor, in the picker below the name:
 
 What then happens:
 
-- **The name is recomputed on every change in the editor** and is immediately visible in the
-  *Name* field — it does not wait for the save and does not track which field feeds the
-  template. Add an aspect, change a number, rewrite a mark: the name follows.
-- **It is written to the data on save.** Anything typed into the name by hand is lost — by
-  design, a composed name follows the convention, not the hand. Typing into the *Name* field
-  is not overwritten letter by letter, so you can see what you type; it is replaced on save.
+- **The name field is not shown in the editor at all** — in its place is the value the entity
+  will get, with a note on what it is composed from. Typing into a field that the save will
+  overwrite anyway makes no sense. There is one exception: **while the template yields
+  nothing** (a new entity with empty sources) the field stays, so there is somewhere to write
+  a name — an entity without one cannot be saved. Once the template yields something, the
+  field disappears on the next redraw.
+- **The name is recomputed on every change in the editor** and the displayed value changes as
+  you type into the sources — it does not wait for the save and does not track which field
+  feeds the template. Add an aspect, change a number, rewrite a mark: the name follows.
+- **It is written to the data on save.**
 - **An empty result does not clear the name.** As long as the template yields nothing
   (sources not filled in), the name stays as it was — an entity without a name would be worse.
 - **The setting travels in a package** — with the type, with the aspect and with the entity.
