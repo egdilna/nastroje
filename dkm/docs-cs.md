@@ -715,9 +715,22 @@ Bez těchhle hlášek by se překlep poznal až na entitě, kde po něm zbude je
 
 #### Skládaný název entity
 
-Složený atribut umí dát jméno i **samotné entitě**. V editoru entity je pod názvem nabídka
-**Skládat název podle**: buď *vlastní, nepřepisovat* (výchozí stav, název si píšeš sám),
-nebo některý složený atribut, který entita má.
+Složený atribut umí dát jméno i **samotné entitě** — třeba aby se všechny schůzky jmenovaly
+„4. 3. 2026 — Rozpočet" a nikdo to nemusel psát ručně.
+
+**Nastavuje se na typu entity**, v Nastavení → Typy entit → *Skládat název entit podle*.
+Platí to pak pro všechny entity toho typu, i pro ty, které už existují — ty se přejmenují
+hned, jakmile volbu uložíš, a DKM řekne kolik jich bylo. Totéž umí **aspekt**
+(Nastavení → Aspekty); vztahuje se na entity, které ten aspekt mají.
+
+Když si o atribut řekne typ i aspekt, **vyhrává typ**; mezi aspekty ten, který má entita
+dřív v pořadí.
+
+U **jedné entity** se to dá přebít v jejím editoru, v nabídce pod názvem:
+
+- *podle modelu: Schůzka* — výchozí, platí nastavení typu nebo aspektu,
+- *vlastní, nepřepisovat* — tahle jedna entita si název píše sama,
+- konkrétní složený atribut — tahle jedna entita se jmenuje podle něj.
 
 Co se pak děje:
 
@@ -729,8 +742,9 @@ Co se pak děje:
   po písmenech, abys mohl vidět, co píšeš; přepíše se až při uložení.
 - **Prázdný výsledek název nemaže.** Dokud šablona nic nedá (nevyplněné zdroje), zůstane
   název, jak byl — entita bez názvu by byla horší.
-- **Je to volba jedné entity**, ne typu: dvě entity téhož typu můžou mít jedna název
-  skládaný a druhá vlastní. Nastavení cestuje s entitou (i v balíčku).
+- **Nastavení cestuje balíčkem** — s typem, s aspektem i s entitou. Při importu do cizího
+  projektu se odkaz přemapuje na atribut, který v cíli opravdu vznikl; co se přeložit nedá,
+  se zahodí, aby neukazovalo do prázdna.
 - **Zmizí-li atribut** (změna typu, odebraný aspekt), nabídka to ukáže jako *⚠ Atribut,
   který u entity není* a název se přestane přepisovat. Nastavení se mlčky nezahodí.
 - **Mimo editor** se názvy přepočítají po hromadné akci a po importu (z tabulky i balíčku);
