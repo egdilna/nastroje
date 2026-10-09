@@ -706,6 +706,10 @@ tabTypesN:'{n} typů',tabNewNoType:'bez typu — rovnou do Inboxu',tabsEmpty:'Ž
 tabEntityNotFound:'Entita s tímhle názvem neexistuje.',tabJump:'Záložka {n}',
 addType:'Přidat typ entity',addAspect2:'Přidat aspekt',addRelationType:'Přidat typ vazby',addList:'Přidat seznam',addAttribute:'Přidat atribut',showInList:'Zobrazit v seznamu',
 attrType:'Typ atributu',attrTypeText:'Text (jeden řádek)',attrTypeTextarea:'Text (víceřádkový, Markdown + CriticMarkup)',attrTypeDate:'Datum',attrTypeUrl:'URL',attrTypeSelect:'Výběr ze seznamu',attrTypeYesno:'Ano/Ne',attrTypeRelation:'Relace na entitu',attrTypeNumber:'Číslo',attrTypeRange:'Posuvník',attrTypeChecklist:'Checklist',
+nameFrom:'Skládat název podle',nameFromOwn:'vlastní, nepřepisovat',
+nameFromMissing:'\u26a0 Atribut, který u entity není',
+nameFromHint:'Název se při uložení přepíše výsledkem vybraného složeného atributu. Co do názvu napíšeš ručně, se tím ztratí. Když složený atribut vyjde prázdný, název zůstane, jak byl.',
+nameRecomputed:'Přepočítané názvy: {n}',
 checklistAdd:'Přidat řádek',checklistRow:'Řádek',checklistDone:'Hotovo',checklistEmpty:'Zatím žádný řádek.',
 checklistSummary:'{hotovo} z {celkem} hotovo',
 attrChecklistHint:'Řádky se zaškrtávátky. Zadávají se u každé entity zvlášť (v editoru entity) a v detailu se dají zaškrtávat rovnou, bez otevírání editoru. V dokumentech je z toho seznam úkolů.',
@@ -1329,6 +1333,10 @@ tabTypesN:'{n} types',tabNewNoType:'no type — straight into the Inbox',tabsEmp
 tabEntityNotFound:'No entity with this name.',tabJump:'Tab {n}',
 addType:'Add entity type',addAspect2:'Add aspect',addRelationType:'Add relation type',addList:'Add list',addAttribute:'Add attribute',showInList:'Show in list',
 attrType:'Attribute type',attrTypeText:'Text (single line)',attrTypeTextarea:'Text (multiline, Markdown + CriticMarkup)',attrTypeDate:'Date',attrTypeUrl:'URL',attrTypeSelect:'Select from list',attrTypeYesno:'Yes/No',attrTypeRelation:'Relation to entity',attrTypeNumber:'Number',attrTypeRange:'Slider',attrTypeChecklist:'Checklist',
+nameFrom:'Compose the name from',nameFromOwn:'its own, do not overwrite',
+nameFromMissing:'\u26a0 An attribute the entity does not have',
+nameFromHint:'On save the name is overwritten with the result of the chosen composed attribute. Anything typed into the name by hand is lost. When the composed attribute comes out empty, the name stays as it was.',
+nameRecomputed:'Names recomputed: {n}',
 checklistAdd:'Add row',checklistRow:'Row',checklistDone:'Done',checklistEmpty:'No rows yet.',
 checklistSummary:'{hotovo} of {celkem} done',
 attrChecklistHint:'Rows with checkboxes. They are entered per entity (in the entity editor) and can be ticked straight from the detail, without opening the editor. In documents it becomes a task list.',
@@ -2384,7 +2392,13 @@ nalez=pole.find(x=>klicPole(x.vlastnikNazev)===zdroj&&klicPole(x.def.name)===atr
 if(vlastnikId)nalez=pole.find(x=>x.vlastnik===vlastnikId&&klicPole(x.def.name)===k);
 if(!nalez)nalez=pole.find(x=>klicPole(x.def.name)===k);
 /* Teprve když žádný atribut nesedí, zkusíme metadata entity. */
-if(!nalez){const mp=metaPole(k);if(mp)return String(mp.hod(e)||'')}
+if(!nalez){const mp=metaPole(k);if(mp){
+/* Když se z téhle šablony skládá **název entity**, metapole „název" a „odkaz"
+   (odkaz název obsahuje) se nedosazují. Jinak by každý přepočet přilepil
+   k názvu jeho vlastní předchozí podobu a název by rostl donekonečna. */
+if(_skladamNazev&&(mp.cs==='název'||mp.cs==='odkaz'))return'';
+return String(mp.hod(e)||'');
+}}
 }
 if(!nalez||nalez.def===def)return'';
 /* Složený ze složeného se u atributu schválně nepočítá — šablona by se mohla
@@ -2470,6 +2484,56 @@ let nalez=null;
 (e.aspects||[]).forEach(aid=>{const asp=findAspect(aid);if(!nalez&&asp&&(asp.attributes||[]).some(a=>a.id===def.id))nalez=asp.id});
 return nalez;
 }
+/* ---------- SKLÁDANÝ NÁZEV ENTITY ----------
+   Entita si může říct, že se její název počítá ze **složeného atributu**
+   (`e.nazevZe` = id definice). Záměrně je to co nejmenší zásah: název zůstává
+   obyčejné pole v datech a před uložením se do něj výsledek **zkopíruje**.
+   Nikde jinde v aplikaci se o tom neví — odkazy, hledání, řazení, exporty
+   i prohlížeč pracují dál s `name`, jako by ho napsal člověk.
+   Přepočítává se při **každé** změně v editoru, ne jen při změně zdrojů té
+   šablony: hlídat zdroje by znamenalo rozumět šabloně a první přehlédnutý
+   případ (metapole, aspekt přidaný v editoru) by tiše nechal starý název. */
+function skladanyAtribut(e){
+if(!e||!e.nazevZe)return null;
+/* Jen atribut typu, nebo aspektu — vlastní atribut entity šablonu nenese. */
+const it=getAllAttrs(e).find(x=>x.source!=='custom'&&x.attr&&x.attr.id===e.nazevZe&&x.attr.type==='composed');
+return it?it.attr:null;
+}
+let _skladamNazev=false;
+function skladanyNazev(e){
+const def=skladanyAtribut(e);
+if(!def)return'';
+let txt='';
+/* Příznak hlídá kruh přes metapole „název" — viz `slozenyText`. */
+_skladamNazev=true;
+try{txt=String(hodnotaProZobrazeni(e,def)||'')}finally{_skladamNazev=false}
+/* Název je jeden řádek — víceřádková šablona by do něj dostala zalomení. */
+return txt.replace(/\s+/g,' ').trim();
+}
+/* Vrací true, když se název opravdu změnil. Prázdný výsledek název **nemaže**:
+   entita bez názvu je horší než název, který se zatím nepřepočítal. */
+function prepocitejNazev(e){
+if(!e||!e.nazevZe)return false;
+const n=skladanyNazev(e);
+if(!n||n===e.name)return false;
+e.name=n;return true;
+}
+/* Přepočet mimo editor — hromadná akce, import, sloučení. Projde jen entity,
+   které `nazevZe` mají, zamčené vynechá a u každé přejmenované narovná i wiki
+   odkazy, aby se `[[Název]]` nerozpadlo. */
+function prepocitejNazvyVsude(){
+let entit=0,odkazu=0;
+(state.data.entities||[]).forEach(e=>{
+if(!e||!e.nazevZe||jeZamcena(e))return;
+const stary=e.name||'';
+if(!prepocitejNazev(e))return;
+entit++;
+odkazu+=prejmenujWikiOdkazy(stary,e.name).odkazu;
+});
+if(entit){setDirty(true);dbg('Přepočítané skládané názvy: '+entit)}
+return{entit:entit,odkazu:odkazu};
+}
+
 /* Hodnota atributu tak, jak ji má člověk před očima. U složeného je to vyhodnocená
    šablona, u ostatních prostě uložená hodnota. */
 function hodnotaProZobrazeni(e,def){
@@ -5184,8 +5248,11 @@ state.data.entities.push(ne);
 added++;
 }
 });
+/* Import mohl změnit hodnoty, ze kterých se skládají názvy. */
+const _pn=prepocitejNazvyVsude();
 setDirty(true);closeDialog();render();
 toast(t('importTSVResult',{a:added,u:updated,s:skipped}));
+if(_pn.entit)setTimeout(()=>toast(t('nameRecomputed',{n:_pn.entit})),1500);
 if(zamcenych)setTimeout(()=>toast(t('zamekPreskoceno',{n:zamcenych}),true),1800);
 if(nepouzite.size){
 /* Co uživatel sám odklikl jako „nepoužít", není chyba a nehlásí se. */
@@ -8818,6 +8885,9 @@ state.view.editZaklad=JSON.parse(JSON.stringify(o));}
    atribut mohl k typu přibýt později a entita by zůstala bez čísla. Hodnota je
    normální pole, takže se dá přepsat ručně; čítač se hne až při uložení. */
 doplnAutoInc(e);
+/* Skládaný název se dopočítá ještě před vykreslením, ať v poli rovnou stojí to,
+   co se uloží — ne stav před poslední změnou. */
+prepocitejNazev(e);
 const h=document.createElement('div');h.className='dh';
 const back=document.createElement('button');back.className='btn btn-sm';back.type='button';back.innerHTML='← '+esc(t('cancel'));
 back.addEventListener('click',()=>{state.view.edit=null;if(isNew){navigateTo({name:'list',tab:'all'})}else{navigateTo({name:'detail',entityId:e.id})}});
@@ -8841,7 +8911,44 @@ const nfl=document.createElement('div');nfl.className='fld';
 const nlab=document.createElement('label');nlab.htmlFor='ent-name';nlab.textContent=t('entityName')+' *';nfl.appendChild(nlab);
 const nin=document.createElement('input');nin.type='text';nin.id='ent-name';nin.value=e.name||'';nin.required=true;nin.autocomplete='off';
 nin.addEventListener('input',()=>{e.name=nin.value;const tt=document.querySelector('h2.dt');if(tt&&!isNew)tt.textContent=t('edit')+': '+(nin.value.trim()||t('untitled'))});
-nfl.appendChild(nin);nsec.appendChild(nfl);f.appendChild(nsec);
+nfl.appendChild(nin);nsec.appendChild(nfl);
+
+/* Výběr složeného atributu, ze kterého se název skládá. Nabídka se ukáže, jen
+   když je z čeho vybírat — u většiny typů žádný složený atribut není. */
+const slozeneProNazev=getAllAttrs(e).filter(x=>x.source!=='custom'&&x.attr&&x.attr.type==='composed');
+if(slozeneProNazev.length||e.nazevZe){
+const sfl=document.createElement('div');sfl.className='fld';sfl.style.marginTop='.5rem';
+const slab=document.createElement('label');slab.htmlFor='ent-nazev-ze';slab.textContent=t('nameFrom');sfl.appendChild(slab);
+const ssel=document.createElement('select');ssel.id='ent-nazev-ze';
+const o0=document.createElement('option');o0.value='';o0.textContent='— '+t('nameFromOwn')+' —';ssel.appendChild(o0);
+slozeneProNazev.forEach(x=>{const o=document.createElement('option');o.value=x.attr.id;
+o.textContent=x.sourceLabel+' / '+((x.attr.name&&String(x.attr.name).trim())?x.attr.name:t('attrNoName'));
+if(e.nazevZe===x.attr.id)o.selected=true;ssel.appendChild(o)});
+/* Atribut mohl zmizet (jiný typ, odebraný aspekt). Mlčky to přepnout na
+   „vlastní" by zahodilo nastavení, které je v datech — radši je vidět. */
+if(e.nazevZe&&!slozeneProNazev.some(x=>x.attr.id===e.nazevZe)){
+const o=document.createElement('option');o.value=e.nazevZe;o.textContent=t('nameFromMissing');o.selected=true;ssel.appendChild(o);
+}
+ssel.addEventListener('change',()=>{if(ssel.value)e.nazevZe=ssel.value;else delete e.nazevZe;setDirty(true);render()});
+sfl.appendChild(ssel);
+const shn=document.createElement('small');shn.className='fhint';shn.style.display='block';shn.textContent=t('nameFromHint');sfl.appendChild(shn);
+nsec.appendChild(sfl);
+}
+f.appendChild(nsec);
+
+/* Přepočet při každé změně kdekoli ve formuláři. Posluchač visí na formuláři,
+   ne na jednotlivých polích: vlastní atributy, checklist i aspekty mají svoje
+   cesty zápisu a událost stejně probublá až sem — proto se nemusí hlídat, které
+   pole do šablony vstupuje. Psaní do samotného názvu se nechá být, jinak by
+   uživateli mizelo písmeno po písmenu; přepíše se až při uložení. */
+const obnovSkladanyNazev=ev=>{
+if(!e.nazevZe||(ev&&ev.target===nin))return;
+if(!prepocitejNazev(e))return;
+nin.value=e.name;
+const tt=document.querySelector('h2.dt');if(tt&&!isNew)tt.textContent=t('edit')+': '+(e.name.trim()||t('untitled'));
+};
+f.addEventListener('input',obnovSkladanyNazev);
+f.addEventListener('change',obnovSkladanyNazev);
 
 if(!e.typeId){
 const sec=document.createElement('section');sec.className='dsec';
@@ -9587,6 +9694,9 @@ if(Array.isArray(copy.customAttributes))copy.customAttributes.forEach(ca=>{ca.id
    číslo, jinak by ho měly dvě entity. */
 getAllAttrs(copy).forEach(it=>{if(it.source!=='custom'&&jeAutoInc(it.attr))delete copy.attributes[it.attr.id]});
 doplnAutoInc(copy);posunCitace(copy);
+/* Kopie si nese i volbu skládaného názvu, takže název přepočítáme hned —
+   „(kopie)" v něm zůstat nemůže, když se název skládá podle konvence. */
+prepocitejNazev(copy);
 state.data.entities.push(copy);
 setDirty(true);
 toast(t('duplicated'));
@@ -9649,6 +9759,9 @@ case'unlock':bulkSimple(ents,e=>{e.locked=false},true);break;
 }
 
 function bulkFinish(n,msgKey,extra){
+/* Hromadná akce mohla hnout hodnotami, ze kterých se skládají názvy. */
+const _pn=prepocitejNazvyVsude();
+if(_pn.entit)setTimeout(()=>toast(t('nameRecomputed',{n:_pn.entit})),1200);
 /* Výběr po akci zůstává — nad týmiž entitami se skoro vždycky dělá ještě něco
    dalšího (archivovat a hned zpátky, nastavit atribut a přidat aspekt…).
    Vypadnou z něj jen entity, které akce smazala; ty už nejsou. */
@@ -11261,6 +11374,10 @@ else if(v)target.attributes[aid]=entIdMap[v]||(findEntity(v)?v:'');
    na nejvyšší z nich, jinak by další zakládaná entita rozdala číslo podruhé. */
 pkg.entities.forEach(srcE=>{const c=findEntity(entIdMap[srcE.id]||srcE.id);if(c)posunCitace(c)});
 
+/* Naimportovaná entita může mít skládaný název podle atributu, který se při
+   mapování přejmenoval nebo navázal jinam — přepočet to srovná. */
+prepocitejNazvyVsude();
+
 setDirty(true);
 dbg('Package import done: '+JSON.stringify(log));
 return log;
@@ -12813,6 +12930,9 @@ function commitEdit(){
 {const _c=state.view.edit&&state.view.edit.id?findEntity(state.view.edit.id):null;
 if(_c&&!lzeMenit(_c))return;}
 const e=state.view.edit;if(!e)return;
+/* Nejdřív přepočet, teprve pak kontrola prázdného názvu — jinak by skládaný
+   název neprošel jen proto, že do pole nikdo nesáhl. */
+prepocitejNazev(e);
 if(!e.name||!String(e.name).trim()){toast(t('entityNameRequired'));const n=document.getElementById('ent-name');if(n)n.focus();return}
 e.name=String(e.name).trim();
 /* Nabídka wiki odkazů se ptá ještě před uložením — když ji uživatel zavře, zůstane v editaci. */
@@ -12829,6 +12949,8 @@ return;
 finishCommitEdit(e);
 }
 function finishCommitEdit(e){
+/* Poslední slovo má skládaný název: tohle je jediné místo, kde se do dat píše. */
+prepocitejNazev(e);
 e.updatedAt=new Date().toISOString();
 delete e.__draft;
 e.customAttributes=(e.customAttributes||[]).filter(ca=>(ca.name&&ca.name.trim())||(ca.value!==''&&ca.value!=null&&(!Array.isArray(ca.value)||ca.value.length>0)));
@@ -12846,6 +12968,9 @@ if(JSON.stringify(ted)!==JSON.stringify(state.view.editZaklad)){
 const r=slucEntitu(state.view.editZaklad,e,ted);
 e=r.entita;
 dbg('Editor merge: '+e.id+' kolize='+JSON.stringify(r.kolize));
+/* Sloučení mohlo přinést cizí hodnoty atributů — název se musí přepočítat znovu,
+   ať sedí s tím, co se opravdu uloží. */
+prepocitejNazev(e);
 if(r.kolize.length)toast(t('ghSlucKolize',{n:r.kolize.length}));
 }
 }

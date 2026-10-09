@@ -520,6 +520,33 @@ k němu nenese nic. Čte se **vždycky** přes `checklistRadky()`, která cizí 
 - Filtry mají dva vlastní operátory (`allDone`, `anyOpen`) a jsou v seznamu bez hodnoty
   v `opNeedsValue`. `_asStr` umí pole objektů s `text`, aby fungovalo `contains`.
 
+## Skládaný název entity: kopie, ne nový druh názvu
+`e.nazevZe` = id složeného atributu, ze kterého se skládá název. Záměrně **nejmenší možný
+zásah**: název zůstává obyčejné `name` v datech a před uložením se do něj výsledek
+**zkopíruje**. Odkazy, hledání, řazení, exporty, prohlížeč ani schéma hodnot o ničem vědět
+nemusí — kdyby byl název počítaný „za běhu", musela by ho umět spočítat každá z těch cest.
+
+- **Přepočítává se při každé změně, ne při změně zdrojů.** Posluchač visí na formuláři
+  (`#efm`), ne na jednotlivých polích: vlastní atributy, checklist i aspekty mají svoje
+  cesty zápisu a událost stejně probublá nahoru. Hlídat zdroje by znamenalo rozumět
+  šabloně a první přehlédnutý případ (metapole, aspekt přidaný v editoru) by tiše nechal
+  starý název.
+- **Psaní do pole Název se nepřepisuje** (`ev.target===nin`), jinak by uživateli mizelo
+  písmeno po písmenu. Přepíše se až při uložení — to je i to, co si uživatel přál.
+- **Zapisuje se na třech místech v cestě uložení**: `commitEdit` před kontrolou prázdného
+  názvu (jinak by skládaný název neprošel), `finishCommitEdit` na začátku a **znovu po
+  trojcestném sloučení** — sloučení mohlo přinést cizí hodnoty atributů.
+- **Prázdný výsledek název nemaže.** Entita bez názvu je horší než název, který se zatím
+  nepřepočítal.
+- **Metapole `název` a `odkaz` se do skládaného názvu nedosazují** (`_skladamNazev`
+  v `slozenyText`). Bez toho by si název při každém přepočtu přilepil svoji předchozí
+  podobu a rostl donekonečna — a přepočítává se po každém stisku klávesy.
+- **Mimo editor** `prepocitejNazvyVsude()`: hromadná akce (`bulkFinish`), import z tabulky,
+  import balíčku, duplikát. Přeskakuje zamčené a **u každé přejmenované entity narovná wiki
+  odkazy** — jinak by hromadná akce tiše rozbila `[[Název]]`. **Sloučení souboru se
+  nepřepočítává**: druhá strana ukládala svou kopii už s hotovým názvem a přepočet by
+  po každém slučovacím cyklu označoval data jako změněná.
+
 ## Poznámky z CriticMarkupu
 `criticPoznamky(e)` sbírá `{>>…<<}` z textových atributů (stejná plocha jako wiki odkazy)
 a plní blok na kartě Komentáře; do značky karty se počítají k uživatelským komentářům.

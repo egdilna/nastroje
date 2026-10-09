@@ -724,6 +724,41 @@ Below the template field, whatever does not add up is listed as you write:
 
 Without these notes a typo would only show up on the entity, where all it leaves is a blank.
 
+#### A composed entity name
+
+A composed attribute can name the **entity itself**. Below the name in the entity editor
+there is a **Compose the name from** picker: either *its own, do not overwrite* (the default,
+you write the name yourself) or one of the composed attributes the entity has.
+
+What then happens:
+
+- **The name is recomputed on every change in the editor** and is immediately visible in the
+  *Name* field — it does not wait for the save and does not track which field feeds the
+  template. Add an aspect, change a number, rewrite a mark: the name follows.
+- **It is written to the data on save.** Anything typed into the name by hand is lost — by
+  design, a composed name follows the convention, not the hand. Typing into the *Name* field
+  is not overwritten letter by letter, so you can see what you type; it is replaced on save.
+- **An empty result does not clear the name.** As long as the template yields nothing
+  (sources not filled in), the name stays as it was — an entity without a name would be worse.
+- **It is a choice of one entity**, not of the type: two entities of the same type can have
+  one a composed name and the other its own. The setting travels with the entity (in a
+  package too).
+- **If the attribute disappears** (type change, aspect removed), the picker shows it as
+  *⚠ An attribute the entity does not have* and the name stops being overwritten. The
+  setting is not discarded silently.
+- **Outside the editor** names are recomputed after a bulk action and after an import (table
+  and package alike); `[[Name]]` wiki links are renamed along with the entity. **A locked
+  entity is not rewritten.** After a file merge nothing is recomputed — the other side saved
+  its copy with the name already composed.
+- **A duplicate carries the choice** and its name is recomputed right away, so `(copy)` does
+  not stay in it. It differs only when the sources differ — an autoincrement number, say (7.1b).
+- **`((name))` and `((link))` are not substituted into a composed name.** Otherwise the name
+  would glue its own previous form onto itself on every recompute and grow without end. In
+  the other outputs (detail, document) both metadata fields keep working.
+
+The name itself stays an ordinary field in the data — search, sorting, links, exports and the
+offline viewer know nothing about composing and treat it like any other name.
+
 ### 7.7 How an attribute behaves in the display
 
 Four checkboxes on every attribute of a type and of an aspect. **They do not touch the data** —
