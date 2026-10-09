@@ -734,12 +734,15 @@ U **jedné entity** se to dá přebít v jejím editoru, v nabídce pod názvem:
 
 Co se pak děje:
 
-- **Název se přepočítá při každé změně v editoru** a hned je vidět v poli *Název* — nečeká
-  se na uložení a nehlídá se, které pole do šablony vstupuje. Přidáš aspekt, změníš číslo,
-  přepíšeš značku: název se srovná.
-- **Do dat se zapíše při uložení.** Co do názvu napíšeš ručně, se tím ztratí — to je záměr,
-  u skládaného názvu rozhoduje konvence, ne ruka. Psaní do pole *Název* se ale nepřepisuje
-  po písmenech, abys mohl vidět, co píšeš; přepíše se až při uložení.
+- **Pole pro název se v editoru vůbec neukáže** — místo něj je vypsaná hodnota, kterou
+  entita dostane, a pod ní poznámka, podle čeho se skládá. Psát do pole, které se při uložení
+  stejně přepíše, nemá smysl. Výjimka je jediná: **dokud ze šablony nic nevychází** (nová
+  entita s prázdnými zdroji) pole zůstane, ať je kam název napsat — entita bez názvu by
+  nešla uložit. Jakmile šablona něco dá, pole při dalším překreslení zmizí.
+- **Název se přepočítá při každé změně v editoru** a vypsaná hodnota se mění rovnou při psaní
+  do zdrojů — nečeká se na uložení a nehlídá se, které pole do šablony vstupuje. Přidáš
+  aspekt, změníš číslo, přepíšeš značku: název se srovná.
+- **Do dat se zapíše při uložení.**
 - **Prázdný výsledek název nemaže.** Dokud šablona nic nedá (nevyplněné zdroje), zůstane
   název, jak byl — entita bez názvu by byla horší.
 - **Nastavení cestuje balíčkem** — s typem, s aspektem i s entitou. Při importu do cizího

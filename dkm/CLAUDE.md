@@ -545,8 +545,14 @@ nemusí — kdyby byl název počítaný „za běhu", musela by ho umět spoč�
   jako že nastavení nefunguje.
 - **Import balíčku musí `nazevZe` přemapovat** — je to odkaz na id atributu, a ten při
   zakládání typu dostane nové. U `reuse` se cizí volba **nevnucuje**, stejně jako šablona.
+- **Když se název skládá, pole pro název se v editoru nekreslí** — je tam vypsaná hodnota
+  (`#ent-name-text`). Pole se vrátí **jen** tehdy, když ze šablony nic nevychází: jinak by
+  nová entita s prázdnými zdroji neměla kam dostat povinný název a `commitEdit` by zaostřoval
+  do `#ent-name`, který neexistuje. Rozhoduje o tom `skladanyNazevKPouziti()` — **jedno
+  pravidlo** sdílené s `prepocitejNazev`, ať se editor a zápis nerozejdou.
 - **Psaní do pole Název se nepřepisuje** (`ev.target===nin`), jinak by uživateli mizelo
   písmeno po písmenu. Přepíše se až při uložení — to je i to, co si uživatel přál.
+  Posluchač proto musí snést `nin===null`.
 - **Zapisuje se na třech místech v cestě uložení**: `commitEdit` před kontrolou prázdného
   názvu (jinak by skládaný název neprošel), `finishCommitEdit` na začátku a **znovu po
   trojcestném sloučení** — sloučení mohlo přinést cizí hodnoty atributů.

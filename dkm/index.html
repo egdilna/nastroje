@@ -437,6 +437,9 @@ a.tag-chip:hover{background:var(--sf2);border-color:var(--ac)}
 /* Posuvník. V editoru táhlo, hodnota textem a tlačítko na zrušení v jedné řadě;
    v detailu hodnota textem a za ní `<meter>` jako obrázek. Pruh nemá vlastní
    barvy — nechává si tu, kterou mu dá prohlížeč a motiv systému. */
+/* Vypsaný skládaný název v editoru. Vypadá jako hodnota, ne jako vypnuté pole —
+   zašedlý input by sváděl do něj klikat. */
+.ent-name-sklad{margin:.1rem 0;padding:.45rem 0;font-size:1.05rem;font-weight:600;word-break:break-word}
 .rngedit{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
 .rngedit input[type=range]{flex:1 1 10rem;max-width:22rem;min-width:8rem}
 .rngout{min-width:4rem;font-variant-numeric:tabular-nums}
@@ -706,6 +709,8 @@ tabTypesN:'{n} typů',tabNewNoType:'bez typu — rovnou do Inboxu',tabsEmpty:'Ž
 tabEntityNotFound:'Entita s tímhle názvem neexistuje.',tabJump:'Záložka {n}',
 addType:'Přidat typ entity',addAspect2:'Přidat aspekt',addRelationType:'Přidat typ vazby',addList:'Přidat seznam',addAttribute:'Přidat atribut',showInList:'Zobrazit v seznamu',
 attrType:'Typ atributu',attrTypeText:'Text (jeden řádek)',attrTypeTextarea:'Text (víceřádkový, Markdown + CriticMarkup)',attrTypeDate:'Datum',attrTypeUrl:'URL',attrTypeSelect:'Výběr ze seznamu',attrTypeYesno:'Ano/Ne',attrTypeRelation:'Relace na entitu',attrTypeNumber:'Číslo',attrTypeRange:'Posuvník',attrTypeChecklist:'Checklist',
+nameFromComputed:'Název se skládá podle atributu {atribut}. Změní se sám, jak budeš měnit jeho zdroje.',
+nameFromWaiting:'Název se bude skládat podle atributu {atribut}, zatím z něj ale nic nevychází — do té doby platí, co sem napíšeš.',
 nameFrom:'Skládat název podle',nameFromOwn:'vlastní, nepřepisovat',
 nameFromInherit:'podle modelu: {zdroj}',nameFromTypeField:'Skládat název entit podle',
 nameFromTypeHint:'Platí pro všechny entity tohoto typu. U jednotlivé entity se to dá v editoru přebít — buď jiným složeným atributem, nebo volbou „vlastní, nepřepisovat".',
@@ -1338,6 +1343,8 @@ tabTypesN:'{n} types',tabNewNoType:'no type — straight into the Inbox',tabsEmp
 tabEntityNotFound:'No entity with this name.',tabJump:'Tab {n}',
 addType:'Add entity type',addAspect2:'Add aspect',addRelationType:'Add relation type',addList:'Add list',addAttribute:'Add attribute',showInList:'Show in list',
 attrType:'Attribute type',attrTypeText:'Text (single line)',attrTypeTextarea:'Text (multiline, Markdown + CriticMarkup)',attrTypeDate:'Date',attrTypeUrl:'URL',attrTypeSelect:'Select from list',attrTypeYesno:'Yes/No',attrTypeRelation:'Relation to entity',attrTypeNumber:'Number',attrTypeRange:'Slider',attrTypeChecklist:'Checklist',
+nameFromComputed:'The name is composed from the attribute {atribut}. It changes by itself as you change its sources.',
+nameFromWaiting:'The name will be composed from the attribute {atribut}, but nothing comes out of it yet — until then what you type here applies.',
 nameFrom:'Compose the name from',nameFromOwn:'its own, do not overwrite',
 nameFromInherit:'from the model: {zdroj}',nameFromTypeField:'Compose entity names from',
 nameFromTypeHint:'Applies to every entity of this type. A single entity can override it in its editor — with another composed attribute, or with "its own, do not overwrite".',
@@ -2546,15 +2553,20 @@ return txt.replace(/\s+/g,' ').trim();
 }
 /* Vrací true, když se název opravdu změnil. Prázdný výsledek název **nemaže**:
    entita bez názvu je horší než název, který se zatím nepřepočítal. */
+/* Použitelný skládaný název, nebo prázdno. Ze šablony `((Datum)) — ((O čem))`
+   zbude u prázdné entity holé „—"; to není název, to je lešení šablony, a přepsat
+   jím to, co člověk napsal (rychlé založení, řádek importu bez hodnot), by bylo
+   horší než nechat název být. Stačí jedno písmeno nebo číslice.
+   Je to **jedno místo** — ptá se na něj i editor, když se rozhoduje, jestli vůbec
+   ukázat pole pro název. */
+function skladanyNazevKPouziti(e){
+const n=skladanyNazev(e);
+return (n&&/[\p{L}\p{N}]/u.test(n))?n:'';
+}
 function prepocitejNazev(e){
 if(!e)return false;
-const n=skladanyNazev(e);
+const n=skladanyNazevKPouziti(e);
 if(!n||n===e.name)return false;
-/* Ze šablony `((Datum)) — ((O čem))` zbude u prázdné entity holé „—". To není
-   název, to je lešení šablony — a přepsat jím to, co člověk napsal (rychlé
-   založení, řádek importu bez hodnot), by bylo horší než nechat název být.
-   Stačí jedno písmeno nebo číslice, aby se to počítalo za výsledek. */
-if(!/[\p{L}\p{N}]/u.test(n))return false;
 e.name=n;return true;
 }
 /* Přepočet mimo editor — hromadná akce, import, sloučení. Projde jen entity,
@@ -8951,10 +8963,30 @@ const f=document.createElement('div');f.id='efm';
 /* NAME (always first) */
 const nsec=document.createElement('section');nsec.className='dsec';
 const nfl=document.createElement('div');nfl.className='fld';
-const nlab=document.createElement('label');nlab.htmlFor='ent-name';nlab.textContent=t('entityName')+' *';nfl.appendChild(nlab);
-const nin=document.createElement('input');nin.type='text';nin.id='ent-name';nin.value=e.name||'';nin.required=true;nin.autocomplete='off';
+const nlab=document.createElement('label');nlab.textContent=t('entityName')+' *';nfl.appendChild(nlab);
+/* Když se název skládá, pole k psaní tu nemá co dělat — stejně by se při uložení
+   přepsalo. Místo něj je vypsaná hodnota, kterou entita dostane.
+   **Jen když z šablony opravdu něco leze**: dokud nedává nic (nová entita
+   s prázdnými zdroji), pole zůstane — jinak by nešlo uložit entitu, která
+   název mít musí, a nebylo by kam ho napsat. */
+const skladanyTed=nazevZeProEntitu(e)?skladanyNazevKPouziti(e):'';
+const atrProNazev=skladanyAtribut(e);
+const jmenoAtributu=atrProNazev?((atrProNazev.name&&String(atrProNazev.name).trim())?atrProNazev.name:t('attrNoName')):'';
+let nin=null,nvyp=null;
+if(skladanyTed){
+nvyp=document.createElement('p');nvyp.id='ent-name-text';nvyp.className='ent-name-sklad';nvyp.textContent=skladanyTed;
+nfl.appendChild(nvyp);
+const nh=document.createElement('small');nh.className='fhint';nh.style.display='block';
+nh.textContent=t('nameFromComputed',{atribut:jmenoAtributu});nfl.appendChild(nh);
+}else{
+nlab.htmlFor='ent-name';
+nin=document.createElement('input');nin.type='text';nin.id='ent-name';nin.value=e.name||'';nin.required=true;nin.autocomplete='off';
 nin.addEventListener('input',()=>{e.name=nin.value;const tt=document.querySelector('h2.dt');if(tt&&!isNew)tt.textContent=t('edit')+': '+(nin.value.trim()||t('untitled'))});
-nfl.appendChild(nin);nsec.appendChild(nfl);
+nfl.appendChild(nin);
+if(atrProNazev){const nh=document.createElement('small');nh.className='fhint';nh.style.display='block';
+nh.textContent=t('nameFromWaiting',{atribut:jmenoAtributu});nfl.appendChild(nh)}
+}
+nsec.appendChild(nfl);
 
 /* Výběr složeného atributu, ze kterého se název skládá. Nabídka se ukáže, jen
    když je z čeho vybírat — u většiny typů žádný složený atribut není. */
@@ -8992,7 +9024,9 @@ else delete e.nazevZe;
 setDirty(true);render();
 });
 sfl.appendChild(ssel);
-const shn=document.createElement('small');shn.className='fhint';shn.style.display='block';shn.textContent=t('nameFromHint');sfl.appendChild(shn);
+/* Když je místo pole vypsaná hodnota, stojí vysvětlení už nad nabídkou — druhá
+   věta o tom, že se ruční zápis ztratí, by mluvila o poli, které tam není. */
+if(!skladanyTed){const shn=document.createElement('small');shn.className='fhint';shn.style.display='block';shn.textContent=t('nameFromHint');sfl.appendChild(shn)}
 nsec.appendChild(sfl);
 }
 f.appendChild(nsec);
@@ -9005,9 +9039,9 @@ f.appendChild(nsec);
 const obnovSkladanyNazev=ev=>{
 /* Ptáme se přes `nazevZeProEntitu`, ne na `e.nazevZe` — volba může přijít z typu
    nebo z aspektu a entita sama pak v datech nemá nic. */
-if(!nazevZeProEntitu(e)||(ev&&ev.target===nin))return;
+if(!nazevZeProEntitu(e)||(ev&&nin&&ev.target===nin))return;
 if(!prepocitejNazev(e))return;
-nin.value=e.name;
+if(nvyp)nvyp.textContent=e.name;else if(nin)nin.value=e.name;
 const tt=document.querySelector('h2.dt');if(tt&&!isNew)tt.textContent=t('edit')+': '+(e.name.trim()||t('untitled'));
 };
 f.addEventListener('input',obnovSkladanyNazev);
