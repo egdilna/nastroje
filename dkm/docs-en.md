@@ -110,6 +110,7 @@ Attribute data types:
 - **select** — pick from a predefined list of values
 - **yesno** — yes/no
 - **number** — number
+- **slider** — a number within a given range, set with a slider (see 7.1c)
 - **relation** — link to another entity (optionally restricted to a specific type, single or multi-value)
 - **tags** — a set of labels from one **tag set**; the value is several tags at once (see 7.5)
 - **composed** — has no value of its own, it is built from a template out of the other attributes (see 7.6)
@@ -466,7 +467,8 @@ Added in type editor. Enter:
 - **Show in list** (checkbox)
 - **Hidden**, **Copying**, **Highlight**, **Hide when empty** (checkboxes, 7.7)
 - Optionally: **Value list** (for select), **Target type** (for relation),
-  **Number automatically** (for a number, 7.1b)
+  **Number automatically** (for a number, 7.1b), **From / To / Step / Unit** (for a
+  slider, 7.1c)
 
 ### 7.1b A self-numbering number (autoincrement)
 
@@ -485,6 +487,9 @@ How it works:
 - **An empty field is filled in on an old entity too**, when the attribute was added to the
   type later — just open it in the editor and save. A filled-in number is never overwritten.
 - **A duplicate gets a new number.** A copy with the same number would make nonsense of it.
+- **Changing "Last assigned" catches up an entity already being written** — leave the new
+  entity open, go to settings and rewrite the counter, and the entity gets the new number
+  when you come back. A number you typed in by hand stays; that is never overwritten.
 - **Table import**: a column with the number wins and moves the counter; a row without one
   gets a number of its own.
 - **The counter lives in the project data**, on the attribute definition — it has to be
@@ -500,6 +505,45 @@ The numbers are not guaranteed to be gapless or unique: two windows can create a
 the same moment and get the same number. Without a server there is no way around it; a merge
 then raises the counter, but the two entities keep the same number. Where the numbers matter,
 check them after an import.
+
+### 7.1c Slider
+
+The **slider** data type is a number within a given range that is set with a **slider**
+in the entity editor — good for percent done, a rating from zero to five and similar
+numbers where hitting the right point on a scale matters more than typing an exact digit.
+
+In the attribute editor it takes:
+
+- **From** and **To** — the bounds of the range. The default is 0 and 100; when *To* is
+  less than or equal to *From*, *From* + 100 is used.
+- **Step** — how far the slider jumps. Default 1; it may be fractional (0.5).
+- **Unit** — a label after the number, such as `%` or `points`. It is display text only.
+
+How it behaves:
+
+- **In the entity editor** it is a standard HTML slider, so the keyboard drives it too
+  (left and right arrows by one step, Home and End to the ends) and a screen reader
+  announces the value and the range. The value is written out as a number next to the
+  slider — the exact figure cannot be read off a slider by eye.
+- **The × button** clears the value. A slider cannot express "not set" by itself, it
+  always stands somewhere; an empty value is therefore separate.
+- **In the detail and in the offline viewer** the value is a number followed by a bar
+  (`<meter>`). The bar is only a picture — a screen reader reads the number, not the bar,
+  so nothing is said twice.
+- **In documents** (Markdown, HTML, DOCX, print, PlantUML, templates, copying a value) the
+  number carries the unit: "65 %".
+- **In data exports** (XLSX, TSV, JSON, XML, SQL) it is the **plain number** without the
+  unit — that is where a value you can compute with belongs.
+- **In filters, sorting and tables** a slider behaves as a number: *greater than*, *less
+  than*, *between* and so on.
+- **In the model** it is `numeric` / `xsd:decimal` / JSON `number`; the range reaches
+  JSON Schema (`minimum`, `maximum`) and SHACL (`sh:minInclusive`, `sh:maxInclusive`).
+- **When mapping attributes** (package import, type change) a slider and a number are
+  interchangeable — the value is an ordinary number either way.
+
+DKM does **not enforce the range retroactively**: narrow it after entities are filled in
+and the earlier values stay as they were. The slider shows them at its end, but the data
+and the exports keep the original number until someone overwrites it.
 
 ### 7.2 Aspect attribute
 
@@ -3547,6 +3591,7 @@ definition, not under its name. The shape of the value follows that definition's
 | `textarea` | string | rendered as Markdown with CriticMarkup |
 | `date` | string `YYYY-MM-DD` | not a full ISO timestamp — it is the value of an HTML date field |
 | `number` | number | a real number, not a string of digits; with `autoInc: true` DKM assigns it from `posledni` (7.1b), but in the data it is still an ordinary number |
+| `range` | number | a slider (7.1c); the range and the step live in the definition (`min`, `max`, `krok`), the unit is a display label only. A value outside the range is valid — DKM does not rewrite it |
 | `yesno` | `true` / `false` | |
 | `select` | string | must be one of the values of the linked select list |
 | `tags` | array of strings | each is one tag from the linked set (`tagSetId`); DKM stores them alphabetically |

@@ -110,6 +110,7 @@ Datové typy atributů:
 - **select** — výběr z předem definovaného seznamu hodnot
 - **yesno** — ano/ne
 - **number** — číslo
+- **posuvník** — číslo v daném rozsahu, zadává se táhlem (viz kap. 7.1c)
 - **relation** — odkaz na jinou entitu (volitelně omezený na konkrétní typ, jednonásobný nebo vícenásobný)
 - **tagy** — sada značek z jedné **soustavy tagů**; hodnotou je několik tagů najednou (viz kap. 7.5)
 - **složený** — nemá vlastní hodnotu, skládá se ze šablony z hodnot ostatních atributů (viz kap. 7.6)
@@ -462,7 +463,8 @@ Přidáš v editoru typu. Zadáš:
 - **Zobrazit v seznamu** (checkbox)
 - **Skrytý**, **Kopírování**, **Zvýraznit**, **Nezobrazovat prázdný** (checkboxy, kap. 7.7)
 - Volitelně: **Seznam hodnot** (pro select), **Typ cíle** (pro relation),
-  **Číslovat samo** (pro číslo, kap. 7.1b)
+  **Číslovat samo** (pro číslo, kap. 7.1b), **Od / Do / Krok / Jednotka** (pro posuvník,
+  kap. 7.1c)
 
 ### 7.1b Samočíslující číslo (autoincrement)
 
@@ -481,6 +483,9 @@ Jak to funguje:
 - **Prázdné pole se doplní i u staré entity**, když atribut k typu přibyl později — stačí ji
   otevřít v editoru a uložit. Vyplněné číslo se nikdy nepřepisuje.
 - **Duplikát dostane nové číslo.** Kopie se stejným číslem by z něj udělala nesmysl.
+- **Změna „Posledního přiděleného" dožene i rozepsanou novou entitu** — když ji necháš
+  otevřenou, zajdeš do nastavení a čítač přepíšeš, dostane entita po návratu nové číslo.
+  Ručně zadané číslo zůstane, to se nepřepisuje.
 - **Import z tabulky**: sloupec s číslem vyhrává a posune čítač; řádek bez něj dostane
   číslo sám.
 - **Čítač je v datech projektu**, u definice atributu — musí být společný všem, kdo projekt
@@ -494,6 +499,43 @@ nuly ani prefix** — kdo chce „SPIS-0042", složí si ho ze složeného atrib
 Čísla nejsou zaručeně bez děr a bez duplicit: dvě okna můžou založit entitu naráz a dostanou
 totéž číslo. Bez serveru se to udělat nedá; sloučení pak čítač srovná na vyšší hodnotu, ale
 dvě entity s týmž číslem po sobě zůstanou. Když na číslech záleží, projdi je po importu.
+
+### 7.1c Posuvník
+
+Datový typ **posuvník** je číslo v daném rozsahu, které se v editoru entity nastavuje
+**táhlem** — hodí se na procenta hotovo, hodnocení od nuly do pěti a podobná čísla, u nichž
+je důležitější trefit se do škály než napsat přesnou číslici.
+
+V editoru atributu se k němu nastavuje:
+
+- **Od** a **Do** — meze rozsahu. Výchozí je 0 a 100; když je *Do* menší nebo rovno *Od*,
+  bere se *Od* + 100.
+- **Krok** — o kolik táhlo poskočí. Výchozí 1; smí být i desetinný (0,5).
+- **Jednotka** — popisek za číslem, třeba `%` nebo `bodů`. Je to jen text pro zobrazení.
+
+Jak se chová:
+
+- **V editoru entity** je standardní HTML táhlo, takže ho obslouží i klávesnice (šipky
+  doleva a doprava po kroku, Home a End na kraje) a odečítač hlásí hodnotu i rozsah. Vedle
+  táhla je hodnota číslem — z táhla se přesné číslo okem nepřečte.
+- **Tlačítko ×** hodnotu zruší. Táhlo samo „nevyplněno" vyjádřit neumí, vždycky někde stojí;
+  proto je prázdná hodnota zvlášť.
+- **V detailu a v offline prohlížeči** je hodnota číslem a za ní pruh (`<meter>`). Pruh je
+  jen obrázek — odečítač čte číslo, ne pruh, takže se neříká dvakrát.
+- **V dokumentech** (Markdown, HTML, DOCX, tisk, PlantUML, šablony, kopírování hodnoty) je
+  číslo i s jednotkou: „65 %".
+- **V datových exportech** (XLSX, TSV, JSON, XML, SQL) je **samo číslo** bez jednotky —
+  tam patří hodnota, se kterou se dá počítat.
+- **Ve filtrech, řazení a tabulkách** se posuvník chová jako číslo: *větší než*, *menší
+  než*, *mezi* a tak dál.
+- **V modelu** je to `numeric` / `xsd:decimal` / JSON `number`; rozsah se promítne do
+  JSON Schema (`minimum`, `maximum`) i do SHACL (`sh:minInclusive`, `sh:maxInclusive`).
+- **Při mapování atributů** (import balíčku, změna typu) je posuvník zaměnitelný s číslem
+  a naopak — hodnota je v obou případech obyčejné číslo.
+
+Rozsah DKM **nevynucuje zpětně**: když ho zúžíš až po vyplnění entit, dřív zadané hodnoty
+zůstanou, jak byly. Táhlo je ukáže na kraji, ale v datech i v exportech zůstává původní
+číslo, dokud ho někdo nepřepíše.
 
 ### 7.2 Atribut aspektu
 
@@ -3492,6 +3534,7 @@ jejím názvem. Tvar hodnoty se řídí typem té definice:
 | `textarea` | řetězec | vykresluje se jako Markdown s CriticMarkup |
 | `date` | řetězec `RRRR-MM-DD` | ne plné ISO razítko — je to hodnota HTML pole typu date |
 | `number` | číslo | opravdu číslo, ne řetězec s číslicemi; u `autoInc: true` ho přiděluje DKM z `posledni` (kap. 7.1b), ale v datech je to pořád obyčejné číslo |
+| `range` | číslo | posuvník (kap. 7.1c); rozsah a krok drží definice (`min`, `max`, `krok`), jednotka je jen popisek pro zobrazení. Hodnota mimo rozsah je platná — DKM ji nepřepisuje |
 | `yesno` | `true` / `false` | |
 | `select` | řetězec | musí být jednou z hodnot navázaného číselníku |
 | `tags` | pole řetězců | každý je jeden tag z navázané soustavy (`tagSetId`); DKM je ukládá abecedně |
