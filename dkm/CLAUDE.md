@@ -459,6 +459,40 @@ jediná věc: odkud se bere hodnota u nové entity.
 - **Žádná garance jedinečnosti to není** a nemá se tak prodávat: dvě okna založí entitu
   naráz a dostanou totéž číslo. Bez serveru to nejde; dokumentace to říká na rovinu.
 - `autoInc` i `posledni` jsou v **obou schématech** (shodně) a v kap. 37.4.
+- **Pole „Poslední přidělené" píše na `input`, ne na `change`.** `change` přijde teprve při
+  opuštění pole; když se panel nastavení mezitím překreslí, zmizí pole z DOM a ručně zadané
+  číslo se ztratí — čítač pak zůstal na nule a nová entita začala znovu od jedničky. Totéž
+  platí pro rozsah posuvníku a pro každé další číselné pole v nastavení: **na `change` se
+  v překreslovaném panelu spolehnout nedá.**
+- **Rozepsaná nová entita čítač dožene.** `_autoIncDoplneno` (mapa mimo entitu, aby se
+  nedostala do dat) si pamatuje, které číslo jsme doplnili my; když se mezitím změnilo
+  `posledni`, `doplnAutoInc` **jen tohle naše** číslo přepíše. Ručně zadané zůstane a
+  u uložené entity (`__draft` už není) se nepřepisuje nic — jinak by se při každém otevření
+  editoru přečíslovala stará entita.
+
+## Posuvník je typ, ne příznak — a proč zrovna on
+`range` **je** položka v `ATYPES`, na rozdíl od samočíslování. Důvod je v zadávání: uživatel
+si ho vybírá v nabídce typů a potřebuje v editoru táhlo, ne pole s číslem; příznak na `number`
+by to schoval o patro níž. Aby se tím ale nerozmnožily větve, **hodnota zůstala obyčejné
+číslo** a každé místo, které dřív testovalo `type==='number'`, se ptá přes `jeCiselnyTyp(tp)`.
+Když přidáváš další číselný typ, projdi `jeCiselnyTyp` — je to ta jedna spára.
+
+- **Rozsah drží definice**: `min`, `max`, `krok`, `jednotka`, všechno nepovinné. Čte se přes
+  `rozsahMin/Max/Krok/Jednotka`, které mají výchozí 0 / 100 / 1 / prázdno, takže čerstvý
+  atribut funguje bez nastavování a schéma nemusí nic vyžadovat.
+- **Jednotka je popisek, ne data.** Je v tom, co čte člověk (`scalarValueStr`, a tím i detail,
+  šablony, kopírování, Markdown, HTML, DOCX, PlantUML), a **není** v datových exportech
+  (`xlsxAttrVal`, `jsonAttrValue`, SQL, XML) — tam patří číslo, se kterým se dá počítat.
+- **Prázdná hodnota potřebuje tlačítko.** Táhlo vždycky někde stojí, „nevyplněno" vyjádřit
+  neumí; proto je vedle něj `×`, které hodnotu smaže, a `<output>` s číslem, protože z táhla
+  se přesná hodnota okem nepřečte.
+- **V detailu je `<meter>` jen obrázek** — má `aria-hidden`, hodnotu nese text před ním.
+  Kdyby ho odečítač četl taky, řekne číslo dvakrát.
+- **Rozsah se nevynucuje zpětně.** Zúžení mezí dřív uložené hodnoty nepřepisuje; táhlo je
+  ukáže na kraji, ale v datech zůstanou. Proto v JSON Schema rozsah tvrdíme jen u exportu
+  modelu, ne u dat projektu.
+- Prohlížeč má **vlastní kopii** `rozsah*` i větve v `renderAttrVal` — při změně chování
+  posuvníku ho projdi taky.
 
 ## Poznámky z CriticMarkupu
 `criticPoznamky(e)` sbírá `{>>…<<}` z textových atributů (stejná plocha jako wiki odkazy)
