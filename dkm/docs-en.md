@@ -759,10 +759,16 @@ What then happens:
 - **If the attribute disappears** (type change, aspect removed), the picker shows it as
   *⚠ An attribute the entity does not have* and the name stops being overwritten. The
   setting is not discarded silently.
-- **Outside the editor** names are recomputed after a bulk action and after an import (table
-  and package alike); `[[Name]]` wiki links are renamed along with the entity. **A locked
-  entity is not rewritten.** After a file merge nothing is recomputed — the other side saved
-  its copy with the name already composed.
+- **Outside the editor names are recomputed wherever the data is touched from outside**:
+  after a bulk action, after a table import, after a package import, on a duplicate, on an
+  entity created from inside an entity picker, and **after a project is loaded** (file,
+  clipboard, GitHub, an `?id=` link) — that last one because the file may have been edited
+  by hand or produced elsewhere. `[[Name]]` wiki links are renamed along with the entity.
+  **A locked entity is not rewritten.** After a merge from GitHub nothing is recomputed —
+  the other side saved its copy with the name already composed.
+- **Separators alone do not make a name.** The template `((Date)) — ((About))` leaves a bare
+  "—" on an empty entity; that is the template's scaffolding, not a name, so it overwrites
+  nothing. One letter or digit is enough for the result to count.
 - **A duplicate carries the choice** and its name is recomputed right away, so `(copy)` does
   not stay in it. It differs only when the sources differ — an autoincrement number, say (7.1b).
 - **`((name))` and `((link))` are not substituted into a composed name.** Otherwise the name

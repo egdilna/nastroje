@@ -556,10 +556,16 @@ nemusí — kdyby byl název počítaný „za běhu", musela by ho umět spoč�
   v `slozenyText`). Bez toho by si název při každém přepočtu přilepil svoji předchozí
   podobu a rostl donekonečna — a přepočítává se po každém stisku klávesy.
 - **Mimo editor** `prepocitejNazvyVsude()`: hromadná akce (`bulkFinish`), import z tabulky,
-  import balíčku, duplikát. Přeskakuje zamčené a **u každé přejmenované entity narovná wiki
-  odkazy** — jinak by hromadná akce tiše rozbila `[[Název]]`. **Sloučení souboru se
-  nepřepočítává**: druhá strana ukládala svou kopii už s hotovým názvem a přepočet by
-  po každém slučovacím cyklu označoval data jako změněná.
+  import balíčku, duplikát, rychlé založení z výběru entity a **načtení projektu**
+  (`otevriVychoziZalozku` — jediné místo, kterým prochází soubor, schránka, GitHub i `?id=`;
+  cizí soubor mohl někdo upravit ručně). Přeskakuje zamčené a **u každé přejmenované entity
+  narovná wiki odkazy** — jinak by hromadná akce tiše rozbila `[[Název]]`. **Sloučení
+  z GitHubu se nepřepočítává**: druhá strana ukládala svou kopii už s hotovým názvem
+  a přepočet by po každém slučovacím cyklu označoval data jako změněná.
+- **Výsledek bez písmene a číslice se nepoužije.** Šablona `((Datum)) — ((O čem))` dá
+  u prázdné entity holé „—"; přepsat tím, co člověk napsal (rychlé založení, řádek importu
+  bez hodnot), je horší než nechat název být. Kontrola je `/[\p{L}\p{N}]/u`, ne „neprázdný
+  řetězec" — na to se při prvním testu narazilo.
 
 ## Poznámky z CriticMarkupu
 `criticPoznamky(e)` sbírá `{>>…<<}` z textových atributů (stejná plocha jako wiki odkazy)

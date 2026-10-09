@@ -747,10 +747,15 @@ Co se pak děje:
   se zahodí, aby neukazovalo do prázdna.
 - **Zmizí-li atribut** (změna typu, odebraný aspekt), nabídka to ukáže jako *⚠ Atribut,
   který u entity není* a název se přestane přepisovat. Nastavení se mlčky nezahodí.
-- **Mimo editor** se názvy přepočítají po hromadné akci a po importu (z tabulky i balíčku);
-  wiki odkazy `[[Název]]` se při tom přejmenují spolu s entitou. **Zamčená entita se
-  nepřepisuje.** Po sloučení souboru se nepřepočítává — druhá strana ukládala svou kopii
-  už s hotovým názvem.
+- **Mimo editor se názvy přepočítají všude, kde se do dat sáhne zvenčí**: po hromadné akci,
+  po importu z tabulky, po importu balíčku, u duplikátu, u entity založené zevnitř výběru
+  a **po načtení projektu** (soubor, schránka, GitHub, odkaz `?id=`) — ten poslední proto, že
+  soubor mohl někdo upravit ručně nebo vzniknout jinde. Wiki odkazy `[[Název]]` se při tom
+  přejmenují spolu s entitou. **Zamčená entita se nepřepisuje.** Po sloučení souboru
+  z GitHubu se nepřepočítává — druhá strana ukládala svou kopii už s hotovým názvem.
+- **Ze samotných oddělovačů se název nedělá.** Ze šablony `((Datum)) — ((O čem))` zbude
+  u prázdné entity holé „—"; to není název, to je lešení šablony, a tak se jím nic
+  nepřepíše. Stačí jedno písmeno nebo číslice, aby se výsledek použil.
 - **Duplikát si volbu nese s sebou** a název se mu přepočítá hned; `(kopie)` v něm proto
   nezůstane. Liší se, jen když se liší zdroje — třeba samočíslované číslo (kap. 7.1b).
 - **`((název))` a `((odkaz))` se do skládaného názvu nedosazují.** Jinak by si název při
