@@ -726,9 +726,22 @@ Without these notes a typo would only show up on the entity, where all it leaves
 
 #### A composed entity name
 
-A composed attribute can name the **entity itself**. Below the name in the entity editor
-there is a **Compose the name from** picker: either *its own, do not overwrite* (the default,
-you write the name yourself) or one of the composed attributes the entity has.
+A composed attribute can name the **entity itself** — so that every meeting is called
+"4 Mar 2026 — Budget" without anyone typing it.
+
+**It is set on the entity type**, in Settings → Entity types → *Compose entity names from*.
+It then applies to every entity of that type, existing ones included — they are renamed the
+moment you save the choice, and DKM says how many. An **aspect** can do the same
+(Settings → Aspects); it covers the entities carrying that aspect.
+
+When both a type and an aspect ask for an attribute, **the type wins**; among aspects, the
+one the entity carries first.
+
+A **single entity** can override it in its editor, in the picker below the name:
+
+- *from the model: Meeting* — the default, the type's or aspect's setting applies,
+- *its own, do not overwrite* — this one entity writes its own name,
+- a specific composed attribute — this one entity is named after it.
 
 What then happens:
 
@@ -740,9 +753,9 @@ What then happens:
   is not overwritten letter by letter, so you can see what you type; it is replaced on save.
 - **An empty result does not clear the name.** As long as the template yields nothing
   (sources not filled in), the name stays as it was — an entity without a name would be worse.
-- **It is a choice of one entity**, not of the type: two entities of the same type can have
-  one a composed name and the other its own. The setting travels with the entity (in a
-  package too).
+- **The setting travels in a package** — with the type, with the aspect and with the entity.
+  On import into another project the reference is remapped to the attribute that actually
+  came into being there; what cannot be translated is dropped rather than left dangling.
 - **If the attribute disappears** (type change, aspect removed), the picker shows it as
   *⚠ An attribute the entity does not have* and the name stops being overwritten. The
   setting is not discarded silently.

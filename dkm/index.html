@@ -707,6 +707,11 @@ tabEntityNotFound:'Entita s tímhle názvem neexistuje.',tabJump:'Záložka {n}'
 addType:'Přidat typ entity',addAspect2:'Přidat aspekt',addRelationType:'Přidat typ vazby',addList:'Přidat seznam',addAttribute:'Přidat atribut',showInList:'Zobrazit v seznamu',
 attrType:'Typ atributu',attrTypeText:'Text (jeden řádek)',attrTypeTextarea:'Text (víceřádkový, Markdown + CriticMarkup)',attrTypeDate:'Datum',attrTypeUrl:'URL',attrTypeSelect:'Výběr ze seznamu',attrTypeYesno:'Ano/Ne',attrTypeRelation:'Relace na entitu',attrTypeNumber:'Číslo',attrTypeRange:'Posuvník',attrTypeChecklist:'Checklist',
 nameFrom:'Skládat název podle',nameFromOwn:'vlastní, nepřepisovat',
+nameFromInherit:'podle modelu: {zdroj}',nameFromTypeField:'Skládat název entit podle',
+nameFromTypeHint:'Platí pro všechny entity tohoto typu. U jednotlivé entity se to dá v editoru přebít — buď jiným složeným atributem, nebo volbou „vlastní, nepřepisovat".',
+nameFromAspectHint:'Platí pro entity, které mají tenhle aspekt, pokud si jejich typ neřekl o jiný atribut. U jednotlivé entity se to dá v editoru přebít.',
+nameFromNoComposed:'Tenhle typ nemá žádný složený atribut, ze kterého by se dal název skládat.',
+nameFromNoComposedAspect:'Tenhle aspekt nemá žádný složený atribut, ze kterého by se dal název skládat.',
 nameFromMissing:'\u26a0 Atribut, který u entity není',
 nameFromHint:'Název se při uložení přepíše výsledkem vybraného složeného atributu. Co do názvu napíšeš ručně, se tím ztratí. Když složený atribut vyjde prázdný, název zůstane, jak byl.',
 nameRecomputed:'Přepočítané názvy: {n}',
@@ -1334,6 +1339,11 @@ tabEntityNotFound:'No entity with this name.',tabJump:'Tab {n}',
 addType:'Add entity type',addAspect2:'Add aspect',addRelationType:'Add relation type',addList:'Add list',addAttribute:'Add attribute',showInList:'Show in list',
 attrType:'Attribute type',attrTypeText:'Text (single line)',attrTypeTextarea:'Text (multiline, Markdown + CriticMarkup)',attrTypeDate:'Date',attrTypeUrl:'URL',attrTypeSelect:'Select from list',attrTypeYesno:'Yes/No',attrTypeRelation:'Relation to entity',attrTypeNumber:'Number',attrTypeRange:'Slider',attrTypeChecklist:'Checklist',
 nameFrom:'Compose the name from',nameFromOwn:'its own, do not overwrite',
+nameFromInherit:'from the model: {zdroj}',nameFromTypeField:'Compose entity names from',
+nameFromTypeHint:'Applies to every entity of this type. A single entity can override it in its editor — with another composed attribute, or with "its own, do not overwrite".',
+nameFromAspectHint:'Applies to entities carrying this aspect, unless their type asks for another attribute. A single entity can override it in its editor.',
+nameFromNoComposed:'This type has no composed attribute to build a name from.',
+nameFromNoComposedAspect:'This aspect has no composed attribute to build a name from.',
 nameFromMissing:'\u26a0 An attribute the entity does not have',
 nameFromHint:'On save the name is overwritten with the result of the chosen composed attribute. Anything typed into the name by hand is lost. When the composed attribute comes out empty, the name stays as it was.',
 nameRecomputed:'Names recomputed: {n}',
@@ -2493,10 +2503,34 @@ return nalez;
    Přepočítává se při **každé** změně v editoru, ne jen při změně zdrojů té
    šablony: hlídat zdroje by znamenalo rozumět šabloně a první přehlédnutý
    případ (metapole, aspekt přidaný v editoru) by tiše nechal starý název. */
+/* Odkud se název skládá. Tři stavy, a každý je v datech jinak:
+   `e.nazevZe` = id → tenhle atribut (volba entity přebíjí model),
+   `e.nazevZe === ''` → entita si výslovně píše název sama,
+   klíč chybí → **dědí se z modelu**: nejdřív typ, pak aspekty v pořadí, jaké má entita.
+   Volba na typu je to, co uživatel chce v drtivé většině — nastaví se jednou pro
+   „všechny Schůzky" a ne u každé entity zvlášť. */
+function nazevZeProEntitu(e){
+if(!e)return'';
+if(typeof e.nazevZe==='string')return e.nazevZe;
+if(e.typeId){const ty=findType(e.typeId);if(ty&&ty.nazevZe)return ty.nazevZe}
+let z='';
+(e.aspects||[]).forEach(aid=>{if(z)return;const a=findAspect(aid);if(a&&a.nazevZe)z=a.nazevZe});
+return z;
+}
+/* Kdo volbu drží — pro popisek v editoru entity („podle modelu: Schůzka"). */
+function nazevZeZdroj(e){
+if(!e||typeof e.nazevZe==='string')return null;
+if(e.typeId){const ty=findType(e.typeId);if(ty&&ty.nazevZe)return ty}
+let z=null;
+(e.aspects||[]).forEach(aid=>{if(z)return;const a=findAspect(aid);if(a&&a.nazevZe)z=a});
+return z;
+}
 function skladanyAtribut(e){
-if(!e||!e.nazevZe)return null;
-/* Jen atribut typu, nebo aspektu — vlastní atribut entity šablonu nenese. */
-const it=getAllAttrs(e).find(x=>x.source!=='custom'&&x.attr&&x.attr.id===e.nazevZe&&x.attr.type==='composed');
+const id=nazevZeProEntitu(e);
+if(!id)return null;
+/* Jen atribut typu, nebo aspektu — vlastní atribut entity šablonu nenese.
+   Atribut, který entita nemá (jiný typ, odebraný aspekt), se nepoužije. */
+const it=getAllAttrs(e).find(x=>x.source!=='custom'&&x.attr&&x.attr.id===id&&x.attr.type==='composed');
 return it?it.attr:null;
 }
 let _skladamNazev=false;
@@ -2513,7 +2547,7 @@ return txt.replace(/\s+/g,' ').trim();
 /* Vrací true, když se název opravdu změnil. Prázdný výsledek název **nemaže**:
    entita bez názvu je horší než název, který se zatím nepřepočítal. */
 function prepocitejNazev(e){
-if(!e||!e.nazevZe)return false;
+if(!e)return false;
 const n=skladanyNazev(e);
 if(!n||n===e.name)return false;
 e.name=n;return true;
@@ -2524,7 +2558,7 @@ e.name=n;return true;
 function prepocitejNazvyVsude(){
 let entit=0,odkazu=0;
 (state.data.entities||[]).forEach(e=>{
-if(!e||!e.nazevZe||jeZamcena(e))return;
+if(!e||jeZamcena(e))return;
 const stary=e.name||'';
 if(!prepocitejNazev(e))return;
 entit++;
@@ -8916,11 +8950,22 @@ nfl.appendChild(nin);nsec.appendChild(nfl);
 /* Výběr složeného atributu, ze kterého se název skládá. Nabídka se ukáže, jen
    když je z čeho vybírat — u většiny typů žádný složený atribut není. */
 const slozeneProNazev=getAllAttrs(e).filter(x=>x.source!=='custom'&&x.attr&&x.attr.type==='composed');
-if(slozeneProNazev.length||e.nazevZe){
+const zdrojZModelu=nazevZeZdroj(e);
+if(slozeneProNazev.length||typeof e.nazevZe==='string'){
 const sfl=document.createElement('div');sfl.className='fld';sfl.style.marginTop='.5rem';
 const slab=document.createElement('label');slab.htmlFor='ent-nazev-ze';slab.textContent=t('nameFrom');sfl.appendChild(slab);
 const ssel=document.createElement('select');ssel.id='ent-nazev-ze';
-const o0=document.createElement('option');o0.value='';o0.textContent='— '+t('nameFromOwn')+' —';ssel.appendChild(o0);
+/* `__dedit` a `__vlastni` jsou hodnoty rozbalovátka, ne dat: v datech je
+   chybějící klíč (dědí se) a prázdný řetězec (výslovně vlastní). */
+if(zdrojZModelu){
+const od=document.createElement('option');od.value='__dedit';
+od.textContent='— '+t('nameFromInherit',{zdroj:zdrojZModelu.name||t('typeNoName')})+' —';
+if(typeof e.nazevZe!=='string')od.selected=true;ssel.appendChild(od);
+}
+const o0=document.createElement('option');o0.value=zdrojZModelu?'__vlastni':'';
+o0.textContent='— '+t('nameFromOwn')+' —';
+if(typeof e.nazevZe==='string'&&!e.nazevZe)o0.selected=true;
+ssel.appendChild(o0);
 slozeneProNazev.forEach(x=>{const o=document.createElement('option');o.value=x.attr.id;
 o.textContent=x.sourceLabel+' / '+((x.attr.name&&String(x.attr.name).trim())?x.attr.name:t('attrNoName'));
 if(e.nazevZe===x.attr.id)o.selected=true;ssel.appendChild(o)});
@@ -8929,7 +8974,14 @@ if(e.nazevZe===x.attr.id)o.selected=true;ssel.appendChild(o)});
 if(e.nazevZe&&!slozeneProNazev.some(x=>x.attr.id===e.nazevZe)){
 const o=document.createElement('option');o.value=e.nazevZe;o.textContent=t('nameFromMissing');o.selected=true;ssel.appendChild(o);
 }
-ssel.addEventListener('change',()=>{if(ssel.value)e.nazevZe=ssel.value;else delete e.nazevZe;setDirty(true);render()});
+ssel.addEventListener('change',()=>{
+const v=ssel.value;
+if(v==='__dedit')delete e.nazevZe;
+else if(v==='__vlastni')e.nazevZe='';
+else if(v)e.nazevZe=v;
+else delete e.nazevZe;
+setDirty(true);render();
+});
 sfl.appendChild(ssel);
 const shn=document.createElement('small');shn.className='fhint';shn.style.display='block';shn.textContent=t('nameFromHint');sfl.appendChild(shn);
 nsec.appendChild(sfl);
@@ -8942,7 +8994,9 @@ f.appendChild(nsec);
    pole do šablony vstupuje. Psaní do samotného názvu se nechá být, jinak by
    uživateli mizelo písmeno po písmenu; přepíše se až při uložení. */
 const obnovSkladanyNazev=ev=>{
-if(!e.nazevZe||(ev&&ev.target===nin))return;
+/* Ptáme se přes `nazevZeProEntitu`, ne na `e.nazevZe` — volba může přijít z typu
+   nebo z aspektu a entita sama pak v datech nemá nic. */
+if(!nazevZeProEntitu(e)||(ev&&ev.target===nin))return;
 if(!prepocitejNazev(e))return;
 nin.value=e.name;
 const tt=document.querySelector('h2.dt');if(tt&&!isNew)tt.textContent=t('edit')+': '+(e.name.trim()||t('untitled'));
@@ -11198,6 +11252,9 @@ const na=novyAtributZBalicku(sa,slIdMap,tsIdMap);
 if(na.type==='relation')cileVazebnichAtributu.push({na:na,src:sa.targetType});
 nty.attributes.push(na);attrMap[sa.id]=na.id;
 });
+/* `nazevZe` je odkaz na vlastní atribut, a ten právě dostal nové id. Nepřeložený
+   by ukazoval do prázdna, takže se buď přeloží, nebo zahodí — stejně jako `listId`. */
+if(nty.nazevZe){const nz=attrMap[nty.nazevZe];if(nz)nty.nazevZe=nz;else delete nty.nazevZe}
 state.data.entityTypes.push(nty);tyIdMap[srcTy.id]=nty.id;attrIdMapByTy[srcTy.id]=attrMap;log.newTypes++;
 }else if(m.action==='reuse'){
 tyIdMap[srcTy.id]=m.targetId;
@@ -11239,6 +11296,7 @@ if(m.action==='create'){
 const nas=Object.assign({},srcAs,{id:uid('asp'),name:srcAs.name,attributes:[]});
 const attrMap={};
 srcAs.attributes.forEach(sa=>{const na=novyAtributZBalicku(sa,slIdMap,tsIdMap);if(na.type==='relation')cileVazebnichAtributu.push({na:na,src:sa.targetType});nas.attributes.push(na);attrMap[sa.id]=na.id});
+if(nas.nazevZe){const nz=attrMap[nas.nazevZe];if(nz)nas.nazevZe=nz;else delete nas.nazevZe}
 state.data.aspects.push(nas);aspIdMap[srcAs.id]=nas.id;attrIdMapByAsp[srcAs.id]=attrMap;log.newAspects++;
 }else if(m.action==='reuse'){
 aspIdMap[srcAs.id]=m.targetId;
@@ -11329,6 +11387,14 @@ if(srcE.typeId&&attrIdMapByTy[srcE.typeId]&&attrIdMapByTy[srcE.typeId][aid])mapp
 if(!mapped){(srcE.aspects||[]).forEach(asid=>{if(attrIdMapByAsp[asid]&&attrIdMapByAsp[asid][aid])mapped=attrIdMapByAsp[asid][aid]})}
 if(mapped){newAttrs[mapped]=srcE.attributes[aid];log.attrsKept++}else log.attrsDropped++;
 });
+/* Vlastní volba skládaného názvu je taky odkaz na atribut. Prázdný řetězec
+   (`výslovně vlastní název`) se nepřekládá — nic neukazuje. */
+if(typeof srcE.nazevZe==='string'&&srcE.nazevZe){
+let nz=null;
+if(srcE.typeId&&attrIdMapByTy[srcE.typeId])nz=attrIdMapByTy[srcE.typeId][srcE.nazevZe]||null;
+if(!nz)(srcE.aspects||[]).forEach(asid=>{if(!nz&&attrIdMapByAsp[asid])nz=attrIdMapByAsp[asid][srcE.nazevZe]||null});
+if(nz)target.nazevZe=nz;else delete target.nazevZe;
+}else if(srcE.nazevZe===''&&!merging)target.nazevZe='';
 if(merging){
 target.attributes=target.attributes||{};
 Object.keys(newAttrs).forEach(k=>{
@@ -15472,6 +15538,8 @@ w.appendChild(sec);
 const sec2=document.createElement('section');sec2.className='dsec';
 const ah=document.createElement('h3');ah.textContent=t('detailAttributes');sec2.appendChild(ah);
 sec2.appendChild(rsAttrList(ty));
+/* Nabídka vychází ze složených atributů téhož typu, proto stojí až pod nimi. */
+sec2.appendChild(rsNazevZeFld(ty,'te',false));
 w.appendChild(sec2);
 w.appendChild(rsSablonaEditor(ty,false));
 return w;
@@ -15817,9 +15885,44 @@ w.appendChild(sec);
 const sec2=document.createElement('section');sec2.className='dsec';
 const ah=document.createElement('h3');ah.textContent=t('detailAttributes');sec2.appendChild(ah);
 sec2.appendChild(rsAttrList(asp));
+sec2.appendChild(rsNazevZeFld(asp,'ae',true));
 w.appendChild(sec2);
 w.appendChild(rsSablonaEditor(asp,true));
 return w;
+}
+
+/* Skládaný název pro celý typ (nebo aspekt). Tohle je to hlavní místo — nastaví se
+   jednou pro „všechny Schůzky", ne u každé entity zvlášť; volba u jedné entity model
+   jen přebíjí. Změna se **hned promítne do existujících entit**: uživatel si o ni
+   právě řekl a nechat ji platit až od příští editace by vypadalo jako že nefunguje. */
+function rsNazevZeFld(obj,idPrefix,jeAspekt){
+const f=document.createElement('div');f.className='fld';
+const l=document.createElement('label');l.htmlFor=idPrefix+'-nz';l.textContent=t('nameFromTypeField');f.appendChild(l);
+const slozene=(obj.attributes||[]).filter(a=>a&&a.type==='composed');
+if(!slozene.length&&!obj.nazevZe){
+const hp=document.createElement('small');hp.className='fhint';hp.id=idPrefix+'-nz';
+hp.textContent=t(jeAspekt?'nameFromNoComposedAspect':'nameFromNoComposed');
+f.appendChild(hp);l.removeAttribute('for');return f;
+}
+const sel=document.createElement('select');sel.id=idPrefix+'-nz';
+const o0=document.createElement('option');o0.value='';o0.textContent='— '+t('nameFromOwn')+' —';sel.appendChild(o0);
+slozene.forEach(a=>{const o=document.createElement('option');o.value=a.id;
+o.textContent=(a.name&&String(a.name).trim())?a.name:t('attrNoName');
+if(obj.nazevZe===a.id)o.selected=true;sel.appendChild(o)});
+if(obj.nazevZe&&!slozene.some(a=>a.id===obj.nazevZe)){
+const o=document.createElement('option');o.value=obj.nazevZe;o.textContent=t('nameFromMissing');o.selected=true;sel.appendChild(o);
+}
+sel.addEventListener('change',()=>{
+if(sel.value)obj.nazevZe=sel.value;else delete obj.nazevZe;
+setDirty(true);
+const pn=prepocitejNazvyVsude();
+if(pn.entit)toast(t('nameRecomputed',{n:pn.entit}));
+render();
+});
+f.appendChild(sel);
+const h=document.createElement('small');h.className='fhint';
+h.textContent=t(jeAspekt?'nameFromAspectHint':'nameFromTypeHint');f.appendChild(h);
+return f;
 }
 
 /* Volitelný pevný klíč pro export do datového JSON. Prázdné = odvodí se z názvu. */

@@ -531,6 +531,20 @@ nemusí — kdyby byl název počítaný „za běhu", musela by ho umět spoč�
   cesty zápisu a událost stejně probublá nahoru. Hlídat zdroje by znamenalo rozumět
   šabloně a první přehlédnutý případ (metapole, aspekt přidaný v editoru) by tiše nechal
   starý název.
+- **Hlavní místo je typ, ne entita.** `ty.nazevZe` / `asp.nazevZe` platí pro všechny jejich
+  entity; `e.nazevZe` je **přebití** a má tři stavy, každý jinak v datech: id atributu,
+  **prázdný řetězec** („píšu si název sám", i když model skládá) a **chybějící klíč**
+  („dědí se"). Rozlišuje je `typeof e.nazevZe==='string'`, ne pravdivost — nulová délka je
+  platná volba. Rozbalovátko v editoru entity má proto hodnoty `__dedit` a `__vlastni`,
+  které se do dat nikdy nezapíšou.
+- **Jediný resolver je `nazevZeProEntitu(e)`** (entita → typ → aspekty v pořadí entity).
+  Kdo se ptá na `e.nazevZe` přímo, zapomene na dědění — přesně na tom spadl živý přepočet
+  v editoru.
+- **Změna na typu přepíše existující entity hned** (`rsNazevZeFld` volá
+  `prepocitejNazvyVsude()` a řekne kolik). Nechat ji platit až od příští editace vypadá
+  jako že nastavení nefunguje.
+- **Import balíčku musí `nazevZe` přemapovat** — je to odkaz na id atributu, a ten při
+  zakládání typu dostane nové. U `reuse` se cizí volba **nevnucuje**, stejně jako šablona.
 - **Psaní do pole Název se nepřepisuje** (`ev.target===nin`), jinak by uživateli mizelo
   písmeno po písmenu. Přepíše se až při uložení — to je i to, co si uživatel přál.
 - **Zapisuje se na třech místech v cestě uložení**: `commitEdit` před kontrolou prázdného
