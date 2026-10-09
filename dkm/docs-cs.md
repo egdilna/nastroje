@@ -713,6 +713,39 @@ Pod polem se šablonou průběžně vypisuje, co v ní nesedí:
 
 Bez těchhle hlášek by se překlep poznal až na entitě, kde po něm zbude jen prázdno.
 
+#### Skládaný název entity
+
+Složený atribut umí dát jméno i **samotné entitě**. V editoru entity je pod názvem nabídka
+**Skládat název podle**: buď *vlastní, nepřepisovat* (výchozí stav, název si píšeš sám),
+nebo některý složený atribut, který entita má.
+
+Co se pak děje:
+
+- **Název se přepočítá při každé změně v editoru** a hned je vidět v poli *Název* — nečeká
+  se na uložení a nehlídá se, které pole do šablony vstupuje. Přidáš aspekt, změníš číslo,
+  přepíšeš značku: název se srovná.
+- **Do dat se zapíše při uložení.** Co do názvu napíšeš ručně, se tím ztratí — to je záměr,
+  u skládaného názvu rozhoduje konvence, ne ruka. Psaní do pole *Název* se ale nepřepisuje
+  po písmenech, abys mohl vidět, co píšeš; přepíše se až při uložení.
+- **Prázdný výsledek název nemaže.** Dokud šablona nic nedá (nevyplněné zdroje), zůstane
+  název, jak byl — entita bez názvu by byla horší.
+- **Je to volba jedné entity**, ne typu: dvě entity téhož typu můžou mít jedna název
+  skládaný a druhá vlastní. Nastavení cestuje s entitou (i v balíčku).
+- **Zmizí-li atribut** (změna typu, odebraný aspekt), nabídka to ukáže jako *⚠ Atribut,
+  který u entity není* a název se přestane přepisovat. Nastavení se mlčky nezahodí.
+- **Mimo editor** se názvy přepočítají po hromadné akci a po importu (z tabulky i balíčku);
+  wiki odkazy `[[Název]]` se při tom přejmenují spolu s entitou. **Zamčená entita se
+  nepřepisuje.** Po sloučení souboru se nepřepočítává — druhá strana ukládala svou kopii
+  už s hotovým názvem.
+- **Duplikát si volbu nese s sebou** a název se mu přepočítá hned; `(kopie)` v něm proto
+  nezůstane. Liší se, jen když se liší zdroje — třeba samočíslované číslo (kap. 7.1b).
+- **`((název))` a `((odkaz))` se do skládaného názvu nedosazují.** Jinak by si název při
+  každém přepočtu přilepil svoji předchozí podobu a rostl donekonečna. V ostatních
+  výstupech (detail, dokument) obě metapole fungují dál.
+
+Samotný název zůstává obyčejné pole v datech — hledání, řazení, odkazy, exporty
+i offline prohlížeč o skládání nevědí a pracují s ním jako s jakýmkoli jiným názvem.
+
 ### 7.7 Jak se atribut chová v zobrazení
 
 Čtyři zaškrtávátka u každého atributu typu i aspektu. **Do dat nesahají** — mění jen to, co
