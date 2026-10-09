@@ -111,6 +111,7 @@ Attribute data types:
 - **yesno** — yes/no
 - **number** — number
 - **slider** — a number within a given range, set with a slider (see 7.1c)
+- **checklist** — rows with checkboxes; the rows belong to the entity, not to the definition (see 7.1d)
 - **relation** — link to another entity (optionally restricted to a specific type, single or multi-value)
 - **tags** — a set of labels from one **tag set**; the value is several tags at once (see 7.5)
 - **composed** — has no value of its own, it is built from a template out of the other attributes (see 7.6)
@@ -545,6 +546,42 @@ DKM does **not enforce the range retroactively**: narrow it after entities are f
 and the earlier values stay as they were. The slider shows them at its end, but the data
 and the exports keep the original number until someone overwrites it.
 
+### 7.1d Checklist
+
+The **checklist** data type is a list of rows with checkboxes — a todo list on an entity.
+Unlike a select list or a tag set, **the rows do not belong to the attribute definition but
+to the entity**: every entity has its own list, just as it has its own text.
+
+- **Rows are entered in the entity editor.** An *Add row* button, and for each row a text,
+  a checkbox, arrows for the order and × to delete it. The text is saved as you type.
+- **In the detail they are ticked directly**, without opening the editor. Ticking is a data
+  change — it reaches the file, and on a locked entity DKM does not allow it.
+- **Below the list is the count of done rows** ("2 of 5 done"); in the entity card
+  (*Show in list*) only that count appears, so the card does not grow.
+- **In documents** (Markdown) it becomes a task list:
+
+  ```
+  - [x] Pack
+  - [ ] Move
+  ```
+
+  In the HTML export and in the offline viewer there are checkboxes, but disabled — so a
+  screen reader still says "checked" where nothing can be changed. DOCX gets ☑ and ☐ bullets.
+- **In a composed attribute, in the text generator, in tables and when copying** it is one
+  line: `☑ Pack; ☐ Move`. A detail template, by contrast, renders a bulleted list — a
+  template makes a block, a composed attribute makes a sentence.
+- **In data exports** (JSON, XML) it is an array of `{text, hotovo}` objects; in table
+  exports (XLSX, TSV) that one-line form. Table import reads it back: it understands
+  `[x] A; [ ] B` and `☑ A; ☐ B`, and anything without a mark counts as not done.
+- **Filters**: *all done*, *something left*, *contains* and *does not contain* (searching the
+  row texts), *empty* and *not empty*. An empty list is **not** "all done" — there is nothing
+  to tick off.
+
+Two limits that are by design: **a detail template cannot be ticked** (a template is Markdown,
+so a checklist is only a list there — tick it in the default detail) and **rows do not copy
+themselves between entities**; if you want the same list every time, set it up once and
+duplicate the entity (5.3).
+
 ### 7.2 Aspect attribute
 
 Defined in aspect editor. Same rules. An aspect can bring attributes of any type (including relation).
@@ -846,13 +883,15 @@ Rules are combined with **AND** — all must be true.
 
 **Select:** equals, notEquals, in, notIn, empty, notEmpty
 
-**Number:** equals, notEquals, greaterThan, greaterOrEqual, lessThan, lessOrEqual, between, empty, notEmpty
+**Number and slider:** equals, notEquals, greaterThan, greaterOrEqual, lessThan, lessOrEqual, between, empty, notEmpty — a slider is a number, so it takes the same operators (7.1c)
 
 **Date:** equals, before, after, between, isToday, isYesterday, isTomorrow, isThisWeek, isThisMonth, isThisYear, isPast, isFuture, inLastDays N, inNextDays N, olderThanDays N, newerThanDays N, empty, notEmpty
 
 **Yes/No:** isTrue, isFalse, empty
 
 **Relation attribute:** hasAnyTarget, hasNoTarget, targetIs (specific entity), targetIsType, targetHasAspect
+
+**Checklist:** allDone, anyOpen, contains and notContains (searching the row texts), empty, notEmpty — an empty list is not "all done" (7.1d)
 
 **Tags:** hasTag, hasNotTag, hasAnyTag, hasNoTags — the value is picked from the attached tag set
 
@@ -3592,6 +3631,7 @@ definition, not under its name. The shape of the value follows that definition's
 | `date` | string `YYYY-MM-DD` | not a full ISO timestamp — it is the value of an HTML date field |
 | `number` | number | a real number, not a string of digits; with `autoInc: true` DKM assigns it from `posledni` (7.1b), but in the data it is still an ordinary number |
 | `range` | number | a slider (7.1c); the range and the step live in the definition (`min`, `max`, `krok`), the unit is a display label only. A value outside the range is valid — DKM does not rewrite it |
+| `checklist` | array of `{text, hotovo}` objects | the rows belong to the **entity**, not to the attribute definition (7.1d); the order in the array is the order on screen; `hotovo` may be missing and means a row that is not done |
 | `yesno` | `true` / `false` | |
 | `select` | string | must be one of the values of the linked select list |
 | `tags` | array of strings | each is one tag from the linked set (`tagSetId`); DKM stores them alphabetically |

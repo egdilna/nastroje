@@ -111,6 +111,7 @@ Datové typy atributů:
 - **yesno** — ano/ne
 - **number** — číslo
 - **posuvník** — číslo v daném rozsahu, zadává se táhlem (viz kap. 7.1c)
+- **checklist** — řádky se zaškrtávátky; řádky patří entitě, ne definici (viz kap. 7.1d)
 - **relation** — odkaz na jinou entitu (volitelně omezený na konkrétní typ, jednonásobný nebo vícenásobný)
 - **tagy** — sada značek z jedné **soustavy tagů**; hodnotou je několik tagů najednou (viz kap. 7.5)
 - **složený** — nemá vlastní hodnotu, skládá se ze šablony z hodnot ostatních atributů (viz kap. 7.6)
@@ -537,6 +538,41 @@ Rozsah DKM **nevynucuje zpětně**: když ho zúžíš až po vyplnění entit, 
 zůstanou, jak byly. Táhlo je ukáže na kraji, ale v datech i v exportech zůstává původní
 číslo, dokud ho někdo nepřepíše.
 
+### 7.1d Checklist
+
+Datový typ **checklist** je seznam řádků se zaškrtávátky — todolist u entity. Na rozdíl od
+číselníku nebo soustavy tagů **řádky nepatří definici atributu, ale entitě**: každá entita
+má svůj vlastní seznam, stejně jako má svůj text.
+
+- **Řádky se zadávají v editoru entity.** Tlačítko *Přidat řádek*, u každého řádku text,
+  zaškrtávátko, šipky na pořadí a × na smazání. Text se ukládá hned při psaní.
+- **V detailu se odškrtává rovnou**, bez otevírání editoru. Zaškrtnutí je změna dat —
+  projeví se v souboru a u zamčené entity ho DKM nepustí.
+- **Pod seznamem je počet hotových** („2 z 5 hotovo"); v kartě entity (*Zobrazit v seznamu*)
+  se ukazuje jen tenhle počet, aby karta nenarostla.
+- **V dokumentech** (Markdown) je z toho seznam úkolů:
+
+  ```
+  - [x] Zabalit
+  - [ ] Odvézt
+  ```
+
+  V HTML exportu a v offline prohlížeči jsou zaškrtávátka, ale vypnutá — odečítač tak řekne
+  „zaškrtnuto" i tam, kde se nedá nic měnit. Do DOCX jdou odrážky se znakem ☑ a ☐.
+- **Ve složeném atributu, v generátoru textu, v tabulkách a při kopírování** je z toho
+  jeden řádek: `☑ Zabalit; ☐ Odvézt`. V šabloně detailu se naopak sází odrážkový seznam —
+  šablona dělá blok, složený atribut větu.
+- **V datových exportech** (JSON, XML) je pole objektů `{text, hotovo}`; v tabulkových
+  (XLSX, TSV) ten jednořádkový zápis. Import z tabulky ho čte zpátky: rozumí `[x] A; [ ] B`
+  i `☑ A; ☐ B`, a co je bez značky, bere jako nehotové.
+- **Filtry**: *vše hotovo*, *něco zbývá*, *obsahuje* a *neobsahuje* (hledá v textech řádků),
+  *prázdné* a *neprázdné*. Prázdný seznam **není** „vše hotovo" — není co odškrtat.
+
+Dvě omezení, se kterými se počítá: **v šabloně detailu se zaškrtávat nedá** (šablona je
+Markdown, takže je z checklistu jen seznam — odškrtává se ve výchozím detailu) a **řádky
+se mezi entitami nekopírují** samy; kdo chce stejný seznam pokaždé, nastaví si ho jednou
+a entitu duplikuje (kap. 5.3).
+
 ### 7.2 Atribut aspektu
 
 Definuješ v editoru aspektu. Pravidla jsou stejná. Aspekt může přinést atributy libovolného typu (včetně relation).
@@ -834,13 +870,15 @@ Pravidla se kombinují v **AND** — všechna musí platit.
 
 **Select:** equals, notEquals, in, notIn, empty, notEmpty
 
-**Number:** equals, notEquals, greaterThan, greaterOrEqual, lessThan, lessOrEqual, between, empty, notEmpty
+**Number a posuvník:** equals, notEquals, greaterThan, greaterOrEqual, lessThan, lessOrEqual, between, empty, notEmpty — posuvník je číslo, takže má tytéž operátory (kap. 7.1c)
 
 **Date:** equals, before, after, between, isToday, isYesterday, isTomorrow, isThisWeek, isThisMonth, isThisYear, isPast, isFuture, inLastDays N, inNextDays N, olderThanDays N, newerThanDays N, empty, notEmpty
 
 **Yes/No:** isTrue, isFalse, empty
 
 **Relation atribut:** hasAnyTarget, hasNoTarget, targetIs (konkrétní entita), targetIsType, targetHasAspect
+
+**Checklist:** allDone (vše hotovo), anyOpen (něco zbývá), contains a notContains (hledá v textech řádků), empty, notEmpty — prázdný seznam není „vše hotovo" (kap. 7.1d)
 
 **Tagy:** hasTag (má tag), hasNotTag (nemá tag), hasAnyTag (má některý tag), hasNoTags (nemá žádný tag) — hodnota se vybírá z navázané soustavy
 
@@ -3535,6 +3573,7 @@ jejím názvem. Tvar hodnoty se řídí typem té definice:
 | `date` | řetězec `RRRR-MM-DD` | ne plné ISO razítko — je to hodnota HTML pole typu date |
 | `number` | číslo | opravdu číslo, ne řetězec s číslicemi; u `autoInc: true` ho přiděluje DKM z `posledni` (kap. 7.1b), ale v datech je to pořád obyčejné číslo |
 | `range` | číslo | posuvník (kap. 7.1c); rozsah a krok drží definice (`min`, `max`, `krok`), jednotka je jen popisek pro zobrazení. Hodnota mimo rozsah je platná — DKM ji nepřepisuje |
+| `checklist` | pole objektů `{text, hotovo}` | řádky patří **entitě**, ne definici atributu (kap. 7.1d); pořadí v poli je pořadí na obrazovce; `hotovo` smí chybět a znamená nehotový řádek |
 | `yesno` | `true` / `false` | |
 | `select` | řetězec | musí být jednou z hodnot navázaného číselníku |
 | `tags` | pole řetězců | každý je jeden tag z navázané soustavy (`tagSetId`); DKM je ukládá abecedně |

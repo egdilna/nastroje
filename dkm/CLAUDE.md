@@ -494,6 +494,32 @@ Když přidáváš další číselný typ, projdi `jeCiselnyTyp` — je to ta je
 - Prohlížeč má **vlastní kopii** `rozsah*` i větve v `renderAttrVal` — při změně chování
   posuvníku ho projdi taky.
 
+## Checklist: řádky patří entitě, ne definici
+`checklist` je další položka `ATYPES`, ale pozor na rozdíl proti `select` a `tags`: **nabídku
+nedrží model**, celý seznam řádků je hodnota u entity (`[{text,hotovo}]`). Definice atributu
+k němu nenese nic. Čte se **vždycky** přes `checklistRadky()`, která cizí data srovná do tvaru
+— do souboru může sáhnout kdokoli a jeden řádek bez `text` by jinak shodil výpis.
+
+- **Čtyři podoby hodnoty, každá na svém místě.** `checklistText()` jeden řádek (schránka,
+  tabulky, PlantUML, složený atribut, generátor), `checklistOdrazky()` odrážky se znakem
+  (šablona detailu, DOCX), `checklistMd()` seznam úkolů `- [x]` (Markdown dokument),
+  `htmlAttrValue` vypnutá zaškrtávátka (HTML export a prohlížeč). **Tasklist jde jen do
+  Markdownu**: žádný ze čtyř vykreslovačů `- [x]` neumí a v detailu by svítilo holé „[x]".
+- **Zaškrtnutí v detailu je zápis do dat.** `renderAttrVal` dostane `volby.zapis` od
+  `renderAttrRow` — jen ten ví, jestli jde o atribut typu, nebo o vlastní atribut entity.
+  Zapisovač sahá na **živou** entitu (`findEntity`), kouká na `lzeMenit` a při odmítnutí se
+  zaškrtávátko vrátí zpátky. Bez zapisovače (karta v seznamu, prohlížeč) je seznam jen ke
+  čtení. Po zápisu se **nepřekresluje** — přepíše se jen počet a přeškrtnutí řádku, jinak by
+  uživateli pod rukama skákala stránka.
+- **Karta v seznamu dostane `volby.strucne`** a ukáže jen „2 z 5 hotovo“. Deset řádků v kartě
+  by ze seznamu udělalo sloupec.
+- **Editor řádků překresluje jen při přidání, smazání a přesunu**, text se ukládá na `input`.
+  Překreslovat při psaní znamená ztratit ohnisko po každém písmenu.
+- **V `hodnotaAtributu` je pole objektů `minItems: 1`.** Bez toho by prázdné pole sedělo
+  zároveň na „pole řetězců“ i na „řádky checklistu“ a `oneOf` by ho zamítlo.
+- Filtry mají dva vlastní operátory (`allDone`, `anyOpen`) a jsou v seznamu bez hodnoty
+  v `opNeedsValue`. `_asStr` umí pole objektů s `text`, aby fungovalo `contains`.
+
 ## Poznámky z CriticMarkupu
 `criticPoznamky(e)` sbírá `{>>…<<}` z textových atributů (stejná plocha jako wiki odkazy)
 a plní blok na kartě Komentáře; do značky karty se počítají k uživatelským komentářům.
