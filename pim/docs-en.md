@@ -201,6 +201,32 @@ The tags used also appear in the confirmation message.
 
 If there is no tag anywhere in the neighbourhood, the block is not shown at all.
 
+## 🏷 Quick tag editing for an entity
+
+The **🏷 Tagy** button in the detail toolbar, the <kbd>l</kbd> key (in the detail and
+over a focused row in the entity table) or the **🏷 Tagy entity…** command in the
+palette open a list of tags with checkboxes.
+
+- **The tags the entity already has are at the top** (checked); below them the rest
+  **sorted by frequency**, most used first. Each shows in brackets how many times it
+  is used in the database.
+- **The filter at the top** ignores diacritics and case. <kbd>Enter</kbd> toggles the
+  single match (so it removes a tag too). When nothing matches, <kbd>Enter</kbd> or
+  **+ Přidat** turns what you typed into a **new tag**, assigned right away. An empty
+  filter plus <kbd>Enter</kbd> saves.
+- **Checking a box never reorders the list.** A tag you tick does not jump to the top,
+  so items never slide out from under the cursor and the second click hits what you
+  aimed at.
+- **Nothing is written until you press Uložit.** A counter runs at the bottom
+  ("3 přiřazeno · +2 −1") and **Zrušit beze změn** leaves the tags exactly as they
+  were. Escape asks before throwing work away; with nothing changed it just closes.
+
+Only real changes are written: with nothing changed the entity does not even get a new
+`updated_at`. Tags are stored in lower case.
+
+This edits the tags of **one** entity. For working across its neighbourhood, see the
+matrix below.
+
 ## 🏷 Link tags (matrix)
 
 The **🏷 Link tags…** button in the **Links** section of an entity detail (and the

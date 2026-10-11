@@ -45,6 +45,7 @@ upravte v `lib.mjs`.
 | `ukoly-v-komentarich.mjs` | Úkoly a inline výběr v komentáři zapisují do toho komentáře, ne do těla entity. |
 | `filtr-projektu.mjs` | Sdílený filtr podle projektu v šesti pohledech + konkrétní projekt ve filtrech pohledu Vše. |
 | `sekce-detailu.mjs` | Rozbalené sekce detailu a odškrtávání úkolů ze seznamu Nedokončené položky (na řádek, ne na pořadí). |
+| `rychle-tagy.mjs` | Rychlá úprava tagů entity (klávesa L, tlačítko 🏷 Tagy): řazení seznamu, filtr, nový tag, a že se do dat nesáhne dřív než na Uložit. |
 | `tagova-matice.mjs` | Tagy vazeb: řádky, sloupce, a hlavně že se do dat nesáhne dřív než na Uložit. |
 | `tagy-pri-zalozeni.mjs` | Nabídka tagů u schůzky a projektu: co je předzaškrtnuté a že se nezaškrtnuté nepřidá. |
 | `udalost-z-nazvu.mjs` | Jeden parser dat a pravidlo úkol/událost podle času v názvu. |

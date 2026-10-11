@@ -354,6 +354,26 @@ body.theme-dark table.tm-tabulka tbody tr:hover td { background: #262626; }
 table.tm-tabulka input[type="checkbox"]:focus-visible { outline: 3px solid #0b6; outline-offset: 1px; }
 .tm-pata { display: flex; align-items: center; justify-content: space-between; gap: 1em; flex-wrap: wrap; margin-top: 0.6em; }
 
+/* Rychlá úprava tagů jedné entity (klávesa L, tlačítko 🏷 Tagy) */
+dialog.qte-dialog { width: 46em; max-width: 94vw; max-height: 88vh; display: flex; flex-direction: column; padding: 0.8em; }
+dialog.qte-dialog[open] { display: flex; }
+dialog.qte-dialog h2 { margin: 0 0 0.4em; }
+.qte-radek-filtru { display: flex; gap: 0.4em; align-items: center; }
+.qte-radek-filtru input { flex: 1 1 auto; }
+.qte-seznam { flex: 1 1 auto; overflow: auto; border: 1px solid #ccc; border-radius: 4px; padding: 0.4em 0.6em; margin-top: 0.4em; }
+body.theme-dark .qte-seznam { border-color: #444; }
+.qte-sloupce { columns: 14em; }
+.qte-skupina { margin: 0.3em 0 0.2em; font-weight: 600; font-size: 0.9em; color: #555; }
+body.theme-dark .qte-skupina { color: #bbb; }
+.qte-polozka { display: block; margin: 0.15em 0; break-inside: avoid; }
+.qte-polozka input { width: auto; margin-right: 0.35em; vertical-align: baseline; }
+.qte-polozka.qte-skryto { display: none; }
+.qte-polozka:hover .qte-tag { text-decoration: underline; }
+.qte-pocet { font-variant-numeric: tabular-nums; color: #666; }
+body.theme-dark .qte-pocet { color: #aaa; }
+.qte-novy .qte-tag { font-style: italic; }
+.qte-pata { display: flex; align-items: center; justify-content: space-between; gap: 1em; flex-wrap: wrap; margin-top: 0.6em; }
+
 /* Seznam nedokončených markdownových úkolů v detailu — zaškrtnutelný */
 ul.md-tasks-list li.md-task-item { margin: 0.15em 0; }
 ul.md-tasks-list li.md-task-item label { display: inline-flex; align-items: baseline; gap: 0.45em; cursor: pointer; }
@@ -1437,6 +1457,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <tr><td><kbd>Shift</kbd>+<kbd>Z</kbd></td><td>V detailu: přidat aspekt „Sledování času" (pokud chybí) a spustit timer</td></tr>
       <tr><td><kbd>d</kbd></td><td>V detailu (read, pokud má nadpisy): přepnout režim editace sekcí</td></tr>
       <tr><td><kbd>a</kbd></td><td>V detailu (read): přepnout anotační režim</td></tr>
+      <tr><td><kbd>l</kbd></td><td><strong>Rychlá úprava tagů</strong> — v detailu (read) i nad označeným řádkem v tabulce entit</td></tr>
       <tr><td><kbd>o</kbd></td><td>V detailu: otevřít jediný vyplněný atribut typu URL (když jich je víc, jen to oznámí)</td></tr>
       <tr><td><kbd>Esc</kbd></td><td>Zavřít dialog / opustit edit / zpět</td></tr>
       <tr><td><kbd>?</kbd></td><td>Tato nápověda (stejně jako <kbd>Shift+F1</kbd>)</td></tr>
@@ -8359,35 +8380,205 @@ function attachEntityTableKeyboard(root) {
 }
 
 // Rychlý editor štítků (klávesa l)
+// Rychlá úprava tagů jedné entity: klávesa L v detailu i v tabulce entit,
+// tlačítko 🏷 Tagy v liště detailu, příkaz v paletě.
+//
+// Seznam se zaškrtávátky, ne textové pole s čárkami. Textové pole tu bylo a bylo
+// to k ničemu: uživatel musel tag napsat přesně (jeden překlep = nový tag) a ze
+// stovky existujících tagů si nemohl vybrat, jen si je přečíst pod polem.
+//
+// Dvě pravidla, která se nesmí porušit:
+//   1. Do `db` se nesahá, dokud se nezmáčkne Uložit — stejně jako u tagové
+//      matice. Zrušit nechá data přesně tak, jak byla.
+//   2. Pořadí seznamu se spočítá JEDNOU při otevření a zaškrtáváním se
+//      nepřeskládává. Kdyby se přerovnávalo, položky by ujížděly pod kurzorem
+//      a druhý klik by trefil něco jiného.
 function openQuickTagEditor(entityId) {
   const e = findEntity(entityId);
   if (!e) return;
-  const existing = document.getElementById('quick-tag-dialog');
-  if (existing) existing.remove();
+  const stare = document.getElementById('quick-tag-dialog');
+  if (stare) stare.remove();
+
+  const puvodni = new Set((e.tags || []).map(normalizeTag).filter(Boolean));
+
+  // Četnost tagů v celé bázi — podle ní se řadí nepřiřazené, nejpoužívanější
+  // nahoře. Abecedně to nedává smysl: hledaný tag je skoro vždy z těch častých.
+  const pocty = new Map();
+  db.entities.forEach(x => (x.tags || []).forEach(t => {
+    const n = normalizeTag(t); if (!n) return;
+    pocty.set(n, (pocty.get(n) || 0) + 1);
+  }));
+  (db.tags || []).forEach(t => { const n = normalizeTag(t); if (n && !pocty.has(n)) pocty.set(n, 0); });
+
+  const prirazene = [...puvodni].sort((a, b) => a.localeCompare(b, 'cs'));
+  const ostatni = [...pocty.keys()].filter(t => !puvodni.has(t))
+    .sort((a, b) => (pocty.get(b) - pocty.get(a)) || a.localeCompare(b, 'cs'));
+
+  // Přístupný název začíná názvem tagu; počet je jen vizuální (aria-hidden),
+  // aby odečítač nehlásil číslo dřív než to, co uživatel hledá.
+  function polozkaHtml(t, novy) {
+    const n = pocty.get(t) || 0;
+    return '<label class="qte-polozka' + (novy ? ' qte-novy' : '') + '" data-qte-tag="' + escapeHtml(t) + '">' +
+      '<input type="checkbox"' + ((novy || puvodni.has(t)) ? ' checked' : '') + '> ' +
+      '<span class="qte-tag">' + escapeHtml(t) + '</span>' +
+      (n ? ' <span class="qte-pocet" aria-hidden="true">(' + n + ')</span>' : '') +
+      '</label>';
+  }
+
   const d = document.createElement('dialog');
   d.id = 'quick-tag-dialog';
+  d.className = 'qte-dialog';
   d.setAttribute('aria-labelledby', 'qte-title');
-  const allTags = getAllTags();
   d.innerHTML =
-    '<h2 id="qte-title">Štítky: ' + escapeHtml(getDisplayTitle(e)) + '</h2>' +
-    '<label for="qte-input">Štítky (oddělené čárkou)</label>' +
-    '<input type="text" id="qte-input" value="' + escapeHtml((e.tags || []).join(', ')) + '" style="width:100%;">' +
-    (allTags.length ? '<p class="meta">Existující: ' + allTags.map(t => escapeHtml(t)).join(', ') + '</p>' : '') +
-    '<div class="btn-group" style="margin-top:0.6em;"><button type="button" class="primary" id="qte-save">Uložit</button><button type="button" id="qte-cancel">Zrušit</button></div>';
+    '<h2 id="qte-title">🏷 Tagy: ' + escapeHtml(getDisplayTitle(e)) + '</h2>' +
+    '<label for="qte-filtr">Filtr, nebo název nového tagu</label>' +
+    '<div class="qte-radek-filtru">' +
+      '<input type="text" id="qte-filtr" autocomplete="off" aria-describedby="qte-napoveda">' +
+      '<button type="button" id="qte-pridat">+ Přidat</button>' +
+    '</div>' +
+    '<p class="meta" id="qte-napoveda">Pište pro filtrování (bez ohledu na diakritiku). ' +
+      'Enter přepne jedinou nalezenou položku, nebo přidá nový tag. Prázdný filtr a Enter uloží.</p>' +
+    '<div class="qte-seznam">' +
+      '<p class="qte-skupina" id="qte-h-prirazene"' + (prirazene.length ? '' : ' hidden') + '>Přiřazené</p>' +
+      '<div class="qte-sloupce" id="qte-prirazene"' + (prirazene.length ? '' : ' hidden') + '>' + prirazene.map(t => polozkaHtml(t, false)).join('') + '</div>' +
+      '<p class="qte-skupina" id="qte-h-ostatni"' + (ostatni.length ? '' : ' hidden') + '>Ostatní (podle četnosti)</p>' +
+      '<div class="qte-sloupce" id="qte-ostatni"' + (ostatni.length ? '' : ' hidden') + '>' + ostatni.map(t => polozkaHtml(t, false)).join('') + '</div>' +
+      '<p class="meta" id="qte-prazdno" hidden>Nic neodpovídá filtru — Enter nebo „+ Přidat" z toho udělá nový tag.</p>' +
+    '</div>' +
+    '<div class="qte-pata">' +
+      '<span id="qte-stav" aria-live="polite"></span>' +
+      '<span class="btn-group">' +
+        '<button type="button" class="primary" id="qte-save">Uložit</button>' +
+        '<button type="button" id="qte-cancel">Zrušit beze změn</button>' +
+      '</span>' +
+    '</div>';
   document.body.appendChild(d);
-  d.querySelector('#qte-save').onclick = () => {
-    const raw = d.querySelector('#qte-input').value;
-    const tags = raw.split(',').map(t => normalizeTag(t)).filter(Boolean);
-    const seen = new Set(); const norm = [];
-    tags.forEach(t => { if (!seen.has(t)) { seen.add(t); norm.push(t); } });
-    e.tags = norm;
-    e.updated_at = nowIso(); save(); d.close(); d.remove(); render();
-    toast('Štítky uloženy.');
+
+  const filtr = d.querySelector('#qte-filtr');
+  const stavEl = d.querySelector('#qte-stav');
+  const prazdnoEl = d.querySelector('#qte-prazdno');
+
+  const polozky = () => Array.from(d.querySelectorAll('.qte-polozka'));
+  const zaskrtnute = () => new Set(polozky()
+    .filter(l => l.querySelector('input').checked)
+    .map(l => l.dataset.qteTag));
+  function jeZmena() {
+    const n = zaskrtnute();
+    return n.size !== puvodni.size || [...n].some(t => !puvodni.has(t));
+  }
+  function prepocti() {
+    const n = zaskrtnute();
+    let pridano = 0, odebrano = 0;
+    n.forEach(t => { if (!puvodni.has(t)) pridano++; });
+    puvodni.forEach(t => { if (!n.has(t)) odebrano++; });
+    const zmeny = [];
+    if (pridano) zmeny.push('+' + pridano);
+    if (odebrano) zmeny.push('−' + odebrano);
+    stavEl.textContent = n.size + ' přiřazeno · ' + (zmeny.length ? zmeny.join(' ') : 'beze změn');
+  }
+  function filtruj() {
+    const q = paletaNorm(filtr.value.trim());
+    let videt = 0;
+    polozky().forEach(l => {
+      const ok = !q || paletaNorm(l.dataset.qteTag).indexOf(q) >= 0;
+      l.classList.toggle('qte-skryto', !ok);
+      if (ok) videt++;
+    });
+    ['prirazene', 'ostatni'].forEach(k => {
+      const box = d.querySelector('#qte-' + k);
+      const h = d.querySelector('#qte-h-' + k);
+      const ma = !!box.querySelector('.qte-polozka:not(.qte-skryto)');
+      box.hidden = !ma;
+      if (h) h.hidden = !ma;
+    });
+    prazdnoEl.hidden = videt > 0 || !q;
+  }
+  // Nový tag jde do skupiny „Přiřazené" a rovnou zaškrtnutý. Když už v seznamu
+  // je, jen se zaškrtne a odfiltruje se na něj — psát ho dvakrát nemá smysl.
+  function pridej(nazev) {
+    const t = normalizeTag(nazev);
+    if (!t) return;
+    const uz = polozky().find(l => l.dataset.qteTag === t);
+    if (uz) {
+      uz.querySelector('input').checked = true;
+      uz.classList.remove('qte-skryto');
+      prepocti();
+      return;
+    }
+    const box = d.querySelector('#qte-prirazene');
+    box.insertAdjacentHTML('afterbegin', polozkaHtml(t, true));
+    box.hidden = false;
+    const h = d.querySelector('#qte-h-prirazene');
+    if (h) h.hidden = false;
+    prepocti();
+  }
+  function zavri() { d.close(); if (d.parentNode) d.remove(); }
+  function uloz() {
+    if (!jeZmena()) { zavri(); toast('Tagy beze změny.'); return; }
+    const n = zaskrtnute();
+    // Pořadí: co zůstává, zůstává na svém místě; nové se připojí na konec.
+    // Zbytečné přeskládání e.tags je změna dat, která nikomu nic nepřinese.
+    const vysledek = (e.tags || []).map(normalizeTag).filter(t => t && n.has(t));
+    const mam = new Set(vysledek);
+    polozky().forEach(l => {
+      const t = l.dataset.qteTag;
+      if (n.has(t) && !mam.has(t)) { mam.add(t); vysledek.push(t); }
+    });
+    e.tags = vysledek;
+    e.updated_at = nowIso();
+    save();
+    zavri();
+    render();
+    toast('Tagy uloženy (' + vysledek.length + ').');
+    // Po překreslení je tlačítko nový prvek — fokus by jinak spadl na <body>.
+    setTimeout(() => { const b = document.getElementById('btn-tags'); if (b) b.focus(); }, 60);
+  }
+
+  // Jeden delegovaný listener: nové položky se nemusí dodatečně napojovat.
+  d.addEventListener('change', (ev) => {
+    if (ev.target && ev.target.type === 'checkbox') prepocti();
+  });
+  filtr.oninput = () => filtruj();
+  filtr.onkeydown = (ev) => {
+    if (ev.key !== 'Enter') return;
+    ev.preventDefault();
+    const text = filtr.value.trim();
+    if (!text) { uloz(); return; }
+    const videt = polozky().filter(l => !l.classList.contains('qte-skryto'));
+    if (videt.length === 1) {
+      const cb = videt[0].querySelector('input');
+      cb.checked = !cb.checked;   // Enter přepne, takže jde i odebrat
+      prepocti();
+    } else {
+      pridej(text);
+    }
+    filtr.value = '';
+    filtruj();
   };
-  d.querySelector('#qte-cancel').onclick = () => { d.close(); d.remove(); };
-  d.addEventListener('close', () => d.remove());
+  d.querySelector('#qte-pridat').onclick = () => {
+    const text = filtr.value.trim();
+    if (!text) { filtr.focus(); return; }
+    pridej(text);
+    filtr.value = '';
+    filtruj();
+    filtr.focus();
+  };
+  d.querySelector('#qte-save').onclick = uloz;
+  d.querySelector('#qte-cancel').onclick = () => zavri();
+  // Escape odchytáváme sami, aby rozdělaná práce nezmizela bez zeptání.
+  // Globální handler by jinak dialog zavřel rovnou.
+  d.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Escape') return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (jeZmena() && !confirm('Zahodit neuložené změny tagů?')) return;
+    zavri();
+  });
+  d.addEventListener('close', () => { if (d.parentNode) d.remove(); });
   d.showModal();
-  setTimeout(() => { const inp = d.querySelector('#qte-input'); if (inp) inp.focus(); }, 50);
+  prepocti();
+  filtruj();
+  setTimeout(() => filtr.focus(), 50);
 }
 
 // Přehled všech připomenutí (entity s reminder_at), seřazeno podle data.
@@ -14176,6 +14367,8 @@ function renderDetailRead(main, e) {
         '<button id="btn-add-link" accesskey="r" title="Přidat vazbu na existující entitu">+ Vazba</button>' +
         '<button id="btn-create-related" title="Vytvořit novou entitu s vazbou na tuto">+ Související</button>' +
         '<button id="btn-add-comment-top" accesskey="c">+ Komentář</button>' +
+        '<button id="btn-tags" title="Rychlá úprava tagů této entity — seznam se zaškrtávátky (klávesa L)">🏷 Tagy' +
+          ((e.tags || []).length ? ' (' + (e.tags || []).length + ')' : '') + '</button>' +
         (function() {
           const r = (e.attributes || {}).reminder_at;
           return '<button id="btn-reminder" title="' +
@@ -14421,6 +14614,8 @@ function renderDetailRead(main, e) {
     }; }
   { const _tm = document.getElementById('btn-tag-matice');
     if (_tm) _tm.onclick = () => otevriTagovouMatici(e.id); }
+  { const _bt = document.getElementById('btn-tags');
+    if (_bt) _bt.onclick = () => openQuickTagEditor(e.id); }
   const btnCopyLink = document.getElementById('btn-copy-entity-link');
   if (btnCopyLink) btnCopyLink.onclick = async () => {
     const link = buildEntityShareLink(e);
@@ -25783,6 +25978,12 @@ function setupKeyboard() {
         ev.preventDefault();
       }
     }
+    // L v detail read mode = rychlá úprava tagů (stejná klávesa jako v tabulce entit)
+    else if ((ev.key === 'l') && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey
+             && state.view === 'detail' && state.detailMode === 'read' && state.detailId) {
+      openQuickTagEditor(state.detailId);
+      ev.preventDefault();
+    }
     // A v detail read mode = zapnout/vypnout anotační režim
     else if ((ev.key === 'a') && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey
              && state.view === 'detail' && state.detailMode === 'read') {
@@ -26047,6 +26248,12 @@ function paletaSestavPrikazy() {
       hint: _rem ? 'Změnit nebo zrušit připomenutí u této entity' : 'Nastavit připomenutí — termín lze zadat i slovy',
       keywords: 'pripomenuti upominka termin datum budik',
       run: () => otevriPripomenutiProEntitu(ent, null)
+    });
+    pridej({
+      id: 'tagy-entity', label: '🏷 Tagy entity…', klavesa: 'l', kategorie: 'Entita',
+      hint: 'Rychlá úprava tagů této entity — seznam se zaškrtávátky',
+      keywords: 'tagy stitky labels upravit prirazeni rychle',
+      run: () => openQuickTagEditor(ent.id)
     });
     pridej({
       id: 'tag-matice', label: '🏷 Tagy vazeb (matice)', kategorie: 'Entita',

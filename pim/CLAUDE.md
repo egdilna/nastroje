@@ -280,6 +280,39 @@ Je to **jen v aplikaci**, ne v šabloně prohlížeče.
 
 Hlídá to `pim/testy/tagy-pri-zalozeni.mjs`.
 
+## Rychlá úprava tagů entity (klávesa L)
+
+`openQuickTagEditor(entityId)` je seznam tagů se zaškrtávátky pro **jednu** entitu.
+Otevírá ho klávesa `l` (v detailu v read módu i nad řádkem v tabulce entit),
+tlačítko `#btn-tags` v liště detailu a příkaz v paletě — jedna funkce, tři vstupy.
+
+Dřív to bylo textové pole s čárkami, dostupné **jen** z tabulky entit. K ničemu:
+tag se musel napsat přesně (překlep = nový tag) a ze stovky existujících si
+uživatel nemohl vybrat, jen si je přečíst pod polem.
+
+Tři pravidla:
+
+1. **Do `db` se nesahá, dokud se nezmáčkne Uložit** — stejně jako u tagové matice.
+   A uloží se **jen když se něco opravdu změnilo**; beze změn se nezvedne ani
+   `e.updated_at`.
+2. **Pořadí se spočítá jednou při otevření** (přiřazené abecedně, zbytek podle
+   četnosti) a zaškrtáváním se **nepřeskládává**. Kdyby se přerovnávalo, položky
+   by ujížděly pod kurzorem a druhý klik by trefil něco jiného.
+3. **Řadí se podle četnosti, ne abecedně.** Při stovce tagů je hledaný skoro vždy
+   z těch častých; abecední pořadí tam nikomu nepomůže.
+
+Escape si dialog odchytává sám (`stopPropagation`), aby se zeptal na zahození
+rozdělané práce — globální handler v `setupKeyboard()` jinak zavře každý otevřený
+`<dialog>` rovnou. Po uložení se vrací fokus na `#btn-tags`, protože `render()`
+udělá z tlačítka nový prvek a fokus by spadl na `<body>`.
+
+Filtr jede přes `paletaNorm()` (bez diakritiky, bez velikosti písmen) — druhou
+normalizaci nepiš. Nové tagy jdou přes `normalizeTag()`, takže se ukládají malými.
+
+Je to **jen v aplikaci**, ne v šabloně prohlížeče.
+
+Hlídá to `pim/testy/rychle-tagy.mjs` (kanárci na ostatní entity).
+
 ## Tagová matice: rozdělaná práce stranou od dat
 
 `otevriTagovouMatici(entityId)` je tabulka tagů nad okolím jedné entity. Dvě věci,
