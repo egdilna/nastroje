@@ -199,6 +199,32 @@ nakonec i v hlášce po vytvoření.
 
 Když v okolí není ani jeden tag, blok se vůbec nezobrazí.
 
+## 🏷 Rychlá úprava tagů entity
+
+Tlačítko **🏷 Tagy** v liště detailu, klávesa <kbd>l</kbd> (v detailu i nad
+označeným řádkem v tabulce entit) nebo příkaz **🏷 Tagy entity…** v paletě otevřou
+seznam tagů se zaškrtávátky.
+
+- **Nahoře jsou tagy, které entita má** (zaškrtnuté), pod nimi ostatní **seřazené
+  podle četnosti** — nejpoužívanější první. U každého je v závorce, kolikrát se
+  v bázi používá.
+- **Filtr nahoře** hledá bez ohledu na diakritiku a velikost písmen.
+  <kbd>Enter</kbd> přepne jedinou nalezenou položku (takže jde i odebírat).
+  Když filtru nic neodpovídá, <kbd>Enter</kbd> nebo **+ Přidat** z napsaného textu
+  udělá **nový tag** — rovnou přiřazený. Prázdný filtr a <kbd>Enter</kbd> uloží.
+- **Pořadí seznamu se zaškrtáváním nepřeskládává.** Zaškrtnutý tag nevyskočí
+  nahoru, takže položky neujíždějí pod kurzorem a druhý klik trefí to, na co
+  míříte.
+- **Do dat se nesahá, dokud nedáte Uložit.** Dole běží počítadlo („3 přiřazeno ·
+  +2 −1") a **Zrušit beze změn** nechá tagy přesně tak, jak byly. Escape se na
+  zahození rozdělané práce zeptá; když jste nic nezměnili, zavře se rovnou.
+
+Uloží se jen to, co se opravdu změnilo: beze změn se entitě nezvedne ani
+`updated_at`. Tagy se ukládají malými písmeny.
+
+Je to úprava tagů **jedné** entity. Na hromadnou práci nad jejím okolím je
+matice níž.
+
 ## 🏷 Tagy vazeb (matice)
 
 Tlačítko **🏷 Tagy vazeb…** v sekci **Vazby** v detailu entity (a stejný příkaz
