@@ -678,8 +678,9 @@ Strany: ((Strany)) — [Detail na webu](((Web)))
 
 **Kde se vykreslí:** v detailu entity, v exportu jako dokument a v tisku, v offline
 prohlížeči a ve sloupci tabulky. Platí na něj i všechna čtyři zaškrtávátka z kapitoly 7.7.
-V **datových** exportech (JSON, XML, balíček) není — tam se vydává to, co je uložené,
-a složený atribut uloženou hodnotu nemá.
+V **datových** exportech (tabulka, JSON, XML) je taky — vydá se **vyhodnocená hodnota**,
+tedy přesně to, co máš na obrazovce; ve schématu je označená jako jen pro čtení. Do
+`.dkmdata` a do balíčku se ukládá **šablona**, nikdy výsledek — ten se počítá znovu.
 
 #### Metadata entity
 
@@ -2196,8 +2197,9 @@ natrvalo (viz 26.7).
 **Krok 3 — Obsah.** Režim vazeb, vlastní atributy, komentáře, objekty, nevyplněné atributy,
 prázdné hodnoty jako `null`, soubor na kolekci.
 
-**Krok 4 — Náhled a kontrola.** Souhrn, výsledek validace, upozornění a náhled `data.json`
-i `schema.json`. Odsud se stahuje ZIP nebo ukládá profil.
+**Krok 4 — Náhled a kontrola.** Souhrn, výsledek validace, upozornění a náhled **těch
+souborů, které opravdu půjdou do zipu** — u formátu XML tedy `data.xml` a `schema.xsd`,
+ne JSON. Odsud se stahuje ZIP nebo ukládá profil.
 
 ### 26.4 Tvar výstupu
 
@@ -2224,6 +2226,11 @@ Atributy **aspektů** se vlévají do objektu naplocho vedle atributů typu; ent
 seznam `aspekty`. Když se klíč aspektového atributu potká s klíčem atributu typu, dostane
 prefix slugem aspektu (`gdpr_prijmeni`).
 
+**Složené (počítané) atributy v exportu jsou** — ať jsou na typu, nebo na aspektu. Vydá se
+vyhodnocená hodnota, tedy text, který vidíš na obrazovce; ve schématu je taková vlastnost
+`readOnly` a nese i svou šablonu v `x-dkm-sablona`, aby příjemce věděl, že ji nemá vyplňovat.
+Počítané pole, které vyjde prázdné, se chová jako každé jiné prázdné (viz 26.6).
+
 ### 26.5 Vazby
 
 | Režim | Výstup |
@@ -2248,6 +2255,8 @@ vynechají a nahlásí. Zpětné odkazy se neexportují — jsou odvozené.
 - tagový atribut je pole řetězců s `uniqueItems` a s `enum` podle soustavy tagů; tag mimo
   soustavu se do `enum` doplní a nahlásí stejně jako u výběru
 - `format: date` / `format: uri` se doplní jen tehdy, když **všechny** hodnoty odpovídají
+- složený atribut je `string` s `readOnly: true`; vyhodnocuje se pro každou entitu, takže
+  do schématu se dostane jen tehdy, když aspoň u jedné entity vyjde neprázdný
 
 Před zabalením se spustí vestavěný validátor a jeho výsledek jde i do `README.md`.
 
@@ -2275,20 +2284,36 @@ Pravidla převodu jsou jednoduchá:
 | `null` (při volbě „zahrnout prázdné") | `xsi:nil="true"` |
 | vlastní atributy | vždy `<polozka klic="…">` — jejich názvy si píšeš ty a nemusí být platné XML jméno |
 
+**Vnořené a odkazované entity jsou v XML taky XML.** Když zvolíš režim vazeb *vnořený objekt*
+nebo *odkaz*, cíl vazby se vypíše jako podprvky (`<zpracovatel><id>…</id><nazev>…</nazev>…`),
+ne jako JSON v textu, a podprvky jdou v pořadí podle schématu toho typu — včetně počítaných
+polí cílové entity. Strukturovaná hodnota vlastního atributu (třeba checklist) se vypíše jako
+vnořené `<polozka klic="…">`, takže se nikde neobjeví `[object Object]`.
+
 XSD není tolerantní: odmítne neznámý prvek, chybějící `id`, hodnotu mimo číselník, číslo
 zapsané textem, špatný tvar data, cizí hodnotu u pevného `typ` i prohozené pořadí prvků.
-
-`schema.json` zůstává v balíčku vždy — popisuje tentýž obsah a hodí se ke křížové kontrole.
+Jedinou výjimkou je vnořený cíl vazby: jeho obsah se liší podle typu entity a XSD 1.0 neumí
+dva různé obsahy pod jedním jménem, takže ten prvek zůstává otevřený (`xs:anyType`).
 
 ### 26.9 Obsah ZIPu
+
+V zipu je **jen zvolený formát** — data a schéma, které k nim patří:
+
+| Formát | Soubory |
+|---|---|
+| JSON + JSON Schema | `data.json` (nebo `data/<typ>.json`) + `schema.json` |
+| XML + XSD | `data.xml` + `schema.xsd` |
+| Obojí | všechny čtyři |
 
 | Soubor | Co je uvnitř |
 |---|---|
 | `data.json` | data, kolekce podle typu (nebo `data/<typ>.json` při volbě soubor na kolekci) |
 | `schema.json` | JSON Schema draft 2020-12 pro tento výstup |
-| `data.xml` + `schema.xsd` | při formátu XML — tatáž data a XSD, které je validuje |
+| `data.xml` + `schema.xsd` | tatáž data v XML a XSD, které je validuje |
 | `mapovani.json` | převod interních ID na klíče — pro ladění a navazující nástroje |
 | `README.md` | lidský popis: co je uvnitř, tabulka mapování, upozornění, výsledek validace |
+
+`mapovani.json` a `README.md` jsou v zipu vždycky.
 
 ### 26.10 Profily exportu
 
