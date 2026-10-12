@@ -929,7 +929,7 @@ jsonAllAttrs:'I nevyplněné atributy použitých typů',jsonAllAttrsHint:'jinak
 jsonInclEmpty:'Zapisovat prázdné hodnoty jako null',jsonInclEmptyHint:'jinak se prázdná pole vynechají',
 jsonSplitFiles:'Soubor na kolekci',jsonSplitFilesHint:'data/subjekt.json místo jednoho data.json',
 jsonSummary:'Typů: {typu} · entit: {entit}',
-jsonPreview:'Náhled data.json',
+jsonPreview:'Náhled souborů v zipu',
 jsonValidation:'Kontrola dat proti schématu',
 jsonValidOk:'Data odpovídají schématu.',
 jsonValidFail:'Nesouladů: {n}',
@@ -1434,7 +1434,7 @@ jsonAllAttrs:'Include unfilled attributes of used types',jsonAllAttrsHint:'other
 jsonInclEmpty:'Write empty values as null',jsonInclEmptyHint:'otherwise empty fields are omitted',
 jsonSplitFiles:'One file per collection',jsonSplitFilesHint:'data/subjekt.json instead of a single data.json',
 jsonSummary:'Types: {typu} · entities: {entit}',
-jsonPreview:'Preview of data.json',
+jsonPreview:'Preview of the files in the ZIP',
 jsonValidation:'Data check against the schema',
 jsonValidOk:'Data conform to the schema.',
 jsonValidFail:'Mismatches: {n}',
@@ -17071,6 +17071,16 @@ rels.set(rt.id,jsonUniqueKey(base,usedR,null));
 return{types:types,aspects:aspects,rels:rels};
 }
 
+/* Hodnota atributu, jak ji má export vidět. **Složený atribut nemá uloženou
+   hodnotu** — vyhodnotí se ze šablony, stejně jako na obrazovce a v tabulkovém
+   exportu. Bez tohohle jednoho místa by počítaná pole z exportu vypadla:
+   vypadala by jako prázdná, takže by je plán zahodil jako nevyplněné. */
+function jsonHodnota(e,a){
+if(!e||!a)return undefined;
+if(a.type==='composed')return hodnotaProZobrazeni(e,a);
+return e.attributes?e.attributes[a.id]:undefined;
+}
+
 /* Plán: pro každý exportovaný typ seznam vlastností s klíči a informací,
    jestli jsou vyplněné u všech / aspoň jedné entity. */
 function buildJsonPlan(cfg,preset){
@@ -17099,7 +17109,7 @@ let filled=0;const carriers=[];
 list.forEach(e=>{
 if(source==='aspect'&&!(e.aspects||[]).includes(asp.id))return;
 carriers.push(e);
-if(!jsonIsEmpty(e.attributes&&e.attributes[a.id]))filled++;
+if(!jsonIsEmpty(jsonHodnota(e,a)))filled++;
 });
 if(!filled&&!cfg.allAttrs)return;
 let base=ov['at:'+a.id]||a.jsonKey||jsonSlug(a.name,st)||'pole';
@@ -17175,7 +17185,7 @@ o[sys.nazev]=getTitle(e);
 grp.props.forEach(p=>{
 if(p.source==='aspect'&&!(e.aspects||[]).includes(p.aspect.id))return;
 if(embedded&&p.attr.type==='relation')return;
-const raw=e.attributes&&e.attributes[p.attr.id];
+const raw=jsonHodnota(e,p.attr);
 if(jsonIsEmpty(raw)){if(cfg.includeEmpty&&!embedded)o[p.key]=null;return}
 const val=jsonAttrValue(p.attr,raw,plan,cfg,warn);
 if(val!==undefined)o[p.key]=val;
@@ -17262,7 +17272,7 @@ case'select':{
 const s=Object.assign(base,{type:'string'});
 const allowed=attrSelectValues(a);
 const actual=[];
-grp.ents.forEach(e=>{const v=e.attributes&&e.attributes[a.id];if(!jsonIsEmpty(v)&&actual.indexOf(String(v))<0)actual.push(String(v))});
+grp.ents.forEach(e=>{const v=jsonHodnota(e,a);if(!jsonIsEmpty(v)&&actual.indexOf(String(v))<0)actual.push(String(v))});
 const extra=actual.filter(v=>allowed.indexOf(v)<0);
 if(extra.length)plan.warnings.push(t('jsonWarnEnumExtra',{atribut:a.name,hodnoty:extra.join(', ')}));
 const en=allowed.concat(extra);
@@ -17275,11 +17285,18 @@ return Object.assign(base,{type:'array',items:items});
 }
 case'checklist':return Object.assign(base,{type:'array',items:{type:'object',
  properties:{text:{type:'string'},hotovo:{type:'boolean'}},required:['text','hotovo'],additionalProperties:false}});
+/* Složený atribut je text, který si aplikace počítá ze šablony — příjemce ho
+   dostane vyhodnocený a nemá ho co vyplňovat, proto `readOnly`. */
+case'composed':{
+const sl=Object.assign(base,{type:'string',readOnly:true});
+if(a.template)sl['x-dkm-sablona']=String(a.template);
+return sl;
+}
 case'tags':{
 /* Výčet drží soustava tagů; co je navíc v datech, se přidá, ať schéma sedí. */
 const dovolene=attrTagValues(a);
 const skutecne=[];
-grp.ents.forEach(e=>tagValueArr(e.attributes&&e.attributes[a.id]).forEach(x=>{if(skutecne.indexOf(x)<0)skutecne.push(x)}));
+grp.ents.forEach(e=>tagValueArr(jsonHodnota(e,a)).forEach(x=>{if(skutecne.indexOf(x)<0)skutecne.push(x)}));
 const navic=skutecne.filter(x=>dovolene.indexOf(x)<0);
 if(navic.length)plan.warnings.push(t('jsonWarnEnumExtra',{atribut:a.name,hodnoty:navic.join(', ')}));
 const en=dovolene.concat(navic);
@@ -17292,7 +17309,7 @@ default:return Object.assign(base,{type:'string'});
 function jsonAllValuesMatch(p,grp,fn){
 let any=false;
 for(const e of grp.ents){
-const v=e.attributes&&e.attributes[p.attr.id];
+const v=jsonHodnota(e,p.attr);
 if(jsonIsEmpty(v))continue;
 any=true;
 if(!fn(v))return false;
@@ -17386,21 +17403,49 @@ type:'object',properties:props,required:plan.types.map(g=>g.key),additionalPrope
    ============================================================ */
 
 const XML_ROOT='data';
+/* Pojmenovaný typ pro „položku" otevřeného objektu — vlastní atributy jsou
+   rekurzivní, protože hodnota nemusí být text (checklist je pole objektů). */
+const XSD_POLOZKA='_polozka';
 
 function xmlName(k){return /^[A-Za-z_][\w.-]*$/.test(k)?k:null}
 
 function buildXmlData(data,schema,plan,cfg){
 const L=['<?xml version="1.0" encoding="UTF-8"?>'];
 L.push('<'+XML_ROOT+' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="schema.xsd">');
-const resolve=s=>{
+const sysTyp=plan.sys.typ;
+const resolve=(s,hod)=>{
 if(!s)return{};
 if(s.$ref){const m=/^#\/\$defs\/(.+)$/.exec(s.$ref);return(m&&schema.$defs&&schema.$defs[m[1]])||{}}
-if(s.anyOf){const nonNull=s.anyOf.filter(x=>x.type!=='null');return nonNull.length===1?resolve(nonNull[0]):{}}
+if(s.anyOf){
+const nonNull=s.anyOf.filter(x=>x.type!=='null');
+if(nonNull.length===1)return resolve(nonNull[0],hod);
+/* Víc variant má jedině vnořený cíl vazby: buď celá entita některého typu,
+   nebo prostý odkaz. Která to je, řekne sama hodnota — a teď už se vypíše
+   podle schématu té varianty, tedy ve správném pořadí a se správnými typy. */
+const v=vyberVariantu(nonNull,hod);
+return v||{};
+}
 return s;
 };
+/* Varianta, která k hodnotě sedí: nejdřív podle typu entity, pak podle toho,
+   že zná všechny klíče hodnoty (to odliší vnořenou entitu od odkazu). */
+function vyberVariantu(varianty,hod){
+if(!hod||typeof hod!=='object'||Array.isArray(hod))return null;
+const klice=Object.keys(hod);
+let nahradni=null;
+for(const w of varianty){
+const d=resolve(w,null);
+const pr=d.properties||{};
+const tk=pr[sysTyp];
+if(tk&&typeof tk.const==='string'&&hod[sysTyp]!==undefined&&tk.const!==hod[sysTyp])continue;
+if(klice.every(k=>Object.prototype.hasOwnProperty.call(pr,k)))return d;
+if(!nahradni)nahradni=d;
+}
+return nahradni;
+}
 function emit(name,value,sch,pad){
 if(value===undefined)return;
-const s=resolve(sch);
+const s=resolve(sch,value);
 if(Array.isArray(value)){
 const item=s.items||{};
 value.forEach(v=>emit(name,v,item,pad));
@@ -17424,7 +17469,22 @@ return;
 }
 L.push(pad+'<'+name+'>'+xmlEsc(xmlScalar(value))+'</'+name+'>');
 }
+/* Otevřený objekt: názvy klíčů píše uživatel, takže nemusí být platná XML jména
+   a nesou se v atributu `klic`. Hodnota ale nemusí být text — vlastní atribut
+   může být checklist nebo vazba, a to se vypíše do podpoložek, ne jako
+   „[object Object]". */
 function emitPolozka(key,value,sch,pad){
+if(value===undefined)return;
+if(Array.isArray(value)){value.forEach(v=>emitPolozka(key,v,sch,pad));return}
+if(value!==null&&typeof value==='object'){
+const klice=Object.keys(value);
+if(!klice.length){L.push(pad+'<polozka klic="'+xmlEsc(key)+'"/>');return}
+L.push(pad+'<polozka klic="'+xmlEsc(key)+'">');
+klice.forEach(k=>emitPolozka(k,value[k],null,pad+'  '));
+L.push(pad+'</polozka>');
+return;
+}
+if(value===null){L.push(pad+'<polozka klic="'+xmlEsc(key)+'"/>');return}
 L.push(pad+'<polozka klic="'+xmlEsc(key)+'">'+xmlEsc(xmlScalar(value))+'</polozka>');
 }
 /* Pořadí bere ze schématu; co ve schématu není, jde nakonec. */
@@ -17466,6 +17526,7 @@ L.push('<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefaul
 if(schema.title)L.push('  <xs:annotation><xs:documentation>'+xmlEsc(schema.title)+'</xs:documentation></xs:annotation>');
 const named={};/* $defs → pojmenované komplexní typy */
 const sys=plan.sys;
+let pouzitoPolozka=false;
 
 function elemFor(name,s,indent,extra){
 const pad=indent;
@@ -17507,13 +17568,10 @@ return[pad+'<xs:element name="'+name+'" type="'+xsdType(s)+'"'+min+max+nil+fixed
 }
 /* Otevřený objekt (vlastní atributy, počty) — dvojice klíč/hodnota. */
 function polozkaElem(name,pad,min,max){
+pouzitoPolozka=true;
 return[pad+'<xs:element name="'+name+'"'+min+max+'>',
 pad+'  <xs:complexType><xs:sequence>',
-pad+'    <xs:element name="polozka" minOccurs="0" maxOccurs="unbounded">',
-pad+'      <xs:complexType><xs:simpleContent><xs:extension base="xs:string">',
-pad+'        <xs:attribute name="klic" type="xs:string" use="required"/>',
-pad+'      </xs:extension></xs:simpleContent></xs:complexType>',
-pad+'    </xs:element>',
+pad+'    <xs:element name="polozka" type="'+XSD_POLOZKA+'" minOccurs="0" maxOccurs="unbounded"/>',
 pad+'  </xs:sequence></xs:complexType>',
 pad+'</xs:element>'];
 }
@@ -17543,6 +17601,15 @@ L.push('  <xs:complexType name="'+k+'">');
 L.push.apply(L,seqFor(d,'    '));
 L.push('  </xs:complexType>');
 });
+/* Položka otevřeného objektu: text v obsahu, struktura v podpoložkách. */
+if(pouzitoPolozka){
+L.push('  <xs:complexType name="'+XSD_POLOZKA+'" mixed="true">');
+L.push('    <xs:sequence>');
+L.push('      <xs:element name="polozka" type="'+XSD_POLOZKA+'" minOccurs="0" maxOccurs="unbounded"/>');
+L.push('    </xs:sequence>');
+L.push('    <xs:attribute name="klic" type="xs:string" use="required"/>');
+L.push('  </xs:complexType>');
+}
 L.push('</xs:schema>');
 return L.join('\n')+'\n';
 }
@@ -17624,6 +17691,7 @@ L.push('- '+t('jsonReadmeExported')+': '+new Date().toLocaleString(state.languag
 L.push('- '+t('jsonReadmeCount')+': '+plan.types.reduce((a,g)=>a+g.ents.length,0));
 L.push('- '+t('jsonKeyStyle')+': '+cfg.keyStyle);
 L.push('- '+t('jsonRelMode')+': '+t(cfg.relMode==='id'?'jsonRelModeId':cfg.relMode==='embed'?'jsonRelModeEmbed':'jsonRelModeRef'));
+L.push('- '+t('jsonFormat')+': '+(cfg.format==='xml'?'XML + XSD':cfg.format==='both'?t('jsonFormatBoth'):'JSON + JSON Schema'));
 L.push('- '+t('jsonValidation')+': '+(errs.length?t('jsonValidFail',{n:errs.length}):t('jsonValidOk')));
 L.push('');
 plan.types.forEach(grp=>{
@@ -17685,9 +17753,11 @@ return n;
 function downloadJsonExportZip(res,cfg){
 const files=[];
 const data=res.data;
-if(cfg.format==='xml'){
-/* Jen XML — JSON Schema zůstává, popisuje tentýž obsah a hodí se ke kontrole. */
-}else if(cfg.splitFiles){
+/* Do zipu jde jen to, co odpovídá zvolenému formátu: data a jejich schéma.
+   XML si nese XSD, JSON nese JSON Schema — obojí jen při volbě „obojí". */
+const chceJson=cfg.format!=='xml';
+if(chceJson){
+if(cfg.splitFiles){
 const head={};head['$schema']='schema.json';head['_meta']=data['_meta'];
 files.push({name:'data.json',data:JSON.stringify(head,null,2)});
 res.plan.types.forEach(grp=>files.push({name:'data/'+grp.key+'.json',data:JSON.stringify(data[grp.key],null,2)}));
@@ -17695,6 +17765,7 @@ res.plan.types.forEach(grp=>files.push({name:'data/'+grp.key+'.json',data:JSON.s
 files.push({name:'data.json',data:JSON.stringify(data,null,2)});
 }
 files.push({name:'schema.json',data:JSON.stringify(res.schema,null,2)});
+}
 if(res.xml){files.push({name:'data.xml',data:res.xml});files.push({name:'schema.xsd',data:res.xsd})}
 files.push({name:'mapovani.json',data:JSON.stringify(res.mapping,null,2)});
 files.push({name:'README.md',data:res.readme});
@@ -17909,22 +17980,22 @@ res.plan.warnings.slice(0,8).forEach(x=>{const li=document.createElement('li');l
 body.appendChild(ul);
 }
 const ph=document.createElement('h4');ph.textContent=t('jsonPreview');ph.style.margin='.7rem 0 .2rem';body.appendChild(ph);
-const pre=document.createElement('pre');pre.className='jsonk-pre';
-const txt=JSON.stringify(res.data,null,2);
-pre.textContent=txt.length>4000?txt.slice(0,4000)+'\n…':txt;
-body.appendChild(pre);
-const sh=document.createElement('h4');sh.textContent='schema.json';sh.style.margin='.7rem 0 .2rem';body.appendChild(sh);
-const spre=document.createElement('pre');spre.className='jsonk-pre';
-const stxt=JSON.stringify(res.schema,null,2);
-spre.textContent=stxt.length>3000?stxt.slice(0,3000)+'\n…':stxt;
-body.appendChild(spre);
+/* Náhled ukazuje přesně ty soubory, které půjdou do zipu — u XML tedy XML a XSD,
+   ne JSON, který se vůbec nestahuje. */
+const nahledy=[];
+if(cfg.format!=='xml'){
+nahledy.push(['data.json',JSON.stringify(res.data,null,2),4000]);
+nahledy.push(['schema.json',JSON.stringify(res.schema,null,2),3000]);
+}
 if(res.xml){
-[['data.xml',res.xml],['schema.xsd',res.xsd]].forEach(([nm,txt])=>{
+nahledy.push(['data.xml',res.xml,4000]);
+nahledy.push(['schema.xsd',res.xsd,3000]);
+}
+nahledy.forEach(([nm,txt,max])=>{
 const h=document.createElement('h4');h.textContent=nm;h.style.margin='.7rem 0 .2rem';body.appendChild(h);
 const pr=document.createElement('pre');pr.className='jsonk-pre';
-pr.textContent=txt.length>3000?txt.slice(0,3000)+'\n…':txt;body.appendChild(pr);
+pr.textContent=txt.length>max?txt.slice(0,max)+'\n…':txt;body.appendChild(pr);
 });
-}
 
 buttons.push({label:'← '+t('back'),action:()=>{jsonWiz.step=3;renderJsonWiz()}});
 buttons.push({label:t('jsonProfileSave'),action:()=>{

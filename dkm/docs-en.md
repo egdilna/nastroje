@@ -687,9 +687,10 @@ Parties: ((Parties)) — [Details on the web](((Web)))
 - A composed attribute cannot reference another composed one; such a placeholder stays empty.
 
 **Where it renders:** in the entity detail, in a document export and in print, in the offline
-viewer and in a table column. All four toggles from 7.7 apply to it as well. It is **not** in
-**data** exports (JSON, XML, package) — those emit what is stored, and a composed attribute
-has no stored value.
+viewer and in a table column. All four toggles from 7.7 apply to it as well. It is in **data**
+exports (table, JSON, XML) too — the **evaluated value** is emitted, exactly what you see on
+screen, and the schema marks it read-only. What goes into `.dkmdata` and into a package is the
+**template**, never the result — that is computed again.
 
 #### Entity metadata
 
@@ -2229,8 +2230,9 @@ writes them permanently (see 26.7).
 **Step 3 — Content.** Relation mode, custom attributes, comments, objects, unfilled
 attributes, empty values as `null`, one file per collection.
 
-**Step 4 — Preview and check.** Summary, validation result, warnings and a preview of both
-`data.json` and `schema.json`. The ZIP is downloaded — or a profile saved — from here.
+**Step 4 — Preview and check.** Summary, validation result, warnings and a preview of **the
+files that will actually go into the ZIP** — with the XML format that means `data.xml` and
+`schema.xsd`, not JSON. The ZIP is downloaded — or a profile saved — from here.
 
 ### 26.4 Output shape
 
@@ -2257,6 +2259,12 @@ attributes, empty values as `null`, one file per collection.
 entity also carries an `aspekty` list. When an aspect attribute's key meets a type
 attribute's key, it gets the aspect slug as a prefix (`gdpr_prijmeni`).
 
+**Composed (computed) attributes are in the export** — whether they sit on the type or on an
+aspect. The evaluated value is emitted, i.e. the text you see on screen; in the schema such a
+property is `readOnly` and also carries its template in `x-dkm-sablona`, so the recipient
+knows not to fill it in. A computed field that comes out empty behaves like any other empty
+value (see 26.6).
+
 ### 26.5 Relations
 
 | Mode | Output |
@@ -2281,6 +2289,8 @@ The governing rule: **the schema must validate the data it ships with.** Therefo
 - a tags attribute is an array of strings with `uniqueItems` and an `enum` from its tag set;
   a tag outside the set extends the enum and is reported the same way as for select
 - `format: date` / `format: uri` is added only when **all** values match
+- a composed attribute is a `string` with `readOnly: true`; it is evaluated per entity, so it
+  reaches the schema only when it comes out non-empty for at least one entity
 
 Before packaging, a built-in validator runs and its result also goes into `README.md`.
 
@@ -2309,22 +2319,37 @@ The conversion rules are simple:
 | `null` (with "include empty") | `xsi:nil="true"` |
 | custom attributes | always `<polozka klic="…">` — their names are written by you and need not be valid XML names |
 
+**Embedded and referenced entities are XML too.** With the *embedded object* or *reference*
+relation mode the target is written out as child elements (`<zpracovatel><id>…</id><nazev>…`),
+not as JSON inside the text, and the children follow the order of that type's schema —
+including the target entity's computed fields. A structured custom attribute value (a
+checklist, say) is written as nested `<polozka klic="…">`, so `[object Object]` never shows up.
+
 The XSD is exact, not permissive: it rejects an unknown element, a missing `id`, a value
 outside a code list, a number written as text, a malformed date, a foreign value for the
-fixed `typ` and even a wrong element order.
-
-The `schema.json` stays in the package either way — it describes the same content and is
-handy for a cross-check.
+fixed `typ` and even a wrong element order. The single exception is an embedded relation
+target: its content differs by entity type and XSD 1.0 cannot give one element name two
+different contents, so that element stays open (`xs:anyType`).
 
 ### 26.9 ZIP contents
+
+The ZIP holds **only the chosen format** — the data and the schema that belongs to it:
+
+| Format | Files |
+|---|---|
+| JSON + JSON Schema | `data.json` (or `data/<type>.json`) + `schema.json` |
+| XML + XSD | `data.xml` + `schema.xsd` |
+| Both | all four |
 
 | File | What's inside |
 |---|---|
 | `data.json` | data, collections by type (or `data/<type>.json` with one file per collection) |
 | `schema.json` | JSON Schema draft 2020-12 for this output |
-| `data.xml` + `schema.xsd` | with the XML format — the same data and an XSD that validates it |
+| `data.xml` + `schema.xsd` | the same data as XML and an XSD that validates it |
 | `mapovani.json` | internal ID to key mapping — for debugging and downstream tools |
 | `README.md` | human description: what's inside, mapping table, warnings, validation result |
+
+`mapovani.json` and `README.md` are always in the ZIP.
 
 ### 26.10 Export profiles
 

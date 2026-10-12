@@ -17,7 +17,7 @@ a při změně chování ji aktualizuj.
   entitě přidat nezávisle na typu (`getAllAttrDefsForEntity` skládá obojí).
 - **Vazba** má rozsah (`RSCOPES = ['universal','from','to','specific']`), platnost kontroluje
   `isRelApplicable(rt, fromId, toId)`.
-- Typy atributů: `ATYPES = ['text','textarea','date','url','select','yesno','relation','number','tags','composed']`;
+- Typy atributů: `ATYPES = ['text','textarea','date','url','select','yesno','relation','number','range','checklist','tags','composed']`;
   kompatibilitu při konverzích řídí `ATTR_TYPE_COMPAT` (`attrTypesCompatible`).
 - **Tag** je značka ze **soustavy tagů** (`state.data.tagSets`), na kterou se atribut typu
   `tags` váže přes `tagSetId` — obdoba číselníku u `select`, jen hodnotou je pole tagů.
@@ -235,7 +235,19 @@ prochází ho **podle téhož schématu**, ze kterého `buildXsd` generuje XSD �
 proto sedí z principu. Kdo by XML stavěl znovu z entit, tuhle záruku zahodí. Převod: objekt →
 prvek s podprvky, pole → opakovaný prvek, skalár → text, `null` → `xsi:nil`. Otevřený objekt
 (`additionalProperties:true`, tedy vlastní atributy) jde **vždy** jako `<polozka klic="…">`,
-protože ty názvy píše uživatel; XSD to zrcadlí větví `polozkaElem`.
+protože ty názvy píše uživatel; XSD to zrcadlí větví `polozkaElem`. Položka je **rekurzivní**
+(`XSD_POLOZKA`, `mixed="true"`): vlastní atribut nemusí nést text, checklist je pole objektů,
+a to patří do podpoložek — ne do `String(hodnota)`, ze kterého vyleze `[object Object]`.
+
+**Vnořený cíl vazby se ve schématu pozná až z hodnoty.** `jsonEmbedItemsSchema` dává `anyOf`
+přes všechny typy plus `_odkaz`, takže `resolve` sám nemá podle čeho vybrat; `vyberVariantu`
+to rozhodne podle `typ` entity a podle toho, že varianta zná všechny klíče hodnoty. Bez toho
+se vnořené entity vypisovaly mimo pořadí schématu. V XSD takový prvek zůstává `xs:anyType` —
+XSD 1.0 neumí dva různé obsahy pod jedním jménem.
+
+**Do zipu jde jen to, co odpovídá formátu** (`downloadJsonExportZip`): JSON → `data.json`
++ `schema.json`, XML → `data.xml` + `schema.xsd`, „oboje" → všechno. Náhled v kroku 4 ukazuje
+tytéž soubory — jinak uživatel vidí JSON tam, kde si vybral XML, a myslí si, že se stahuje.
 
 Klíče lze zafixovat nepovinným polem **`jsonKey`** na typu, aspektu, atributu i typu vazby
 (`rsJsonKeyFld`) — jinak by přejmenování atributu změnilo klíč a rozbilo navazující import.
@@ -418,7 +430,12 @@ kvůli tomu, co uvidí člověk, má jít přes něj, ne přes `e.attributes[id]
   pak kdekoli u entity; kvalifikovaně `((Zdroj / Atribut))`.
 - Sází se **jako víceřádkový Markdown**, tedy všude tam, kde se tak sází `textarea`
   (detail, md/html/docx export, prohlížeč). Přidáváš-li nový výstup, přidej obojí.
-- V datových exportech není a nemá být — nic uloženého za ním nestojí.
+- **V datových exportech (JSON/XML) je** — vydává se vyhodnocená hodnota, protože přesně
+  to má příjemce před očima a nic jiného o složeném atributu neví. Jediné místo, které to
+  v exportu dělá, je `jsonHodnota(e,a)`; kdo v generátoru čte `e.attributes[a.id]` sám,
+  počítaná pole zahodí (plán je vyhodnotí jako nevyplněná a vypustí). Ve schématu je
+  `readOnly` plus `x-dkm-sablona`. Do `.dkmdata` a do balíčku se ukládá **šablona**,
+  nikdy výsledek.
 - **Metadata entity** (`META_POLE`) jsou poslední v pořadí hledání: atribut téhož jména
   vyhraje. Česká i anglická jména platí **vždycky**, nezávisle na `state.language` — šablona
   je v datech a cestuje balíčkem do projektu s druhým jazykem. Aliasy bez diakritiky jsou tam
@@ -791,9 +808,9 @@ entitu** (`some`, ne `forEach`): atributy mají každý svoje jméno, u komentá
 stejné řádky.
 
 ## Složený atribut se nikam neukládá
-`hodnotaProZobrazeni` (detail) i `tableCellValue` (tabulka) volají **tentýž**
-`slozenyText(e,def,vlastnikAtributu(e,def))` — hodnota vzniká při každém vykreslení
-ze šablony, do `e.attributes` se nepíše nikdy. **Nedělej na to „přepočítat"**: nemá to
+`hodnotaProZobrazeni` (detail), `tableCellValue` (tabulka) i `jsonHodnota` (datový
+export JSON/XML) volají **tentýž** `slozenyText(e,def,vlastnikAtributu(e,def))` — hodnota
+vzniká při každém vykreslení ze šablony, do `e.attributes` se nepíše nikdy. **Nedělej na to „přepočítat"**: nemá to
 co přepočítat a tlačítko by jen zakrylo skutečnou příčinu (chybějící zdrojová hodnota).
 Kdo přidá další místo, kde se atribut zobrazuje, ať jde taky přes `hodnotaProZobrazeni`,
 ne přes `e.attributes[id]`.
