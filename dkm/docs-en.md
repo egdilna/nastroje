@@ -2054,6 +2054,19 @@ apply to whatever is currently visible.
 Custom attributes are grouped **by name** — three entities with a "Note" custom attribute
 give you one column, not three.
 
+**Relations get two columns, one per direction** (in the metadata group):
+
+- **Relations** — where the entity points: `relation type → Target name`.
+- **Linked from** — who points at it: `relation type ← Source name`.
+
+Both take **all three kinds of link**, just like the Relations card in the detail: a classic
+relation (labelled with the relation type's name, and with its inverse name the other way),
+a **relation attribute** (`Type / Attribute`) and a **`[[Name]]` wiki link in text**
+(`[[Attribute]] (Type)`). Several links in one cell are separated by a semicolon, so they can
+be split into columns in Excel. An archived counterpart is left out in either direction.
+
+The import ignores these two columns — relations go into the table to be read, not edited.
+
 ### 25.2 TSV / CSV import
 
 The **Import TSV** button in the header. Takes a file (Excel → *Save as* TSV/CSV) or rows

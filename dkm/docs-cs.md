@@ -2026,6 +2026,20 @@ platí na to, co je zrovna vidět.
 Vlastní atributy se sdružují **podle názvu** — tři entity s vlastním atributem „Poznámka"
 dají jeden sloupec, ne tři.
 
+**Vazby mají dva sloupce, pro každý směr jeden** (ve skupině s metadaty):
+
+- **Vazby** — kam entita odkazuje: `typ vazby → Název cíle`.
+- **Odkazuje sem** — kdo odkazuje na ni: `typ vazby ← Název zdroje`.
+
+Oba berou **všechny tři druhy odkazu**, stejně jako karta Vazby v detailu: klasickou vazbu
+(popisek je název typu vazby, zpátky jeho opačné jméno), **vazební atribut**
+(`Typ / Atribut`) i **wiki odkaz `[[Název]]` v textu** (`[[Atribut]] (Typ)`). Víc odkazů
+v jedné buňce odděluje středník, takže se dá v Excelu rozdělit do sloupců. Archivovaný
+protějšek se nevypisuje v žádném směru.
+
+Import zpátky tyhle dva sloupce ignoruje — vazby se do tabulky vydávají ke čtení, ne
+k editaci.
+
 ### 25.2 TSV / CSV import
 
 Tlačítko **Import TSV** v hlavičce. Bere soubor (Excel → *Uložit jako* TSV/CSV) nebo řádky

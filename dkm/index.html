@@ -4285,7 +4285,7 @@ case'__type':{const ty=findType(e.typeId);return ty?ty.name:''}
 case'__inbox':return e.inInbox?t('yes'):'';
 case'__archive':return e.archived?t('yes'):'';
 case'__aspects':return(e.aspects||[]).map(aid=>{const a=findAspect(aid);return a?a.name:aid}).join('; ');
-case'__relations':return(e.relations||[]).map(r=>{const rt=findRT(r.relationTypeId),tgt=findEntity(r.targetId);return(rt?rt.name:'?')+' → '+(tgt?getTitle(tgt):r.targetId)}).sort(porovnejNazvy).join('; ');
+case'__relations':return collectLinksOut(e).map(x=>x.relTypeName+' → '+getTitle(x.to)).sort(porovnejNazvy).join('; ');
 case'__backlinks':return collectBacklinks(e.id).map(b=>b.relTypeName+' ← '+getTitle(b.from)).sort(porovnejNazvy).join('; ');
 case'__comments':return(e.comments||[]).map(k=>(k.author?k.author+': ':'')+(k.text||'')).join('\n');
 case'__created':{if(!e.createdAt)return'';const d=new Date(e.createdAt);return isNaN(d)?e.createdAt:d}
@@ -11654,14 +11654,36 @@ showDialog(t('exportPrint')+' – '+getTitle(entity),body,[
 }
 
 function countBacklinks(id){let n=0;state.data.entities.forEach(o=>{if(o.id===id)return;(o.relations||[]).forEach(r=>{if(r.targetId===id)n++})});return n}
+/* Popisek odkazu do textových výstupů (tabulka, dokument). Tři druhy a dva směry,
+   ale **jeden zápis** — jinak se totéž pojmenuje pokaždé jinak. Wiki zmínka se
+   značí `[[Atribut]]` stejně jako v kartě Vazby; dokud tahle větev chyběla,
+   propadala do `'?'` a v exportu svítil otazník místo zdroje odkazu. */
+function popisOdkazu(r,zpet){
+if(!r)return'?';
+if(r.kind==='attribute')return (r.scopeLabel?r.scopeLabel+' / ':'')+r.attrName;
+if(r.kind==='wikilink')return '[['+(r.attrName||'?')+']]'+(r.scopeLabel?' ('+r.scopeLabel+')':'');
+const rt=findRT(r.relationTypeId);
+if(!rt)return'?';
+return zpet?(rt.inverseName||rt.name):rt.name;
+}
 function collectBacklinks(id){
 const out=[];
 getRelsTo(id).forEach(r=>{
 const src=findEntity(r.sourceId);if(!src||src.archived)return;
-let label;
-if(r.kind==='attribute')label=(r.scopeLabel?r.scopeLabel+' / ':'')+r.attrName;
-else{const rt=findRT(r.relationTypeId);label=rt?(rt.inverseName||rt.name):'?'}
-out.push({from:src,relTypeName:label});
+out.push({from:src,relTypeName:popisOdkazu(r,true)});
+});
+return out;
+}
+/* Odchozí protějšek `collectBacklinks` — a tím pádem **taky tři zdroje**:
+   klasická vazba, vazební atribut a wiki zmínka. Dokud tahle funkce nebyla,
+   braly textové výstupy směrem ven jen `e.relations`, takže vazba udělaná
+   vazebním atributem se v tabulce ani v dokumentu neobjevila, přestože z druhé
+   strany („Odkazuje sem") vidět byla. */
+function collectLinksOut(e){
+const out=[];
+getLinksFrom(e).forEach(r=>{
+const tgt=findEntity(r.targetId);if(!tgt||tgt.archived)return;
+out.push({to:tgt,relTypeName:popisOdkazu(r,false)});
 });
 return out;
 }
@@ -11748,10 +11770,9 @@ if(sel.customAttrs)(entity.customAttributes||[]).forEach(ca=>{if(ca.value==null|
 
 if(sel.relationsOut){
 const byType=new Map();
-(entity.relations||[]).forEach(r=>{
-const rt=findRT(r.relationTypeId);const tgt=findEntity(r.targetId);if(!tgt||tgt.archived)return;
-const k=rt?rt.name:'?';if(!byType.has(k))byType.set(k,{name:k,items:[]});
-byType.get(k).items.push(tgt);
+collectLinksOut(entity).forEach(x=>{
+const k=x.relTypeName;if(!byType.has(k))byType.set(k,{name:k,items:[]});
+byType.get(k).items.push(x.to);
 });
 byType.forEach(g=>m.relationsOut.push(g));
 }
