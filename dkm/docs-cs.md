@@ -2189,10 +2189,27 @@ průvodce se na něj tedy podruhé neptá a začne rovnou volbou typů.
 plus zaškrtání typů. Entity bez typu (Inbox) se dají přibrat do kolekce `_bez_typu`.
 Nahoře se dá načíst uložený **profil exportu**.
 
-**Krok 2 — Klíče.** Styl klíčů (`snake_case` výchozí, nebo `camelCase`) a jazyk systémových
-polí (česky `nazev`/`typ`/`vazby`, nebo anglicky `name`/`type`/`relations`). Pod tím tabulka
-všech odvozených klíčů k ručnímu přepsání. Zaškrtávátko **Uložit klíče do modelu** je zapíše
-natrvalo (viz 26.7).
+**Krok 2 — Pole a klíče.** Styl klíčů (`snake_case` výchozí, nebo `camelCase`) a jazyk
+systémových polí (česky `nazev`/`typ`/`vazby`, nebo anglicky `name`/`type`/`relations`).
+Pod tím tabulka **všech polí, která by do exportu šla** — atributy typu, atributy aspektů
+(poznáš je podle ◎ a názvu aspektu) i typy vazeb. U každého je **zaškrtávátko** a odvozený
+klíč k ručnímu přepsání; tlačítka **Vše / Nic** u názvu typu přepnou celou skupinu.
+Zaškrtávátko **Uložit klíče do modelu** je zapíše natrvalo (viz 26.7).
+
+**Odškrtnuté pole se nedostane ani do dat, ani do schématu** — ani u vnořených cílů vazeb.
+Mizí i z `mapovani.json` a z tabulky v `README.md`, takže balíček o něm nikde nemluví. Klíč
+si ale pole drží, takže zahrnutí a vynechání nepřehazuje klíče ostatním polím. Volba se
+pamatuje spolu se zbytkem nastavení, takže ji veze i uložený **profil exportu** (26.10).
+
+Dvě věci stojí za zmínku:
+
+- **Atribut aspektu je jedna definice.** Když ho odškrtneš u jednoho typu, vypadne i u všech
+  ostatních typů, jejichž entity ten aspekt mají — stejně jako přepsaný klíč.
+- **Vazba a vazební atribut jsou dvě různá pole.** Typ vazby je řádek s ↔ (vypne celou
+  sekci `vazby`), atribut typu *vazba* je obyčejný řádek a vypíná se zvlášť.
+
+Tabulka nabízí jen pole, která by se v exportu objevila: nevyplněný atribut v ní je teprve
+tehdy, když se v kroku 3 zapne **I nevyplněné atributy použitých typů**.
 
 **Krok 3 — Obsah.** Režim vazeb, vlastní atributy, komentáře, objekty, nevyplněné atributy,
 prázdné hodnoty jako `null`, soubor na kolekci.

@@ -249,9 +249,18 @@ XSD 1.0 neumí dva různé obsahy pod jedním jménem.
 + `schema.json`, XML → `data.xml` + `schema.xsd`, „oboje" → všechno. Náhled v kroku 4 ukazuje
 tytéž soubory — jinak uživatel vidí JSON tam, kde si vybral XML, a myslí si, že se stahuje.
 
+**Jednotlivá pole se vybírají v kroku 2** (`cfg.vynechane`, klíče `at:<id>` / `rt:<id>` —
+táž adresace jako `keyOverrides`, takže volba jede i v profilu). Plán si vynechané pole
+**nechává** (`grp.vsechnyProps` / `grp.vsechnyRels` s příznakem `vynechan`) a generátorům
+dává jen zahrnutá (`grp.props`, `grp.rels`). Důvod je ten, že průvodce z téhož plánu kreslí
+tabulku: kdyby plán vynechané pole zahodil, zmizel by i jeho řádek a nešlo by ho zaškrtnout
+zpátky. Klíč se přiděluje **před** filtrem, takže vynechání ostatním polím klíče nepřehází.
+Prázdný seznam znamená „všechno" — starší profily se tím chovají jako dřív.
+
 Klíče lze zafixovat nepovinným polem **`jsonKey`** na typu, aspektu, atributu i typu vazby
 (`rsJsonKeyFld`) — jinak by přejmenování atributu změnilo klíč a rozbilo navazující import.
-Profily exportu žijí v `state.data.jsonExports`.
+Profily exportu žijí v `state.data.jsonExports`; průvodce si z profilu dělá **kopii**
+(včetně `keyOverrides` a `vynechane`), jinak by úprava v průvodci přepsala uložený profil.
 
 **Číselníky mají jeden kanonický tvar:** `seznam.values` + `atribut.listId`. Hodnoty čti
 **vždy** přes `attrSelectValues(a)` — nikdy si nesahej na `listId`/`values` sám. Starší data

@@ -2222,10 +2222,30 @@ already chosen there, so the wizard does not ask again and starts with the type 
 archive), plus type checkboxes. Untyped entities (Inbox) can be added into the `_bez_typu`
 collection. A saved **export profile** can be loaded at the top.
 
-**Step 2 — Keys.** Key style (`snake_case` by default, or `camelCase`) and the language of
-system fields (Czech `nazev`/`typ`/`vazby`, or English `name`/`type`/`relations`). Below that
-a table of all derived keys for manual overriding. The **Save keys into the model** checkbox
-writes them permanently (see 26.7).
+**Step 2 — Fields and keys.** Key style (`snake_case` by default, or `camelCase`) and the
+language of system fields (Czech `nazev`/`typ`/`vazby`, or English `name`/`type`/`relations`).
+Below that a table of **every field that could go into the export** — the type's attributes,
+the aspects' attributes (marked with ◎ and the aspect name) and the relation types. Each has
+a **checkbox** and its derived key for manual overriding; the **All / None** buttons next to
+the type name switch the whole group. The **Save keys into the model** checkbox writes the
+keys permanently (see 26.7).
+
+**An unticked field goes neither into the data nor into the schema** — not even in embedded
+relation targets. It also disappears from `mapovani.json` and from the table in `README.md`,
+so nothing in the package mentions it. The field keeps its key, though, so including and
+excluding fields never reshuffles the other keys. The choice is remembered with the rest of
+the settings, so a saved **export profile** (26.10) carries it too.
+
+Two things worth noting:
+
+- **An aspect attribute is a single definition.** Untick it under one type and it drops out
+  under every other type whose entities carry that aspect — exactly like an overridden key.
+- **A relation and a relation attribute are two different fields.** The relation type is the
+  row marked ↔ (it switches off the whole `vazby` section); an attribute of type *relation*
+  is an ordinary row and is switched off separately.
+
+The table only offers fields that would show up in the export: an unfilled attribute appears
+there only once **Include unfilled attributes of used types** is ticked in step 3.
 
 **Step 3 — Content.** Relation mode, custom attributes, comments, objects, unfilled
 attributes, empty values as `null`, one file per collection.
