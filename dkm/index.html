@@ -711,6 +711,7 @@ addType:'Přidat typ entity',addAspect2:'Přidat aspekt',addRelationType:'Přida
 attrType:'Typ atributu',attrTypeText:'Text (jeden řádek)',attrTypeTextarea:'Text (víceřádkový, Markdown + CriticMarkup)',attrTypeDate:'Datum',attrTypeUrl:'URL',attrTypeSelect:'Výběr ze seznamu',attrTypeYesno:'Ano/Ne',attrTypeRelation:'Relace na entitu',attrTypeNumber:'Číslo',attrTypeRange:'Posuvník',attrTypeChecklist:'Checklist',
 nameFromComputed:'Název se skládá podle atributu {atribut}. Změní se sám, jak budeš měnit jeho zdroje.',
 nameFromWaiting:'Název se bude skládat podle atributu {atribut}, zatím z něj ale nic nevychází — do té doby platí, co sem napíšeš.',
+sabVazbaDruhRel:'vazba',sabVazbaOpacne:'opačně {jmeno}',sabVazbaDruhAttr:'atribut: {kde}',
 nameFrom:'Skládat název podle',nameFromOwn:'vlastní, nepřepisovat',
 nameFromInherit:'podle modelu: {zdroj}',nameFromTypeField:'Skládat název entit podle',
 nameFromTypeHint:'Platí pro všechny entity tohoto typu. U jednotlivé entity se to dá v editoru přebít — buď jiným složeným atributem, nebo volbou „vlastní, nepřepisovat".',
@@ -1345,6 +1346,7 @@ addType:'Add entity type',addAspect2:'Add aspect',addRelationType:'Add relation 
 attrType:'Attribute type',attrTypeText:'Text (single line)',attrTypeTextarea:'Text (multiline, Markdown + CriticMarkup)',attrTypeDate:'Date',attrTypeUrl:'URL',attrTypeSelect:'Select from list',attrTypeYesno:'Yes/No',attrTypeRelation:'Relation to entity',attrTypeNumber:'Number',attrTypeRange:'Slider',attrTypeChecklist:'Checklist',
 nameFromComputed:'The name is composed from the attribute {atribut}. It changes by itself as you change its sources.',
 nameFromWaiting:'The name will be composed from the attribute {atribut}, but nothing comes out of it yet — until then what you type here applies.',
+sabVazbaDruhRel:'relation',sabVazbaOpacne:'reverse {jmeno}',sabVazbaDruhAttr:'attribute on {kde}',
 nameFrom:'Compose the name from',nameFromOwn:'its own, do not overwrite',
 nameFromInherit:'from the model: {zdroj}',nameFromTypeField:'Compose entity names from',
 nameFromTypeHint:'Applies to every entity of this type. A single entity can override it in its editor — with another composed attribute, or with "its own, do not overwrite".',
@@ -15662,14 +15664,33 @@ else{
 }
 return Array.from(new Set(out)).sort(porovnejNazvy);
 }
-/* Názvy, kterými se dá v bloku `relations` filtrovat: typy vazeb a vazební atributy. */
+/* Co se dá v bloku `relations` dosadit do `type:` — typy vazeb a vazební atributy.
+   Vrací `{nazev, popis}`: **hodnotou zůstává holý název**, protože `blokVazby` filtruje
+   jménem, popisek je jen pro oko.
+
+   Proč popisek: filtruje se jménem, takže typ vazby a vazební atribut téhož jména jsou
+   **jedna volba** — a v holém seznamu jmen nešlo poznat, co je co (hlášeno od uživatele).
+   U typu vazby se proto píše „vazba" a jeho opačné jméno (filtrovat jde podle obou),
+   u atributu „atribut" a kde je definovaný. */
 function sabNabidkaVazeb(){
-const out=[];
-(state.data.relationTypes||[]).forEach(rt=>{if(rt.name)out.push(rt.name)});
+const m=new Map();
+const dej=n=>{const k=klicPole(n);if(!m.has(k))m.set(k,{nazev:n,vazby:[],kde:[]});return m.get(k)};
+(state.data.relationTypes||[]).forEach(rt=>{if(rt.name)dej(rt.name).vazby.push(rt)});
 [].concat(state.data.entityTypes||[],state.data.aspects||[]).forEach(o=>(o.attributes||[]).forEach(a=>{
-if(a.type==='relation'&&a.name)out.push(a.name);
+if(a.type==='relation'&&a.name)dej(a.name).kde.push(o.name||'');
 }));
-return Array.from(new Set(out)).sort(porovnejNazvy);
+const out=[];
+m.forEach(x=>{
+const casti=[];
+x.vazby.forEach(rt=>{
+const op=(rt.inverseName&&rt.inverseName!==rt.name)?(', '+t('sabVazbaOpacne',{jmeno:rt.inverseName})):'';
+casti.push(t('sabVazbaDruhRel')+op);
+});
+const kde=Array.from(new Set(x.kde.filter(Boolean))).sort(porovnejNazvy);
+if(x.kde.length)casti.push(t('sabVazbaDruhAttr',{kde:kde.join(', ')||'—'}));
+out.push({nazev:x.nazev,popis:x.nazev+(casti.length?' ('+casti.join('; ')+')':'')});
+});
+return out.sort((a,b)=>porovnejNazvy(a.nazev,b.nazev));
 }
 
 /* Popis polí jednoho bloku. `druh`: text | select | nabidka (text + vkládací rozbalovátko). */
@@ -15683,7 +15704,7 @@ if(typ==='attributes')return[
 {k:'hideempty',lbl:'sabPoleHideEmpty',druh:'select',moznosti:()=>[['','sabHideEmptyNe'],['yes','sabHideEmptyAno']]}
 ].concat(spol);
 if(typ==='relations')return[
-{k:'type',lbl:'sabPoleType',druh:'select',moznosti:()=>[['','sabVse']].concat(sabNabidkaVazeb().map(x=>[x,null]))},
+{k:'type',lbl:'sabPoleType',druh:'select',moznosti:()=>[['','sabVse']].concat(sabNabidkaVazeb().map(x=>[x.nazev,null,x.popis]))},
 {k:'direction',lbl:'sabPoleDirection',druh:'select',moznosti:()=>[['','sabSmerOut'],['in','sabSmerIn'],['both','sabSmerBoth']]},
 {k:'target',lbl:'sabPoleTarget',druh:'select',moznosti:()=>[['','sabVse']].concat((state.data.entityTypes||[]).map(x=>[x.name,null]))},
 {k:'sort',lbl:'sabPoleSort',druh:'nabidka',moznosti:atr},
@@ -15831,7 +15852,10 @@ const id='sab-'+idx+'-'+pole.k;
 const l=document.createElement('label');l.htmlFor=id;l.textContent=t(pole.lbl);f.appendChild(l);
 if(pole.druh==='select'){
 const sel=document.createElement('select');sel.id=id;
-pole.moznosti().forEach(([v,klic])=>{const o=document.createElement('option');o.value=v;o.textContent=klic?t(klic):v;if((c.parametry[pole.k]||'')===v)o.selected=true;sel.appendChild(o)});
+/* Trojice je `[hodnota, i18n klíč, hotový popisek]`. Popisek se **nepřekládá** —
+   skládá se z názvů z modelu, které píše uživatel. Hodnota zůstává holý název, protože
+   právě ta jde do šablony. */
+pole.moznosti().forEach(([v,klic,popis])=>{const o=document.createElement('option');o.value=v;o.textContent=klic?t(klic):(popis||v);if((c.parametry[pole.k]||'')===v)o.selected=true;sel.appendChild(o)});
 sel.addEventListener('change',()=>{if(sel.value)c.parametry[pole.k]=sel.value;else delete c.parametry[pole.k];uloz(id)});
 f.appendChild(sel);
 }else{

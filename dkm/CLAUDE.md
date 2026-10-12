@@ -908,6 +908,14 @@ dopředu**, kdo šablonu chce, poskládá si ji od nuly.
   `h2…h6` sází název jako nadpis a hodnotu jako tělo — tím se do detailu dostane Markdown
   psaný v textovém atributu. `h1` schválně není, to je název entity. U vazeb přibylo
   `numbered`; parametr je **týž `style`**, druhý se nikam nepíše.
+- **Nabídka `type:` u vazeb nese druh.** `sabNabidkaVazeb()` vrací `{nazev, popis}`:
+  hodnotou zůstává **holý název** (tím `blokVazby` filtruje), popisek říká, jestli jde
+  o typ vazby (a jeho opačné jméno, které jako filtr platí taky) nebo o vazební atribut
+  (a kde je definovaný). Bez toho byl v nabídce holý seznam jmen, ve kterém nešlo poznat
+  vazbu od atributu — a protože se filtruje jménem, dvě různé věci téhož jména **jsou
+  jedna volba**, což z plochého seznamu taky nebylo vidět (hlášeno od uživatele).
+  Pole `select` v editoru šablony proto bere trojici `[hodnota, i18n klíč, hotový popisek]`;
+  popisek se **nepřekládá**, skládá se z názvů z modelu.
 - **Blok atributů žádný `item` nemá.** Zkoušelo se to (`((label))`/`((value))`) a uživatel
   to zamítl — tvar řádku se volí `style`em. Nevracej to.
 - **Výstup vazeb má čtyři podoby** (`style: list | rows | numbered | table`). `list` a `rows` se liší
