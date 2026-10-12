@@ -2819,7 +2819,7 @@ na úrovni bloku: tentýž atribut tak může být v jedné šabloně vidět i p
 
 | Parametr | Co dělá |
 |---|---|
-| `type` | název typu vazby nebo vazebního atributu; bez něj všechny |
+| `type` | název typu vazby nebo vazebního atributu; bez něj všechny (viz níž) |
 | `direction` | `out` (výchozí), `in`, `both` |
 | `target` | jen entity tohoto typu |
 | `sort` | řadit podle atributu navázané entity; bez něj abecedně podle názvu |
@@ -2828,6 +2828,13 @@ na úrovni bloku: tentýž atribut tak může být v jedné šabloně vidět i p
 | `columns` | sloupce u `table`, oddělené čárkou |
 | `limit` | nejvýš tolik položek |
 | `empty`, `collapse` | jako výše |
+
+**`type` se zadává jménem**, a protože typ vazby i vazební atribut můžou mít stejné jméno,
+je v nabídce u každé položky napsané, co to je: `podepsal (vazba, opačně podepsán kým)`,
+`Zpracovatel (atribut: Faktura, Smlouva)`. Do šablony se uloží **jen to holé jméno** —
+závorka je popisek pro orientaci. Když se jméno shoduje, platí filtr na obojí naráz; u typu
+vazby funguje i jeho **opačné jméno**, takže `type: podepsán kým` najde totéž co
+`type: podepsal`.
 
 **Tři podoby výstupu:**
 

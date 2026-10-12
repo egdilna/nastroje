@@ -2864,7 +2864,7 @@ per block: the same attribute can show up empty in one template and be left out 
 
 | Parameter | What it does |
 |---|---|
-| `type` | name of a relation type or of a relation attribute; without it, all of them |
+| `type` | name of a relation type or of a relation attribute; without it, all of them (see below) |
 | `direction` | `out` (default), `in`, `both` |
 | `target` | only entities of this type |
 | `sort` | sort by an attribute of the linked entity; without it alphabetically by name |
@@ -2873,6 +2873,13 @@ per block: the same attribute can show up empty in one template and be left out 
 | `columns` | the columns for `table`, comma separated |
 | `limit` | at most this many items |
 | `empty`, `collapse` | as above |
+
+**`type` is given by name**, and because a relation type and a relation attribute can share
+a name, the picker says which is which: `signed (relation, reverse signed by)`,
+`Handler (attribute on Invoice, Contract)`. Only the bare name goes into the template — the
+parenthesis is a label to find your way by. When a name is shared, the filter covers both at
+once; for a relation type its **reverse name** works too, so `type: signed by` finds the same
+as `type: signed`.
 
 **Three shapes of output:**
 
