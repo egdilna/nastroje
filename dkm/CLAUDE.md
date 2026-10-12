@@ -1524,6 +1524,19 @@ Hranice slova se testuje přes `\p{L}` — `\b` by na diakritice selhalo. Nahraz
 `relation` a **wiki odkazy `[[Název]]` skenované v textech** (`scanForWikiLink`).
 Při změně názvu entity nebo formátu textových hodnot na to pamatuj.
 
+**Oba směry musí počítat stejně.** `collectLinksOut(e)` je odchozí protějšek
+`collectBacklinks(id)` a staví na `getLinksFrom`; obě plní textové výstupy (sloupec tabulky
+`__relations`/`__backlinks` a `m.relationsOut`/`m.relationsIn` v dokumentu). Dokud
+`collectLinksOut` nebyla, braly výstupy směrem ven jen `e.relations` — vazba udělaná
+**vazebním atributem** se v XLSX ani v dokumentu neobjevila, přestože z druhé strany vidět
+byla, a karta Vazby v detailu ji přitom ukazovala. Asymetrie mezi směry je vždycky chyba,
+ne volba.
+
+**Popisek odkazu je jeden: `popisOdkazu(r,zpet)`.** Tři druhy (vazba / vazební atribut /
+wiki zmínka) a dva směry; `zpet` přepíná jméno typu vazby na opačné. Větev pro `wikilink`
+tam dlouho chyběla, takže wiki zmínka propadala do `'?'` a v exportu i v dokumentu svítil
+otazník místo zdroje odkazu. Tvar `[[Atribut]] (Zdroj)` je týž jako v kartě Vazby.
+
 ## Lokalizace
 `I18N = {cs:{…}, en:{…}}` s **1301 klíči**, přístup přes `t(k, v)`, jazyk v `dkm-lang`.
 Každý nový text = klíč v obou jazycích. Do UI nikdy nepiš řetězec natvrdo.
