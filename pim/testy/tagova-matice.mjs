@@ -185,5 +185,113 @@ const sipky = await stranka.evaluate(async () => {
 ok(soucet, sipky.join(' | ') === '1,0 | 1,1 | 0,1 | 0,0 | 0,0',
   'šipky chodí po mřížce a na kraji se zastaví', sipky);
 
+nadpis('Filtr v hlavičce sloupce: „jen bez" nechá entity, které tag nemají');
+// Celá pointa je, že se filtr NEPŘEPOČÍTÁVÁ průběžně. Kdyby se aplikoval po
+// každé zaškrtnuté buňce, řádek by zmizel přesně ve chvíli, kdy mu tag přidáte.
+const matice = await stranka.evaluate(async () => {
+  db.entities = [
+    newEntity({ id: 'p', title: 'Projekt A', aspects: ['Project'], tags: ['smlouva'] }),
+    newEntity({ id: 'a', title: 'Alfa', aspects: ['Note'], tags: ['smlouva', 'porada'], links: [{ to: 'p', type: 'partOf' }] }),
+    newEntity({ id: 'bb', title: 'Beta', aspects: ['Note'], tags: ['porada'], links: [{ to: 'p', type: 'partOf' }] }),
+    newEntity({ id: 'c', title: 'Gama', aspects: ['Note'], tags: [], links: [{ to: 'p', type: 'partOf' }] }),
+    newEntity({ id: 'dd', title: 'Delta', aspects: ['Note'], tags: ['smlouva'], links: [{ to: 'p', type: 'partOf' }] }),
+    newEntity({ id: 'mimo', title: 'KANÁREK-MIMO', aspects: ['Note'], tags: ['smlouva', 'porada'] })
+  ];
+  setView('detail', { detailId: 'p', detailMode: 'read' });
+  await new Promise(z => setTimeout(z, 400));
+  otevriTagovouMatici('p');
+  await new Promise(z => setTimeout(z, 500));
+  const th = Array.from(document.querySelectorAll('.tm-tabulka th.tm-sloupec'));
+  const iSml = th.findIndex(x => x.querySelector('.tm-tag').textContent === 'smlouva');
+  const iPor = th.findIndex(x => x.querySelector('.tm-tag').textContent === 'porada');
+  const videt = () => Array.from(document.querySelectorAll('.tm-tabulka tbody tr'))
+    .filter(tr => !tr.classList.contains('tm-skryty'))
+    .map(tr => tr.querySelector('th').textContent.split(' ')[0]).join(',');
+  const prepniFiltr = (i, v) => {
+    const cb = document.querySelector('input[data-tm-filtr="' + i + '"]');
+    cb.checked = v; cb.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  const out = {};
+  out.maFiltry = document.querySelectorAll('input[data-tm-filtr]').length;
+  out.pred = videt();
+  prepniFiltr(iSml, true);
+  await new Promise(z => setTimeout(z, 200));
+  out.poFiltru = videt();
+  out.popis = document.getElementById('tm-filtr-popis').textContent;
+  out.pruhVidet = !document.getElementById('tm-filtr-pruh').hidden;
+  // Zaškrtnu buňku v zobrazeném řádku — řádek NESMÍ zmizet.
+  const trGama = Array.from(document.querySelectorAll('.tm-tabulka tbody tr'))
+    .find(x => x.querySelector('th').textContent.startsWith('Gama'));
+  const cb = trGama.querySelector('input[data-tm-s="' + iSml + '"]');
+  cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true }));
+  await new Promise(z => setTimeout(z, 200));
+  out.poZaskrtnuti = videt();
+  document.getElementById('tm-filtr-prepocitat').click();
+  await new Promise(z => setTimeout(z, 200));
+  out.poPrepoctu = videt();
+  // Dva filtry naráz = a zároveň.
+  prepniFiltr(iPor, true);
+  await new Promise(z => setTimeout(z, 200));
+  out.dvaFiltry = videt();
+  out.popisDvou = document.getElementById('tm-filtr-popis').textContent;
+  document.getElementById('tm-filtr-zrusit').click();
+  await new Promise(z => setTimeout(z, 200));
+  out.poZruseni = videt();
+  out.pruhPoZruseni = !document.getElementById('tm-filtr-pruh').hidden;
+  out.zaskrtnutychFiltru = Array.from(document.querySelectorAll('input[data-tm-filtr]')).filter(x => x.checked).length;
+  return out;
+});
+ok(soucet, matice.maFiltry === 2, 'každý sloupec má zaškrtávátko filtru', matice.maFiltry);
+ok(soucet, matice.pred === 'Projekt,Alfa,Beta,Delta,Gama' || matice.pred.split(',').length === 5,
+  'před filtrem je vidět všech 5 řádků', matice.pred);
+ok(soucet, matice.poFiltru === 'Projekt,Beta,Gama',
+  'filtr „jen bez smlouvy" nechá entity bez toho tagu', matice.poFiltru);
+ok(soucet, /Projekt/.test(matice.poFiltru),
+  'entita, ze které matice vychází, zůstává vidět i když tag má (je to kotva)', matice.poFiltru);
+ok(soucet, /jen entity bez tagu/.test(matice.popis) && /3 z 5/.test(matice.popis),
+  'pruh říká, podle čeho se filtruje a kolik řádků zbylo', matice.popis);
+ok(soucet, matice.pruhVidet === true, 'pruh s filtrem je vidět');
+ok(soucet, matice.poZaskrtnuti === 'Projekt,Beta,Gama',
+  'zaškrtnutí buňky řádek NESCHOVÁ — filtr se nepřepočítává průběžně', matice.poZaskrtnuti);
+ok(soucet, matice.poPrepoctu === 'Projekt,Beta',
+  'teprve Přepočítat řádek schová', matice.poPrepoctu);
+ok(soucet, matice.dvaFiltry === 'Projekt',
+  'dva filtry naráz znamenají „bez obojího"', matice.dvaFiltry);
+ok(soucet, /a zároveň/.test(matice.popisDvou),
+  'a pruh to tak i popisuje', matice.popisDvou);
+ok(soucet, matice.poZruseni.split(',').length === 5, 'Zrušit filtr vrátí všechny řádky', matice.poZruseni);
+ok(soucet, matice.pruhPoZruseni === false, 'a pruh zmizí');
+ok(soucet, matice.zaskrtnutychFiltru === 0, 'Zrušit filtr odškrtne i zaškrtávátka v hlavičkách', matice.zaskrtnutychFiltru);
+
+nadpis('Šipky přeskakují skryté řádky');
+const sipkyFiltr = await stranka.evaluate(async () => {
+  const th = Array.from(document.querySelectorAll('.tm-tabulka th.tm-sloupec'));
+  const iSml = th.findIndex(x => x.querySelector('.tm-tag').textContent === 'smlouva');
+  const cb = document.querySelector('input[data-tm-filtr="' + iSml + '"]');
+  cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true }));
+  await new Promise(z => setTimeout(z, 200));
+  const start = document.querySelector('input[data-tm-r="0"][data-tm-s="0"]');
+  start.focus();
+  document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  const a = document.activeElement;
+  const tr = a.closest('tr');
+  return { radek: a.dataset.tmR, skryty: tr.classList.contains('tm-skryty'),
+           nazev: tr.querySelector('th').textContent.split(' ')[0] };
+});
+ok(soucet, sipkyFiltr.skryty === false,
+  'šipka dolů skočí na viditelný řádek, ne do schovaného', sipkyFiltr);
+
+nadpis('Uložení zapíše i to, co bylo zaškrtnuté pod filtrem');
+const poUlozeni = await stranka.evaluate(async () => {
+  document.getElementById('tm-ulozit').click();
+  await new Promise(z => setTimeout(z, 500));
+  return { gama: (findEntity('c').tags || []).join('|'),
+           mimo: (findEntity('mimo').tags || []).join('|'),
+           alfa: (findEntity('a').tags || []).join('|') };
+});
+ok(soucet, poUlozeni.gama === 'smlouva', 'tag zaškrtnutý pod filtrem se uložil', poUlozeni);
+ok(soucet, poUlozeni.mimo === 'smlouva|porada', 'kanárek mimo okolí je nedotčený', poUlozeni);
+ok(soucet, poUlozeni.alfa === 'smlouva|porada', 'kanárek uvnitř okolí beze změn je nedotčený', poUlozeni);
+
 await prohlizec.close();
 process.exit(uzavri(soucet));

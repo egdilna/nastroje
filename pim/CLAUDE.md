@@ -280,15 +280,25 @@ Je to **jen v aplikaci**, ne v šabloně prohlížeče.
 
 Hlídá to `pim/testy/tagy-pri-zalozeni.mjs`.
 
-## Rychlá úprava tagů entity (klávesa L)
+## Rychlý výběr ze seznamu: tagy (L) a aspekty (K)
 
-`openQuickTagEditor(entityId)` je seznam tagů se zaškrtávátky pro **jednu** entitu.
-Otevírá ho klávesa `l` (v detailu v read módu i nad řádkem v tabulce entit),
-tlačítko `#btn-tags` v liště detailu a příkaz v paletě — jedna funkce, tři vstupy.
+`otevriRychlyVyber(opts)` je **jeden** dialog „zaškrtej, co k entitě patří".
+Staví na něm `openQuickTagEditor()` (klávesa `l`, `#btn-tags`) i
+`openQuickAspectEditor()` (klávesa `k`, `#btn-aspects`); obojí navíc z palety
+a z tabulky entit (`l` / `a` nad označeným řádkem). Dvě kopie téhož seznamu by
+se dřív nebo později rozešly.
 
-Dřív to bylo textové pole s čárkami, dostupné **jen** z tabulky entit. K ničemu:
-tag se musel napsat přesně (překlep = nový tag) a ze stovky existujících si
-uživatel nemohl vybrat, jen si je přečíst pod polem.
+Volající dodá `prirazene` a `ostatni` **už seřazené** a řekne, jestli jde zakládat
+nové položky (`umoznitNove`). U tagů ano (`normalizuj: normalizeTag`), u aspektů
+ne — vlastní aspekt se zakládá v Nastavení, kde se mu dají pole.
+
+Dřív to byla dvě textová pole: u tagů čárkami oddělený seznam, u aspektů
+zaškrtávátka bez filtru a bez pořadí. Oboje dostupné **jen** z tabulky entit.
+
+**Volba kláves není libovolná.** `a` je v detailu anotační režim a `Shift+A`
+navigace na pohled Vše (`shiftNavMap` v `setupKeyboard()` — ta mapa spolkne
+**každé** Shift+písmeno, které v ní je, takže se do ní musí sáhnout, kdo chce
+Shift+něco jinde). Proto aspekty na `k`: volné, ve slově „aspekt", hned vedle `l`.
 
 Tři pravidla:
 
@@ -303,15 +313,20 @@ Tři pravidla:
 
 Escape si dialog odchytává sám (`stopPropagation`), aby se zeptal na zahození
 rozdělané práce — globální handler v `setupKeyboard()` jinak zavře každý otevřený
-`<dialog>` rovnou. Po uložení se vrací fokus na `#btn-tags`, protože `render()`
-udělá z tlačítka nový prvek a fokus by spadl na `<body>`.
+`<dialog>` rovnou. Po uložení se vrací fokus na tlačítko, které dialog otevřelo
+(`opts.fokusPo`), protože `render()` z něj udělá nový prvek a fokus by spadl
+na `<body>`.
 
 Filtr jede přes `paletaNorm()` (bez diakritiky, bez velikosti písmen) — druhou
 normalizaci nepiš. Nové tagy jdou přes `normalizeTag()`, takže se ukládají malými.
 
+Odebrání aspektu **nemaže hodnoty jeho polí** — jen se přestanou zobrazovat.
+Dialog to říká nahlas; bez té věty to vypadá jako ztráta dat.
+
 Je to **jen v aplikaci**, ne v šabloně prohlížeče.
 
-Hlídá to `pim/testy/rychle-tagy.mjs` (kanárci na ostatní entity).
+Hlídá to `pim/testy/rychle-tagy.mjs` a `pim/testy/rychle-aspekty.mjs`
+(kanárci na ostatní entity).
 
 ## Tagová matice: rozdělaná práce stranou od dat
 
@@ -337,6 +352,19 @@ novou instanci aplikace s vlastním `db` načteným zvlášť z GitHubu — záp
 odtamtud by byl druhá, nesesynchronizovaná kopie dat. Proto modální `<dialog>`
 přes celou obrazovku ve stejné instanci. Escape je odchycený, aby nezahodil
 rozdělanou práci bez zeptání.
+
+**Filtr „jen bez" v hlavičce sloupce se schválně nepřepočítává průběžně.**
+Zaškrtávátko `data-tm-filtr` nechá v tabulce jen entity, které ten tag nemají,
+a stav se spočítá **v okamžiku zapnutí** (nebo tlačítkem Přepočítat). Kdyby se
+filtr aplikoval po každé změněné buňce, řádek by zmizel přesně ve chvíli, kdy
+mu tag přidáte — tedy když v něm chcete pokračovat. Víc zapnutých sloupců = AND
+(entita nemá ani jeden z nich). Entita, ze které matice vychází, zůstává vidět
+vždycky; je to kotva, ze které se tag rozšiřuje.
+
+Dvě pasti, na které se při tom naráží: selektor buněk musí být `input[data-tm-r]`,
+ne `input[type="checkbox"]` (jinak se filtrovací zaškrtávátka v hlavičce obsluhují
+jako buňky), a **šipky musí skryté řádky přeskakovat**, jinak fokus zmizí do
+neviditelného řádku a vypadá to, že se tabulka zasekla.
 
 Hlídá to `pim/testy/tagova-matice.mjs` (kanárci na entity mimo okolí i na
 nezměněné řádky).
