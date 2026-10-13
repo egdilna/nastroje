@@ -225,6 +225,24 @@ Uloží se jen to, co se opravdu změnilo: beze změn se entitě nezvedne ani
 Je to úprava tagů **jedné** entity. Na hromadnou práci nad jejím okolím je
 matice níž.
 
+## 🧩 Rychlá úprava aspektů entity
+
+Totéž pro aspekty: tlačítko **🧩 Aspekty** v liště detailu, klávesa <kbd>k</kbd>
+(v detailu) nebo příkaz **🧩 Aspekty entity…** v paletě.
+
+Proč zrovna <kbd>k</kbd>: <kbd>a</kbd> v detailu přepíná anotační režim
+a <kbd>Shift+A</kbd> je navigace na pohled „Vše". <kbd>k</kbd> je volné, je ve slově
+„as**pek**t" a leží hned vedle <kbd>l</kbd> pro tagy. **Nad označeným řádkem
+v tabulce entit** otevírá aspekty pořád <kbd>a</kbd>, jako dřív.
+
+Chová se stejně jako seznam tagů — přiřazené nahoře, ostatní podle četnosti, filtr,
+počítadlo, zápis až na Uložit. Dva rozdíly:
+
+- **Nové aspekty tudy nevznikají.** Vybírá se z nabídky; vlastní aspekt se zakládá
+  v Nastavení, kde se mu dají pole. Proto tu není tlačítko **+ Přidat**.
+- **Odebráním aspektu se hodnoty jeho polí nesmažou**, jen se přestanou zobrazovat.
+  Když si aspekt vrátíte, hodnoty tam pořád jsou.
+
 ## 🏷 Tagy vazeb (matice)
 
 Tlačítko **🏷 Tagy vazeb…** v sekci **Vazby** v detailu entity (a stejný příkaz
@@ -245,6 +263,21 @@ entity, které se opravdu změnily.
 
 Záhlaví řádků i sloupců se při posouvání drží na místě a po mřížce se dá chodit
 **šipkami**. Archivované entity se v matici nezobrazují.
+
+### Filtr „jen bez" v hlavičce sloupce
+
+Pod názvem každého tagu je zaškrtávátko **„jen bez"**. Zapnete ho a v tabulce
+zůstanou jen entity, které ten tag **nemají** — přesně ty, u kterých ho nejspíš
+chcete doplnit.
+
+**Nepřepočítává se průběžně.** Filtr se použije ve chvíli, kdy ho zapnete, a pak
+drží: co si zaškrtáte, zůstane vidět, takže se dá pokračovat. Když chcete seznam
+srovnat s aktuálním stavem, je na to tlačítko **↻ Přepočítat**; **✕ Zrušit filtr**
+vrátí všechny řádky.
+
+Zapnout jde víc sloupců naráz — pak zůstanou entity, které nemají **ani jeden**
+z vybraných tagů. Entita, ze které matice vychází (první řádek), zůstává vidět
+vždycky; je to kotva, ze které se tag rozšiřuje. Šipky skryté řádky přeskakují.
 
 ## Úkol, nebo událost? Rozhoduje čas v názvu
 

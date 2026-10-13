@@ -227,6 +227,24 @@ Only real changes are written: with nothing changed the entity does not even get
 This edits the tags of **one** entity. For working across its neighbourhood, see the
 matrix below.
 
+## 🧩 Quick aspect editing for an entity
+
+The same for aspects: the **🧩 Aspekty** button in the detail toolbar, the <kbd>k</kbd>
+key (in the detail) or the **🧩 Aspekty entity…** command in the palette.
+
+Why <kbd>k</kbd>: in the detail <kbd>a</kbd> toggles annotation mode and
+<kbd>Shift+A</kbd> navigates to the "Vše" view. <kbd>k</kbd> is free, it is in the word
+"as**pek**t" and it sits right next to <kbd>l</kbd> for tags. **Over a focused row in the
+entity table** aspects still open with <kbd>a</kbd>, as before.
+
+It behaves like the tag list — assigned at the top, the rest by frequency, a filter, a
+counter, nothing written until Uložit. Two differences:
+
+- **New aspects are not created here.** You pick from the list; a custom aspect is created
+  in Settings, where it gets its fields. Hence no **+ Přidat** button.
+- **Removing an aspect does not delete the values of its fields**, they just stop being
+  shown. Put the aspect back and the values are still there.
+
 ## 🏷 Link tags (matrix)
 
 The **🏷 Link tags…** button in the **Links** section of an entity detail (and the
@@ -247,6 +265,21 @@ was. Only entities that actually changed are written.
 
 Row and column headers stay in place while scrolling and the grid can be walked
 with the **arrow keys**. Archived entities are not shown in the matrix.
+
+### The "jen bez" filter in a column header
+
+Under each tag name there is a **„jen bez"** (only without) checkbox. Turn it on and the
+table keeps only the entities that do **not** have that tag — exactly the ones where you
+probably want to add it.
+
+**It does not re-filter continuously.** The filter is applied the moment you switch it on
+and then holds: what you tick stays visible, so you can keep going. To line the list up
+with the current state there is a **↻ Přepočítat** button; **✕ Zrušit filtr** brings all
+rows back.
+
+Several columns can be on at once — then the entities left are those that have **none** of
+the selected tags. The entity the matrix is built around (the first row) always stays
+visible; it is the anchor the tag spreads from. The arrow keys skip hidden rows.
 
 ## Task or event? The time in the title decides
 

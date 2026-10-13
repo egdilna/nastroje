@@ -29,19 +29,19 @@ const KANARCI = 'k1:smlouva|projekt-a|porada k2:smlouva|porada k3:smlouva';
 const stavDialogu = () => stranka.evaluate(() => {
   const d = document.getElementById('quick-tag-dialog');
   if (!d || !d.open) return null;
-  const grp = (id) => Array.from(document.querySelectorAll('#' + id + ' .qte-polozka'))
-    .map(l => ({ tag: l.dataset.qteTag, zaskrtnuto: l.querySelector('input').checked,
-                 skryto: l.classList.contains('qte-skryto'),
-                 pocet: l.querySelector('.qte-pocet') ? l.querySelector('.qte-pocet').textContent : '' }));
-  return { titulek: document.getElementById('qte-title').textContent,
-    prirazene: grp('qte-prirazene'), ostatni: grp('qte-ostatni'),
-    stav: document.getElementById('qte-stav').textContent,
+  const grp = (id) => Array.from(document.querySelectorAll('#' + id + ' .rv-polozka'))
+    .map(l => ({ tag: l.dataset.rvKlic, zaskrtnuto: l.querySelector('input').checked,
+                 skryto: l.classList.contains('rv-skryto'),
+                 pocet: l.querySelector('.rv-pocet') ? l.querySelector('.rv-pocet').textContent : '' }));
+  return { titulek: document.getElementById('rv-title').textContent,
+    prirazene: grp('rv-prirazene'), ostatni: grp('rv-ostatni'),
+    stav: document.getElementById('rv-stav').textContent,
     fokus: document.activeElement ? document.activeElement.id : '',
-    prazdno: !document.getElementById('qte-prazdno').hidden,
-    hlavickaOstatni: document.getElementById('qte-h-ostatni').hidden };
+    prazdno: !document.getElementById('rv-prazdno').hidden,
+    hlavickaOstatni: document.getElementById('rv-h-ostatni').hidden };
 });
 const zaskrtni = (tag, hodnota) => stranka.evaluate(({ tag, hodnota }) => {
-  const l = Array.from(document.querySelectorAll('.qte-polozka')).find(x => x.dataset.qteTag === tag);
+  const l = Array.from(document.querySelectorAll('.rv-polozka')).find(x => x.dataset.rvKlic === tag);
   if (!l) return false;
   const cb = l.querySelector('input');
   cb.checked = hodnota;
@@ -68,7 +68,7 @@ await stranka.keyboard.press('l');
 await stranka.waitForTimeout(400);
 let s = await stavDialogu();
 ok(soucet, !!s, 'dialog se otevřel', s);
-ok(soucet, s && s.fokus === 'qte-filtr', 'fokus je rovnou ve filtru', s && s.fokus);
+ok(soucet, s && s.fokus === 'rv-filtr', 'fokus je rovnou ve filtru', s && s.fokus);
 ok(soucet, s && s.titulek.includes('Hlavní entita'), 'v titulku je název entity', s && s.titulek);
 
 nadpis('Přiřazené nahoře, ostatní podle četnosti');
@@ -87,21 +87,21 @@ ok(soucet, s && s.stav === '2 přiřazeno · beze změn',
 
 // ---------- Filtr ----------
 nadpis('Filtr nerozlišuje diakritiku a skrývá prázdné skupiny');
-await stranka.fill('#qte-filtr', 'úrg');
+await stranka.fill('#rv-filtr', 'úrg');
 await stranka.waitForTimeout(250);
 s = await stavDialogu();
 ok(soucet, s && s.prirazene.filter(p => !p.skryto).map(p => p.tag).join(',') === 'urgentni',
   '„úrg" najde „urgentni" i bez shody diakritiky', s && s.prirazene);
 ok(soucet, s && s.hlavickaOstatni === true,
   'hlavička skupiny bez viditelné položky se schová', s && s.hlavickaOstatni);
-await stranka.fill('#qte-filtr', 'xyzneni');
+await stranka.fill('#rv-filtr', 'xyzneni');
 await stranka.waitForTimeout(250);
 s = await stavDialogu();
 ok(soucet, s && s.prazdno === true,
   'u neexistujícího tagu se nabídne vyrobit nový', s && s.prazdno);
 
 nadpis('Enter přepne jedinou nalezenou položku');
-await stranka.fill('#qte-filtr', 'urgent');
+await stranka.fill('#rv-filtr', 'urgent');
 await stranka.waitForTimeout(200);
 await stranka.keyboard.press('Enter');
 await stranka.waitForTimeout(300);
@@ -109,10 +109,10 @@ s = await stavDialogu();
 ok(soucet, s && s.prirazene.find(p => p.tag === 'urgentni').zaskrtnuto === false,
   'Enter nad jedinou shodou tag odškrtne (jde tak i odebírat)', s && s.prirazene);
 ok(soucet, s && s.stav === '1 přiřazeno · −1', 'počítadlo ukazuje −1', s && s.stav);
-ok(soucet, await stranka.inputValue('#qte-filtr') === '', 'filtr se po Enteru vyprázdní');
+ok(soucet, await stranka.inputValue('#rv-filtr') === '', 'filtr se po Enteru vyprázdní');
 
 nadpis('Nový tag se přidá zaškrtnutý a normalizovaný');
-await stranka.fill('#qte-filtr', 'Nový-TAG');
+await stranka.fill('#rv-filtr', 'Nový-TAG');
 await stranka.keyboard.press('Enter');
 await stranka.waitForTimeout(300);
 s = await stavDialogu();
@@ -136,7 +136,7 @@ ok(soucet, (await kanarci()) === KANARCI, 'kanárci: ostatní entity nedotčené
 // ---------- Uložení ----------
 nadpis('Uložit zapíše a vrátí fokus na tlačítko');
 const pred = await stranka.evaluate(() => findEntity('x').updated_at);
-await stranka.click('#qte-save');
+await stranka.click('#rv-save');
 await stranka.waitForTimeout(600);
 const poUlozeni = await stranka.evaluate(() => ({
   tagy: findEntity('x').tags, updated: findEntity('x').updated_at,
@@ -157,7 +157,7 @@ await stranka.waitForTimeout(400);
 await zaskrtni('porada', true);
 await zaskrtni('projekt-a', false);
 await stranka.waitForTimeout(200);
-await stranka.click('#qte-cancel');
+await stranka.click('#rv-cancel');
 await stranka.waitForTimeout(400);
 ok(soucet, (await stranka.evaluate(() => findEntity('x').tags.join(','))) === 'projekt-a,nový-tag,smlouva',
   'po Zrušit zůstaly tagy nezměněné');
@@ -167,7 +167,7 @@ nadpis('Uložení beze změn nezvedne updated_at');
 const pred2 = await stranka.evaluate(() => findEntity('x').updated_at);
 await stranka.evaluate(() => openQuickTagEditor('x'));
 await stranka.waitForTimeout(400);
-await stranka.click('#qte-save');
+await stranka.click('#rv-save');
 await stranka.waitForTimeout(400);
 ok(soucet, (await stranka.evaluate(() => findEntity('x').updated_at)) === pred2,
   'beze změn se do dat nezapisuje vůbec');
@@ -219,7 +219,7 @@ const zTabulky = await stranka.evaluate(async () => {
   tr.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', bubbles: true }));
   await new Promise(z => setTimeout(z, 400));
   const d = document.getElementById('quick-tag-dialog');
-  return d && d.open ? document.getElementById('qte-title').textContent : '(neotevřelo se)';
+  return d && d.open ? document.getElementById('rv-title').textContent : '(neotevřelo se)';
 });
 ok(soucet, /Tagy:/.test(zTabulky), 'i z tabulky entit otevře L týž dialog', zTabulky);
 
