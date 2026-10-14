@@ -4660,6 +4660,8 @@ return w;
 function exportScopeEntities(scope,preselected){
 if(scope==='selection'&&preselected&&preselected.length)return preselected.slice();
 if(scope==='all')return state.data.entities.filter(e=>!e.archived);
+const zPohledu=entityRozsahuPohledu(scope);
+if(zPohledu)return zPohledu;
 return getList();
 }
 
@@ -4786,6 +4788,19 @@ const pocetVRozsahu=sc=>{try{return exportScopeEntities(sc,preselected).length}c
 if(jeSeznam)so.push(['view',t('jsonScopeFiltered')+' — '+entityCountLabel(pocetVRozsahu('view'))]);
 so.push(['all',t('jsonScopeAll')+' — '+entityCountLabel(pocetVRozsahu('all'))]);
 so.forEach(([v,l])=>{const o=document.createElement('option');o.value=v;o.textContent=l;if(v===def)o.selected=true;selScope.appendChild(o)});
+/* Uložené pohledy jako rozsah: pohled je pojmenovaný filtr, takže „vyexportuj
+   tenhle pohled" je přesně to, co od něj člověk čeká — a jde to i odjinud než
+   ze seznamu, kde je volba „zobrazený seznam" schovaná. */
+const pohledy=state.data.savedViews||[];
+if(pohledy.length){
+const og=document.createElement('optgroup');og.label=t('settingsViews');
+pohledy.forEach(sv=>{
+const o=document.createElement('option');o.value='sv:'+sv.id;
+o.textContent=(sv.icon||'⭐')+' '+sv.name+' — '+entityCountLabel(pocetVRozsahu('sv:'+sv.id));
+og.appendChild(o);
+});
+selScope.appendChild(og);
+}
 fScope.appendChild(selScope);
 const nScope=document.createElement('small');nScope.className='fhint';fScope.appendChild(nScope);
 body.appendChild(fScope);
@@ -6208,17 +6223,37 @@ default:return null;
 }
 }
 /* Počítá se toutéž cestou jako samotný seznam, ať se počet a obsah nerozejdou. */
-function pocetUlozenehoPohledu(sv){
+/* Entity uloženého pohledu = **spuštění jeho filtru**. Jiná cesta k nim nevede:
+   pohled je uložený filtr, ne uložený seznam. Filtry i pohled se na chvíli
+   podstrčí a v `finally` vrátí — `state.view` se přitom kopíruje, protože
+   `getList` si do něj u záložky „naposledy" zapisuje ořez.
+   Zobrazení pohledu (sloupce, režim, sekce) se tu **nebere**; tohle je seznam
+   entit, ne obrazovka. */
+function entityUlozenehoPohledu(sv){
+if(!sv||!sv.filter)return null;
 const zF=state.filters,zV=state.view;
 try{
-state.filters={search:sv.filter.search||'',sort:'updated',filterAspect:sv.filter.filterAspect||'',
+state.filters={search:sv.filter.search||'',sort:sv.sort||'updated',filterAspect:sv.filter.filterAspect||'',
 filterType:sv.filter.filterType||'',filterUpdated:sv.filter.filterUpdated||'',
 tagFilter:sv.filter.tagFilter?JSON.parse(JSON.stringify(sv.filter.tagFilter)):null,
 attrFilters:JSON.parse(JSON.stringify(sv.filter.attrFilters||[]))};
 state.view=Object.assign({},zV,{name:'list',tab:sv.tab||'all'});
-return getList().length;
-}catch(e){dbg('Počet uloženého pohledu selhal: '+e.message,true);return null}
+return getList();
+}catch(e){dbg('Seznam uloženého pohledu selhal: '+e.message,true);return null}
 finally{state.filters=zF;state.view=zV}
+}
+function pocetUlozenehoPohledu(sv){
+const l=entityUlozenehoPohledu(sv);
+return l?l.length:null;
+}
+/* Rozsah exportu zapsaný jako `sv:<id>`. Vrací **null**, když to uložený pohled
+   není (volající pak jede svou původní větví), a prázdné pole, když pohled
+   zmizel — rozsah, který ukazuje na nic, nesmí tiše spadnout na celý projekt. */
+function entityRozsahuPohledu(scope){
+if(typeof scope!=='string'||scope.indexOf('sv:')!==0)return null;
+const sv=(state.data.savedViews||[]).find(x=>x.id===scope.slice(3));
+if(!sv)return[];
+return entityUlozenehoPohledu(sv)||[];
 }
 
 /* Ukazuje právě zobrazený pohled totéž co tahle záložka? */
@@ -17045,8 +17080,10 @@ keyOverrides:{},vynechane:[]};
 /* Entity podle zvoleného rozsahu. */
 function jsonExportEntities(cfg,preset){
 let ents;
+const zPohledu=entityRozsahuPohledu(cfg.scope);
 if(cfg.scope==='selected'&&preset&&preset.length)ents=preset.slice();
 else if(cfg.scope==='all')ents=state.data.entities.filter(e=>!e.archived);
+else if(zPohledu)ents=zPohledu;
 else ents=getList();
 if(cfg.typeIds&&cfg.typeIds.length){
 const set=new Set(cfg.typeIds);
@@ -17870,6 +17907,9 @@ const sf=jsonWizFld(t('jsonScope'));
 if(skipScope)sf.style.display='none';
 const opts=[['filtered',t('jsonScopeFiltered')],['all',t('jsonScopeAll')]];
 if(jsonWiz.preset&&jsonWiz.preset.length)opts.unshift(['selected',t('jsonScopeSelected',{n:jsonWiz.preset.length})]);
+/* Tytéž uložené pohledy jako v dialogu Export — jedna otázka nesmí mít dvě
+   různé odpovědi podle toho, kterými dveřmi uživatel přišel. */
+(state.data.savedViews||[]).forEach(sv=>opts.push(['sv:'+sv.id,(sv.icon||'⭐')+' '+sv.name]));
 opts.forEach(([v,l])=>{
 const r=document.createElement('label');r.style.display='flex';r.style.gap='.4rem';r.style.marginBottom='.25rem';r.style.cursor='pointer';
 const inp=document.createElement('input');inp.type='radio';inp.name='json-scope';inp.value=v;if(cfg.scope===v)inp.checked=true;

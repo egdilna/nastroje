@@ -1809,13 +1809,22 @@ Většina exportů níže je datová. Model se exportuje z jednoho místa — **
 
 **Všechno kromě uložení projektu vede jedním tlačítkem: 📤 Export dat.** Otevřeš ho tlačítkem
 **Export** v hlavičce, hromadnou akcí **📤 Export dat** nad výběrem, nebo z rychlé palety.
-V dialogu si vybereš **rozsah** (vybrané entity / zobrazený seznam / celý projekt) a **cíl**:
+V dialogu si vybereš **rozsah** (vybrané entity / zobrazený seznam / **uložený pohled** /
+celý projekt) a **cíl**:
 
 **Výchozí rozsah se řídí tím, odkud jsi Export otevřel.** Máš-li něco vybrané v režimu
 výběru, platí výběr. Jsi-li v detailu nebo v editaci entity, je výchozí **právě ta entita**
 („Otevřená entita: Smlouva o dílo") — ne poslední filtr seznamu. Jinak platí zobrazený
 seznam, a když je prázdný, celý projekt. U rozsahu je vždycky vypsané, kolik entit z něj
 vypadne. „Zobrazený seznam" se nabízí jen tehdy, když jsi opravdu nad seznamem.
+
+**Uložené pohledy** (kap. 11.5) jsou v nabídce ve vlastní skupině, s ikonou, názvem
+a počtem entit. Pohled je pojmenovaný filtr, takže „vyexportuj tohle" je přesně to, co od
+něj čekáš — a na rozdíl od „zobrazeného seznamu" na něj dosáhneš odkudkoli, třeba z detailu
+entity nebo z nastavení. Bere se jen **seznam entit, který pohled vyfiltruje**; jeho
+zobrazení (sloupce tabulky, režim, řazení v liště) do exportu nevstupuje — co se vypíše,
+si vybíráš v cíli. Když pohled mezitím někdo smazal, rozsah je prázdný; nikdy se tiše
+nepřeloží na celý projekt.
 
 | Cíl | Formáty | K čemu |
 |---|---|---|
@@ -2185,9 +2194,10 @@ průvodce se na něj tedy podruhé neptá a začne rovnou volbou typů.
 
 ### 26.3 Průvodce
 
-**Krok 1 — Rozsah.** Vybrané entity / aktuálně zobrazený seznam / celý projekt (bez archivu),
-plus zaškrtání typů. Entity bez typu (Inbox) se dají přibrat do kolekce `_bez_typu`.
-Nahoře se dá načíst uložený **profil exportu**.
+**Krok 1 — Rozsah.** Vybrané entity / aktuálně zobrazený seznam / **uložený pohled** /
+celý projekt (bez archivu), plus zaškrtání typů. Entity bez typu (Inbox) se dají přibrat
+do kolekce `_bez_typu`. Nahoře se dá načíst uložený **profil exportu**. Když průvodce
+otevřeš z dialogu Export, rozsah už padl tam a tenhle krok je jen o typech.
 
 **Krok 2 — Pole a klíče.** Styl klíčů (`snake_case` výchozí, nebo `camelCase`) a jazyk
 systémových polí (česky `nazev`/`typ`/`vazby`, nebo anglicky `name`/`type`/`relations`).

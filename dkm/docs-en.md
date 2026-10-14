@@ -1831,7 +1831,8 @@ database.
 
 **Everything except saving the project goes through one button: 📤 Export data.** Open it with
 **Export** in the header, with the **📤 Export data** bulk action over a selection, or from the
-quick palette. In the dialog you pick a **scope** (selected entities / the displayed list / the
+quick palette. In the dialog you pick a **scope** (selected entities / the displayed list /
+a **saved view** / the
 whole project) and a **target**:
 
 **The default scope follows where you opened Export from.** If something is selected in
@@ -1839,6 +1840,14 @@ selection mode, the selection wins. If you are in an entity detail or editor, th
 **that entity** ("Open entity: Service contract") — not the last list filter. Otherwise it is
 the displayed list, and when that is empty, the whole project. Every scope shows how many
 entities it yields, and "the displayed list" is offered only when you are actually over a list.
+
+**Saved views** (ch. 11.5) sit in the list in a group of their own, with their icon, name and
+entity count. A view is a named filter, so "export this one" is exactly what you expect from
+it — and unlike "the displayed list" you can reach it from anywhere, from an entity detail or
+from settings. Only the **list of entities the view filters out** is taken; its display
+(table columns, mode, sorting) plays no part in the export — what gets written is chosen in
+the target. If the view has been deleted in the meantime, the scope is empty; it never
+quietly falls back to the whole project.
 
 | Target | Formats | What for |
 |---|---|---|
@@ -2218,9 +2227,11 @@ already chosen there, so the wizard does not ask again and starts with the type 
 
 ### 26.3 The wizard
 
-**Step 1 — Scope.** Selected entities / currently displayed list / whole project (without
-archive), plus type checkboxes. Untyped entities (Inbox) can be added into the `_bez_typu`
-collection. A saved **export profile** can be loaded at the top.
+**Step 1 — Scope.** Selected entities / currently displayed list / a **saved view** / whole
+project (without archive), plus type checkboxes. Untyped entities (Inbox) can be added into
+the `_bez_typu` collection. A saved **export profile** can be loaded at the top. When you open
+the wizard from the Export dialog, the scope was settled there and this step is only about
+types.
 
 **Step 2 — Fields and keys.** Key style (`snake_case` by default, or `camelCase`) and the
 language of system fields (Czech `nazev`/`typ`/`vazby`, or English `name`/`type`/`relations`).
