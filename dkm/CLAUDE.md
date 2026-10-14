@@ -1250,6 +1250,18 @@ tam bylo navíc podmíněné existencí pravidla, takže kdo si seznam vyladil l
 neměl ho čím uložit.
 
 ## Export: výchozí rozsah
+**Uložený pohled je čtvrtý rozsah** (`sv:<id>` v `exportScopeEntities` i v
+`jsonExportEntities`, obojí přes `entityRozsahuPohledu`). Entity pohledu umí jedině
+`entityUlozenehoPohledu(sv)` — **spustí jeho filtr**, protože pohled je uložený filtr,
+ne uložený seznam; `pocetUlozenehoPohledu` z ní jen počítá délku. Podstrčené
+`state.filters` / `state.view` se vrací ve `finally` a `state.view` se **kopíruje**
+(`getList` si do něj u záložky „naposledy" zapisuje ořez). Zobrazení pohledu (sloupce,
+režim) se **nebere** — rozsah je seznam entit, ne obrazovka; co se vypíše, řeší cíl.
+Pohled, který zmizel, dá **prázdný rozsah**, nikdy celý projekt (proto `entityRozsahuPohledu`
+vrací `null` jen pro „tohle není pohled"). Nabídka je na dvou místech, protože průvodce
+JSON/XML jde otevřít i mimo dialog Export (tlačítko `{ }` v liště seznamu) — jedna otázka
+nesmí mít dvě odpovědi podle dveří.
+
 `exportPredvyber()` je jediné místo, které rozhoduje, co Export nabídne jako výchozí —
 výběr v režimu výběru, jinak otevřená entita, jinak nic. Volá ho tlačítko v hlavičce
 i paleta; nový vstup do `openExportHub` má jít přes něj, ne přes `bulkSelectedEntities()`.
