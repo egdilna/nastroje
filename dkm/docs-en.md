@@ -684,6 +684,8 @@ Parties: ((Parties)) — [Details on the web](((Web)))
   the type in parentheses stays, because there it tells two entities of the same name apart.
 - The template tolerates quotes, apostrophes and Markdown links. A parenthesis cannot go
   inside `((…))` — precisely so that it does not clash with `[text](address)`.
+- **Across a relation** you can reach a value on the entity at the other end:
+  `((Applicant -> Authority))`. See below.
 - A composed attribute cannot reference another composed one; such a placeholder stays empty.
 
 **Where it renders:** in the entity detail, in a document export and in print, in the offline
@@ -714,14 +716,54 @@ change date so does `((změněno))`.
 **An attribute of the same name wins.** If you create an attribute called *Type* on the type,
 `((type))` inserts its value, not the entity type's name — your model outranks this.
 
+#### A value from the other end of a relation
+
+Often the entity does not hold the value itself — whoever it points at does: an application
+has an applicant, and only the applicant has the authority. That is what the **arrow** is for:
+
+```
+((Applicant -> Authority))
+```
+
+Left of the arrow is the **name of the relation**, right of it the **field on the target
+entity**. Both `->` and `→` work, and the spaces are optional. A slash cannot be used here,
+it means something else (`((File / Number))` = an aspect of the same entity).
+
+Three things may stand on the left, and **everything by that name** is taken:
+
+| What you write | What it takes |
+|---|---|
+| the name of a **relation attribute** (`((Applicant -> Authority))`) | the entities that attribute points at |
+| the name of a **relation type** (`((filed -> Authority))`) | the targets of that relation, **outgoing** |
+| the **inverse name** of a relation type (`((filed an application -> Number))`) | the entities pointing **here** |
+
+On the right you can put a plain attribute, an aspect attribute qualified
+(`((Applicant -> File / Mark))`) or an entity metadata field (`((Applicant -> name))`).
+
+The rules that follow from it:
+
+- **Several targets = values separated by commas**, and identical values are not repeated
+  (two applicants from the same city give "Brno", not "Brno, Brno").
+- **One hop only.** A composed attribute at the other end is not evaluated and stays empty —
+  two entities could reference each other and the recomputation would loop.
+- **An archived entity does not count**, and a `[[Name]]` wiki mention in text is not a
+  relation: a link in a note is not a relationship in the model.
+- It holds **everywhere a composed attribute is computed** — in the detail, in a composed
+  entity name, in the table, in exports, in the text generator, in a detail template and in
+  the offline viewer.
+
 #### Checking as you type
 
 Below the template field, whatever does not add up is listed as you write:
 
-- **Not found** — no such attribute or metadata field exists in the project. Almost always a typo.
+- **Not found** — no such attribute or metadata field exists in the project; with the arrow
+  notation, also that no relation by that name exists. Almost always a typo.
 - **Will not render** — a reference to another composed attribute, or to itself; it stays empty.
-- **Only filled in on entities that have the field** — the attribute exists but belongs to
-  another type or aspect. On entities without it the spot stays empty.
+- **A field of another entity type — it will never be on this one** — the attribute exists but
+  belongs to another **type**. There will be no value here under any circumstances, so the way
+  across the relation is offered right away: *try `((Applicant -> Authority))`*.
+- **Only some entities have it — an aspect or a custom attribute** — the field exists and this
+  entity may or may not carry it. On those without it the spot stays empty.
 
 Without these notes a typo would only show up on the entity, where all it leaves is a blank.
 

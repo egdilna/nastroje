@@ -436,7 +436,21 @@ kvůli tomu, co uvidí člověk, má jít přes něj, ne přes `e.attributes[id]
 - Placeholder je `((pole))`. Regulární výraz **nesmí pustit závorku dovnitř**, jinak si
   nerozumí s odkazem `[text](adresa)`.
 - Nekvalifikovaný název se hledá nejdřív u vlastníka definice (`vlastnikAtributu`),
-  pak kdekoli u entity; kvalifikovaně `((Zdroj / Atribut))`.
+  pak kdekoli u entity; kvalifikovaně `((Zdroj / Atribut))`. Obojí hledá
+  `najdiPoleProSlozeny(pole,k,vlastnikId)` — **jedna funkce**, protože totéž hledání
+  potřebuje i skok přes vazbu, jen nad druhou entitou.
+- **Skok přes vazbu `((Vazba -> Pole))`** (`rozdelPresVazbu` + `cileVazby` +
+  `hodnotaPresVazbu`). Vlevo se bere **všechno, co se tak jmenuje**: vazební atribut, typ
+  vazby (ven) i jeho opačné jméno (dovnitř) — táž sémantika jako filtr `type:` v bloku
+  vazeb. Wiki zmínky **ne** (odkaz v textu je poznámka, ne vazba modelu — stejně jako
+  u `sousedeEntity`). Víc cílů se spojí čárkou a shodné hodnoty se nezdvojují.
+  **Jen jedno patro**: složený atribut na druhém konci se nevyhodnocuje, jinak se dvě
+  entity odkazující se navzájem zacyklí. Lomítko tu použít nejde, to je kvalifikace
+  uvnitř entity; proto šipka (`->` i `→`).
+- **Prohlížeč má vlastní kopii `slozenyText`** a složené atributy počítá sám (na rozdíl
+  od šablony detailu, kterou dostane předpočítanou). Když měníš pravidla dosazování,
+  **projdi i šablonu prohlížeče** — jinak se soubor pro příjemce chová jinak než aplikace.
+  Přesně proto tam skok přes vazbu musel být zvlášť.
 - Sází se **jako víceřádkový Markdown**, tedy všude tam, kde se tak sází `textarea`
   (detail, md/html/docx export, prohlížeč). Přidáváš-li nový výstup, přidej obojí.
 - **V datových exportech (JSON/XML) je** — vydává se vyhodnocená hodnota, protože přesně
@@ -456,6 +470,13 @@ kvůli tomu, co uvidí člověk, má jít přes něj, ne přes `e.attributes[id]
 - **`rozborSablony` je jen pro editor.** Entita tam žádná není, takže hledá napříč celým
   modelem a vlastními atributy všech entit a rozlišuje „nenajde se" od „je jinde". Nikdy
   z něj nepočítej, co se vysází — na to je `slozenyText`.
+- **„Je jinde" se rozpadlo na dvě hlášky**, protože ta původní lhala. Když pole leží na
+  **jiném typu entity** a vlastník šablony je typ, hodnota tam nebude **nikdy** — hlásí se
+  to zvlášť (`out.jinyTyp`) a rovnou s návrhem zápisu přes vazbu (`navrhVazbyMeziTypy`:
+  vazební atribut mířící na ten typ, jinak přípustný typ vazby). `out.jinde` zůstalo tomu,
+  co entita **mít může a nemusí** — aspekt nebo vlastní atribut. Uživatel na tom ztroskotal:
+  „správně mě to upozorní, že se to vyplní jen u těch co to mají žadatel. Aaaaale ono nic."
+  Hláška, která zní jako „někdy to vyjde" tam, kde to nevyjde nikdy, je horší než žádná.
 
 ## Samočíslující číslo není další typ atributu
 `a.autoInc` + `a.posledni` na definici atributu typu `number` — **ne nová položka
