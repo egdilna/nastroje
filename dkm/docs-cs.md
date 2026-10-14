@@ -672,6 +672,7 @@ Strany: ((Strany)) — [Detail na webu](((Web)))
   čárkou), u tagů tagy oddělené čárkou, u data datum ve zvyklém tvaru. **Vazba se tu sází
   jen názvem**, bez typu v závorce — šablona je věta, kterou píše člověk, a „(Osoba)" navíc
   by ji rozbilo. Jinde v aplikaci typ v závorce zůstává, tam odlišuje dvě entity téhož jména.
+- **Přes vazbu** sáhneš na hodnotu u entity na druhém konci: `((Žadatel -> OVM))`. Viz níž.
 - Šablona snese uvozovky, apostrofy i odkazy v Markdownu. Závorku dovnitř `((…))` dát nejde
   — právě proto, aby si to nerozumělo s `[text](adresa)`.
 - Odkazovat ze složeného na jiný složený nejde; takový placeholder zůstane prázdný.
@@ -703,14 +704,53 @@ s diakritikou projde i zápis bez ní (`((vytvoreno))`), u data úpravy i `((zm�
 **Atribut stejného jména má přednost.** Když si na typu založíš atribut *Typ*, `((typ))`
 vloží jeho hodnotu, ne název typu entity — tvůj model je víc než tohle.
 
+#### Hodnota z druhého konce vazby
+
+Entita často nemá hodnotu u sebe, ale u toho, na koho se odkazuje: žádost má žadatele
+a teprve žadatel má OVM. Na to je **šipka**:
+
+```
+((Žadatel -> OVM))
+```
+
+Vlevo od šipky je **název vazby**, vpravo **pole cílové entity**. Píše se `->` i `→`,
+mezery kolem nejsou povinné. Lomítko se tu použít nedá, to znamená něco jiného
+(`((Spis / Číslo))` = aspekt téže entity).
+
+Vlevo smí stát trojí a bere se **všechno, co se tak jmenuje**:
+
+| Co napíšeš | Co to vezme |
+|---|---|
+| název **vazebního atributu** (`((Žadatel -> OVM))`) | entity, na které ten atribut ukazuje |
+| název **typu vazby** (`((podal -> OVM))`) | cíle té vazby směrem **ven** |
+| **opačný název** typu vazby (`((podal žádost -> Číslo))`) | entity, které vedou vazbu **sem** |
+
+Vpravo může být obyčejný atribut, atribut aspektu kvalifikovaně (`((Žadatel -> Spis / Značka))`)
+i metadatum entity (`((Žadatel -> název))`).
+
+Pravidla, která z toho plynou:
+
+- **Víc cílů = hodnoty oddělené čárkou**, stejné hodnoty se neopakují (dva žadatelé z téhož
+  města dají „Město Brno", ne „Město Brno, Město Brno").
+- **Jde jen o jedno patro.** Složený atribut na druhém konci se nevyhodnocuje a zůstane
+  prázdný — dvě entity by se mohly odkazovat navzájem a přepočet by se zacyklil.
+- **Archivovaná entita se nepočítá** a wiki zmínka `[[Název]]` v textu není vazba: odkaz
+  v poznámce není vztah modelu.
+- Platí to **všude, kde se složený atribut počítá** — v detailu, ve skládaném názvu entity,
+  v tabulce, v exportech, v generátoru textu, v šabloně detailu i v offline prohlížeči.
+
 #### Kontrola při psaní
 
 Pod polem se šablonou průběžně vypisuje, co v ní nesedí:
 
-- **Nenajde se** — takový atribut ani metadatum v projektu není. Skoro vždycky překlep.
+- **Nenajde se** — takový atribut ani metadatum v projektu není; u zápisu se šipkou i to,
+  že takhle pojmenovaná vazba neexistuje. Skoro vždycky překlep.
 - **Nevyhodnotí se** — odkaz na jiný složený atribut nebo sám na sebe; zůstane prázdný.
-- **Vyplní se jen u entit, které to pole mají** — atribut existuje, ale patří jinému typu
-  nebo aspektu. U entit, které ho nemají, zůstane prázdné místo.
+- **Pole jiného typu entity — u téhle entity nebude nikdy** — atribut existuje, ale patří
+  jinému **typu**. Tady hodnota nebude za žádných okolností, takže se rovnou nabídne cesta
+  přes vazbu: *zkus `((Žadatel -> OVM))`*.
+- **Mají ho jen některé entity — aspekt nebo vlastní atribut** — pole existuje a tahle entita
+  ho mít může, ale nemusí. U těch bez něj zůstane prázdné místo.
 
 Bez těchhle hlášek by se překlep poznal až na entitě, kde po něm zbude jen prázdno.
 
