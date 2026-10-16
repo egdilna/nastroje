@@ -251,19 +251,23 @@ z ní záznam rovnou maže, takže podruhé se okno otevře podle nastavení. Dl
 vzniknou s hotovým obsahem (výstup nástroje, vložení ze schránky), i sbírky zakládané
 přes `cilovaDlazdice()` se otevírají ke čtení — tam uživatel nic nedopisuje.
 
-`BEZ_ZOBRAZENI` vyjmenovává typy, které tuhle dvojici režimů nemají: aplikace a odkaz
-jsou samy o sobě zobrazením, sezení se do editoru vůbec nedostane. **Složka má režimy
-vlastní** (`otevritSlozku()` staví lištu se stejným `data-prepinac-rezimu`, takže funguje
-i F4): ve čtení jde hned o obsah — seznam dlaždic ve složce, štítky jen jako text —
-a teprve v úpravách přibude `hlavicka()` s polem názvu a editorem štítků. Práce s obsahem
-složky (otevřít, vyjmout na plochu, smazat, vytvořit v ní novou dlaždici) je dostupná
-v obou režimech — to není úprava složky, ale práce v ní.
+`BEZ_ZOBRAZENI` vyjmenovává typy, které nejdou přes `oknoObjektu()`: aplikace a odkaz
+jsou samy o sobě zobrazením. **Složka a sezení mají režimy vlastní** — `otevritSlozku()`
+a `spustitSezeni()` staví lištu se stejným `data-prepinac-rezimu`, takže na ně funguje
+i F4. Ve čtení jde hned o obsah: u složky seznam dlaždic uvnitř, u sezení seznam toho,
+co se otevře, a tlačítko *Spustit sezení*; štítky jen jako text. Teprve v úpravách
+přibude `hlavicka()` s polem názvu a editorem štítků, u sezení navíc výběr na přidání
+dlaždice, volba uspořádání oken a křížky na odebrání. Práce s obsahem (otevřít dlaždici,
+vyjmout na plochu, smazat, vytvořit ve složce novou, spustit sezení) je dostupná v obou
+režimech — to není úprava objektu, ale práce s ním.
 
 **Lišta okna je jedno tlačítko, ne řada.** Co není ovládání okna (minimalizovat,
 maximalizovat, zavřít) ani přepínač režimu na F4, patří do nabídky *Další akce* —
 `listaDlazdice(o, navic)` bere volitelné akce navíc a přidá je **před** obecné
 `akceDlazdice(o)`. Tím se živí okno aplikace (znovu načíst, otevřít v nové kartě,
-přejmenovat, nastavení) i složka (otevřít ve správci souborů). Důvod je přístupnost:
+přejmenovat, nastavení), složka (otevřít ve správci souborů) i sezení (spustit sezení).
+Lištu si přes `listaDlazdice()` staví i `oknoObjektu()`, aby nabídka vznikala na jediném
+místě. Důvod je přístupnost:
 šest tlačítek v liště odečítač prochází dlouho a opakuje u nich název okna. Když lišta
 zbyde na jediné tlačítko, nedávej jí `role="toolbar"` — „toolbar, 1 položka" je jen šum.
 

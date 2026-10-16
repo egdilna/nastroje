@@ -778,6 +778,7 @@ function postupHtml(hotovo,celkem,popis,dovetek){
     +`<div class="postup" role="img" aria-label="${popis} ${pct} procent"><i style="width:${pct}%"></i></div>`;
 }
 const sklonovanePolozky=n=>n===1?"položka":n<5?"položky":"položek";
+const sklonovaneDlazdice=n=>n===1?"dlaždici":n<5?"dlaždice":"dlaždic";
 /* stručný stav do popisku dlaždice, aby ho odečítač obrazovky přečetl spolu s názvem */
 function souhrnDlazdice(o){
   const c=o.obsah||{};
@@ -1561,9 +1562,7 @@ function oknoObjektu(o,t,w){
       hlas(rezim==="zobrazeni"?"Režim zobrazení":"Režim úprav");
       $("[data-prepinac-rezimu]",lista)?.focus();
     });
-    const dalsi=nabidkaTlacitko("Další akce",akceDlazdice(o));
-    dalsi.style.marginTop="0";
-    lista.append(prep,dalsi);
+    lista.append(prep,listaDlazdice(o));
     ozivitListu(lista,"Nástroje dlaždice "+o.nazev);
     w.dataset.rezim=rezim;
     if(jeZobrazeni) zobrazeni(o,telo); else editor(o,telo,w);
@@ -2472,35 +2471,83 @@ function otevritSlozku(o){
   }});
 }
 function spustitSezeni(o){
-  otevritOkno({klic:"obj-"+o.id,nazev:o.nazev,ikona:o.ikona,sirka:520,vyska:440,obsah:t=>{
-    t.append(el("div",{class:"pruh",style:"align-items:flex-start"},listaDlazdice(o)));
-    hlavicka(o,t);
-    t.append(el("p",{class:"tichy"},"Sezení otevře najednou sadu dlaždic — např. tři aplikace, které používáte společně."));
-    const box=el("div",{}); t.append(box);
+  otevritOkno({klic:"obj-"+o.id,nazev:o.nazev,ikona:o.ikona,sirka:560,vyska:480,obsah:(t,w)=>{
+    /* Stejně jako složka: ve čtení jde o sezení samo — co se spustí a tlačítko, kterým
+       se to spustí. Název, štítky a skládání sady jsou až v úpravách. */
+    let rezim=vychoziRezim(o);
+    const lista=el("div",{class:"pruh",style:"align-items:flex-start"});
+    const hlava=el("div",{});
+    const box=el("div",{});
+    const dlazdiceSezeni=()=>(o.obsah.okna||[]).map(oid=>objekt(oid)).filter(Boolean);
+    const spustit=()=>{
+      const d=dlazdiceSezeni();
+      if(!d.length) return hlas("Sezení je prázdné — v úpravách do něj přidejte dlaždice");
+      d.forEach(x=>otevritObjekt(x.id));
+      if(o.obsah.rozlozit){ rozlozitOkna(true); hlas("Sezení spuštěno a okna uspořádána"); }
+      else hlas("Sezení spuštěno");
+    };
+    const kresliListu=()=>{
+      const jeZobrazeni=rezim==="zobrazeni";
+      lista.innerHTML=""; hlava.innerHTML="";
+      const prep=el("button",{class:"btn mini","data-prepinac-rezimu":"1",
+        "aria-label":(jeZobrazeni?"Přepnout na úpravy":"Přepnout na zobrazení")+" — klávesa F4",
+        title:"Přepnout režim, klávesa F4"},jeZobrazeni?"✏️ Upravit":"👁 Zobrazení");
+      prep.addEventListener("click",()=>{
+        rezim=jeZobrazeni?"upravy":"zobrazeni";
+        kresliListu(); kresli();
+        hlas(rezim==="zobrazeni"?"Režim zobrazení":"Režim úprav");
+        $("[data-prepinac-rezimu]",lista)?.focus();
+      });
+      lista.append(prep,listaDlazdice(o,[["▶","Spustit sezení",spustit]]));
+      ozivitListu(lista,"Nástroje sezení "+o.nazev);
+      if(w) w.dataset.rezim=rezim;
+      if(jeZobrazeni){
+        if((o.stitky||[]).length)
+          hlava.append(el("div",{class:"pruh","aria-label":"Štítky: "+o.stitky.join(", ")},
+            o.stitky.map(x=>el("span",{class:"stitek"},x))));
+      }else hlavicka(o,hlava);
+    };
     const kresli=()=>{
       box.innerHTML="";
+      const jeZobrazeni=rezim==="zobrazeni";
+      const d=dlazdiceSezeni();
+      box.append(el("h3",{class:"nadpis"},"Sezení otevře "+(d.length?d.length+" "+sklonovaneDlazdice(d.length):"zatím nic")));
       const ul=el("ul",{class:"seznam"});
-      (o.obsah.okna||[]).forEach((oid,n)=>{
-        const d=objekt(oid); if(!d) return;
-        ul.append(el("li",{},el("span",{class:"ikonka"},d.ikona),el("span",{class:"rostouci"},d.nazev),
-          el("button",{class:"o-btn",onclick:()=>{o.obsah.okna.splice(n,1);zmena(o);kresli();},"aria-label":"Odebrat"},"✕")));
+      d.forEach((x,n)=>{
+        ul.append(el("li",{},el("span",{class:"ikonka"},x.ikona),
+          jeZobrazeni
+            ? el("button",{class:"rostouci",style:"text-align:left",onclick:()=>otevritObjekt(x.id)},
+                el("div",{style:"font-weight:600"},x.nazev),el("div",{class:"tichy"},TYPY[x.typ].n))
+            : el("span",{class:"rostouci"},el("div",{style:"font-weight:600"},x.nazev),
+                el("div",{class:"tichy"},TYPY[x.typ].n)),
+          jeZobrazeni?null:el("button",{class:"o-btn","aria-label":"Odebrat ze sezení: "+x.nazev,
+            onclick:()=>{o.obsah.okna.splice(n,1);zmena(o);kresli();}},"✕")));
       });
-      const sel=el("select",{});
-      sel.append(el("option",{value:""},"— přidat dlaždici do sezení —"));
-      S.objekty.filter(x=>x.id!==o.id).forEach(x=>sel.append(el("option",{value:x.id},x.nazev)));
-      sel.addEventListener("change",()=>{if(sel.value){(o.obsah.okna=o.obsah.okna||[]).push(sel.value);zmena(o);kresli();}});
-      const rozlozit=el("input",{type:"checkbox",checked:!!o.obsah.rozlozit});
-      rozlozit.addEventListener("change",()=>{o.obsah.rozlozit=rozlozit.checked;zmena(o);});
-      box.append(ul,el("label",{class:"pole"},el("span",{},"Přidat"),sel),
-        el("label",{class:"radek",style:"gap:8px;align-items:center"},rozlozit,
-          el("span",{},"po spuštění uspořádat okna vedle sebe")),
-        el("button",{class:"btn",onclick:()=>{
-          (o.obsah.okna||[]).forEach(x=>otevritObjekt(x));
-          if(o.obsah.rozlozit){ rozlozitOkna(true); hlas("Sezení spuštěno a okna uspořádána"); }
-          else hlas("Sezení spuštěno");
-        }},"▶ Spustit sezení"));
+      box.append(ul);
+      if(jeZobrazeni){
+        if(!d.length) box.append(el("p",{class:"tichy"},
+          "Sezení je zatím prázdné. V úpravách do něj přidáte dlaždice, které chcete otevírat společně."));
+        box.append(el("p",{class:"tichy"},o.obsah.rozlozit
+          ?"Po spuštění se okna uspořádají vedle sebe."
+          :"Okna se po spuštění otevřou tam, kam patří, bez uspořádání."),
+          el("button",{class:"btn",style:"margin-top:4px",onclick:spustit},"▶ Spustit sezení"));
+      }else{
+        const sel=el("select",{});
+        sel.append(el("option",{value:""},"— přidat dlaždici do sezení —"));
+        S.objekty.filter(x=>x.id!==o.id&&!(o.obsah.okna||[]).includes(x.id))
+          .sort((a,b)=>String(a.nazev).localeCompare(String(b.nazev),"cs"))
+          .forEach(x=>sel.append(el("option",{value:x.id},x.nazev+" · "+TYPY[x.typ].n)));
+        sel.addEventListener("change",()=>{if(sel.value){(o.obsah.okna=o.obsah.okna||[]).push(sel.value);zmena(o);kresli();}});
+        const rozlozit=el("input",{type:"checkbox",checked:!!o.obsah.rozlozit});
+        rozlozit.addEventListener("change",()=>{o.obsah.rozlozit=rozlozit.checked;zmena(o);});
+        box.append(el("label",{class:"pole"},el("span",{},"Přidat dlaždici"),sel),
+          el("label",{class:"radek",style:"gap:8px;align-items:center"},rozlozit,
+            el("span",{},"po spuštění uspořádat okna vedle sebe")),
+          el("button",{class:"btn",style:"margin-top:10px",onclick:spustit},"▶ Spustit sezení"));
+      }
     };
-    kresli();
+    kresliListu(); kresli();
+    t.append(lista,hlava,box);
   }});
 }
 function upravitPlochu(pid){
