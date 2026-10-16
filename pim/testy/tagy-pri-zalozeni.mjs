@@ -183,17 +183,22 @@ await stranka.waitForTimeout(700);
 ok(soucet, (await tagyEntity('Ukol bez tagu')) === '', 'a úkol vznikne bez tagů');
 
 nadpis('Zaškrtávátka v kartě u schůzky se neroztahují na celou šířku');
+// Pole názvu je od zavedení víceřádkového zakládání <textarea>, ne <input>;
+// pravidlo „zaškrtávátko si drží svou šířku, textové pole má celou" platí dál.
 await priprav();
 await otevriDetail(stranka, 'sch');
 await otevriPridatUkol();
 const sirky = await stranka.evaluate(() => {
   const karta = document.querySelector('.event-tasks-add-card');
   const cb = karta.querySelector('input[type="checkbox"]');
-  const txt = karta.querySelector('input[type="text"]');
-  return { cb: Math.round(cb.getBoundingClientRect().width), txt: Math.round(txt.getBoundingClientRect().width) };
+  const txt = karta.querySelector('textarea') || karta.querySelector('input[type="text"]');
+  return { cb: Math.round(cb.getBoundingClientRect().width), txt: Math.round(txt.getBoundingClientRect().width),
+    typPole: txt.tagName };
 });
 ok(soucet, sirky.cb < 40 && sirky.txt > 100,
   'zaškrtávátko má svou šířku, textové pole celou (dřív byla obě přes celou kartu)', sirky);
+ok(soucet, sirky.typPole === 'TEXTAREA',
+  'a pole názvu je textarea, aby se do něj dal vložit víc než jeden řádek', sirky);
 
 await prohlizec.close();
 process.exit(uzavri(soucet));

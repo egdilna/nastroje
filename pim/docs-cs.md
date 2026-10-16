@@ -300,6 +300,39 @@ Zapnout jde víc sloupců naráz — pak zůstanou entity, které nemají **ani 
 z vybraných tagů. Entita, ze které matice vychází (první řádek), zůstává vidět
 vždycky; je to kotva, ze které se tag rozšiřuje. Šipky skryté řádky přeskakují.
 
+## Víc řádků v názvu = víc položek
+
+Do políčka s názvem jde vložit (nebo napsat přes <kbd>Shift+Enter</kbd>) **víc řádků**
+a z každého vznikne vlastní položka. Každý řádek se vyhodnotí **zvlášť**, přesně jako
+kdybyste ho zadali sám: termín z názvu, pravidlo úkol/událost, markdown odkaz.
+Společné nastavení formuláře — **zvolený projekt, zaškrtnuté tagy, vybraný aspekt** —
+dostanou všechny.
+
+Funguje to v pěti formulářích:
+
+| Kde | Co vznikne |
+|---|---|
+| ✓ **Rychlý úkol** (dialog) | úkoly/události, všechny do projektu ze selectu |
+| **+ Nový úkol** u projektu | úkoly/události v tom projektu, se zaškrtnutými tagy |
+| **+ Nová entita** u projektu | entity zvoleného aspektu v tom projektu |
+| **+ Přidat úkol** u schůzky | úkoly/události, zmíněné schůzkou a v zaškrtnutých projektech |
+| **+ Nová entita** u schůzky | entity zvoleného aspektu, zmíněné schůzkou |
+
+Příklad — do Rychlého úkolu s vybraným projektem vložíte:
+
+```
+odeslat fakturu zítra
+Porada úterý 10:00
+zavolat Petrovi
+```
+
+a vzniknou tři položky: úkol s termínem na zítřek, **událost** v úterý 10:00–11:00
+(protože je tam čas) a úkol bez termínu. Všechny tři jsou součástí vybraného projektu.
+
+Prázdné řádky se přeskakují. <kbd>Enter</kbd> formulář odešle, <kbd>Shift+Enter</kbd>
+přidá další řádek. U jednoho řádku se nic nemění — i hláška je stejná jako dřív;
+u víc řádků přijde jedna souhrnná místo deseti přes sebe.
+
 ## Úkol, nebo událost? Rozhoduje čas v názvu
 
 Všude, kde se entita zakládá **jen z názvu** — ✓ Rychlý úkol (nástěnka i dialog),
