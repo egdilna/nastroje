@@ -280,6 +280,23 @@ Je to **jen v aplikaci**, ne v šabloně prohlížeče.
 
 Hlídá to `pim/testy/tagy-pri-zalozeni.mjs`.
 
+## Tabulka entit: tlačítko panelu u názvu
+
+`renderEntityTableHtml()` (pohled Vše a uložené pohledy) má v buňce s názvem
+hned za nadpisem `openInPanelBtnHtml(e.id)`. Obsluhu nic nového nepotřebuje —
+`attachEntityRowHandlers()` váže `button[data-open-new-panel]` univerzálně.
+
+Dvě věci, na kterých to stojí:
+
+- **Tlačítko je ZA nadpisem, ne uvnitř něj.** Do přístupného názvu nadpisu patří
+  jen název entity a odznaky (hledání po písmenech odečítačem — viz „Přístupnost:
+  název první").
+- **Do šablony prohlížeče nepatří.** Panely jsou jen v aplikaci, takže kopie
+  `renderEntityTableHtml()` v `STATIC_VIEWER_TEMPLATE` zůstává bez něj. Hlídá to
+  test, který se dívá přímo do šablony.
+
+Hlídá to `pim/testy/odznak-a-seznam.mjs`.
+
 ## Panel úkolu v detailu
 
 `renderTaskPanel(e)` je proužek nad `<dl class="read-attrs">` se stavem, termínem

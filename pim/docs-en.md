@@ -893,6 +893,12 @@ so you can carry on with the keyboard. A rescheduled row moves according to its 
 | `Shift+Z` | Add "Time tracking" aspect (if missing) and start the timer right away |
 | `Esc` | Back to read mode (saves quick annotations and changes) |
 
+
+In the entity table (the **Vše** view and saved views) there is an **↗** button **right
+after the name** — next to the badges with the markdown-task and comment counts — which
+opens the entity in a **new panel**. It is in the ⋮ menu at the end of the row too, but
+this is one click.
+
 ### Navigation
 
 | Key | Action |
@@ -900,7 +906,7 @@ so you can carry on with the keyboard. A rescheduled row moves according to its 
 | Arrows ↑↓ in quick search results | Step through results |
 | Arrows ↑↓ in entity table | Move between rows |
 | `e` on a table row | Edit entity directly |
-| `o` on a table row | Open in a new panel |
+| `o` on a table row | Open in a new panel (the **↗** button right after the name does the same) |
 | `l` on a table row | Quick-edit tags |
 | `r` on a table row | Edit reminder date |
 | `a` on a table row | Edit aspects |

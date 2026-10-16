@@ -885,6 +885,11 @@ Totéž je v paletě příkazů jako **🔔 Připomenutí**.
 | `Shift+Z` | Přidat aspekt „Sledování času" (pokud chybí) a rovnou spustit timer |
 | `Esc` | Zpět na read mode (uloží quick anotace a změny) |
 
+V tabulce entit (pohled **Vše** a uložené pohledy) je **hned za názvem** — vedle
+odznaků s počty markdownových úkolů a komentářů — tlačítko **↗**, které entitu
+otevře v **novém panelu**. Je to i v menu ⋮ na konci řádku, ale tohle je na jeden
+klik.
+
 ### Navigace
 
 | Klávesa | Akce |
@@ -892,7 +897,7 @@ Totéž je v paletě příkazů jako **🔔 Připomenutí**.
 | Šipky ↑↓ v rychlých výsledcích hledání | Skákání mezi výsledky |
 | Šipky ↑↓ v tabulce entit | Pohyb mezi řádky |
 | `e` na řádku tabulky | Přímá editace entity |
-| `o` na řádku tabulky | Otevřít v novém panelu |
+| `o` na řádku tabulky | Otevřít v novém panelu (totéž umí tlačítko **↗** hned za názvem) |
 | `l` na řádku tabulky | Rychlá úprava štítků |
 | `r` na řádku tabulky | Úprava data připomenutí |
 | `a` na řádku tabulky | Úprava aspektů |

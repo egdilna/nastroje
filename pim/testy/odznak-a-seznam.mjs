@@ -168,5 +168,77 @@ r = await radky();
 ok(s, !r[0].maUkolBtn && !r[1].maUkolBtn, 'u [ ] ani [x] se tlačítko nenabízí', [r[0], r[1]]);
 ok(s, r[2].maUkolBtn, 'u obyčejné položky ano', r[2]);
 
+// ============================================================
+nadpis('Tlačítko „otevřít v novém panelu" u názvu v tabulce entit');
+// ============================================================
+// Je to v menu ⋮ taky, ale v tabulce má být na jeden klik — hned za názvem
+// a odznaky, kde se stejně kouká.
+await nasypej(stranka, [
+  { id: 'p1', title: 'PRVNÍ ENTITA', aspects: ['Note'], body: '- [ ] jedna\n- [ ] dva',
+    comments: [{ id: 'c9', author: 'a', content: 'x', created_at: new Date().toISOString() }] },
+  { id: 'p2', title: 'DRUHÁ ENTITA', aspects: ['Note'] }
+]);
+await stranka.evaluate(() => setView('all'));
+await stranka.waitForTimeout(700);
+
+const bunkaNazvu = () => stranka.evaluate(() => {
+  const tr = document.querySelector('tr[data-row-entity]');
+  if (!tr) return null;
+  const h = tr.querySelector('h6.entity-row-heading');
+  if (!h) return null;
+  const td = h.parentElement;
+  const btn = td.querySelector('button[data-open-new-panel]');
+  return {
+    maTlacitko: !!btn,
+    zaNadpisem: !!(btn && (h.compareDocumentPosition(btn) & Node.DOCUMENT_POSITION_FOLLOWING)),
+    vNadpisu: !!h.querySelector('button[data-open-new-panel]'),
+    nadpisText: h.textContent,
+    cilId: btn ? btn.dataset.openNewPanel : null,
+    aria: btn ? btn.getAttribute('aria-label') : null,
+    pocetVRadku: tr.querySelectorAll('button[data-open-new-panel]').length
+  };
+});
+
+let bn = await bunkaNazvu();
+ok(s, bn && bn.maTlacitko, 'v buňce s názvem je tlačítko panelu', bn);
+ok(s, bn && bn.zaNadpisem && !bn.vNadpisu,
+  'je ZA nadpisem, ne uvnitř — přístupný název nadpisu zůstává jen název a odznaky', bn);
+ok(s, bn && /PRVNÍ ENTITA/.test(bn.nadpisText) && /☐2/.test(bn.nadpisText) && /💬1/.test(bn.nadpisText),
+  'odznaky s počty úkolů a komentářů zůstaly u názvu', bn && bn.nadpisText);
+ok(s, bn && bn.cilId === 'p1', 'tlačítko míří na entitu svého řádku', bn && bn.cilId);
+ok(s, bn && /panel/i.test(bn.aria || ''), 'tlačítko má přístupný popis', bn && bn.aria);
+ok(s, bn && bn.pocetVRadku === 1, 'v řádku je jedno, ne dvě', bn && bn.pocetVRadku);
+
+const poKliku = await stranka.evaluate(async () => {
+  const pred = (state.panels || []).length;
+  document.querySelector('tr[data-row-entity] button[data-open-new-panel]').click();
+  await new Promise(z => setTimeout(z, 500));
+  return { pred, po: (state.panels || []).length, view: state.view, detailId: state.detailId };
+});
+ok(s, poKliku.po === poKliku.pred + 1, 'klik otevře nový panel', poKliku);
+ok(s, poKliku.view === 'detail' && poKliku.detailId === 'p1',
+  'a v něm tu entitu', poKliku);
+
+nadpis('Totéž v uloženém pohledu');
+const vPohledu = await stranka.evaluate(async () => {
+  db.savedViews = [{ id: 'sv-test', name: 'Testovací pohled',
+    filters: JSON.parse(JSON.stringify(state.filter)), pinned: true }];
+  setView('savedView', { savedViewId: 'sv-test' });
+  await new Promise(z => setTimeout(z, 700));
+  const tr = document.querySelector('tr[data-row-entity]');
+  if (!tr) return { chyba: 'pohled nevykreslil řádky' };
+  const h = tr.querySelector('h6.entity-row-heading');
+  const btn = h ? h.parentElement.querySelector('button[data-open-new-panel]') : null;
+  return { maTlacitko: !!btn, cilId: btn ? btn.dataset.openNewPanel : null };
+});
+ok(s, vPohledu.maTlacitko === true,
+  'uložený pohled kreslí tutéž tabulku, takže tlačítko je i tam', vPohledu);
+
+nadpis('Do generovaného prohlížeče tlačítko nepatří');
+ok(s, await stranka.evaluate(() => {
+  const i = STATIC_VIEWER_TEMPLATE.indexOf('function renderEntityTableHtml');
+  return i >= 0 && !/openInPanelBtnHtml/.test(STATIC_VIEWER_TEMPLATE.slice(i, i + 3000));
+}), 'šablona prohlížeče tlačítko panelu nemá (panely jsou jen v aplikaci)');
+
 await prohlizec.close();
 process.exit(uzavri(s));
