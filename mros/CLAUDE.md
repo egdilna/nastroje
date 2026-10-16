@@ -255,10 +255,21 @@ přes `cilovaDlazdice()` se otevírají ke čtení — tam uživatel nic nedopis
 jsou samy o sobě zobrazením, sezení se do editoru vůbec nedostane. **Složka má režimy
 vlastní** (`otevritSlozku()` staví lištu se stejným `data-prepinac-rezimu`, takže funguje
 i F4): ve čtení jde hned o obsah — seznam dlaždic ve složce, štítky jen jako text —
-a teprve v úpravách přibude `hlavicka()` s polem názvu a editorem štítků a patička
-s tlačítky *Vzhled*, *Správce souborů* a *Smazat složku*. Práce s obsahem složky
-(otevřít, vyjmout na plochu, smazat, vytvořit v ní novou dlaždici) je dostupná v obou
-režimech — to není úprava složky, ale práce v ní.
+a teprve v úpravách přibude `hlavicka()` s polem názvu a editorem štítků. Práce s obsahem
+složky (otevřít, vyjmout na plochu, smazat, vytvořit v ní novou dlaždici) je dostupná
+v obou režimech — to není úprava složky, ale práce v ní.
+
+**Lišta okna je jedno tlačítko, ne řada.** Co není ovládání okna (minimalizovat,
+maximalizovat, zavřít) ani přepínač režimu na F4, patří do nabídky *Další akce* —
+`listaDlazdice(o, navic)` bere volitelné akce navíc a přidá je **před** obecné
+`akceDlazdice(o)`. Tím se živí okno aplikace (znovu načíst, otevřít v nové kartě,
+přejmenovat, nastavení) i složka (otevřít ve správci souborů). Důvod je přístupnost:
+šest tlačítek v liště odečítač prochází dlouho a opakuje u nich název okna. Když lišta
+zbyde na jediné tlačítko, nedávej jí `role="toolbar"` — „toolbar, 1 položka" je jen šum.
+
+Smazání složky vrací dlaždice uvnitř na plochu (`smazat()` jim nuluje `rodic` a dává
+plochu složky). Bez toho by visely na neexistujícím rodiči a zmizely z plochy i ze
+správce souborů, protože `naPlose()` bere jen dlaždice bez rodiče.
 
 Nový typ dlaždice proto potřebuje **tři** větve: `case` v `editor()`, `case`
 v `zobrazeni()` a `case` v `nahled()` pro náhled na ploše. Když větev v zobrazení
@@ -427,7 +438,7 @@ rozbijí regulární výrazy.
 |---|---|
 | Boční panel | `nav` > sekce s `h2` + `ul`/`li` |
 | Hlavní nabídka (Ctrl+F10), nabídka dlaždice, „Další akce ▾" | `role="menu"` + `menuitem`, `ozivitMenu()` |
-| Lišta okna aplikace, ovládání okna, akce plochy, patička | `role="toolbar"`, `ozivitListu()` |
+| Ovládání okna, akce plochy, lišta dlaždice a složky, patička | `role="toolbar"`, `ozivitListu()` — jen když má lišta **víc než jeden** ovládací prvek |
 | Okno | `article` + `aria-labelledby` → `h5` |
 | Dlaždice | `div role="button"`, `aria-label` = **typ, pak název**, pak stav a štítky |
 | Paleta příkazů | nativní `<dialog>` + `showModal()` (jediné modální místo), vstup `role="combobox"` nad `role="listbox"` s `role="option"`, výběr přes `aria-activedescendant` |
