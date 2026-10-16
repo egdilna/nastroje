@@ -134,6 +134,42 @@ Tři věci, které to drží:
    `tags.slice()`). Sdílené pole mezi dvěma entitami je tichá chyba, která se
    projeví až při úpravě jedné z nich.
 
+Řádek ještě projde `ocistiRadekNazvu()`: trim na obou koncích a dolů se značkou
+seznamu (`- * + •`, `1.`, `2)`, `[ ]`, `[x]`), aby se vložený markdownový seznam
+nemusel předem uklízet. Tři věci, které v té funkci nejsou libovolné:
+
+- **Odrážka musí mít za sebou mezeru**, jinak by `-5 °C` přišlo o minus
+  a `*tučně*` o hvězdičku.
+- **Pořadové číslo se sundá jen tehdy, když za ním není datum.** `1. října`
+  i `15. 3. 2027` jsou taky „číslo s tečkou" — bez té podmínky by se z `1. října
+  odevzdat` stalo `října odevzdat` a termín by se tiše ztratil. Seznam měsíců je
+  v `MESICE_PO_CISLE` **natvrdo, ne z `JOURNAL_MONTHS`**: ta konstanta se
+  deklaruje o patnáct set řádků níž, takže by se regulární výraz vyhodnotil
+  v její temporální mrtvé zóně a **celá aplikace by se nenačetla**. Na tom se
+  jednou uklouzlo.
+- **Odrážka se odřezává před zaškrtávátkem** — `- [ ] zavolat` je obojí najednou.
+
+Název, který opravdu začíná pořadovým číslem (`2. kolo jednání`), o něj přijde;
+je to zaplacená cena za vkládání seznamů a je tak popsaná i v dokumentaci.
+Zaškrtnutí `[x]` se **nepřenáší do stavu** — vzniká úkol `todo` jako z každého
+jiného řádku.
+
+**Enter odesílá přes `napojEnterOdeslani(pole, odeslat)`** — jedno místo pro všech
+pět formulářů. Dvě cesty schválně, každá chytá jinou klávesnici:
+
+- `keydown` s `key === 'Enter'` je fyzická klávesnice. Shift se tam pozná, takže
+  Shift+Enter řádek opravdu vloží.
+- `beforeinput` s `insertLineBreak` / `insertParagraph` je softwarová klávesnice
+  telefonu a tabletu, která u `<textarea>` **žádný `keydown` s Enter neposílá**.
+  Dokud tu byl jen `keydown`, Enter na mobilu jen přidal řádek — u `<input>` přitom
+  dřív formulář odesílal, takže přechod na textarea tuhle cestu tiše zrušil.
+
+Shift+Enter se přes `beforeinput` nepozná (nemá `shiftKey`), proto si ho `keydown`
+označí dopředu (`pole._zlomPovolen`) a `beforeinput` ten jeden zlom propustí.
+`insertFromPaste` se nechytá — vkládání víc řádků ze schránky je celý smysl věci.
+A protože Enter odesílá, **musí to být napsané u políčka**; je to v `<label>`
+u všech pěti.
+
 Hlídá to `pim/testy/vice-radku.mjs` (kanárek na entitu mimo hru).
 
 Úplný seznam cest, kudy entita vzniká, a co u ní platí (vznikl auditem všech

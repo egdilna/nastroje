@@ -170,6 +170,127 @@ ok(soucet, jenEntity.length === 2, 'vznikly dvě entity', jenEntity.map(x => x.t
 ok(soucet, jenEntity.every(x => /mentions→sch/.test(x.vazby) && /partOf→pa/.test(x.vazby)),
   'obě jsou zmíněné schůzkou i v jejím projektu', jenEntity.map(x => x.vazby));
 
+nadpis('Značka seznamu se z řádku odřezává, mezery se trimnou');
+const ocisteno = await stranka.evaluate(() => [
+  '- úkol', '* úkol', '+ úkol', '• úkol', '1. úkol', '2) úkol', '10) desátý bod',
+  '- [ ] zavolat', '- [x] hotovo', '[x] hotovo', '[ ] udělat',
+  '  odsazený úkol  ', '\túkol s tabulátorem'
+].map(r => ocistiRadekNazvu(r)));
+ok(soucet, ocisteno.slice(0, 6).every(x => x === 'úkol'),
+  'odrážky -, *, +, • i pořadová čísla 1. a 2) jdou pryč', ocisteno.slice(0, 6));
+ok(soucet, ocisteno[6] === 'desátý bod', 'dvouciferné pořadí taky', ocisteno[6]);
+ok(soucet, ocisteno[7] === 'zavolat' && ocisteno[8] === 'hotovo',
+  'odrážka i zaškrtávátko najednou („- [ ] zavolat")', ocisteno.slice(7, 9));
+ok(soucet, ocisteno[9] === 'hotovo' && ocisteno[10] === 'udělat',
+  'samostatné zaškrtávátko („[x] hotovo")', ocisteno.slice(9, 11));
+ok(soucet, ocisteno[11] === 'odsazený úkol' && ocisteno[12] === 'úkol s tabulátorem',
+  'mezery a tabulátory na obou koncích se trimnou', ocisteno.slice(11));
+
+nadpis('Datum na začátku řádku odřezávání přežije');
+const nedotceno = await stranka.evaluate(() => [
+  '1. října odevzdat', '3. listopadu schůzka', '15. 3. 2027 odevzdat',
+  '1. 10. odevzdat', '-5 °C naměřeno', '*tučně* není odrážka'
+].map(r => ocistiRadekNazvu(r)));
+ok(soucet, nedotceno[0] === '1. října odevzdat' && nedotceno[1] === '3. listopadu schůzka',
+  'číslo před jménem měsíce není pořadí seznamu', nedotceno.slice(0, 2));
+ok(soucet, nedotceno[2] === '15. 3. 2027 odevzdat' && nedotceno[3] === '1. 10. odevzdat',
+  'číselné datum DD. MM. zůstává celé', nedotceno.slice(2, 4));
+ok(soucet, nedotceno[4] === '-5 °C naměřeno',
+  'pomlčka bez mezery není odrážka (záporné číslo)', nedotceno[4]);
+ok(soucet, nedotceno[5] === '*tučně* není odrážka',
+  'hvězdička bez mezery taky ne (markdownové tučně)', nedotceno[5]);
+
+nadpis('Vložený markdownový seznam projde celou cestou až do entit');
+await stranka.evaluate(() => {
+  db.entities = db.entities.filter(e => ['pa', 'sch', 'kan'].indexOf(e.id) >= 0);
+  setView('dashboard'); render();
+});
+await stranka.waitForTimeout(400);
+await stranka.click('#btn-quick-task');
+await stranka.waitForTimeout(400);
+await stranka.evaluate(() => { document.getElementById('qt-title').value =
+  '- [ ] odeslat fakturu zítra\n* zavolat Petrovi\n1. napsat zápis\n  \n- [x] nachystat podklady'; });
+await stranka.evaluate(() => doQuickTaskSave());
+await stranka.waitForTimeout(600);
+const seznam = await nove(['pa', 'sch', 'kan']);
+ok(soucet, seznam.length === 4, 'z pěti řádků (jeden prázdný) vznikly čtyři úkoly',
+  seznam.map(x => x.title));
+ok(soucet, seznam.map(x => x.title).join('|') ===
+  'odeslat fakturu|zavolat Petrovi|napsat zápis|nachystat podklady',
+  'názvy jsou čisté — žádná odrážka ani zaškrtávátko v nich nezůstalo',
+  seznam.map(x => x.title));
+ok(soucet, seznam[0].deadline === zitra,
+  'termín se v řádku s odrážkou i zaškrtávátkem pořád rozpozná', seznam[0]);
+ok(soucet, seznam.every(x => x.aspekty === 'Task'),
+  'všechny čtyři jsou úkoly', seznam.map(x => x.aspekty));
+ok(soucet, await stranka.evaluate(() =>
+  db.entities.filter(e => ['pa', 'sch', 'kan'].indexOf(e.id) < 0)
+    .every(e => (e.attributes || {}).status === 'todo')),
+  'odřezané „[x]" stav úkolu nemění — zůstává K udělání');
+
+nadpis('Enter odesílá, Shift+Enter přidá řádek — i na softwarové klávesnici');
+const otevriRychly = async () => {
+  await stranka.evaluate(() => {
+    const d = document.getElementById('dialog-quick-task'); if (d && d.open) d.close();
+    db.entities = db.entities.filter(e => ['pa', 'sch', 'kan'].indexOf(e.id) >= 0);
+    setView('dashboard'); render();
+  });
+  await stranka.waitForTimeout(350);
+  await stranka.click('#btn-quick-task');
+  await stranka.waitForTimeout(350);
+};
+
+await otevriRychly();
+await stranka.click('#qt-title');
+await stranka.keyboard.type('fyzicky enter');
+await stranka.keyboard.press('Enter');
+await stranka.waitForTimeout(500);
+ok(soucet, (await nove(['pa', 'sch', 'kan'])).length === 1,
+  'fyzický Enter formulář odešle');
+
+await otevriRychly();
+await stranka.click('#qt-title');
+await stranka.keyboard.type('prvni');
+await stranka.keyboard.press('Shift+Enter');
+await stranka.keyboard.type('druhy');
+await stranka.waitForTimeout(250);
+ok(soucet, (await stranka.evaluate(() => document.getElementById('qt-title').value)) === 'prvni\ndruhy',
+  'Shift+Enter vloží řádek místo odeslání');
+ok(soucet, (await nove(['pa', 'sch', 'kan'])).length === 0, 'a nic zatím nevzniklo');
+await stranka.keyboard.press('Enter');
+await stranka.waitForTimeout(600);
+ok(soucet, (await nove(['pa', 'sch', 'kan'])).map(x => x.title).join('|') === 'prvni|druhy',
+  'Enter pak pošle oba řádky');
+
+// Softwarová klávesnice telefonu u <textarea> žádný keydown s Enter neposílá —
+// zlom řádku ohlásí jen přes beforeinput. Bez té cesty Enter na mobilu neodesílal.
+await otevriRychly();
+const mobil = await stranka.evaluate(() => {
+  const t = document.getElementById('qt-title');
+  t.focus(); t.value = 'mobilni enter';
+  const ev = new InputEvent('beforeinput', { inputType: 'insertLineBreak', bubbles: true, cancelable: true });
+  return !t.dispatchEvent(ev);
+});
+await stranka.waitForTimeout(500);
+ok(soucet, mobil, 'zlom ze softwarové klávesnice se zruší (nevloží se nový řádek)');
+ok(soucet, (await nove(['pa', 'sch', 'kan'])).length === 1,
+  'a místo něj se formulář odešle', (await nove(['pa', 'sch', 'kan'])).map(x => x.title));
+
+await otevriRychly();
+const schranka = await stranka.evaluate(() => {
+  const t = document.getElementById('qt-title');
+  t.focus();
+  const ev = new InputEvent('beforeinput', { inputType: 'insertFromPaste', bubbles: true, cancelable: true });
+  return !t.dispatchEvent(ev);
+});
+ok(soucet, !schranka && (await nove(['pa', 'sch', 'kan'])).length === 0,
+  'vložení ze schránky (insertFromPaste) se nezruší ani neodešle — jinak by víc řádků nešlo vložit');
+
+ok(soucet, await stranka.evaluate(() => {
+  const l = document.querySelector('label[for="qt-title"]');
+  return !!l && /Enter/.test(l.textContent) && /Shift\+Enter/.test(l.textContent);
+}), 'u políčka je napsané, že Enter uloží a Shift+Enter přidá řádek');
+
 nadpis('Kanárek: entita mimo hru zůstala nedotčená');
 ok(soucet, await stranka.evaluate(() => {
   const k = findEntity('kan');

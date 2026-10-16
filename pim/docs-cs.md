@@ -329,9 +329,41 @@ zavolat Petrovi
 a vzniknou tři položky: úkol s termínem na zítřek, **událost** v úterý 10:00–11:00
 (protože je tam čas) a úkol bez termínu. Všechny tři jsou součástí vybraného projektu.
 
-Prázdné řádky se přeskakují. <kbd>Enter</kbd> formulář odešle, <kbd>Shift+Enter</kbd>
-přidá další řádek. U jednoho řádku se nic nemění — i hláška je stejná jako dřív;
-u víc řádků přijde jedna souhrnná místo deseti přes sebe.
+Prázdné řádky se přeskakují. U jednoho řádku se nic nemění — i hláška je stejná
+jako dřív; u víc řádků přijde jedna souhrnná místo deseti přes sebe.
+
+**<kbd>Enter</kbd> formulář odešle, <kbd>Shift+Enter</kbd> přidá další řádek.** Je to
+napsané u každého z těch pěti políček. Platí to i na telefonu a tabletu: klávesa pro
+nový řádek na softwarové klávesnici formulář odešle stejně jako Enter, takže se víc
+řádků zadává vložením ze schránky (to se nijak neomezuje), ne psaním.
+
+### Markdownový seznam jde vložit, jak je
+
+Z každého řádku se sundá **značka seznamu a mezery na obou koncích**, takže vložený
+seznam se nemusí předem uklízet:
+
+| Řádek | Vznikne položka |
+|---|---|
+| `- zavolat Petrovi` | zavolat Petrovi |
+| `* zavolat Petrovi` | zavolat Petrovi |
+| `+ zavolat Petrovi` | zavolat Petrovi |
+| `• zavolat Petrovi` | zavolat Petrovi |
+| `1. napsat zápis` | napsat zápis |
+| `2) napsat zápis` | napsat zápis |
+| `- [ ] odeslat fakturu zítra` | odeslat fakturu — s termínem na zítřek |
+| `[x] nachystat podklady` | nachystat podklady |
+
+Zaškrtnutý úkol (`[x]`) se zahodí stejně jako nezaškrtnutý — vznikne obyčejný úkol
+ve stavu *K udělání*, zaškrtnutí se nepřenáší.
+
+**Datum na začátku řádku se neodřezává.** `1. října odevzdat` i `15. 3. 2027 odevzdat`
+zůstanou celé, takže se z nich termín pořád rozpozná; pořadové číslo se sundá jen tam,
+kde za ním žádné datum nenásleduje. Cena za to je, že název, který opravdu začíná
+pořadovým číslem (`2. kolo jednání`), o něj přijde. Takový název zadejte jinak
+(`Druhé kolo jednání`, `Jednání – 2. kolo`) nebo pořadí doplňte po založení.
+
+Odrážka musí mít za sebou mezeru, takže `-5 °C naměřeno` ani `*tučně* v názvu` se
+nijak nemění.
 
 ## Úkol, nebo událost? Rozhoduje čas v názvu
 
