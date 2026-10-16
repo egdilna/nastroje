@@ -332,9 +332,41 @@ and three items appear: a task due tomorrow, an **event** on Tuesday 10:00–11:
 (because there is a time), and a task with no deadline. All three belong to the chosen
 project.
 
-Blank lines are skipped. <kbd>Enter</kbd> submits the form, <kbd>Shift+Enter</kbd> adds
-another line. With a single line nothing changes — even the toast is the same as before;
-with several lines one summary replaces ten toasts piling up.
+Blank lines are skipped. With a single line nothing changes — even the toast is the
+same as before; with several lines one summary replaces ten toasts piling up.
+
+**<kbd>Enter</kbd> submits the form, <kbd>Shift+Enter</kbd> adds another line.** It says
+so next to each of the five fields. This holds on a phone and a tablet too: the newline
+key of the soft keyboard submits the form just like Enter, so several lines are entered
+by pasting them (which is not restricted in any way), not by typing.
+
+### A markdown list can be pasted as it is
+
+Each line has its **list marker and the whitespace at both ends** stripped, so a pasted
+list needs no tidying up beforehand:
+
+| Line | Item created |
+|---|---|
+| `- zavolat Petrovi` | zavolat Petrovi |
+| `* zavolat Petrovi` | zavolat Petrovi |
+| `+ zavolat Petrovi` | zavolat Petrovi |
+| `• zavolat Petrovi` | zavolat Petrovi |
+| `1. napsat zápis` | napsat zápis |
+| `2) napsat zápis` | napsat zápis |
+| `- [ ] odeslat fakturu zítra` | odeslat fakturu — due tomorrow |
+| `[x] nachystat podklady` | nachystat podklady |
+
+A ticked task (`[x]`) is dropped just like an unticked one — an ordinary task in the
+*K udělání* state is created, the tick is not carried over.
+
+**A date at the start of a line is not stripped.** `1. října odevzdat` and
+`15. 3. 2027 odevzdat` stay whole, so the deadline is still recognised in them; an
+ordinal number is removed only where no date follows it. The price is that a title that
+genuinely starts with an ordinal (`2. kolo jednání`) loses it. Enter such a title
+differently (`Druhé kolo jednání`, `Jednání – 2. kolo`) or add the ordinal afterwards.
+
+A bullet must be followed by a space, so neither `-5 °C naměřeno` nor `*tučně* v názvu`
+is changed in any way.
 
 ## Task or event? The time in the title decides
 
