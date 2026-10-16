@@ -227,6 +227,27 @@ Only real changes are written: with nothing changed the entity does not even get
 This edits the tags of **one** entity. For working across its neighbourhood, see the
 matrix below.
 
+## ✅ The task panel in the detail
+
+When an entity has the **Task** aspect, a strip above the attribute list lets you deal
+with the task without opening the editor:
+
+| What | For |
+|---|---|
+| **Stav** (dropdown) | switch between K udělání / Probíhá / Čeká / Hotovo / Zrušeno |
+| **Termín** | the deadline with how urgent it is ("Po termínu (2 dny)", "Dnes", "Zítra"). **It is shown even when there is none** — it says "bez termínu" |
+| **⏰ Nastavit termín / Přeplánovat** | opens the date dialog, where the deadline can be typed **in words** ("zítra", "do pátku", "za 3 dny"), picked from a calendar, or **cleared** |
+
+The list of states comes from the Task aspect definition, so a custom state added in
+Settings shows up here by itself.
+
+Switching to **Hotovo** records the completion time (and stops a running timer); going
+back clears it again. A done or cancelled task is greyed out in the panel.
+
+Status and deadline therefore **no longer repeat in the attribute list** below the panel
+— they are there once, at the top. The generated offline viewer has no panel (nothing is
+edited there), so status and deadline stay among the attributes there as before.
+
 ## 🧩 Quick aspect editing for an entity
 
 The same for aspects: the **🧩 Aspekty** button in the detail toolbar, the <kbd>k</kbd>

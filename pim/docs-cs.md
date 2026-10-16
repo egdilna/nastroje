@@ -225,6 +225,27 @@ Uloží se jen to, co se opravdu změnilo: beze změn se entitě nezvedne ani
 Je to úprava tagů **jedné** entity. Na hromadnou práci nad jejím okolím je
 matice níž.
 
+## ✅ Panel úkolu v detailu
+
+Má-li entita aspekt **Úkol**, je nad seznamem atributů proužek, ve kterém se dá
+úkol odbavit bez otevírání editace:
+
+| Co | K čemu |
+|---|---|
+| **Stav** (rozbalovací pole) | přepnout K udělání / Probíhá / Čeká / Hotovo / Zrušeno |
+| **Termín** | vypsaný i s tím, jak je naléhavý („Po termínu (2 dny)", „Dnes", „Zítra"). **Ukazuje se i když žádný není** — napsáno „bez termínu" |
+| **⏰ Nastavit termín / Přeplánovat** | otevře dialog, kde jde termín zadat **slovy** („zítra", „do pátku", „za 3 dny"), vybrat z kalendáře, nebo ho **vymazat** |
+
+Nabídka stavů se bere z definice aspektu Úkol, takže vlastní stav přidaný
+v Nastavení se tu objeví sám.
+
+Přepnutí na **Hotovo** doplní čas dokončení (a zastaví případný běžící časoměr);
+návrat zpátky ho zase zruší. Hotový i zrušený úkol je v panelu poznat zešednutím.
+
+Stav a termín se proto **už neopakují v seznamu atributů** pod panelem — jsou
+jednou, nahoře. Ve vygenerovaném offline prohlížeči panel není (needituje se
+tam), takže tam stav i termín zůstávají mezi atributy jako dřív.
+
 ## 🧩 Rychlá úprava aspektů entity
 
 Totéž pro aspekty: tlačítko **🧩 Aspekty** v liště detailu, klávesa <kbd>k</kbd>
