@@ -797,6 +797,12 @@ Co se pak děje:
   soubor mohl někdo upravit ručně nebo vzniknout jinde. Wiki odkazy `[[Název]]` se při tom
   přejmenují spolu s entitou. **Zamčená entita se nepřepisuje.** Po sloučení souboru
   z GitHubu se nepřepočítává — druhá strana ukládala svou kopii už s hotovým názvem.
+- **Uložení entity přepočítá i názvy jejích sousedů.** Když název bere hodnotu přes vazbu
+  (`((Žadatel -> OVM))`), je zdroj jinde než název, takže změna žadatele musí přejmenovat
+  žádost. Skok přes vazbu je jen jedno patro, takže dál než k přímým sousedům se to nešíří.
+  Platí to i pro přetažení v kanbanu, zaškrtnutí v checklistu a smazání entity. **Datum
+  úpravy se u přejmenované entity ani u entit s odkazy nemění** — nikdo do nich nepsal, jen
+  se dopočítalo, co z dat plyne. Zbytek dožene přepočet po načtení projektu.
 - **Ze samotných oddělovačů se název nedělá.** Ze šablony `((Datum)) — ((O čem))` zbude
   u prázdné entity holé „—"; to není název, to je lešení šablony, a tak se jím nic
   nepřepíše. Stačí jedno písmeno nebo číslice, aby se výsledek použil.
@@ -1263,6 +1269,13 @@ přepsalo, ti řekne hláška po uložení.
 
 Odkazy se srovnají i **v pravopisu**: `[[alfa]]` i `[[ALFA]]` se po přejmenování zapíšou
 přesně tak, jak se entita jmenuje teď.
+
+**Platí to i na názvy, které se skládají** (kap. 7.6). Skládaný název se mění sám od sebe —
+stačí přepsat hodnotu, ze které se počítá —, a odkazy jdou s ním. Když se název skládá
+z pole **jiné entity** (`((Žadatel -> OVM))`), srovná se i tehdy, když přepíšeš tu druhou
+entitu: po uložení se přepočítají názvy jejích **sousedů** (entit, se kterými ji pojí vazba)
+a jejich wiki odkazy se narovnají taky. Totéž po přetažení v kanbanu, po zaškrtnutí
+v checklistu a po smazání entity, ze které se název bral.
 
 Dvě situace, na které tě DKM upozorní:
 

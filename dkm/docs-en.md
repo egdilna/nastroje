@@ -811,6 +811,13 @@ What then happens:
   entity created from inside an entity picker, and **after a project is loaded** (file,
   clipboard, GitHub, an `?id=` link) — that last one because the file may have been edited
   by hand or produced elsewhere. `[[Name]]` wiki links are renamed along with the entity.
+- **Saving an entity also recomputes its neighbours' names.** When a name takes its value
+  across a relation (`((Applicant -> Authority))`), the source sits elsewhere than the name,
+  so changing the applicant must rename the application. The hop is one level only, so it
+  spreads no further than the direct neighbours. The same holds for a kanban drag, a checklist
+  tick and deleting an entity. **The update date changes neither on the renamed entity nor on
+  the entities whose links were rewritten** — nobody wrote into them, it was only computed
+  from what the data already said. The rest is caught by the recomputation on project load.
   **A locked entity is not rewritten.** After a merge from GitHub nothing is recomputed —
   the other side saved its copy with the name already composed.
 - **Separators alone do not make a name.** The template `((Date)) — ((About))` leaves a bare
@@ -1282,6 +1289,14 @@ saving tells you how many links were rewritten.
 
 The links are also normalised in **spelling**: `[[alfa]]` and `[[ALFA]]` are both written
 exactly as the entity is named now.
+
+**It holds for composed names too** (ch. 7.6). A composed name changes on its own — it is
+enough to rewrite the value it is computed from — and the links follow it. When the name is
+composed from a field of **another entity** (`((Applicant -> Authority))`), it is kept
+straight even when you rewrite that other entity: on save, the names of its **neighbours**
+(the entities a relation ties it to) are recomputed and their wiki links are straightened as
+well. The same after a kanban drag, after ticking a checklist item, and after deleting the
+entity the name was taken from.
 
 Two situations DKM warns you about:
 
