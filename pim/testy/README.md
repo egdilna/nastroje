@@ -37,6 +37,7 @@ upravte v `lib.mjs`.
 | `poradi-hledani.mjs` | Výsledky hledání: název před obsahem, a vlastní řazení uživatele má přednost. |
 | `filtr-vazeb.mjs` | Filtry Má vazbu z / na: filtrování, uložený pohled a hromadný výběr nad výsledkem. |
 | `hromadny-export.mjs` | Hromadný výběr drží entity i po překreslení seznamu. |
+| `vice-radku.mjs` | Víc řádků v názvu = víc položek: všech pět formulářů rychlého zakládání, společný projekt/tagy/aspekt, každý řádek parsovaný zvlášť. |
 | `vyber-entity.mjs` | Dialog Vybrat entitu hledá i podle typu a bez diakritiky. |
 | `pristupnost-vyberu.mjs` | Položky v dialogu Vybrat entitu začínají názvem entity a `aria-selected` znamená vybráno. |
 | `anotace.mjs` | Inline anotace `(>text)` se nevykreslují doslova a nejdou do exportu. |

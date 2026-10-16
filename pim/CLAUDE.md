@@ -112,6 +112,30 @@ i `ukonciEditaciEntity()` (Escape, klávesa U) volají tutéž funkci.
 Rychlé přidání úkolu u projektu i u schůzky jede přes týž
 `createQuickTaskFromText()` — jedno místo, jedno pravidlo.
 
+### Víc řádků v názvu = víc položek
+
+`zalozZKazdehoRadku(text, zaloz)` zavolá `zaloz(radek, tiche)` pro každý
+neprázdný řádek (`radkyNazvu()`). Používá to **všech pět formulářů rychlého
+zakládání**: dialog Rychlý úkol, + Nový úkol a + Nová entita u projektu,
++ Přidat úkol a + Nová entita u schůzky. Entitu se zvoleným aspektem staví
+`vytvorEntituZNazvu()` — jedna funkce místo dvou dřívějších kopií.
+
+Tři věci, které to drží:
+
+1. **Pole názvu musí být `<textarea>`, ne `<input type="text">`.** Input konce
+   řádků zahazuje už při zápisu hodnoty (value sanitization v HTML), takže
+   vložený víceřádkový text se v něm slije do jednoho a o víc řádcích by se
+   nikdo nedozvěděl. Ověřeno měřením, ne odhadem.
+2. **Jeden řádek se chová přesně jako dřív**, i s původní hláškou. Teprve u víc
+   řádků se hlášky potlačí (`opts.tiche` u `createQuickTaskFromText()`) a dá se
+   jeden souhrn (`hlaskaHromadne()`) — jinak by se po vložení deseti řádků přes
+   sebe přelilo deset toastů a deset pípnutí.
+3. **Vazby a tagy se každé entitě kopírují** (`links.map(l => ({...l}))`,
+   `tags.slice()`). Sdílené pole mezi dvěma entitami je tichá chyba, která se
+   projeví až při úpravě jedné z nich.
+
+Hlídá to `pim/testy/vice-radku.mjs` (kanárek na entitu mimo hru).
+
 Úplný seznam cest, kudy entita vzniká, a co u ní platí (vznikl auditem všech
 volání `addEntity()` v aplikaci — hádat se to nedá):
 

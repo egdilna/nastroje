@@ -302,6 +302,40 @@ Several columns can be on at once — then the entities left are those that have
 the selected tags. The entity the matrix is built around (the first row) always stays
 visible; it is the anchor the tag spreads from. The arrow keys skip hidden rows.
 
+## Several lines in the title = several items
+
+The title field accepts **several lines** (paste them, or add one with
+<kbd>Shift+Enter</kbd>) and each line becomes its own item. Every line is evaluated
+**on its own**, exactly as if you had entered it alone: the deadline in the title, the
+task/event rule, a markdown link. The shared settings of the form — **the chosen
+project, the ticked tags, the selected aspect** — apply to all of them.
+
+It works in five forms:
+
+| Where | What is created |
+|---|---|
+| ✓ **Rychlý úkol** (dialog) | tasks/events, all in the project from the select |
+| **+ Nový úkol** at a project | tasks/events in that project, with the ticked tags |
+| **+ Nová entita** at a project | entities of the chosen aspect in that project |
+| **+ Přidat úkol** at a meeting | tasks/events, mentioned by the meeting and in the ticked projects |
+| **+ Nová entita** at a meeting | entities of the chosen aspect, mentioned by the meeting |
+
+Example — paste this into Rychlý úkol with a project selected:
+
+```
+odeslat fakturu zítra
+Porada úterý 10:00
+zavolat Petrovi
+```
+
+and three items appear: a task due tomorrow, an **event** on Tuesday 10:00–11:00
+(because there is a time), and a task with no deadline. All three belong to the chosen
+project.
+
+Blank lines are skipped. <kbd>Enter</kbd> submits the form, <kbd>Shift+Enter</kbd> adds
+another line. With a single line nothing changes — even the toast is the same as before;
+with several lines one summary replaces ten toasts piling up.
+
 ## Task or event? The time in the title decides
 
 Everywhere an entity is created **from a title alone** — ✓ Quick task (dashboard and

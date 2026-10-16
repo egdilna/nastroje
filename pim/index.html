@@ -531,6 +531,11 @@ body.theme-dark .task-panel-termin.dl-overdue { color: #ff8a8a; }
 .task-panel-termin.dl-today { color: #a85c00; font-weight: 600; }
 body.theme-dark .task-panel-termin.dl-today { color: #ffc266; }
 .task-panel-hotovo { opacity: 0.75; }
+
+/* Políčko názvu u rychlého zakládání: textarea, aby šlo vložit víc řádků.
+   Vypadá jako jednořádkové pole, ale text se v něm zalamuje a dá se zvětšit. */
+textarea.nazev-radky { font: inherit; width: 100%; min-height: 2.4em; resize: vertical;
+  line-height: 1.35; padding: 0.3em 0.45em; }
 .kanban-task-toggle { display: inline-block; margin-right: 0.3em; }
 .kanban-task-toggle input { transform: scale(1.1); cursor: pointer; }
 .inline-clear { padding: 0.1em 0.5em; font-size: 0.85em; vertical-align: middle; margin-left: 0.3em; }
@@ -831,7 +836,7 @@ body.theme-dark .event-tasks-table th, body.theme-dark .event-tasks-table td { b
 .event-tasks-add-card { padding: 0.7em 0.9em; background: #fff; border-radius: 4px; border: 1px solid #ccc; }
 body.theme-dark .event-tasks-add-card { background: #1a1a1a; border-color: #444; }
 .event-tasks-add-card h4 { margin-top: 0; font-size: 1em; }
-.event-tasks-add-card input:not([type="checkbox"]):not([type="radio"]), .event-tasks-add-card select { width: 100%; box-sizing: border-box; margin: 0.2em 0; }
+.event-tasks-add-card input:not([type="checkbox"]):not([type="radio"]), .event-tasks-add-card select, .event-tasks-add-card textarea { width: 100%; box-sizing: border-box; margin: 0.2em 0; }
 /* Question answers section */
 .question-answers-section { margin: 1em 0; padding: 0.6em 0.8em; background: #fff8e6; border-left: 4px solid #d4a000; border-radius: 0 4px 4px 0; }
 body.theme-dark .question-answers-section { background: #2a2511; border-left-color: #d4a000; }
@@ -1365,10 +1370,12 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
 <dialog id="dialog-quick-task" aria-labelledby="dialog-qt-title">
   <h2 id="dialog-qt-title">✓ Rychlý úkol</h2>
   <p class="meta">Vytvoří úkol bez přepnutí na jeho detail. Termín zadejte v názvu přirozenou řečí („odeslat fakturu 30.6.", „úklid v pátek").
-    Když přidáte i <strong>čas</strong>, vznikne místo úkolu <strong>událost</strong>: „porada úterý 10:00" na hodinu, „porada úterý 10:00–12:00" na ten rozsah.</p>
+    Když přidáte i <strong>čas</strong>, vznikne místo úkolu <strong>událost</strong>: „porada úterý 10:00" na hodinu, „porada úterý 10:00–12:00" na ten rozsah.
+    <strong>Víc řádků</strong> = víc úkolů, každý se vyhodnotí zvlášť a všechny jdou do zvoleného projektu
+    (<kbd>Enter</kbd> uloží, <kbd>Shift+Enter</kbd> přidá řádek).</p>
   <form method="dialog">
-    <label for="qt-title">Název úkolu</label>
-    <input type="text" id="qt-title" autocomplete="off" required>
+    <label for="qt-title">Název úkolu <span class="meta">(víc řádků = víc úkolů)</span></label>
+    <textarea id="qt-title" class="nazev-radky" rows="1" autocomplete="off" required></textarea>
     <label for="qt-project">Součást projektu (volitelně)</label>
     <select id="qt-project">
       <option value="">— bez vazby na projekt —</option>
@@ -14861,12 +14868,18 @@ function renderDetailRead(main, e) {
       // Vytvořit nový úkol
       // Přes týž trychtýř jako ostatní rychlé zakládání — pravidlo úkol/událost
       // i rozpoznání termínu má být na jednom místě.
-      const vysledek = createQuickTaskFromText({
-        rawTitle: title,
+      const tagy = vybraneTagy('proj-task-tag');
+      const vysledek = zalozZKazdehoRadku(title, (radek, tiche) => createQuickTaskFromText({
+        rawTitle: radek,
         projectIds: [e.id],
-        tags: vybraneTagy('proj-task-tag')
-      });
-      if (!vysledek) return;
+        tags: tagy,
+        tiche: tiche
+      }));
+      if (vysledek.pocet === 0) return;
+      if (vysledek.vice) {
+        toast(hlaskaHromadne(vysledek.pocet, 'v projektu „' + getDisplayTitle(e) + '"'), 4500);
+        playSound('save-entity');
+      }
       quickTaskInp.value = '';
       render();
       // Vrátit fokus do políčka pro další úkol
@@ -14877,7 +14890,8 @@ function renderDetailRead(main, e) {
     }
     quickTaskBtn.onclick = doAdd;
     quickTaskInp.onkeydown = (ev) => {
-      if (ev.key === 'Enter') { ev.preventDefault(); doAdd(); }
+      // Shift+Enter přidá řádek (= další úkol), samotný Enter uloží.
+      if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); doAdd(); }
     };
   }
   // Obecné přidání entity (zvolený aspekt) do projektu
@@ -14889,23 +14903,29 @@ function renderDetailRead(main, e) {
       const title = quickEntInp.value.trim();
       if (!title) { quickEntInp.focus(); return; }
       const aspect = quickEntAsp.value || 'Note';
-      const attrs = (aspect === 'Task') ? { status: 'todo' } : {};
       const tagy = vybraneTagy('proj-ent-tag');
-      const newEnt = newEntity({ title: title, aspects: [aspect], attributes: attrs, links: [{ to: e.id, type: 'partOf' }], tags: tagy });
-      tryExtractMarkdownLinkFromTitle(newEnt);
-      const datum = doplnDatumZNazvuPodleAspektu(newEnt);
-      db.entities.push(newEnt);
+      const vysledek = zalozZKazdehoRadku(title, (radek) => vytvorEntituZNazvu({
+        rawTitle: radek, aspect: aspect, tags: tagy,
+        links: [{ to: e.id, type: 'partOf' }]
+      }));
+      if (vysledek.pocet === 0) return;
       save();
       quickEntInp.value = '';
       render();
       setTimeout(() => { const i2 = document.getElementById('proj-quick-ent-title'); if (i2) i2.focus(); }, 50);
-      toast('✓ Entita „' + newEnt.title + '" přidána do projektu' +
-        (datum ? ', ' + datum : '') +
-        (tagy.length > 0 ? ', tagy: ' + tagy.join(', ') : ''), 3500);
+      if (vysledek.vice) {
+        toast(hlaskaHromadne(vysledek.pocet, 'v projektu „' + getDisplayTitle(e) + '"'), 4500);
+      } else {
+        const v = vysledek.vznikle[0];
+        toast('✓ Entita „' + v.entita.title + '" přidána do projektu' +
+          (v.datum ? ', ' + v.datum : '') +
+          (tagy.length > 0 ? ', tagy: ' + tagy.join(', ') : ''), 3500);
+      }
       playSound('save-entity');
     }
     quickEntBtn.onclick = doAddEnt;
-    quickEntInp.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doAddEnt(); } };
+    // Shift+Enter přidá řádek (= další entita), samotný Enter uloží.
+    quickEntInp.onkeydown = (ev) => { if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); doAddEnt(); } };
   }
   // Kanban task toggle (v project dashboard)
   const kanbanCb = main.querySelector('#kanban-skryt-prazdne');
@@ -18753,8 +18773,8 @@ function renderEventTasksSection(entity) {
         (projects.length > 0
           ? '<p class="meta">Schůzka je součástí ' + projects.length + ' projekt' + (projects.length === 1 ? 'u' : projects.length < 5 ? 'ů' : 'ů') + '. Vyberte, do kterých projektů má nový úkol patřit. Schůzka úkol vždy <strong>zmíní</strong> (vazba „mentions").</p>'
           : '<p class="meta">Schůzka není v žádném projektu. Nový úkol bude pouze <strong>zmíněn na schůzce</strong>.</p>') +
-        '<label for="ev-new-task-title">Název úkolu</label>' +
-        '<input type="text" id="ev-new-task-title" placeholder="Co se má udělat (lze „zítra", „úterý 10:00" → událost)">' +
+        '<label for="ev-new-task-title">Název úkolu <span class="meta">(víc řádků = víc úkolů)</span></label>' +
+        '<textarea id="ev-new-task-title" class="nazev-radky" rows="1" placeholder="Co se má udělat (lze „zítra", „úterý 10:00" → událost). Víc řádků = víc úkolů."></textarea>' +
         (projects.length > 0
           ? '<fieldset class="ev-new-task-projects" style="margin:0.5em 0;padding:0.4em 0.6em;border:1px solid #ccc;border-radius:4px;">' +
               '<legend style="padding:0 0.3em;font-size:0.9em;color:#555;">Součást projektů (partOf)</legend>' +
@@ -18772,8 +18792,8 @@ function renderEventTasksSection(entity) {
         (projects.length > 0
           ? '<p class="meta">Schůzka je součástí ' + projects.length + ' projekt' + (projects.length === 1 ? 'u' : 'ů') + '. Vyberte, do kterých má entita patřit. Schůzka entitu vždy <strong>zmíní</strong>.</p>'
           : '<p class="meta">Schůzka není v žádném projektu. Entita bude jen <strong>zmíněna na schůzce</strong>.</p>') +
-        '<label for="ev-new-ent-title">Název entity</label>' +
-        '<input type="text" id="ev-new-ent-title" placeholder="Název nové entity">' +
+        '<label for="ev-new-ent-title">Název entity <span class="meta">(víc řádků = víc entit)</span></label>' +
+        '<textarea id="ev-new-ent-title" class="nazev-radky" rows="1" placeholder="Název nové entity. Víc řádků = víc entit se stejným aspektem."></textarea>' +
         '<label for="ev-new-ent-aspect">Aspekt</label>' +
         '<select id="ev-new-ent-aspect">' + quickEntityAspectOptions('Note') + '</select>' +
         (projects.length > 0
@@ -19022,16 +19042,21 @@ function attachEventTasksHandlers(main, entity) {
     // Projekty: bereme jen ty, které uživatel zaškrtl v UI.
     // Pokud schůzka není v žádném projektu, fieldset chybí a vezme se prázdné pole.
     const selectedPids = Array.from(document.querySelectorAll('input.ev-new-task-proj:checked')).map(c => c.dataset.pid);
-    const result = createQuickTaskFromText({
-      rawTitle: raw,
+    const tagy = vybraneTagy('ev-new-task-tag');
+    const vysledek = zalozZKazdehoRadku(raw, (radek, tiche) => createQuickTaskFromText({
+      rawTitle: radek,
       projectIds: selectedPids,
       eventMentionIds: [entity.id],
-      tags: vybraneTagy('ev-new-task-tag')
-    });
-    if (result) {
-      titleEl.value = '';
-      render();
+      tags: tagy,
+      tiche: tiche
+    }));
+    if (vysledek.pocet === 0) return;
+    if (vysledek.vice) {
+      toast(hlaskaHromadne(vysledek.pocet, 'ke schůzce „' + getDisplayTitle(entity) + '"'), 4500);
+      playSound('save-entity');
     }
+    titleEl.value = '';
+    render();
   }
   if (addNewBtn) addNewBtn.onclick = doAddNewTask;
   if (titleEl) titleEl.onkeydown = (ev) => {
@@ -19049,20 +19074,24 @@ function attachEventTasksHandlers(main, entity) {
     const selectedPids = Array.from(document.querySelectorAll('input.ev-new-ent-proj:checked')).map(c => c.dataset.pid);
     const links = [{ to: entity.id, type: 'mentions' }];
     selectedPids.forEach(pid => { if (pid) links.push({ to: pid, type: 'partOf' }); });
-    const attrs = (aspect === 'Task') ? { status: 'todo' } : {};
     const tagy = vybraneTagy('ev-new-ent-tag');
-    const newEnt = newEntity({ title: raw, aspects: [aspect], attributes: attrs, links: links, tags: tagy });
-    tryExtractMarkdownLinkFromTitle(newEnt);
-    const datumZNazvu = doplnDatumZNazvuPodleAspektu(newEnt);
-    db.entities.push(newEnt);
+    const vysledek = zalozZKazdehoRadku(raw, (radek) => vytvorEntituZNazvu({
+      rawTitle: radek, aspect: aspect, tags: tagy, links: links
+    }));
+    if (vysledek.pocet === 0) return;
     save();
     entTitleEl.value = '';
     render();
-    let msg = '✓ Entita „' + newEnt.title + '" vytvořena';
-    if (datumZNazvu) msg += ', ' + datumZNazvu;
-    if (selectedPids.length > 0) msg += ' (' + selectedPids.length + ' projekt' + (selectedPids.length === 1 ? '' : 'y') + ')';
-    if (tagy.length > 0) msg += ', tagy: ' + tagy.join(', ');
-    toast(msg, 3500);
+    if (vysledek.vice) {
+      toast(hlaskaHromadne(vysledek.pocet, 'ke schůzce „' + getDisplayTitle(entity) + '"'), 4500);
+    } else {
+      const v = vysledek.vznikle[0];
+      let msg = '✓ Entita „' + v.entita.title + '" vytvořena';
+      if (v.datum) msg += ', ' + v.datum;
+      if (selectedPids.length > 0) msg += ' (' + selectedPids.length + ' projekt' + (selectedPids.length === 1 ? '' : 'y') + ')';
+      if (tagy.length > 0) msg += ', tagy: ' + tagy.join(', ');
+      toast(msg, 3500);
+    }
     playSound('save-entity');
   }
   if (addNewEntBtn) addNewEntBtn.onclick = doAddNewEnt;
@@ -20015,24 +20044,26 @@ function projektRychlePridaniHtml(project) {
   return '<div class="project-quick-task">' +
     '<label for="proj-quick-task-title" style="font-weight:600;">+ Nový úkol do tohoto projektu</label>' +
     '<div class="project-quick-task-row">' +
-      '<input type="text" id="proj-quick-task-title" placeholder="Název (lze: zítra, pondělí, 15.6., úterý 10:00, odkaz [text](url))">' +
+      '<textarea id="proj-quick-task-title" class="nazev-radky" rows="1" placeholder="Název (lze: zítra, pondělí, 15.6., úterý 10:00, odkaz [text](url)). Víc řádků = víc úkolů."></textarea>' +
       '<button type="button" id="proj-quick-task-add" class="primary">Přidat úkol</button>' +
     '</div>' +
     tagyNabidkaHtml(project, 'proj-task-tag', true) +
     '<p class="meta" style="margin:0.3em 0 0;">Vytvoří úkol a propojí ho s tímto projektem vazbou „je součástí". ' +
-      'Je-li v názvu i čas („úterý 10:00"), vznikne místo úkolu událost. Detail projektu zůstane otevřený.</p>' +
+      'Je-li v názvu i čas („úterý 10:00"), vznikne místo úkolu událost. Detail projektu zůstane otevřený. ' +
+      '<strong>Víc řádků</strong> = víc úkolů; každý se vyhodnotí zvlášť a všechny dostanou tytéž tagy.</p>' +
   '</div>' +
   '<div class="project-quick-task">' +
     '<label for="proj-quick-ent-title" style="font-weight:600;">+ Nová entita do tohoto projektu</label>' +
     '<div class="project-quick-task-row">' +
-      '<input type="text" id="proj-quick-ent-title" placeholder="Název (datum v názvu se doplní do termínu, resp. začátku)">' +
+      '<textarea id="proj-quick-ent-title" class="nazev-radky" rows="1" placeholder="Název (datum v názvu se doplní do termínu, resp. začátku). Víc řádků = víc entit."></textarea>' +
       '<label class="sr-only" for="proj-quick-ent-aspect">Aspekt</label>' +
       '<select id="proj-quick-ent-aspect">' + quickEntityAspectOptions('Note') + '</select>' +
       '<button type="button" id="proj-quick-ent-add" class="primary">Přidat entitu</button>' +
     '</div>' +
     tagyNabidkaHtml(project, 'proj-ent-tag', true) +
     '<p class="meta" style="margin:0.3em 0 0;">Vytvoří entitu zvoleného aspektu a propojí ji s tímto projektem vazbou „je součástí". ' +
-      'Aspekt se tu nehádá — u Úkolu se datum z názvu doplní do termínu, u Události do začátku.</p>' +
+      'Aspekt se tu nehádá — u Úkolu se datum z názvu doplní do termínu, u Události do začátku. ' +
+      '<strong>Víc řádků</strong> = víc entit se stejným aspektem; každý řádek se vyhodnotí zvlášť.</p>' +
   '</div>';
 }
 
@@ -23959,6 +23990,61 @@ function openQuickCapture() {
 //   extraLinks: [{to,type}],      // další vazby z úkolu (zřídka)
 //   toastSuffix: string           // dodatek k toastu
 // }
+// === VÍC ŘÁDKŮ V NÁZVU = VÍC POLOŽEK ===
+// Do políčka s názvem jde vložit víc řádků a z každého vznikne vlastní entita.
+// Každý řádek projde týmž trychtýřem, jako kdyby ho uživatel zadal sám — termín
+// z názvu, markdown odkaz i pravidlo úkol/událost. Společné nastavení (projekt,
+// zaškrtnuté tagy, zvolený aspekt) platí pro všechny.
+//
+// Proto to musí být `<textarea>`, ne `<input type="text">`: input konce řádků
+// zahazuje (value sanitization), takže vložený víceřádkový text se v něm slije
+// do jednoho a žádné víc řádků by se nikdy nedozvěděl.
+function radkyNazvu(text) {
+  return String(text || '').split('\n').map(r => r.trim()).filter(Boolean);
+}
+
+// Zavolá `zaloz(radek, tiche)` pro každý neprázdný řádek. Jeden řádek se chová
+// přesně jako dřív, i s původní hláškou; teprve u víc řádků se hlášky potlačí
+// (`tiche`) a volající dá jeden souhrn — jinak by se po vložení deseti řádků
+// přes sebe přelilo deset toastů a deset pípnutí.
+function zalozZKazdehoRadku(text, zaloz) {
+  const radky = radkyNazvu(text);
+  const vice = radky.length > 1;
+  const vznikle = [];
+  radky.forEach(r => {
+    const v = zaloz(r, vice);
+    if (v) vznikle.push(v);
+  });
+  return { pocet: vznikle.length, vznikle: vznikle, vice: vice };
+}
+
+// Založení entity se zvoleným aspektem z jednoho řádku názvu. Používá ji
+// „+ Nová entita" u projektu i u schůzky — jedno místo, jedno chování.
+// Vazby a tagy se kopírují, aby dvě entity ze dvou řádků nesdílely totéž pole.
+function vytvorEntituZNazvu(opts) {
+  opts = opts || {};
+  const nazev = (opts.rawTitle || '').trim();
+  if (!nazev) return null;
+  const aspect = opts.aspect || 'Note';
+  const attrs = (aspect === 'Task') ? { status: 'todo' } : {};
+  const e = newEntity({
+    title: nazev, aspects: [aspect], attributes: attrs,
+    links: (opts.links || []).map(l => ({ ...l })),
+    tags: (opts.tags || []).slice()
+  });
+  tryExtractMarkdownLinkFromTitle(e);
+  const datum = doplnDatumZNazvuPodleAspektu(e);
+  db.entities.push(e);
+  return { entita: e, datum: datum };
+}
+
+// Souhrnná hláška po založení víc položek najednou.
+function hlaskaHromadne(pocet, popisCile) {
+  const slovo = pocet === 1 ? 'položka' : (pocet < 5 ? 'položky' : 'položek');
+  return '✓ Z ' + pocet + ' řádků vzniklo ' + pocet + ' ' + slovo +
+    (popisCile ? ' ' + popisCile : '') + '.';
+}
+
 function createQuickTaskFromText(opts) {
   opts = opts || {};
   const raw = (opts.rawTitle || '').trim();
@@ -24049,9 +24135,13 @@ function createQuickTaskFromText(opts) {
     }).filter(Boolean);
     if (titles.length > 0) parts.push(' (zmíněn na: ' + titles.join(', ') + ')');
   }
-  toast((jeUdalost ? '📅 Událost „' : '✓ Úkol „') + title + '" vytvořen' + (jeUdalost ? 'a' : '') +
-    parts.join('') + '.', 4500);
-  playSound('save-entity');
+  // V tichém režimu (zakládá se víc řádků najednou) hlášku i zvuk vynecháme —
+  // souhrn dá volající.
+  if (!opts.tiche) {
+    toast((jeUdalost ? '📅 Událost „' : '✓ Úkol „') + title + '" vytvořen' + (jeUdalost ? 'a' : '') +
+      parts.join('') + '.', 4500);
+    playSound('save-entity');
+  }
   return { entity: e, parsedDeadline: deadline, jeUdalost: jeUdalost };
 }
 
@@ -24076,11 +24166,17 @@ function doQuickTaskSave() {
   const titleRaw = titleEl.value.trim();
   if (!titleRaw) { alertMsg('Zadejte název úkolu.'); return; }
   const projId = projSel.value || '';
-  const result = createQuickTaskFromText({
-    rawTitle: titleRaw,
-    projectIds: projId ? [projId] : []
-  });
-  if (!result) return;
+  const vysledek = zalozZKazdehoRadku(titleRaw, (radek, tiche) => createQuickTaskFromText({
+    rawTitle: radek,
+    projectIds: projId ? [projId] : [],
+    tiche: tiche
+  }));
+  if (vysledek.pocet === 0) return;
+  if (vysledek.vice) {
+    const proj = projId ? findEntity(projId) : null;
+    toast(hlaskaHromadne(vysledek.pocet, proj ? 'v projektu „' + getDisplayTitle(proj) + '"' : ''), 4500);
+    playSound('save-entity');
+  }
   document.getElementById('dialog-quick-task').close();
   // Nepřesouvat na detail nového úkolu
   if (state.view === 'inbox' || state.view === 'dashboard' || state.view === 'all' || state.view === 'tasks') {
@@ -27256,6 +27352,7 @@ function setupNav() {
   if (qtSaveBtn) qtSaveBtn.onclick = doQuickTaskSave;
   if (qtCancelBtn) qtCancelBtn.onclick = () => document.getElementById('dialog-quick-task').close();
   if (qtTitleEl) qtTitleEl.onkeydown = (ev) => {
+    // Shift+Enter přidá řádek (= další úkol), samotný Enter uloží.
     if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); doQuickTaskSave(); }
   };
 
