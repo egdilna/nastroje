@@ -155,8 +155,10 @@ dlaždice dostane **nové id**, `plocha: S.aktivni`, `rodic: null` a pořadí na
 takže originál zůstane, kde je, a soubor jde vložit opakovaně. `dlazdiceZeDat` přijme
 jednu dlaždici i pole dlaždic, ověří `TYPY[typ]`, doplní chybějící `obsah`
 přes `vychoziObsah()` a zálohu celého prostředí (`{objekty:[…]}`) odmítne s odkazem
-na *Nastavení → Data*. Akce visí na třech místech: v nabídce dlaždice hned pod exportem,
-v okně *Nová dlaždice* a v paletě.
+na *Nastavení → Data*. Akce visí tam, kde se dlaždice **zakládají**: v okně *Nová
+dlaždice*, ve *Správci dlaždic*, v hlavní nabídce a v paletě. **Do nabídky otevřené
+dlaždice nepatří** — vkládaná dlaždice s tou otevřenou nemá nic společného, vzniká
+vedle ní. Export tam naopak patří, ten se té dlaždice týká.
 
 **Kalendář** nežije jen z `S.pripominky`: `ukolySTerminem()` posbírá napříč dlaždicemi
 typu `ukoly` všechny **nesplněné úkoly s termínem** a kalendář je ukazuje v mřížce
