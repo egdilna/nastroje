@@ -759,7 +759,11 @@ function vytvorit(typ,nazev,obsah,rodic){
 }
 function smazat(i,tise){
   const o=objekt(i); if(!o) return;
-  if(!tise&&S.chovani.potvrzovatMazani&&!confirm(`Přesunout „${o.nazev}“ do koše?`)) return;
+  const vSlozce=o.typ==="slozka"?deti(o.id):[];
+  if(!tise&&S.chovani.potvrzovatMazani&&!confirm(`Přesunout „${o.nazev}“ do koše?`
+    +(vSlozce.length?` Dlaždic uvnitř (${vSlozce.length}) se to netýká, vrátí se na plochu.`:""))) return;
+  /* dlaždice ve smazané složce nesmí zůstat viset na neexistujícím rodiči — zmizely by */
+  vSlozce.forEach(x=>{ x.rodic=null; x.plocha=o.plocha; });
   S.kos.unshift({...o,smazano:Date.now()});
   S.objekty=S.objekty.filter(x=>x.id!==i);
   zavritOkno("obj-"+i); ulozit(); kreslitPlochu(); kreslitPanel(); hlas("Přesunuto do koše");
@@ -1527,8 +1531,10 @@ function vychoziRezim(o){
   if(noveDlazdice.delete(o.id)) return "upravy";
   return S.chovani.otviratKeCteni===false?"upravy":"zobrazeni";
 }
-function listaDlazdice(o){
-  const dalsi=nabidkaTlacitko("Další akce",akceDlazdice(o));
+/* Jediné tlačítko v liště okna. Co nepatří mezi ovládání okna, patří sem do nabídky —
+   řada tlačítek vedle sebe se odečítačem prochází dlouho a místo v liště sebere taky. */
+function listaDlazdice(o,navic){
+  const dalsi=nabidkaTlacitko("Další akce",[...(navic||[]),...akceDlazdice(o)]);
   dalsi.style.marginTop="0";
   return dalsi;
 }
@@ -2194,19 +2200,20 @@ function editor(o,t,w){
       break;
     }
     case "aplikace": case "odkaz": {
+      /* Lišta okna aplikace nese jediné tlačítko — všechno ostatní je v jeho nabídce.
+         „Obnovit" a „Úvod" dělaly totéž (obě vracely iframe na c.url), zůstala jedna akce. */
       const bar=el("div",{class:"pruh",style:"padding:10px 12px 0;margin:0"});
-      ozivitListu(bar,"Nástroje aplikace "+o.nazev);
       const ram=el("iframe",{title:o.nazev,allow:"clipboard-read; clipboard-write; fullscreen; camera; microphone; geolocation"});
       if(c.izolovat) ram.setAttribute("sandbox","allow-scripts allow-forms allow-popups allow-same-origin allow-downloads allow-modals");
-      bar.append(el("button",{class:"btn mini",onclick:()=>{ram.src=c.url||"about:blank";hlas("Znovu načteno");}},"⟳ Obnovit"),
-        el("button",{class:"btn druhy mini",onclick:()=>{ram.src=c.url||"about:blank";hlas("Zpět na úvod aplikace");}},"⌂ Úvod"),
-        el("button",{class:"btn druhy mini",onclick:()=>c.url&&window.open(c.url,"_blank","noopener")},"↗ Nová karta"),
-        el("button",{class:"btn druhy mini",onclick:()=>{
+      bar.append(listaDlazdice(o,[
+        ["⟳","Znovu načíst aplikaci",()=>{ram.src=c.url||"about:blank";hlas("Znovu načteno");}],
+        ["↗","Otevřít v nové kartě prohlížeče",()=>c.url?window.open(c.url,"_blank","noopener"):hlas("Aplikace nemá adresu")],
+        ["✏️","Přejmenovat aplikaci",()=>{
           const n=prompt("Název aplikace:",o.nazev);
           if(n&&n.trim()){ o.nazev=n.trim(); zmena(o); w.dataset.nazev=o.nazev; $("h5",w).textContent=o.nazev; kreslitPanel(); }
-        }},"✏️ Název"),
-        el("button",{class:"btn druhy mini",onclick:()=>{ zavritOkno("obj-"+o.id); nastaveniAplikace(o); }},"⚙ Nastavení"),
-        listaDlazdice(o));
+        }],
+        ["⚙","Nastavení aplikace",()=>{ zavritOkno("obj-"+o.id); nastaveniAplikace(o); }]
+      ]));
       const obal=el("div",{style:"flex:1;min-height:0"},ram);
       t.style.display="flex"; t.style.flexDirection="column";
       t.append(bar,obal);
@@ -2412,10 +2419,9 @@ function otevritSlozku(o){
     const lista=el("div",{class:"pruh",style:"align-items:flex-start"});
     const hlava=el("div",{});
     const box=el("div",{});
-    const pata=el("div",{class:"pruh",style:"margin-top:16px"});
     const kresliListu=()=>{
       const jeZobrazeni=rezim==="zobrazeni";
-      lista.innerHTML=""; hlava.innerHTML=""; pata.innerHTML="";
+      lista.innerHTML=""; hlava.innerHTML="";
       const prep=el("button",{class:"btn mini","data-prepinac-rezimu":"1",
         "aria-label":(jeZobrazeni?"Přepnout na úpravy":"Přepnout na zobrazení")+" — klávesa F4",
         title:"Přepnout režim, klávesa F4"},jeZobrazeni?"✏️ Upravit":"👁 Zobrazení");
@@ -2425,7 +2431,8 @@ function otevritSlozku(o){
         hlas(rezim==="zobrazeni"?"Režim zobrazení":"Režim úprav");
         $("[data-prepinac-rezimu]",lista)?.focus();
       });
-      lista.append(prep,listaDlazdice(o));
+      lista.append(prep,listaDlazdice(o,[
+        ["\u{1F5C4}","Otevřít ve správci souborů",()=>otevritNastroj("soubory")]]));
       ozivitListu(lista,"Nástroje složky "+o.nazev);
       if(w) w.dataset.rezim=rezim;
       if(jeZobrazeni){
@@ -2433,15 +2440,8 @@ function otevritSlozku(o){
           hlava.append(el("div",{class:"pruh","aria-label":"Štítky: "+o.stitky.join(", ")},
             o.stitky.map(x=>el("span",{class:"stitek"},x))));
       }else{
+        /* vzhled, správce souborů i mazání jsou v nabídce Další akce — patička tu nic nepřidávala */
         hlavicka(o,hlava);
-        pata.append(
-          el("button",{class:"btn druhy mini",onclick:()=>vzhledDlazdice(o)},"Vzhled"),
-          el("button",{class:"btn druhy mini",onclick:()=>otevritNastroj("soubory")},"Otevřít ve správci souborů"),
-          el("button",{class:"btn nebezpecny mini",onclick:()=>{
-            if(!confirm("Smazat složku? Dlaždice uvnitř se vrátí na plochu.")) return;
-            deti(o.id).forEach(x=>{x.rodic=null;});
-            smazat(o.id,true); zavritOkno("obj-"+o.id);
-          }},"Smazat složku"));
       }
     };
     const kresli=()=>{
@@ -2468,7 +2468,7 @@ function otevritSlozku(o){
         el("label",{class:"pole"},el("span",{},"Vložit existující"),sel2)));
     };
     kresliListu(); kresli();
-    t.append(lista,hlava,box,pata);
+    t.append(lista,hlava,box);
   }});
 }
 function spustitSezeni(o){
