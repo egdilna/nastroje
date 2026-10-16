@@ -645,8 +645,18 @@ prohlížeče dál nedávají.
 ## Wiki odkazy a přejmenování
 Wiki odkaz `[[Název]]` míří na entitu **jménem**, ne identifikátorem — proto každé místo,
 které umí entitu přejmenovat, musí zavolat `prejmenujWikiOdkazy(stary,novy)`. Dnes to jsou
-`finishCommitEdit` (editor) a `processTSVImport` (řádek s ID). Kdo přidá další cestu
-k přejmenování, musí ji přidat taky.
+`finishCommitEdit` (editor), `processTSVImport` (řádek s ID), `prepocitejNazvyVsude`
+a `prepocitejNazvyOkoli`. Kdo přidá další cestu k přejmenování, musí ji přidat taky.
+
+**Skládaný název se mění sám, takže „přejmenovat" neznamená jen editor.** Od zavedení skoku
+přes vazbu (`((Vazba -> Pole))`) leží zdroj názvu klidně na **jiné entitě**, a uložení té
+druhé proto musí přejmenovat sousedy: `prepocitejNazvyOkoli(id,vcetneSebe)` projde
+`sousedeEntity(id)` (obousměrné vazby, wiki zmínky ne — dál než jedno patro skok nesahá),
+přepočítá název, narovná odkazy a **nehýbe `updatedAt` ani u přejmenované entity**. Volá se
+ze `finishCommitEdit`, `deleteEntity` (sousedy si bere **před** smazáním), `moveEntityKanban`
+a ze zapisovače checklistu v detailu — tedy ze všech cest, které sahají na hodnotu mimo
+hromadné akce (ty mají `prepocitejNazvyVsude`). Cena je jeden `getRelsTo` na uložení:
+nad 1500 entitami 7 ms.
 
 - Prochází se stejná plocha, jakou zná `getRelsTo`: atributy typu `text` a `textarea`
   z typu i z aspektu plus `customAttributes`. Navíc ale **i archivované entity a entita

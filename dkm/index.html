@@ -2712,6 +2712,35 @@ if(entit){setDirty(true);dbg('Přepočítané skládané názvy: '+entit)}
 return{entit:entit,odkazu:odkazu};
 }
 
+/* Skládaný název umí brát hodnotu i z **druhé entity** (`((Vazba -> Pole))`), takže
+   uložení jedné entity může přejmenovat její sousedy. Skok je jen jedno patro, takže
+   dál než k přímým sousedům se změna nešíří — a `sousedeEntity` je přesně ta množina
+   (vazby obou směrů, wiki zmínky ne).
+
+   Každé přejmenování tu **narovná wiki odkazy** — jinak by `[[Název]]` jinde v projektu
+   mířilo na jméno, které už neexistuje, a uživatel by o tom nevěděl. `updatedAt` se
+   přitom **nemění ani u přejmenované entity, ani u těch s odkazy**: nikdo do nich
+   nepsal, jen se dopočítalo, co z dat plyne. Kdyby se datum posouvalo, jedna úprava
+   by vystrkala nahoru v Naposledy změněných celé okolí. */
+function prepocitejNazvyOkoli(id,vcetneSebe){
+let entit=0,odkazu=0;
+const hotovo=new Set();
+const zkus=eid=>{
+if(hotovo.has(eid))return;
+hotovo.add(eid);
+const e=findEntity(eid);
+if(!e||jeZamcena(e))return;
+const stary=e.name||'';
+if(!prepocitejNazev(e))return;
+entit++;
+odkazu+=prejmenujWikiOdkazy(stary,e.name).odkazu;
+};
+if(vcetneSebe)zkus(id);
+sousedeEntity(id).forEach(zkus);
+if(entit)setDirty(true);
+return{entit:entit,odkazu:odkazu};
+}
+
 /* Hodnota atributu tak, jak ji má člověk před očima. U složeného je to vyhodnocená
    šablona, u ostatních prostě uložená hodnota. */
 function hodnotaProZobrazeni(e,def){
@@ -8013,7 +8042,10 @@ e.attributes=e.attributes||{};
 if(newKey==='_none'){delete e.attributes[target.attrId]}
 else if(target.type==='yesno'){e.attributes[target.attrId]=newKey==='true'}
 else{e.attributes[target.attrId]=newKey}
-e.updatedAt=new Date().toISOString();setDirty(true);
+e.updatedAt=new Date().toISOString();
+/* Sloupec kanbanu je obyčejný atribut — může být zdrojem skládaného názvu. */
+prepocitejNazvyOkoli(e.id,true);
+setDirty(true);
 toast(t('kanbanMoved',{name:getTitle(e)}));
 }
 
@@ -8970,6 +9002,8 @@ ziv.attributes=ziv.attributes||{};
 if(nove.length)ziv.attributes[a.id]=nove;else delete ziv.attributes[a.id];
 }
 ziv.updatedAt=new Date().toISOString();
+/* I checklist může být zdrojem skládaného názvu. */
+prepocitejNazvyOkoli(ziv.id,true);
 setDirty(true);return true;
 });
 v.appendChild(renderAttrVal(a,val,e,zapis?{zapis:zapis}:null));r.appendChild(v);return r;
@@ -9044,6 +9078,9 @@ return document.createTextNode(String(v));
 }
 function deleteEntity(id,tise){
 {const _e=findEntity(id);if(_e&&!lzeMenit(_e,tise))return false}
+/* Sousedy si zapamatuj **před** smazáním — potom už vazba na mazanou entitu nikam
+   nevede a skládaný název, který z ní bral, by zůstal viset na neexistujícím jméně. */
+const _sousede=Array.from(sousedeEntity(id));
 state.data.entities=state.data.entities.filter(e=>e.id!==id);
 uklidZalozky();
 /* Tagy jsou pole hodnot stejně jako vazby — ale identifikátor mazané entity
@@ -9055,6 +9092,7 @@ if(e.relations)e.relations=e.relations.filter(r=>r.targetId!==id);
 if(e.attributes)Object.keys(e.attributes).forEach(k=>{if(tagoveId.has(k))return;const v=e.attributes[k];if(Array.isArray(v))e.attributes[k]=v.filter(x=>x!==id);else if(v===id)delete e.attributes[k]});
 if(e.customAttributes)e.customAttributes.forEach(ca=>{if(ca.type==='tags')return;if(Array.isArray(ca.value))ca.value=ca.value.filter(x=>x!==id);else if(ca.value===id)ca.value=''});
 });
+_sousede.forEach(sid=>prepocitejNazvyOkoli(sid,true));
 setDirty(true);toast(t('deleted'));
 }
 function openConvertDialog(e){
@@ -13276,6 +13314,9 @@ posunCitace(e);
 _autoIncDoplneno.clear();
 const novyNazev=getTitle(e);
 ohlasPrejmenovani(prejmenujWikiOdkazy(staryNazev,novyNazev),novyNazev);
+/* Uložená entita může být zdrojem skládaného názvu svých sousedů. */
+const _ok=prepocitejNazvyOkoli(e.id,false);
+if(_ok.entit)setTimeout(()=>toast(t('nameRecomputed',{n:_ok.entit})),900);
 const id=e.id;state.view.edit=null;state.view.editZaklad=null;
 setDirty(true);
 navigateTo({name:'detail',entityId:id});
