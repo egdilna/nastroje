@@ -280,6 +280,37 @@ Je to **jen v aplikaci**, ne v šabloně prohlížeče.
 
 Hlídá to `pim/testy/tagy-pri-zalozeni.mjs`.
 
+## Panel úkolu v detailu
+
+`renderTaskPanel(e)` je proužek nad `<dl class="read-attrs">` se stavem, termínem
+a tlačítkem na přeplánování. Vzniklo proto, že se stavem a termínem se pracuje
+pořád a kvůli tomu nemá smysl otevírat editaci celé entity.
+
+Dřív byl v **hlavičce detailu mezi akčními tlačítky** jen select stavu
+(`.task-quick-toggle`) a termín se dal měnit jen v editaci nebo v pohledu Úkoly.
+
+Tři věci, které musí platit:
+
+1. **Jediný zdroj stavů je `ASPECTS.Task.fields.status`** (`taskStatusChoices()` /
+   `taskStatusOptionsHtml()`). Kopie seznamu se už jednou rozešly („Zrušeno" vs
+   „Zrušené") a kdo přidá stav do `ASPECTS`, nesmí ho dopisovat ještě do UI.
+   Pohled Úkoly bere options odtud taky.
+2. **Termín se ukazuje i prázdný.** Jinak není vidět, že žádný není — a hlavně by
+   nebylo kam kliknout, aby šel poprvé nastavit.
+3. **Stav a termín se v atributech neopakují.** `renderAttributesReadOnly(e, opts)`
+   dostane `opts.vynechat`. Vynechává se **jen v aplikaci**: šablona prohlížeče má
+   vlastní kopii té funkce a panel v ní není, takže tam stav i termín musí zůstat
+   mezi atributy. Kdo bude `opts` protahovat dál, ať to drží.
+
+Přeplánování jde přes `openQuickReminderEditorForDeadline()` — tentýž dialog
+(a tedy tentýž parser) jako ⏰ Termín v pohledu Úkoly a přeplánování
+v Připomenutích. Tlačítko proto nese i `data-task-reschedule`, aby ho ta funkce
+našla při vracení fokusu po překreslení.
+
+Panel je **jen v aplikaci**, ne v šabloně prohlížeče.
+
+Hlídá to `pim/testy/ukol-panel.mjs` (kanárci na ostatní entity).
+
 ## Rychlý výběr ze seznamu: tagy (L) a aspekty (K)
 
 `otevriRychlyVyber(opts)` je **jeden** dialog „zaškrtej, co k entitě patří".

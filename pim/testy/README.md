@@ -61,6 +61,7 @@ upravte v `lib.mjs`.
 | `klavesy.mjs` | Klávesové zkratky a accesskey se nepřekrývají. |
 | `klavesa-url.mjs` | Klávesa `o` otevře jediný URL atribut, jinak jen oznámí proč ne. |
 | `pripomenuti.mjs` | Tabulka termínů, přeplánování dialogem a návrat fokusu po překreslení. |
+| `ukol-panel.mjs` | Panel úkolu v detailu: stav a termín nad atributy (ne mezi tlačítky), přeplánování slovy, termín i prázdný. |
 | `ukoly-termin.mjs` | Tlačítko ⏰ Termín v Úkolech: společný dialog, zadání slovy, mazání termínu. |
 | `staticky-prohlizec.mjs` | Vygenerovaný offline prohlížeč se načte a ukazuje totéž. |
 
