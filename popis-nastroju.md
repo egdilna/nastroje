@@ -145,6 +145,23 @@ Soubory ve složce: `docs-cs.md`, `docs-en.md`, `jsondb-format.md`, `jsondb-sche
 
 ---
 
+## leg — Legislativní prohlížeč
+
+**Osobní knihovna vybraných právních předpisů nad otevřenými daty e-Sbírky.**
+
+Aplikace nepracuje s celou Sbírkou zákonů — uživatel si do ní postupně přidává jen předpisy, se kterými pracuje, a staví nad nimi vlastní znalosti. Data se ukládají do složky v GitHub repozitáři.
+
+Hlavní funkce:
+- Oblasti jako vlastní složky předpisů (jeden předpis může být ve více oblastech)
+- Stažení aktuálního a volitelně i budoucích znění předpisu z e-Sbírky (každé znění v samostatných menších souborech)
+- Strukturované zobrazení předpisu s nadpisy, odstavci, písmeny, body, tabulkami a poznámkami pod čarou
+- Detail ustanovení s kontextem, odkazy a kopírováním v několika tvarech
+- Vyznačená ustanovení v neomezeném počtu skupin, s poznámkami a přehledy
+- Fungující odkazy mezi předpisy, hledání v předpisu, oblasti i celé knihovně
+- Každý předpis, ustanovení, oblast i skupina má vlastní adresu pro odkazy zvenku
+
+---
+
 ## markdown — Markdown Editor
 
 **Hierarchický editor Markdownu.**
