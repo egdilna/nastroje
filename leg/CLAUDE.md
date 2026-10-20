@@ -45,9 +45,13 @@ adresy i kotvy. Nečíslované fragmenty mají klíč typu `…/frag_1241153279`
 ## Úložiště v GitHubu
 Složka workspace (z nastavení nebo z URL) obsahuje:
 ```
-legprohlizec.json                       oblasti, předpisy (metadata), skupiny, vyznačení
+legprohlizec.json                       oblasti, předpisy (metadata), skupiny, vyznačení,
+                                        skupinyKomentaru, komentare
 predpisy/{rok}-{číslo}/{datum}-{n}.json jedno znění rozdělené na části ≤ ~600 kB
+predpisy/{rok}-{číslo}/poznamka.md      poznámka k předpisu (Markdown), ve workspace jen P.poznamka
 ```
+Komentář: `{id, predpis, klic, citace, zneni, textUst, text (Markdown), skupiny[], vytvoreno, upraveno}`
+— k jednomu ustanovení jich může být libovolně mnoho. Vyznačení je naopak jedno na ustanovení.
 Požadavek uživatele: **nic nesmí být velké** — každé znění je v samostatných souborech
 a dělí se na části (`MEZ_CASTI`). Část nese `fragmenty` jako pole
 `[klíč, klíč rodiče, typ, citace, html]` a `odkazy` jen pro odkazy, které v ní jsou.
@@ -67,12 +71,21 @@ Zásady z kořenového `CLAUDE.md` (mez 1 MB, pojistka proti přepsání, histor
 ## Adresy
 Každý pohled i entita má vlastní adresu (`adresa()`, `parametry()`), úložiště je v ní vždy:
 `?repo=vlastník/repo&slozka=…&vetev=…` (větev jen mimo `main`) a dále
-`pohled` (`prehled|oblast|predpis|ust|vyznacena|skupina|hledat|pridat|nastaveni`),
+`pohled` (`prehled|oblast|predpis|ust|vyznacena|skupina|komentare|poznamka|hledat|pridat|nastaveni`),
 `oblast`, `predpis` (`rok/číslo`), `ust` (klíč), `zneni` (datum, jen mimo aktuální),
-`skupina`, `q`, `rozsah` (`predpis:…`, `oblast:…`), `diakritika`, `poznamky`.
+`skupina`, `skupinakom` (skupina komentářů), `q`, `rozsah` (`predpis:…`, `oblast:…`), `diakritika`, `poznamky`.
 Pohled se dá odvodit (`predpis`+`ust` → detail ustanovení). Odkazy jsou běžné `<a href>`,
 klik se zachytí a vykreslí bez načtení stránky (`pushState`/`popstate`); kotvy `#u-…`
 v rámci stránky nechává prohlížeči.
+
+## Markdown
+Vlastní renderer `markdownDom(text, urovenNadpisu)` (nadpisy, odstavce s `br`, vnořené
+seznamy, citace, blok kódu, tučně, kurzíva, přeškrtnutí, kód, odkazy). Staví DOM přes `el()`,
+HTML z obsahu nikdy nevkládá. `#` se mapuje na zadanou úroveň, aby navazovala osnova nadpisů.
+Odkazy na adresu aplikace zůstávají v aplikaci, ostatní se otevírají do nové karty.
+
+Rozepsané texty hlídá `hlidatRozepsane(fn)` — při odchodu odkazem a zavření stránky se
+aplikace zeptá; seznam se maže při každém vykreslení.
 
 ## Vykreslení předpisu
 `vykreslitStrom()` → `vykreslitUzel()` podle typu fragmentu:

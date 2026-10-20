@@ -2,6 +2,15 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.1.0] — 2026-10-20
+
+### Přidáno
+- Poznámka k celému předpisu v Markdownu na vlastní stránce s náhledem; ukládá se jako samostatný soubor `predpisy/<rok>-<číslo>/poznamka.md` a zobrazuje se nad textem předpisu.
+- Komentáře k ustanovením — libovolně mnoho k jednomu ustanovení, v Markdownu, s úpravou a mazáním; značka 💬 s počtem v textu předpisu a v přístupném názvu označení.
+- Skupiny komentářů s přehledy komentářů podle skupiny, předpisu, oblasti i všech dohromady a s kopírováním přehledu.
+- Kopírování ustanovení i s komentáři; hledání i v komentářích a poznámkách k předpisům.
+- Upozornění při odchodu ze stránky s rozepsaným a neuloženým textem.
+
 ## [1.0.0] — 2026-10-19
 
 ### Přidáno
