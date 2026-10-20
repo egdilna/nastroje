@@ -2,6 +2,13 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.2.0] — 2026-10-20
+
+### Přidáno
+- Poznámka v Markdownu ke skupině vyznačení, ke skupině komentářů i k oblasti; zobrazuje se na jejich stránce a je součástí exportu.
+- Export vyznačených ustanovení (skupina, předpis, oblast, vše) a komentářů jako Markdown a TSV — do schránky i do souboru. TSV soubor má BOM, aby ho Excel otevřel správně v UTF-8.
+- Přenos dat mezi úložišti (stránka Přenos dat): export vybraného obsahu do balíčku (soubor nebo schránka), import z balíčku nebo přímo z jiného úložiště, s výběrem předpisů, oblastí a skupin a s volbou, co dělat při shodě (sloučit, ponechat, přepsat). Chybějící předpisy se při importu stáhnou z e-Sbírky.
+
 ## [1.1.0] — 2026-10-20
 
 ### Přidáno

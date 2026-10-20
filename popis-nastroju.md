@@ -158,6 +158,8 @@ Hlavní funkce:
 - Detail ustanovení s kontextem, odkazy a kopírováním v několika tvarech
 - Vyznačená ustanovení v neomezeném počtu skupin, s poznámkami a přehledy
 - Komentáře k ustanovením ve skupinách komentářů a poznámka k celému předpisu v Markdownu
+- Poznámky v Markdownu k oblastem a skupinám, export vyznačení a komentářů do Markdownu a TSV
+- Přenos vybraných dat mezi pracovními prostory (balíček nebo přímo z jiného úložiště)
 - Fungující odkazy mezi předpisy, hledání v předpisu, oblasti i celé knihovně
 - Každý předpis, ustanovení, oblast i skupina má vlastní adresu pro odkazy zvenku
 
