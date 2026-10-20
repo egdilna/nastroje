@@ -2,6 +2,11 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.6.0] — 2026-10-20
+
+### Přidáno
+- Přepínač na stránce předpisu „Zobrazit“: text předpisu, vyznačená ustanovení, komentáře, nebo ustanovení se štítky — vše přímo v detailu předpisu, s počty, hromadnými úpravami a exportem. Volba je v adrese (`cast=vyznacena|komentare|stitky`).
+
 ## [1.5.0] — 2026-10-20
 
 ### Přidáno

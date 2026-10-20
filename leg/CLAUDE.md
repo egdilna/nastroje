@@ -74,7 +74,7 @@ Každý pohled i entita má vlastní adresu (`adresa()`, `parametry()`), úloži
 `?repo=vlastník/repo&slozka=…&vetev=…` (větev jen mimo `main`) a dále
 `pohled` (`prehled|oblast|predpis|ust|vyznacena|skupina|komentare|poznamka|prenos|stitky|stitek|hledat|pridat|nastaveni`),
 `oblast`, `predpis` (`rok/číslo`), `ust` (klíč), `zneni` (datum, jen mimo aktuální),
-`skupina`, `skupinakom` (skupina komentářů), `filtr`, `stitekf`, `zobrazeni`, `stitek`, `q`, `rozsah` (`predpis:…`, `oblast:…`), `diakritika`, `poznamky`.
+`skupina`, `skupinakom` (skupina komentářů), `filtr`, `stitekf`, `zobrazeni`, `stitek`, `cast`, `q`, `rozsah` (`predpis:…`, `oblast:…`), `diakritika`, `poznamky`.
 Pohled se dá odvodit (`predpis`+`ust` → detail ustanovení). Odkazy jsou běžné `<a href>`,
 klik se zachytí a vykreslí bez načtení stránky (`pushState`/`popstate`); kotvy `#u-…`
 v rámci stránky nechává prohlížeči.
@@ -129,6 +129,13 @@ aplikace zeptá; seznam se maže při každém vykreslení.
 - Odkazy `prevestOdkaz()`: týž předpis → kotva, jiný předpis v knihovně → detail ustanovení,
   mimo knihovnu → stránka předpisu s nabídkou zařazení (nic se nestahuje automaticky),
   EU a ostatní → externě do nové karty se skrytým upozorněním.
+
+## Části stránky předpisu
+Parametr `cast` (`vyznacena|komentare|stitky`, bez něj text) — přepínač `navigaceCastiPredpisu()`,
+seznamy staví `castPredpisu()` s nadpisem `#cast-predpisu`. Textová část (skok na ustanovení,
+filtr, pohled, obsah, text) běží ve vnitřní funkci v `POHLED_FUNKCE.predpis`; správa předpisu
+je pod každou částí. `seznamVyznaceni/seznamKomentaru(seznam, poPredpisech, zaklad)`
+a `exportniPanel(…, uroven)` berou úroveň nadpisů podle místa na stránce.
 
 ## Pohled na text předpisu
 Parametr `zobrazeni`: `odkazy` (výchozí — označení ustanovení jsou odkazy na detail, značky
