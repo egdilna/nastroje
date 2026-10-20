@@ -157,6 +157,7 @@ Hlavní funkce:
 - Strukturované zobrazení předpisu s nadpisy, odstavci, písmeny, body, tabulkami a poznámkami pod čarou
 - Detail ustanovení s kontextem, odkazy a kopírováním v několika tvarech
 - Vyznačená ustanovení v neomezeném počtu skupin, s poznámkami a přehledy
+- Komentáře k ustanovením ve skupinách komentářů a poznámka k celému předpisu v Markdownu
 - Fungující odkazy mezi předpisy, hledání v předpisu, oblasti i celé knihovně
 - Každý předpis, ustanovení, oblast i skupina má vlastní adresu pro odkazy zvenku
 
