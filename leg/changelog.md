@@ -2,6 +2,11 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.3.0] — 2026-10-20
+
+### Přidáno
+- Filtr textu na stránce předpisu: zobrazí jen ustanovení, která obsahují všechna zadaná slova, i s kontextem (nadřazené části, hlavy, paragrafy a úvodní věty odstavců), s vyznačenými výskyty a počtem nalezených míst. Obsah předpisu se filtruje také, filtr má vlastní adresu a jde zrušit odkazem.
+
 ## [1.2.1] — 2026-10-20
 
 ### Změněno
