@@ -135,7 +135,7 @@ mark{background:var(--zvyrazneni);color:inherit}
    čtení metodou GET kvůli CORS). Úložiště: složka v GitHub repozitáři.
    Podrobnosti k architektuře jsou v leg/CLAUDE.md.
    ===================================================================== */
-const APP_VERZE = "1.1.0";
+const APP_VERZE = "1.2.0";
 
 /* ==================== POMOCNÉ ==================== */
 const $ = (s, r) => (r || document).querySelector(s);
@@ -252,7 +252,7 @@ async function gh(cesta, volby){
   volby = volby || {};
   const hl = Object.assign({Accept: "application/vnd.github+json"}, volby.headers || {});
   if (cfg.token) hl.Authorization = "Bearer " + cfg.token;
-  const r = await fetch("https://api.github.com/repos/" + cfg.repo + "/" + cesta,
+  const r = await fetch("https://api.github.com/repos/" + (volby.repo || cfg.repo) + "/" + cesta,
     {method: volby.method || "GET", headers: hl, body: volby.body, cache: volby.cache || "default"});
   if (!r.ok){
     const t = await r.text().catch(() => "");
@@ -269,16 +269,16 @@ function base64DoTextu(b){
 }
 async function ghCist(cesta, volby){
   volby = volby || {};
-  const ref = volby.ref || cfg.vetev || "main";
+  const ref = volby.ref || volby.vetev || cfg.vetev || "main";
   const adresa = "contents/" + cestaUrl(cesta) + "?ref=" + encodeURIComponent(ref);
   try {
-    return await gh(adresa, {text: true, cache: volby.cache, headers: {Accept: "application/vnd.github.raw"}});
+    return await gh(adresa, {repo: volby.repo, text: true, cache: volby.cache, headers: {Accept: "application/vnd.github.raw"}});
   } catch (e){
     if (e.status === 404) return null;
     log("Čtení raw selhalo, zkouším zálohu přes JSON a blob", cesta + ": " + e.message);
-    const sr = await gh(adresa, {cache: volby.cache});
+    const sr = await gh(adresa, {repo: volby.repo, cache: volby.cache});
     if (sr.content && sr.encoding === "base64") return base64DoTextu(sr.content);
-    const blob = await gh("git/blobs/" + sr.sha);
+    const blob = await gh("git/blobs/" + sr.sha, {repo: volby.repo});
     if (blob.encoding !== "base64") throw new Error("nečekané kódování blobu: " + blob.encoding);
     return base64DoTextu(blob.content);
   }
@@ -1140,7 +1140,7 @@ function formatyKopirovani(P, id, model, f){
 /* ==================== NAVIGACE A ADRESY ==================== */
 /* Každý pohled i entita má vlastní adresu. Úložiště (repo, větev, složka) je v adrese
    vždy, takže odkaz zvenku otevře správný pracovní prostor. Token v adrese nikdy není. */
-const POHLEDY = ["komentare", "poznamka", "prehled", "oblast", "predpis", "ust", "vyznacena", "skupina", "hledat", "pridat", "nastaveni"];
+const POHLEDY = ["komentare", "poznamka", "prenos", "prehled", "oblast", "predpis", "ust", "vyznacena", "skupina", "hledat", "pridat", "nastaveni"];
 function adresa(par){
   const q = new URLSearchParams();
   if (cfg.repo) q.set("repo", cfg.repo);
@@ -1171,7 +1171,7 @@ function prejit(par, volby){
 document.addEventListener("click", e => {
   if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   const a = e.target.closest("a[href]");
-  if (!a || a.target) return;
+  if (!a || a.target || a.hasAttribute("download")) return;
   const u = new URL(a.href, location.href);
   if (u.origin !== location.origin || u.pathname !== location.pathname) return;
   if (u.search === location.search && u.hash){ return; } /* kotva v rámci stránky — necháme prohlížeči */
@@ -1187,7 +1187,7 @@ window.addEventListener("popstate", () => vykreslit({fokus: true}));
 function vykreslitMenu(){
   const m = $("#menu");
   const p = parametry();
-  const polozky = [["prehled", "Přehled"], ["hledat", "Hledat"], ["vyznacena", "Vyznačená ustanovení"], ["komentare", "Komentáře"], ["pridat", "Přidat předpis"], ["nastaveni", "Nastavení"]];
+  const polozky = [["prehled", "Přehled"], ["hledat", "Hledat"], ["vyznacena", "Vyznačená ustanovení"], ["komentare", "Komentáře"], ["pridat", "Přidat předpis"], ["prenos", "Přenos dat"], ["nastaveni", "Nastavení"]];
   m.replaceChildren(...polozky.map(([k, t]) => el("li", null,
     el("a", {href: adresa({pohled: k}), "aria-current": p.pohled === k ? "page" : null}, t))));
   $("#ws-nazev").textContent = W && W.nazev ? " — " + W.nazev : "";
@@ -1373,7 +1373,7 @@ async function zkontrolovatVse(stav){
 }
 function formularOblasti(o){
   const nazev = el("input", {type: "text", autocomplete: "off", required: true});
-  const popis = el("textarea", {rows: "3"});
+  const popis = el("textarea", {rows: "8"});
   if (o){ nazev.value = o.nazev; popis.value = o.popis || ""; }
   const stav = el("p", {class: "tichy"});
   const form = el("form", {onsubmit: e => {
@@ -1386,13 +1386,13 @@ function formularOblasti(o){
       W.oblasti.push(nova); zmeneno(); oznam("Oblast " + n + " založena");
       prejit({pohled: "oblast", oblast: nova.id});
     }
-  }}, pole("Název oblasti", nazev), pole("Popis (nepovinný)", popis),
+  }}, pole("Název oblasti", nazev), pole("Poznámka (Markdown, nepovinná)", popis, "Zobrazí se na stránce jako formátovaný text a je součástí exportu."),
     el("button", {type: "submit"}, o ? "Uložit oblast" : "Založit oblast"), stav);
-  return el("details", null, el("summary", null, o ? "Upravit oblast" : "Nová oblast"), form);
+  return el("details", null, el("summary", null, o ? "Upravit oblast a její poznámku" : "Nová oblast"), form);
 }
 function formularSkupiny(s){
   const nazev = el("input", {type: "text", autocomplete: "off", required: true});
-  const popis = el("textarea", {rows: "3"});
+  const popis = el("textarea", {rows: "8"});
   if (s){ nazev.value = s.nazev; popis.value = s.popis || ""; }
   const stav = el("p", {class: "tichy"});
   const form = el("form", {onsubmit: e => {
@@ -1405,9 +1405,9 @@ function formularSkupiny(s){
       W.skupiny.push(nova); zmeneno(); oznam("Skupina " + n + " založena");
       prejit({pohled: "skupina", skupina: nova.id});
     }
-  }}, pole("Název skupiny", nazev), pole("Popis (nepovinný)", popis),
+  }}, pole("Název skupiny", nazev), pole("Poznámka (Markdown, nepovinná)", popis, "Zobrazí se na stránce jako formátovaný text a je součástí exportu."),
     el("button", {type: "submit"}, s ? "Uložit skupinu" : "Založit skupinu"), stav);
-  return el("details", null, el("summary", null, s ? "Upravit skupinu" : "Nová skupina vyznačení"), form);
+  return el("details", null, el("summary", null, s ? "Upravit skupinu a její poznámku" : "Nová skupina vyznačení"), form);
 }
 
 /* ---------- Oblast ---------- */
@@ -1416,7 +1416,7 @@ POHLED_FUNKCE.oblast = async p => {
   if (!o) return [nadpis("Oblast nenalezena"), zprava("Oblast v pracovním prostoru není — možná byla smazána."), el("p", null, el("a", {href: adresa({})}, "Zpět na přehled"))];
   drobecky([["Přehled", {}], [o.nazev, null]]);
   const out = [nadpis(o.nazev)];
-  if (o.popis) out.push(el("p", null, o.popis));
+  out.push(...poznamkaSkupiny(o.popis, "Poznámka k oblasti"));
   out.push(el("h2", null, "Předpisy v oblasti"));
   if (o.predpisy.length){
     out.push(el("ul", {class: "seznam"}, o.predpisy.map(id => {
@@ -1756,7 +1756,7 @@ function formularKomentare(id, model, f, k, poUlozeni){
 }
 function formularSkupinyKomentaru(s){
   const nazev = el("input", {type: "text", autocomplete: "off", required: true});
-  const popis = el("textarea", {rows: "3"});
+  const popis = el("textarea", {rows: "8"});
   if (s){ nazev.value = s.nazev; popis.value = s.popis || ""; }
   const stav = el("p", {class: "tichy"});
   const form = el("form", {onsubmit: e => {
@@ -1769,9 +1769,9 @@ function formularSkupinyKomentaru(s){
       W.skupinyKomentaru.push(nova); zmeneno(); oznam("Skupina komentářů " + n + " založena");
       prejit({pohled: "komentare", skupinakom: nova.id});
     }
-  }}, pole("Název skupiny komentářů", nazev), pole("Popis (nepovinný)", popis),
+  }}, pole("Název skupiny komentářů", nazev), pole("Poznámka (Markdown, nepovinná)", popis, "Zobrazí se na stránce jako formátovaný text a je součástí exportu."),
     el("button", {type: "submit"}, s ? "Uložit skupinu" : "Založit skupinu"), stav);
-  return el("details", null, el("summary", null, s ? "Upravit skupinu komentářů" : "Nová skupina komentářů"), form);
+  return el("details", null, el("summary", null, s ? "Upravit skupinu komentářů a její poznámku" : "Nová skupina komentářů"), form);
 }
 POHLED_FUNKCE.komentare = async p => {
   let seznam = W.komentare.slice(), titul = "Komentáře", skupina = null;
@@ -1794,8 +1794,9 @@ POHLED_FUNKCE.komentare = async p => {
   } else drob.push(["Komentáře", null]);
   drobecky(drob);
   const out = [nadpis(titul)];
-  if (skupina) out.push(el("p", {class: "tichy"}, "Skupina komentářů."), skupina.popis ? el("p", null, skupina.popis) : null);
+  if (skupina) out.push(el("p", {class: "tichy"}, "Skupina komentářů."), ...poznamkaSkupiny(skupina.popis, "Poznámka ke skupině"));
   out.push(...seznamKomentaru(seznam, !p.predpis));
+  if (seznam.length) out.push(exportniPanel(titul, () => komentareJakoMarkdown(titul, skupina ? skupina.popis : "", seznam), () => komentareJakoTsv(seznam)));
   if (skupina){
     out.push(el("h2", null, "Správa skupiny"), formularSkupinyKomentaru(skupina),
       el("p", null, el("button", {type: "button", class: "druhe", onclick: () => {
@@ -1844,6 +1845,392 @@ function seznamKomentaru(seznam, poPredpisech){
   }
   out.push(el("p", null, el("button", {type: "button", class: "druhe", onclick: () => kopirovat(vyvoz.join("\n\n"), "přehled komentářů")}, "Kopírovat přehled komentářů")));
   return out;
+}
+
+/* ---------- Poznámky k oblastem a skupinám ---------- */
+function poznamkaSkupiny(text, titulek){
+  if (!text || !text.trim()) return [];
+  return [el("h2", null, titulek), el("div", {class: "markdown"}, markdownDom(text, 3))];
+}
+
+/* ---------- Export Markdown / TSV ---------- */
+function nazevSouboru(t){ return normText(String(t || ""), true).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "export"; }
+function stahnoutSoubor(nazev, text, typ){
+  const url = URL.createObjectURL(new Blob([text], {type: typ + ";charset=utf-8"}));
+  const a = el("a", {href: url, download: nazev, class: "vh"}, nazev);
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  oznam("Soubor " + nazev + " se stahuje");
+}
+function exportniPanel(titul, md, tsv){
+  const zaklad = nazevSouboru(titul) + "-" + dnesIso();
+  return el("section", {class: "panel", "aria-label": "Export"}, el("h2", null, "Export"),
+    el("p", {class: "tichy"}, "Markdown je čitelný dokument s textem ustanovení a poznámkami. TSV jsou data po řádcích oddělená tabulátorem — vložíte je do tabulky (Excel, Numbers, Google Tabulky)."),
+    el("p", null,
+      el("button", {type: "button", class: "druhe", onclick: () => kopirovat(md(), "Markdown")}, "Kopírovat jako Markdown"), " ",
+      el("button", {type: "button", class: "druhe", onclick: () => stahnoutSoubor(zaklad + ".md", md(), "text/markdown")}, "Stáhnout soubor Markdown"), " ",
+      el("button", {type: "button", class: "druhe", onclick: () => kopirovat(tsv(), "data TSV")}, "Kopírovat jako TSV"), " ",
+      el("button", {type: "button", class: "druhe", onclick: () => stahnoutSoubor(zaklad + ".tsv", "﻿" + tsv(), "text/tab-separated-values")}, "Stáhnout soubor TSV")));
+}
+const tsvBunka = x => String(x === null || x === undefined ? "" : x).replace(/\t/g, " ").replace(/\r?\n\s*/g, " / ").trim();
+const tsvText = radky => radky.map(r => r.map(tsvBunka).join("\t")).join("\n") + "\n";
+function seraditPodlePredpisu(seznam){
+  const m = new Map();
+  for (const x of seznam){ if (!m.has(x.predpis)) m.set(x.predpis, []); m.get(x.predpis).push(x); }
+  return Array.from(m.entries()).sort((a, b) => ((W.predpisy[a[0]] || {}).citace || a[0]).localeCompare((W.predpisy[b[0]] || {}).citace || b[0], "cs", {numeric: true}))
+    .map(([id, pol]) => [id, pol.sort((a, b) => String(a.klic).localeCompare(String(b.klic), "cs", {numeric: true}) || (a.vytvoreno || "").localeCompare(b.vytvoreno || ""))]);
+}
+const mdCitace = text => String(text || "").split("\n").map(x => "> " + x.trim()).join("\n");
+function hlavickaExportu(titul, poznamka, popisPoctu){
+  const r = ["# " + titul, "", "*Export z Legislativního prohlížeče, " + new Date().toLocaleString("cs-CZ") + " — " + popisPoctu + ".*", ""];
+  if (poznamka && poznamka.trim()) r.push(poznamka.trim(), "");
+  return r;
+}
+function vyznaceniJakoMarkdown(titul, poznamka, seznam){
+  const r = hlavickaExportu(titul, poznamka, pocetSlov(seznam.length, "vyznačené ustanovení", "vyznačená ustanovení", "vyznačených ustanovení"));
+  for (const [id, pol] of seraditPodlePredpisu(seznam)){
+    const P = W.predpisy[id];
+    r.push("## " + nazevPredpisu(P, id), "");
+    for (const v of pol){
+      r.push("### " + citaceUstanoveni(P, id, {c: v.citace}), "");
+      if (v.text) r.push(mdCitace(v.text), "");
+      r.push("- Znění: " + datumCz(v.zneni), "- Skupiny: " + nazvySkupin(v),
+        "- Odkaz: " + adresaAbsolutni({pohled: "ust", predpis: id, ust: v.klic}), "- e-Sbírka: " + adresaESbirky(id, v.zneni, v.klic), "");
+      if (v.poznamka && v.poznamka.trim()) r.push("**Poznámka:**", "", v.poznamka.trim(), "");
+    }
+  }
+  return r.join("\n");
+}
+function vyznaceniJakoTsv(seznam){
+  const radky = [["Předpis", "Název předpisu", "Ustanovení", "Citace", "Znění", "Text ustanovení", "Poznámka", "Skupiny", "Vyznačeno", "Upraveno", "Odkaz do aplikace", "Odkaz do e-Sbírky"]];
+  for (const [id, pol] of seraditPodlePredpisu(seznam)){
+    const P = W.predpisy[id];
+    for (const v of pol) radky.push([(P && P.citace) || citacePredpisuZId(id), nazevPredpisu(P, id), v.citace, citaceUstanoveni(P, id, {c: v.citace}), datumCz(v.zneni),
+      v.text, v.poznamka, nazvySkupin(v), casCz(v.vytvoreno), casCz(v.upraveno),
+      adresaAbsolutni({pohled: "ust", predpis: id, ust: v.klic}), adresaESbirky(id, v.zneni, v.klic)]);
+  }
+  return tsvText(radky);
+}
+function komentareJakoMarkdown(titul, poznamka, seznam){
+  const r = hlavickaExportu(titul, poznamka, pocetKomentaru(seznam.length));
+  for (const [id, pol] of seraditPodlePredpisu(seznam)){
+    const P = W.predpisy[id];
+    r.push("## " + nazevPredpisu(P, id), "");
+    let klic = null;
+    for (const k of pol){
+      if (k.klic !== klic){
+        klic = k.klic;
+        r.push("### " + citaceUstanoveni(P, id, {c: k.citace}), "");
+        if (k.textUst) r.push(mdCitace(k.textUst), "");
+        r.push("Odkaz: " + adresaAbsolutni({pohled: "ust", predpis: id, ust: k.klic}), "");
+      }
+      r.push("#### Komentář z " + casCz(k.vytvoreno), "", "*Skupiny: " + nazvySkupinKom(k) + "*", "", k.text.trim(), "");
+    }
+  }
+  return r.join("\n");
+}
+function komentareJakoTsv(seznam){
+  const radky = [["Předpis", "Název předpisu", "Ustanovení", "Citace", "Komentář", "Skupiny", "Vytvořeno", "Upraveno", "Text ustanovení", "Odkaz do aplikace"]];
+  for (const [id, pol] of seraditPodlePredpisu(seznam)){
+    const P = W.predpisy[id];
+    for (const k of pol) radky.push([(P && P.citace) || citacePredpisuZId(id), nazevPredpisu(P, id), k.citace, citaceUstanoveni(P, id, {c: k.citace}),
+      k.text, nazvySkupinKom(k), casCz(k.vytvoreno), casCz(k.upraveno), k.textUst, adresaAbsolutni({pohled: "ust", predpis: id, ust: k.klic})]);
+  }
+  return tsvText(radky);
+}
+
+/* ---------- Přenos dat mezi úložišti ---------- */
+/* Balíček je JSON s vybranou částí pracovního prostoru: oblasti, skupiny, vyznačení,
+   komentáře a poznámky k předpisům. Texty předpisů v něm nejsou — při importu se
+   chybějící předpisy stáhnou z e-Sbírky, takže balíček zůstane malý. */
+const FORMAT_BALIKU = "legprohlizec-balik";
+function sestavitBalik(ws, zdroj){
+  const predpisy = {};
+  for (const [id, P] of Object.entries(ws.predpisy)) predpisy[id] = {citace: P.citace, typ: P.typ, nazev: P.nazev, budouci: !!P.budouci, maPoznamku: !!P.poznamka, soubor: P.poznamka ? P.poznamka.soubor : null};
+  return {format: FORMAT_BALIKU, verze: 1, vytvoreno: new Date().toISOString(), zdroj,
+    predpisy, oblasti: ws.oblasti, skupiny: ws.skupiny, skupinyKomentaru: ws.skupinyKomentaru || [],
+    vyznaceni: ws.vyznaceni, komentare: ws.komentare || [], poznamky: {}};
+}
+function normalizovatBalik(d){
+  if (!d || typeof d !== "object") throw new Error("Nejde o balíček Legislativního prohlížeče.");
+  if (d.format === "legprohlizec") return sestavitBalik(normalizovatWs(d), {nazev: d.nazev || ""});
+  if (d.format !== FORMAT_BALIKU) throw new Error("Nejde o balíček Legislativního prohlížeče (chybí označení formátu).");
+  const b = Object.assign({predpisy: {}, oblasti: [], skupiny: [], skupinyKomentaru: [], vyznaceni: [], komentare: [], poznamky: {}}, d);
+  for (const k of ["oblasti", "skupiny", "skupinyKomentaru", "vyznaceni", "komentare"]) if (!Array.isArray(b[k])) b[k] = [];
+  b.oblasti.forEach(o => { if (!Array.isArray(o.predpisy)) o.predpisy = []; });
+  b.vyznaceni.forEach(v => { if (!Array.isArray(v.skupiny)) v.skupiny = []; });
+  b.komentare.forEach(k => { if (!Array.isArray(k.skupiny)) k.skupiny = []; });
+  return b;
+}
+async function filtrovatBalik(b, v, nactiPozn){
+  const ids = v.predpisy;
+  const r = {format: FORMAT_BALIKU, verze: 1, vytvoreno: new Date().toISOString(), zdroj: b.zdroj,
+    predpisy: {}, oblasti: [], skupiny: [], skupinyKomentaru: [], vyznaceni: [], komentare: [], poznamky: {}};
+  for (const id of ids) if (b.predpisy[id]) r.predpisy[id] = Object.assign({}, b.predpisy[id]);
+  r.oblasti = b.oblasti.filter(o => v.oblasti.has(o.id)).map(o => Object.assign({}, o, {predpisy: o.predpisy.filter(x => ids.has(x))}));
+  r.skupiny = b.skupiny.filter(s => v.skupiny.has(s.id)).map(s => Object.assign({}, s));
+  r.skupinyKomentaru = b.skupinyKomentaru.filter(s => v.skupinyKom.has(s.id)).map(s => Object.assign({}, s));
+  const sk = new Set(r.skupiny.map(s => s.id)), skk = new Set(r.skupinyKomentaru.map(s => s.id));
+  if (v.vyz) r.vyznaceni = b.vyznaceni.filter(x => ids.has(x.predpis)).map(x => Object.assign({}, x, {skupiny: x.skupiny.filter(s => sk.has(s))}));
+  if (v.kom) r.komentare = b.komentare.filter(x => ids.has(x.predpis)).map(x => Object.assign({}, x, {skupiny: x.skupiny.filter(s => skk.has(s))}));
+  if (v.pozn) for (const id of ids){
+    if (b.poznamky[id] !== undefined) r.poznamky[id] = b.poznamky[id];
+    else if (b.predpisy[id] && b.predpisy[id].maPoznamku && nactiPozn){
+      const t = await nactiPozn(id, b.predpisy[id]);
+      if (t && t.trim()) r.poznamky[id] = t;
+    }
+  }
+  for (const P of Object.values(r.predpisy)){ P.maPoznamku = false; delete P.soubor; }
+  for (const id of Object.keys(r.poznamky)) r.predpisy[id].maPoznamku = true;
+  return r;
+}
+function popisBaliku(b){
+  return pocetSlov(Object.keys(b.predpisy).length, "předpis", "předpisy", "předpisů") + ", " + pocetSlov(b.oblasti.length, "oblast", "oblasti", "oblastí") + ", "
+    + pocetSlov(b.skupiny.length, "skupina vyznačení", "skupiny vyznačení", "skupin vyznačení") + ", " + pocetSlov(b.skupinyKomentaru.length, "skupina komentářů", "skupiny komentářů", "skupin komentářů") + ", "
+    + pocetSlov(b.vyznaceni.length, "vyznačení", "vyznačení", "vyznačení") + ", " + pocetKomentaru(b.komentare.length) + ", "
+    + pocetSlov(Object.keys(b.predpisy).filter(id => b.poznamky[id] !== undefined || b.predpisy[id].maPoznamku).length, "poznámka k předpisu", "poznámky k předpisům", "poznámek k předpisům");
+}
+/* Výběr obsahu z balíčku — stejné ovládání pro export i import. */
+function vyberObsahu(b){
+  const kontejner = el("div");
+  const predpisove = new Map();
+  const pocty = id => {
+    const n = [];
+    const v = b.vyznaceni.filter(x => x.predpis === id).length, k = b.komentare.filter(x => x.predpis === id).length;
+    if (v) n.push(pocetSlov(v, "vyznačení", "vyznačení", "vyznačení"));
+    if (k) n.push(pocetKomentaru(k));
+    if ((b.predpisy[id] || {}).maPoznamku || b.poznamky[id] !== undefined) n.push("poznámka");
+    return n.length ? " (" + n.join(", ") + ")" : "";
+  };
+  const oznacPredpisy = (ids, popis) => {
+    let n = 0;
+    for (const id of ids){ const c = predpisove.get(id); if (c && !c.checked){ c.checked = true; n++; } }
+    if (n) oznam("Vybráno i " + pocetSlov(n, "předpis", "předpisy", "předpisů") + " " + popis);
+  };
+  const skupinaVoleb = (legenda, polozky, popisek, priZmene) => {
+    const fs = el("fieldset", null, el("legend", null, legenda));
+    if (!polozky.length){ fs.append(zprava("Nic tu není.")); return {fs, volby: []}; }
+    const volby = polozky.map(x => {
+      const z = zaskrtavatko(popisek(x), false, {value: x.id});
+      if (priZmene) z.vstup.addEventListener("change", () => { if (z.vstup.checked) priZmene(x); });
+      fs.append(z.prvek);
+      return z.vstup;
+    });
+    fs.append(el("p", null,
+      el("button", {type: "button", class: "druhe", onclick: () => { volby.forEach(c => { c.checked = true; }); polozky.forEach(x => priZmene && priZmene(x)); oznam("Vybráno vše: " + legenda); }}, "Vybrat vše: " + legenda), " ",
+      el("button", {type: "button", class: "druhe", onclick: () => { volby.forEach(c => { c.checked = false; }); oznam("Výběr zrušen: " + legenda); }}, "Zrušit výběr: " + legenda)));
+    return {fs, volby};
+  };
+  const idsPredpisu = Object.keys(b.predpisy).sort((x, y) => (b.predpisy[x].citace || x).localeCompare(b.predpisy[y].citace || y, "cs", {numeric: true}));
+  const sp = skupinaVoleb("Předpisy", idsPredpisu.map(id => ({id})), x => kratkyNazev(b.predpisy[x.id], x.id) + (b.predpisy[x.id].nazev ? ", " + b.predpisy[x.id].nazev : "") + pocty(x.id));
+  sp.volby.forEach(c => predpisove.set(c.value, c));
+  const so = skupinaVoleb("Oblasti", b.oblasti, o => o.nazev + " (" + pocetSlov(o.predpisy.length, "předpis", "předpisy", "předpisů") + ")", o => oznacPredpisy(o.predpisy, "z oblasti " + o.nazev));
+  const ss = skupinaVoleb("Skupiny vyznačení", b.skupiny, s => s.nazev, s => oznacPredpisy(b.vyznaceni.filter(v => v.skupiny.indexOf(s.id) >= 0).map(v => v.predpis), "se skupinou " + s.nazev));
+  const sk = skupinaVoleb("Skupiny komentářů", b.skupinyKomentaru, s => s.nazev, s => oznacPredpisy(b.komentare.filter(k => k.skupiny.indexOf(s.id) >= 0).map(k => k.predpis), "se skupinou " + s.nazev));
+  const fsCo = el("fieldset", null, el("legend", null, "Co přenést u vybraných předpisů"));
+  const zv = zaskrtavatko("Vyznačení", true), zk = zaskrtavatko("Komentáře", true), zp = zaskrtavatko("Poznámky k předpisům", true);
+  fsCo.append(zv.prvek, zk.prvek, zp.prvek);
+  kontejner.append(
+    el("p", {class: "tichy"}, "Výběrem oblasti nebo skupiny se vyberou i předpisy, které do ní patří; jejich výběr pak můžete upravit. Vyznačení a komentáře se přenášejí u vybraných předpisů, ve skupinách jen tehdy, když vyberete i skupinu."),
+    el("p", null, el("button", {type: "button", class: "druhe", onclick: () => {
+      for (const s of [sp, so, ss, sk]) s.volby.forEach(c => { c.checked = true; });
+      oznam("Vybráno vše");
+    }}, "Vybrat úplně vše")),
+    sp.fs, so.fs, ss.fs, sk.fs, fsCo);
+  const vybrane = s => new Set(s.volby.filter(c => c.checked).map(c => c.value));
+  return {prvek: kontejner, vyber: () => ({predpisy: vybrane(sp), oblasti: vybrane(so), skupiny: vybrane(ss), skupinyKom: vybrane(sk), vyz: zv.vstup.checked, kom: zk.vstup.checked, pozn: zp.vstup.checked})};
+}
+function prazdnyVyber(v){ return !v.predpisy.size && !v.oblasti.size && !v.skupiny.size && !v.skupinyKom.size; }
+
+POHLED_FUNKCE.prenos = async () => {
+  drobecky([["Přehled", {}], ["Přenos dat", null]]);
+  const out = [nadpis("Přenos dat mezi úložišti")];
+  out.push(el("p", null, "Vybranou část pracovního prostoru můžete uložit do balíčku (souboru nebo schránky) a ten pak načíst v jiném pracovním prostoru. Data jde také převzít přímo z jiného úložiště — otevřete cílový pracovní prostor a v části Import zadejte úložiště, ze kterého chcete data převzít."),
+    el("p", {class: "tichy"}, "Balíček obsahuje oblasti, skupiny, vyznačení, komentáře a poznámky. Texty předpisů v něm nejsou — chybějící předpisy se při importu stáhnou z e-Sbírky."));
+
+  /* Export */
+  out.push(el("h2", null, "Export do balíčku"));
+  const balikTady = sestavitBalik(W, {nazev: W.nazev, repo: cfg.repo, slozka: cfg.slozka});
+  const vyberExp = vyberObsahu(balikTady);
+  const stavExp = el("p", {class: "tichy"});
+  const pripravit = async () => {
+    const v = vyberExp.vyber();
+    if (prazdnyVyber(v)){ stavExp.textContent = "Nic není vybráno."; oznam(stavExp.textContent); return null; }
+    stavExp.textContent = "Připravuji balíček…";
+    const b = await filtrovatBalik(balikTady, v, id => nactiPoznamku(id));
+    stavExp.textContent = "Balíček obsahuje: " + popisBaliku(b) + ".";
+    return b;
+  };
+  out.push(vyberExp.prvek, el("p", null,
+    el("button", {type: "button", onclick: async () => {
+      const b = await pripravit(); if (!b) return;
+      stahnoutSoubor("legprohlizec-balik-" + nazevSouboru(W.nazev) + "-" + dnesIso() + ".json", JSON.stringify(b, null, 1), "application/json");
+    }}, "Stáhnout balíček jako soubor"), " ",
+    el("button", {type: "button", class: "druhe", onclick: async () => {
+      const b = await pripravit(); if (!b) return;
+      kopirovat(JSON.stringify(b), "balíček (" + popisBaliku(b) + ")");
+    }}, "Kopírovat balíček do schránky")), stavExp);
+
+  /* Import */
+  out.push(el("h2", null, "Import"));
+  out.push(el("p", null, "Vyberte zdroj. Po načtení si zvolíte, co převzít."));
+  const vysledek = el("div");
+  const nactenoZ = async (text, zdrojPopis, nactiPozn) => {
+    let b;
+    try { b = normalizovatBalik(JSON.parse(text)); }
+    catch (e){ vysledek.replaceChildren(zprava("Načtení se nepovedlo: " + (e instanceof SyntaxError ? "nejde o platný JSON." : e.message), "chyba")); oznam("Načtení se nepovedlo"); return; }
+    vysledek.replaceChildren(...formularImportu(b, zdrojPopis, nactiPozn));
+    const h = vysledek.querySelector("h3"); if (h){ h.setAttribute("tabindex", "-1"); h.focus(); }
+  };
+  const soubor = el("input", {type: "file", accept: ".json,application/json"});
+  out.push(el("h3", null, "Ze souboru"), el("form", {onsubmit: async e => {
+    e.preventDefault();
+    if (!soubor.files || !soubor.files[0]){ vysledek.replaceChildren(zprava("Vyberte soubor s balíčkem.", "chyba")); return; }
+    nactenoZ(await soubor.files[0].text(), "soubor " + soubor.files[0].name);
+  }}, pole("Soubor s balíčkem", soubor), el("button", {type: "submit"}, "Načíst soubor")));
+  const vlozeny = el("textarea", {rows: "4", spellcheck: "false"});
+  out.push(el("h3", null, "Ze schránky"), el("form", {onsubmit: e => {
+    e.preventDefault();
+    if (!vlozeny.value.trim()){ vysledek.replaceChildren(zprava("Vložte obsah balíčku.", "chyba")); vlozeny.focus(); return; }
+    nactenoZ(vlozeny.value, "vložený balíček");
+  }}, pole("Vložený balíček", vlozeny, "Vložte sem balíček zkopírovaný tlačítkem Kopírovat balíček do schránky."), el("button", {type: "submit"}, "Načíst vložený balíček")));
+  const zRepo = el("input", {type: "text", autocomplete: "off", spellcheck: "false"});
+  const zVetev = el("input", {type: "text", autocomplete: "off", spellcheck: "false"});
+  const zSlozka = el("input", {type: "text", autocomplete: "off", spellcheck: "false"});
+  out.push(el("h3", null, "Z jiného úložiště"), el("form", {onsubmit: async e => {
+    e.preventDefault();
+    const zdroj = {repo: zRepo.value.trim(), vetev: zVetev.value.trim() || "main", slozka: normSlozka(zSlozka.value)};
+    if (!/^[^/\s]+\/[^/\s]+$/.test(zdroj.repo)){ vysledek.replaceChildren(zprava("Repozitář zadejte ve tvaru vlastník/název.", "chyba")); zRepo.focus(); return; }
+    if (zdroj.repo === cfg.repo && zdroj.slozka === cfg.slozka && zdroj.vetev === (cfg.vetev || "main")){ vysledek.replaceChildren(zprava("To je tento pracovní prostor. Zadejte jiné úložiště.", "chyba")); return; }
+    const cesta = rel => (zdroj.slozka ? zdroj.slozka + "/" : "") + rel;
+    vysledek.replaceChildren(zprava("Načítám pracovní prostor z " + zdroj.repo + "…"));
+    try {
+      const t = await ghCist(cesta(SOUBOR_WS), {repo: zdroj.repo, vetev: zdroj.vetev, cache: "no-store"});
+      if (t === null){ vysledek.replaceChildren(zprava("V tomto úložišti pracovní prostor není.", "chyba")); return; }
+      nactenoZ(t, "úložiště " + zdroj.repo + (zdroj.slozka ? " / " + zdroj.slozka : ""), async (id, P) => {
+        const x = await ghCist(cesta(P.soubor || cestaPoznamky(id)), {repo: zdroj.repo, vetev: zdroj.vetev, cache: "no-store"});
+        return x || "";
+      });
+    } catch (er){ vysledek.replaceChildren(zprava("Načtení se nepovedlo: " + er.message, "chyba")); }
+  }}, pole("Repozitář", zRepo, "Ve tvaru vlastník/název. Použije se váš token, takže jde i o soukromý repozitář, ke kterému máte přístup."),
+    pole("Větev", zVetev, "Prázdné pole znamená main."), pole("Složka pracovního prostoru", zSlozka, "Prázdné pole znamená kořen repozitáře."),
+    el("button", {type: "submit"}, "Načíst z úložiště")));
+  out.push(vysledek);
+  return out;
+};
+function formularImportu(b, zdrojPopis, nactiPozn){
+  const out = [el("h3", null, "Načteno: " + zdrojPopis)];
+  out.push(el("p", null, "Obsah: " + popisBaliku(b) + (b.zdroj && b.zdroj.nazev ? ". Pracovní prostor zdroje: " + b.zdroj.nazev : "") + "."));
+  const vyber = vyberObsahu(b);
+  const politika = el("select", null,
+    el("option", {value: "slouc"}, "Sloučit — skupiny sjednotit, poznámky spojit pod sebe"),
+    el("option", {value: "ponechat"}, "Ponechat to, co už tu je"),
+    el("option", {value: "prepsat"}, "Přepsat importovaným"));
+  const prubeh = prubehUi(); prubeh.prvek.hidden = true;
+  const tl = el("button", {type: "submit"}, "Importovat vybrané");
+  const form = el("form", {onsubmit: async e => {
+    e.preventDefault();
+    const v = vyber.vyber();
+    if (prazdnyVyber(v)){ prubeh.prvek.hidden = false; prubeh.nastav("Nic není vybráno."); oznam("Nic není vybráno"); return; }
+    tl.disabled = true; prubeh.prvek.hidden = false;
+    oznam("Importuji, chvíli to potrvá");
+    try {
+      const vyb = await filtrovatBalik(b, v, nactiPozn);
+      const st = await importovatBalik(vyb, politika.value, prubeh.nastav);
+      const t = "Import dokončen. Nové: " + pocetSlov(st.oblasti, "oblast", "oblasti", "oblastí") + ", " + pocetSlov(st.skupiny, "skupina", "skupiny", "skupin") + ", "
+        + pocetSlov(st.predpisy, "stažený předpis", "stažené předpisy", "stažených předpisů") + "; převzato " + pocetSlov(st.vyz, "vyznačení", "vyznačení", "vyznačení") + ", "
+        + pocetKomentaru(st.kom) + ", " + pocetSlov(st.pozn, "poznámka", "poznámky", "poznámek") + "."
+        + (st.chyby.length ? " Nepodařilo se: " + st.chyby.join("; ") + "." : "");
+      prubeh.nastav(t); oznam(st.chyby.length ? "Import dokončen s chybami" : "Import dokončen");
+    } catch (er){ prubeh.nastav("Import se nepovedl: " + er.message); oznam("Import se nepovedl"); }
+    tl.disabled = false;
+  }}, vyber.prvek, pole("Když už tu stejná položka je", politika, "Týká se vyznačení, komentářů, poznámek k předpisům a poznámek oblastí a skupin. Oblasti a skupiny se párují podle názvu."),
+    el("p", null, tl), prubeh.prvek);
+  out.push(form);
+  return out;
+}
+async function importovatBalik(b, politika, prubeh){
+  const st = {oblasti: 0, skupiny: 0, predpisy: 0, vyz: 0, kom: 0, pozn: 0, chyby: []};
+  const najdi = (seznam, x) => seznam.find(y => y.id === x.id) || seznam.find(y => String(y.nazev).trim().toLowerCase() === String(x.nazev).trim().toLowerCase());
+  const sloucitText = (stary, novy) => {
+    stary = stary || ""; novy = novy || "";
+    if (politika === "prepsat") return novy.trim() ? novy : stary;
+    if (politika === "ponechat" || !novy.trim() || stary.trim() === novy.trim()) return stary.trim() ? stary : novy;
+    return stary.trim() ? stary.replace(/\s+$/, "") + "\n\n---\n\n" + novy.trim() + "\n" : novy;
+  };
+  const prevzitSkupiny = (zdroj, cil, predpona) => {
+    const mapa = {};
+    for (const s of zdroj){
+      let c = najdi(cil, s);
+      if (!c){ c = {id: s.id || novyId(predpona), nazev: s.nazev, popis: s.popis || ""}; cil.push(c); st.skupiny++; }
+      else c.popis = sloucitText(c.popis, s.popis);
+      mapa[s.id] = c.id;
+    }
+    return mapa;
+  };
+  const mapaOblasti = {};
+  for (const o of b.oblasti){
+    let c = najdi(W.oblasti, o);
+    if (!c){ c = {id: o.id || novyId("o"), nazev: o.nazev, popis: o.popis || "", predpisy: []}; W.oblasti.push(c); st.oblasti++; }
+    else c.popis = sloucitText(c.popis, o.popis);
+    mapaOblasti[o.id] = c.id;
+  }
+  const mapaSk = prevzitSkupiny(b.skupiny, W.skupiny, "s");
+  const mapaSkK = prevzitSkupiny(b.skupinyKomentaru, W.skupinyKomentaru, "sk");
+  const neuspesne = new Set();
+  for (const id of Object.keys(b.predpisy)){
+    const oblasti = b.oblasti.filter(o => o.predpisy.indexOf(id) >= 0).map(o => mapaOblasti[o.id]);
+    if (W.predpisy[id]){
+      for (const oid of oblasti){ const o = W.oblasti.find(x => x.id === oid); if (o && o.predpisy.indexOf(id) < 0) o.predpisy.push(id); }
+      continue;
+    }
+    try { await stahnoutPredpis(id, {oblasti, budouci: !!b.predpisy[id].budouci}, prubeh); st.predpisy++; }
+    catch (e){ neuspesne.add(id); st.chyby.push((b.predpisy[id].citace || citacePredpisuZId(id)) + " — " + e.message); }
+  }
+  prubeh("Převádím vyznačení a komentáře…");
+  for (const v of b.vyznaceni){
+    if (neuspesne.has(v.predpis) || !W.predpisy[v.predpis]) continue;
+    const skupiny = v.skupiny.map(s => mapaSk[s]).filter(Boolean);
+    const c = W.vyznaceni.find(x => x.predpis === v.predpis && x.klic === v.klic);
+    if (!c){ W.vyznaceni.push(Object.assign({}, v, {id: W.vyznaceni.some(x => x.id === v.id) ? novyId("v") : v.id, skupiny})); st.vyz++; }
+    else if (politika === "prepsat"){ Object.assign(c, v, {id: c.id, skupiny}); st.vyz++; }
+    else if (politika === "slouc"){
+      skupiny.forEach(s => { if (c.skupiny.indexOf(s) < 0) c.skupiny.push(s); });
+      c.poznamka = sloucitText(c.poznamka, v.poznamka); c.upraveno = new Date().toISOString(); st.vyz++;
+    }
+  }
+  for (const k of b.komentare){
+    if (neuspesne.has(k.predpis) || !W.predpisy[k.predpis]) continue;
+    const skupiny = k.skupiny.map(s => mapaSkK[s]).filter(Boolean);
+    const c = W.komentare.find(x => x.id === k.id);
+    if (!c){ W.komentare.push(Object.assign({}, k, {skupiny})); st.kom++; }
+    else if (politika === "prepsat"){ Object.assign(c, k, {skupiny}); st.kom++; }
+    else if (politika === "slouc"){
+      skupiny.forEach(s => { if (c.skupiny.indexOf(s) < 0) c.skupiny.push(s); });
+      if ((k.upraveno || "") > (c.upraveno || "")){ c.text = k.text; c.upraveno = k.upraveno; }
+      st.kom++;
+    }
+  }
+  const soubory = [];
+  for (const [id, text] of Object.entries(b.poznamky)){
+    const P = W.predpisy[id];
+    if (!P || neuspesne.has(id)) continue;
+    let stary = "";
+    try { stary = await nactiPoznamku(id); } catch (e){ st.chyby.push("poznámka k " + P.citace + " — stávající nejde načíst, nepřevzata"); continue; }
+    const novy = sloucitText(stary, text);
+    if (novy === stary) continue;
+    const soubor = (P.poznamka && P.poznamka.soubor) || cestaPoznamky(id);
+    P.poznamka = {soubor, upraveno: new Date().toISOString()};
+    soubory.push({cesta: cestaWs(soubor), text: novy});
+    cachePoznamek.set(id, novy);
+    st.pozn++;
+  }
+  prubeh("Ukládám do GitHubu…");
+  const ok = await ulozWorkspace(soubory, "Import dat" + (b.zdroj && b.zdroj.nazev ? " z pracovního prostoru " + b.zdroj.nazev : ""));
+  if (!ok) throw new Error("výsledek importu se nepodařilo uložit — podrobnosti jsou ve stavovém řádku nahoře. Načtěte pracovní prostor znovu a import zopakujte.");
+  return st;
 }
 
 /* ---------- Ustanovení ---------- */
@@ -1977,6 +2364,8 @@ POHLED_FUNKCE.vyznacena = async p => {
   drobecky(drob);
   const out = [nadpis(titul)];
   out.push(...seznamVyznaceni(seznam, !p.predpis));
+  const oblastExp = p.oblast ? W.oblasti.find(x => x.id === p.oblast) : null;
+  if (seznam.length) out.push(exportniPanel(titul, () => vyznaceniJakoMarkdown(titul, oblastExp ? oblastExp.popis : "", seznam), () => vyznaceniJakoTsv(seznam)));
   return out;
 };
 /* ---------- Skupina vyznačení ---------- */
@@ -1985,8 +2374,10 @@ POHLED_FUNKCE.skupina = async p => {
   if (!s) return [nadpis("Skupina nenalezena"), zprava("Skupina v pracovním prostoru není — možná byla smazána.")];
   drobecky([["Přehled", {}], [s.nazev, null]]);
   const out = [nadpis(s.nazev)];
-  if (s.popis) out.push(el("p", null, s.popis));
-  out.push(...seznamVyznaceni(W.vyznaceni.filter(v => v.skupiny.indexOf(s.id) >= 0), true));
+  out.push(...poznamkaSkupiny(s.popis, "Poznámka ke skupině"));
+  const vyzSk = W.vyznaceni.filter(v => v.skupiny.indexOf(s.id) >= 0);
+  out.push(...seznamVyznaceni(vyzSk, true));
+  if (vyzSk.length) out.push(exportniPanel(s.nazev, () => vyznaceniJakoMarkdown(s.nazev, s.popis, vyzSk), () => vyznaceniJakoTsv(vyzSk)));
   out.push(el("h2", null, "Správa skupiny"));
   out.push(formularSkupiny(s));
   out.push(el("p", null, el("button", {type: "button", class: "druhe", onclick: () => {

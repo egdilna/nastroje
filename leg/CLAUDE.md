@@ -50,6 +50,7 @@ legprohlizec.json                       oblasti, předpisy (metadata), skupiny, 
 predpisy/{rok}-{číslo}/{datum}-{n}.json jedno znění rozdělené na části ≤ ~600 kB
 predpisy/{rok}-{číslo}/poznamka.md      poznámka k předpisu (Markdown), ve workspace jen P.poznamka
 ```
+Oblasti a obě druhy skupin mají `popis` — poznámku v Markdownu.
 Komentář: `{id, predpis, klic, citace, zneni, textUst, text (Markdown), skupiny[], vytvoreno, upraveno}`
 — k jednomu ustanovení jich může být libovolně mnoho. Vyznačení je naopak jedno na ustanovení.
 Požadavek uživatele: **nic nesmí být velké** — každé znění je v samostatných souborech
@@ -71,12 +72,27 @@ Zásady z kořenového `CLAUDE.md` (mez 1 MB, pojistka proti přepsání, histor
 ## Adresy
 Každý pohled i entita má vlastní adresu (`adresa()`, `parametry()`), úložiště je v ní vždy:
 `?repo=vlastník/repo&slozka=…&vetev=…` (větev jen mimo `main`) a dále
-`pohled` (`prehled|oblast|predpis|ust|vyznacena|skupina|komentare|poznamka|hledat|pridat|nastaveni`),
+`pohled` (`prehled|oblast|predpis|ust|vyznacena|skupina|komentare|poznamka|prenos|hledat|pridat|nastaveni`),
 `oblast`, `predpis` (`rok/číslo`), `ust` (klíč), `zneni` (datum, jen mimo aktuální),
 `skupina`, `skupinakom` (skupina komentářů), `q`, `rozsah` (`predpis:…`, `oblast:…`), `diakritika`, `poznamky`.
 Pohled se dá odvodit (`predpis`+`ust` → detail ustanovení). Odkazy jsou běžné `<a href>`,
 klik se zachytí a vykreslí bez načtení stránky (`pushState`/`popstate`); kotvy `#u-…`
 v rámci stránky nechává prohlížeči.
+
+## Export a přenos dat
+- `exportniPanel(titul, md, tsv)` — Markdown a TSV do schránky (`kopirovat`) i do souboru
+  (`stahnoutSoubor`, Blob s atributem `download`; globální obsluha kliknutí odkazy
+  s `download` nechává být). TSV: tabulátory a konce řádků v buňce se nahrazují, soubor má BOM.
+- Balíček `{format: "legprohlizec-balik", verze: 1, zdroj, predpisy, oblasti, skupiny,
+  skupinyKomentaru, vyznaceni, komentare, poznamky}` — bez textů předpisů. Import umí
+  i samotný `legprohlizec.json`, proto jde číst přímo z jiného úložiště (`ghCist` a `gh`
+  berou `repo`/`vetev` z voleb; čte se tokenem uživatele).
+- `vyberObsahu()` je společný výběr pro export i import; výběr oblasti nebo skupiny
+  doplní i její předpisy. `filtrovatBalik()` ořízne balíček a odkazy na nevybrané skupiny.
+- `importovatBalik(b, politika)` páruje oblasti a skupiny podle id, pak podle názvu,
+  vyznačení podle (předpis, klíč), komentáře podle id. Politika `slouc|ponechat|prepsat`
+  platí pro vyznačení, komentáře a všechny poznámky (sloučení spojí texty pod sebe
+  s oddělovačem `---`). Chybějící předpisy stahuje `stahnoutPredpis()`.
 
 ## Markdown
 Vlastní renderer `markdownDom(text, urovenNadpisu)` (nadpisy, odstavce s `br`, vnořené
