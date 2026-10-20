@@ -135,7 +135,7 @@ mark{background:var(--zvyrazneni);color:inherit}
    čtení metodou GET kvůli CORS). Úložiště: složka v GitHub repozitáři.
    Podrobnosti k architektuře jsou v leg/CLAUDE.md.
    ===================================================================== */
-const APP_VERZE = "1.2.0";
+const APP_VERZE = "1.2.1";
 
 /* ==================== POMOCNÉ ==================== */
 const $ = (s, r) => (r || document).querySelector(s);
@@ -1973,8 +1973,11 @@ async function filtrovatBalik(b, v, nactiPozn){
   r.skupiny = b.skupiny.filter(s => v.skupiny.has(s.id)).map(s => Object.assign({}, s));
   r.skupinyKomentaru = b.skupinyKomentaru.filter(s => v.skupinyKom.has(s.id)).map(s => Object.assign({}, s));
   const sk = new Set(r.skupiny.map(s => s.id)), skk = new Set(r.skupinyKomentaru.map(s => s.id));
-  if (v.vyz) r.vyznaceni = b.vyznaceni.filter(x => ids.has(x.predpis)).map(x => Object.assign({}, x, {skupiny: x.skupiny.filter(s => sk.has(s))}));
-  if (v.kom) r.komentare = b.komentare.filter(x => ids.has(x.predpis)).map(x => Object.assign({}, x, {skupiny: x.skupiny.filter(s => skk.has(s))}));
+  /* rezim: "vse" = vše u vybraných předpisů, "skupiny" = jen z vybraných skupin (volitelně i bez skupiny), "zadne" */
+  const bratPolozku = (x, rezim, skupiny, iBez) => rezim === "vse" || (rezim === "skupiny" && (x.skupiny.some(s => skupiny.has(s)) || (iBez && !x.skupiny.length)));
+  const rezimVyz = v.vyz === true ? "vse" : v.vyz || "zadne", rezimKom = v.kom === true ? "vse" : v.kom || "zadne";
+  r.vyznaceni = b.vyznaceni.filter(x => ids.has(x.predpis) && bratPolozku(x, rezimVyz, sk, v.vyzBez)).map(x => Object.assign({}, x, {skupiny: x.skupiny.filter(s => sk.has(s))}));
+  r.komentare = b.komentare.filter(x => ids.has(x.predpis) && bratPolozku(x, rezimKom, skk, v.komBez)).map(x => Object.assign({}, x, {skupiny: x.skupiny.filter(s => skk.has(s))}));
   if (v.pozn) for (const id of ids){
     if (b.poznamky[id] !== undefined) r.poznamky[id] = b.poznamky[id];
     else if (b.predpisy[id] && b.predpisy[id].maPoznamku && nactiPozn){
@@ -2029,18 +2032,41 @@ function vyberObsahu(b){
   const so = skupinaVoleb("Oblasti", b.oblasti, o => o.nazev + " (" + pocetSlov(o.predpisy.length, "předpis", "předpisy", "předpisů") + ")", o => oznacPredpisy(o.predpisy, "z oblasti " + o.nazev));
   const ss = skupinaVoleb("Skupiny vyznačení", b.skupiny, s => s.nazev, s => oznacPredpisy(b.vyznaceni.filter(v => v.skupiny.indexOf(s.id) >= 0).map(v => v.predpis), "se skupinou " + s.nazev));
   const sk = skupinaVoleb("Skupiny komentářů", b.skupinyKomentaru, s => s.nazev, s => oznacPredpisy(b.komentare.filter(k => k.skupiny.indexOf(s.id) >= 0).map(k => k.predpis), "se skupinou " + s.nazev));
-  const fsCo = el("fieldset", null, el("legend", null, "Co přenést u vybraných předpisů"));
-  const zv = zaskrtavatko("Vyznačení", true), zk = zaskrtavatko("Komentáře", true), zp = zaskrtavatko("Poznámky k předpisům", true);
-  fsCo.append(zv.prvek, zk.prvek, zp.prvek);
+  const prepinace = (legenda, volby, vychozi) => {
+    const fs = el("fieldset", null, el("legend", null, legenda));
+    const jmeno = novyId("vyber");
+    const vstupy = volby.map(([hodnota, text]) => {
+      const i = el("input", {type: "radio", name: jmeno, value: hodnota});
+      i.checked = hodnota === vychozi;
+      fs.append(el("label", {class: "radek-volby"}, i, " ", text));
+      return i;
+    });
+    return {fs, hodnota: () => (vstupy.find(i => i.checked) || {}).value};
+  };
+  const kteraVyz = prepinace("Která vyznačení přenést", [
+    ["skupiny", "Jen vyznačení z vybraných skupin vyznačení"],
+    ["vse", "Všechna vyznačení u vybraných předpisů"],
+    ["zadne", "Žádná vyznačení"]], "skupiny");
+  const vyzBez = zaskrtavatko("A k tomu i vyznačení, která nejsou v žádné skupině", false);
+  kteraVyz.fs.append(vyzBez.prvek);
+  const kteraKom = prepinace("Které komentáře přenést", [
+    ["skupiny", "Jen komentáře z vybraných skupin komentářů"],
+    ["vse", "Všechny komentáře u vybraných předpisů"],
+    ["zadne", "Žádné komentáře"]], "skupiny");
+  const komBez = zaskrtavatko("A k tomu i komentáře, které nejsou v žádné skupině", false);
+  kteraKom.fs.append(komBez.prvek);
+  const fsPozn = el("fieldset", null, el("legend", null, "Poznámky k předpisům"));
+  const zp = zaskrtavatko("Přenést poznámky k vybraným předpisům", true);
+  fsPozn.append(zp.prvek);
   kontejner.append(
-    el("p", {class: "tichy"}, "Výběrem oblasti nebo skupiny se vyberou i předpisy, které do ní patří; jejich výběr pak můžete upravit. Vyznačení a komentáře se přenášejí u vybraných předpisů, ve skupinách jen tehdy, když vyberete i skupinu."),
+    el("p", {class: "tichy"}, "Výběrem oblasti nebo skupiny se vyberou i předpisy, které do ní patří; jejich výběr pak můžete upravit. Které vyznačení a komentáře se přenesou, určíte pod výběrem skupin — standardně jen ty z vybraných skupin. Přenáší se vždy jen u vybraných předpisů."),
     el("p", null, el("button", {type: "button", class: "druhe", onclick: () => {
       for (const s of [sp, so, ss, sk]) s.volby.forEach(c => { c.checked = true; });
       oznam("Vybráno vše");
     }}, "Vybrat úplně vše")),
-    sp.fs, so.fs, ss.fs, sk.fs, fsCo);
+    sp.fs, so.fs, ss.fs, kteraVyz.fs, sk.fs, kteraKom.fs, fsPozn);
   const vybrane = s => new Set(s.volby.filter(c => c.checked).map(c => c.value));
-  return {prvek: kontejner, vyber: () => ({predpisy: vybrane(sp), oblasti: vybrane(so), skupiny: vybrane(ss), skupinyKom: vybrane(sk), vyz: zv.vstup.checked, kom: zk.vstup.checked, pozn: zp.vstup.checked})};
+  return {prvek: kontejner, vyber: () => ({predpisy: vybrane(sp), oblasti: vybrane(so), skupiny: vybrane(ss), skupinyKom: vybrane(sk), vyz: kteraVyz.hodnota(), vyzBez: vyzBez.vstup.checked, kom: kteraKom.hodnota(), komBez: komBez.vstup.checked, pozn: zp.vstup.checked})};
 }
 function prazdnyVyber(v){ return !v.predpisy.size && !v.oblasti.size && !v.skupiny.size && !v.skupinyKom.size; }
 
