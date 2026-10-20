@@ -2,6 +2,11 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.2.1] — 2026-10-20
+
+### Změněno
+- Přenos dat: výběr skupin vyznačení a komentářů teď určuje, co se přenese. Standardně se přenesou jen vyznačení a komentáře z vybraných skupin; volitelně i ty bez skupiny, všechny u vybraných předpisů, nebo žádné.
+
 ## [1.2.0] — 2026-10-20
 
 ### Přidáno

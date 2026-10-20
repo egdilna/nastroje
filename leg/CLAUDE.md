@@ -89,6 +89,8 @@ v rámci stránky nechává prohlížeči.
   berou `repo`/`vetev` z voleb; čte se tokenem uživatele).
 - `vyberObsahu()` je společný výběr pro export i import; výběr oblasti nebo skupiny
   doplní i její předpisy. `filtrovatBalik()` ořízne balíček a odkazy na nevybrané skupiny.
+  Vyznačení a komentáře mají režim `skupiny` (výchozí — jen z vybraných skupin, volitelně
+  i bez skupiny), `vse` (vše u vybraných předpisů) nebo `zadne`; vždy jen u vybraných předpisů.
 - `importovatBalik(b, politika)` páruje oblasti a skupiny podle id, pak podle názvu,
   vyznačení podle (předpis, klíč), komentáře podle id. Politika `slouc|ponechat|prepsat`
   platí pro vyznačení, komentáře a všechny poznámky (sloučení spojí texty pod sebe
