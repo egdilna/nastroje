@@ -2,6 +2,11 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.4.0] — 2026-10-20
+
+### Přidáno
+- Přepínač pohledu na text předpisu: čtecí pohled (čistý text bez odkazů na ustanovení a bez značek) a pohled s odkazy na ustanovení a značkami vyznačení a komentářů. Volba je v adrese (`zobrazeni=cteni|odkazy`) a prohlížeč si ji pamatuje.
+
 ## [1.3.0] — 2026-10-20
 
 ### Přidáno

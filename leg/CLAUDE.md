@@ -74,7 +74,7 @@ Každý pohled i entita má vlastní adresu (`adresa()`, `parametry()`), úloži
 `?repo=vlastník/repo&slozka=…&vetev=…` (větev jen mimo `main`) a dále
 `pohled` (`prehled|oblast|predpis|ust|vyznacena|skupina|komentare|poznamka|prenos|hledat|pridat|nastaveni`),
 `oblast`, `predpis` (`rok/číslo`), `ust` (klíč), `zneni` (datum, jen mimo aktuální),
-`skupina`, `skupinakom` (skupina komentářů), `filtr`, `q`, `rozsah` (`predpis:…`, `oblast:…`), `diakritika`, `poznamky`.
+`skupina`, `skupinakom` (skupina komentářů), `filtr`, `zobrazeni`, `q`, `rozsah` (`predpis:…`, `oblast:…`), `diakritika`, `poznamky`.
 Pohled se dá odvodit (`predpis`+`ust` → detail ustanovení). Odkazy jsou běžné `<a href>`,
 klik se zachytí a vykreslí bez načtení stránky (`pushState`/`popstate`); kotvy `#u-…`
 v rámci stránky nechává prohlížeči.
@@ -118,6 +118,12 @@ aplikace zeptá; seznam se maže při každém vykreslení.
 - Odkazy `prevestOdkaz()`: týž předpis → kotva, jiný předpis v knihovně → detail ustanovení,
   mimo knihovnu → stránka předpisu s nabídkou zařazení (nic se nestahuje automaticky),
   EU a ostatní → externě do nové karty se skrytým upozorněním.
+
+## Pohled na text předpisu
+Parametr `zobrazeni`: `odkazy` (výchozí — označení ustanovení jsou odkazy na detail, značky
+★ a 💬) nebo `cteni` (`ctx.bezOdkazu`, čistý text). Volba z adresy se uloží do
+`localStorage["legprohlizec-pohled-predpisu"]` (jen pohodlí prohlížeče, ne data).
+Odkazy na jiné předpisy zůstávají v obou pohledech.
 
 ## Filtr předpisu
 Parametr `filtr` (a `diakritika=ano` pro rozlišování) na stránce předpisu. `filtrPredpisu()`
