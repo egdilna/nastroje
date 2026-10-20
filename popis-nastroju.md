@@ -160,6 +160,7 @@ Hlavní funkce:
 - Komentáře k ustanovením ve skupinách komentářů a poznámka k celému předpisu v Markdownu
 - Poznámky v Markdownu k oblastem a skupinám, export vyznačení a komentářů do Markdownu a TSV
 - Přenos vybraných dat mezi pracovními prostory (balíček nebo přímo z jiného úložiště)
+- Štítky pro předpisy i ustanovení, filtr textu předpisu podle slov i štítků, hromadné úpravy se zaškrtávátky
 - Fungující odkazy mezi předpisy, hledání v předpisu, oblasti i celé knihovně
 - Každý předpis, ustanovení, oblast i skupina má vlastní adresu pro odkazy zvenku
 

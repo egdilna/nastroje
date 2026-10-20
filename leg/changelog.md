@@ -2,6 +2,15 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.5.0] — 2026-10-20
+
+### Přidáno
+- Štítky pro předpisy i jednotlivá ustanovení (jeden společný slovník). Výběr zaškrtávátky s polem pro nové štítky — na stránce předpisu (Správa předpisu), při přidání předpisu a na stránce ustanovení.
+- Stránka Štítky s počty a stránka štítku s poznámkou v Markdownu, předpisy a ustanoveními se štítkem, exportem Markdown a TSV a správou štítku.
+- Značka 🏷 v textu předpisu a štítky v přístupném názvu označení ustanovení; filtr textu předpisu podle štítku (samostatně i s hledaným textem); hledání v předpisech se štítkem.
+- Hromadné úpravy se zaškrtávátky: předpisy (štítek, oblast) v přehledu a na stránce štítku, vyznačení a komentáře (skupina, štítek ustanovení, zrušení či smazání), ustanovení na stránce štítku.
+- Štítky v exportu vyznačení a komentářů a v přenosu dat (volba „Přenést štítky“, párování podle názvu).
+
 ## [1.4.0] — 2026-10-20
 
 ### Přidáno

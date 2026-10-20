@@ -72,12 +72,23 @@ Zásady z kořenového `CLAUDE.md` (mez 1 MB, pojistka proti přepsání, histor
 ## Adresy
 Každý pohled i entita má vlastní adresu (`adresa()`, `parametry()`), úložiště je v ní vždy:
 `?repo=vlastník/repo&slozka=…&vetev=…` (větev jen mimo `main`) a dále
-`pohled` (`prehled|oblast|predpis|ust|vyznacena|skupina|komentare|poznamka|prenos|hledat|pridat|nastaveni`),
+`pohled` (`prehled|oblast|predpis|ust|vyznacena|skupina|komentare|poznamka|prenos|stitky|stitek|hledat|pridat|nastaveni`),
 `oblast`, `predpis` (`rok/číslo`), `ust` (klíč), `zneni` (datum, jen mimo aktuální),
-`skupina`, `skupinakom` (skupina komentářů), `filtr`, `zobrazeni`, `q`, `rozsah` (`predpis:…`, `oblast:…`), `diakritika`, `poznamky`.
+`skupina`, `skupinakom` (skupina komentářů), `filtr`, `stitekf`, `zobrazeni`, `stitek`, `q`, `rozsah` (`predpis:…`, `oblast:…`), `diakritika`, `poznamky`.
 Pohled se dá odvodit (`predpis`+`ust` → detail ustanovení). Odkazy jsou běžné `<a href>`,
 klik se zachytí a vykreslí bez načtení stránky (`pushState`/`popstate`); kotvy `#u-…`
 v rámci stránky nechává prohlížeči.
+
+## Štítky a hromadné úpravy
+- Slovník `W.stitky` (`{id, nazev, popis}`) je společný pro předpisy (`P.stitky`) a ustanovení
+  (`W.stitkyUstanoveni`: `{predpis, klic, citace, zneni, textUst, stitky[], upraveno}`; záznam
+  bez štítků se maže). Zápis jen přes `nastavStitkyUst()`, výběr přes `vyberStitku()`
+  (nové štítky se zakládají až při `hodnota()`, párují se podle názvu bez ohledu na velikost).
+- Filtr předpisu umí `stitekf` (jen ustanovení se štítkem a jejich podstromy), samostatně
+  i spolu s textem. Rozsah hledání `stitek:<id>` = předpisy se štítkem.
+- `hromadnaUprava(druh, zaskrtavatka, uroven)` + `provestHromadne()`; druhy `predpis`, `vyz`,
+  `kom`, `ust` (klíč `předpis|klíč`). Zaškrtávátko položky staví `zaskrtavatkoPolozky()` —
+  viditelně „Vybrat“, přístupný název s citací. Po akci se stránka překreslí a výsledek se ohlásí.
 
 ## Export a přenos dat
 - `exportniPanel(titul, md, tsv)` — Markdown a TSV do schránky (`kopirovat`) i do souboru
