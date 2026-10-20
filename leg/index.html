@@ -135,7 +135,7 @@ mark{background:var(--zvyrazneni);color:inherit}
    čtení metodou GET kvůli CORS). Úložiště: složka v GitHub repozitáři.
    Podrobnosti k architektuře jsou v leg/CLAUDE.md.
    ===================================================================== */
-const APP_VERZE = "1.2.1";
+const APP_VERZE = "1.3.0";
 
 /* ==================== POMOCNÉ ==================== */
 const $ = (s, r) => (r || document).querySelector(s);
@@ -755,7 +755,7 @@ function prevestOdkaz(a, ctx){
   if (cil && cil.druh === "sb"){
     const vKnihovne = !!W.predpisy[cil.predpis];
     let href;
-    if (ctx.vPredpisu && cil.predpis === ctx.model.id && (cil.klic === "" || ctx.model.mapa.has(cil.klic)))
+    if (ctx.vPredpisu && cil.predpis === ctx.model.id && (cil.klic === "" || (ctx.model.mapa.has(cil.klic) && (!ctx.filtr || ctx.filtr.mnozina.has(cil.klic)))))
       href = cil.klic ? "#" + idFragmentu(cil.klic) : "#obsah";
     else if (cil.klic && vKnihovne)
       href = adresa({pohled: "ust", predpis: cil.predpis, ust: cil.klic});
@@ -960,7 +960,7 @@ function vykreslitStrom(model, korenKlic, ctx){
   return kontejner;
 }
 function vykreslitDeti(model, klic, cil, uroven, ctx){
-  const deti = model.deti.get(klic) || [];
+  const deti = (model.deti.get(klic) || []).filter(f => !ctx.filtr || ctx.filtr.mnozina.has(f.k));
   let seznam = null, seznamTyp = "";
   for (let i = 0; i < deti.length; i++){
     const f = deti[i];
@@ -1060,12 +1060,57 @@ function oznaceni(model, f, text, ctx){
   if (nk) frag.append(el("span", {class: "znacka", "aria-hidden": "true", title: pocetKomentaru(nk)}, "💬" + nk));
   return frag;
 }
-function obsahPredpisu(model){
+/* Filtr předpisu: nalezené ustanovení se zobrazí celé (i s písmeny a body), nad ním
+   celá cesta nadřazených částí, hlav, paragrafů a odstavců jako kontext. Shoda
+   v nadpisu paragrafu nebo článku ukáže celý paragraf. */
+function filtrPredpisu(model, dotaz, bezDiakritiky){
+  const slova = normText(dotaz, bezDiakritiky).split(/\s+/).filter(Boolean);
+  if (!slova.length) return null;
+  const mnozina = new Set(), jednotky = new Set();
+  const podstrom = k => { mnozina.add(k); for (const d of model.deti.get(k) || []) podstrom(d.k); };
+  const predkove = f => { let x = f; while (x){ mnozina.add(x.k); if (x.k === "") break; x = model.mapa.get(x.p); } };
+  for (const f of model.frag){
+    if (!f.t || f.k === "" || f.typ.startsWith("Prefix") || f.typ.startsWith("Virtual_") || STRUKTURA.has(f.typ)) continue;
+    const nt = normText(textFragmentu(model, f), bezDiakritiky);
+    if (!slova.every(sl => nt.indexOf(sl) >= 0)) continue;
+    let jednotka = f;
+    if (f.typ === "Nadpis_pod"){ const rod = model.mapa.get(f.p); if (rod && (rod.typ === "Paragraf" || rod.typ === "Clanek")) jednotka = rod; }
+    /* už je zobrazené jako součást dříve nalezeného ustanovení — nepočítat znovu */
+    let x = jednotka, uvnitr = false;
+    while (x){ if (jednotky.has(x.k)){ uvnitr = true; break; } if (x.k === "") break; x = model.mapa.get(x.p); }
+    if (uvnitr) continue;
+    jednotky.add(jednotka.k);
+    podstrom(jednotka.k);
+    predkove(jednotka);
+  }
+  mnozina.add("");
+  return {slova, mnozina, pocet: jednotky.size};
+}
+function zvyraznitSlova(koren, slova, bezDiakritiky){
+  const chodec = document.createTreeWalker(koren, NodeFilter.SHOW_TEXT);
+  const uzly = [];
+  while (chodec.nextNode()) uzly.push(chodec.currentNode);
+  for (const u of uzly){
+    if (u.parentNode && u.parentNode.closest && u.parentNode.closest(".vh")) continue;
+    const t = u.nodeValue, nt = normText(t, bezDiakritiky);
+    if (nt.length !== t.length) continue;
+    const znacky = [];
+    for (const sl of slova){ let i = -1; while ((i = nt.indexOf(sl, i + 1)) >= 0) znacky.push([i, i + sl.length]); }
+    if (!znacky.length) continue;
+    znacky.sort((a, b) => a[0] - b[0]);
+    const frag = document.createDocumentFragment();
+    let pos = 0;
+    for (const [a, b] of znacky){ if (a < pos) continue; frag.append(t.slice(pos, a), el("mark", null, t.slice(a, b))); pos = b; }
+    frag.append(t.slice(pos));
+    u.replaceWith(frag);
+  }
+}
+function obsahPredpisu(model, mnozina){
   const vytvor = klic => {
     const ul = el("ul");
     for (const f of model.deti.get(klic) || []){
       if (f.typ.startsWith("Virtual_")){ const vnor = vytvor(f.k); if (vnor) ul.append(...vnor.childNodes); continue; }
-      if (!STRUKTURA.has(f.typ)) continue;
+      if (!STRUKTURA.has(f.typ) || (mnozina && !mnozina.has(f.k))) continue;
       const t = titulekStruktury(model, f);
       const li = el("li", null, el("a", {href: "#" + idFragmentu(f.k)}, oznaceniFragmentu(f) + (t ? " " + t : "")));
       const vnor = vytvor(f.k);
@@ -1157,7 +1202,7 @@ function adresa(par){
 function parametry(){
   const q = new URLSearchParams(location.search);
   const p = {};
-  for (const k of ["pohled", "oblast", "predpis", "ust", "zneni", "skupina", "q", "rozsah", "diakritika", "poznamky", "skupinakom"]) if (q.get(k) !== null) p[k] = q.get(k);
+  for (const k of ["pohled", "oblast", "predpis", "ust", "zneni", "skupina", "q", "rozsah", "diakritika", "poznamky", "skupinakom", "filtr"]) if (q.get(k) !== null) p[k] = q.get(k);
   if (!p.pohled || POHLEDY.indexOf(p.pohled) < 0){
     p.pohled = p.ust && p.predpis ? "ust" : p.predpis ? "predpis" : p.skupina ? "skupina" : p.skupinakom ? "komentare" : p.oblast ? "oblast" : p.q ? "hledat" : "prehled";
   }
@@ -1561,12 +1606,36 @@ POHLED_FUNKCE.predpis = async p => {
     prejit({pohled: "ust", predpis: id, ust: f.k, zneni: p.zneni || null});
   }}, pole("Přejít na ustanovení", skok, "Napište například § 5 odst. 2 písm. b nebo čl. 3."), el("button", {type: "submit"}, "Přejít"), skokStav));
 
-  const toc = obsahPredpisu(model);
+  /* Filtr textu — zobrazí jen ustanovení s hledaným textem a jejich kontext */
+  const bezDia = p.diakritika !== "ano";
+  const filtr = p.filtr ? filtrPredpisu(model, p.filtr, bezDia) : null;
+  const fVstup = el("input", {type: "search", autocomplete: "off"});
+  fVstup.value = p.filtr || "";
+  const fDia = zaskrtavatko("Rozlišovat diakritiku", !bezDia);
+  out.push(el("form", {role: "search", onsubmit: e => {
+    e.preventDefault();
+    const q = fVstup.value.trim();
+    history.pushState(null, "", adresa({pohled: "predpis", predpis: id, zneni: p.zneni || null, filtr: q || null, diakritika: q && fDia.vstup.checked ? "ano" : null}) + (q ? "#vysledek-filtru" : ""));
+    vykreslit({fokus: true});
+  }}, pole("Filtrovat text předpisu", fVstup, "Zobrazí se jen ustanovení, která obsahují všechna zadaná slova, i s jejich nadřazenými částmi, paragrafy a odstavci."),
+    fDia.prvek, el("button", {type: "submit"}, "Filtrovat"), " ",
+    p.filtr ? el("a", {href: adresa({pohled: "predpis", predpis: id, zneni: p.zneni || null})}, "Zrušit filtr") : null));
+  if (filtr){
+    out.push(el("p", {id: "vysledek-filtru", tabindex: "-1", class: "panel"},
+      filtr.pocet ? "Filtr „" + p.filtr + "“: zobrazeno " + pocetSlov(filtr.pocet, "nalezené místo", "nalezená místa", "nalezených míst") + " s kontextem. Výskyty jsou zvýrazněné. "
+        : "Filtr „" + p.filtr + "“: v předpisu nic nenalezeno. ",
+      el("a", {href: adresa({pohled: "predpis", predpis: id, zneni: p.zneni || null})}, "Zrušit filtr a zobrazit celý předpis")));
+    oznam(filtr.pocet ? "Nalezeno " + pocetSlov(filtr.pocet, "místo", "místa", "míst") : "Nic nenalezeno");
+  }
+
+  if (filtr && !filtr.pocet) return out;
+  const toc = obsahPredpisu(model, filtr ? filtr.mnozina : null);
   if (toc) out.push(el("details", {class: "obsah-predpisu"}, el("summary", null, "Obsah předpisu"), el("nav", {"aria-label": "Obsah předpisu"}, toc)));
 
-  const ctx = {model, vPredpisu: true, vyznaceni: mapaVyznaceni(id), komentare: mapaKomentaru(id), uroven: 2, zneniVUrl: p.zneni || null};
+  const ctx = {model, vPredpisu: true, vyznaceni: mapaVyznaceni(id), komentare: mapaKomentaru(id), uroven: 2, zneniVUrl: p.zneni || null, filtr};
   const text = el("article", {class: "predpis-text", id: "text-predpisu", "aria-label": "Text předpisu", tabindex: "-1"});
   text.append(vykreslitStrom(model, "", ctx));
+  if (filtr) zvyraznitSlova(text, filtr.slova, bezDia);
   out.push(text);
 
   out.push(el("h2", null, "Správa předpisu"));
