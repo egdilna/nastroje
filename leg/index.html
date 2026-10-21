@@ -65,6 +65,7 @@ summary{cursor:pointer;font-weight:600}
 .panel{background:var(--plocha);border-radius:8px;padding:.6rem 1rem;margin:.8rem 0}
 .seznam{padding-left:1.3rem}
 .seznam>li{margin:.35rem 0}
+.souhrn{margin:.15rem 0 .5rem;padding-left:1.2rem;color:var(--tlumeny);font-size:.95rem}
 .akce{margin:.4rem 0}
 progress{width:min(100%,32rem);height:1rem}
 footer{border-top:1px solid var(--linka);padding-top:.5rem;padding-bottom:2rem;color:var(--tlumeny);font-size:.9rem}
@@ -137,7 +138,7 @@ mark{background:var(--zvyrazneni);color:inherit}
    čtení metodou GET kvůli CORS). Úložiště: složka v GitHub repozitáři.
    Podrobnosti k architektuře jsou v leg/CLAUDE.md.
    ===================================================================== */
-const APP_VERZE = "1.10.0";
+const APP_VERZE = "1.11.0";
 
 /* ==================== POMOCNÉ ==================== */
 const $ = (s, r) => (r || document).querySelector(s);
@@ -1618,7 +1619,7 @@ async function pohledPrehled(){
       const P = W.predpisy[id];
       const obl = W.oblasti.filter(o => o.predpisy.indexOf(id) >= 0).map(o => o.nazev);
       return el("li", null, zaskrtavatkoPolozky(id, kratkyNazev(P, id), zaskrtP), " ", el("a", {href: adresa({pohled: "predpis", predpis: id})}, nazevPredpisu(P, id)),
-        el("span", {class: "tichy"}, " — " + (obl.length ? "oblasti: " + obl.join(", ") : "bez oblasti") + (P.stitky && P.stitky.length ? "; štítky: " + nazvyStitku(P.stitky) : "")));
+        souhrnPredpisu(id, true));
     })));
     out.push(hromadnaUprava("predpis", zaskrtP, 3));
     const stav = el("p", {class: "tichy"});
@@ -1725,12 +1726,10 @@ POHLED_FUNKCE.oblast = async p => {
   if (o.predpisy.length){
     out.push(el("ul", {class: "seznam"}, o.predpisy.map(id => {
       const P = W.predpisy[id];
-      const n = vyznaceniPredpisu(id).length;
-      return el("li", null, el("a", {href: adresa({pohled: "predpis", predpis: id})}, nazevPredpisu(P, id)),
-        n ? el("span", {class: "tichy"}, " — " + pocetSlov(n, "vyznačené ustanovení", "vyznačená ustanovení", "vyznačených ustanovení")) : null, " ",
+      return el("li", null, el("a", {href: adresa({pohled: "predpis", predpis: id})}, nazevPredpisu(P, id)), " ",
         el("button", {type: "button", class: "druhe", "aria-label": "Vyřadit " + kratkyNazev(P, id) + " z oblasti " + o.nazev, onclick: () => {
           o.predpisy = o.predpisy.filter(x => x !== id); zmeneno(); oznam("Předpis vyřazen z oblasti"); vykreslit({fokus: true});
-        }}, "Vyřadit z oblasti"));
+        }}, "Vyřadit z oblasti"), souhrnPredpisu(id, false));
     })));
   } else out.push(zprava("Oblast je zatím prázdná."));
   out.push(el("p", null, el("a", {href: adresa({pohled: "pridat", oblast: o.id})}, "Přidat předpis do oblasti")));
@@ -1752,6 +1751,29 @@ POHLED_FUNKCE.oblast = async p => {
   }}, "Smazat oblast")));
   return out;
 };
+
+/* Souhrn předpisu v seznamech: počty, štítky a skupiny (odkazy vedou na celé skupiny). */
+function souhrnPredpisu(id, sOblastmi){
+  const P = W.predpisy[id];
+  const vyz = vyznaceniPredpisu(id), kom = komentarePredpisu(id);
+  const sKom = new Set(kom.map(k => k.klic)).size;
+  const odkazySkupin = (ids, sez, pohled, klic) => {
+    const sk = Array.from(new Set(ids)).map(x => sez.find(y => y.id === x)).filter(Boolean).sort((a, b) => ceskeRazeni.compare(a.nazev, b.nazev));
+    const frag = document.createDocumentFragment();
+    sk.forEach((x, i) => { if (i) frag.append(", "); frag.append(el("a", {href: adresa({pohled, [klic]: x.id})}, x.nazev)); });
+    return sk.length ? frag : null;
+  };
+  const skV = odkazySkupin(vyz.flatMap(v => v.skupiny), W.skupiny, "skupina", "skupina");
+  const skK = odkazySkupin(kom.flatMap(k => k.skupiny), W.skupinyKomentaru, "komentare", "skupinakom");
+  const obl = W.oblasti.filter(o => o.predpisy.indexOf(id) >= 0).map(o => o.nazev).sort(ceskeRazeni.compare);
+  return el("ul", {class: "souhrn"},
+    el("li", null, pocetSlov(vyz.length, "vyznačené ustanovení", "vyznačená ustanovení", "vyznačených ustanovení") + ", "
+      + pocetSlov(sKom, "ustanovení s komentářem", "ustanovení s komentáři", "ustanovení s komentáři") + ", " + pocetKomentaru(kom.length) + " celkem"),
+    el("li", null, "Štítky: ", odkazyStitku(P && P.stitky)),
+    skV ? el("li", null, "Skupiny vyznačení: ", skV) : null,
+    skK ? el("li", null, "Skupiny komentářů: ", skK) : null,
+    sOblastmi ? el("li", null, "Oblasti: " + (obl.length ? obl.join(", ") : "žádná")) : null);
+}
 
 /* ---------- Přidat předpis ---------- */
 POHLED_FUNKCE.pridat = async p => {

@@ -2,6 +2,11 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.11.0] — 2026-10-21
+
+### Přidáno
+- Souhrn u každého předpisu v přehledu knihovny i v oblasti: počet vyznačených ustanovení, ustanovení s komentáři a komentářů celkem, štítky předpisu, odkazy na skupiny vyznačení a skupiny komentářů, které předpis obsahují (vedou na celé skupiny), a oblasti.
+
 ## [1.10.0] — 2026-10-21
 
 ### Přidáno
