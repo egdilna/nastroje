@@ -75,7 +75,7 @@ Každý pohled i entita má vlastní adresu (`adresa()`, `parametry()`), úloži
 `?repo=vlastník/repo&slozka=…&vetev=…` (větev jen mimo `main`) a dále
 `pohled` (`prehled|oblast|predpis|ust|vyznacena|skupina|komentare|poznamka|prenos|stitky|stitek|hledat|pridat|nastaveni`),
 `oblast`, `predpis` (`rok/číslo`), `ust` (klíč), `zneni` (datum, jen mimo aktuální),
-`skupina`, `skupinakom` (skupina komentářů), `filtr`, `stitekf`, `zobrazeni`, `stitek`, `cast`, `q`, `rozsah` (`predpis:…`, `oblast:…`), `diakritika`, `poznamky`.
+`skupina`, `skupinakom` (skupina komentářů), `filtr`, `stitekf`, `zobrazeni`, `stitek`, `cast`, `jenkom`, `jenvyz`, `q`, `rozsah` (`predpis:…`, `oblast:…`), `diakritika`, `poznamky`.
 Pohled se dá odvodit (`predpis`+`ust` → detail ustanovení). Odkazy jsou běžné `<a href>`,
 klik se zachytí a vykreslí bez načtení stránky (`pushState`/`popstate`); kotvy `#u-…`
 v rámci stránky nechává prohlížeči.
@@ -164,6 +164,12 @@ seznamy staví `castPredpisu()` s nadpisem `#cast-predpisu`. Textová část (sk
 filtr, pohled, obsah, text) běží ve vnitřní funkci v `POHLED_FUNKCE.predpis`; správa předpisu
 je pod každou částí. `seznamVyznaceni/seznamKomentaru(seznam, poPredpisech, zaklad)`
 a `exportniPanel(…, uroven)` berou úroveň nadpisů podle místa na stránce.
+
+## Komentáře v čtecím pohledu
+`P.cteniKomentare` = id skupin komentářů zobrazených v textu (`""` = bez skupiny), nastavuje se
+formulářem `#komentare-v-textu` jen v čtecím pohledu. `ctx.komentareCteni` (klíč → komentáře)
+vykresluje `pripojitKomentareCteni()` pod celým ustanovením (konec `vykreslitObsahUzlu`
+a strukturní sekce). Filtry `jenkom`/`jenvyz` jsou množiny klíčů průnikem se štítkem.
 
 ## Pohled na text předpisu
 Parametr `zobrazeni`: `odkazy` (výchozí — označení ustanovení jsou odkazy na detail, značky
