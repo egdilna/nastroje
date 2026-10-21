@@ -533,7 +533,15 @@ Pravé tlačítko zůstává na volné ploše (nová dlaždice) a na ploše v bo
 Zásada: **jen funkční klávesy**, žádné kombinace kolidující s prohlížečem, žádné
 Alt+číslo ani Ctrl+písmeno. Vše ostatní jde přes paletu a nabídku.
 
-Výjimkou jsou **přístupové klávesy** (`accesskey`) — ty neřeší prostředí, ale prohlížeč
+Druhou výjimkou jsou **písmena na vybrané dlaždici** (`P` jako podrobnosti, `V` jako
+velikost). Dlaždice je odkaz, ne formulářové pole, takže tam písmena nikomu nepřekážejí
+a jsou kratší než kombinace s modifikátorem. Obsluha je v `keydown` dlaždice a hlídá, že
+není stisknutý Ctrl, Alt ani Cmd — jinak by `Ctrl+P` (tisk) otevíral nabídku. Mimo
+dlaždici se nic takového neodchytává, psaní v paletě ani v polích to nesmí potkat.
+Velikost se nastavuje **jen tam**: v nabídce dlaždice je na ni jen položka s aktuální
+hodnotou, ne řada přepínačů, kterou bylo nutné procházet celou.
+
+Další výjimkou jsou **přístupové klávesy** (`accesskey`) — ty neřeší prostředí, ale prohlížeč
 (Ctrl+Alt+písmeno na macOS, Alt+písmeno ve Windows). Musí viset na prvku, který je
 v dokumentu, zaostřitelný a **vykreslený**: `display:none` ani `visibility:hidden` je
 vypnou, kdežto `.jenproctecku` (clip na 1 px) je nechá fungovat. Proto mají `I` a `A`
@@ -558,7 +566,8 @@ Každá akce na přístupové klávese musí být dostupná i jinak — v palet�
 | šipky, Home, End | pohyb mezi dlaždicemi |
 | Enter, mezerník | otevřít dlaždici |
 | přístupová klávesa N / I / A | vytvořit dlaždici (`#tl-nove`) / dlaždice na této ploše (`nabidkaDlazdicPlochy()`) / všechny dlaždice po plochách (`nabidkaVsechDlazdic()`) |
-| Alt+Enter | nabídka dlaždice |
+| P / Alt+Enter | nabídka dlaždice (`nabidkaDlazdice()`) — na vybrané dlaždici |
+| V | velikost vybrané dlaždice (`nabidkaVelikosti()`) — šířka a výška jako dvě skupiny menu |
 | Delete | do koše |
 | Ctrl+←/→ | změna pořadí dlaždice |
 | Ctrl+Alt+šipky | ukotvení okna k okraji |
