@@ -135,7 +135,7 @@ mark{background:var(--zvyrazneni);color:inherit}
    čtení metodou GET kvůli CORS). Úložiště: složka v GitHub repozitáři.
    Podrobnosti k architektuře jsou v leg/CLAUDE.md.
    ===================================================================== */
-const APP_VERZE = "1.8.0";
+const APP_VERZE = "1.8.1";
 
 /* ==================== POMOCNÉ ==================== */
 const $ = (s, r) => (r || document).querySelector(s);
@@ -347,6 +347,20 @@ function normalizovatWs(d){
   if (!Array.isArray(w.stitkyUstanoveni)) w.stitkyUstanoveni = [];
   w.stitkyUstanoveni = w.stitkyUstanoveni.filter(z => z && Array.isArray(z.stitky) && z.stitky.length);
   for (const P of Object.values(w.predpisy)) if (!Array.isArray(P.stitky)) P.stitky = [];
+  /* štítky vždy malými písmeny; starší štítky se převedou a shodné se sloučí */
+  const slouceni = {}, podleNazvu = new Map();
+  w.stitky = w.stitky.filter(t => {
+    t.nazev = String(t.nazev || "").trim().toLowerCase();
+    const d = podleNazvu.get(t.nazev);
+    if (d){ slouceni[t.id] = d.id; if (!d.popis && t.popis) d.popis = t.popis; return false; }
+    podleNazvu.set(t.nazev, t);
+    return true;
+  });
+  if (Object.keys(slouceni).length){
+    const preved = ids => Array.from(new Set(ids.map(i => slouceni[i] || i)));
+    for (const P of Object.values(w.predpisy)) P.stitky = preved(P.stitky);
+    w.stitkyUstanoveni.forEach(z => { z.stitky = preved(z.stitky); });
+  }
   w.oblasti.forEach(o => { if (!Array.isArray(o.predpisy)) o.predpisy = []; });
   for (const p of Object.values(w.predpisy)) if (!p.zneni) p.zneni = {};
   w.vyznaceni.forEach(v => { if (!Array.isArray(v.skupiny)) v.skupiny = []; });
@@ -939,11 +953,13 @@ const textKomentareProKopii = kom => kom.map(k => "- " + k.text.trim().split("\n
 /* ==================== ŠTÍTKY ==================== */
 /* Jeden slovník štítků W.stitky pro předpisy (P.stitky) i ustanovení
    (W.stitkyUstanoveni: {predpis, klic, citace, zneni, textUst, stitky[], upraveno}). */
-const razeneStitky = () => W.stitky.slice().sort((a, b) => a.nazev.localeCompare(b.nazev, "cs"));
+/* Štítky jsou vždy malými písmeny a všude se řadí podle české abecedy (ch za h). */
+const ceskeRazeni = new Intl.Collator("cs", {sensitivity: "base", numeric: true});
+const razeneStitky = () => W.stitky.slice().sort((a, b) => ceskeRazeni.compare(a.nazev, b.nazev));
 const stitekPodleId = id => W.stitky.find(s => s.id === id);
-function nazvyStitku(ids){ return (ids || []).map(stitekPodleId).filter(Boolean).map(s => s.nazev).sort((a, b) => a.localeCompare(b, "cs")).join(", "); }
+function nazvyStitku(ids){ return (ids || []).map(stitekPodleId).filter(Boolean).map(s => s.nazev).sort(ceskeRazeni.compare).join(", "); }
 function zajistitStitek(nazev){
-  const n = String(nazev || "").trim();
+  const n = String(nazev || "").trim().toLowerCase();
   if (!n) return null;
   let s = W.stitky.find(x => x.nazev.toLowerCase() === n.toLowerCase());
   if (!s){ s = {id: novyId("t"), nazev: n, popis: ""}; W.stitky.push(s); }
@@ -965,7 +981,7 @@ function mapaStitkuUst(id){
   return m;
 }
 function odkazyStitku(ids){
-  const st = (ids || []).map(stitekPodleId).filter(Boolean).sort((a, b) => a.nazev.localeCompare(b.nazev, "cs"));
+  const st = (ids || []).map(stitekPodleId).filter(Boolean).sort((a, b) => ceskeRazeni.compare(a.nazev, b.nazev));
   if (!st.length) return document.createTextNode("žádné");
   const frag = document.createDocumentFragment();
   st.forEach((x, i) => { if (i) frag.append(", "); frag.append(el("a", {href: adresa({pohled: "stitek", stitek: x.id})}, x.nazev)); });
@@ -977,7 +993,7 @@ function vyberStitku(vybrane, legenda){
   const volby = razeneStitky().map(x => { const z = zaskrtavatko(x.nazev, (vybrane || []).indexOf(x.id) >= 0, {value: x.id}); fs.append(z.prvek); return z.vstup; });
   if (!volby.length) fs.append(zprava("Zatím nemáte žádné štítky — založte je tady."));
   const nove = el("input", {type: "text", autocomplete: "off"});
-  fs.append(pole("Nové štítky (nepovinné)", nove, "Více štítků oddělte čárkou. Štítek se stejným názvem se použije znovu."));
+  fs.append(pole("Nové štítky (nepovinné)", nove, "Více štítků oddělte čárkou. Štítky se ukládají malými písmeny; štítek se stejným názvem se použije znovu."));
   return {prvek: fs, hodnota: () => Array.from(new Set(volby.filter(c => c.checked).map(c => c.value).concat(nove.value.split(",").map(zajistitStitek).filter(Boolean))))};
 }
 const udajeUst = (model, f) => ({citace: f.c, zneni: model.datum, textUst: model.mapa.has(f.k) ? slozenyText(model, f.k) : ""});
@@ -1851,7 +1867,7 @@ POHLED_FUNKCE.predpis = async p => {
     const povoleneKlice = stitekF ? new Set(W.stitkyUstanoveni.filter(z => z.predpis === id && z.stitky.indexOf(stitekF.id) >= 0).map(z => z.klic)) : null;
     const filtr = (p.filtr || stitekF) ? filtrPredpisu(model, p.filtr || "", bezDia, povoleneKlice) : null;
     const popisFiltru = [p.filtr ? "text „" + p.filtr + "“" : null, stitekF ? "štítek " + stitekF.nazev : null].filter(Boolean).join(", ");
-    const stitkyVPredpisu = Array.from(new Set(W.stitkyUstanoveni.filter(z => z.predpis === id).flatMap(z => z.stitky))).map(stitekPodleId).filter(Boolean).sort((a, b) => a.nazev.localeCompare(b.nazev, "cs"));
+    const stitkyVPredpisu = Array.from(new Set(W.stitkyUstanoveni.filter(z => z.predpis === id).flatMap(z => z.stitky))).map(stitekPodleId).filter(Boolean).sort((a, b) => ceskeRazeni.compare(a.nazev, b.nazev));
     const fSt = el("select", null, el("option", {value: ""}, "Libovolný — nefiltrovat podle štítku"), stitkyVPredpisu.map(x => el("option", {value: x.id}, x.nazev)));
     fSt.value = stitekF ? stitekF.id : "";
     const fVstup = el("input", {type: "search", autocomplete: "off"});
@@ -2010,7 +2026,7 @@ function castPredpisu(id, cast){
     out.push(el("h2", {id: "cast-predpisu", tabindex: "-1"}, "Ustanovení se štítky"));
     if (!sez.length) out.push(zprava("V tomto předpisu zatím žádné ustanovení štítek nemá. Štítek přidáte na stránce ustanovení."));
     else {
-      const pouzite = Array.from(new Set(sez.flatMap(z => z.stitky))).map(stitekPodleId).filter(Boolean).sort((a, b) => a.nazev.localeCompare(b.nazev, "cs"));
+      const pouzite = Array.from(new Set(sez.flatMap(z => z.stitky))).map(stitekPodleId).filter(Boolean).sort((a, b) => ceskeRazeni.compare(a.nazev, b.nazev));
       out.push(el("p", null, "Filtrovat text předpisu podle štítku: ", ...pouzite.flatMap((x, i) => [i ? ", " : "",
         el("a", {href: adresa({pohled: "predpis", predpis: id, stitekf: x.id}) + "#vysledek-filtru"}, x.nazev)])));
       const zaskrt = [];
@@ -2597,7 +2613,7 @@ async function importovatBalik(b, politika, prubeh){
   }
   const mapaSk = prevzitSkupiny(b.skupiny, W.skupiny, "s");
   const mapaSkK = prevzitSkupiny(b.skupinyKomentaru, W.skupinyKomentaru, "sk");
-  const mapaSt = prevzitSkupiny(b.stitky || [], W.stitky, "t");
+  const mapaSt = prevzitSkupiny((b.stitky || []).map(x => Object.assign({}, x, {nazev: String(x.nazev || "").trim().toLowerCase()})), W.stitky, "t");
   const neuspesne = new Set();
   for (const id of Object.keys(b.predpisy)){
     const oblasti = b.oblasti.filter(o => o.predpisy.indexOf(id) >= 0).map(o => mapaOblasti[o.id]);
@@ -2692,13 +2708,13 @@ function formularStitku(x){
     if (!n){ stav.textContent = "Vyplňte název štítku."; nazev.focus(); return; }
     const jiny = W.stitky.find(y => y !== x && y.nazev.toLowerCase() === n.toLowerCase());
     if (jiny){ stav.textContent = "Štítek s tímto názvem už existuje."; nazev.focus(); return; }
-    if (x){ x.nazev = n; x.popis = popis.value.trim(); zmeneno(); oznam("Štítek upraven"); vykreslit({fokus: true}); }
+    if (x){ x.nazev = n.toLowerCase(); x.popis = popis.value.trim(); zmeneno(); oznam("Štítek upraven"); vykreslit({fokus: true}); }
     else {
-      const novy = {id: novyId("t"), nazev: n, popis: popis.value.trim()};
+      const novy = {id: novyId("t"), nazev: n.toLowerCase(), popis: popis.value.trim()};
       W.stitky.push(novy); zmeneno(); oznam("Štítek " + n + " založen");
       prejit({pohled: "stitek", stitek: novy.id});
     }
-  }}, pole("Název štítku", nazev), pole("Poznámka (Markdown, nepovinná)", popis, "Zobrazí se na stránce štítku a je součástí exportu."),
+  }}, pole("Název štítku", nazev, "Ukládá se malými písmeny."), pole("Poznámka (Markdown, nepovinná)", popis, "Zobrazí se na stránce štítku a je součástí exportu."),
     el("button", {type: "submit"}, x ? "Uložit štítek" : "Založit štítek"), stav);
   return el("details", null, el("summary", null, x ? "Upravit štítek a jeho poznámku" : "Nový štítek"), form);
 }

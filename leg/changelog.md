@@ -2,6 +2,11 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.8.1] — 2026-10-21
+
+### Změněno
+- Štítky se vždy ukládají malými písmeny a všude se řadí podle české abecedy (č za c, ch za h). Starší štítky se při načtení převedou; štítky, které se tím shodují, se sloučí. I importované štítky se převádějí.
+
 ## [1.8.0] — 2026-10-21
 
 ### Změněno
