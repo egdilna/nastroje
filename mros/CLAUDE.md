@@ -446,7 +446,7 @@ rozbijí regulární výrazy.
 | Hlavní nabídka (Ctrl+F10), nabídka dlaždice, „Další akce ▾" | `role="menu"` + `menuitem`, `ozivitMenu()` |
 | Ovládání okna, akce plochy, lišta dlaždice a složky, patička | `role="toolbar"`, `ozivitListu()` — jen když má lišta **víc než jeden** ovládací prvek |
 | Okno | `article` + `aria-labelledby` → `h5` |
-| Dlaždice | `div role="button"`, `aria-label` = **typ, pak název**, pak stav a štítky |
+| Dlaždice | `<a href>`, `aria-label` = **typ, pak název**, pak stav a štítky (u typu `aplikace` se typ vynechává) |
 | Paleta příkazů | nativní `<dialog>` + `showModal()` (jediné modální místo), vstup `role="combobox"` nad `role="listbox"` s `role="option"`, výběr přes `aria-activedescendant` |
 | Přepínače velikosti dlaždice | tlačítka s `aria-pressed` v `role="group"` |
 
@@ -483,7 +483,19 @@ stromu. Fokus se před skrytím přesune na tlačítko pro zobrazení.
 Šipky na ploše hledají nejbližší dlaždici geometricky (`sousedniDlazdice()`), ne podle
 pořadí v DOM, kvůli různě velkým dlaždicím.
 
-**Dlaždice je tlačítko a nic jiného.** Nemá obsluhu `contextmenu` ani tlačítko nabídky —
+**Dlaždice je odkaz** (`<a href>`), ne tlačítko: otevřít dlaždici je přechod jinam, ne
+akce nad stránkou, a odečítač ji tak nabídne i v seznamu odkazů. V `href` je u typů
+`odkaz` a `aplikace` rovnou jejich adresa (Cmd+klik ji otevře v nové kartě), jinak kotva
+`#dlazdice-<id>`; obyčejné kliknutí si v obou případech bere obsluha a `preventDefault()`,
+takže se nikam nenaviguje. `tabindex` ani `role` dlaždice nepotřebuje — odkaz je
+zaostřitelný sám. Enter obsluhuje `keydown` s `preventDefault()`, aby se okno neotevřelo
+dvakrát (nativní aktivace odkazu by poslala ještě `click`), mezerník funguje navíc.
+
+**Popisek u aplikace vynechává typ.** „Aplikace v okně: Plaud" je o slovo delší pokaždé,
+když se po ploše jede šipkami, a nic to neříká — název aplikace mluví sám. Ostatní typy
+si typ v popisku nechávají, protože u nich „Poznámka" nebo „Úkoly" nese informaci.
+
+**Dlaždice nemá nic jiného.** Nemá obsluhu `contextmenu` ani tlačítko nabídky —
 Safari hlásilo dlouhý dotyk jako kontextovou nabídku a dlaždice se místo otevření hádala
 o nabídku. Nabídka dlaždice je pod **Alt+Enter** a v otevřeném okně pod *Další akce*
 (`listaDlazdice()` ji přidává i do oken složky, sezení a aplikace, která režim zobrazení
