@@ -446,7 +446,7 @@ rozbijí regulární výrazy.
 | Hlavní nabídka (Ctrl+F10), nabídka dlaždice, „Další akce ▾" | `role="menu"` + `menuitem`, `ozivitMenu()` |
 | Ovládání okna, akce plochy, lišta dlaždice a složky, patička | `role="toolbar"`, `ozivitListu()` — jen když má lišta **víc než jeden** ovládací prvek |
 | Okno | `article` + `aria-labelledby` → `h5` |
-| Dlaždice | `<a href>`, `aria-label` = **typ, pak název**, pak stav a štítky (u typu `aplikace` se typ vynechává) |
+| Dlaždice | `<a href>`, `aria-label` = **typ, pak název**, pak stav, štítky a poloha v mřížce (u typu `aplikace` se typ vynechává); `aria-describedby` → vykreslený náhled |
 | Paleta příkazů | nativní `<dialog>` + `showModal()` (jediné modální místo), vstup `role="combobox"` nad `role="listbox"` s `role="option"`, výběr přes `aria-activedescendant` |
 | Přepínače velikosti dlaždice | tlačítka s `aria-pressed` v `role="group"` |
 
@@ -490,6 +490,23 @@ akce nad stránkou, a odečítač ji tak nabídne i v seznamu odkazů. V `href` 
 takže se nikam nenaviguje. `tabindex` ani `role` dlaždice nepotřebuje — odkaz je
 zaostřitelný sám. Enter obsluhuje `keydown` s `preventDefault()`, aby se okno neotevřelo
 dvakrát (nativní aktivace odkazu by poslala ještě `click`), mezerník funguje navíc.
+
+**Obsah náhledu je popis, ne jméno.** Dlaždice má `aria-describedby` na své vlastní
+`.d-telo` (`id="telo-<id>"`), takže odečítač přečte i to, co je v náhledu vidět — položky
+seznamu, začátek poznámky, počet položek ve složce — ale jméno odkazu zůstane krátké.
+Ukazuje se na **vykreslený prvek**, ne na schovanou kopii textu: popis se tím mění
+spolu s náhledem a nikde se nedrží druhá verze téhož. Prázdné tělo (aplikace s adresou)
+`aria-describedby` nedostává, nebylo by co číst. Proužek postupu je proto `aria-hidden`
+— text o řádek výš říká totéž a v popisu by se ta věta objevila dvakrát za sebou.
+Z téhož důvodu nemá dlaždice typu `aplikace` ani `title`: bez popisu by se bublina stala
+popisem a „Aplikace v okně" by se vrátilo zadními vrátky.
+
+**Poloha v mřížce** je na konci jména: *„…, řádek 2, sloupec 3"*. Mřížka skládá dlaždice
+automaticky (`auto-fill`), takže poloha je známá až z vykreslení — `doplnitPolohu()` ji
+počítá z šířky stopy, výšky řady a mezer (ne seskupováním podle souřadnic, aby seděla
+i u dlaždic přes víc sloupců a řad) a přepisuje `aria-label`. Mění se i bez překreslení
+plochy — po změně šířky okna nebo po sbalení panelu — proto na `#mrizka` visí
+`ResizeObserver` (`sledovatPolohu()`), který obojí zachytí jedním posluchačem.
 
 **Popisek u aplikace vynechává typ.** „Aplikace v okně: Plaud" je o slovo delší pokaždé,
 když se po ploše jede šipkami, a nic to neříká — název aplikace mluví sám. Ostatní typy

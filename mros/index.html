@@ -776,7 +776,9 @@ function zmena(o){ o.zmeneno=Date.now(); ulozit(); kreslitPlochu(); }
 function postupHtml(hotovo,celkem,popis,dovetek){
   const pct=celkem?Math.round(hotovo/celkem*100):0;
   return `<div class="tichy">${popis} ${hotovo} z ${celkem} · ${pct}\u00a0%${dovetek||""}</div>`
-    +`<div class="postup" role="img" aria-label="${popis} ${pct} procent"><i style="width:${pct}%"></i></div>`;
+    /* proužek je jen obrázek téhož, co stojí o řádek výš — do popisu dlaždice
+       by se tím ta samá věta dostala dvakrát za sebou */
+    +`<div class="postup" aria-hidden="true"><i style="width:${pct}%"></i></div>`;
 }
 const sklonovanePolozky=n=>n===1?"položka":n<5?"položky":"položek";
 const sklonovaneDlazdice=n=>n===1?"dlaždici":n<5?"dlaždice":"dlaždic";
@@ -884,15 +886,16 @@ function kreslitPlochu(){
     const url=o.obsah&&o.obsah.url;
     const cil=(o.typ==="odkaz"||o.typ==="aplikace")&&/^https?:\/\//i.test(url||"")?url:"#dlazdice-"+o.id;
     const b=el("a",{class:"dlazdice",href:cil,draggable:"true","data-id":o.id,
-      "aria-label":(o.typ==="aplikace"?"":TYPY[o.typ].n+": ")+o.nazev+souhrnDlazdice(o)
-        +(o.stitky.length?", štítky "+o.stitky.join(", "):""),
-      title:TYPY[o.typ].n});
+      "aria-label":popisDlazdice(o),
+      /* u aplikace ani bublina typ neopakuje; u ostatních je to vizuální pomůcka,
+         a protože mají typ i v popisku, odečítači nic nového nepřidá */
+      title:o.typ==="aplikace"?false:TYPY[o.typ].n});
     b.innerHTML=`
       <span class="d-hlava">
         <span class="d-ikona" style="background:${esc(o.barva||TYPY[o.typ].b)}" aria-hidden="true">${esc(o.ikona||TYPY[o.typ].i)}</span>
         <span class="d-nazev" aria-hidden="true">${esc(o.nazev)}</span>
       </span>
-      <span class="d-telo">${nahled(o)}</span>
+      <span class="d-telo" id="telo-${esc(o.id)}">${nahled(o)}</span>
       ${o.stitky.length?`<span class="d-pata">${o.stitky.map(s=>{const b=barvaStitku(klicStitku(s));
         return `<span class="stitek"${b?` style="background:${esc(b)}22;color:${esc(b)}"`:""}>${esc(s)}</span>`;}).join("")}</span>`:""}`;
     /* kliknutí dlaždici vždy otevře; nabídka je pod tlačítkem ⋯, Alt+Enter
@@ -931,9 +934,49 @@ function kreslitPlochu(){
     b.addEventListener("dragover",e=>{if(tazeny&&tazeny!==o.id){e.preventDefault();b.classList.add("cil");}});
     b.addEventListener("dragleave",()=>b.classList.remove("cil"));
     b.addEventListener("drop",e=>{e.preventDefault();b.classList.remove("cil");presunPred(tazeny,o.id);});
+    /* Náhled patří do popisu, ne do názvu odkazu: jméno dlaždice má zůstat krátké,
+       ale obsah náhledu má jít přečíst taky. Ukazujeme na vykreslené tělo dlaždice,
+       takže se popis mění spolu s ním a nikde se nedrží druhá kopie textu.
+       Prázdné tělo (aplikace s adresou) popis nedostává — nebylo by co číst. */
+    if($(".d-telo",b).textContent.trim()) b.setAttribute("aria-describedby","telo-"+o.id);
     li.append(b); m.append(li);
   }
+  doplnitPolohu();
+  sledovatPolohu();
   tikatHodiny();
+}
+/* Popisek dlaždice: typ (u aplikace ne), název, stav, štítky a nakonec poloha v mřížce.
+   Poloha je až na konci — při chození šipkami je důležitější slyšet nejdřív, na čem jsem. */
+function popisDlazdice(o,poloha){
+  return (o.typ==="aplikace"?"":TYPY[o.typ].n+": ")+o.nazev+souhrnDlazdice(o)
+    +(o.stitky.length?", štítky "+o.stitky.join(", "):"")
+    +(poloha?", "+poloha:"");
+}
+/* Kolikátá řada a kolikátý sloupec — mřížka má automatické skládání (`auto-fill`),
+   takže poloha vyjde až z vykreslení. Počítá se z rozměru stopy a mezery, ne ze
+   seskupování podle souřadnic, aby seděla i u dlaždic přes víc sloupců a řad. */
+function doplnitPolohu(){
+  const m=$("#mrizka"); if(!m||!m.children.length) return;
+  const st=getComputedStyle(m), mr=m.getBoundingClientRect();
+  const sirkaStopy=parseFloat(st.gridTemplateColumns)||180;
+  const mezeraS=parseFloat(st.columnGap)||0, mezeraR=parseFloat(st.rowGap)||0;
+  const vyskaRady=parseFloat(st.gridAutoRows)||118;
+  for(const li of m.children){
+    const d=li.firstElementChild; if(!d) continue;
+    const o=objekt(d.dataset.id); if(!o) continue;
+    const r=li.getBoundingClientRect();
+    const sloupec=Math.round((r.left-mr.left)/(sirkaStopy+mezeraS))+1;
+    const rada=Math.round((r.top-mr.top)/(vyskaRady+mezeraR))+1;
+    d.setAttribute("aria-label",popisDlazdice(o,"řádek "+rada+", sloupec "+sloupec));
+  }
+}
+/* Poloha se mění i bez překreslení plochy — po změně šířky okna nebo po sbalení
+   panelu se přeskládají sloupce. ResizeObserver zachytí obojí jedním posluchačem. */
+let pozorovatelMrizky=null;
+function sledovatPolohu(){
+  if(pozorovatelMrizky||typeof ResizeObserver!=="function") return;
+  pozorovatelMrizky=new ResizeObserver(()=>doplnitPolohu());
+  pozorovatelMrizky.observe($("#mrizka"));
 }
 function sousedniDlazdice(od,smer){
   const vse=$$(".dlazdice"); if(vse.length<2) return;
