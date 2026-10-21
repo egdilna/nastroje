@@ -2,6 +2,12 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.10.0] — 2026-10-21
+
+### Přidáno
+- Komentáře přímo v textu předpisu v čtecím pohledu (komentované a výkladové znění): u každého předpisu se zapínají po skupinách komentářů (i „bez skupiny“), výchozí stav je vypnuto. Komentář se zobrazí pod celým ustanovením, u odstavce až za jeho písmeny.
+- Filtr textu předpisu umí „Jen ustanovení s komentářem“ (ze zapnutých skupin, když nějaké jsou) a „Jen vyznačená ustanovení“; kombinují se s textem i štítkem.
+
 ## [1.9.1] — 2026-10-21
 
 ### Opraveno

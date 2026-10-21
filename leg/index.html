@@ -101,6 +101,8 @@ mark{background:var(--zvyrazneni);color:inherit}
 .markdown blockquote{margin:.4rem 0 .4rem 1rem;padding-left:.8rem;border-left:3px solid var(--linka)}
 .markdown>:first-child{margin-top:.3rem}
 .komentar{border-top:1px solid var(--linka);padding:.5rem 0}
+.komentar-cteni{border-left:4px solid var(--znacka);background:var(--plocha);border-radius:0 6px 6px 0;padding:.3rem .8rem;margin:.4rem 0 .8rem}
+.komentar-cteni .komentar-hlavicka{margin:.2rem 0;font-weight:600}
 .komentar>h3,.komentar>h4{margin:.2rem 0}
 .vysledek-hledani{margin:.5rem 0}
 .vysledek-hledani p{margin:.15rem 0}
@@ -135,7 +137,7 @@ mark{background:var(--zvyrazneni);color:inherit}
    čtení metodou GET kvůli CORS). Úložiště: složka v GitHub repozitáři.
    Podrobnosti k architektuře jsou v leg/CLAUDE.md.
    ===================================================================== */
-const APP_VERZE = "1.9.1";
+const APP_VERZE = "1.10.0";
 
 /* ==================== POMOCNÉ ==================== */
 const $ = (s, r) => (r || document).querySelector(s);
@@ -1207,6 +1209,7 @@ function vykreslitUzel(model, f, cil, uroven, ctx, sourozenci){
     vykreslitDeti(model, f.k, zbytek, uroven + 1, ctx);
     for (const x of d) delete x._spotrebovan;
     sekce.append(...zbytek.childNodes);
+    pripojitKomentareCteni(ctx, f, sekce);
     cil.append(sekce);
     return;
   }
@@ -1244,6 +1247,19 @@ function vykreslitObsahUzlu(model, f, obal, uroven, ctx){
     obal.append(p);
   }
   vykreslitDeti(model, f.k, obal, uroven, ctx);
+  pripojitKomentareCteni(ctx, f, obal);
+}
+/* Komentáře přímo v textu (čtecí pohled, komentované a výkladové znění): pod celým
+   ustanovením, tedy u odstavce až za jeho písmeny. Jen ze zapnutých skupin komentářů. */
+function pripojitKomentareCteni(ctx, f, cil){
+  const kom = ctx.komentareCteni && ctx.komentareCteni.get(f.k);
+  if (!kom || !kom.length) return;
+  for (const k of kom){
+    const sk = nazvySkupinKom(k);
+    cil.append(el("div", {class: "komentar-cteni"},
+      el("p", {class: "komentar-hlavicka"}, "Komentář k " + (f.c || "ustanovení") + (sk !== "bez skupiny" ? " (" + sk + ")" : "") + ":"),
+      el("div", {class: "markdown"}, markdownDom(k.text, 6))));
+  }
 }
 /* Označení ustanovení („(1)“, „a)“, „§ 5“) je odkaz na detail ustanovení.
    Přístupný název nese celou citaci a informaci o vyznačení. */
@@ -1439,7 +1455,7 @@ function adresa(par){
 function parametry(){
   const q = new URLSearchParams(location.search);
   const p = {};
-  for (const k of ["pohled", "oblast", "predpis", "ust", "zneni", "skupina", "q", "rozsah", "diakritika", "poznamky", "skupinakom", "filtr", "zobrazeni", "stitek", "stitekf", "cast"]) if (q.get(k) !== null) p[k] = q.get(k);
+  for (const k of ["pohled", "oblast", "predpis", "ust", "zneni", "skupina", "q", "rozsah", "diakritika", "poznamky", "skupinakom", "filtr", "zobrazeni", "stitek", "stitekf", "cast", "jenkom", "jenvyz"]) if (q.get(k) !== null) p[k] = q.get(k);
   if (!p.pohled || POHLEDY.indexOf(p.pohled) < 0){
     p.pohled = p.ust && p.predpis ? "ust" : p.predpis ? "predpis" : p.skupina ? "skupina" : p.skupinakom ? "komentare" : p.stitek ? "stitek" : p.oblast ? "oblast" : p.q ? "hledat" : "prehled";
   }
@@ -1865,24 +1881,41 @@ POHLED_FUNKCE.predpis = async p => {
     else { try { zobrazeni = localStorage.getItem(KLIC_POHLEDU); } catch (e){} }
     if (zobrazeni !== "cteni") zobrazeni = "odkazy";
     const stitekF = p.stitekf ? stitekPodleId(p.stitekf) : null;
-    const povoleneKlice = stitekF ? new Set(W.stitkyUstanoveni.filter(z => z.predpis === id && z.stitky.indexOf(stitekF.id) >= 0).map(z => z.klic)) : null;
-    const filtr = (p.filtr || stitekF) ? filtrPredpisu(model, p.filtr || "", bezDia, povoleneKlice) : null;
-    const popisFiltru = [p.filtr ? "text „" + p.filtr + "“" : null, stitekF ? "štítek " + stitekF.nazev : null].filter(Boolean).join(", ");
+    /* Skupiny komentářů zobrazované v čtecím pohledu — nastavení předpisu ("" = bez skupiny) */
+    const skupinyCteni = Array.isArray(P.cteniKomentare) ? P.cteniKomentare : [];
+    const komentarVeSkupinach = k => k.skupiny.length ? k.skupiny.some(x => skupinyCteni.indexOf(x) >= 0) : skupinyCteni.indexOf("") >= 0;
+    const jenKom = p.jenkom === "ano", jenVyz = p.jenvyz === "ano";
+    const mnoziny = [];
+    if (stitekF) mnoziny.push(new Set(W.stitkyUstanoveni.filter(z => z.predpis === id && z.stitky.indexOf(stitekF.id) >= 0).map(z => z.klic)));
+    if (jenKom){
+      /* s komentářem: ze zapnutých skupin, když nějaké zapnuté jsou; jinak jakýkoli komentář */
+      const kom = komentarePredpisu(id).filter(k => !skupinyCteni.length || komentarVeSkupinach(k));
+      mnoziny.push(new Set(kom.map(k => k.klic)));
+    }
+    if (jenVyz) mnoziny.push(new Set(vyznaceniPredpisu(id).map(v => v.klic)));
+    const povoleneKlice = mnoziny.length ? mnoziny.reduce((a, b) => new Set(Array.from(a).filter(x => b.has(x)))) : null;
+    const filtr = (p.filtr || povoleneKlice) ? filtrPredpisu(model, p.filtr || "", bezDia, povoleneKlice) : null;
+    const popisFiltru = [p.filtr ? "text „" + p.filtr + "“" : null, stitekF ? "štítek " + stitekF.nazev : null,
+      jenKom ? "jen s komentářem" : null, jenVyz ? "jen vyznačená" : null].filter(Boolean).join(", ");
+    const zFiltru = {filtr: p.filtr || null, diakritika: p.diakritika || null, stitekf: p.stitekf || null, jenkom: jenKom ? "ano" : null, jenvyz: jenVyz ? "ano" : null};
     const stitkyVPredpisu = Array.from(new Set(W.stitkyUstanoveni.filter(z => z.predpis === id).flatMap(z => z.stitky))).map(stitekPodleId).filter(Boolean).sort((a, b) => ceskeRazeni.compare(a.nazev, b.nazev));
     const fSt = el("select", null, el("option", {value: ""}, "Libovolný — nefiltrovat podle štítku"), stitkyVPredpisu.map(x => el("option", {value: x.id}, x.nazev)));
     fSt.value = stitekF ? stitekF.id : "";
     const fVstup = el("input", {type: "search", autocomplete: "off"});
     fVstup.value = p.filtr || "";
     const fDia = zaskrtavatko("Rozlišovat diakritiku", !bezDia);
+    const fKom = zaskrtavatko("Jen ustanovení s komentářem", jenKom);
+    const fVyz = zaskrtavatko("Jen vyznačená ustanovení", jenVyz);
     out.push(el("form", {role: "search", onsubmit: e => {
       e.preventDefault();
-      const q = fVstup.value.trim(), st = fSt.value;
-      history.pushState(null, "", adresa({pohled: "predpis", predpis: id, zneni: p.zneni || null, filtr: q || null, stitekf: st || null, diakritika: q && fDia.vstup.checked ? "ano" : null}) + (q || st ? "#vysledek-filtru" : ""));
+      const q = fVstup.value.trim(), st = fSt.value, jk = fKom.vstup.checked, jv = fVyz.vstup.checked;
+      history.pushState(null, "", adresa({pohled: "predpis", predpis: id, zneni: p.zneni || null, filtr: q || null, stitekf: st || null,
+        diakritika: q && fDia.vstup.checked ? "ano" : null, jenkom: jk ? "ano" : null, jenvyz: jv ? "ano" : null, zobrazeni: p.zobrazeni || null}) + (q || st || jk || jv ? "#vysledek-filtru" : ""));
       vykreslit({fokus: true});
     }}, pole("Filtrovat text předpisu", fVstup, "Zobrazí se jen ustanovení, která obsahují všechna zadaná slova, i s jejich nadřazenými částmi, paragrafy a odstavci."),
-      fDia.prvek, stitkyVPredpisu.length || stitekF ? pole("Jen ustanovení se štítkem", fSt) : null,
+      fDia.prvek, fKom.prvek, fVyz.prvek, stitkyVPredpisu.length || stitekF ? pole("Jen ustanovení se štítkem", fSt) : null,
       el("button", {type: "submit"}, "Filtrovat"), " ",
-      (p.filtr || stitekF) ? el("a", {href: adresa({pohled: "predpis", predpis: id, zneni: p.zneni || null})}, "Zrušit filtr") : null));
+      filtr ? el("a", {href: adresa({pohled: "predpis", predpis: id, zneni: p.zneni || null})}, "Zrušit filtr") : null));
     if (filtr){
       out.push(el("p", {id: "vysledek-filtru", tabindex: "-1", class: "panel"},
         filtr.pocet ? "Filtr (" + popisFiltru + "): zobrazeno " + pocetSlov(filtr.pocet, "nalezené místo", "nalezená místa", "nalezených míst") + " s kontextem. " + (p.filtr ? "Výskyty jsou zvýrazněné. " : "")
@@ -1893,15 +1926,43 @@ POHLED_FUNKCE.predpis = async p => {
   
     if (filtr && !filtr.pocet) return;
     const odkazPohledu = (hodnota, text) => el("li", null, el("a", {
-      href: adresa({pohled: "predpis", predpis: id, zneni: p.zneni || null, filtr: p.filtr || null, diakritika: p.diakritika || null, stitekf: p.stitekf || null, zobrazeni: hodnota}) + "#text-predpisu",
+      href: adresa(Object.assign({pohled: "predpis", predpis: id, zneni: p.zneni || null, zobrazeni: hodnota}, zFiltru)) + "#text-predpisu",
       "aria-current": zobrazeni === hodnota ? "true" : null}, text, zobrazeni === hodnota ? " (zvoleno)" : ""));
     out.push(el("nav", {"aria-label": "Pohled na text předpisu"}, el("p", {class: "tichy"}, "Pohled na text:"), el("ul", {class: "seznam"},
       odkazPohledu("cteni", "Čtecí pohled — čistý text bez odkazů na ustanovení"),
       odkazPohledu("odkazy", "Pohled s odkazy na ustanovení a se značkami vyznačení, komentářů a štítků"))));
+    /* Komentáře v čtecím pohledu — zapínají se po skupinách, pro každý předpis zvlášť */
+    const komPredpisu = komentarePredpisu(id);
+    if (zobrazeni === "cteni" && komPredpisu.length){
+      const skupinyVPredpisu = Array.from(new Set(komPredpisu.flatMap(k => k.skupiny))).map(x => W.skupinyKomentaru.find(y => y.id === x)).filter(Boolean)
+        .sort((a, b) => ceskeRazeni.compare(a.nazev, b.nazev));
+      const volby = skupinyVPredpisu.map(x => [x.id, x.nazev, komPredpisu.filter(k => k.skupiny.indexOf(x.id) >= 0).length]);
+      const bez = komPredpisu.filter(k => !k.skupiny.length).length;
+      if (bez) volby.push(["", "Komentáře bez skupiny", bez]);
+      const fsK = el("fieldset", null, el("legend", null, "Komentáře v textu"));
+      const zaskrt = volby.map(([hodnota, nazev, n]) => { const z = zaskrtavatko(nazev + " (" + pocetKomentaru(n) + ")", skupinyCteni.indexOf(hodnota) >= 0, {value: hodnota}); fsK.append(z.prvek); return z.vstup; });
+      fsK.append(el("p", {class: "tichy"}, "Komentáře ze zaškrtnutých skupin se zobrazí přímo pod ustanoveními. Volba se ukládá u tohoto předpisu."));
+      out.push(el("form", {id: "komentare-v-textu", tabindex: "-1", onsubmit: e => {
+        e.preventDefault();
+        P.cteniKomentare = zaskrt.filter(c => c.checked).map(c => c.value);
+        zmeneno();
+        const n = P.cteniKomentare.length;
+        vykreslit({fokus: false}).then(() => { const f = $("#komentare-v-textu"); if (f) f.focus(); oznam(n ? "Komentáře v textu zobrazeny" : "Komentáře v textu skryty"); });
+      }}, fsK, el("button", {type: "submit"}, "Použít"), " ",
+        el("button", {type: "button", class: "druhe", onclick: () => { zaskrt.forEach(c => { c.checked = true; }); oznam("Vybrány všechny skupiny, potvrďte tlačítkem Použít"); }}, "Vybrat všechny skupiny")));
+    }
     const toc = obsahPredpisu(model, filtr ? filtr.mnozina : null);
     if (toc) out.push(el("details", {class: "obsah-predpisu"}, el("summary", null, "Obsah předpisu"), el("nav", {"aria-label": "Obsah předpisu"}, toc)));
   
-    const ctx = {model, vPredpisu: true, vyznaceni: mapaVyznaceni(id), komentare: mapaKomentaru(id), stitky: mapaStitkuUst(id), uroven: 2, zneniVUrl: p.zneni || null, filtr, bezOdkazu: zobrazeni === "cteni"};
+    let komentareCteni = null;
+    if (zobrazeni === "cteni" && skupinyCteni.length){
+      komentareCteni = new Map();
+      for (const k of komPredpisu.filter(komentarVeSkupinach).sort((a, b) => (a.vytvoreno || "").localeCompare(b.vytvoreno || ""))){
+        if (!komentareCteni.has(k.klic)) komentareCteni.set(k.klic, []);
+        komentareCteni.get(k.klic).push(k);
+      }
+    }
+    const ctx = {model, vPredpisu: true, vyznaceni: mapaVyznaceni(id), komentare: mapaKomentaru(id), stitky: mapaStitkuUst(id), uroven: 2, zneniVUrl: p.zneni || null, filtr, bezOdkazu: zobrazeni === "cteni", komentareCteni};
     const text = el("article", {class: "predpis-text", id: "text-predpisu", "aria-label": "Text předpisu", tabindex: "-1"});
     text.append(vykreslitStrom(model, "", ctx));
     if (filtr) zvyraznitSlova(text, filtr.slova, bezDia);
@@ -2546,7 +2607,7 @@ function panelDkm(titul, zaklad, seznam){
 const FORMAT_BALIKU = "legprohlizec-balik";
 function sestavitBalik(ws, zdroj){
   const predpisy = {};
-  for (const [id, P] of Object.entries(ws.predpisy)) predpisy[id] = {citace: P.citace, typ: P.typ, nazev: P.nazev, budouci: !!P.budouci, popis: P.popis || "", stitky: P.stitky || [], maPoznamku: !!P.poznamka, soubor: P.poznamka ? P.poznamka.soubor : null};
+  for (const [id, P] of Object.entries(ws.predpisy)) predpisy[id] = {citace: P.citace, typ: P.typ, nazev: P.nazev, budouci: !!P.budouci, popis: P.popis || "", cteniKomentare: P.cteniKomentare || [], stitky: P.stitky || [], maPoznamku: !!P.poznamka, soubor: P.poznamka ? P.poznamka.soubor : null};
   return {format: FORMAT_BALIKU, verze: 1, vytvoreno: new Date().toISOString(), zdroj,
     predpisy, oblasti: ws.oblasti, skupiny: ws.skupiny, skupinyKomentaru: ws.skupinyKomentaru || [],
     vyznaceni: ws.vyznaceni, komentare: ws.komentare || [], poznamky: {}, stitky: ws.stitky || [], stitkyUstanoveni: ws.stitkyUstanoveni || []};
