@@ -51,6 +51,7 @@ predpisy/{rok}-{číslo}/{datum}-{n}.json jedno znění rozdělené na části �
 predpisy/{rok}-{číslo}/poznamka.md      poznámka k předpisu (Markdown), ve workspace jen P.poznamka
 ```
 Oblasti a obě druhy skupin mají `popis` — poznámku v Markdownu.
+Předpis má `popis` (krátký text); vyznačení má `nazev` (popisný název ustanovení).
 Komentář: `{id, predpis, klic, citace, zneni, textUst, text (Markdown), skupiny[], vytvoreno, upraveno}`
 — k jednomu ustanovení jich může být libovolně mnoho. Vyznačení je naopak jedno na ustanovení.
 Požadavek uživatele: **nic nesmí být velké** — každé znění je v samostatných souborech
@@ -111,6 +112,21 @@ v rámci stránky nechává prohlížeči.
   vyznačení podle (předpis, klíč), komentáře podle id. Politika `slouc|ponechat|prepsat`
   platí pro vyznačení, komentáře a všechny poznámky (sloučení spojí texty pod sebe
   s oddělovačem `---`). Chybějící předpisy stahuje `stahnoutPredpis()`.
+
+## Export do DKM (.dkmpkg)
+- `panelDkm()` v `exportniPanel(…, uroven, dkm)`; `polozkyProDkm()` sjednotí vyznačení,
+  komentáře i záznamy štítků na seznam ustanovení (doplní popisný název a poznámku z vyznačení).
+- `dkmBalik()` skládá balíček `{format: "dkmpkg", version: 1, model, entities}`.
+  **Typ `DKM_PREDPIS` je kopie typu „Právní předpis“ (`t_muodcx9at9bwye`) ze šablony
+  `michalradacz/mojedata/vsechnosablona.dkmdata`** včetně id atributů (`DKM_AT`) a číselníků —
+  neměnit id, jinak se v cílových projektech nespáruje. Navíc jen `a_leg_pp_odkaz`.
+  Ustanovení předpisu má pevná id `t_leg_ustanoveni` / `a_leg_ust_*`, vazba `rt_leg_odkazuje`.
+- Stálá id entit: `leg<rok><číslo>`, ustanovení `…_<par|cl|odst|pism|bod|priloha>_…`,
+  EU `legeu<rok><číslo>`. Název ustanovení: „Popisný název (Označení druh-ve-2.-pádě číslo/rok)“,
+  genitiv z `druhPredpisu(P, true)`; u předpisů mimo knihovnu se druh a název dohledají v e-Sbírce.
+- Text do Markdown atributu bez odsazení (`dkmText`). Odkazy se berou z HTML fragmentů
+  složeného ustanovení (`data-odkaz-id`, u EU `data-celexid`/`data-id_celex`), do hloubky 1.
+  Komentáře jako nativní `comments[]`. Štítky, skupiny a účinnost se nepřenášejí.
 
 ## Markdown
 Vlastní renderer `markdownDom(text, urovenNadpisu)` (nadpisy, odstavce s `br`, vnořené
