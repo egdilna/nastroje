@@ -2,6 +2,11 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.8.0] — 2026-10-21
+
+### Změněno
+- Hromadné úpravy jsou standardně skryté. Zaškrtávátka u položek a panel akcí se ukážou až po zapnutí přepínače „Hromadné úpravy“ pod seznamem; volba platí pro všechny přehledy a prohlížeč si ji pamatuje.
+
 ## [1.7.0] — 2026-10-21
 
 ### Změněno
