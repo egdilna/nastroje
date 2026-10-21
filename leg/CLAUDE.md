@@ -123,7 +123,7 @@ v rámci stránky nechává prohlížeči.
   Ustanovení předpisu má pevná id `t_leg_ustanoveni` / `a_leg_ust_*`, vazba `rt_leg_odkazuje`.
 - Stálá id entit: `leg<rok><číslo>`, ustanovení `…_<par|cl|odst|pism|bod|priloha>_…`,
   EU `legeu<rok><číslo>`. Název ustanovení: „Popisný název (Označení druh-ve-2.-pádě číslo/rok)“,
-  genitiv z `druhPredpisu(P, true)`; u předpisů mimo knihovnu se druh a název dohledají v e-Sbírce.
+  genitiv z `druhPredpisu(P, true)`; **ústavní zákon je v DKM typu „Zákon“** (`DKM_DRUH`); u předpisů mimo knihovnu se druh a název dohledají v e-Sbírce.
 - Text do Markdown atributu bez odsazení (`dkmText`). Odkazy se berou z HTML fragmentů
   složeného ustanovení (`data-odkaz-id`, u EU `data-celexid`/`data-id_celex`), do hloubky 1.
   Komentáře jako nativní `comments[]`. Štítky, skupiny a účinnost se nepřenášejí.

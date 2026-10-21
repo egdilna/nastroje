@@ -2,6 +2,11 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.9.1] — 2026-10-21
+
+### Opraveno
+- Export do DKM: ústavní zákon má typ předpisu Zákon (dříve Předpis).
+
 ## [1.9.0] — 2026-10-21
 
 ### Přidáno
