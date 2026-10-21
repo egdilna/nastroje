@@ -80,6 +80,8 @@ klik se zachytí a vykreslí bez načtení stránky (`pushState`/`popstate`); ko
 v rámci stránky nechává prohlížeči.
 
 ## Štítky a hromadné úpravy
+- Názvy štítků jsou **vždy malými písmeny** a všude se řadí `ceskeRazeni` (Intl.Collator „cs“).
+  `normalizovatWs()` starší štítky převede a shodné sloučí; import i `zajistitStitek()` převádějí.
 - Slovník `W.stitky` (`{id, nazev, popis}`) je společný pro předpisy (`P.stitky`) a ustanovení
   (`W.stitkyUstanoveni`: `{predpis, klic, citace, zneni, textUst, stitky[], upraveno}`; záznam
   bez štítků se maže). Zápis jen přes `nastavStitkyUst()`, výběr přes `vyberStitku()`
