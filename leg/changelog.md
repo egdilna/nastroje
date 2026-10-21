@@ -2,6 +2,13 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.9.0] — 2026-10-21
+
+### Přidáno
+- Popis předpisu (krátký text) ve Správě předpisu, zobrazený v informacích o předpisu a přenášený v balíčku.
+- Popisný název ustanovení u vyznačení; zobrazuje se v detailu ustanovení, v přehledech vyznačených a v exportech („Popisný název (citace)“).
+- Export do DKM jako balíček `.dkmpkg` ve všech exportních panelech vyznačení, komentářů a štítků. Nese typ Právní předpis ze šablony `vsechnosablona.dkmdata` (stejná id typu, atributů i číselníků, navíc Odkaz do LEG prohlížeče) a nový typ Ustanovení předpisu; exportovaná ustanovení se složeným textem, poznámkou a komentáři, jejich předpisy a odkazovaná ustanovení a předpisy (i EU) s vazbou „odkazuje na“. Stálá id: `leg2000365`, `leg2000365_par_3_odst_1`, `legeu2016679`. Štítky, skupiny a účinnost se nepřenášejí.
+
 ## [1.8.1] — 2026-10-21
 
 ### Změněno
