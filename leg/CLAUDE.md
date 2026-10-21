@@ -130,6 +130,13 @@ aplikace zeptá; seznam se maže při každém vykreslení.
   mimo knihovnu → stránka předpisu s nabídkou zařazení (nic se nestahuje automaticky),
   EU a ostatní → externě do nové karty se skrytým upozorněním.
 
+## Složené ustanovení
+`slozeniUstanoveni(model, f)` vrátí kořen (nejbližší strukturní předek, typicky §), cestu
+nestrukturních předků s textem (návětí) a množinu klíčů k vykreslení (cesta + podstrom
+ustanovení + `Pokracovani_Text` předků). `slozenyText()` z toho skládá text pro kopírování
+a snímky (`text` u vyznačení, `textUst` u komentářů a štítků). Detail ustanovení vykresluje
+složené ustanovení přes filtr s podbarvením. Kopírování ani exporty neuvádějí „ve znění…“.
+
 ## Části stránky předpisu
 Parametr `cast` (`vyznacena|komentare|stitky`, bez něj text) — přepínač `navigaceCastiPredpisu()`,
 seznamy staví `castPredpisu()` s nadpisem `#cast-predpisu`. Textová část (skok na ustanovení,

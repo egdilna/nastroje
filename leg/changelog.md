@@ -2,6 +2,12 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.7.0] — 2026-10-21
+
+### Změněno
+- Text ustanovení se skládá: u písmene nebo bodu se připojí návětí nadřazeného odstavce (a písmene) a společná část za výčtem, takže např. § 6 odst. 1 písm. b) se čte celé. Platí pro detail ustanovení (návětí je vidět, ustanovení je podbarvené), kopírování, vyznačení, komentáře, štítky i exporty.
+- Z kopírování a z exportu do Markdownu zmizel údaj „ve znění…“; formát „Citace, znění a text“ byl odstraněn.
+
 ## [1.6.0] — 2026-10-20
 
 ### Přidáno
