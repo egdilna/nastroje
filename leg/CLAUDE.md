@@ -89,6 +89,9 @@ v rámci stránky nechává prohlížeči.
 - `hromadnaUprava(druh, zaskrtavatka, uroven)` + `provestHromadne()`; druhy `predpis`, `vyz`,
   `kom`, `ust` (klíč `předpis|klíč`). Zaškrtávátko položky staví `zaskrtavatkoPolozky()` —
   viditelně „Vybrat“, přístupný název s citací. Po akci se stránka překreslí a výsledek se ohlásí.
+- Vše je za přepínačem `prepinacHromadnych()` (tlačítko s `aria-pressed`, stav v
+  `localStorage["legprohlizec-hromadne"]`). Vypnuto: `zaskrtavatkoPolozky()` vrací `null`
+  a `hromadnaUprava()` jen přepínač.
 
 ## Export a přenos dat
 - `exportniPanel(titul, md, tsv)` — Markdown a TSV do schránky (`kopirovat`) i do souboru
