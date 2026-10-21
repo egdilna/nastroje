@@ -338,7 +338,7 @@ Složka do popisku hlásí počet položek (`sklonovanePolozky()` skloňuje: pol
 položek), prázdná řekne „prázdná“.
 
 **Dlaždice nepopisuje ovládání.** Dřív měla `aria-describedby` se skrytou větou
-o Enteru, Alt+Enter a Delete — odečítač ji předčítal u každé ikony na ploše a byla to
+o Enteru, nabídce a Delete — odečítač ji předčítal u každé ikony na ploše a byla to
 jen omáčka navíc. Popisek dlaždice nese název, typ a stav, nic jiného; klávesy patří
 do nápovědy.
 
@@ -514,7 +514,7 @@ si typ v popisku nechávají, protože u nich „Poznámka" nebo „Úkoly" nese
 
 **Dlaždice nemá nic jiného.** Nemá obsluhu `contextmenu` ani tlačítko nabídky —
 Safari hlásilo dlouhý dotyk jako kontextovou nabídku a dlaždice se místo otevření hádala
-o nabídku. Nabídka dlaždice je pod **Alt+Enter** a v otevřeném okně pod *Další akce*
+o nabídku. Nabídka dlaždice je pod klávesou **P** a v otevřeném okně pod *Další akce*
 (`listaDlazdice()` ji přidává i do oken složky, sezení a aplikace, která režim zobrazení
 nemají).
 
@@ -534,7 +534,10 @@ Zásada: **jen funkční klávesy**, žádné kombinace kolidující s prohlíž
 Alt+číslo ani Ctrl+písmeno. Vše ostatní jde přes paletu a nabídku.
 
 Druhou výjimkou jsou **písmena na vybrané dlaždici** (`P` jako podrobnosti, `V` jako
-velikost). Dlaždice je odkaz, ne formulářové pole, takže tam písmena nikomu nepřekážejí
+velikost). Nahradila **Alt+Enter**, které bylo nespolehlivé: část prohlížečů ho na
+dlaždici doručila jako holý `Enter`, takže se místo nabídky otevřela dlaždice. Obsluha
+Enteru proto musí odmítnout stisk s modifikátorem a hned se vrátit — jinak by jedna
+klávesa spustila dvě věci najednou. Dlaždice je odkaz, ne formulářové pole, takže tam písmena nikomu nepřekážejí
 a jsou kratší než kombinace s modifikátorem. Obsluha je v `keydown` dlaždice a hlídá, že
 není stisknutý Ctrl, Alt ani Cmd — jinak by `Ctrl+P` (tisk) otevíral nabídku. Mimo
 dlaždici se nic takového neodchytává, psaní v paletě ani v polích to nesmí potkat.
@@ -566,7 +569,7 @@ Každá akce na přístupové klávese musí být dostupná i jinak — v palet�
 | šipky, Home, End | pohyb mezi dlaždicemi |
 | Enter, mezerník | otevřít dlaždici |
 | přístupová klávesa N / I / A | vytvořit dlaždici (`#tl-nove`) / dlaždice na této ploše (`nabidkaDlazdicPlochy()`) / všechny dlaždice po plochách (`nabidkaVsechDlazdic()`) |
-| P / Alt+Enter | nabídka dlaždice (`nabidkaDlazdice()`) — na vybrané dlaždici |
+| P | nabídka dlaždice (`nabidkaDlazdice()`) — na vybrané dlaždici |
 | V | velikost vybrané dlaždice (`nabidkaVelikosti()`) — šířka a výška jako dvě skupiny menu |
 | Delete | do koše |
 | Ctrl+←/→ | změna pořadí dlaždice |
