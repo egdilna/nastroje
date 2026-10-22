@@ -2,6 +2,11 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.12.0] — 2026-10-22
+
+### Přidáno
+- Filtr textu předpisu má volbu „Bez kontextu“: zobrazí jen nalezená ustanovení v pořadí předpisu, každé pod nadpisem s citací (v pohledu s odkazy jako odkaz na detail), bez nadřazených částí, paragrafů a návětí. Volba je v adrese (`kontext=ne|ano`) a prohlížeč si ji pamatuje.
+
 ## [1.11.0] — 2026-10-21
 
 ### Přidáno
