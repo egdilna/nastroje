@@ -138,7 +138,7 @@ mark{background:var(--zvyrazneni);color:inherit}
    čtení metodou GET kvůli CORS). Úložiště: složka v GitHub repozitáři.
    Podrobnosti k architektuře jsou v leg/CLAUDE.md.
    ===================================================================== */
-const APP_VERZE = "1.11.0";
+const APP_VERZE = "1.12.0";
 
 /* ==================== POMOCNÉ ==================== */
 const $ = (s, r) => (r || document).querySelector(s);
@@ -1309,7 +1309,36 @@ function filtrPredpisu(model, dotaz, bezDiakritiky, povolene){
     pridat(jednotka);
   }
   mnozina.add("");
-  return {slova, mnozina, pocet: jednotky.size};
+  return {slova, mnozina, pocet: jednotky.size, jednotky: Array.from(jednotky)};
+}
+/* Filtr bez kontextu: jen nalezená ustanovení v pořadí předpisu, každé pod nadpisem s citací. */
+function vykreslitJenNalezene(model, filtr, ctx){
+  const frag = document.createDocumentFragment();
+  const c2 = Object.assign({}, ctx, {filtr: null});
+  for (const k of filtr.jednotky){
+    const f = model.mapa.get(k);
+    if (!f) continue;
+    const cit = f.c || ((citovatelnyPredek(model, f) || {}).c ? citovatelnyPredek(model, f).c + " (část textu)" : "Text předpisu");
+    const sekce = el("section", {id: idFragmentu(f.k), class: "nalezene"});
+    sekce.append(el("h2", null, ctx.bezOdkazu ? cit : el("a", {href: adresa({pohled: "ust", predpis: model.id, ust: f.c ? f.k : (citovatelnyPredek(model, f) || f).k})}, cit)));
+    if (STRUKTURA.has(f.typ)){
+      /* celý paragraf či článek (shoda v nadpisu) — jeho vlastní nadpis už je v citaci */
+      const box = document.createDocumentFragment();
+      vykreslitDeti(model, f.k, box, 3, c2);
+      pripojitKomentareCteni(c2, f, box);
+      sekce.append(box);
+    } else if (SEZNAMOVE.has(f.typ)){
+      const ol = el("ol", {class: f.typ === "Bod_Dd" ? "body" : "pismena"}), li = el("li");
+      vykreslitObsahUzlu(model, f, li, 3, c2);
+      ol.append(li); sekce.append(ol);
+    } else {
+      const box = el("div", {class: "odstavec"});
+      vykreslitObsahUzlu(model, f, box, 3, c2);
+      sekce.append(box);
+    }
+    frag.append(sekce);
+  }
+  return frag;
 }
 function zvyraznitSlova(koren, slova, bezDiakritiky){
   const chodec = document.createTreeWalker(koren, NodeFilter.SHOW_TEXT);
@@ -1456,7 +1485,7 @@ function adresa(par){
 function parametry(){
   const q = new URLSearchParams(location.search);
   const p = {};
-  for (const k of ["pohled", "oblast", "predpis", "ust", "zneni", "skupina", "q", "rozsah", "diakritika", "poznamky", "skupinakom", "filtr", "zobrazeni", "stitek", "stitekf", "cast", "jenkom", "jenvyz"]) if (q.get(k) !== null) p[k] = q.get(k);
+  for (const k of ["pohled", "oblast", "predpis", "ust", "zneni", "skupina", "q", "rozsah", "diakritika", "poznamky", "skupinakom", "filtr", "zobrazeni", "stitek", "stitekf", "cast", "jenkom", "jenvyz", "kontext"]) if (q.get(k) !== null) p[k] = q.get(k);
   if (!p.pohled || POHLEDY.indexOf(p.pohled) < 0){
     p.pohled = p.ust && p.predpis ? "ust" : p.predpis ? "predpis" : p.skupina ? "skupina" : p.skupinakom ? "komentare" : p.stitek ? "stitek" : p.oblast ? "oblast" : p.q ? "hledat" : "prehled";
   }
@@ -1919,7 +1948,13 @@ POHLED_FUNKCE.predpis = async p => {
     const filtr = (p.filtr || povoleneKlice) ? filtrPredpisu(model, p.filtr || "", bezDia, povoleneKlice) : null;
     const popisFiltru = [p.filtr ? "text „" + p.filtr + "“" : null, stitekF ? "štítek " + stitekF.nazev : null,
       jenKom ? "jen s komentářem" : null, jenVyz ? "jen vyznačená" : null].filter(Boolean).join(", ");
-    const zFiltru = {filtr: p.filtr || null, diakritika: p.diakritika || null, stitekf: p.stitekf || null, jenkom: jenKom ? "ano" : null, jenvyz: jenVyz ? "ano" : null};
+    /* S kontextem (nadřazené části, paragrafy a návětí), nebo jen nalezená ustanovení.
+       Volba z adresy má přednost a prohlížeč si ji pamatuje. */
+    const KLIC_KONTEXT = "legprohlizec-filtr-kontext";
+    let sKontextem = p.kontext === "ne" ? false : p.kontext === "ano" ? true : null;
+    if (sKontextem !== null){ try { localStorage.setItem(KLIC_KONTEXT, sKontextem ? "ano" : "ne"); } catch (e){} }
+    else { try { sKontextem = localStorage.getItem(KLIC_KONTEXT) !== "ne"; } catch (e){ sKontextem = true; } }
+    const zFiltru = {filtr: p.filtr || null, diakritika: p.diakritika || null, stitekf: p.stitekf || null, jenkom: jenKom ? "ano" : null, jenvyz: jenVyz ? "ano" : null, kontext: p.kontext || null};
     const stitkyVPredpisu = Array.from(new Set(W.stitkyUstanoveni.filter(z => z.predpis === id).flatMap(z => z.stitky))).map(stitekPodleId).filter(Boolean).sort((a, b) => ceskeRazeni.compare(a.nazev, b.nazev));
     const fSt = el("select", null, el("option", {value: ""}, "Libovolný — nefiltrovat podle štítku"), stitkyVPredpisu.map(x => el("option", {value: x.id}, x.nazev)));
     fSt.value = stitekF ? stitekF.id : "";
@@ -1928,19 +1963,20 @@ POHLED_FUNKCE.predpis = async p => {
     const fDia = zaskrtavatko("Rozlišovat diakritiku", !bezDia);
     const fKom = zaskrtavatko("Jen ustanovení s komentářem", jenKom);
     const fVyz = zaskrtavatko("Jen vyznačená ustanovení", jenVyz);
+    const fBezKont = zaskrtavatko("Bez kontextu — zobrazit jen nalezená ustanovení, bez nadřazených částí, paragrafů a návětí", !sKontextem);
     out.push(el("form", {role: "search", onsubmit: e => {
       e.preventDefault();
       const q = fVstup.value.trim(), st = fSt.value, jk = fKom.vstup.checked, jv = fVyz.vstup.checked;
       history.pushState(null, "", adresa({pohled: "predpis", predpis: id, zneni: p.zneni || null, filtr: q || null, stitekf: st || null,
-        diakritika: q && fDia.vstup.checked ? "ano" : null, jenkom: jk ? "ano" : null, jenvyz: jv ? "ano" : null, zobrazeni: p.zobrazeni || null}) + (q || st || jk || jv ? "#vysledek-filtru" : ""));
+        diakritika: q && fDia.vstup.checked ? "ano" : null, jenkom: jk ? "ano" : null, jenvyz: jv ? "ano" : null, kontext: fBezKont.vstup.checked ? "ne" : "ano", zobrazeni: p.zobrazeni || null}) + (q || st || jk || jv ? "#vysledek-filtru" : ""));
       vykreslit({fokus: true});
     }}, pole("Filtrovat text předpisu", fVstup, "Zobrazí se jen ustanovení, která obsahují všechna zadaná slova, i s jejich nadřazenými částmi, paragrafy a odstavci."),
-      fDia.prvek, fKom.prvek, fVyz.prvek, stitkyVPredpisu.length || stitekF ? pole("Jen ustanovení se štítkem", fSt) : null,
+      fDia.prvek, fKom.prvek, fVyz.prvek, fBezKont.prvek, stitkyVPredpisu.length || stitekF ? pole("Jen ustanovení se štítkem", fSt) : null,
       el("button", {type: "submit"}, "Filtrovat"), " ",
       filtr ? el("a", {href: adresa({pohled: "predpis", predpis: id, zneni: p.zneni || null})}, "Zrušit filtr") : null));
     if (filtr){
       out.push(el("p", {id: "vysledek-filtru", tabindex: "-1", class: "panel"},
-        filtr.pocet ? "Filtr (" + popisFiltru + "): zobrazeno " + pocetSlov(filtr.pocet, "nalezené místo", "nalezená místa", "nalezených míst") + " s kontextem. " + (p.filtr ? "Výskyty jsou zvýrazněné. " : "")
+        filtr.pocet ? "Filtr (" + popisFiltru + "): zobrazeno " + pocetSlov(filtr.pocet, "nalezené místo", "nalezená místa", "nalezených míst") + (sKontextem ? " s kontextem. " : " bez kontextu, každé s citací v nadpisu. ") + (p.filtr ? "Výskyty jsou zvýrazněné. " : "")
           : "Filtr (" + popisFiltru + "): v předpisu nic nenalezeno. ",
         el("a", {href: adresa({pohled: "predpis", predpis: id, zneni: p.zneni || null})}, "Zrušit filtr a zobrazit celý předpis")));
       oznam(filtr.pocet ? "Nalezeno " + pocetSlov(filtr.pocet, "místo", "místa", "míst") : "Nic nenalezeno");
@@ -1973,7 +2009,8 @@ POHLED_FUNKCE.predpis = async p => {
       }}, fsK, el("button", {type: "submit"}, "Použít"), " ",
         el("button", {type: "button", class: "druhe", onclick: () => { zaskrt.forEach(c => { c.checked = true; }); oznam("Vybrány všechny skupiny, potvrďte tlačítkem Použít"); }}, "Vybrat všechny skupiny")));
     }
-    const toc = obsahPredpisu(model, filtr ? filtr.mnozina : null);
+    const bezKontextu = !!(filtr && filtr.pocet && !sKontextem);
+    const toc = bezKontextu ? null : obsahPredpisu(model, filtr ? filtr.mnozina : null);
     if (toc) out.push(el("details", {class: "obsah-predpisu"}, el("summary", null, "Obsah předpisu"), el("nav", {"aria-label": "Obsah předpisu"}, toc)));
   
     let komentareCteni = null;
@@ -1986,7 +2023,8 @@ POHLED_FUNKCE.predpis = async p => {
     }
     const ctx = {model, vPredpisu: true, vyznaceni: mapaVyznaceni(id), komentare: mapaKomentaru(id), stitky: mapaStitkuUst(id), uroven: 2, zneniVUrl: p.zneni || null, filtr, bezOdkazu: zobrazeni === "cteni", komentareCteni};
     const text = el("article", {class: "predpis-text", id: "text-predpisu", "aria-label": "Text předpisu", tabindex: "-1"});
-    text.append(vykreslitStrom(model, "", ctx));
+    if (bezKontextu) text.append(vykreslitJenNalezene(model, filtr, ctx));
+    else text.append(vykreslitStrom(model, "", ctx));
     if (filtr) zvyraznitSlova(text, filtr.slova, bezDia);
     out.push(text);
   

@@ -183,6 +183,8 @@ vrátí množinu klíčů k zobrazení: nalezené ustanovení s celým podstrome
 předky; shoda v nadpisu paragrafu či článku ukáže celý paragraf. `vykreslitDeti()`
 a `obsahPredpisu()` množinu respektují, `zvyraznitSlova()` obalí výskyty do `<mark>`.
 Odkazy uvnitř předpisu na skryté ustanovení vedou na stránku ustanovení.
+Volba `kontext=ne` (pamatuje se v `localStorage["legprohlizec-filtr-kontext"]`) vykreslí místo
+stromu `vykreslitJenNalezene()` — jen `filtr.jednotky` v pořadí předpisu, každou pod H2 s citací.
 
 ## Znění
 Stahuje se aktuální znění (nejnovější účinné k dnešku) a s volbou „budoucí znění“ i všechna
