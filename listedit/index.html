@@ -88,6 +88,8 @@ ul.seznam ul.seznam { margin-left: 22px; border-left: 2px solid var(--cara); pad
   padding: 2px 4px; border-radius: 6px; min-height: 34px;
 }
 .radek:hover, .radek:focus-within { background: var(--akcent-svetly); }
+li.polozka:focus { outline: none; }
+li.polozka:focus > .radek { outline: 3px solid var(--fokus); outline-offset: 1px; }
 .radek.vybrany { background: var(--akcent-svetly); box-shadow: inset 3px 0 0 var(--akcent); }
 .sbal {
   width: 26px; height: 26px; padding: 0; flex: none;
@@ -682,28 +684,41 @@ function vykresli() {
   obnovFokus();
 }
 
+// Seznam je strom podle vzoru ARIA tree: fokus nese položka (treeitem) s putujícím tabindexem,
+// odečítač při ní přejde do režimu formuláře a přečte text, úroveň, pozici a stav větve.
 function vykresliUroven(polozky, cisla, hloubka, horni) {
   const ul = document.createElement("ul");
   ul.className = "seznam";
-  if (horni) ul.setAttribute("aria-label", T("nazev"));
+  if (horni) {
+    ul.setAttribute("role", "tree");
+    ul.setAttribute("aria-label", T("nazev"));
+  } else ul.setAttribute("role", "group");
   polozky.forEach((p, i) => {
+    const vybrany = p.id === vybranyId;
     const li = document.createElement("li");
     li.dataset.id = p.id;
+    li.className = "polozka";
+    li.setAttribute("role", "treeitem");
+    li.setAttribute("aria-level", String(hloubka));
+    li.setAttribute("aria-setsize", String(polozky.length));
+    li.setAttribute("aria-posinset", String(i + 1));
+    li.setAttribute("aria-selected", String(vybrany));
+    if (p.deti.length) li.setAttribute("aria-expanded", String(!p.sbaleno));
+    li.tabIndex = vybrany ? 0 : -1;
+
     const radek = document.createElement("div");
-    radek.className = "radek" + (p.id === vybranyId ? " vybrany" : "");
+    radek.className = "radek" + (vybrany ? " vybrany" : "");
     radek.dataset.id = p.id;
 
-    const vybrany = p.id === vybranyId;
-    // ovládací prvky jsou v tabulátorovém pořadí jen u vybrané položky (putující tabindex)
+    // ovládací prvky řádku jsou v tabulátorovém pořadí jen u vybrané položky
     if (p.deti.length) {
       const sbal = document.createElement("button");
       sbal.className = "sbal";
       sbal.dataset.akce = "sbal";
       sbal.tabIndex = vybrany ? 0 : -1;
       sbal.textContent = p.sbaleno ? "▶" : "▼";
-      sbal.setAttribute("aria-expanded", String(!p.sbaleno));
-      sbal.setAttribute("aria-label", T("podrizene"));
-      sbal.title = p.sbaleno ? T("rozbalitPopis") : T("sbalitPopis");
+      sbal.setAttribute("aria-label", p.sbaleno ? T("rozbalitPopis") : T("sbalitPopis"));
+      sbal.title = sbal.getAttribute("aria-label");
       radek.appendChild(sbal);
     } else {
       const mezera = document.createElement("span");
@@ -711,11 +726,14 @@ function vykresliUroven(polozky, cisla, hloubka, horni) {
       radek.appendChild(mezera);
     }
 
+    const jmeno = [];
     if (cisla) {
       const c = document.createElement("span");
       c.className = "cislo";
+      c.id = "c-" + p.id;
       c.textContent = cisla.get(p.id).join(" ");
       radek.appendChild(c);
+      jmeno.push(c.id);
     }
 
     if (p.id === editaceId) {
@@ -731,50 +749,43 @@ function vykresliUroven(polozky, cisla, hloubka, horni) {
       t.className = "text" + (p.text ? "" : " prazdny");
       t.textContent = p.text || T("prazdnaPolozka");
       t.dataset.akce = "upravit";
-      t.dataset.id = p.id;
       t.id = "t-" + p.id;
-      t.tabIndex = vybrany ? 0 : -1;
-      // fokus je na samotném textu; úroveň a stav větve se přečtou jako popis
-      const popis = document.createElement("span");
-      popis.className = "sr";
-      popis.id = "d-" + p.id;
-      popis.textContent = T("uroven", hloubka) +
-        (p.deti.length ? ", " + T("podrizenych", p.deti.length) + ", " + (p.sbaleno ? T("sbaleno") : T("rozbaleno")) : "");
-      popis.setAttribute("aria-hidden", "true"); // v procházení stránkou nese úroveň samotný seznam
-      t.setAttribute("aria-describedby", popis.id);
       radek.appendChild(t);
-      radek.appendChild(popis);
+      jmeno.push(t.id);
     }
 
     if (p.sbaleno && p.deti.length) {
       const poc = document.createElement("span");
       poc.className = "pocet";
+      poc.id = "n-" + p.id;
       poc.textContent = "(" + T("podrizenych", pocetPotomku(p)) + ")";
       radek.appendChild(poc);
+      jmeno.push(poc.id);
     }
+    // jméno položky je jen její text, ne popisky nástrojů v řádku
+    li.setAttribute("aria-labelledby", jmeno.join(" "));
 
     const akce = document.createElement("span");
     akce.className = "akce";
-    akce.setAttribute("role", "group");
-    akce.setAttribute("aria-label", T("nastrojePolozky"));
-    const tl = (akceId, text, popis, trida) => {
-      const b = document.createElement("button");
-      b.dataset.akce = akceId;
-      b.textContent = text;
-      b.title = popis;
-      b.setAttribute("aria-label", popis);
-      b.tabIndex = vybrany ? 0 : -1;
-      if (trida) b.className = trida;
-      akce.appendChild(b);
+    const prvek = (znacka, akceId, text, popis, trida) => {
+      const el = document.createElement(znacka);
+      if (znacka === "a") el.href = "#";
+      el.dataset.akce = akceId;
+      el.textContent = text;
+      el.title = popis;
+      if (popis !== text) el.setAttribute("aria-label", popis);
+      el.tabIndex = vybrany ? 0 : -1;
+      if (trida) el.className = trida;
+      akce.appendChild(el);
     };
-    tl("upravit", T("upravit"), T("upravitPopis"));
-    tl("smazat", T("smazat"), T("smazatPopis"), "smazat");
-    tl("nahoru", T("nahoru"), T("nahoruPopis"), "odkaz");
-    tl("dolu", T("dolu"), T("doluPopis"), "odkaz");
-    tl("doprava", T("doprava"), T("dopravaPopis"), "odkaz");
-    tl("doleva", T("doleva"), T("dolevaPopis"), "odkaz");
-    tl("sloucit", T("sloucit"), T("sloucitPopis"), "odkaz");
-    tl("hoist", T("hoist"), T("hoistPopis"), "odkaz");
+    prvek("button", "upravit", T("upravit"), T("upravitPopis"));
+    prvek("button", "smazat", T("smazat"), T("smazatPopis"), "smazat");
+    prvek("a", "nahoru", T("nahoru"), T("nahoruPopis"), "odkaz");
+    prvek("a", "dolu", T("dolu"), T("doluPopis"), "odkaz");
+    prvek("a", "doprava", T("doprava"), T("dopravaPopis"), "odkaz");
+    prvek("a", "doleva", T("doleva"), T("dolevaPopis"), "odkaz");
+    prvek("a", "sloucit", T("sloucit"), T("sloucitPopis"), "odkaz");
+    prvek("a", "hoist", T("hoist"), T("hoistPopis"), "odkaz");
     radek.appendChild(akce);
 
     li.appendChild(radek);
@@ -833,24 +844,26 @@ function obnovFokus() {
     }
     return;
   }
-  const t = document.querySelector(`.text[data-id="${vybranyId}"]`);
+  const t = document.querySelector(`li.polozka[data-id="${vybranyId}"]`);
   if (t && obnovFokus.chciFokus) t.focus();
   obnovFokus.chciFokus = false;
 }
 
-// do tabulátorového pořadí patří jen text a tlačítka jednoho řádku
+// do tabulátorového pořadí patří jen položka a ovládací prvky jednoho řádku
 function nastavTabulator(id) {
+  document.querySelectorAll("li.polozka").forEach(li => { li.tabIndex = li.dataset.id === id ? 0 : -1; });
   document.querySelectorAll(".radek").forEach(r => {
     const je = r.dataset.id === id;
-    r.querySelectorAll(".text, button").forEach(el => { el.tabIndex = je ? 0 : -1; });
+    r.querySelectorAll("button, a").forEach(el => { el.tabIndex = je ? 0 : -1; });
   });
 }
 function vyber(id, sFokusem = true) {
   vybranyId = id;
   document.querySelectorAll(".radek").forEach(r => r.classList.toggle("vybrany", r.dataset.id === id));
+  document.querySelectorAll("li.polozka").forEach(li => li.setAttribute("aria-selected", String(li.dataset.id === id)));
   nastavTabulator(id);
   if (sFokusem) {
-    const t = document.querySelector(`.text[data-id="${id}"]`);
+    const t = document.querySelector(`li.polozka[data-id="${id}"]`);
     if (t) t.focus();
   }
 }
@@ -1101,6 +1114,7 @@ $("strom").addEventListener("click", e => {
   const akceEl = e.target.closest("[data-akce]");
   if (e.target.closest("input.editace")) return;
   if (akceEl) {
+    e.preventDefault(); // odkazy v řádku nikam nevedou, jen spouštějí akci
     if (editaceId && editaceId !== id) ukoncitEditaci(false);
     provedAkci(akceEl.dataset.akce, id);
   } else {
@@ -1110,7 +1124,7 @@ $("strom").addEventListener("click", e => {
 });
 $("strom").addEventListener("keydown", e => {
   if (e.target.matches("input.editace")) klavesaVEditaci(e);
-  else if (e.target.classList.contains("text")) klavesaNaRadku(e);
+  else if (e.target.matches("li.polozka")) klavesaNaRadku(e);
 }, true);
 $("strom").addEventListener("paste", e => { if (e.target.matches("input.editace")) vlozeniDoEditace(e); });
 $("strom").addEventListener("focusout", e => {
@@ -1124,8 +1138,8 @@ $("strom").addEventListener("focusout", e => {
   }, 0);
 });
 $("strom").addEventListener("focusin", e => {
-  const r = e.target.closest(".radek");
-  if (r && !e.target.matches("input.editace") && r.dataset.id !== vybranyId) vyber(r.dataset.id, false);
+  const li = e.target.closest("li.polozka");
+  if (li && !e.target.matches("input.editace") && li.dataset.id !== vybranyId) vyber(li.dataset.id, false);
 });
 
 $("btnVlozit").addEventListener("click", () => otevritVlozeni(""));
