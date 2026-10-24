@@ -11,6 +11,7 @@
 [JSONDB databáze](https://nastroje.egdilna.cz/jsondb),
 [KURZor](https://naucseto.info/kurzor)
 [Legislativní prohlížeč](https://nastroje.egdilna.cz/leg),
+[List editor](https://nastroje.egdilna.cz/listedit),
 [MarkDown editor](https://nastroje.egdilna.cz/markdown),
 [NoteBlok](https://nastroje.egdilna.cz/noteblok),
 [OpenData prohlížeč](https://nastroje.egdilna.cz/opendata),
