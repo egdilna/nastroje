@@ -93,7 +93,7 @@ ul.seznam ul.seznam { margin-left: 22px; border-left: 2px solid var(--cara); pad
   width: 26px; height: 26px; padding: 0; flex: none;
   border: none; background: transparent; color: var(--tlumeny); font-size: 0.8rem;
 }
-.sbal.bez { visibility: hidden; }
+.sbal.bez { display: inline-block; }
 .cislo { color: var(--akcent); font-variant-numeric: tabular-nums; white-space: pre; font-weight: 600; flex: none; }
 .text {
   flex: 1; min-width: 0; word-break: break-word; cursor: text;
@@ -104,8 +104,7 @@ ul.seznam ul.seznam { margin-left: 22px; border-left: 2px solid var(--cara); pad
   flex: 1; min-width: 0; font: inherit; color: var(--text);
   background: var(--plocha); border: 1px solid var(--akcent); border-radius: 4px; padding: 2px 4px;
 }
-.akce { display: flex; gap: 2px; flex: none; opacity: .35; }
-.radek:hover .akce, .radek:focus-within .akce, .radek.vybrany .akce { opacity: 1; }
+.akce { display: flex; gap: 2px; flex: none; }
 .akce button { padding: 2px 7px; font-size: 0.85rem; }
 .akce button.odkaz {
   border: none; background: transparent; color: var(--akcent);
@@ -243,6 +242,10 @@ const TEXTY = {
     dolevaPopis: "Předsadit (doleva)",
     hoistPopis: "Zobrazit jen tuto položku a podřízené",
     sbalitPopis: "Sbalit podřízené",
+    podrizene: "Podřízené položky",
+    sbaleno: "sbaleno",
+    rozbaleno: "rozbaleno",
+    nastrojePolozky: "Nástroje položky",
     rozbalitPopis: "Rozbalit podřízené",
     celySeznam: "Celý seznam",
     upravitPopis: "Upravit položku",
@@ -313,6 +316,10 @@ const TEXTY = {
     dolevaPopis: "Outdent (left)",
     hoistPopis: "Show only this item and its children",
     sbalitPopis: "Collapse children",
+    podrizene: "Child items",
+    sbaleno: "collapsed",
+    rozbaleno: "expanded",
+    nastrojePolozky: "Item tools",
     rozbalitPopis: "Expand children",
     celySeznam: "Whole list",
     upravitPopis: "Edit item",
@@ -686,17 +693,23 @@ function vykresliUroven(polozky, cisla, hloubka, horni) {
     radek.className = "radek" + (p.id === vybranyId ? " vybrany" : "");
     radek.dataset.id = p.id;
 
-    const sbal = document.createElement("button");
-    sbal.className = "sbal" + (p.deti.length ? "" : " bez");
-    sbal.dataset.akce = "sbal";
-    sbal.tabIndex = -1;
+    const vybrany = p.id === vybranyId;
+    // ovládací prvky jsou v tabulátorovém pořadí jen u vybrané položky (putující tabindex)
     if (p.deti.length) {
+      const sbal = document.createElement("button");
+      sbal.className = "sbal";
+      sbal.dataset.akce = "sbal";
+      sbal.tabIndex = vybrany ? 0 : -1;
       sbal.textContent = p.sbaleno ? "▶" : "▼";
       sbal.setAttribute("aria-expanded", String(!p.sbaleno));
-      sbal.setAttribute("aria-label", p.sbaleno ? T("rozbalitPopis") : T("sbalitPopis"));
-      sbal.title = sbal.getAttribute("aria-label");
-    } else sbal.setAttribute("aria-hidden", "true");
-    radek.appendChild(sbal);
+      sbal.setAttribute("aria-label", T("podrizene"));
+      sbal.title = p.sbaleno ? T("rozbalitPopis") : T("sbalitPopis");
+      radek.appendChild(sbal);
+    } else {
+      const mezera = document.createElement("span");
+      mezera.className = "sbal bez";
+      radek.appendChild(mezera);
+    }
 
     if (cisla) {
       const c = document.createElement("span");
@@ -718,14 +731,19 @@ function vykresliUroven(polozky, cisla, hloubka, horni) {
       t.className = "text" + (p.text ? "" : " prazdny");
       t.textContent = p.text || T("prazdnaPolozka");
       t.dataset.akce = "upravit";
+      t.dataset.id = p.id;
       t.id = "t-" + p.id;
+      t.tabIndex = vybrany ? 0 : -1;
+      // fokus je na samotném textu; úroveň a stav větve se přečtou jako popis
+      const popis = document.createElement("span");
+      popis.className = "sr";
+      popis.id = "d-" + p.id;
+      popis.textContent = T("uroven", hloubka) +
+        (p.deti.length ? ", " + T("podrizenych", p.deti.length) + ", " + (p.sbaleno ? T("sbaleno") : T("rozbaleno")) : "");
+      popis.setAttribute("aria-hidden", "true"); // v procházení stránkou nese úroveň samotný seznam
+      t.setAttribute("aria-describedby", popis.id);
       radek.appendChild(t);
-      radek.tabIndex = p.id === vybranyId ? 0 : -1;
-      radek.setAttribute("role", "button");
-      radek.setAttribute("aria-label",
-        (cisla ? cisla.get(p.id).join(" ") + " " : "") + (p.text || T("prazdnaPolozka")) +
-        ", " + T("uroven", hloubka) +
-        (p.deti.length ? ", " + T("podrizenych", p.deti.length) + ", " + (p.sbaleno ? T("rozbalitPopis").toLowerCase() : "") : ""));
+      radek.appendChild(popis);
     }
 
     if (p.sbaleno && p.deti.length) {
@@ -737,13 +755,15 @@ function vykresliUroven(polozky, cisla, hloubka, horni) {
 
     const akce = document.createElement("span");
     akce.className = "akce";
+    akce.setAttribute("role", "group");
+    akce.setAttribute("aria-label", T("nastrojePolozky"));
     const tl = (akceId, text, popis, trida) => {
       const b = document.createElement("button");
       b.dataset.akce = akceId;
       b.textContent = text;
       b.title = popis;
       b.setAttribute("aria-label", popis);
-      b.tabIndex = -1;
+      b.tabIndex = vybrany ? 0 : -1;
       if (trida) b.className = trida;
       akce.appendChild(b);
     };
@@ -809,26 +829,29 @@ function obnovFokus() {
   if (!vybranyId) {
     const prvni = viditelne()[0];
     if (prvni) {
-      const r = document.querySelector(`.radek[data-id="${prvni.id}"]`);
-      if (r) r.tabIndex = 0;
+      nastavTabulator(prvni.id);
     }
     return;
   }
-  const r = document.querySelector(`.radek[data-id="${vybranyId}"]`);
-  if (r && obnovFokus.chciFokus) r.focus();
+  const t = document.querySelector(`.text[data-id="${vybranyId}"]`);
+  if (t && obnovFokus.chciFokus) t.focus();
   obnovFokus.chciFokus = false;
 }
 
-function vyber(id, sFokusem = true) {
-  vybranyId = id;
+// do tabulátorového pořadí patří jen text a tlačítka jednoho řádku
+function nastavTabulator(id) {
   document.querySelectorAll(".radek").forEach(r => {
     const je = r.dataset.id === id;
-    r.classList.toggle("vybrany", je);
-    if (!r.querySelector("input.editace")) r.tabIndex = je ? 0 : -1;
+    r.querySelectorAll(".text, button").forEach(el => { el.tabIndex = je ? 0 : -1; });
   });
+}
+function vyber(id, sFokusem = true) {
+  vybranyId = id;
+  document.querySelectorAll(".radek").forEach(r => r.classList.toggle("vybrany", r.dataset.id === id));
+  nastavTabulator(id);
   if (sFokusem) {
-    const r = document.querySelector(`.radek[data-id="${id}"]`);
-    if (r) r.focus();
+    const t = document.querySelector(`.text[data-id="${id}"]`);
+    if (t) t.focus();
   }
 }
 
@@ -1087,7 +1110,7 @@ $("strom").addEventListener("click", e => {
 });
 $("strom").addEventListener("keydown", e => {
   if (e.target.matches("input.editace")) klavesaVEditaci(e);
-  else if (e.target.classList.contains("radek")) klavesaNaRadku(e);
+  else if (e.target.classList.contains("text")) klavesaNaRadku(e);
 }, true);
 $("strom").addEventListener("paste", e => { if (e.target.matches("input.editace")) vlozeniDoEditace(e); });
 $("strom").addEventListener("focusout", e => {
@@ -1102,7 +1125,7 @@ $("strom").addEventListener("focusout", e => {
 });
 $("strom").addEventListener("focusin", e => {
   const r = e.target.closest(".radek");
-  if (r && e.target === r && r.dataset.id !== vybranyId) vyber(r.dataset.id, false);
+  if (r && !e.target.matches("input.editace") && r.dataset.id !== vybranyId) vyber(r.dataset.id, false);
 });
 
 $("btnVlozit").addEventListener("click", () => otevritVlozeni(""));
