@@ -13,6 +13,9 @@ Osobně moje favority jsou: [ArchiMate editor](#archimate), [PIM information man
 
 ## Novinky k našim nástrojům
 
+24.10.2026: Nový malý nástroj [List editor](https://nastroje.egdilna.cz/listedit) pro rychlé úpravy víceúrovňových seznamů. Vložíte seznam ze schránky (odsazený text, Markdown odrážky nebo číslování), přeskládáte ho posuny, odsazením a předsazením a zkopírujete zpátky jako text s tabulátory, Markdown nebo číslovaný seznam.
+
+
 2.9.2026: Skvělé zprávy pro všechny datysty. Nástroj [DKM manažer](#dkm) pro modelování datových modelů i správu ostrých dat nyní umí validní export dat do json včetně schémat a JSX popisů. Je to kompatibilní s požadavky správy dat pro import. Výsledkem je, že můžete data z DKM exportovat buď jako popis dat, nebo jako datové balíčky v ZIP se schématem a popisem v readme. Na tohle jsme se těšili a je to tady.
 
 

@@ -198,6 +198,22 @@ Webová poznámkovací aplikace s pokročilou organizací: filtrování podle em
 
 ---
 
+## listedit — List editor
+
+**Editor víceúrovňových seznamů.**
+
+Seznam se vloží ze schránky (text odsazený tabulátory či mezerami, Markdown odrážky, číslovaný seznam nebo číslování 1.2.1), upraví se a zkopíruje zpět.
+
+Hlavní funkce:
+- Úprava, mazání, posun nahoru/dolů, odsazení a předsazení položek
+- Zúžení pohledu na jednu položku s podřízenými (hoist), sbalování větví
+- Klávesové ovládání při psaní (Enter, Shift+Enter, Tab, Shift+Tab) i nad vybranou položkou
+- Volitelné zobrazení čísel hierarchie („1 2 1“)
+- Kopírování jako text s tabulátory, Markdown, číslovaný seznam nebo s čísly 1.2.1
+- Zpět/znovu, průběžné ukládání v prohlížeči, rozhraní CS/EN
+
+---
+
 ## opendata — Prohlížeč otevřených dat
 
 **Univerzální prohlížeč otevřených dat.**
