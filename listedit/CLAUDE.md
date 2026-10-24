@@ -10,6 +10,8 @@ Jednosouborový editor víceúrovňových seznamů (`index.html`, bez externích
   číslování `1.` `1)` `a)`, a bez odsazení číslování `1.2.1` (úroveň podle čísla).
 - **Výstupy:** `vystupTab`, `vystupMd`, `vystupCislovany`, `vystupHierarchie` — vždy celý seznam,
   i při zúženém pohledu (hoist).
+- **Sloučení** (`sloucit`, klávesa J) připojí text k předchozí viditelné položce, podřízené přejdou pod ni.
+- **Klávesy v seznamu** řeší `klavesaNaRadku` (fokus je na `.radek`), `/` skok do seznamu je v globálním `keydown`.
 - **Předsazení** (`predsad`) přebírá následující sourozence jako děti (chování outlinerů).
 - Každá změna stromu volá před sebou `zapamatuj()` (zpět/znovu) a po sobě `zmena(zprava)`
   (uložení, vykreslení, hlášení do stavového řádku s `aria-live`).

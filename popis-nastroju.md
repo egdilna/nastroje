@@ -207,7 +207,8 @@ Seznam se vloží ze schránky (text odsazený tabulátory či mezerami, Markdow
 Hlavní funkce:
 - Úprava, mazání, posun nahoru/dolů, odsazení a předsazení položek
 - Zúžení pohledu na jednu položku s podřízenými (hoist), sbalování větví
-- Klávesové ovládání při psaní (Enter, Shift+Enter, Tab, Shift+Tab) i nad vybranou položkou
+- Sloučení položky s předchozí
+- Plné ovládání klávesnicí: při psaní (Enter, Shift+Enter, Tab, Shift+Tab) i v seznamu (/ skok do seznamu, šipky, W/S posun, D/A odsazení, J sloučení, E úprava, . , rozbalení/sbalení)
 - Volitelné zobrazení čísel hierarchie („1 2 1“)
 - Kopírování jako text s tabulátory, Markdown, číslovaný seznam nebo s čísly 1.2.1
 - Zpět/znovu, průběžné ukládání v prohlížeči, rozhraní CS/EN
