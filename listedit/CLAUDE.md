@@ -11,7 +11,11 @@ Jednosouborový editor víceúrovňových seznamů (`index.html`, bez externích
 - **Výstupy:** `vystupTab`, `vystupMd`, `vystupCislovany`, `vystupHierarchie` — vždy celý seznam,
   i při zúženém pohledu (hoist).
 - **Sloučení** (`sloucit`, klávesa J) připojí text k předchozí viditelné položce, podřízené přejdou pod ni.
-- **Klávesy v seznamu** řeší `klavesaNaRadku` (fokus je na `.radek`), `/` skok do seznamu je v globálním `keydown`.
+- **Sémantika:** vnořené `ul`/`li` nesou úroveň, fokus je na textu položky (`.text`, putující tabindex),
+  úroveň a stav větve přes `aria-describedby`. Tlačítka řádku jsou skutečná tlačítka ve skupině
+  (`role="group"`) a v tabulátorovém pořadí jen u vybraného řádku (`nastavTabulator`).
+  Řádek sám **nesmí** mít `role="button"` — skryl by vnořená tlačítka.
+- **Klávesy v seznamu** řeší `klavesaNaRadku` (fokus na `.text`), `/` skok do seznamu je v globálním `keydown`.
 - **Předsazení** (`predsad`) přebírá následující sourozence jako děti (chování outlinerů).
 - Každá změna stromu volá před sebou `zapamatuj()` (zpět/znovu) a po sobě `zmena(zprava)`
   (uložení, vykreslení, hlášení do stavového řádku s `aria-live`).
