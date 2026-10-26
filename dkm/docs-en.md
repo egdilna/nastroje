@@ -2140,7 +2140,21 @@ a **relation attribute** (`Type / Attribute`) and a **`[[Name]]` wiki link in te
 (`[[Attribute]] (Type)`). Several links in one cell are separated by a semicolon, so they can
 be split into columns in Excel. An archived counterpart is left out in either direction.
 
-The import ignores these two columns — relations go into the table to be read, not edited.
+**Next to them there is a column per relation type and direction** — the **Relations by type**
+group. Where the summary cell mixes everything together, `Manager →`, `Reports to ←`,
+`Person / Owner →` or `[[Note]] (Person) ←` each get their own column holding just the
+counterpart names. Only then can you filter, sort and pivot in Excel. The groups and labels
+are the same ones the Relations card in the detail groups by, so they cannot drift apart; two
+relation types sharing a name stay **two columns**, because they are told apart by id, not by
+name.
+
+That group is **pre-ticked**; the summary `Relations` and `Linked from` stay off as before.
+A relation attribute gets a column in both directions: the outgoing one matches that
+attribute's own column (once as a value, once as a link), while the incoming one has nowhere
+else to come from. The table view in the app offers them in its column picker too, but keeps
+them out of the default set — otherwise the list would sprawl sideways.
+
+The import ignores these columns — relations go into the table to be read, not edited.
 
 ### 25.2 TSV / CSV import
 
