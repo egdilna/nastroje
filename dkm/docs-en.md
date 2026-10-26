@@ -3048,7 +3048,11 @@ so renaming cannot break it.
 it they go to the end.
 
 An aspect with no template of its own contributes its default block of attributes — otherwise
-adding an aspect to an entity would not show in the detail at all.
+adding an aspect to an entity would not show in the detail at all. **It takes exactly its own
+attributes, by their identifiers.** Two aspects that share an attribute name (say "Status")
+therefore do not spill into each other, and a type attribute of the same name does not get
+pulled in either — each aspect prints its own, once. The order follows the attribute order
+within the aspect.
 
 **When the type has no template but an attached aspect does, it is still used.** An aspect
 is cross-cutting: writing a template for "Records management" should not mean writing one
