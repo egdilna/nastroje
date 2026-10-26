@@ -124,6 +124,21 @@ Název navíc nebyl nadpis, takže po seznamu nešlo chodit po nadpisech (osnova
 H2 entita, stejně jako v detailu). Odkaz má barvu akcentu a podtrhává se při najetí; ohnisko
 drží on, ne karta. Klik kamkoli jinam po kartě detail otevře taky, cíl kliknutí se nezmenšil.
 
+**Co bude v liště, rozhoduje `zalozkyProProhlizec(entities)`** — jedna spára pro nabídku
+v dialogu Export (`viewerPanel`) i pro samotný export (`viewerData`), aby se nerozešly.
+Vrací ke každé záložce kopii, `ok` a důvod. **Uložený pohled se materializuje**: prohlížeč
+filtry neumí, ale je to snímek, takže se pohled spočítá přes `entityUlozenehoPohledu` a uloží
+se jako `kind:'vyber'` s hotovým polem `entityIds` (jméno a ikonu si musí vzít s sebou —
+`savedViews` se do souboru nedávají). Dřív se taková záložka **tiše zahodila** a kdo měl lištu
+z pohledů, dostal soubor, ve kterém nebylo vidět nic, přestože data v něm byla celá
+(hlášeno od uživatele). Nevyvezitelné jsou jen `comments` (prohlížeč je nezobrazuje) a `new`
+(jen ke čtení) — a ty se **ukazují přeškrtnuté s důvodem**, ne mlčky.
+
+`volby.zalozky` nese výběr uživatele; **modul bez jediné záložky se z dat vyhodí**, jinak by
+v prohlížeči zůstala prázdná přihrádka. Kind `vyber` má v šabloně prohlížeče svoje větve
+v `zalozkaCilOk` / `zalozkaNazev` / `zalozkaIkona` / `zalozkaPocet` / `zalozkaOdpovida` /
+`otevriZalozku` a v `getList` (`tab==='vyber:<id>'`).
+
 **Prohlížeč zrcadlí detail aplikace**: dva sloupce, karty Vazby a Strukturální pohled,
 řádek s metadaty dole, wiki odkazy v textech a odkazy počítané oběma směry přes
 `getLinksFrom` / `getRelsTo`. Když měníš detail v aplikaci, projdi i prohlížeč — má

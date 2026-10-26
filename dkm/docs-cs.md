@@ -2410,10 +2410,27 @@ DKM umí vygenerovat **statický HTML prohlížeč** dat projektu — jeden soub
 
 V dialogu **📤 Export dat** (kap. 23) zvol cíl **Statický prohlížeč**. Stáhne se soubor
 s vloženými daty projektu. **Bere zvolený rozsah** — nemusí to tedy být celý projekt.
-Ve výřezu je model zúžený na to, co vybrané entity opravdu potřebují, vazby mimo výřez
-se zahodí (stejně jako u balíčku, kap. 28.1) a záložky, jejichž cíl ve výřezu není, zmizí.
-Prohlížeč má **tutéž lištu záložek jako aplikace** (kap. 29.8) — vynechá jen druhy, které
-neumí: uložené pohledy, komentáře a zakládání nové entity. V **Nastavení → Projekt** je zkratka na celý projekt.
+Ve výřezu je model zúžený na to, co vybrané entity opravdu potřebují, a vazby mimo výřez
+se zahodí (stejně jako u balíčku, kap. 28.1). V **Nastavení → Projekt** je zkratka na celý
+projekt.
+
+#### Záložky si vybereš
+
+Pod volbou cíle je seznam **Záložky v prohlížeči** — všechny záložky projektu, seskupené
+podle modulů, u každé zaškrtávátko a u skupiny tlačítka **Vše / Nic**. Co nezaškrtneš,
+v souboru nebude, a tedy ani v hledání. **Modul, ze kterého nezbude ani jedna záložka,
+v prohlížeči nebude vůbec.**
+
+**Uložený pohled se do prohlížeče dostane.** Prohlížeč filtry neumí, ale je to snímek, takže
+se pohled **spočítá při exportu** a uloží se jako hotový seznam entit. V liště pak vypadá
+a chová se jako každá jiná záložka, včetně počtu. Dřív se taková záložka tiše zahodila —
+kdo měl lištu poskládanou z pohledů, dostal soubor, ve kterém nebylo vidět nic, přestože
+data v něm byla celá.
+
+Dvě věci do prohlížeče nejdou a v seznamu jsou proto přeškrtnuté s důvodem: záložka
+**Všechny komentáře** (prohlížeč komentáře nezobrazuje) a záložka **Nová entita**
+(prohlížeč je jen ke čtení). Přeškrtne se i záložka, jejíž cíl se do zvoleného rozsahu
+nevešel — typ, aspekt, entita nebo pohled, po kterém by zbyl prázdný seznam.
 
 Prohlížeč má **stejné rozvržení detailu jako aplikace**: vlevo atributy, vpravo karty
 **Vazby** (s Odkazuje sem), **🌳 Strukturální pohled** a **🏷 Tagy**, dole řádek s ID a časy.
