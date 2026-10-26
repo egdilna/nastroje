@@ -220,6 +220,25 @@ nikdy nepočítej sloupce zvlášť pro jeden formát. Liší se jen zápis (`to
 Vlastní atributy se sdružují **podle názvu** (`cattr:<název>`), ne podle id — id je u nich per
 entita, takže by padesát entit dalo padesát sloupců.
 
+**Vazby mají sloupec na typ a směr** (skupina `rels`, id `rel:out:<klíč>` / `rel:in:<klíč>`).
+Klíč i popisek dává `klicSkupinyVazby` + `popisOdkazu`, tedy totéž, podle čeho seskupuje
+karta Vazby v detailu — dvě různá seskupení téhož by se rozešla. Souhrnné `__relations` /
+`__backlinks` zůstávají vedle toho (jedna buňka se vším), protože se v Excelu nedají
+filtrovat; to byl důvod, proč sloupce po typech přibyly (hlášeno od uživatele).
+`klicSkupinyVazby` **není** `klicVazby` — ten patří slučování z GitHubu a nese dvojici
+typ+cíl.
+
+**`getRelsTo` prochází všechny entity, takže se nesmí volat per buňku.** `tblOdkazy(e)` je
+krátkodobá paměť `{ven, sem}` na jeden průchod; `tblOdkazyReset()` ji zahodí na začátku
+`tableColumns` a `runTableExport`, takže z ní nemůže nic zastarat. Jedou přes ni **i souhrnné
+sloupce** — jinak by se u každé entity prošel projekt dvakrát. Bez té paměti by K sloupců
+znamenalo K×M průchodů: nad 1200 entitami vyšel celý export 1,8 s, s pamětí a dvanácti
+sloupci navíc 1,7 s. Kdo přidá další sloupec sahající na odkazy, ať jde tudy.
+
+**Nová skupina sloupců se musí přidat na tři místa**: `groupLabel` (v panelu exportu
+**i** ve výběru sloupců tabulkového pohledu — jsou to dvě kopie), a do filtru v
+`exportTableXlsx`, který skládá list na typ entity; bez toho by se do listů nedostala.
+
 CSV a TSV nesou **BOM**, jinak Excel rozhodí diakritiku; `processTSVImport` ho proto na začátku
 přeskakuje — bez toho by se první sloupec z vlastního exportu nespároval a kolečko
 export → úprava → import by se rozbilo. Desetinná čárka platí jen pro CSV; TSV zůstává strojové.

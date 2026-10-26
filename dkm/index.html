@@ -1184,7 +1184,7 @@ tblExportTitle:'Export tabulky',
 tblFormat:'Formát',
 tblFmtXlsx:'XLSX (Excel)',tblFmtCsv:'CSV',tblFmtTsv:'TSV (tabulátor)',
 tblColumns:'Sloupce',
-tblGroupSys:'Základní údaje',tblGroupMeta:'Vazby a metadata',
+tblGroupSys:'Základní údaje',tblGroupMeta:'Vazby a metadata',tblGroupRels:'Vazby po typech',
 tblOnlyFilled:'Jen vyplněné sloupce',
 tblSheetPerType:'List na každý typ entity',
 tblSep:'Oddělovač',tblSepSemi:'Středník — sedne českému Excelu',tblSepComma:'Čárka — standardní CSV',
@@ -1699,7 +1699,7 @@ tblExportTitle:'Table export',
 tblFormat:'Format',
 tblFmtXlsx:'XLSX (Excel)',tblFmtCsv:'CSV',tblFmtTsv:'TSV (tab separated)',
 tblColumns:'Columns',
-tblGroupSys:'Basics',tblGroupMeta:'Relations and metadata',
+tblGroupSys:'Basics',tblGroupMeta:'Relations and metadata',tblGroupRels:'Relations by type',
 tblOnlyFilled:'Only columns with data',
 tblSheetPerType:'A sheet per entity type',
 tblSep:'Separator',tblSepSemi:'Semicolon — suits a localized Excel',tblSepComma:'Comma — standard CSV',
@@ -4467,8 +4467,22 @@ const TABLE_FORMATS=[
 {id:'tsv', label:'tblFmtTsv', ext:'tsv'}
 ];
 
+/* Krátkodobá paměť odkazů pro tabulku. `getRelsTo` prochází všechny entity,
+   takže se sloupcem na každý typ vazby by se volal M×K krát místo M×1. Platí
+   jen po dobu jednoho průchodu — každý vstup (sloupce, export) si ji na začátku
+   zahodí, takže z ní nemůže nic zastarat. */
+let _tblOdkazy=null;
+function tblOdkazyReset(){_tblOdkazy=null}
+function tblOdkazy(e){
+if(!_tblOdkazy)_tblOdkazy=new Map();
+let z=_tblOdkazy.get(e.id);
+if(!z){z={ven:getLinksFrom(e),sem:getRelsTo(e.id)};_tblOdkazy.set(e.id,z)}
+return z;
+}
+
 /* Sloupce odvozené z předaných entit. */
 function tableColumns(list){
+tblOdkazyReset();
 const cols=[];const seen=new Map();
 const named=a=>!!(a&&a.name&&String(a.name).trim());
 const add=(id,label,group,attr)=>{
@@ -4489,6 +4503,20 @@ if(e.typeId){const ty=findType(e.typeId);if(ty)(ty.attributes||[]).forEach(a=>{i
    takže by jinak každá entita přidala vlastní sloupec. */
 (e.customAttributes||[]).forEach(a=>{const n=(a.name||'').trim();if(n)add('cattr:'+n,'* '+n,'custom',a)});
 });
+/* **Sloupec na každý typ vazby a směr.** Jedna buňka se vším dohromady se
+   v Excelu nedá filtrovat ani sčítat, takže vedle souhrnných `Vazby` /
+   `Odkazuje sem` stojí sloupce po skupinách — po týchž, podle kterých
+   seskupuje karta Vazby v detailu (`klicSkupinyVazby`), a s týmž popiskem
+   (`popisOdkazu`), jen se šipkou směru. Vazební atribut tím dostane sloupec
+   i v příchozím směru, kde ho jinak není kde vzít; v odchozím se shoduje
+   s vlastním sloupcem toho atributu, a to je v pořádku — jeden je hodnota
+   atributu, druhý vazba. Archivovaný protějšek se vynechává stejně jako
+   v souhrnných sloupcích. */
+list.forEach(e=>tblOdkazy(e).ven.forEach(r=>add('rel:out:'+klicSkupinyVazby(r),popisOdkazu(r,false)+' →','rels')));
+list.forEach(e=>tblOdkazy(e).sem.forEach(r=>{
+const src=findEntity(r.sourceId);if(!src||src.archived)return;
+add('rel:in:'+klicSkupinyVazby(r),popisOdkazu(r,true)+' ←','rels');
+}));
 add('__relations',t('detailRelations'),'meta');
 add('__backlinks',t('detailBacklinks'),'meta');
 add('__comments',t('detailComments'),'meta');
@@ -4506,8 +4534,14 @@ case'__type':{const ty=findType(e.typeId);return ty?ty.name:''}
 case'__inbox':return e.inInbox?t('yes'):'';
 case'__archive':return e.archived?t('yes'):'';
 case'__aspects':return(e.aspects||[]).map(aid=>{const a=findAspect(aid);return a?a.name:aid}).join('; ');
-case'__relations':return collectLinksOut(e).map(x=>x.relTypeName+' → '+getTitle(x.to)).sort(porovnejNazvy).join('; ');
-case'__backlinks':return collectBacklinks(e.id).map(b=>b.relTypeName+' ← '+getTitle(b.from)).sort(porovnejNazvy).join('; ');
+/* Souhrnné sloupce berou odkazy z téže paměti jako sloupce po typech —
+   jinak by `collectBacklinks` prošel všechny entity ještě jednou. Obsah je
+   týž, co vracely `collectLinksOut` / `collectBacklinks`: archivovaný
+   protějšek ven vypadne už v `getLinksFrom`, dovnitř se vynechá tady. */
+case'__relations':return tblOdkazy(e).ven.map(r=>{const tgt=findEntity(r.targetId);
+return tgt?popisOdkazu(r,false)+' → '+getTitle(tgt):''}).filter(Boolean).sort(porovnejNazvy).join('; ');
+case'__backlinks':return tblOdkazy(e).sem.map(r=>{const src=findEntity(r.sourceId);
+return (src&&!src.archived)?popisOdkazu(r,true)+' ← '+getTitle(src):''}).filter(Boolean).sort(porovnejNazvy).join('; ');
 case'__comments':return(e.comments||[]).map(k=>(k.author?k.author+': ':'')+(k.text||'')).join('\n');
 case'__created':{if(!e.createdAt)return'';const d=new Date(e.createdAt);return isNaN(d)?e.createdAt:d}
 case'__updated':{if(!e.updatedAt)return'';const d=new Date(e.updatedAt);return isNaN(d)?e.updatedAt:d}
@@ -4517,6 +4551,18 @@ const aid=c.id.slice(5);
 /* Atribut patří tomuto typu nebo jeho aspektu? Jinak sloupec zůstane prázdný. */
 if(c.attr&&c.attr.type==='composed')return slozenyText(e,c.attr,vlastnikAtributu(e,c.attr));
 return xlsxAttrVal(c.attr,e.attributes&&e.attributes[aid]);
+}
+if(c.id.indexOf('rel:')===0){
+const ven=c.id.indexOf('rel:out:')===0;
+const klic=c.id.slice(ven?8:7);
+const jmena=[];
+(ven?tblOdkazy(e).ven:tblOdkazy(e).sem).forEach(r=>{
+if(klicSkupinyVazby(r)!==klic)return;
+const prot=findEntity(ven?r.targetId:r.sourceId);
+if(!prot||prot.archived)return;
+jmena.push(getTitle(prot));
+});
+return jmena.sort(porovnejNazvy).join('; ');
 }
 if(c.id.indexOf('cattr:')===0){
 const nm=c.id.slice(6);
@@ -4555,6 +4601,7 @@ return safeFilename(state.data.projectName||'dkm')+'-'+new Date().toISOString().
 }
 
 function runTableExport(cfg){
+tblOdkazyReset();
 const list=cfg.entities;
 const cols=cfg.columns;
 if(!list.length){toast(t('emptyList'));return}
@@ -4605,7 +4652,7 @@ cfg.entities.forEach(e=>{const k=e.typeId||'__none__';if(!groups.has(k))groups.s
 groups.forEach((list,k)=>{
 const ty=k==='__none__'?null:findType(k);
 /* Na listu typu nechávej jen sloupce, které k němu patří. */
-const cols=cfg.columns.filter(c=>c.group==='sys'||c.group==='meta'||c.group==='custom'
+const cols=cfg.columns.filter(c=>c.group==='sys'||c.group==='meta'||c.group==='custom'||c.group==='rels'
   ||(ty&&c.group==='type:'+ty.id)
   ||(c.group.indexOf('aspect:')===0&&list.some(e=>(e.aspects||[]).indexOf(c.group.slice(7))>=0)));
 sheet(ty?ty.name:t('jsonUntyped'),list,cols);
@@ -4669,6 +4716,7 @@ function groupLabel(g){
 if(g==='sys')return t('tblGroupSys');
 if(g==='custom')return t('expSecCustomAttrs');
 if(g==='meta')return t('tblGroupMeta');
+if(g==='rels')return t('tblGroupRels');
 if(g.indexOf('type:')===0){const ty=findType(g.slice(5));return t('type')+': '+(ty?(ty.icon?ty.icon+' ':'')+ty.name:'?')}
 if(g.indexOf('aspect:')===0){const a=findAspect(g.slice(7));return t('detailAspects')+': ◎ '+(a?a.name:'?')}
 return g;
@@ -7740,6 +7788,7 @@ const label=g=>{
 if(g==='sys')return t('tblGroupSys');
 if(g==='custom')return t('expSecCustomAttrs');
 if(g==='meta')return t('tblGroupMeta');
+if(g==='rels')return t('tblGroupRels');
 if(g.indexOf('type:')===0){const ty=findType(g.slice(5));return t('type')+': '+(ty?(ty.icon?ty.icon+' ':'')+ty.name:'?')}
 if(g.indexOf('aspect:')===0){const a=findAspect(g.slice(7));return t('detailAspects')+': ◎ '+(a?a.name:'?')}
 return g;
@@ -8594,11 +8643,11 @@ rs.appendChild(rhdr);
 /* Co šablona vykreslila v těle, se vpravo neopakuje. Granularita je typ vazby
    a směr — ne celá karta —, takže ostatní vazby zůstanou vidět. */
 const vsechnyRels=getLinksFrom(e);
-const rels=_sab?vsechnyRels.filter(r=>!_sab.spotrebovano.vazby.has('out|'+(r.kind==='attribute'?'a:'+r.attrId:r.kind==='wikilink'?'w:'+(r.attrId||r.attrName):'r:'+(r.relationTypeId||'_')))):vsechnyRels;
+const rels=_sab?vsechnyRels.filter(r=>!_sab.spotrebovano.vazby.has('out|'+klicSkupinyVazby(r))):vsechnyRels;
 if(!rels.length){const p=document.createElement('p');p.className='aempty';p.textContent='—';rs.appendChild(p)}
 else{
 const g={};rels.forEach(r=>{
-const k=r.kind==='attribute'?'a:'+r.attrId:r.kind==='wikilink'?'w:'+(r.attrId||r.attrName):'r:'+(r.relationTypeId||'_');
+const k=klicSkupinyVazby(r);
 g[k]=g[k]||{kind:r.kind,attrName:r.attrName,scopeLabel:r.scopeLabel,relationTypeId:r.relationTypeId,items:[]};
 g[k].items.push(r);
 });
@@ -8619,12 +8668,12 @@ rs.appendChild(grp);
 }
 
 const vsechnyBls=getRelsTo(e.id);
-const bls=_sab?vsechnyBls.filter(r=>!_sab.spotrebovano.vazby.has('in|'+(r.kind==='attribute'?'a:'+r.attrId:r.kind==='wikilink'?'w:'+(r.attrId||r.attrName):'r:'+(r.relationTypeId||'_')))):vsechnyBls;
+const bls=_sab?vsechnyBls.filter(r=>!_sab.spotrebovano.vazby.has('in|'+klicSkupinyVazby(r))):vsechnyBls;
 let blS=null;
 if(bls.length){
 blS=document.createElement('section');blS.className='dsec';blS.setAttribute('aria-labelledby','h-bl');
 const bh=document.createElement('h3');bh.id='h-bl';bh.textContent=t('detailBacklinks');blS.appendChild(bh);
-const g={};bls.forEach(r=>{const k=(r.kind==='attribute'?'a:'+r.attrId:r.kind==='wikilink'?'w:'+(r.attrId||r.attrName):'r:'+(r.relationTypeId||'_'));g[k]=g[k]||{kind:r.kind,attrId:r.attrId,attrName:r.attrName,scopeLabel:r.scopeLabel,relationTypeId:r.relationTypeId,items:[]};g[k].items.push(r)});
+const g={};bls.forEach(r=>{const k=klicSkupinyVazby(r);g[k]=g[k]||{kind:r.kind,attrId:r.attrId,attrName:r.attrName,scopeLabel:r.scopeLabel,relationTypeId:r.relationTypeId,items:[]};g[k].items.push(r)});
 Object.keys(g).forEach(k=>{
 const info=g[k];const grp=document.createElement('div');grp.className='rgrp';
 const lbl=document.createElement('h4');lbl.className='rgrp-l';
@@ -9063,7 +9112,7 @@ if(built)return;built=true;
 const childWrap=document.createElement('div');
 if(out.length){
 const og={};out.forEach(r=>{
-const k=r.kind==='attribute'?'a:'+r.attrId:r.kind==='wikilink'?'w:'+(r.attrId||r.attrName):'r:'+(r.relationTypeId||'_');
+const k=klicSkupinyVazby(r);
 og[k]=og[k]||{kind:r.kind,attrName:r.attrName,scopeLabel:r.scopeLabel,relationTypeId:r.relationTypeId,items:[]};
 og[k].items.push(r);
 });
@@ -12003,6 +12052,14 @@ const rt=findRT(r.relationTypeId);
 if(!rt)return'?';
 return zpet?(rt.inverseName||rt.name):rt.name;
 }
+/* Klíč skupiny odkazů — podle něj seskupuje karta Vazby v detailu, strukturální
+   pohled i sloupce tabulky, takže se nemůžou rozejít. Druh je v klíči schválně:
+   typ vazby a vazební atribut téhož jména jsou dvě různé věci. (`klicVazby` je
+   něco jiného — dvojice typ+cíl pro slučování z GitHubu.) */
+function klicSkupinyVazby(r){
+return r.kind==='attribute'?'a:'+r.attrId:r.kind==='wikilink'?'w:'+(r.attrId||r.attrName):'r:'+(r.relationTypeId||'_');
+}
+
 function collectBacklinks(id){
 const out=[];
 getRelsTo(id).forEach(r=>{

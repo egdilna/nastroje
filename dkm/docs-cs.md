@@ -2107,7 +2107,20 @@ Oba berou **všechny tři druhy odkazu**, stejně jako karta Vazby v detailu: kl
 v jedné buňce odděluje středník, takže se dá v Excelu rozdělit do sloupců. Archivovaný
 protějšek se nevypisuje v žádném směru.
 
-Import zpátky tyhle dva sloupce ignoruje — vazby se do tabulky vydávají ke čtení, ne
+**Vedle nich je sloupec na každý typ vazby a směr** — skupina **Vazby po typech**. Tam, kde
+souhrnná buňka míchá všechno dohromady, má `Nadřízený →`, `Podřízený ←`, `Osoba / Garant →`
+nebo `[[Poznámka]] (Osoba) ←` každý svůj sloupec a v něm jen názvy protějšků. Teprve s tím
+se dá v Excelu filtrovat, řadit a dělat kontingenční tabulka. Skupiny i popisky jsou tytéž,
+podle kterých seskupuje karta Vazby v detailu, takže se nerozejdou; dva typy vazeb téhož
+jména zůstávají **dva sloupce**, protože se rozlišují identifikátorem, ne názvem.
+
+Tahle skupina je **předzaškrtnutá**, souhrnné `Vazby` a `Odkazuje sem` zůstávají vypnuté jako
+dřív. Vazební atribut dostane sloupec v obou směrech: odchozí se shoduje s vlastním sloupcem
+toho atributu (jednou jako hodnota, podruhé jako vazba), příchozí se jinde vzít nedá.
+Tabulkový pohled v aplikaci je nabízí ve výběru sloupců taky, ale do výchozí sady je nedává —
+jinak by se seznam rozjel do šířky.
+
+Import zpátky tyhle sloupce ignoruje — vazby se do tabulky vydávají ke čtení, ne
 k editaci.
 
 ### 25.2 TSV / CSV import
