@@ -2454,11 +2454,27 @@ DKM can generate a **static HTML viewer** of project data — a single file you 
 
 In the **📤 Export data** dialog (ch. 23) pick the **Static viewer** target. A file with the
 embedded data is downloaded. **It takes the chosen scope** — so it need not be the whole
-project. In a cut the model is narrowed to what the selected entities actually need,
-relations pointing outside are dropped (as with a package, ch. 28.1), and tabs whose target is
-not in the cut disappear. The viewer has **the same tab bar as the application** (29.8) — it
-only leaves out the kinds it cannot do: saved views, comments and creating a new entity. **Settings → Project** has a shortcut to
-the whole project.
+project. In a cut the model is narrowed to what the selected entities actually need and
+relations pointing outside are dropped (as with a package, ch. 28.1). **Settings → Project**
+has a shortcut to the whole project.
+
+#### You pick the tabs
+
+Below the target there is a **Tabs in the viewer** list — every tab of the project, grouped
+by module, each with a checkbox and each group with **All / None** buttons. Whatever you
+leave unticked will not be in the file, and therefore not in search either. **A module left
+without a single tab is not in the viewer at all.**
+
+**A saved view does make it into the viewer.** The viewer cannot do filters, but it is a
+snapshot, so the view is **computed at export time** and stored as a ready-made list of
+entities. In the tab bar it then looks and behaves like any other tab, count included.
+Previously such a tab was silently dropped — anyone whose tab bar was built from saved views
+got a file with nothing to see, even though all the data was inside.
+
+Two things cannot go into the viewer and are therefore struck through with a reason: the
+**All comments** tab (the viewer does not show comments) and the **New entity** tab (the
+viewer is read-only). A tab whose target did not fit into the chosen scope is struck through
+too — a type, an aspect, an entity, or a view that would leave an empty list.
 
 The viewer has **the same detail layout as the application**: attributes on the left, the
 **Relations** (with Linked from), **🌳 Structural view** and **🏷 Tags** tabs on the right, and
