@@ -13,7 +13,14 @@ await stranka.evaluate(() => {
     newEntity({ id: 'a2', title: 'Uklid dilny', aspects: ['cinnost'] }),
     newEntity({ id: 'a3', title: 'Činnost na zahradě', aspects: ['Note'] }),
     newEntity({ id: 'a4', title: 'Petr Novák', aspects: ['Person'], tags: ['kolega'] }),
-    newEntity({ id: 'a5', title: 'Anna Malá', aspects: ['Person'] })
+    newEntity({ id: 'a5', title: 'Anna Malá', aspects: ['Person'] }),
+    newEntity({ id: 'o1', title: 'Firma XY, s.r.o.', aspects: ['Organization'] }),
+    newEntity({ id: 'o2', title: 'Úřad Žatec', aspects: ['Organization'] }),
+    newEntity({ id: 'z1', title: 'Jan Zaměstnanec', aspects: ['Person'],
+      links: [{ to: 'o1', type: 'worksAt' }] }),
+    newEntity({ id: 'z2', title: 'Eva Úřednice', aspects: ['Person'],
+      links: [{ to: 'o2', type: 'worksAt' }] }),
+    newEntity({ id: 'u1', title: 'Dopsat zápis', aspects: ['Task'], attributes: { status: 'done' } })
   ];
   state.view = 'dashboard'; render();
 });
@@ -51,6 +58,32 @@ nadpis('Víc slov je AND');
 const vic = await hledej('osoba anna');
 ok(s, vic.some(x => x.includes('Anna')) && !vic.some(x => x.includes('Petr')),
   'dvě slova zúží výsledek, ne rozšíří', vic);
+
+nadpis('Hledání podle organizace, ve které osoba pracuje');
+// V řádku je organizace vidět („Jan Zaměstnanec (Firma XY, s.r.o.)"), ale hledat
+// podle ní dřív nešlo: bylo vidět, kdo pracuje ve firmě XY, a „xy" nenašlo nikoho.
+for (const dotaz of ['xy', 'XY', 'Firma XY']) {
+  const v = await hledej(dotaz);
+  ok(s, v.some(x => x.includes('Jan Zaměstnanec')),
+    '„' + dotaz + '" najde osobu podle její organizace', v);
+}
+const vOrg = await hledej('xy');
+ok(s, vOrg.some(x => x.includes('Firma XY')), 'a samotnou organizaci taky');
+ok(s, !vOrg.some(x => x.includes('Eva Úřednice') || x.includes('Anna')),
+  'osoby z jiné (nebo žádné) organizace se nepletou', vOrg);
+
+ok(s, (await hledej('zatec')).some(x => x.includes('Eva Úřednice')),
+  'organizace se hledá i bez diakritiky');
+ok(s, (await hledej('Žatec')).some(x => x.includes('Eva Úřednice')),
+  'a stejně tak s diakritikou');
+
+const spolu = await hledej('eva zatec');
+ok(s, spolu.some(x => x.includes('Eva Úřednice')) && !spolu.some(x => x.includes('Jan Zaměstnanec')),
+  'jedno slovo z názvu a druhé z organizace platí jako AND', spolu);
+
+nadpis('Hledá se i podle stavu úkolu — je taky v řádku vidět');
+ok(s, (await hledej('hotovo')).some(x => x.includes('Dopsat zápis')),
+  '„hotovo" najde hotový úkol podle stavu v popisku');
 
 nadpis('Co se nemá najít');
 const nic = await hledej('naprostoneexistujici');

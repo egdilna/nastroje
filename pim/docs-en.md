@@ -982,8 +982,11 @@ this is one click.
 ## Links between entities
 
 The **Vybrat entitu** (Select entity) dialog — used for link targets, for inserting a wiki link
-with `Ctrl+Shift+K`, and for includes and status chips — searches the entity's **title, tags and
-type (aspect)** at once.
+with `Ctrl+Shift+K`, and for includes and status chips — searches the entity's **title, tags,
+type (aspect) and the label shown after the title** at once: the **organization for a person**
+and the **status for a task**. The rule is simple: *whatever is visible in the row can be
+searched for*. So typing `xy` also finds everyone who works at Firma XY, and `hotovo` finds
+completed tasks.
 
 Every list item **starts with the entity's title**. The selection marker (`○` / `●`, or `☐` / `☑`
 in multi-select) is visual only and screen readers do not read it, so first-letter navigation
@@ -1009,7 +1012,7 @@ Links are typed references between entities. Defined types:
 
 **Links show in both directions**: on the entity you see your outgoing links in Links section and incoming in Inverse Links.
 
-**Unified entity picker**: when adding a link (and elsewhere where an entity is selected — meeting attendees and tasks, etc.) a single shared dialog is used, with search and an **aspect filter**. For people, the organization they work at is shown in parentheses; for tasks, their status — to make selection easier.
+**Unified entity picker**: when adding a link (and elsewhere where an entity is selected — meeting attendees and tasks, etc.) a single shared dialog is used, with search and an **aspect filter**. For people, the organization they work at is shown in parentheses; for tasks, their status — to make selection easier. **The search covers what is in the parentheses too**: `xy` finds people from Firma XY, `hotovo` finds completed tasks. The organization comes from the person's `worksAt` link, so someone without it cannot be found by their employer.
 
 ## Adding a new entity straight into projects
 

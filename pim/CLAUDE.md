@@ -436,6 +436,31 @@ Je to **jen v aplikaci**, ne v šabloně prohlížeče.
 Hlídá to `pim/testy/rychle-tagy.mjs` a `pim/testy/rychle-aspekty.mjs`
 (kanárci na ostatní entity).
 
+## Dialog Vybrat entitu: hledá se podle toho, co je v řádku vidět
+
+`openRelationPicker(opts)` je **jediný** dialog na výběr entity — cíl vazby, wiki odkaz,
+include, status chip, účastníci i úkoly schůzky. `pickerEntityExtraLabel(e, najdi)` k názvu
+dopisuje popisek navíc: **organizaci u osoby** (vazba `worksAt`) a **stav u úkolu**.
+
+**Filtr musí hledat ve všem, co řádek ukazuje.** Dřív se hledalo jen v názvu, tazích
+a aspektu, zatímco organizace se vypisovala — v seznamu bylo napsané, kdo pracuje ve
+firmě XY, ale `xy` nenašlo nikoho. Zvenčí to nevypadá jako chybějící pravidlo, ale jako
+rozbité hledání. Kdo do řádku přidá další údaj, přidá ho i do shody.
+
+Dvě věci k výkonu, které nejsou kosmetika:
+
+- **Popisek se počítá jednou za otevření dialogu** (mapa `popiskyNavic` s textem
+  i normalizovaným tvarem), ne při každém stisku klávesy. Filtrování jde přes **všechny**
+  entity při každém znaku.
+- **`pickerEntityExtraLabel` bere `najdi` zvenčí.** `findEntity()` je lineární průchod
+  `db.entities`, takže dohledávat organizaci každé osoby přes něj znamená n² porovnání.
+  Dialog si proto postaví rejstřík `id → entita` a předá ho.
+
+Popisek navíc je **jen v aplikaci**: kopie dialogu ve `STATIC_VIEWER_TEMPLATE`
+`pickerEntityExtraLabel` nemá, takže v prohlížeči žádný popisek není a není co hledat.
+
+Hlídá to `pim/testy/vyber-entity.mjs`.
+
 ## Tagová matice: rozdělaná práce stranou od dat
 
 `otevriTagovouMatici(entityId)` je tabulka tagů nad okolím jedné entity. Dvě věci,
