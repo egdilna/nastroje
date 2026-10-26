@@ -995,6 +995,16 @@ dopředu**, kdo šablonu chce, poskládá si ji od nuly.
   šablony psané jako `item: - …` vypadají dál stejně. `table` má vlastní zápis (`columns:`)
   a `item:` se v ní neuplatní. Hodnotu sloupce počítá `sabPoleEntity` přes `slozenyText` —
   druhý způsob, jak se dostat k hodnotě, se nikam nepíše.
+- **Blok aspektů si atributy bere podle id, ne podle názvu.** `blokAspekty` předá
+  `blokAtributy` vnitřní `__ids` (+ `__zdroj` s id aspektu); `only`/`except` zůstávají
+  podle názvů, protože to je zápis, který píše uživatel. Dokud se aspekt vybíral jménem,
+  vzal si ze `getAllAttrs` **každý** stejně pojmenovaný atribut entity: dva aspekty
+  s atributem „Stav" se vypsaly oba u obou, hodnoty se zdvojily a atribut typu téhož
+  jména se navíc započítal jako spotřebovaný, takže zmizel i z dokumentového exportu
+  (hlášeno od uživatele: „víc aspektů se stejnými atributy se vykresluje u všeho
+  a je v tom mišmaš"). Pořadí dává výčet id, tedy pořadí atributů v aspektu.
+  **Prohlížeč seskupuje sekce aspektů podle `sourceId`** ze stejného důvodu — podle
+  názvu by se dva stejnojmenné aspekty slily do jedné sekce.
 - **`only` je filtr i pořadí.** Výčet v něm přebíjí pořadí modelu (stabilní řazení podle
   `jen.indexOf`, takže dva atributy téhož jména z typu a z aspektu drží svoje pořadí).
   Bez `only` se nepřerovnává nic — pravidlo „data se nikdy nepřerovnávají, řadí se až to,

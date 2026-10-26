@@ -2995,7 +2995,10 @@ přejmenování nerozbije.
 Bez něj jdou na konec.
 
 Aspekt bez vlastní šablony přispěje svým výchozím blokem atributů — jinak by přidání
-aspektu k entitě nebylo v detailu vidět vůbec.
+aspektu k entitě nebylo v detailu vidět vůbec. **Bere si přitom přesně své atributy,
+podle jejich identifikátorů.** Dva aspekty, které mají shodně pojmenovaný atribut (třeba
+„Stav"), si tedy nelezou do zelí a atribut typu téhož jména se do nich taky neplete —
+každý aspekt vypíše svoje a jen jednou. Pořadí drží pořadí atributů v aspektu.
 
 **Když šablonu nemá typ, ale má ji připnutý aspekt, použije se i tak.** Aspekt je
 průřezový: kdo si napíše šablonu pro „Spisovou službu", nemá ji psát ještě pěti typům,
