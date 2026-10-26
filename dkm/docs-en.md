@@ -334,11 +334,19 @@ stack: attributes first, then the tabs, and that line last.
   also the targets of relation attributes and wiki links `[[Name]]` from texts. It mirrors
   the **Linked from** section exactly — whatever counts as an incoming link counts as an
   outgoing one too
-- **Linked from** — entities that reference this one (classic relations, attribute-relations, wiki-links). Groups have different labels:
-  - `relation name ←` (classic relations)
-  - `Type / AttrName ←` (attribute-of-type-relation references)
-  - `◎ Aspect / AttrName ←` (aspect attribute references)
-  - `[[AttrName]] (Context) ←` (wiki-links)
+- **Linked from** — entities that reference this one (classic relations, attribute-relations, wiki-links).
+
+**Every group is a heading of its own**, with the entity chips below it. The card keeps
+growing as relations are added and a single paragraph of them was unreadable; a heading is
+also a stop when moving by headings. The arrow in the heading gives the direction, so both
+sections read fine stacked. The shapes:
+
+| Heading | Where the link comes from |
+|---|---|
+| `relation name →` / `inverse name ←` | classic relation |
+| `Type / AttrName →` `←` | relation attribute of a type |
+| `◎ Aspect / AttrName →` `←` | relation attribute of an aspect |
+| `[[AttrName]] (Context) →` `←` | wiki link in a text |
 - **Objects** — section with entity's objects (see chapter 17)
 - **Comments** — section with comments and new-comment form (see chapter 16)
 - **Structural view** — 🌳 hierarchical tree by relations. It starts **collapsed, root
@@ -3231,6 +3239,7 @@ saves even with Caps Lock on and on layouts where that key types a different let
 | Alt+S | Save |
 | Alt+M | Merge — fetch other people's changes (does not save) |
 | Alt+N | New entity — of that type when on a single-type tab |
+| Alt+I | The Inbox (even with no Inbox tab on the bar) |
 | Alt+A | The All list (even with no All tab on the bar) |
 | Alt+B | Back |
 | Alt+R | Add relation (in entity detail) |

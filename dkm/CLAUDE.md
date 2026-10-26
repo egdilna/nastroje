@@ -430,6 +430,15 @@ Strukturální pohled, Tagy, Komentáře. Pod oběma sloupci jeden řádek `.dme
 **Karty nenahrazují nadpisy.** Každá sekce si uvnitř panelu nechává svoje `<h3>`, aby se
 po detailu dalo dál pohybovat po nadpisech. Kdo přidá kartu, ať v ní nadpis nechá.
 
+**Typ vazby je v kartě Vazby nadpis** (`h4.rgrp-l` pod `h3` sekce), ne popisek vedle
+odznáčků. Vazeb v projektu přibývá a skupiny slité do odstavce textu se nedaly přečíst
+(hlášeno od uživatele); nadpis je navíc zastávka při pohybu po nadpisech. **Směr nese
+každý nadpis šipkou** — obě sekce jsou v jedné kartě pod sebou, takže bez ní nejde poznat,
+na kterou stranu se dívám; odchozí typ vazby ji dřív jediný neměl. Dvojtečka na konci
+popisku zmizela, nadpis ji nechce. Prohlížeč má vlastní kopii (`skupinaOdkazu`) — měň obě.
+Strukturální pohled (`out-gl`) nadpisy **nemá** a mít nemá: je to strom libovolné hloubky,
+úroveň nadpisu by v něm nic neznamenala.
+
 **Počty patří do názvu karty** (`3→ 4←`, `2`). Schované sekce jinak není poznat, že vůbec
 něco obsahují. Značka je jen pro oči (`aria-hidden`), odečítači se počty řeknou slovy
 v `aria-label`.
@@ -1483,8 +1492,8 @@ v odpovídajícím pohledu; sekce nastavení čte ze sdíleného `SETTINGS_SEKCE
 nerozejde s levým sloupcem nastavení.
 
 ## Klávesové zkratky
-Alt-zkratky (L, S, N, A, B, R, U a Alt+1…9 na záložky) jsou **na jednom místě v globálním
-`keydown`**, ne na `accesskey` u tlačítek. Dřív fungovaly jen tam, kde zrovna to tlačítko
+Alt-zkratky (L, S, M, N, I, A, B, R, U a Alt+1…9 na záložky) jsou **na jednom místě
+v globálním `keydown`**, ne na `accesskey` u tlačítek. Dřív fungovaly jen tam, kde zrovna to tlačítko
 bylo — Alt+N tedy na detailu ani v nastavení vůbec ne. `accesskey` v aplikaci nepoužívej.
 
 **Alt-zkratku čti z `ev.code` (`altZnak`), nikdy z `ev.key`.** S Altem rozložení klávesnice
@@ -1492,6 +1501,11 @@ mění, jaký znak vyjde — na české klávesnici je Alt+U „¨" a Alt+2 „�
 Prosté klávesy (n, e, r, c…) naopak `ev.key` chtějí, ty rozložení respektovat mají.
 Ctrl-zkratky berou obojí (`ctrlKlavesa`): znak kvůli zvyku, fyzickou klávesu kvůli
 Caps Locku a rozložením, kde Ctrl+S pošle „ы". Nikdy neporovnávej jen `ev.key==='s'`.
+
+**Navigační zkratka má mít obě podoby.** Inbox měl prosté `i`, ale Alt+I ne, zatímco
+záložka Vše měla `a` i Alt+A — kdo si zvykl na Alt+A, zkusil Alt+I a nestalo se nic
+(hlášeno od uživatele). Kdo přidá navigační klávesu, ať ji dá do obou větví a do
+`helpKeyboard` v obou jazycích.
 
 **Výjimka jsou markdownová pole** — tam zkratky visí na samotné textarei a událost
 zastaví, protože Ctrl+K i Ctrl+Shift+K globálně znamenají něco jiného. Viz „Zkratky
