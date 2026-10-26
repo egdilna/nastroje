@@ -17,7 +17,14 @@ await nasypej(stranka, [
     attributes: { status: 'active', goal: 'Kanarek-GOAL' }, tags: ['tag-a'] },
   { id: 'p2', title: 'Ukol jedna', aspects: ['Task'], attributes: { status: 'todo' }, body: 'Kanarek-UKOL' },
   { id: 'p3', title: 'Archivovana', aspects: ['Note'], body: 'Kanarek-ARCHIV', archived: true },
-  { id: 'p4', title: 'Osoba', aspects: ['Person'], body: 'Kanarek-OSOBA s [[Projekt Alfa]].' }
+  { id: 'p4', title: 'Osoba', aspects: ['Person'], body: 'Kanarek-OSOBA s [[Projekt Alfa]].' },
+  // Srovnání úrovní nadpisů při includu má šablona prohlížeče vlastní kopii, takže
+  // se musí ověřit na vygenerovaném souboru. Vkládaná část má schválně jen nadpisy
+  // 4 a 5 — pod nadpisem 2 z nich musí vyjít 3 a 4.
+  { id: 'p5', title: 'Vkladana cast', aspects: ['Note'],
+    body: '#### Ctyrka\n\nKanarek-VLOZENE\n\n##### Petka\n\nText.' },
+  { id: 'p6', title: 'Hostitel', aspects: ['Note'],
+    body: '# Hlavni\n\n## Kapitola\n\n{{include:Vkladana cast}}' }
 ], { savedViews: [{ id: 'v1', name: 'Pohled', icon: '⭐', filters: { aspect: 'Task' } }] });
 await stranka.evaluate(() => { findEntity('p2').links = [{ to: 'p1', type: 'partOf', note: '' }]; });
 
@@ -53,7 +60,7 @@ const zaklad = await stranka2.evaluate(() => ({
   maRender: typeof render === 'function'
 }));
 ok(s, zaklad.viewerMode, 'běží ve viewer módu');
-ok(s, zaklad.entit === 4, 'má všechny entity', zaklad.entit);
+ok(s, zaklad.entit === 6, 'má všechny entity', zaklad.entit);
 
 await stranka2.evaluate(() => { state.view = 'detail'; state.detailId = 'p1'; render(); });
 await stranka2.waitForTimeout(700);
@@ -65,6 +72,17 @@ ok(s, await stranka2.evaluate(() => !!document.querySelector('.kanban-col')), 'k
 ok(s, await stranka2.evaluate(() =>
   [...document.querySelectorAll('.kanban-col')].every(c => c.querySelectorAll('.kanban-card').length > 0)),
   'a nemá prázdné sloupce');
+
+nadpis('Srovnání úrovní nadpisů při includu platí i v prohlížeči');
+await stranka2.evaluate(() => { state.view = 'detail'; state.detailId = 'p6'; render(); });
+await stranka2.waitForTimeout(700);
+const urovne = await stranka2.evaluate(() =>
+  Array.from(document.querySelectorAll('#body-rendered h1,#body-rendered h2,#body-rendered h3,#body-rendered h4,#body-rendered h5,#body-rendered h6'))
+    .map(h => h.tagName.slice(1) + ':' + h.textContent.trim()));
+ok(s, urovne.join(' | ') === '1:Hlavni | 2:Kapitola | 3:Ctyrka | 4:Petka',
+  'z nadpisů 4 a 5 vyjdou pod nadpisem 2 nadpisy 3 a 4 — stejně jako v aplikaci', urovne);
+ok(s, await stranka2.evaluate(() => document.getElementById('main').textContent.includes('Kanarek-VLOZENE')),
+  'a vložený text je celý');
 
 for (const [pohled, popis] of [['all', 'Vše'], ['tasks', 'Úkoly'], ['tags', 'Tagy'], ['savedView', 'uložený pohled']]) {
   const pred = chybyProhlizece.length;
