@@ -329,11 +329,18 @@ nejdřív atributy, pak karty, nakonec ten řádek.
 - **Vazby** — kam entita odkazuje: klasické vazby seskupené podle typu vazby, ale taky
   cíle vazebních atributů a wiki odkazy `[[Název]]` z textů. Je to přesné zrcadlo sekce
   **Odkazuje sem** — co se počítá jako příchozí odkaz, počítá se i jako odchozí
-- **Odkazuje sem** — entity, které odkazují sem (klasické vazby, atributy typu relation, wiki-linky). Skupiny mají různé popisky:
-  - `název vazby ←` (klasické vazby)
-  - `Typ / Atribut ←` (odkazy přes atribut typu)
-  - `◎ Aspekt / Atribut ←` (odkazy přes aspektový atribut)
-  - `[[Atribut]] (Kontext) ←` (wiki-linky)
+- **Odkazuje sem** — entity, které odkazují sem (klasické vazby, atributy typu relation, wiki-linky).
+
+**Každá skupina je vlastní nadpis** a odznáčky s entitami stojí pod ním. Vazeb v kartě
+přibývá a v jednom odstavci se v nich nedalo vyznat; nadpis je navíc zastávka při pohybu
+po nadpisech. Šipka v nadpisu říká směr, takže se obě sekce čtou i pod sebou. Tvary:
+
+| Nadpis | Odkud odkaz je |
+|---|---|
+| `název vazby →` / `opačný název ←` | klasická vazba |
+| `Typ / Atribut →` `←` | vazební atribut typu |
+| `◎ Aspekt / Atribut →` `←` | vazební atribut aspektu |
+| `[[Atribut]] (Kontext) →` `←` | wiki odkaz v textu |
 - **Objekty** — sekce s objekty entity (viz kapitola 17)
 - **Komentáře** — sekce s komentáři a formulářem na nový (viz kapitola 16)
 - **Strukturální pohled** — 🌳 hierarchický strom podle vazeb. Ve výchozím stavu je
@@ -3173,6 +3180,7 @@ i se zapnutým Caps Lockem a na rozložení, kde ta klávesa píše jiné písme
 | Alt+S | Uložit |
 | Alt+M | Sloučit — stáhnout změny od ostatních (neukládá) |
 | Alt+N | Nová entita — na záložce jednoho typu rovnou toho typu |
+| Alt+I | Inbox (i když záložku Inbox v liště nemáš) |
 | Alt+A | Seznam Vše (i když záložku Vše v liště nemáš) |
 | Alt+B | Zpět |
 | Alt+R | Přidat vazbu (v detailu entity) |
