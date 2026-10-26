@@ -972,7 +972,10 @@ klik.
 ## Vazby mezi entitami
 
 Dialog **Vybrat entitu** (výběr cíle vazby, vložení wiki odkazu přes `Ctrl+Shift+K`, include
-i status chip) hledá zároveň v **názvu, tazích a typu (aspektu)** entity.
+i status chip) hledá zároveň v **názvu, tazích, typu (aspektu) a v popisku za názvem** —
+tedy v **organizaci u osoby** a ve **stavu u úkolu**. Platí jednoduché pravidlo: *co je
+v řádku vidět, podle toho jde hledat*. Napsat `xy` tedy najde i všechny osoby, které
+pracují ve Firmě XY, a `hotovo` hotové úkoly.
 
 Každá položka seznamu **začíná názvem entity**. Značka výběru (`○` / `●`, ve vícenásobném
 výběru `☐` / `☑`) je jen vizuální a odečítač obrazovky ji nečte, takže jde v seznamu hledat
@@ -999,7 +1002,7 @@ Vazby jsou typované odkazy mezi entitami. Definované typy:
 
 **Vazby se zobrazují v obou směrech**: u entity vidíte své outgoing vazby v sekci Vazby a incoming v Inverzních vazbách.
 
-**Sjednocený výběr entity**: při přidávání vazby (i jinde, kde se vybírá entita — účastníci a úkoly schůzky apod.) se používá jeden společný dialog s hledáním a **filtrem podle aspektu**. U osob se v závorce zobrazuje organizace, kde pracují, u úkolů jejich stav — pro snazší orientaci ve výběru.
+**Sjednocený výběr entity**: při přidávání vazby (i jinde, kde se vybírá entita — účastníci a úkoly schůzky apod.) se používá jeden společný dialog s hledáním a **filtrem podle aspektu**. U osob se v závorce zobrazuje organizace, kde pracují, u úkolů jejich stav — pro snazší orientaci ve výběru. **Hledání jde i podle toho, co je v závorce**: `xy` najde osoby z Firmy XY, `hotovo` hotové úkoly. Organizace se bere z vazby `worksAt` té osoby, takže kdo ji nemá vyplněnou, se podle firmy najít nedá.
 
 ## Přidávání nové entity rovnou do projektů
 

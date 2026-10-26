@@ -24589,12 +24589,17 @@ function openCustomAttrDialog(entity) {
 //   currentIds: string[],             // aktuálně vybraná ID
 //   onSelect: (ids: string[]) => void
 // }
-function pickerEntityExtraLabel(e) {
+// Popisek za názvem v dialogu Vybrat entitu: u osoby organizace, u úkolu stav.
+// `najdi` je volitelné — dialog si dodává svůj rejstřík, protože `findEntity()`
+// je lineární průchod `db.entities` a volat ho při každém stisku klávesy za
+// každou osobu znamená n² porovnání.
+function pickerEntityExtraLabel(e, najdi) {
+  const dohledej = najdi || findEntity;
   const parts = [];
   const asp = e.aspects || [];
   // Osoba: organizace, kde pracuje (vazby worksAt)
   if (asp.includes('Person')) {
-    const orgs = (e.links || []).filter(l => l.type === 'worksAt').map(l => findEntity(l.to)).filter(Boolean);
+    const orgs = (e.links || []).filter(l => l.type === 'worksAt').map(l => dohledej(l.to)).filter(Boolean);
     if (orgs.length > 0) parts.push(orgs.map(o => getDisplayTitle(o)).join(', '));
   }
   // Úkol: stav
@@ -24650,6 +24655,22 @@ function openRelationPicker(opts) {
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   }
 
+  // Popisek navíc (organizace u osoby, stav u úkolu) se počítá **jednou za
+  // otevření dialogu**, ne při každém stisku: data se mezitím nemění a stavět ho
+  // pokaždé znovu by u větší báze bylo cítit. Rejstřík id → entita nahrazuje
+  // `findEntity()`, aby se protější entita nehledala lineárním průchodem.
+  const rejstrikEntit = new Map(db.entities.map(e => [e.id, e]));
+  const popiskyNavic = new Map();
+  function popisekNavic(e) {
+    let z = popiskyNavic.get(e.id);
+    if (!z) {
+      const text = pickerEntityExtraLabel(e, (id) => rejstrikEntit.get(id)) || '';
+      z = { text: text, norm: bezDiakritiky(text) };
+      popiskyNavic.set(e.id, z);
+    }
+    return z;
+  }
+
   function refreshList() {
     const raw = bezDiakritiky(searchInput.value.trim());
     const words = raw ? raw.split(/\s+/).filter(w => w.length > 0) : [];
@@ -24667,20 +24688,28 @@ function openRelationPicker(opts) {
       if (aspectFilter) {
         if (!(e.aspects || []).includes(aspectFilter)) return false;
       }
-      // Hledání po slovech v názvu, tagách a typu (aspektu). U typu se hledá jak
-      // podle popisku („Činnost"), tak podle klíče aspektu („cinnost"), aby zabralo
-      // obojí bez ohledu na to, jak je vlastní aspekt pojmenovaný.
+      // Hledání po slovech v názvu, tagách, typu (aspektu) a v popisku navíc.
+      // U typu se hledá jak podle popisku („Činnost"), tak podle klíče aspektu
+      // („cinnost"), aby zabralo obojí bez ohledu na to, jak je vlastní aspekt
+      // pojmenovaný.
+      //
+      // Popisek navíc je organizace u osoby a stav u úkolu — tedy přesně to, co je
+      // v řádku vidět. Dřív se podle něj hledat nedalo: v seznamu stálo, kdo pracuje
+      // ve firmě XY, ale „xy" nenašlo nikoho. **Co je v řádku vidět, podle toho musí
+      // jít hledat** — jinak to vypadá jako rozbité hledání.
       if (words.length > 0) {
         const title = bezDiakritiky(getDisplayTitle(e));
         const altTitle = bezDiakritiky(e.title);
         const tags = (e.tags || []).map(bezDiakritiky);
         const aspects = [];
         (e.aspects || []).forEach(a => { aspects.push(bezDiakritiky(aspectLabel(a))); aspects.push(bezDiakritiky(a)); });
+        const navic = popisekNavic(e).norm;
         const allMatch = words.every(w =>
           title.includes(w) ||
           altTitle.includes(w) ||
           tags.some(t => t.includes(w)) ||
-          aspects.some(a => a.includes(w))
+          aspects.some(a => a.includes(w)) ||
+          navic.includes(w)
         );
         if (!allMatch) return false;
       }
@@ -24706,7 +24735,7 @@ function openRelationPicker(opts) {
       return '<li role="option" id="rp-opt-' + i + '" tabindex="-1" data-id="' + escapeHtml(e.id) + '" data-idx="' + i + '"' +
         ' aria-selected="' + (checked ? 'true' : 'false') + '"' + (checked ? ' class="checked"' : '') + '>' +
         znacka + escapeHtml(getDisplayTitle(e)) +
-        ((typeof pickerEntityExtraLabel === 'function' && pickerEntityExtraLabel(e)) ? ' <small class="meta">(' + escapeHtml(pickerEntityExtraLabel(e)) + ')</small>' : '') +
+        (popisekNavic(e).text ? ' <small class="meta">(' + escapeHtml(popisekNavic(e).text) + ')</small>' : '') +
         (aspectsTxt ? ' <small class="meta">(' + escapeHtml(aspectsTxt) + ')</small>' : '') +
         '</li>';
     }).join('');
