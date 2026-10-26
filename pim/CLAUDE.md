@@ -676,6 +676,58 @@ Vkládání rich-textu ze schránky prochází konverzí **HTML → Markdown** (
 entita vzniklá z wiki odkazu. Zděděné vazby se nesmí duplikovat — kontroluj existující
 `partOf` před přidáním.
 
+## Include srovnává úrovně nadpisů
+
+Vložená entita je **podúroveň místa, kam se vkládá**: její nejvyšší nadpis dostane
+úroveň o jednu hlubší, než je nejbližší nadpis nad includem, a ostatní si proti němu
+udrží rozestupy. Posun se počítá **z toho, co ve vložené entitě opravdu je**
+(`nejvyssiUrovenNadpisu()`), ne z pevného čísla — jinak by dokument sestavený z částí,
+které někdo psal od `#` a jiný od `####`, měl rozsypané úrovně.
+
+Celé pravidlo je v pěti funkcích nad `renderMarkdown()`: `proKazdyNadpisVTextu()`,
+`nejvyssiUrovenNadpisu()`, `urovenPoslednihoNadpisu()` / `zakladUrovneProMisto()`,
+`posunNadpisuProInclude()` a dvě aplikace posunu — `urovenNadpisuSPosunem()` pro render
+a `posunNadpisuVTextu()` pro Markdown.
+
+**Platí na obou cestách, kterými include prochází, a ty se nesmí rozejít:**
+
+| Cesta | Kde | Jak |
+|---|---|---|
+| render na obrazovku | `resolveInclude()` → `ctx.posunNadpisu` → `renderBlock()` | úroveň se posune při vykreslení `<hN>` |
+| rozbalení do Markdownu | `expandMarkdownIncludes()` | přepíšou se křížky ve vloženém textu |
+
+Druhá cesta jde do **exportu, tisku, kopie zdroje, podkladů pro umělou inteligenci
+a pushe na GitHub** (tedy i na web EGdílny), a DOCX ji dědí přes `model.body`. Kdo
+sáhne na jednu, musí na druhou — jinak vypadá export jinak než obrazovka.
+
+Čtyři věci, které nejsou libovolné:
+
+1. **Základ dává `ctx._posledniUroven`, a to v už posunutých úrovních.** Zapisuje ho
+   `renderBlock()` u každého nadpisu. Každý include dostává **vlastní ctx**, takže se
+   nadpisy z jednoho includu nepropíšou do základu toho dalšího: dva includy pod jedním
+   nadpisem začnou **oba** na téže úrovni. Kdyby se `_posledniUroven` dědilo zpátky
+   nahoru, druhý include by se zanořil pod první.
+2. **Posun se počítá z vlastního těla cíle, ne z rozbaleného výsledku.** V Markdownové
+   cestě je to podstatné: nadpisy, které do výsledku přinesl vnořený include, jsou vůči
+   svému místu srovnané už teď a posunou se s ním. Díky tomu vyjde vnoření stejně jako
+   při renderu — ověřeno v testu na obou cestách proti témuž očekávání.
+3. **Bloky kódu se přeskakují.** `# poznámka` uvnitř ohradníků není nadpis a přepsat ji
+   by znamenalo sahat autorovi do kódu.
+4. **Bez nadpisu nad includem se neposouvá nic.** Není pod čím být podúrovní. Je to
+   zároveň to, co nechává existující dokumenty s includem nad prvním nadpisem beze změny.
+
+Zaráží se na 1 a 6 — hlubší nadpis HTML nemá, takže se přetečené úrovně slijí do šesté;
+mez formátu, ne chyba. **Do dat se nezapisuje nic**, je to čistě zobrazovací: hlídají to
+kanárci na těla vkládaných entit.
+
+Zobrazovací kód znamená **i šablonu prohlížeče** — ta má vlastní kopii
+`renderMarkdown()`/`renderBlock()`/`resolveInclude()`, takže tam jsou i čtyři z těch
+funkcí (bez Markdownové cesty, kterou prohlížeč nemá). Ověřuje se na **vygenerovaném
+souboru**, ne v šabloně: sada `staticky-prohlizec.mjs` má na to vlastní entitu s includem.
+
+Hlídá to `pim/testy/includ-nadpisy.mjs` (35 kontrol, obě cesty proti témuž očekávání)
+a `pim/testy/staticky-prohlizec.mjs`.
+
 ## České jazykové funkce
 - `parseNaturalDate(text)` / `natlangParseDateInText` — přirozené datum v češtině
   („zítra“, „v pátek“, „za 3 dny“) s `dayDelta`/`applyDelta` a zachováním času

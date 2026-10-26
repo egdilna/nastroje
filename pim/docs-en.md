@@ -124,11 +124,54 @@ The entity body uses markdown with extensions:
 - **Link by entity number**: `#42` — the number is in the Meta section of the entity detail
 - **Include (transclusion)**: `{{include:Entity title}}` — embeds the content of another entity (with recursive placeholder evaluation)
   - By internal ID: `{{include:id:<entity id>}}` — does not break when the target entity is renamed
+  - **Heading levels are normalized to the place of inclusion** — see below
 - **Markdown tasks**: `- [ ] task`, `- [x] done` (with **→ Entity** button in annotation mode to convert to a standalone Task with `partOf` link)
 - **CriticMarkup**: `{++add++}`, `{--delete--}`, `{==highlight==}`, `{>>note<<}`, `{~~old~>new~~}` (substitution) — revision editor with step-by-step accept/reject
 - **Private blocks**: `~~~private … ~~~` — visible only in-app, not in export/include
 - **Footnotes**: `[^1]` + `[^1]: text`
 - **Placeholders**: `((Attribute))` — see above
+
+### Heading levels on include
+
+An included entity behaves as a **subsection of the place you include it in**. Its topmost
+heading gets a level one deeper than the **nearest heading above the include**, and the
+remaining headings keep their relative distances from it.
+
+Example — in *Hlavní dokument* you have:
+
+```
+# Hlavní dokument
+## Kapitola
+{{include:Část}}
+```
+
+and *Část* contains headings of levels 1 and 2. They render as **3 and 4**, i.e. as
+subsections of that *Kapitola*.
+
+**It is computed from what the included entity actually contains**, not from a fixed
+number. If *Část* only has headings of levels 4 and 5, they render as **3 and 4** in the
+same place. A document assembled from parts — one written from `#`, another from `####` —
+therefore comes out consistent.
+
+What follows from that:
+
+| Situation | What happens |
+|---|---|
+| Include below a level 1 heading | the included content starts at 2 |
+| Include below a level 3 heading | the included content starts at 4 |
+| **No heading above the include** | **nothing is shifted** — the included entity keeps its own levels |
+| Two includes below one heading | both start at the same level; the second is not nested under the first |
+| A heading written **after** the include | stays exactly where you wrote it |
+| An include inside an include | composes one level deeper again |
+| Overflow past level 6 | collapses into 6 — HTML has no deeper heading |
+
+Two things that do **not** change: the source text of the included entity (the
+normalization is display-only, nothing is written to the data) and `#` inside code blocks
+(there it is a comment, not a heading).
+
+This applies **everywhere alike** — on screen, in exports, in print, when copying the
+source, in the material sent to the artificial intelligence, when pushing to GitHub, and
+in the generated offline viewer.
 - **Automatic counters**: `((#))` = level 1, `((##))` = level 2, etc.; `((#.##))` prints a multi-level number (e.g. `1.2`) — the deepest level increments, higher ones are read-only, deeper ones reset when a higher one increments. `((#name))` = a named running counter for the whole entity (each name runs independently)
 - **Insert structured document**: `((document))` inserts the content of this entity's "Structured document" aspect at that point in the body (as Markdown)
 - **Insert journal**: `((deník))` (or `((denik))` — this one has no English spelling) inserts this entity's journal at that point in the body, oldest entry first (only on entities with the "Journal" aspect)

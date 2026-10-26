@@ -4080,6 +4080,90 @@ function guardPlaceholderValue(hodnota, puvodni, offset, cely) {
   return PH_BLOCK_START_RE.test(hodnota + zbytekRadku) ? PH_GUARD + hodnota : hodnota;
 }
 
+// === SROVNÁNÍ ÚROVNÍ NADPISŮ PŘI INCLUDU ===
+// Vložená entita se má chovat jako podúroveň toho místa, kam se vkládá: její
+// nejvyšší nadpis dostane úroveň o jednu hlubší, než je nejbližší nadpis nad
+// includem, a ostatní si proti němu udrží rozestupy.
+//
+// Posun se proto počítá z toho, co ve vložené entitě **opravdu je**, ne z pevného
+// čísla: jsou-li v ní jen nadpisy 4 a 5, vyjdou jako 3 a 4. Kdyby se posouvalo
+// pevně, dokument sestavený z částí psaných různě hluboko by měl rozsypané úrovně.
+//
+// Když nad includem žádný nadpis není, není pod čím být podúrovní a **neposouvá se
+// nic** — vložená entita si nechá vlastní úrovně.
+//
+// Pravidlo platí na obou cestách, kterými include prochází: při renderu na obrazovku
+// (`resolveInclude`) i při rozbalení do Markdownu (`expandMarkdownIncludes`, tedy
+// export, tisk, kopie zdroje, podklady pro umělou inteligenci a push na GitHub).
+// Rozejít se nesmí, jinak vypadá export jinak než obrazovka.
+
+// Projde text po řádcích a pro každý nadpis zavolá `fn`. Bloky kódu přeskakuje:
+// „# poznámka" uvnitř ohradníků není nadpis a přepsat ji by znamenalo sahat do kódu.
+function proKazdyNadpisVTextu(text, fn) {
+  const radky = String(text == null ? '' : text).split('\n');
+  let vKodu = false;
+  for (let i = 0; i < radky.length; i++) {
+    if (/^\s*```/.test(radky[i])) { vKodu = !vKodu; continue; }
+    if (vKodu) continue;
+    const m = radky[i].match(/^(#{1,6})\s+(.*)$/);
+    if (m) fn({ poradi: i, uroven: m[1].length, zbytek: m[2] });
+  }
+}
+
+// Nejvyšší (číselně nejmenší) úroveň nadpisu v textu; null, když text nadpis nemá.
+function nejvyssiUrovenNadpisu(text) {
+  let min = null;
+  proKazdyNadpisVTextu(text, (n) => { if (min === null || n.uroven < min) min = n.uroven; });
+  return min;
+}
+
+// Úroveň posledního nadpisu v textu, tedy toho nejblíž nad jeho koncem.
+function urovenPoslednihoNadpisu(text) {
+  let posledni = null;
+  proKazdyNadpisVTextu(text, (n) => { posledni = n.uroven; });
+  return posledni;
+}
+
+// Základ pro include stojící na pozici `pozice`: nejbližší nadpis nad ním + 1.
+// 0 znamená „nad includem žádný nadpis není" a tedy neposouvat.
+function zakladUrovneProMisto(text, pozice) {
+  const u = urovenPoslednihoNadpisu(String(text == null ? '' : text).slice(0, pozice));
+  return u ? u + 1 : 0;
+}
+
+// O kolik posunout nadpisy vkládaného textu, aby jeho nejvyšší sedl na `zaklad`.
+// Posun jde oběma směry — z nadpisů 4 a 5 pod základem 3 vyjdou 3 a 4.
+function posunNadpisuProInclude(zaklad, text) {
+  if (!zaklad || zaklad < 1) return 0;
+  const min = nejvyssiUrovenNadpisu(text);
+  if (min === null) return 0;
+  return zaklad - min;
+}
+
+// Úroveň nadpisu po posunu z kontextu. Zaráží se na 1 a 6: hlubší nadpis HTML nemá,
+// takže se víc vnořené úrovně slijí do šesté. Je to mez formátu, ne chyba.
+function urovenNadpisuSPosunem(uroven, ctx) {
+  const posun = (ctx && ctx.posunNadpisu) || 0;
+  return Math.min(6, Math.max(1, uroven + posun));
+}
+
+// Přepíše křížky u nadpisů přímo v Markdownu (cesta rozbalení do textu).
+function posunNadpisuVTextu(text, posun) {
+  const vstup = String(text == null ? '' : text);
+  if (!posun) return vstup;
+  const radky = vstup.split('\n');
+  let vKodu = false;
+  for (let i = 0; i < radky.length; i++) {
+    if (/^\s*```/.test(radky[i])) { vKodu = !vKodu; continue; }
+    if (vKodu) continue;
+    const m = radky[i].match(/^(#{1,6})(\s+.*)$/);
+    if (!m) continue;
+    const nova = Math.min(6, Math.max(1, m[1].length + posun));
+    radky[i] = '#'.repeat(nova) + m[2];
+  }
+  return radky.join('\n');
+}
+
 function renderMarkdown(text, options = {}) {
   if (!text) return '';
   const ctx = options.ctx || { depth: 0, includeStack: new Set() };
@@ -4175,7 +4259,11 @@ function renderMarkdown(text, options = {}) {
 function renderBlock(block, ctx) {
   const h = block.match(/^(#{1,6})\s+(.*)$/);
   if (h) {
-    const lvl = h[1].length;
+    // Úroveň může být posunutá, když se tenhle text vkládá do jiného (`ctx.posunNadpisu`).
+    // Zapamatuje se jako „poslední nadpis", protože z něj vychází základ pro include,
+    // který může přijít v některém z dalších bloků.
+    const lvl = urovenNadpisuSPosunem(h[1].length, ctx);
+    if (ctx) ctx._posledniUroven = lvl;
     const headingText = h[2];
     // Pokud běží v advEd kontextu s callbackem pro IDs, použít ho
     let headingId = '';
@@ -4837,6 +4925,11 @@ function resolveDatabaseInclude(inner, ctx) {
 
 function resolveInclude(ref, alias, ctx) {
   if (ctx.depth > 5) return '<div class="transclusion-broken">Příliš hluboké vnoření.</div>';
+  // Základ pro srovnání úrovní nadpisů: nejbližší nadpis nad tímhle includem.
+  // `_posledniUroven` si vede render v ctx a **každý include dostává ctx vlastní**,
+  // takže se nadpisy z jednoho includu nepropíšou do základu toho dalšího — dva
+  // includy pod jedním nadpisem začnou oba na téže úrovni, ne jeden pod druhým.
+  const zakladNadpisu = (ctx && ctx._posledniUroven) ? ctx._posledniUroven + 1 : 0;
   let target = null;
   if (ref.startsWith('id:')) target = findEntity(ref.slice(3));
   else target = findEntity(ref) || findEntityByTitle(ref);
@@ -4850,7 +4943,8 @@ function resolveInclude(ref, alias, ctx) {
   if (isSecuredEntity(target) && isSecuredUnlocked(target.id)) {
     const unl = getUnlockedSecured(target.id);
     const plain = (unl && typeof unl.body === 'string') ? unl.body : '';
-    const newCtxS = { depth: ctx.depth + 1, includeStack: new Set(ctx.includeStack), hideTransclusionMeta: ctx.hideTransclusionMeta, entity: target };
+    const newCtxS = { depth: ctx.depth + 1, includeStack: new Set(ctx.includeStack), hideTransclusionMeta: ctx.hideTransclusionMeta, entity: target,
+      posunNadpisu: posunNadpisuProInclude(zakladNadpisu, plain) };
     newCtxS.includeStack.add(target.id);
     const innerS = renderMarkdown(plain, { ctx: newCtxS });
     if (ctx.hideTransclusionMeta) return innerS;
@@ -4878,7 +4972,8 @@ function resolveInclude(ref, alias, ctx) {
       inner = renderMarkdown('![' + name + '](' + url + ')', { ctx: { depth: ctx.depth + 1, includeStack: new Set(ctx.includeStack), hideTransclusionMeta: ctx.hideTransclusionMeta } });
     }
   } else {
-    const newCtx = { depth: ctx.depth + 1, includeStack: new Set(ctx.includeStack), hideTransclusionMeta: ctx.hideTransclusionMeta, entity: target };
+    const newCtx = { depth: ctx.depth + 1, includeStack: new Set(ctx.includeStack), hideTransclusionMeta: ctx.hideTransclusionMeta, entity: target,
+      posunNadpisu: posunNadpisuProInclude(zakladNadpisu, target.body || '') };
     newCtx.includeStack.add(target.id);
     inner = renderMarkdown(target.body || '', { ctx: newCtx });
   }
@@ -28862,7 +28957,7 @@ function expandMarkdownIncludes(text, opts) {
       return '*[Databáze]*';
     });
     // Regex: {{include:Název}} nebo {{include:Název|alias}} nebo {{include:id:abc}}
-    return work.replace(/\{\{include:([^|}]+?)(?:\|([^}]+?))?\}\}/g, (m, ref, alias) => {
+    return work.replace(/\{\{include:([^|}]+?)(?:\|([^}]+?))?\}\}/g, (m, ref, alias, pozice, cely) => {
       const refTrim = ref.trim();
       let target = null;
       if (refTrim.startsWith('id:')) target = findEntity(refTrim.slice(3));
@@ -28887,7 +28982,15 @@ function expandMarkdownIncludes(text, opts) {
         // Rekurzivně rozbalit body cíle s placeholdery z target entity
         const newStack = new Set(stack);
         newStack.add(target.id);
-        inner = expand(target.body || '', depth + 1, newStack, target);
+        const telo = target.body || '';
+        inner = expand(telo, depth + 1, newStack, target);
+        // Srovnat úrovně nadpisů stejně jako na obrazovce. Základ dá nejbližší nadpis
+        // nad tímhle includem (`pozice` v už rozbalovaném textu), posun se počítá
+        // z **vlastního těla cíle**, ne z rozbaleného výsledku: nadpisy, které do něj
+        // přinesl vnořený include, jsou vůči svému místu srovnané už teď a posunou se
+        // s ním. Díky tomu se vnoření skládá a vyjde stejně jako při renderu.
+        const posun = posunNadpisuProInclude(zakladUrovneProMisto(cely, pozice), telo);
+        if (posun) inner = posunNadpisuVTextu(inner, posun);
       }
       const header = markIncluded ? '↪ *Z entity [[' + getDisplayTitle(target) + ']]*\n\n' : '';
       return header + inner;
@@ -33671,6 +33774,41 @@ function guardPlaceholderValue(hodnota, puvodni, offset, cely) {
   return PH_BLOCK_START_RE.test(hodnota + zbytekRadku) ? PH_GUARD + hodnota : hodnota;
 }
 
+// === SROVNÁNÍ ÚROVNÍ NADPISŮ PŘI INCLUDU ===
+// Vložená entita se chová jako podúroveň místa, kam se vkládá: její nejvyšší nadpis
+// dostane úroveň o jednu hlubší, než je nejbližší nadpis nad includem. Posun se počítá
+// z toho, co ve vložené entitě opravdu je, takže z nadpisů 4 a 5 vyjdou 3 a 4.
+// Bez nadpisu nad includem se neposouvá nic. Totéž dělá aplikace — kopie se nesmí
+// rozejít, jinak se vygenerovaný prohlížeč zobrazí jinak než PIM.
+function proKazdyNadpisVTextu(text, fn) {
+  const radky = String(text == null ? '' : text).split('\\n');
+  let vKodu = false;
+  for (let i = 0; i < radky.length; i++) {
+    if (/^\\s*\`\`\`/.test(radky[i])) { vKodu = !vKodu; continue; }
+    if (vKodu) continue;
+    const m = radky[i].match(/^(#{1,6})\\s+(.*)$/);
+    if (m) fn({ poradi: i, uroven: m[1].length, zbytek: m[2] });
+  }
+}
+
+function nejvyssiUrovenNadpisu(text) {
+  let min = null;
+  proKazdyNadpisVTextu(text, (n) => { if (min === null || n.uroven < min) min = n.uroven; });
+  return min;
+}
+
+function posunNadpisuProInclude(zaklad, text) {
+  if (!zaklad || zaklad < 1) return 0;
+  const min = nejvyssiUrovenNadpisu(text);
+  if (min === null) return 0;
+  return zaklad - min;
+}
+
+function urovenNadpisuSPosunem(uroven, ctx) {
+  const posun = (ctx && ctx.posunNadpisu) || 0;
+  return Math.min(6, Math.max(1, uroven + posun));
+}
+
 function renderMarkdown(text, options = {}) {
   if (!text) return '';
   const ctx = options.ctx || { depth: 0, includeStack: new Set() };
@@ -33724,7 +33862,9 @@ function renderMarkdown(text, options = {}) {
 function renderBlock(block, ctx) {
   const h = block.match(/^(#{1,6})\\s+(.*)$/);
   if (h) {
-    const lvl = h[1].length;
+    // Posun z ctx (include) a poznámka o poslední úrovni pro další include v textu.
+    const lvl = urovenNadpisuSPosunem(h[1].length, ctx);
+    if (ctx) ctx._posledniUroven = lvl;
     return '<h' + lvl + '>' + renderInline(h[2], ctx) + '</h' + lvl + '>';
   }
   if (/^---+$/.test(block.trim())) return '<hr>';
@@ -33957,7 +34097,9 @@ function resolveInclude(ref, alias, ctx) {
       inner = renderMarkdown('![' + name + '](' + url + ')', { ctx: { depth: ctx.depth + 1, includeStack: new Set(ctx.includeStack), hideTransclusionMeta: ctx.hideTransclusionMeta } });
     }
   } else {
-    const newCtx = { depth: ctx.depth + 1, includeStack: new Set(ctx.includeStack), hideTransclusionMeta: ctx.hideTransclusionMeta };
+    const zakladNadpisu = (ctx && ctx._posledniUroven) ? ctx._posledniUroven + 1 : 0;
+    const newCtx = { depth: ctx.depth + 1, includeStack: new Set(ctx.includeStack), hideTransclusionMeta: ctx.hideTransclusionMeta,
+      posunNadpisu: posunNadpisuProInclude(zakladNadpisu, target.body || '') };
     newCtx.includeStack.add(target.id);
     inner = renderMarkdown(target.body || '', { ctx: newCtx });
   }

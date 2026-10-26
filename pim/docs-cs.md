@@ -123,11 +123,52 @@ Tělo entity je v markdownu s rozšířeními:
 - **Odkaz podle čísla entity**: `#42` — číslo najdete v sekci Meta v detailu entity
 - **Include (transkluze)**: `{{include:Název entity}}` — vloží obsah jiné entity (s rekurzivním placeholderem)
   - Podle vnitřního ID: `{{include:id:<id entity>}}` — nerozbije se při přejmenování cílové entity
+  - **Úrovně nadpisů se srovnají podle místa vložení** — viz níž
 - **Markdown úkoly**: `- [ ] úkol`, `- [x] hotovo` (s tlačítkem **→ Entita** v anotačním režimu pro převod na samostatný Task s vazbou `partOf`)
 - **CriticMarkup**: `{++přidat++}`, `{--smazat--}`, `{==zvýraznit==}`, `{>>poznámka<<}`, `{~~staré~>nové~~}` (substituce) — editor revizí s krok-za-krokem
 - **Private bloky**: `~~~private … ~~~` — viditelné jen v aplikaci, ne v exportu/include
 - **Footnotes**: `[^1]` + `[^1]: text`
 - **Placeholdery**: `((Atribut))` — viz výše
+
+### Úrovně nadpisů při includu
+
+Vložená entita se chová jako **podúroveň toho místa, kam ji vkládáte**. Její nejvyšší
+nadpis dostane úroveň o jednu hlubší, než je **nejbližší nadpis nad includem**, a ostatní
+nadpisy si proti němu udrží rozestupy.
+
+Příklad — v entitě *Hlavní dokument* máte:
+
+```
+# Hlavní dokument
+## Kapitola
+{{include:Část}}
+```
+
+a v *Části* jsou nadpisy úrovní 1 a 2. Zobrazí se jako **3 a 4**, tedy jako podkapitoly
+té *Kapitoly*.
+
+**Počítá se z toho, co ve vložené entitě opravdu je**, ne z pevného čísla. Když má *Část*
+jen nadpisy úrovní 4 a 5, zobrazí se na témže místě taky jako **3 a 4**. Dokument
+sestavený z částí, které někdo psal od `#` a jiný od `####`, tak vyjde srovnaný.
+
+Co z toho dál plyne:
+
+| Situace | Co se stane |
+|---|---|
+| Include pod nadpisem 1 | vložené začne na 2 |
+| Include pod nadpisem 3 | vložené začne na 4 |
+| **Nad includem žádný nadpis** | **neposouvá se nic** — vložená entita si nechá vlastní úrovně |
+| Dva includy pod jedním nadpisem | oba začnou na téže úrovni, druhý se nezanoří pod první |
+| Nadpis napsaný **za** includem | zůstává tam, kde jste ho napsali |
+| Include v includu | skládá se dál o úroveň hlouběji |
+| Přetečení za úroveň 6 | slije se do 6 — hlubší nadpis HTML nemá |
+
+Dvě věci, které se **nemění**: zdrojový text vložené entity (srovnání je jen zobrazovací,
+do dat nikdo nepíše) a `#` uvnitř bloků kódu (tam je to komentář, ne nadpis).
+
+Platí to **všude stejně** — na obrazovce, v exportu, v tisku, při kopírování zdroje,
+v podkladech pro umělou inteligenci, při pushi na GitHub i ve vygenerovaném offline
+prohlížeči.
 - **Automatické čítače**: `((#))` = úroveň 1, `((##))` = úroveň 2 atd.; `((#.##))` vypíše víceúrovňové číslo (např. `1.2`) — poslední úroveň se zvyšuje, vyšší se jen čtou, hlubší se při zvýšení vynulují. `((#jméno))` = pojmenovaný průběžný čítač pro celou entitu (každé jméno běží nezávisle)
 - **Vložení strukturovaného dokumentu**: `((dokument))` vloží na dané místo v těle obsah aspektu „Strukturovaný dokument" této entity (jako Markdown)
 - **Vložení deníku**: `((deník))` vloží na dané místo v těle deník této entity od nejstaršího záznamu (jen u aspektu „Deník")
