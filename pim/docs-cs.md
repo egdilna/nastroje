@@ -1407,14 +1407,20 @@ o změny přijdete.
 
 | Co se stalo | Jak to zní |
 |---|---|
-| začíná nahrávání na GitHub | jeden tichý tón — nejtišší zvuk v aplikaci |
-| **uloženo na GitHub** | **tři tóny vzhůru, o něco hlasitěji** — „hotovo, je to venku" |
+| začíná nahrávání na GitHub | **dva rychlé tiky nízko** — nejtišší zvuk v aplikaci |
+| **uloženo na GitHub** | **tři tóny vzhůru, výš a hlasitěji** — „hotovo, je to venku" |
 | přitekly cizí změny (synchronizace) | dva tóny vzhůru, tiše |
 | uloženo lokálně (entita, atribut) | jeden krátký tón |
 | nepovedlo se | dva tóny dolů |
 | dokončený úkol | fanfára (ta jediná je delší) |
 
-Start nahrávání a úspěšné uložení schválně znějí jinak, abyste poznali, jestli se to
-ještě posílá, nebo už je venku. Celé to jde vypnout v Nastavení → Zvuková odezva.
+Start nahrávání a úspěšné uložení se liší **pěti věcmi zároveň** — počtem tónů, směrem,
+výškou, barvou i hlasitostí — abyste poznali, jestli se to ještě posílá, nebo už je venku,
+i při tiché reprodukci. Celé to jde vypnout v Nastavení → Zvuková odezva.
+
+**Hlášky o průběhu nahrávání se nepředčítají.** „Nahrávám na GitHub…" a „Uloženo na
+GitHub (1,8 MB)" zůstávají vidět v bublině dole, ale odečítač obrazovky je nečte — při
+automatickém ukládání po čtyřech sekundách by to bylo neúnosně ukecané a nedá se s tím
+nic dělat. **Chyby se hlásí dál**, ty vědět potřebujete.
 
 **Mohou ostatní vidět mé Zabezpečené poznámky?** Ne. Jejich obsah je AES-GCM šifrovaný heslem, které se nikam neukládá. Bez hesla nikdo nezíská plain text.

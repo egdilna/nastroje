@@ -400,29 +400,57 @@ hlasitost lupe.
 
 **Pravidlo je odstupňované podle toho, jak často zvuk zní, ne jedno pro všechny:**
 
-| Druh | Kdy | Tónů | Délka | Hlasitost |
-|---|---|---|---|---|
-| `upload-start` | začátek nahrávání na GitHub | 1 | 75 ms | 0,03 |
-| `save` / `save-entity` / `load` / `notify` | lokální uložení, čtení | 1 | 90 ms | 0,05 |
-| `sync` | cizí změny se slily | 2 vzhůru | 150 ms | 0,04 |
-| `error` / `warning` / `delete` | nepovedlo se | 2 dolů | 180 ms | 0,05 |
-| `save-gh` | **úspěšně uloženo na GitHub** | 3 vzhůru | 255 ms | 0,075 |
-| `task-done` | dokončený úkol (fanfára) | 104 | 2150 ms | 0,22 |
+| Druh | Kdy | Tónů | Hz | Barva | Délka | Hlasitost |
+|---|---|---|---|---|---|---|
+| `upload-start` | začátek nahrávání na GitHub | 2 tiky | 392→392 | square | 125 ms | 0,035 |
+| `save` / `save-entity` / `load` / `notify` | lokální uložení, čtení | 1 | 880 | sine | 90 ms | 0,05 |
+| `sync` | cizí změny se slily | 2 vzhůru | 740→988 | sine | 150 ms | 0,04 |
+| `error` / `warning` / `delete` | nepovedlo se | 2 dolů | 400→300 | sine | 180 ms | 0,05 |
+| `save-gh` | **úspěšně uloženo na GitHub** | 3 vzhůru | 659→988→1319 | triangle | 290 ms | 0,085 |
+| `task-done` | dokončený úkol (fanfára) | 104 | — | brass | 2150 ms | 0,22 |
 
-**Start nahrávání a úspěšné uložení musí znít jinak.** Na tomhle to stálo: oba volaly
-`playSound('save-gh')` a vedly na týž jediný tón, takže uživatel nepoznal, jestli se to
-ještě posílá, nebo už je venku. Start je proto **nejtišší zvuk v aplikaci** (zní při každém
-autosave, tedy po čtyřech sekundách práce) a úspěch je naopak **jediný zvuk, který říká
-„hotovo, je to venku"** — tři tóny vzhůru, hlasitěji a delší. Pořád je to třetina modemu.
+**Start nahrávání a úspěšné uložení musí znít jinak** a je to **dvakrát prohraná** věc,
+takže pozor na ni. Nejdřív oba volaly `playSound('save-gh')` a vedly na týž tón. Pak dostal
+start vlastní zvuk — jeden krátký sinusový pip o jiné výšce — a uživatel ho **pořád vnímal
+jako týž zvuk**. Poučení: *krátký pip se od krátkého pipu nepozná, i když má jinou výšku.*
 
-Odlišují se **třemi rozměry zároveň** (počet tónů, délka, hlasitost), aby to šlo poznat
-i při tiché reprodukci nebo v hlučném prostředí. Kdo přidá další druh, ať se vejde do
-téhle tabulky a nepřekryje se s žádným řádkem.
+Proto se ty dva liší **pěti rozměry zároveň**:
+
+1. **počet tónů** — 2 vs 3,
+2. **směr** — start stojí na jedné výšce, úspěch stoupá,
+3. **registr** — start je celý **pod** úspěchem, nepřekrývají se ani jedním tónem,
+4. **barva** — `square` vs `triangle`,
+5. **délka a hlasitost** — úspěch je víc než dvakrát delší i hlasitější.
+
+Start zůstává tichý a krátký, protože zní při každém autosave (po čtyřech sekundách práce);
+úspěch je **jediný zvuk, který říká „hotovo, je to venku"**. Kdo přidá další druh, ať se
+vejde do tabulky a nepřekryje se s žádným řádkem ve **víc než dvou** rozměrech.
 
 Zvuky v šabloně prohlížeče se **neměnily** — prohlížeč neukládá ani neslučuje.
 
 Ověřuje se **odposlechem zvukové vrstvy**: test podvrhne `AudioContext` a zapíše, co se
-naplánuje (počet oscilátorů, délky, hlasitosti). Slyšet to v testu nejde, spočítat ano.
+naplánuje (počet oscilátorů, výšky, barvy, délky, hlasitosti). Slyšet to v testu nejde,
+spočítat ano — a každý z těch pěti rozměrů má vlastní kontrolu.
+
+## Hlášení o průběhu se nepředčítá
+
+`toast()` zapisuje i do `#status-region`, což je `role="status" aria-live="polite"` —
+takže **každá bublina se odečítačem předčítá**. Viditelná bublina sama žádnou roli nemá,
+hlášení jde výhradně odtud.
+
+U průběhu nahrávání („Nahrávám na GitHub…", „Uloženo na GitHub (1,8 MB)") je to při autosave
+po čtyřech sekundách práce nesnesitelně ukecané. `toast(msg, ms, { neohlasovat: true })`
+proto bublinu ukáže, ale do živé oblasti nezapíše.
+
+**Ztišuje se jen průběh a úspěch.** Chyby, spory a otázky se hlásit musí — bez toho by
+uživatel odečítače nevěděl, že se něco nepovedlo. Souhrn příloh se hlásí **jen když něco
+selhalo** (`{ neohlasovat: attFailed === 0 }`).
+
+Totéž platilo o tichém sloučení: psalo `statusMsg('Sloučeno s GitHubem v 14:32')`, což je
+právě ta živá oblast, takže „tiché" sloučení bylo pro odečítač to nejhlasitější v aplikaci —
+každých 20 s. Teď jde stopa do `debug()` a do popisku tlačítka ↻ Sloučit.
+
+Hlídá to `pim/testy/slouceni.mjs` (porovnává obsah `#status-region` s obsahem bubliny).
 
 Autosave čeká **4 s** (dřív 15). Kratší nemá smysl: v edit modu detailu autosave
 schválně neběží a každé uložení je celý soubor.
