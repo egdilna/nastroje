@@ -1419,15 +1419,21 @@ closing a window without saving to GitHub loses the changes.
 
 | What happened | How it sounds |
 |---|---|
-| an upload to GitHub starts | one quiet tone — the quietest sound in the app |
-| **saved to GitHub** | **three rising tones, a bit louder** — "done, it is out there" |
+| an upload to GitHub starts | **two quick low ticks** — the quietest sound in the app |
+| **saved to GitHub** | **three rising tones, higher and louder** — "done, it is out there" |
 | other people's changes arrived (sync) | two rising tones, quietly |
 | saved locally (entity, attribute) | one short tone |
 | something failed | two falling tones |
 | a completed task | a fanfare (the only longer one) |
 
-The start of an upload and a successful save deliberately sound different, so you can tell
-whether it is still being sent or already out. It can all be switched off in
+The start of an upload and a successful save differ in **five things at once** — number of
+tones, direction, pitch, timbre and loudness — so you can tell whether it is still being
+sent or already out, even at a low volume. It can all be switched off in
 Settings → Audio feedback.
+
+**Progress messages are not announced.** "Nahrávám na GitHub…" and "Uloženo na GitHub
+(1.8 MB)" stay visible in the bubble at the bottom, but a screen reader does not read
+them — with autosave every four seconds that would be unbearably chatty and there is
+nothing to act on. **Errors are still announced**, those you do need to know about.
 
 **Can others see my Secured notes?** No. Their content is AES-GCM encrypted with a password that's stored nowhere. Without the password, no one can recover the plain text.

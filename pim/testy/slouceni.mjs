@@ -382,11 +382,12 @@ const zvuk = await stranka.evaluate(() => {
     zaznam.length = 0;
     playSound(kind);
     const t = zaznam.map(o => ({ hz: Math.round(o.frequency.value), konec: o._stop - cas,
-      hlasitost: o._gain ? o._gain.gain._max : 0 }));
+      typ: o.type, hlasitost: o._gain ? o._gain.gain._max : 0 }));
     return { tonu: t.length,
       delkaMs: t.length ? Math.round(Math.max(...t.map(x => x.konec)) * 1000) : 0,
       hlasitost: t.length ? Math.max(...t.map(x => x.hlasitost)) : 0,
-      hz: t.map(x => x.hz) };
+      hz: t.map(x => x.hz),
+      typy: [...new Set(t.map(x => x.typ))] };
   };
   const out = {
     start: zmer('upload-start'),
@@ -398,24 +399,64 @@ const zvuk = await stranka.evaluate(() => {
   window._audioCtx = puvodni;
   return out;
 });
-ok(s, zvuk.start.tonu === 1 && zvuk.ulozeno.tonu === 3,
-  'start nahrávání je jeden tón, úspěšné uložení tři — poznat je to i podle počtu', zvuk);
-ok(s, zvuk.ulozeno.hlasitost > zvuk.start.hlasitost * 2,
-  'úspěšné uložení je výrazně hlasitější než start', { start: zvuk.start.hlasitost, ulozeno: zvuk.ulozeno.hlasitost });
-ok(s, zvuk.ulozeno.delkaMs > zvuk.start.delkaMs * 2,
-  'a taky zřetelně delší', { start: zvuk.start.delkaMs, ulozeno: zvuk.ulozeno.delkaMs });
-ok(s, zvuk.start.hlasitost <= 0.035 && zvuk.start.delkaMs <= 90,
-  'start je přitom ten nejtišší a nejkratší v aplikaci — zní při každém autosave', zvuk.start);
-ok(s, zvuk.ulozeno.hz.join(',') === '659,880,1175',
-  'úspěch stoupá — „hotovo, je to venku"', zvuk.ulozeno.hz);
+// Na jediný rozměr se spoléhat nejde: dva krátké sinusové pipy o různé výšce
+// uživatel vnímá jako týž zvuk — ověřeno v provozu, ne odhadem. Start a úspěch
+// se proto musí lišit v **pěti** věcech zároveň.
+ok(s, zvuk.start.tonu === 2 && zvuk.ulozeno.tonu === 3,
+  '1. počet tónů: start dva rychlé tiky, úspěch tři', { start: zvuk.start.tonu, ulozeno: zvuk.ulozeno.tonu });
+ok(s, zvuk.start.hz[0] === zvuk.start.hz[1] &&
+     zvuk.ulozeno.hz[0] < zvuk.ulozeno.hz[1] && zvuk.ulozeno.hz[1] < zvuk.ulozeno.hz[2],
+  '2. směr: start stojí na jedné výšce, úspěch stoupá', { start: zvuk.start.hz, ulozeno: zvuk.ulozeno.hz });
+ok(s, Math.max.apply(null, zvuk.start.hz) < Math.min.apply(null, zvuk.ulozeno.hz),
+  '3. registr: start je celý pod úspěchem — nepřekrývají se ani jedním tónem',
+  { start: zvuk.start.hz, ulozeno: zvuk.ulozeno.hz });
+ok(s, zvuk.start.typy.join(',') !== zvuk.ulozeno.typy.join(','),
+  '4. barva tónu je jiná', { start: zvuk.start.typy, ulozeno: zvuk.ulozeno.typy });
+ok(s, zvuk.ulozeno.hlasitost > zvuk.start.hlasitost * 2 && zvuk.ulozeno.delkaMs > zvuk.start.delkaMs * 2,
+  '5. úspěch je víc než dvakrát hlasitější i delší',
+  { start: [zvuk.start.hlasitost, zvuk.start.delkaMs], ulozeno: [zvuk.ulozeno.hlasitost, zvuk.ulozeno.delkaMs] });
+ok(s, zvuk.start.hlasitost <= 0.04 && zvuk.start.delkaMs <= 140,
+  'start je přitom pořád tichý a krátký — zní při každém autosave', zvuk.start);
 ok(s, zvuk.chyba.hz[0] > zvuk.chyba.hz[1],
   'chyba naopak klesá', zvuk.chyba.hz);
-ok(s, zvuk.sync.tonu === 2 && zvuk.sync.hlasitost < zvuk.ulozeno.hlasitost,
-  'synchronizace je dvojtón a tišší než uložení — přitéká sama, nemá si říkat o pozornost', zvuk.sync);
+ok(s, zvuk.sync.tonu === 2 && zvuk.sync.hlasitost < zvuk.ulozeno.hlasitost &&
+     zvuk.sync.typy.join(',') !== zvuk.start.typy.join(','),
+  'synchronizace se neplete ani se startem (jiná barva i registr), ani s uložením (tišší)',
+  { sync: zvuk.sync, start: zvuk.start });
 ok(s, zvuk.lokalne.tonu === 1 && zvuk.lokalne.delkaMs <= 120,
   'lokální uložení zůstává jeden krátký tón — zní při každé drobné úpravě', zvuk.lokalne);
 ok(s, zvuk.ulozeno.delkaMs < 400,
   'i ten výraznější zvuk je pořád daleko od někdejšího modemu (800 ms)', zvuk.ulozeno.delkaMs);
+
+nadpis('Průběh nahrávání se nepředčítá, chyba ano');
+// `toast()` zapisuje i do `#status-region` (`aria-live="polite"`), takže každá
+// bublina se odečítačem předčítá. „Nahrávám…" a „Uloženo (1,8 MB)" se při autosave
+// opakují po čtyřech sekundách práce — informace, se kterou uživatel nic nedělá,
+// nemá přerušovat čtení. Bublina zůstává vidět, do živé oblasti se nezapíše.
+const hlaseni = await stranka.evaluate(() => {
+  const reg = document.getElementById('status-region');
+  const zmer = (fn) => {
+    reg.textContent = '';
+    fn();
+    return { region: reg.textContent, bublina: (document.querySelector('.toast') || {}).textContent || '' };
+  };
+  return {
+    nahravam: zmer(() => toast('Nahrávám na GitHub…', 100, { neohlasovat: true })),
+    ulozeno: zmer(() => toast('✓ Uloženo na GitHub (1,8 MB).', 100, { neohlasovat: true })),
+    chyba: zmer(() => toast('✗ Nahrání selhalo: síť není dostupná', 100)),
+    bezneUlozeni: zmer(() => toast('✓ Entita uložena.', 100))
+  };
+});
+ok(s, hlaseni.nahravam.region === '' && /Nahrávám/.test(hlaseni.nahravam.bublina),
+  '„Nahrávám na GitHub…" je vidět v bublině, ale do živé oblasti nejde', hlaseni.nahravam);
+ok(s, hlaseni.ulozeno.region === '' && /1,8 MB/.test(hlaseni.ulozeno.bublina),
+  'totéž pro „Uloženo na GitHub (1,8 MB)"', hlaseni.ulozeno);
+ok(s, /selhalo/.test(hlaseni.chyba.region),
+  'chyba se ale předčítá — bez toho by uživatel odečítače nevěděl, že se něco nepovedlo',
+  hlaseni.chyba);
+ok(s, /uložena/.test(hlaseni.bezneUlozeni.region),
+  'a běžné hlášky bez té volby se hlásí dál — ztišilo se jen hlášení o průběhu',
+  hlaseni.bezneUlozeni);
 
 nadpis('Zvuky a prodleva autosave');
 const zvuky = await stranka.evaluate(() => ({
