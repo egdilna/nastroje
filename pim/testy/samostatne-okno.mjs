@@ -288,7 +288,11 @@ const predani = await hlavni.evaluate(() => {
   delete _unlockedSecured['e-hlavni'];
   return { klice, obsahujeTajemstvi: json.includes('ODSIFROVANE-TAJEMSTVI') };
 });
-ok(soucet, predani.klice === 'db,projekt', 'předávají se jen data a klíč projektu', predani.klice);
+// Vedle dat se předává i základ pro slučování (stav souboru na GitHubu) a dva
+// příznaky — bez nich by nové okno slučovalo proti prázdnu, ze sloučení by zbylo
+// jen sjednocení a cizí smazání by se do něj nikdy nepropsalo.
+ok(soucet, predani.klice === 'commit,db,neodeslaneZmeny,projekt,zaklad',
+  'předávají se data, klíč projektu, základ pro sloučení a stav odeslání', predani.klice);
 ok(soucet, predani.obsahujeTajemstvi === false,
   'odšifrovaný obsah zabezpečené entity se nepředává');
 

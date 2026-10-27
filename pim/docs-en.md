@@ -1267,6 +1267,82 @@ Files are written to the `main` branch and an **existing file is overwritten** (
 
 The two attributes are independent: an entity can have just one of them, or both — each button then saves a different file to a different location.
 
+### Two people on one file
+
+PIM expects several people to work on the same file. **The whole file is not
+overwritten** — a save also sends GitHub the version you started from. If someone else
+saved in the meantime, GitHub rejects the write and PIM **merges** it: it downloads their
+version, compares it with yours and with the original, and saves the result.
+
+Merging happens field by field, so two people really only meet where they touched the
+same thing:
+
+| Situation | Result |
+|---|---|
+| each a different entity | both are kept |
+| each a different attribute of the same entity | both are kept |
+| each a different link on the same entity | both are kept — a link is identified by the *relation type + target* pair |
+| each a different comment, tag, aspect, annotation, attachment | both are kept |
+| each a different row of the same database | both are kept |
+| both added an entity | both are kept |
+| the other deleted, you did not touch it | the deletion stands |
+| the other deleted, you edited | the entity **is kept** and you are told |
+| **both changed the same field differently** | the one who saves wins — and it is reported |
+
+A clash and a revived entity are reported in a **banner that does not disappear on its
+own**, listing which entities and fields are affected. The other value is not lost — it
+is in the commit history on GitHub.
+
+Two notes on entity numbers: `numericId` is handed out as highest + 1, so two people
+working offline get the same number. Because `#42` is link syntax in text, **the entities
+that arrived from the other person are renumbered during the merge** — your numbers stay,
+so the references in your unfinished text keep working. The renumbering is reported.
+
+Entity content (the Markdown body, any long text) is merged as a single field: if both
+changed it, the one who saves wins and it is reported. **PIM cannot do simultaneous
+typing into one text** — that would need a server.
+
+#### Other people's changes arrive by themselves
+
+PIM keeps an eye on whether a foreign commit touched the file — one cheap query, not a
+download of the data. It asks **every 20 seconds** while you are working and **once every
+two minutes** when things are quiet. In the background (another tab) it does not ask at
+all. When someone has saved, PIM **merges it by itself and asks nothing**.
+
+There is no reason to ask: a merge never takes away work in progress, it only adds. And
+when you have nothing in progress, their version is taken over directly — no clash can
+arise there.
+
+| Situation | What happens |
+|---|---|
+| nothing in progress, the other saved | **their version is taken over, silently** |
+| you have work in progress, the other touched something else | **merged, silently** |
+| you both touched the same field | merged, your version wins — and a **banner appears** |
+| the other deleted, you edited | the entity is kept — and a **banner appears** |
+| you have a dialog open | it waits until you close it |
+| you are editing | it merges, but the screen is not redrawn — you keep your cursor |
+| the window is in the background | nothing; it merges when you come back |
+| there is **a different file** at that path (not one entity in common) | **no merge**, and it is written into the status line |
+
+The rows marked *silently* really print nothing — the only trace is a short tone and the
+title of the **↻ Sloučit** (Merge) button, which says when the last merge happened.
+Information you cannot act on should not interrupt the work.
+
+#### The ↻ Sloučit button
+
+In the header next to **☁ Sync** (`Alt+Shift+M`, also from the command palette) it
+downloads other people's changes and joins them with yours — **it does not save**. Work
+in progress is kept, only what the others did in the meantime is added to it. When there
+is nothing new, it says so and does nothing.
+
+#### Autosave and collaboration
+
+Autosave waits **4 seconds** after the last change (15 before) — that is how long the
+others do not see your work. The interval can be changed in Settings. **Autosave does not
+run while a detail is being edited**: the upload happens only after the editing ends, so
+half-written text never reaches the file. Autosave resolves a conflict on its own and
+does not switch itself off.
+
 ### Overwrite protection
 
 Until the data in a window has actually been loaded from GitHub, the application
@@ -1321,5 +1397,10 @@ closing a window without saving to GitHub loses the changes.
 **Can I have multiple separate databases?** Yes, via the URL parameter `?id=NAME`. Each ID has its own storage.
 
 **How do I back up?** Tools → Export → JSON. Or enable GitHub sync.
+
+**The sounds are short and quiet.** Saving, syncing and a failed action each have their
+own tone of at most 120 ms: one tone for a save, two rising for a sync ("something came
+from outside"), two falling for an error. The longer fanfare is left only for a completed
+task. It can be switched off in Settings → Audio feedback.
 
 **Can others see my Secured notes?** No. Their content is AES-GCM encrypted with a password that's stored nowhere. Without the password, no one can recover the plain text.

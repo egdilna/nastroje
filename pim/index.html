@@ -1298,6 +1298,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
   <nav aria-label="Hlavní navigace">
     <ul id="main-nav">
       <li><button id="btn-sync" accesskey="s" title="Uložit na GitHub" hidden>☁ Sync</button></li>
+      <li><button id="btn-gh-slucit" accesskey="m" title="Stáhne změny od ostatních a spojí je s vašimi. Neukládá." hidden>↻ Sloučit</button></li>
       <li><button id="btn-autosave-gh" title="Automatické ukládání na GitHub" hidden aria-pressed="false">⚪ Autosave</button></li>
       <li><button id="btn-new-entity" accesskey="n" title="Nová entita (Alt+Shift+N)">+ Nová entita</button></li>
       <li><button id="btn-tt-popover" accesskey="z" title="Aktivní časomíry (Alt+Shift+Z)" aria-live="off">⏱ Časomíry</button></li>
@@ -2469,6 +2470,7 @@ function save() {
   // nebo ručně tlačítkem/menu „Uložit na GitHub".
   // V localStorage zůstávají jen drobnosti: nastavení (vč. konfigurace GitHubu), token, odkládací prostor.
   db.updated_at = new Date().toISOString();
+  _ghNeodeslaneZmeny = true;
   saveSettingsLocal();
   debug('Změna zaznamenána (data jen na GitHub): ' + (db.entities ? db.entities.length : 0) + ' entit');
   scheduleAutosaveGh();
@@ -2480,6 +2482,11 @@ function save() {
 // žádná nejsou), nenahrává se nic. Bez toho stačí jedno neúspěšné načtení — okno
 // zůstane prázdné a autosave tím prázdnem přepíše celý soubor.
 let _ghDataNactena = false;
+// „Mám něco, co ještě není na GitHubu." Rozhoduje o tom, jestli se cizí verze
+// převezme vcelku (nic mého = žádný spor), nebo se musí slučovat. Nastavuje ho
+// `save()`, tedy jediná cesta, kterou změny v aplikaci tečou, a shazuje ho
+// úspěšné nahrání nebo načtení.
+let _ghNeodeslaneZmeny = false;
 function ghDataNactena(hodnota) {
   if (hodnota !== undefined) _ghDataNactena = !!hodnota;
   return _ghDataNactena;
@@ -2576,6 +2583,11 @@ function syncPrevezmiData(nova, zdroj) {
     if (!db.ghMeta) db.ghMeta = {};
     db.entities.forEach(e => { if (!e.comments) e.comments = []; if (!e.attachments) e.attachments = []; });
     ghDataNactena(true);
+    // Data z druhého okna mohou obsahovat změny, které na GitHubu ještě nejsou.
+    // Proto se tohle okno od téhle chvíle chová jako okno s rozdělanou prací:
+    // při cizím commitu se **slučuje**, nepřebírá se cizí verze vcelku. Kdyby
+    // se převzala, zahodily by se cizí neodeslané změny z druhého okna.
+    _ghNeodeslaneZmeny = true;
     const pruh = document.getElementById('crosstab-banner');
     if (pruh) { pruh.remove(); _crossTabBannerShown = false; }
     if (state.view === 'detail' && state.detailId && !findEntity(state.detailId)) {
@@ -2590,7 +2602,18 @@ function syncPrevezmiData(nova, zdroj) {
 // Výdej dat oknu, které jsme otevřeli (čte si to samo při startu).
 window.__pimDejData = function () {
   if (!db || !db.entities || db.entities.length === 0) return null;
-  return { projekt: getProjectKey(), db: JSON.parse(JSON.stringify(db)) };
+  // Předává se i základ pro slučování (stav souboru na GitHubu). Bez něj by nové
+  // okno slučovalo proti prázdnu, ze sloučení by zbylo jen sjednocení a cizí
+  // smazání by se do něj nikdy nepropsalo. Nepředávat ale **neodeslané změny
+  // jako základ** — to by sloučení vyhodnotilo jako „tohle druhý smazal".
+  const zaklad = ghZaklad();
+  return {
+    projekt: getProjectKey(),
+    db: JSON.parse(JSON.stringify(db)),
+    zaklad: zaklad ? JSON.parse(JSON.stringify(zaklad)) : null,
+    neodeslaneZmeny: _ghNeodeslaneZmeny,
+    commit: _ghZnamyCommit || null
+  };
 };
 function prevezmiDataZOtviracihoOkna() {
   try {
@@ -2603,6 +2626,9 @@ function prevezmiDataZOtviracihoOkna() {
     db = data.db;
     if (!db.ghMeta) db.ghMeta = {};
     ghDataNactena(true);
+    ghZakladPrevezmi(data.zaklad || null);
+    _ghNeodeslaneZmeny = !!data.neodeslaneZmeny;
+    if (data.commit) _ghZnamyCommit = data.commit;
     return true;
   } catch (e) {
     // Typicky file:// – neprůhledný původ, čtení z otevíracího okna je zakázané.
@@ -2630,10 +2656,14 @@ function saveDebounced() { clearTimeout(saveTimer); saveTimer = setTimeout(save,
 // Po refreshi stránky je autosave vždy vypnutý.
 let _autosaveGhEnabled = false;
 let _autosaveGhTimer = null;
-// Interval autosave na GitHub v sekundách (z nastavení, default 15, min 1).
+// Interval autosave na GitHub v sekundách (z nastavení, default 4, min 1).
+// Zkráceno z 15 s: při spolupráci je prodleva do odeslání tím, co určuje, jak
+// dlouho druhý člověk nevidí mou práci. Pod 4 s už to nemá smysl — autosave
+// v edit modu detailu schválně neběží a každé uložení je celý soubor, takže
+// kratší prodleva by jen vyráběla commity pro jeden úhoz.
 function getAutosaveSeconds() {
   const v = state && state.settings ? Number(state.settings.autosaveGhSeconds) : NaN;
-  if (!isFinite(v) || v < 1) return 15;
+  if (!isFinite(v) || v < 1) return 4;
   return Math.round(v);
 }
 function scheduleAutosaveGh() {
@@ -2680,7 +2710,7 @@ function updateAutosaveButton() {
   btn.textContent = on ? '🟢 Autosave' : '⚪ Autosave';
   btn.setAttribute('aria-pressed', on ? 'true' : 'false');
   btn.title = on
-    ? 'Automatické ukládání na GitHub je ZAPNUTO (~15 s po poslední úpravě). Klik = vypnout.'
+    ? 'Automatické ukládání na GitHub je ZAPNUTO (~' + getAutosaveSeconds() + ' s po poslední úpravě). Klik = vypnout.'
     : 'Automatické ukládání na GitHub je VYPNUTO. Klik = zapnout.';
 }
 
@@ -3925,6 +3955,33 @@ function _tap(freq) {
   osc.start(t0); osc.stop(t0 + 0.06);
 }
 
+// Zvuky, které zní při běžné práci, musí být **krátké a nenápadné**. Ukládání
+// na GitHub se teď děje každých pár sekund a sloučení přitéká samo, takže
+// někdejší modem (0,8 s) a fanfára (2 s) by z nástroje udělaly orchestr.
+// Pravidlo: do 120 ms, hlasitost do 0,06, žádné sweepy a žádné akordy.
+// Fanfára zůstává jen tam, kde si o ni uživatel řekl sám — u dokončeného úkolu.
+function _pip(freq, delka, hlasitost, zpozdeni) {
+  const a = _audioCtx(); if (!a) return;
+  const t0 = a.currentTime + 0.02 + (zpozdeni || 0);
+  const d = delka || 0.045;
+  const osc = a.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.value = freq;
+  const g = a.createGain();
+  // Náběh i doznění exponenciálou — skoková hlasitost lupe.
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(hlasitost || 0.05, t0 + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
+  osc.connect(g); g.connect(a.destination);
+  osc.start(t0); osc.stop(t0 + d + 0.02);
+}
+// Uloženo: jeden krátký tón. Nic víc — je to nejčastější zvuk v aplikaci.
+function _zvukUlozeno() { _pip(880, 0.05, 0.05); }
+// Synchronizováno: dva tóny vzhůru, celkem 110 ms. Odlišuje se od uložení tím,
+// že stoupá — „něco přišlo zvenčí".
+function _zvukSync() { _pip(740, 0.045, 0.04); _pip(988, 0.05, 0.04, 0.06); }
+// Nepovedlo se: dva tóny dolů, nízko. Smí být slyšet, ale ne vylekat.
+function _zvukChyba() { _pip(400, 0.055, 0.05); _pip(300, 0.07, 0.05, 0.07); }
 function playSound(kind) {
   if (!state.settings || !state.settings.audioFeedback) return;
   switch (kind) {
@@ -3934,20 +3991,19 @@ function playSound(kind) {
       _fanfare();
       break;
     case 'load':
-      _bell();
-      break;
     case 'save-gh':
-      _modem();
-      break;
     case 'save':
     case 'save-entity':
     case 'notify':
-      _bubble();
+      _zvukUlozeno();
+      break;
+    case 'sync':
+      _zvukSync();
       break;
     case 'error':
     case 'delete':
     case 'warning':
-      _errorSound();
+      _zvukChyba();
       break;
     case 'click':
       _tap(1200);
@@ -13555,7 +13611,7 @@ function renderSettings(main) {
       '<label><input type="checkbox" id="pref-debug"' + (state.settings.debugMode ? ' checked' : '') + '> Ladicí mód</label>' +
       '<label for="pref-autosave-sec">Interval autosave na GitHub (sekundy)</label>' +
       '<input type="number" id="pref-autosave-sec" min="1" step="1" value="' + escapeHtml(String(getAutosaveSeconds())) + '" style="max-width:8em;">' +
-      '<p class="meta" style="margin-top:0.2em;">Jak dlouho po poslední úpravě se změny automaticky nahrají na GitHub (když je autosave zapnutý). Výchozí 15 s.</p>' +
+      '<p class="meta" style="margin-top:0.2em;">Jak dlouho po poslední úpravě se změny automaticky nahrají na GitHub (když je autosave zapnutý). Výchozí 4 s — při spolupráci víc lidí je to doba, po kterou ostatní vaši práci nevidí. V editaci detailu autosave neběží, nahraje se až po jejím ukončení.</p>' +
       '<label style="margin-top:0.4em;display:block;"><input type="checkbox" id="pref-autosave-default"' + (state.settings.autosaveGhDefaultOn ? ' checked' : '') + '> Po otevření stránky rovnou zapnout autosave (zelené kolečko)</label>' +
       '<p class="meta" style="margin-top:0.2em;">Když je zapnuto, autosave na GitHub je po načtení aktivní automaticky (lze ho pak ručně vypnout tlačítkem). Načtení dat při startu tím není ovlivněno.</p>' +
     '</section>' +
@@ -26912,6 +26968,9 @@ function paletaSestavPrikazy() {
     pridej({ id: 'gh-upload', label: '☁ Uložit na GitHub', klavesa: 's', kategorie: 'Data a GitHub',
       hint: (db.ghMeta && db.ghMeta.lastSyncAt) ? 'naposledy ' + fmtRelative(db.ghMeta.lastSyncAt) : '',
       keywords: 'sync nahrat push zaloha', run: () => GH.upload() });
+    pridej({ id: 'gh-slucit', label: '↻ Sloučit s GitHubem', klavesa: 'm', kategorie: 'Data a GitHub',
+      hint: _ghPosledniSlouceniPopis || 'stáhne cizí změny a spojí je s vašimi, neukládá',
+      keywords: 'merge slouceni spoluprace cizi zmeny prevzit', run: () => slucitZGithubuRucne() });
     pridej({ id: 'gh-download', label: '☁ Načíst z GitHubu', kategorie: 'Data a GitHub', keywords: 'stahnout pull obnovit',
       run: async () => { try { await GH.downloadAndLoad(false); } catch (e) { alertMsg('Načtení selhalo: ' + e.message); } } });
     pridej({ id: 'gh-autosave', label: (_autosaveGhEnabled ? '🟢' : '⚪') + ' Autosave na GitHub', kategorie: 'Data a GitHub',
@@ -27550,6 +27609,8 @@ async function init() {
   // Kanál pro synchronizaci oken se otevírá hned, ne až při prvním odeslání:
   // okno, které zatím nic nezměnilo, musí zprávy druhého okna slyšet.
   syncKanal();
+  // Cizí commity přitékají samy — dotaz na poslední commit, ne na obsah.
+  ghStartKontroly();
 
   // URL parametr ?id=base64(owner/repo/cesta) – nebo autoLoadOnStart
   const urlParam = new URL(location.href).searchParams.get('id');
@@ -28285,6 +28346,647 @@ async function ghHardReload() {
   }
 }
 
+// === DVA LIDÉ NA JEDNOM SOUBORU: SLOUČENÍ MÍSTO PŘEPSÁNÍ ===
+//
+// Soubor na GitHubu je jediné trvalé úložiště dat a může na něm pracovat víc lidí.
+// Dřív vyhrál ten, kdo ukládal jako druhý — `upload()` si těsně před zápisem
+// dotáhl čerstvou `sha`, takže GitHub neměl jak poznat cizí zápis a cizí práce
+// zmizela bez hlásky.
+//
+// Teď se posílá **ta `sha`, ze které jsme vyšli**. GitHub cizí zápis odmítne (409,
+// u chybějící sha 422) a tady se trojcestně sloučí: základ = stav při načtení
+// (`ghZaklad()`), moje = `db`, jejich = stažený soubor. Zápis se pak zkusí znovu.
+//
+// **Nikdy si `sha` nenačítej znovu jen proto, aby zápis prošel** — tím se celá
+// ochrana vypne a jsme zpátky u tichého přepisování.
+//
+// Sloučení **jen přidává a nikdy nesebere rozdělanou práci**, proto se na nic
+// neptá: kde oba sáhli na totéž, vyhraje ten, kdo ukládá, a řekne se to.
+
+// Stav při načtení z GitHubu — proti němu se počítá, co je čí změna. Drží se jen
+// v paměti (data v localStorage nejsou, limit ~5 MB) a **nastavuje se výhradně ze
+// vzdáleného stavu**: po načtení, po vlastním uložení, po sloučení, nebo z okna,
+// které data předalo. Kdyby se do základu dostaly neodeslané lokální změny,
+// sloučení by je vyhodnotilo jako „tohle druhý smazal" a tiše je zahodilo.
+let _ghZaklad = null;
+function ghZaklad(nova) {
+  if (nova !== undefined) _ghZaklad = nova ? hlubokaKopieDat(nova) : null;
+  return _ghZaklad;
+}
+
+// Převezme objekt jako nový základ **bez kopírování**. Volá se s daty, která si
+// volající sám právě vyrobil a dál je nemění (sanitizovaná kopie pro zápis) —
+// další hluboká kopie by u víc megabajtové báze byla jen zbytečný nárůst paměti.
+function ghZakladPrevezmi(obj) {
+  _ghZaklad = obj || null;
+  return _ghZaklad;
+}
+
+function hlubokaKopieDat(x) {
+  return JSON.parse(JSON.stringify(x));
+}
+
+// Stabilní JSON: klíče se řadí, takže dva klienti se stejným obsahem a jiným
+// pořadím klíčů nevyrobí falešný spor. Výsledky se pamatují ve WeakMapě — každý
+// objekt se tak při jednom sloučení serializuje nejvýš jednou, i když se porovnává
+// vůči základu i vůči cizí verzi.
+const _stabilniJsonCache = new WeakMap();
+function stabilniJson(x) {
+  if (x !== null && typeof x === 'object') {
+    const hotovo = _stabilniJsonCache.get(x);
+    if (hotovo !== undefined) return hotovo;
+    const s = _stabilniJsonSerializuj(x);
+    _stabilniJsonCache.set(x, s);
+    return s;
+  }
+  return _stabilniJsonSerializuj(x);
+}
+function _stabilniJsonSerializuj(x) {
+  if (x === undefined) return '\u0000undef';
+  if (x === null || typeof x !== 'object') return JSON.stringify(x);
+  if (Array.isArray(x)) return '[' + x.map(_stabilniJsonSerializujPrvek).join(',') + ']';
+  const klice = Object.keys(x).sort();
+  return '{' + klice.map(k => JSON.stringify(k) + ':' + _stabilniJsonSerializujPrvek(x[k])).join(',') + '}';
+}
+function _stabilniJsonSerializujPrvek(v) {
+  return (v !== null && typeof v === 'object') ? stabilniJson(v) : _stabilniJsonSerializuj(v);
+}
+function stejneHodnoty(a, b) {
+  if (a === b) return true;
+  return stabilniJson(a) === stabilniJson(b);
+}
+
+// Klíč prvku v poli objektů. `id` má většina kolekcí (komentáře, anotace, přílohy,
+// bloky dokumentu, deník, uložené pohledy), `_rid` dostanou řádky databází při
+// načtení a `ts` je přirozený klíč historie trackeru. Když klíč není, pole se
+// slučovat nedá a bere se jako jedna hodnota.
+function klicPrvkuPole(prvek) {
+  if (!prvek || typeof prvek !== 'object' || Array.isArray(prvek)) return null;
+  if (typeof prvek.id === 'string' && prvek.id) return 'id';
+  if (typeof prvek._rid === 'string' && prvek._rid) return '_rid';
+  if (typeof prvek.ts === 'string' && prvek.ts) return 'ts';
+  return null;
+}
+function klicPole(pole) {
+  if (!Array.isArray(pole) || pole.length === 0) return null;
+  const k = klicPrvkuPole(pole[0]);
+  if (!k) return null;
+  return pole.every(p => klicPrvkuPole(p) === k) ? k : null;
+}
+
+function jePoleRetezcu(pole) {
+  return Array.isArray(pole) && pole.every(p => typeof p === 'string');
+}
+
+// Množinové sloučení (aspekty, tagy): základ, k němu přidání obou stran a odebrání
+// obou stran. Kdo prvek nepřidal ani neodebral, pořadí druhého nerozhoduje.
+function slucMnozinu(zaklad, moje, jejich) {
+  const z = new Set(zaklad || []);
+  const m = new Set(moje || []);
+  const j = new Set(jejich || []);
+  const vysledek = new Set(z);
+  m.forEach(v => { if (!z.has(v)) vysledek.add(v); });
+  j.forEach(v => { if (!z.has(v)) vysledek.add(v); });
+  z.forEach(v => { if (!m.has(v) || !j.has(v)) vysledek.delete(v); });
+  // Pořadí: nejdřív to, co bylo v mém pořadí, pak cizí přírůstky.
+  const out = [];
+  (moje || []).forEach(v => { if (vysledek.has(v) && out.indexOf(v) < 0) out.push(v); });
+  (jejich || []).forEach(v => { if (vysledek.has(v) && out.indexOf(v) < 0) out.push(v); });
+  return out;
+}
+
+// Sloučení pole objektů podle klíče. Smazat smí jen ten, koho se druhý nedotkl —
+// úprava přebíjí smazání, protože opačné pořadí by zahodilo cizí práci.
+function slucPoleSKlicem(zaklad, moje, jejich, klic, hlas, kde) {
+  const mapa = (pole) => {
+    const m = new Map();
+    (pole || []).forEach(p => { if (p && p[klic] != null) m.set(String(p[klic]), p); });
+    return m;
+  };
+  const z = mapa(zaklad), m = mapa(moje), j = mapa(jejich);
+  const vsechny = [];
+  const videno = new Set();
+  const pridej = (k) => { if (!videno.has(k)) { videno.add(k); vsechny.push(k); } };
+  (moje || []).forEach(p => { if (p && p[klic] != null) pridej(String(p[klic])); });
+  (jejich || []).forEach(p => { if (p && p[klic] != null) pridej(String(p[klic])); });
+  const out = [];
+  vsechny.forEach(k => {
+    const vz = z.get(k), vm = m.get(k), vj = j.get(k);
+    if (vm && vj) {
+      out.push(slucHodnotu(vz, vm, vj, hlas, kde));
+    } else if (vm && !vj) {
+      // Oni smazali. Když jsem to nezměnil, smazání platí.
+      if (vz !== undefined && stejneHodnoty(vz, vm)) return;
+      out.push(vm);
+      if (vz !== undefined) hlas.ozivene.push({ kde: kde, co: k });
+    } else if (!vm && vj) {
+      // Já smazal. Když se toho nedotkli, smazání platí.
+      if (vz !== undefined && stejneHodnoty(vz, vj)) return;
+      out.push(vj);
+      if (vz !== undefined) hlas.ozivene.push({ kde: kde, co: k });
+    }
+  });
+  return out;
+}
+
+// Vazby se poznají dvojicí typ + cíl, ne svým indexem ani id: dvě různé nové vazby
+// téže entity by se jinak hlásily jako spor.
+function klicVazby(v) {
+  return String((v && v.type) || '') + '\u0000' + String((v && v.to) || '');
+}
+function slucVazby(zaklad, moje, jejich, hlas, kde) {
+  const mapa = (pole) => {
+    const m = new Map();
+    (pole || []).forEach(v => m.set(klicVazby(v), v));
+    return m;
+  };
+  const z = mapa(zaklad), m = mapa(moje), j = mapa(jejich);
+  const out = [];
+  const videno = new Set();
+  const projdi = (pole) => (pole || []).forEach(v => {
+    const k = klicVazby(v);
+    if (videno.has(k)) return;
+    videno.add(k);
+    const vz = z.get(k), vm = m.get(k), vj = j.get(k);
+    if (vm && vj) out.push(slucHodnotu(vz, vm, vj, hlas, kde));
+    else if (vm && !vj) { if (!(vz !== undefined && stejneHodnoty(vz, vm))) out.push(vm); }
+    else if (!vm && vj) { if (!(vz !== undefined && stejneHodnoty(vz, vj))) out.push(vj); }
+  });
+  projdi(moje); projdi(jejich);
+  return out;
+}
+
+// Jedna hodnota trojcestně. Pole a objekty se rozebírají dál, skaláry rozhoduje
+// pravidlo „kdo se nedotkl, ustupuje", a když sáhli oba, vyhraje ukládající.
+function slucHodnotu(zaklad, moje, jejich, hlas, kde, nazevPole) {
+  if (stejneHodnoty(moje, jejich)) return moje;
+  if (zaklad !== undefined && stejneHodnoty(zaklad, moje)) return jejich;  // změnili jen oni
+  if (zaklad !== undefined && stejneHodnoty(zaklad, jejich)) return moje;  // změnil jen já
+  // Sáhli oba.
+  if (Array.isArray(moje) && Array.isArray(jejich)) {
+    if (jePoleRetezcu(moje) && jePoleRetezcu(jejich)) {
+      return slucMnozinu(Array.isArray(zaklad) ? zaklad : [], moje, jejich);
+    }
+    const klic = klicPole(moje) || klicPole(jejich);
+    if (klic) {
+      return slucPoleSKlicem(Array.isArray(zaklad) ? zaklad : [], moje, jejich, klic, hlas, kde);
+    }
+    // Pole bez identity prvků se slučovat nedá — podle pozice by se řádky rozjely.
+    hlas.spory.push({ kde: kde, co: nazevPole || 'seznam' });
+    return moje;
+  }
+  if (moje && jejich && typeof moje === 'object' && typeof jejich === 'object' &&
+      !Array.isArray(moje) && !Array.isArray(jejich)) {
+    return slucObjekt(zaklad && typeof zaklad === 'object' ? zaklad : {}, moje, jejich, hlas, kde);
+  }
+  hlas.spory.push({ kde: kde, co: nazevPole || 'hodnota' });
+  return moje;
+}
+
+// Objekt po klíčích. Klíč, který jedna strana smazala a druhá se ho nedotkla, zmizí.
+// `vynech` jsou klíče s vlastním pravidlem — ty se tudy nesmí pustit ani jako
+// „pole bez identity", protože by zapsaly falešný spor dřív, než se dostanou
+// ke svému slučovači.
+function slucObjekt(zaklad, moje, jejich, hlas, kde, vynech) {
+  const out = {};
+  const klice = [];
+  const videno = new Set();
+  [moje, jejich].forEach(o => Object.keys(o || {}).forEach(k => {
+    if (!videno.has(k)) { videno.add(k); klice.push(k); }
+  }));
+  klice.forEach(k => {
+    if (vynech && vynech.indexOf(k) >= 0) return;
+    const vz = (zaklad || {})[k], vm = (moje || {})[k], vj = (jejich || {})[k];
+    const mamJa = moje && Object.prototype.hasOwnProperty.call(moje, k);
+    const majiOni = jejich && Object.prototype.hasOwnProperty.call(jejich, k);
+    if (mamJa && majiOni) {
+      // `updated_at` není změna, jen razítko — bere se novější a spor z něj nevzniká.
+      if (k === 'updated_at' || k === 'updatedAt') {
+        out[k] = (String(vm) >= String(vj)) ? vm : vj;
+        return;
+      }
+      out[k] = slucHodnotu(vz, vm, vj, hlas, kde, k);
+    } else if (mamJa && !majiOni) {
+      if (!(vz !== undefined && stejneHodnoty(vz, vm))) out[k] = vm;
+    } else if (!mamJa && majiOni) {
+      if (!(vz !== undefined && stejneHodnoty(vz, vj))) out[k] = vj;
+    }
+  });
+  return out;
+}
+
+// Jedna entita. Vazby mají vlastní pravidlo (dvojice typ + cíl), zbytek jde
+// obecnou cestou.
+function slucEntitu(zaklad, moje, jejich, hlas) {
+  const kde = getDisplayTitleBezpecne(moje) || getDisplayTitleBezpecne(jejich) || moje.id;
+  const vysledek = slucObjekt(zaklad || {}, moje, jejich, hlas, kde, ['links']);
+  const zl = (zaklad && zaklad.links) || [];
+  const ml = moje.links, jl = jejich.links;
+  if (ml === undefined && jl === undefined) {
+    // Entita vazby nemá vůbec — klíč nepřidávej, ať se tvar dat nemění.
+  } else if (stejneHodnoty(ml || [], jl || [])) {
+    vysledek.links = ml || jl || [];
+  } else {
+    vysledek.links = slucVazby(zl, ml || [], jl || [], hlas, kde);
+  }
+  return vysledek;
+}
+
+// Název entity pro hlášku, i když jde o surová data bez aspektů v ASPECTS.
+function getDisplayTitleBezpecne(e) {
+  if (!e) return '';
+  try { return getDisplayTitle(e) || e.title || ''; }
+  catch (err) { return e.title || ''; }
+}
+
+// === HLAVNÍ SLOUČENÍ ===
+// Vrací { db, spory, ozivene }. `spory` jsou místa, kde moje verze přebila cizí,
+// `ozivene` entity, které jedna strana smazala a druhá upravila.
+//
+// Bez základu se slučuje proti prázdnému projektu — ze sloučení se tím stane
+// sjednocení, ve kterém se nic cizího nesmaže a při střetu vyhraje ukládající.
+// Proto tu není žádná otázka „přepsat / načíst": tudy chodí i autosave a ten
+// se nesmí na nic ptát.
+function slucDb(zaklad, moje, jejich) {
+  const hlas = { spory: [], ozivene: [] };
+  const z = zaklad || { entities: [] };
+  const vysledek = {};
+
+  // Hlavička a model: po klíčích, kolekce podle id.
+  const klice = new Set([...Object.keys(moje || {}), ...Object.keys(jejich || {})]);
+  klice.delete('entities');
+  klice.delete('ghMeta');     // metadata spojení patří tomuhle okně, neslučují se
+  klice.forEach(k => {
+    const vz = z[k], vm = (moje || {})[k], vj = (jejich || {})[k];
+    if (k === 'updated_at') { vysledek[k] = (String(vm || '') >= String(vj || '')) ? vm : vj; return; }
+    const mamJa = moje && Object.prototype.hasOwnProperty.call(moje, k);
+    const majiOni = jejich && Object.prototype.hasOwnProperty.call(jejich, k);
+    if (mamJa && majiOni) vysledek[k] = slucHodnotu(vz, vm, vj, hlas, 'databáze', k);
+    else if (mamJa) vysledek[k] = vm;
+    else vysledek[k] = vj;
+  });
+  vysledek.ghMeta = (moje && moje.ghMeta) ? moje.ghMeta : ((jejich && jejich.ghMeta) || {});
+
+  // Entity podle id.
+  const mapa = (pole) => {
+    const m = new Map();
+    (pole || []).forEach(e => { if (e && e.id) m.set(e.id, e); });
+    return m;
+  };
+  const ez = mapa(z.entities), em = mapa((moje || {}).entities), ej = mapa((jejich || {}).entities);
+  const poradi = [];
+  const videno = new Set();
+  const pridej = (id) => { if (!videno.has(id)) { videno.add(id); poradi.push(id); } };
+  ((moje || {}).entities || []).forEach(e => { if (e && e.id) pridej(e.id); });
+  ((jejich || {}).entities || []).forEach(e => { if (e && e.id) pridej(e.id); });
+
+  const entity = [];
+  poradi.forEach(id => {
+    const vz = ez.get(id), vm = em.get(id), vj = ej.get(id);
+    if (vm && vj) {
+      entity.push(stejneHodnoty(vm, vj) ? vm : slucEntitu(vz, vm, vj, hlas));
+    } else if (vm && !vj) {
+      if (vz && stejneHodnoty(vz, vm)) return;        // oni smazali, já se nedotkl
+      entity.push(vm);
+      if (vz) hlas.ozivene.push({ kde: getDisplayTitleBezpecne(vm), co: 'smazaná u druhého' });
+    } else if (!vm && vj) {
+      if (vz && stejneHodnoty(vz, vj)) return;        // já smazal, oni se nedotkli
+      entity.push(vj);
+      if (vz) hlas.ozivene.push({ kde: getDisplayTitleBezpecne(vj), co: 'smazaná u mě' });
+    }
+  });
+  vysledek.entities = entity;
+
+  srovnejCislaEntit(vysledek, (moje || {}).entities || [], hlas);
+  uklidOdkazyPoSlouceni(vysledek);
+  return { db: vysledek, spory: hlas.spory, ozivene: hlas.ozivene };
+}
+
+// `numericId` se rozdává jako max + 1, takže dva lidé offline dostanou totéž číslo.
+// A `#42` je odkazovací syntaxe v textu, takže z duplicity vznikne odkaz mířící na
+// dvě entity. Přečíslují se proto **ty, které přišly od druhého** — moje čísla
+// zůstanou, protože na ně mohu mít odkazy v rozepsaném textu. Řekne se to.
+function srovnejCislaEntit(novaDb, mojeEntity, hlas) {
+  const mojeIds = new Set(mojeEntity.map(e => e && e.id).filter(Boolean));
+  const obsazena = new Set();
+  let max = 0;
+  (novaDb.entities || []).forEach(e => {
+    const n = (typeof e.numericId === 'number') ? e.numericId : null;
+    if (n !== null && n > max) max = n;
+  });
+  // Nejdřív si čísla zaberou moje entity, pak se řeší cizí.
+  (novaDb.entities || []).forEach(e => {
+    if (!mojeIds.has(e.id)) return;
+    if (typeof e.numericId === 'number') obsazena.add(e.numericId);
+  });
+  (novaDb.entities || []).forEach(e => {
+    if (mojeIds.has(e.id)) return;
+    if (typeof e.numericId !== 'number') return;
+    if (!obsazena.has(e.numericId)) { obsazena.add(e.numericId); return; }
+    max += 1;
+    const stare = e.numericId;
+    e.numericId = max;
+    obsazena.add(max);
+    hlas.spory.push({ kde: getDisplayTitleBezpecne(e), co: 'číslo #' + stare + ' bylo obsazené, entita má teď #' + max });
+  });
+}
+
+// Vazba na entitu, kterou druhý smazal, nesmí v datech zůstat — odkaz do prázdna
+// rozbije sekci Vazby i graf souvislostí.
+function uklidOdkazyPoSlouceni(novaDb) {
+  const zive = new Set((novaDb.entities || []).map(e => e.id));
+  (novaDb.entities || []).forEach(e => {
+    if (Array.isArray(e.links)) {
+      e.links = e.links.filter(l => l && zive.has(l.to));
+    }
+  });
+}
+
+// Řádky databází identitu neměly (pole objektů podle pozice), takže se slučovat
+// nedaly — při sporu by zmizela celá tabulka. `_rid` se doplní tiše při načtení
+// a při sloučení; starší verze aplikace klíč prostě ignoruje, protože sloupce se
+// berou z `db_fields`, ne z klíčů řádku.
+function doplnIdRadkumDatabazi(cilovaDb) {
+  let doplneno = 0;
+  ((cilovaDb && cilovaDb.entities) || []).forEach(e => {
+    const a = e && e.attributes;
+    if (!a || !Array.isArray(a.db_records)) return;
+    a.db_records.forEach(r => {
+      if (r && typeof r === 'object' && !Array.isArray(r) && !r._rid) {
+        r._rid = uuid();
+        doplneno++;
+      }
+    });
+  });
+  return doplneno;
+}
+
+// === CIZÍ ZMĚNY PŘITÉKAJÍ SAMY ===
+// Ptáme se jen na **poslední commit** té jedné cesty, ne na obsah — je to jeden
+// levný dotaz. Tempo je adaptivní a na pozadí se neptáme vůbec: 180 dotazů za
+// hodinu proti limitu 5000 je zanedbatelné, ale ptát se do prázdna nemá smysl.
+const GH_KONTROLA_CILA_MS = 20000;
+const GH_KONTROLA_KLID_MS = 120000;
+const GH_KLID_PO_MS = 90000;        // bez úhozu a kliknutí → klidové tempo
+
+let _ghKontrolaTimer = null;
+let _ghPosledniCinnost = Date.now();
+let _ghZnamyCommit = null;          // sha commitu, o kterém víme (vlastní i cizí)
+let _ghSlouceniBezi = false;
+let _ghSlouceniPoDialogu = false;
+let _ghPosledniSlouceniPopis = '';
+let _ghJinyProjektOhlasen = null;
+
+function ghZaznamenejCinnost() { _ghPosledniCinnost = Date.now(); }
+
+// Vlastní commit se nesmí tvářit jako cizí — jinak by se aplikace sloučila sama
+// se sebou. `upload()` si proto sha commitu z odpovědi rovnou zapamatuje.
+function ghZapamatujCommit(sha) {
+  if (sha) _ghZnamyCommit = sha;
+}
+
+function ghKontrolaMozna() {
+  if (!GH || !GH.isConfigured || !GH.isConfigured()) return false;
+  if (!GH.getToken()) return false;
+  if (!ghDataNactena()) return false;     // nemáme co s čím slučovat
+  if (typeof document !== 'undefined' && document.hidden) return false;
+  return true;
+}
+
+function ghNaplanujKontrolu() {
+  clearTimeout(_ghKontrolaTimer);
+  const klid = (Date.now() - _ghPosledniCinnost) > GH_KLID_PO_MS;
+  const za = klid ? GH_KONTROLA_KLID_MS : GH_KONTROLA_CILA_MS;
+  _ghKontrolaTimer = setTimeout(async () => {
+    _ghKontrolaTimer = null;
+    try {
+      // Nejdřív dohnat, co odložil otevřený dialog. Jde to i bez nového commitu:
+      // `slucSVzdalenym` porovnává sha souboru, ne sha commitu, takže se odložené
+      // sloučení samo dohojí, i když jsme si cizí commit už zapamatovali.
+      await ghDokonciOdlozeneSlouceni();
+      await zkontrolujVzdalene();
+    } catch (e) { debug('Kontrola GitHubu selhala: ' + e.message); }
+    ghNaplanujKontrolu();
+  }, za);
+}
+
+function ghStartKontroly() {
+  if (typeof document !== 'undefined') {
+    document.addEventListener('pointerdown', ghZaznamenejCinnost, { passive: true });
+    document.addEventListener('keydown', ghZaznamenejCinnost, { passive: true });
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) { ghZaznamenejCinnost(); ghNaplanujKontrolu(); }
+    });
+  }
+  ghNaplanujKontrolu();
+}
+
+// Zjistí sha posledního commitu nad naším souborem. Obsah se netahá.
+async function ghPosledniCommitSha() {
+  const g = state.settings.github;
+  const path = g.path;
+  const vetev = g.branch || 'main';
+  const list = await GH._api('GET',
+    `/repos/${encodeURIComponent(g.owner)}/${encodeURIComponent(g.repo)}/commits` +
+    `?sha=${encodeURIComponent(vetev)}&path=${encodeURIComponent(path)}&per_page=1`);
+  return (Array.isArray(list) && list[0] && list[0].sha) ? list[0].sha : null;
+}
+
+async function zkontrolujVzdalene() {
+  if (!ghKontrolaMozna()) return false;
+  if (_ghSlouceniBezi) return false;
+  const sha = await ghPosledniCommitSha();
+  if (!sha) return false;
+  if (_ghZnamyCommit === null) { _ghZnamyCommit = sha; return false; }
+  if (sha === _ghZnamyCommit) return false;
+  _ghZnamyCommit = sha;
+  return await slucSVzdalenym({ tiche: true });
+}
+
+// Otevřený dialog je jediná věc, která sloučení odloží — překreslení by ho zavřelo.
+// Otevřený editor překážka není: data se sloučí, obrazovka se nepřekreslí, kurzor
+// zůstane tam, kde je.
+function ghSlouceniLzeNyni() {
+  if (typeof document === 'undefined') return true;
+  return !document.querySelector('dialog[open]');
+}
+async function ghDokonciOdlozeneSlouceni() {
+  if (!_ghSlouceniPoDialogu) return false;
+  if (!ghSlouceniLzeNyni()) return false;   // dialog je pořád otevřený, počká se dál
+  _ghSlouceniPoDialogu = false;
+  return await slucSVzdalenym({ tiche: true });
+}
+
+// Stáhne vzdálený soubor a sloučí ho s tím, co mám. **Neukládá** — co jde ven,
+// si má uživatel říct sám (nebo autosave, který si o to řekl zapnutím).
+async function slucSVzdalenym(opts) {
+  opts = opts || {};
+  if (_ghSlouceniBezi) return false;
+  if (!opts.tiche && (!GH.isConfigured() || !GH.getToken())) {
+    toast('GitHub není nakonfigurován.', 4000);
+    return false;
+  }
+  if (!ghSlouceniLzeNyni()) { _ghSlouceniPoDialogu = true; return false; }
+  _ghSlouceniBezi = true;
+  try {
+    const meta = await GH._getRemoteFile();
+    if (meta.sha && db.ghMeta && meta.sha === db.ghMeta.sha && !opts.vzdyslucuj) {
+      if (!opts.tiche) toast('Nic nového — máte aktuální verzi.', 3000);
+      return false;
+    }
+    const text = await GH._fetchContent(meta);
+    const jejich = JSON.parse(text);
+    if (!jejich || !Array.isArray(jejich.entities)) throw new Error('Soubor neobsahuje entity.');
+    const vysledek = ghPrevezmiSlouceni(jejich, meta.sha, opts);
+    if (!vysledek) return false;
+    return true;
+  } catch (e) {
+    if (e.status === 404) {
+      if (!opts.tiche) toast('Soubor na GitHubu zatím neexistuje.', 4000);
+      return false;
+    }
+    debug('Sloučení selhalo: ' + e.message);
+    if (!opts.tiche) {
+      toast('✗ Sloučení selhalo: ' + e.message, 5000);
+    } else {
+      statusMsg('Sloučení s GitHubem selhalo: ' + e.message);
+    }
+    return false;
+  } finally {
+    _ghSlouceniBezi = false;
+  }
+}
+
+// Vlastní práce se sloučením: tohle je to místo, kde se `db` mění.
+function ghPrevezmiSlouceni(jejich, vzdalenaSha, opts) {
+  opts = opts || {};
+  const zaklad = ghZaklad();
+  // Soubor, který s mými daty nesdílí ani jedno id entity, je jiný projekt —
+  // sloučení by dva nesouvisející projekty slilo dohromady. Tohle je **jediné**
+  // místo, kde se sloučení ptá; ručně spuštěné sloučení se neptá, to si uživatel
+  // řekl sám.
+  if (opts.tiche && jeJinyProjekt(db, jejich)) {
+    // Hlásí se jen jednou na danou verzi souboru; jinak by to při tempu 20 s
+    // psalo do stavového řádku pořád dokola.
+    if (_ghJinyProjektOhlasen !== vzdalenaSha) {
+      _ghJinyProjektOhlasen = vzdalenaSha;
+      statusMsg('Na GitHubu je soubor bez jediné společné entity — sloučení se samo nespustilo. Zkontrolujte cestu, nebo stiskněte ↻ Sloučit.');
+    }
+    return false;
+  }
+
+  // Nic rozdělaného a žádný základ k porovnání? Pak je nejčistší převzít cizí
+  // verzi vcelku — spor nemůže vzniknout a je to nejčastější případ: jeden čte,
+  // druhý píše.
+  const nicMeho = !_ghNeodeslaneZmeny;
+  let spory = [], ozivene = [];
+  if (nicMeho) {
+    db = jejich;
+  } else {
+    const r = slucDb(zaklad, db, jejich);
+    db = r.db;
+    spory = r.spory;
+    ozivene = r.ozivene;
+  }
+
+  normalizujKonceRadkuVDb();
+  if (!db.tags) db.tags = [];
+  if (!db.savedViews) db.savedViews = [];
+  if (!db.customTemplates) db.customTemplates = [];
+  if (!db.customAspects) db.customAspects = [];
+  (db.entities || []).forEach(e => { if (!e.comments) e.comments = []; if (!e.attachments) e.attachments = []; });
+  doplnIdRadkumDatabazi(db);
+
+  // Nový základ jsou **jejich** data, protože na ně ukazuje sha, kterou si teď
+  // zapíšeme. Kdyby se sem dosadil sloučený stav, další ukládání by počítalo
+  // rozdíl proti něčemu, co na GitHubu není.
+  ghZaklad(jejich);
+  if (!db.ghMeta) db.ghMeta = {};
+  db.ghMeta.sha = vzdalenaSha;
+  db.ghMeta.lastSyncAt = nowIso();
+  if (nicMeho) _ghNeodeslaneZmeny = false;
+
+  const kdy = new Date();
+  _ghPosledniSlouceniPopis = 'Naposledy sloučeno ' + kdy.toLocaleTimeString('cs-CZ') +
+    (spory.length || ozivene.length ? ' (se střetem)' : '');
+  ghOhlasSlouceni(spory, ozivene, opts.tiche);
+  syncOznamZmenu();
+  // V editaci se nepřekresluje — uživatel by přišel o kurzor i o rozepsaný text.
+  if (syncMuzePrevzit()) render();
+  else statusMsg('Sloučeno s GitHubem. Obrazovka se překreslí po dokončení editace.');
+  ghAktualizujTlacitkoSlouceni();
+  return true;
+}
+
+// Dvě různá data mají společné id jen tehdy, když vznikla ze stejného souboru.
+function jeJinyProjekt(moje, jejich) {
+  const m = (moje && moje.entities) || [];
+  const j = (jejich && jejich.entities) || [];
+  if (m.length === 0 || j.length === 0) return false;
+  const ids = new Set(j.map(e => e && e.id));
+  return !m.some(e => e && ids.has(e.id));
+}
+
+// Běžný průběh je **tichý**: informace, se kterou stejně nejde nic dělat, nemá
+// přerušovat práci. Spor a oživená entita ale jdou do pruhu, který sám nezmizí —
+// tam něco ustoupilo a to je jediná věc, kterou je opravdu třeba přečíst.
+function ghOhlasSlouceni(spory, ozivene, tiche) {
+  if (spory.length === 0 && ozivene.length === 0) {
+    if (!tiche) toast('✓ Sloučeno s GitHubem.', 3000);
+    else statusMsg('Sloučeno s GitHubem v ' + new Date().toLocaleTimeString('cs-CZ') + '.');
+    playSound('sync');
+    return;
+  }
+  zobrazPruhSporu(spory, ozivene);
+  playSound('warning');
+}
+
+function zobrazPruhSporu(spory, ozivene) {
+  if (typeof document === 'undefined') return;
+  const stary = document.getElementById('pruh-sporu');
+  if (stary) stary.remove();
+  const radky = [];
+  if (spory.length > 0) {
+    radky.push('<strong>Vaše verze přebila cizí</strong> v tomto: ' +
+      spory.slice(0, 20).map(s => escapeHtml(s.kde) + ' – ' + escapeHtml(String(s.co))).join('; ') +
+      (spory.length > 20 ? ' a dalších ' + (spory.length - 20) : ''));
+  }
+  if (ozivene.length > 0) {
+    radky.push('<strong>Zůstalo, i když to druhá strana smazala:</strong> ' +
+      ozivene.slice(0, 20).map(s => escapeHtml(s.kde)).join('; ') +
+      (ozivene.length > 20 ? ' a dalších ' + (ozivene.length - 20) : ''));
+  }
+  const div = document.createElement('div');
+  div.id = 'pruh-sporu';
+  div.className = 'pruh-sporu';
+  div.setAttribute('role', 'status');
+  div.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#f0b400;color:#000;padding:0.75em 1em;z-index:9998;display:flex;justify-content:space-between;align-items:flex-start;gap:1em;flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,0.2);';
+  div.innerHTML = '<div>' + radky.join('<br>') +
+    '<br><span style="opacity:0.8;">Cizí hodnota není ztracená — je v historii commitů na GitHubu.</span></div>' +
+    '<button type="button" id="pruh-sporu-zavrit">Rozumím</button>';
+  document.body.appendChild(div);
+  const btn = document.getElementById('pruh-sporu-zavrit');
+  if (btn) btn.onclick = () => div.remove();
+}
+
+// Tlačítko ↻ Sloučit: stáhne cizí změny a spojí je s mými, **neukládá**.
+function ghAktualizujTlacitkoSlouceni() {
+  const btn = document.getElementById('btn-gh-slucit');
+  if (!btn) return;
+  const lze = GH.isConfigured() && !!GH.getToken();
+  btn.disabled = !lze;
+  btn.title = (lze
+    ? 'Stáhne změny od ostatních a spojí je s vašimi. Neukládá.'
+    : 'Nejdřív nastavte GitHub (Nastavení → GitHub).') +
+    (_ghPosledniSlouceniPopis ? ' — ' + _ghPosledniSlouceniPopis : '');
+}
+async function slucitZGithubuRucne() {
+  const btn = document.getElementById('btn-gh-slucit');
+  if (btn) btn.disabled = true;
+  try { await slucSVzdalenym({ tiche: false, vzdyslucuj: false }); }
+  finally { ghAktualizujTlacitkoSlouceni(); }
+}
+
 const GH = {
   _status: 'unknown',
   _lastError: null,
@@ -28541,7 +29243,15 @@ const GH = {
       db.ghMeta.lastSyncAt = nowIso();
       db.ghMeta.branch = state.settings.github.branch || 'main';
       ghDataNactena(true);
+      // Řádky databází dostanou identitu, jinak by se při sloučení nedaly
+      // spárovat a při sporu by zmizela celá tabulka.
+      doplnIdRadkumDatabazi(db);
+      // Základ pro pozdější slučování je přesně to, co na GitHubu leží.
+      ghZaklad(parsed);
+      try { _ghZnamyCommit = await ghPosledniCommitSha(); }
+      catch (eC) { debug('Sha posledního commitu se nepodařilo zjistit: ' + eC.message); }
       save();
+      _ghNeodeslaneZmeny = false;
       this._setStatus('ok', 'Načteno z GitHubu (' + db.entities.length + ' entit).');
       if (!silent) toast('✓ Načteno z GitHubu: ' + db.entities.length + ' entit, ' + getAllTags().length + ' tagů, ' + db.savedViews.length + ' pohledů.');
       playSound('load');
@@ -28676,44 +29386,62 @@ const GH = {
         }
       }
 
-      // 2) Získat aktuální sha hlavního JSONu
+      // 2) Vzít sha, ZE KTERÉ JSME VYŠLI — ne tu nejčerstvější.
+      // Právě tím GitHub pozná cizí zápis a odmítne ho (409, u chybějící sha 422).
+      // Dřív se sha načítala těsně před zápisem, takže se ta ochrana zahodila
+      // a poslední uložení tiše přepsalo cizí práci. **Nikdy si ji nenačítej
+      // znovu jen proto, aby zápis prošel.**
       let currentSha = (db.ghMeta && db.ghMeta.sha) || null;
-      try {
-        const meta = await this._getRemoteFile();
-        currentSha = meta.sha;
-      } catch (e) {
-        if (e.status !== 404) throw e;
-        currentSha = null;
-      }
 
-      // 3) Připravit obsah JSONu
-      const exportData = JSON.parse(JSON.stringify(db));
-      for (const e of exportData.entities) {
-        if (e.attachments) {
-          e.attachments = e.attachments.map(att => {
-            const out = { ...att };
-            // Odstranit data z indexeddb příloh (binární data nelze rozumně serializovat)
-            if (out.storage === 'indexeddb' || out.storage === 'pending-github' || out.storage === 'github') delete out.data;
-            return out;
-          });
+      // 3) Příprava obsahu musí jít znovu po každém sloučení, proto je to funkce.
+      const path = g.path.split('/').map(encodeURIComponent).join('/');
+      const pripravObsah = () => {
+        const exportData = JSON.parse(JSON.stringify(db));
+        for (const e of exportData.entities) {
+          if (e.attachments) {
+            e.attachments = e.attachments.map(att => {
+              const out = { ...att };
+              // Odstranit data z indexeddb příloh (binární data nelze rozumně serializovat)
+              if (out.storage === 'indexeddb' || out.storage === 'pending-github' || out.storage === 'github') delete out.data;
+              return out;
+            });
+          }
+        }
+        const content = JSON.stringify(exportData, null, 2);
+        return {
+          exportData: exportData,
+          sizeBytes: new TextEncoder().encode(content).length,
+          b64: this._utf8ToB64(content)
+        };
+      };
+
+      // 4) Nahrát hlavní JSON. Když mezitím uložil někdo jiný, sloučit a zkusit
+      // znovu — nejvýš třikrát, aby se z toho nestala nekonečná smyčka.
+      toast('Nahrávám hlavní JSON…', 60000);
+      let res = null, sizeBytes = 0, odeslano = null;
+      for (let pokus = 1; pokus <= 3; pokus++) {
+        const priprava = pripravObsah();
+        sizeBytes = priprava.sizeBytes;
+        odeslano = priprava.exportData;
+        const body = {
+          message: 'PIM update – ' + new Date().toISOString() + ' (' + db.entities.length + ' entit' + (pendingUploads.length > 0 ? ', +' + attUploaded + ' příloh' : '') + ')',
+          content: priprava.b64,
+          branch: g.branch || 'main'
+        };
+        if (currentSha) body.sha = currentSha;
+        try {
+          res = await this._api('PUT',
+            `/repos/${encodeURIComponent(g.owner)}/${encodeURIComponent(g.repo)}/contents/${path}`, body);
+          break;
+        } catch (e) {
+          const souteziciZapis = (e.status === 409 || e.status === 422);
+          if (!souteziciZapis || pokus === 3) throw e;
+          statusMsg('Na GitHubu je novější verze – slučuji a zkouším uložit znovu (' + pokus + '/3)…');
+          const slouceno = await slucSVzdalenym({ tiche: true, vzdyslucuj: true });
+          if (!slouceno) throw e;
+          currentSha = (db.ghMeta && db.ghMeta.sha) || null;
         }
       }
-      const content = JSON.stringify(exportData, null, 2);
-      const sizeBytes = new TextEncoder().encode(content).length;
-      const b64 = this._utf8ToB64(content);
-
-      // 4) Nahrát hlavní JSON
-      toast('Nahrávám hlavní JSON…', 60000);
-      const path = g.path.split('/').map(encodeURIComponent).join('/');
-      const body = {
-        message: 'PIM update – ' + new Date().toISOString() + ' (' + db.entities.length + ' entit' + (pendingUploads.length > 0 ? ', +' + attUploaded + ' příloh' : '') + ')',
-        content: b64,
-        branch: g.branch || 'main'
-      };
-      if (currentSha) body.sha = currentSha;
-
-      const res = await this._api('PUT',
-        `/repos/${encodeURIComponent(g.owner)}/${encodeURIComponent(g.repo)}/contents/${path}`, body);
 
       // 5) Zpracovat smazání odložená dříve
       let attDeleted = 0;
@@ -28739,14 +29467,22 @@ const GH = {
       db.ghMeta.sha = res.content && res.content.sha ? res.content.sha : currentSha;
       db.ghMeta.lastSyncAt = nowIso();
       db.ghMeta.branch = g.branch || 'main';
+      // Nový základ je to, co jsme právě odeslali — od téhle chvíle je to obsah
+      // souboru na GitHubu. Bere se bez další kopie, `odeslano` už kopie je.
+      ghZakladPrevezmi(odeslano);
+      // Vlastní commit se nesmí tvářit jako cizí, jinak se aplikace sloučí sama
+      // se sebou. Sha bereme rovnou z odpovědi.
+      ghZapamatujCommit(res.commit && res.commit.sha ? res.commit.sha : null);
       save();
+      // `save()` příznak zvedá, takže shodit ho musíme až po něm.
+      _ghNeodeslaneZmeny = false;
       this._setStatus('ok', 'Nahráno na GitHub (' + fmtBytes(sizeBytes) + ').');
       const wasNew = !currentSha;
       const parts = ['✓ Uloženo na GitHub (' + fmtBytes(sizeBytes) + ')'];
       if (attUploaded > 0) parts.push('+ ' + attUploaded + ' příloh');
       if (attDeleted > 0) parts.push('- ' + attDeleted + ' smazáno');
       toast(parts.join(', ') + (wasNew ? ' – nový soubor' : '') + '.', 5000);
-      playSound('load');
+      playSound('save-gh');
 
       // Migrace defaultního tabu na projektový mód
       if (!isProjectTab() && location.search === '') {
@@ -28804,6 +29540,12 @@ const GH = {
     if (aBtn) {
       aBtn.hidden = !this.isConfigured();
       if (typeof updateAutosaveButton === 'function') updateAutosaveButton();
+    }
+    // Sloučit – stejné pravidlo viditelnosti jako autosave
+    const mBtn = document.getElementById('btn-gh-slucit');
+    if (mBtn) {
+      mBtn.hidden = !this.isConfigured();
+      if (typeof ghAktualizujTlacitkoSlouceni === 'function') ghAktualizujTlacitkoSlouceni();
     }
     // status v Nastavení
     const statusEl = document.getElementById('gh-status');
@@ -32090,6 +32832,8 @@ function setupSyncButton() {
   if (btn) btn.onclick = () => GH.upload();
   const aBtn = document.getElementById('btn-autosave-gh');
   if (aBtn) aBtn.onclick = () => toggleAutosaveGh();
+  const mBtn = document.getElementById('btn-gh-slucit');
+  if (mBtn) mBtn.onclick = () => slucitZGithubuRucne();
   GH.refreshUI();
   // Periodicky překreslit title (relativní čas „naposledy …“)
   if (!window._syncTitleInterval) {
