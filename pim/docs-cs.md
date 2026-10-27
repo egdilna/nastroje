@@ -1403,9 +1403,18 @@ o změny přijdete.
 
 **Jak zálohovat?** Nástroje → Export → JSON. Nebo zapnout GitHub sync.
 
-**Zvuky jsou krátké a tiché.** Uložení, synchronizace i nepovedená akce mají vlastní
-tón do 120 ms: uložení jeden tón, synchronizace dva vzhůru („něco přišlo zvenčí"),
-chyba dva dolů. Delší fanfára zůstala jen u dokončeného úkolu. Vypnout se to dá
-v Nastavení → Zvuková odezva.
+**Zvuky jsou krátké a odstupňované podle toho, co se stalo:**
+
+| Co se stalo | Jak to zní |
+|---|---|
+| začíná nahrávání na GitHub | jeden tichý tón — nejtišší zvuk v aplikaci |
+| **uloženo na GitHub** | **tři tóny vzhůru, o něco hlasitěji** — „hotovo, je to venku" |
+| přitekly cizí změny (synchronizace) | dva tóny vzhůru, tiše |
+| uloženo lokálně (entita, atribut) | jeden krátký tón |
+| nepovedlo se | dva tóny dolů |
+| dokončený úkol | fanfára (ta jediná je delší) |
+
+Start nahrávání a úspěšné uložení schválně znějí jinak, abyste poznali, jestli se to
+ještě posílá, nebo už je venku. Celé to jde vypnout v Nastavení → Zvuková odezva.
 
 **Mohou ostatní vidět mé Zabezpečené poznámky?** Ne. Jejich obsah je AES-GCM šifrovaný heslem, které se nikam neukládá. Bez hesla nikdo nezíská plain text.

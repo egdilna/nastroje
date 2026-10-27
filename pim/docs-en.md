@@ -1415,9 +1415,19 @@ closing a window without saving to GitHub loses the changes.
 
 **How do I back up?** Tools → Export → JSON. Or enable GitHub sync.
 
-**The sounds are short and quiet.** Saving, syncing and a failed action each have their
-own tone of at most 120 ms: one tone for a save, two rising for a sync ("something came
-from outside"), two falling for an error. The longer fanfare is left only for a completed
-task. It can be switched off in Settings → Audio feedback.
+**The sounds are short and graded by what happened:**
+
+| What happened | How it sounds |
+|---|---|
+| an upload to GitHub starts | one quiet tone — the quietest sound in the app |
+| **saved to GitHub** | **three rising tones, a bit louder** — "done, it is out there" |
+| other people's changes arrived (sync) | two rising tones, quietly |
+| saved locally (entity, attribute) | one short tone |
+| something failed | two falling tones |
+| a completed task | a fanfare (the only longer one) |
+
+The start of an upload and a successful save deliberately sound different, so you can tell
+whether it is still being sent or already out. It can all be switched off in
+Settings → Audio feedback.
 
 **Can others see my Secured notes?** No. Their content is AES-GCM encrypted with a password that's stored nowhere. Without the password, no one can recover the plain text.

@@ -394,13 +394,35 @@ podvrženou `GH._api`, kanárci na obsah entit).
 ## Zvuky: krátké a tiché, protože zní pořád
 
 Ukládání se po zkrácení autosave děje každé čtyři sekundy a sloučení přitéká samo, takže
-někdejší `_modem()` (0,8 s) a `_fanfare()` (2 s) by z nástroje udělaly orchestr. Pravidlo:
-**do 120 ms, hlasitost do 0,06, žádné sweepy ani akordy** (`_pip()` a nad ním
-`_zvukUlozeno` / `_zvukSync` / `_zvukChyba`). Náběh i doznění veď exponenciálou, skoková
-hlasitost lupe. Fanfára zůstává jen u dokončeného úkolu — tam si o ni uživatel řekl sám.
+někdejší `_modem()` (0,8 s) a `_fanfare()` (2 s) by z nástroje udělaly orchestr. Všechno
+staví na `_pip(hz, delka, hlasitost, zpozdeni)`; náběh i doznění veď exponenciálou, skoková
+hlasitost lupe.
 
-`playSound('sync')` je nový druh pro „něco přišlo zvenčí" (dva tóny vzhůru). Zvuky
-v šabloně prohlížeče se **neměnily** — prohlížeč neukládá ani neslučuje.
+**Pravidlo je odstupňované podle toho, jak často zvuk zní, ne jedno pro všechny:**
+
+| Druh | Kdy | Tónů | Délka | Hlasitost |
+|---|---|---|---|---|
+| `upload-start` | začátek nahrávání na GitHub | 1 | 75 ms | 0,03 |
+| `save` / `save-entity` / `load` / `notify` | lokální uložení, čtení | 1 | 90 ms | 0,05 |
+| `sync` | cizí změny se slily | 2 vzhůru | 150 ms | 0,04 |
+| `error` / `warning` / `delete` | nepovedlo se | 2 dolů | 180 ms | 0,05 |
+| `save-gh` | **úspěšně uloženo na GitHub** | 3 vzhůru | 255 ms | 0,075 |
+| `task-done` | dokončený úkol (fanfára) | 104 | 2150 ms | 0,22 |
+
+**Start nahrávání a úspěšné uložení musí znít jinak.** Na tomhle to stálo: oba volaly
+`playSound('save-gh')` a vedly na týž jediný tón, takže uživatel nepoznal, jestli se to
+ještě posílá, nebo už je venku. Start je proto **nejtišší zvuk v aplikaci** (zní při každém
+autosave, tedy po čtyřech sekundách práce) a úspěch je naopak **jediný zvuk, který říká
+„hotovo, je to venku"** — tři tóny vzhůru, hlasitěji a delší. Pořád je to třetina modemu.
+
+Odlišují se **třemi rozměry zároveň** (počet tónů, délka, hlasitost), aby to šlo poznat
+i při tiché reprodukci nebo v hlučném prostředí. Kdo přidá další druh, ať se vejde do
+téhle tabulky a nepřekryje se s žádným řádkem.
+
+Zvuky v šabloně prohlížeče se **neměnily** — prohlížeč neukládá ani neslučuje.
+
+Ověřuje se **odposlechem zvukové vrstvy**: test podvrhne `AudioContext` a zapíše, co se
+naplánuje (počet oscilátorů, délky, hlasitosti). Slyšet to v testu nejde, spočítat ano.
 
 Autosave čeká **4 s** (dřív 15). Kratší nemá smysl: v edit modu detailu autosave
 schválně neběží a každé uložení je celý soubor.

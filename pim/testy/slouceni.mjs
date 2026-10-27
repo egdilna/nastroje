@@ -346,10 +346,82 @@ ok(s, kanarci.telo && kanarci.atribut && kanarci.komentar && kanarci.druhy,
 ok(s, kanarci.novy && kanarci.jejich && kanarci.spory === 0,
   'a přírůstky obou stran jsou v datech, bez sporu', kanarci);
 
+nadpis('Zvuky: start nahrávání a úspěšné uložení musí znít jinak');
+// Slyšet to v testu nejde, ale jde si odposlechnout, co se ve zvukové vrstvě
+// naplánuje. Podvrhne se AudioContext a zapíše se každý oscilátor i jeho hlasitost.
+// Bez toho se to jednou pokazilo: start nahrávání a úspěšné uložení vedly na týž
+// tón, takže uživatel nepoznal, jestli se to posílá, nebo už je venku.
+const zvuk = await stranka.evaluate(() => {
+  const zaznam = [];
+  const cas = 0;
+  const fake = {
+    get currentTime() { return cas; },
+    createOscillator() {
+      const o = { type: 'sine', detune: { value: 0 },
+        frequency: { value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {} },
+        connect() {}, start(t) { o._start = t; }, stop(t) { o._stop = t; } };
+      zaznam.push(o);
+      return o;
+    },
+    createGain() {
+      const g = { gain: { _max: 0,
+        setValueAtTime(v) { if (v > this._max) this._max = v; },
+        linearRampToValueAtTime(v) { if (v > this._max) this._max = v; },
+        exponentialRampToValueAtTime(v) { if (v > this._max) this._max = v; } }, connect() {} };
+      if (zaznam.length) zaznam[zaznam.length - 1]._gain = g;
+      return g;
+    },
+    createBiquadFilter() { return { type: '', Q: { value: 0 },
+      frequency: { value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect() {} }; },
+    destination: {}
+  };
+  const puvodni = window._audioCtx;
+  window._audioCtx = () => fake;
+  state.settings.audioFeedback = true;
+  const zmer = (kind) => {
+    zaznam.length = 0;
+    playSound(kind);
+    const t = zaznam.map(o => ({ hz: Math.round(o.frequency.value), konec: o._stop - cas,
+      hlasitost: o._gain ? o._gain.gain._max : 0 }));
+    return { tonu: t.length,
+      delkaMs: t.length ? Math.round(Math.max(...t.map(x => x.konec)) * 1000) : 0,
+      hlasitost: t.length ? Math.max(...t.map(x => x.hlasitost)) : 0,
+      hz: t.map(x => x.hz) };
+  };
+  const out = {
+    start: zmer('upload-start'),
+    ulozeno: zmer('save-gh'),
+    sync: zmer('sync'),
+    lokalne: zmer('save'),
+    chyba: zmer('error')
+  };
+  window._audioCtx = puvodni;
+  return out;
+});
+ok(s, zvuk.start.tonu === 1 && zvuk.ulozeno.tonu === 3,
+  'start nahrávání je jeden tón, úspěšné uložení tři — poznat je to i podle počtu', zvuk);
+ok(s, zvuk.ulozeno.hlasitost > zvuk.start.hlasitost * 2,
+  'úspěšné uložení je výrazně hlasitější než start', { start: zvuk.start.hlasitost, ulozeno: zvuk.ulozeno.hlasitost });
+ok(s, zvuk.ulozeno.delkaMs > zvuk.start.delkaMs * 2,
+  'a taky zřetelně delší', { start: zvuk.start.delkaMs, ulozeno: zvuk.ulozeno.delkaMs });
+ok(s, zvuk.start.hlasitost <= 0.035 && zvuk.start.delkaMs <= 90,
+  'start je přitom ten nejtišší a nejkratší v aplikaci — zní při každém autosave', zvuk.start);
+ok(s, zvuk.ulozeno.hz.join(',') === '659,880,1175',
+  'úspěch stoupá — „hotovo, je to venku"', zvuk.ulozeno.hz);
+ok(s, zvuk.chyba.hz[0] > zvuk.chyba.hz[1],
+  'chyba naopak klesá', zvuk.chyba.hz);
+ok(s, zvuk.sync.tonu === 2 && zvuk.sync.hlasitost < zvuk.ulozeno.hlasitost,
+  'synchronizace je dvojtón a tišší než uložení — přitéká sama, nemá si říkat o pozornost', zvuk.sync);
+ok(s, zvuk.lokalne.tonu === 1 && zvuk.lokalne.delkaMs <= 120,
+  'lokální uložení zůstává jeden krátký tón — zní při každé drobné úpravě', zvuk.lokalne);
+ok(s, zvuk.ulozeno.delkaMs < 400,
+  'i ten výraznější zvuk je pořád daleko od někdejšího modemu (800 ms)', zvuk.ulozeno.delkaMs);
+
 nadpis('Zvuky a prodleva autosave');
 const zvuky = await stranka.evaluate(() => ({
   sekundy: getAutosaveSeconds(),
-  mamFunkce: ['_zvukUlozeno', '_zvukSync', '_zvukChyba', '_pip'].every(n => typeof window[n] === 'function'),
+  mamFunkce: ['_zvukUlozeno', '_zvukSync', '_zvukChyba', '_pip',
+    '_zvukZacatekUploadu', '_zvukUlozenoNaGithub'].every(n => typeof window[n] === 'function'),
   sync: (() => { try { playSound('sync'); return true; } catch (e) { return String(e.message); } })(),
   ulozeno: (() => { try { playSound('save-gh'); return true; } catch (e) { return String(e.message); } })(),
   chyba: (() => { try { playSound('error'); return true; } catch (e) { return String(e.message); } })()
