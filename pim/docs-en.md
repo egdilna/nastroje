@@ -1267,6 +1267,31 @@ Files are written to the `main` branch and an **existing file is overwritten** (
 
 The two attributes are independent: an entity can have just one of them, or both — each button then saves a different file to a different location.
 
+### Internal links in exports
+
+Output you send to someone else contains **no internal links**: no wiki link
+`[[Entity]]`, no link by id, no link from a status chip. In Markdown it would be
+meaningless syntax, and in Word or an email a dead link to `#` that the recipient has to
+clear out by hand.
+
+**The text is kept in full** — only the link is gone:
+
+| In the entity | In the output |
+|---|---|
+| `[[Target entity]]` | Target entity |
+| `[[Target entity\|other label]]` | other label |
+| `[[id:abc-123]]` | that entity's title |
+| `{{status:Entity}}` | the whole chip as text, with type and status |
+| `#42` | `#42` (it is text, not a link) |
+| the entity type in parentheses | kept |
+
+This applies to **Kopírovat MD, Stáhnout MD, Kopírovat formátované, the formatted body
+copy and Tisk/PDF**. DOCX has always behaved this way.
+
+What does **not** change: external links (`http`) and footnote links — those work for the
+recipient. `[[…]]` inside a code block is kept, because it is an example. And **"Kopírovat
+zdroj těla" keeps the links** — that one is for pasting back into PIM.
+
 ### Two people on one file
 
 PIM expects several people to work on the same file. **The whole file is not
@@ -1419,17 +1444,17 @@ closing a window without saving to GitHub loses the changes.
 
 | What happened | How it sounds |
 |---|---|
-| an upload to GitHub starts | **two quick low ticks** — the quietest sound in the app |
+| an upload to GitHub starts | **two quick low ticks** |
 | **saved to GitHub** | **three rising tones, higher and louder** — "done, it is out there" |
 | other people's changes arrived (sync) | two rising tones, quietly |
 | saved locally (entity, attribute) | one short tone |
 | something failed | two falling tones |
 | a completed task | a fanfare (the only longer one) |
 
-The start of an upload and a successful save differ in **five things at once** — number of
-tones, direction, pitch, timbre and loudness — so you can tell whether it is still being
-sent or already out, even at a low volume. It can all be switched off in
-Settings → Audio feedback.
+The start of an upload and a successful save differ in **four things at once** — number of
+tones, direction, pitch and timbre — so you can tell whether it is still being sent or
+already out, even at a low volume. **All these sounds play at full volume**; turn them down
+with the system volume, or switch them off entirely in Settings → Audio feedback.
 
 **Progress messages are not announced.** "Nahrávám na GitHub…" and "Uloženo na GitHub
 (1.8 MB)" stay visible in the bubble at the bottom, but a screen reader does not read

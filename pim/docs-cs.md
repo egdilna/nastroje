@@ -1262,6 +1262,30 @@ Ukládá se do větve `main` a **existující soubor se přepíše** (PIM si sá
 
 Oba atributy jsou nezávislé: entita může mít jen jeden z nich, nebo oba — pak se každým tlačítkem uloží jiný soubor na jiné místo.
 
+### Interní odkazy v exportu
+
+Výstupy, které posíláte někomu jinému, **neobsahují interní odkazy**: wiki odkaz
+`[[Entita]]`, odkaz podle id ani odkaz ze status chipu. V Markdownu by to byl nesmyslný
+zápis a ve Wordu nebo v mailu mrtvý odkaz na `#`, který musíte ručně odklikat.
+
+**Text zůstává celý** — jen bez odkazu:
+
+| V entitě | Ve výstupu |
+|---|---|
+| `[[Cílová entita]]` | Cílová entita |
+| `[[Cílová entita\|jiný popisek]]` | jiný popisek |
+| `[[id:abc-123]]` | název té entity |
+| `{{status:Entita}}` | celý chip jako text, i s typem a stavem |
+| `#42` | `#42` (je to text, ne odkaz) |
+| typ entity v závorce | zůstává |
+
+Týká se to **Kopírovat MD, Stáhnout MD, Kopírovat formátované, Kopírovat formátované tělo
+a Tisk/PDF**. DOCX se tak chová odjakživa.
+
+Co se **nemění**: externí odkazy (`http`) a odkazy na poznámky pod čarou — ty u příjemce
+fungují. Zápis `[[…]]` uvnitř bloku kódu zůstává, protože je to ukázka. A **„Kopírovat
+zdroj těla" odkazy nechává** — ten je na vložení zpátky do PIM.
+
 ### Dva lidé na jednom souboru
 
 PIM počítá s tím, že na témž souboru dělá víc lidí. **Nepřepisuje se celý soubor** —
@@ -1407,16 +1431,17 @@ o změny přijdete.
 
 | Co se stalo | Jak to zní |
 |---|---|
-| začíná nahrávání na GitHub | **dva rychlé tiky nízko** — nejtišší zvuk v aplikaci |
+| začíná nahrávání na GitHub | **dva rychlé tiky nízko** |
 | **uloženo na GitHub** | **tři tóny vzhůru, výš a hlasitěji** — „hotovo, je to venku" |
 | přitekly cizí změny (synchronizace) | dva tóny vzhůru, tiše |
 | uloženo lokálně (entita, atribut) | jeden krátký tón |
 | nepovedlo se | dva tóny dolů |
 | dokončený úkol | fanfára (ta jediná je delší) |
 
-Start nahrávání a úspěšné uložení se liší **pěti věcmi zároveň** — počtem tónů, směrem,
-výškou, barvou i hlasitostí — abyste poznali, jestli se to ještě posílá, nebo už je venku,
-i při tiché reprodukci. Celé to jde vypnout v Nastavení → Zvuková odezva.
+Start nahrávání a úspěšné uložení se liší **čtyřmi věcmi zároveň** — počtem tónů, směrem,
+výškou i barvou — abyste poznali, jestli se to ještě posílá, nebo už je venku, i při tiché
+reprodukci. **Všechny tyhle zvuky hrají na plnou hlasitost**; ztišit je jde hlasitostí
+systému, nebo úplně vypnout v Nastavení → Zvuková odezva.
 
 **Hlášky o průběhu nahrávání se nepředčítají.** „Nahrávám na GitHub…" a „Uloženo na
 GitHub (1,8 MB)" zůstávají vidět v bublině dole, ale odečítač obrazovky je nečte — při
