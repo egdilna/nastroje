@@ -1267,26 +1267,33 @@ Files are written to the `main` branch and an **existing file is overwritten** (
 
 The two attributes are independent: an entity can have just one of them, or both — each button then saves a different file to a different location.
 
-### Internal links in exports
+### Wiki links in exports: bold title, aspects in italics
 
 Output you send to someone else contains **no internal links**: no wiki link
 `[[Entity]]`, no link by id, no link from a status chip. In Markdown it would be
 meaningless syntax, and in Word or an email a dead link to `#` that the recipient has to
 clear out by hand.
 
-**The text is kept in full** — only the link is gone:
+Instead of the link you get the **entity title in bold** followed by its **aspects in
+parentheses in italics**, separated by commas — the same thing the link shows on screen:
 
 | In the entity | In the output |
 |---|---|
-| `[[Target entity]]` | Target entity |
-| `[[Target entity\|other label]]` | other label |
-| `[[id:abc-123]]` | that entity's title |
+| `[[Target entity]]` | **Target entity** (*Project, Task*) |
+| `[[Target entity\|other label]]` | **other label** (*Project, Task*) |
+| `[[id:abc-123]]` | **that entity's title** (*its aspects*) |
+| a link to an entity with no aspects | **Title** (no parentheses — nothing to put there) |
+| a link to an entity that does not exist | **Title** (no parentheses) |
 | `{{status:Entity}}` | the whole chip as text, with type and status |
 | `#42` | `#42` (it is text, not a link) |
-| the entity type in parentheses | kept |
 
-This applies to **Kopírovat MD, Stáhnout MD, Kopírovat formátované, the formatted body
-copy and Tisk/PDF**. DOCX has always behaved this way.
+It is the same in **every format**: Kopírovat MD, Stáhnout MD, Kopírovat formátované, the
+formatted body copy, Tisk/PDF and the **Word export (DOCX)** — which used to render links
+as plain italics and had no aspects at all.
+
+One exception in the formatting: in **comments on the print path** the parentheses are set
+without bold and italics (`Target entity (Project, Task)`), because the text is only
+printed there and the markers would stay visible.
 
 What does **not** change: external links (`http`) and footnote links — those work for the
 recipient. `[[…]]` inside a code block is kept, because it is an example. And **"Kopírovat
