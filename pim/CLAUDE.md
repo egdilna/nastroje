@@ -449,22 +449,37 @@ Ověřuje se **odposlechem zvukové vrstvy**: test podvrhne `AudioContext` a zap
 naplánuje (počet oscilátorů, výšky, barvy, délky, hlasitosti). Slyšet to v testu nejde,
 spočítat ano — a každý z těch pěti rozměrů má vlastní kontrolu.
 
-## Interní odkazy nepatří do výstupu, který jde mimo PIM
+## Wiki odkaz ve výstupu: tučný název a aspekty kurzívou
 
 `[[Entita]]` je mimo aplikaci nesmyslný zápis a `<a href="#" data-entity="…">` je ve Wordu
-nebo v mailu **mrtvý odkaz**, který musí příjemce ručně odklikat. DOCX byl bez odkazů
-odjakživa (`renderMarkdownBlocksToDocx` sází text kurzívou), takže se podle něj teď řídí
-i ostatní výstupy.
+nebo v mailu **mrtvý odkaz**, který musí příjemce ručně odklikat. Odkaz proto ve výstupu
+není — místo něj **tučný název a za ním aspekty v závorce kurzívou**, oddělené čárkou
+(`**Cílová entita** (*Projekt, Úkol*)`). Je to táž informace, kterou odkaz ukazuje
+i na obrazovce: tam je závorka s aspekty v `<span class="wiki-aspects meta">` **mimo**
+`<a>` (viz `resolveWikiLink`).
 
-Dělají to dvě funkce nad `renderEntityAsMarkdown()`:
+Nejdřív se odkaz jen odebíral a vznikl holý název. To byl **omyl**: aspekty v závorce jsou
+to, proč ten odkaz v textu je, a v DOCX nebyly nikdy (jeho `parseInlineForDocx` sázel text
+kurzívou a nic víc). Sjednocení je proto celé v jedné podobě pro všechny formáty.
+
+Tři funkce, jedna podoba:
 
 | Funkce | Co dělá |
 |---|---|
-| `odstranInterniOdkazyZMarkdownu(md)` | `[[ref\|alias]]` → alias, `[[Název]]` → Název, `[[id:x]]` → **název entity** (ne identifikátor) |
+| `wikiOdkazProVystup(ref, alias, opts)` | **jediné místo, kde ta podoba vzniká**. `alias` je popiskem, `[[id:x]]` se dohledá na název; aspekty vždy z cílové entity |
+| `prepisWikiOdkazyVMarkdownu(md, opts)` | projde řádky mimo bloky kódu a každé `[[…]]` předá té funkci |
+| `ocistiExportniModel(model, opts)` | **kopie** exportního modelu s přepsaným tělem, atributy, komentáři a `lastComment` — pro cesty, které výstup skládají z modelu, ne z jednoho řetězce |
 | `odstranInterniOdkazyZHtml(html)` | rozbalí `<a>` s `data-entity`, `data-create-name` nebo třídou `wiki-link` na jeho obsah |
 
-Platí to pro výstupy, které jdou někomu jinému: **export MD (kopie i stažení),
-formátovaná kopie, kopie formátovaného těla a tisk/PDF**. Schválně se to **nedotýká**:
+Každá cesta ven si bere to, co jí odpovídá:
+
+| Výstup | Čím |
+|---|---|
+| export MD (kopie i stažení), formátovaná kopie, kopie formátovaného těla | `prepisWikiOdkazyVMarkdownu` nad hotovým markdownem |
+| DOCX | `ocistiExportniModel(model)` v `downloadEntityAsDocx` |
+| tisk / PDF | `ocistiExportniModel(model, { prostyTextKomentaru: true })` + `odstranInterniOdkazyZHtml` |
+
+Schválně se to **nedotýká**:
 
 - **„Kopírovat zdroj těla"** — to je zdroj k vložení zpátky do PIM, tam `[[…]]` patří,
 - **podkladů pro umělou inteligenci** — odkazy jsou tam kontext,
@@ -472,24 +487,30 @@ formátovaná kopie, kopie formátovaného těla a tisk/PDF**. Schválně se to 
   vstup; změna by tiše změnila publikovaný web,
 - **renderu na obrazovku** — tam jsou odkazy k navigaci.
 
-Čtyři věci, které nejsou libovolné:
+Pět věcí, které nejsou libovolné:
 
-1. **Odebírá se jen odkaz, text zůstává celý.** Typ entity v závorce je v HTML **mimo**
-   `<a>` (viz `resolveWikiLink`), takže se ho to netýká samo; obsah status chipu zůstává,
-   protože se rozbaluje jen jeho `<a>`.
-2. **Poznává se podle `data-entity` / `data-create-name` / `wiki-link`, ne podle `href="#"`.**
+1. **Podoba vzniká na jednom místě.** Kdo ji potřebuje jinde, zavolá
+   `wikiOdkazProVystup()`; druhá kopie pravidla se rozejde (přesně to se stalo DOCX,
+   který měl `[[…]]` → kurzíva ve vlastní větvi `parseInlineForDocx`).
+2. **`opts.prostyText` je pro místa, kde se text jen escapuje.** Komentáře v tiskové cestě
+   (`renderEntityAsHtmlForPrint`) jdou přes `escapeHtml`, takže by v nich hvězdičky
+   zůstaly vidět; dostanou proto `Název (Aspekty)` bez značek. V DOCX se komentáře inline
+   markdownem prohánějí, tam platí tučná podoba.
+3. **`ocistiExportniModel` vrací kopii.** Model se staví z `db`, takže zápis do něj by byl
+   zápis do dat. Hlídá to kanárek.
+4. **Poznává se podle `data-entity` / `data-create-name` / `wiki-link`, ne podle `href="#"`.**
    Poznámky pod čarou (`href="#fn-…"`) a kotvy na nadpisy ve vyexportovaném dokumentu
-   **fungují** a musí zůstat.
-3. **Bloky kódu se přeskakují** — `[[Entita]]` uvnitř ohradníků je ukázka zápisu, ne odkaz.
-   DOCX to dělá taky.
-4. **Nenasytná shoda u `<a …>…</a>`** je bezpečná, protože vnořené `<a>` v HTML existovat
-   nemůže. Dva odkazy za sebou se tím rozliší.
+   **fungují** a musí zůstat. Obsah status chipu zůstává celý, rozbaluje se jen jeho `<a>`.
+5. **Bloky kódu se přeskakují** — `[[Entita]]` uvnitř ohradníků je ukázka zápisu, ne odkaz.
+   DOCX to dělá taky. A **nenasytná shoda** u `<a …>…</a>` je bezpečná, protože vnořené
+   `<a>` v HTML existovat nemůže.
 
 Past při ověřování: `[[` v DOCX **je** — ale jen uvnitř bloku kódu. Hledat se proto musí
 po odstavcích, ne v celém dokumentu; první verze kontroly hlásila chybu, která žádná nebyla.
 
-Hlídá to `pim/testy/export-bez-odkazu.mjs` (kanárek na zdrojová těla — odebírá se jen ve
-výstupu, do dat se nesahá).
+Hlídá to `pim/testy/export-bez-odkazu.mjs` (45 kontrol: podoba ve všech čtyřech formátech
+proti témuž očekávání, `<w:b/>` i `<w:i/>` v DOCX po běhách, kanárek na zdrojová těla
+i komentáře — přepisuje se jen ve výstupu, do dat se nesahá).
 
 ## Hlášení o průběhu se nepředčítá
 

@@ -1262,25 +1262,32 @@ Ukládá se do větve `main` a **existující soubor se přepíše** (PIM si sá
 
 Oba atributy jsou nezávislé: entita může mít jen jeden z nich, nebo oba — pak se každým tlačítkem uloží jiný soubor na jiné místo.
 
-### Interní odkazy v exportu
+### Wiki odkazy v exportu: tučný název, aspekty kurzívou
 
 Výstupy, které posíláte někomu jinému, **neobsahují interní odkazy**: wiki odkaz
 `[[Entita]]`, odkaz podle id ani odkaz ze status chipu. V Markdownu by to byl nesmyslný
 zápis a ve Wordu nebo v mailu mrtvý odkaz na `#`, který musíte ručně odklikat.
 
-**Text zůstává celý** — jen bez odkazu:
+Místo odkazu se vysází **název entity tučně** a za ním **aspekty v závorce kurzívou**,
+oddělené čárkou — tedy to, co u odkazu vidíte i na obrazovce:
 
 | V entitě | Ve výstupu |
 |---|---|
-| `[[Cílová entita]]` | Cílová entita |
-| `[[Cílová entita\|jiný popisek]]` | jiný popisek |
-| `[[id:abc-123]]` | název té entity |
+| `[[Cílová entita]]` | **Cílová entita** (*Projekt, Úkol*) |
+| `[[Cílová entita\|jiný popisek]]` | **jiný popisek** (*Projekt, Úkol*) |
+| `[[id:abc-123]]` | **název té entity** (*její aspekty*) |
+| odkaz na entitu bez aspektů | **Název** (bez závorky, není z čeho) |
+| odkaz na entitu, která neexistuje | **Název** (bez závorky) |
 | `{{status:Entita}}` | celý chip jako text, i s typem a stavem |
 | `#42` | `#42` (je to text, ne odkaz) |
-| typ entity v závorce | zůstává |
 
-Týká se to **Kopírovat MD, Stáhnout MD, Kopírovat formátované, Kopírovat formátované tělo
-a Tisk/PDF**. DOCX se tak chová odjakživa.
+Je to tak ve **všech formátech**: Kopírovat MD, Stáhnout MD, Kopírovat formátované,
+Kopírovat formátované tělo, Tisk/PDF i **Export do Wordu (DOCX)** — ten měl odkazy
+odjakživa jen jako kurzívu a aspekty v něm nebyly vůbec.
+
+Jedna výjimka v podobě: v **komentářích v tiskové cestě** se závorka vysází bez tučného
+a kurzívy (`Cílová entita (Projekt, Úkol)`), protože se tam text jen vypisuje a značky by
+zůstaly vidět.
 
 Co se **nemění**: externí odkazy (`http`) a odkazy na poznámky pod čarou — ty u příjemce
 fungují. Zápis `[[…]]` uvnitř bloku kódu zůstává, protože je to ukázka. A **„Kopírovat

@@ -15357,7 +15357,7 @@ async function copyBodyFormatted(entity) {
   // Expandování include a placeholderů + zjednodušení inline-selectů na (!vybraná!) — společně pro HTML i plain text.
   // Jde to mimo PIM, takže bez interních odkazů — a to v obou podobách, které
   // se do schránky dávají (HTML i prostý text).
-  const expandedSrc = odstranInterniOdkazyZMarkdownu(
+  const expandedSrc = prepisWikiOdkazyVMarkdownu(
     expandMarkdownIncludes(src, { markIncluded: false, entity: entity }));
   try {
     // Vyrenderujeme markdown na HTML z expandovaného zdroje (žádné inline-select widgety, žádné placeholdery).
@@ -30277,22 +30277,41 @@ function formatAttrValuePlain(f, v, entityCtx) {
 }
 
 // === MARKDOWN ===
-// === INTERNÍ ODKAZY NEPATŘÍ DO VÝSTUPU, KTERÝ JDE MIMO PIM ===
+// === WIKI ODKAZ VE VÝSTUPU: TUČNÝ NÁZEV A ASPEKTY KURZÍVOU ===
 // `[[Entita]]` je mimo aplikaci nesmyslný zápis a `<a href="#" data-entity="…">`
 // je ve Wordu nebo v mailu **mrtvý odkaz**, který musí příjemce ručně odklikat.
-// DOCX je bez odkazů odjakživa, takže se tím řídí i ostatní výstupy.
+// Odkaz proto ve výstupu není — místo něj **tučný název entity** a za ním
+// **aspekty v závorce kurzívou**, oddělené čárkou. Na obrazovce je ta závorka
+// taky (jen šedivě, mimo `<a>`), takže výstup vypadá jako to, co uživatel vidí.
 //
-// **Odebírá se jen odkaz, text zůstává celý** — včetně typu entity v závorce
-// (ta je v HTML mimo `<a>`, takže se jí to netýká) a včetně obsahu status chipu.
-// Externí odkazy (`http`) a odkazy na poznámky pod čarou v témže dokumentu
-// zůstávají: ty u příjemce fungují.
+// Sjednocuje to **všechny formáty**: MD (kopie i stažení), formátovanou kopii,
+// kopii formátovaného těla, tisk/PDF i DOCX — ten měl odkazy odjakživa jako
+// kurzívu a aspekty v něm nebyly vůbec.
 //
-// Platí to pro výstupy, které jdou někomu jinému: export MD (kopie i stažení),
-// formátovaná kopie, kopie formátovaného těla a tisk/PDF. **Nedotýká se**
-// „Kopírovat zdroj těla" (to je zdroj pro vložení zpátky do PIM), podkladů pro
-// umělou inteligenci ani zápisu na GitHub přes `ghpath` — tam je zápis `[[…]]`
-// právě to, co se čeká.
-function odstranInterniOdkazyZMarkdownu(text) {
+// **Nedotýká se** „Kopírovat zdroj těla" (to je zdroj pro vložení zpátky do PIM),
+// podkladů pro umělou inteligenci ani zápisu na GitHub přes `ghpath` — tam je
+// zápis `[[…]]` právě to, co se čeká. A ani renderu na obrazovku: tam jsou
+// odkazy k navigaci.
+//
+// `opts.prostyText` je pro místa, kde se text jen escapuje a markdown se v nich
+// nevyhodnocuje (komentáře v tiskové cestě) — hvězdičky by tam zůstaly vidět.
+function wikiOdkazProVystup(ref, alias, opts) {
+  const r = String(ref == null ? '' : ref).trim();
+  const podleId = r.indexOf('id:') === 0;
+  const cil = podleId ? findEntity(r.slice(3)) : findEntityByTitle(r);
+  // Bez aliasu se bere název, jak je zapsaný — stejně jako na obrazovce.
+  // U odkazu podle id by ale zbyl nic neříkající identifikátor, takže se
+  // dohledá název entity.
+  const popisek = (alias && String(alias).trim())
+    || (podleId ? (cil ? getDisplayTitle(cil) : r.slice(3)) : r);
+  const aspekty = cil ? (cil.aspects || []).map(a => aspectLabel(a)).filter(Boolean) : [];
+  if (opts && opts.prostyText) {
+    return popisek + (aspekty.length ? ' (' + aspekty.join(', ') + ')' : '');
+  }
+  return '**' + popisek + '**' + (aspekty.length ? ' (*' + aspekty.join(', ') + '*)' : '');
+}
+
+function prepisWikiOdkazyVMarkdownu(text, opts) {
   const vstup = String(text == null ? '' : text);
   if (vstup.indexOf('[[') < 0) return vstup;
   const radky = vstup.split('\n');
@@ -30300,17 +30319,8 @@ function odstranInterniOdkazyZMarkdownu(text) {
   for (let i = 0; i < radky.length; i++) {
     if (/^\s*```/.test(radky[i])) { vKodu = !vKodu; continue; }
     if (vKodu) continue;   // v bloku kódu je `[[…]]` ukázka zápisu, ne odkaz
-    radky[i] = radky[i].replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (cely, ref, alias) => {
-      if (alias) return alias.trim();
-      const r = String(ref).trim();
-      if (r.indexOf('id:') === 0) {
-        // Odkaz podle id by po odebrání zbyl jako nic neříkající identifikátor,
-        // takže se dohledá název entity.
-        const cil = findEntity(r.slice(3));
-        return cil ? getDisplayTitle(cil) : r.slice(3);
-      }
-      return r;
-    });
+    radky[i] = radky[i].replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g,
+      (cely, ref, alias) => wikiOdkazProVystup(ref, alias, opts));
   }
   return radky.join('\n');
 }
@@ -30327,6 +30337,33 @@ function odstranInterniOdkazyZHtml(html) {
       /class\s*=\s*"[^"]*wiki-link/.test(atributy);
     return interni ? obsah : cely;
   });
+}
+
+// Cesty, které nestaví jeden markdownový řetězec, ale skládají výstup z modelu
+// (DOCX a tisk/PDF), si model nejdřív nechají očistit. Vrací **kopii** — do dat
+// se nesahá a `buildEntityExportModel()` zůstává bez téhle znalosti.
+//
+// Komentáře se v tiskové cestě jen escapují (markdown se v nich nevyhodnocuje),
+// takže pro ně umí volající říct `prostyTextKomentaru` a dostane závorku bez
+// hvězdiček. V DOCX se komentáře inline markdownem prohánějí, takže tam platí
+// tatáž tučná podoba jako v těle.
+function ocistiExportniModel(model, opts) {
+  if (!model) return model;
+  opts = opts || {};
+  const md = t => prepisWikiOdkazyVMarkdownu(t);
+  const kom = t => prepisWikiOdkazyVMarkdownu(t, { prostyText: !!opts.prostyTextKomentaru });
+  const m = Object.assign({}, model);
+  m.body = md(model.body || '');
+  m.attributesByAspect = (model.attributesByAspect || []).map(g => Object.assign({}, g, {
+    fields: (g.fields || []).map(f => Object.assign({}, f, { formatted: md(f.formatted || '') }))
+  }));
+  m.customAttributes = (model.customAttributes || []).map(a => Object.assign({}, a, { value: md(a.value || '') }));
+  m.comments = (model.comments || []).map(c => Object.assign({}, c, { content: kom(c.content || '') }));
+  m.relatedComments = (model.relatedComments || []).map(g => Object.assign({}, g, {
+    comments: (g.comments || []).map(c => Object.assign({}, c, { content: kom(c.content || '') }))
+  }));
+  m.eventTasks = (model.eventTasks || []).map(t => Object.assign({}, t, { lastComment: kom(t.lastComment || '') }));
+  return m;
 }
 
 function renderEntityAsMarkdown(model) {
@@ -31124,7 +31161,7 @@ function makeZip(files) {
 
 function downloadEntityAsMarkdown(entity, selection) {
   const model = buildEntityExportModel(entity, selection);
-  const md = odstranInterniOdkazyZMarkdownu(renderEntityAsMarkdown(model));
+  const md = prepisWikiOdkazyVMarkdownu(renderEntityAsMarkdown(model));
   const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
   const baseName = sanitizeFilename(model.title || 'entita');
   const stamp = new Date().toISOString().slice(0, 10);
@@ -31171,7 +31208,7 @@ function execCommandCopyText(text) {
 
 async function copyEntityAsMarkdown(entity, selection) {
   const model = buildEntityExportModel(entity, selection);
-  const md = odstranInterniOdkazyZMarkdownu(renderEntityAsMarkdown(model));
+  const md = prepisWikiOdkazyVMarkdownu(renderEntityAsMarkdown(model));
   const ok = await copyPlainTextToClipboard(md);
   if (ok) toast('✓ MD zkopírován do schránky (' + md.length + ' znaků).');
   else alertMsg('Kopírování se nezdařilo. Zkuste text označit a zkopírovat ručně (Ctrl+C).');
@@ -31181,7 +31218,7 @@ async function copyEntityAsMarkdown(entity, selection) {
 // Outlooku, Gmailu apod. Vyrenderuje exportní Markdown na HTML.
 async function copyEntityAsFormatted(entity, selection) {
   const model = buildEntityExportModel(entity, selection);
-  const md = odstranInterniOdkazyZMarkdownu(renderEntityAsMarkdown(model));
+  const md = prepisWikiOdkazyVMarkdownu(renderEntityAsMarkdown(model));
   if (!md.trim()) { toast('Není co kopírovat.'); return; }
   try {
     const renderedHtml = odstranInterniOdkazyZHtml(renderMarkdown(md));
@@ -31265,7 +31302,9 @@ async function downloadEntityAsDocx(entity, selection) {
         try { entity.attributes.encoded = await pumlEncodeAsync(src); } catch (e) { /* zůstane bez diagramu */ }
       }
     }
-    const model = buildEntityExportModel(entity, selection);
+    // Wiki odkazy se ve výstupu mění na tučný název a aspekty kurzívou — stejně
+    // jako v ostatních formátech. Jde to přes model, protože DOCX se skládá z něj.
+    const model = ocistiExportniModel(buildEntityExportModel(entity, selection));
     // Předsbírat obrázky z těla i z textarea atributů (PlantUML diagramy apod.)
     let imgSourceText = model.body || '';
     (model.attributesByAspect || []).forEach(g => (g.fields || []).forEach(f => { if (f.formatted) imgSourceText += '\n\n' + f.formatted; }));
@@ -31492,7 +31531,10 @@ function renderEntityAsHtmlForPrint(model) {
 
 function exportEntityAsPdf(entity, selection) {
   try {
-    const model = buildEntityExportModel(entity, selection);
+    // Komentáře se v tiskové cestě escapují, takže v nich markdown nefunguje —
+    // hvězdičky by zůstaly vidět a závorka tam jde bez nich.
+    const model = ocistiExportniModel(buildEntityExportModel(entity, selection),
+      { prostyTextKomentaru: true });
     const html = odstranInterniOdkazyZHtml(renderEntityAsHtmlForPrint(model));
     // Otevřít v novém okně, kde uživatel klikne "Tisk / Uložit jako PDF"
     const win = window.open('', '_blank');
