@@ -1330,15 +1330,32 @@ Information you cannot act on should not interrupt the work.
 
 #### The ↻ Sloučit button
 
-In the header next to **☁ Sync** (`Alt+Shift+M`, also from the command palette) it
-downloads other people's changes and joins them with yours — **it does not save**. Work
+In the header next to **☁ Sync** it downloads other people's changes and joins them with
+yours — **it does not save**. Shortcut **`Alt+Shift+M`** (`Alt+M` works too), the same
+letter as in DKM; it is in the command palette as well. Work
 in progress is kept, only what the others did in the meantime is added to it. When there
 is nothing new, it says so and does nothing.
 
 #### Autosave and collaboration
 
+All the delays in one place:
+
+| What | How long |
+|---|---|
+| from the last change to the upload (autosave) | **4 s** (configurable, min. 1) |
+| check whether someone saved — while working | **20 s** |
+| check whether someone saved — idle (90 s without input) | **120 s** |
+| window in the background | no checks at all |
+| rejected write → merge and retry | immediately, at most 3 attempts |
+
+So in the worst case the others see your work within ~25 seconds (4 s to upload + 20 s
+until their check), or within ~2 minutes if their machine is idle.
+
 Autosave waits **4 seconds** after the last change (15 before) — that is how long the
-others do not see your work. The interval can be changed in Settings. **Autosave does not
+others do not see your work. **If you change something while an upload is already running**
+(which can take tens of seconds on a large base), that change goes out in the next write
+right after it finishes — it ends up in the file even though it did not make it into the
+snapshot being sent. The interval can be changed in Settings. **Autosave does not
 run while a detail is being edited**: the upload happens only after the editing ends, so
 half-written text never reaches the file. Autosave resolves a conflict on its own and
 does not switch itself off.

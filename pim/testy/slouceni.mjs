@@ -238,6 +238,90 @@ ok(s, kolecko.pollingZnovu === false, 'druhá kontrola bez nového commitu nic n
 ok(s, kolecko.vlastniCommit.sloucilSeSamSeSebou === false && kolecko.vlastniCommit.znamyJeNas,
   'vlastní commit se netváří jako cizí — aplikace se neslučuje sama se sebou', kolecko.vlastniCommit);
 
+nadpis('Změna během nahrávání: nahrávání trvá, uživatel pracuje dál');
+// Nahrávání celého souboru může u větší báze trvat i desítky sekund. Snímek obsahu
+// se bere na začátku zápisu, takže změna provedená během něj v odeslaných datech
+// není. Tři věci se na tom dřív rozbily: změnu nikdo nenaplánoval k odeslání
+// (autosave má v té době plánování zakázané), příznak „vše odesláno" lhal,
+// a nejbližší cizí commit tu změnu tiše zahodil. Čtvrtá chyba přišla s opravou:
+// `upload()` si volá `save()` sám, takže si označil „změna během nahrávání"
+// a řetězil commity bez konce.
+const behem = await stranka.evaluate(async () => {
+  const server = { sha: 'sha-1', commit: 'c-1', obsah: __D([__E({ id: 'a' })]) };
+  state.settings.github = { owner: 'o', repo: 'r', path: 'pim.json', branch: 'main' };
+  GH.setToken('t');
+  let putu = 0;
+  GH._api = async (method, path, body) => {
+    if (method === 'GET' && path.includes('/commits')) return [{ sha: server.commit }];
+    if (method === 'GET' && path.includes('/contents/'))
+      return { sha: server.sha, size: 10, content: GH._utf8ToB64(JSON.stringify(server.obsah)) };
+    if (method === 'PUT') {
+      putu++;
+      await new Promise(z => setTimeout(z, 400));      // „nahrávání trvá"
+      if ((body.sha || null) !== server.sha) { const e = new Error('c'); e.status = 409; throw e; }
+      server.obsah = JSON.parse(new TextDecoder().decode(
+        Uint8Array.from(atob(body.content), c => c.charCodeAt(0))));
+      server.sha = 'sha-' + putu; server.commit = 'c-' + putu;
+      return { content: { sha: server.sha }, commit: { sha: server.commit } };
+    }
+    throw new Error('?');
+  };
+  await GH.downloadAndLoad(true);
+  state.settings.autosaveGhSeconds = 1;
+  if (!_autosaveGhEnabled) toggleAutosaveGh();
+
+  const out = {};
+  db.entities.push(__E({ id: 'prvni' }));
+  save();
+  await new Promise(z => setTimeout(z, 1100));         // autosave rozjel zápis
+  out.beziZapis = window._autosaveSkip === true;
+  db.entities.push(__E({ id: 'druha' }));              // změna uprostřed zápisu
+  save();
+  await new Promise(z => setTimeout(z, 1200));
+  out.hnedPoZapisu = {
+    naServeru: server.obsah.entities.map(e => e.id).sort().join(','),
+    priznak: _ghNeodeslaneZmeny,
+    naplanovano: _autosaveGhTimer !== null
+  };
+  await new Promise(z => setTimeout(z, 2200));         // doběhový zápis
+  out.poDobehu = {
+    naServeru: server.obsah.entities.map(e => e.id).sort().join(','),
+    priznak: _ghNeodeslaneZmeny,
+    putu: putu
+  };
+  const putuTed = putu;
+  await new Promise(z => setTimeout(z, 2500));
+  out.klid = { stejnePocty: putu === putuTed, naplanovano: _autosaveGhTimer !== null };
+
+  // Cizí commit nesmí změnu z doby nahrávání zahodit — zkusíme to v obou stavech.
+  db.entities.push(__E({ id: 'treti' }));
+  save();
+  server.obsah = JSON.parse(JSON.stringify(server.obsah));
+  server.obsah.entities.push(__E({ id: 'cizi' }));
+  server.sha = 'sha-cizi'; server.commit = 'c-cizi';
+  await slucSVzdalenym({ tiche: true });
+  out.poCizim = { vPameti: db.entities.map(e => e.id).sort().join(',') };
+  if (_autosaveGhEnabled) toggleAutosaveGh();
+  // Uklidit po sobě: zkrácený interval byl jen pro tenhle test, ať neovlivní
+  // kontrolu výchozí hodnoty níž.
+  delete state.settings.autosaveGhSeconds;
+  return out;
+});
+ok(s, behem.beziZapis, 'zápis v okamžiku druhé změny opravdu běžel', behem);
+ok(s, behem.hnedPoZapisu.naServeru === 'a,prvni',
+  'odeslal se snímek z začátku zápisu — druhá změna v něm není', behem.hnedPoZapisu);
+ok(s, behem.hnedPoZapisu.priznak === true,
+  'příznak neodeslaných změn zůstal — jinak by lhal', behem.hnedPoZapisu);
+ok(s, behem.hnedPoZapisu.naplanovano === true,
+  'a doběhový zápis je naplánovaný, takže změnu někdo odešle', behem.hnedPoZapisu);
+ok(s, behem.poDobehu.naServeru === 'a,druha,prvni' && behem.poDobehu.priznak === false,
+  'doběhový zápis změnu z doby nahrávání dopraví na server', behem.poDobehu);
+ok(s, behem.poDobehu.putu === 2, 'a stačily na to dva zápisy, ne víc', behem.poDobehu);
+ok(s, behem.klid.stejnePocty && behem.klid.naplanovano === false,
+  'pak je klid — vlastní save uploadu neřetězí commity bez konce', behem.klid);
+ok(s, behem.poCizim.vPameti === 'a,cizi,druha,prvni,treti',
+  'cizí commit nezahodí neodeslanou změnu — slučuje se, nepřepisuje vcelku', behem.poCizim);
+
 nadpis('Kanárci: sloučení nesmí ztratit obsah entit');
 const kanarci = await stranka.evaluate(() => {
   const v = slucDb(
@@ -284,6 +368,48 @@ ok(s, tlacitko.je, 'tlačítko v hlavičce existuje', tlacitko);
 ok(s, /Neukládá/.test(tlacitko.popis || ''),
   'a v popisku stojí, že neukládá — je to čtení, ne zápis', tlacitko.popis);
 ok(s, await stranka.evaluate(() => typeof slucitZGithubuRucne === 'function'), 'obsluha existuje');
+ok(s, await stranka.evaluate(() => document.getElementById('btn-gh-slucit').accessKey === 'm'),
+  'accesskey je „m" — stejné písmeno jako v DKM');
+
+nadpis('Klávesová zkratka Alt+M / Alt+Shift+M');
+// `accesskey` má každý prohlížeč jinak (Firefox Alt+Shift, Chrome Alt, macOS Ctrl+Alt)
+// a v bezhlavém Chromiu nefunguje vůbec — ani u stávajících tlačítek. Proto je zkratka
+// i ve vlastní klávesové vrstvě: chová se všude stejně a jde ověřit.
+const zkratka = await stranka.evaluate(() => {
+  state.settings.github = { owner: 'o', repo: 'r', path: 'p.json', branch: 'main' };
+  GH.setToken('t'); GH.refreshUI();
+  window.__puvodniSluc = window.slucitZGithubuRucne;
+  window.__pocetSlouceni = 0;
+  window.slucitZGithubuRucne = () => { window.__pocetSlouceni++; };
+  return true;
+});
+ok(s, zkratka, 'příprava: GitHub nastavený a obsluha odchycená');
+await stranka.keyboard.press('Alt+m');
+await stranka.waitForTimeout(200);
+ok(s, await stranka.evaluate(() => window.__pocetSlouceni) === 1, 'Alt+M spustí sloučení');
+await stranka.keyboard.press('Alt+Shift+m');
+await stranka.waitForTimeout(200);
+ok(s, await stranka.evaluate(() => window.__pocetSlouceni) === 2, 'Alt+Shift+M taky');
+await stranka.evaluate(() => { window.__pocetSlouceni = 0; });
+await stranka.keyboard.press('Shift+m');
+await stranka.waitForTimeout(200);
+ok(s, await stranka.evaluate(() => window.__pocetSlouceni) === 0,
+  'samotné Shift+M zůstává navigací, zkratka ho nespolkla');
+const bezGh = await stranka.evaluate(async () => {
+  GH.setToken(''); state.settings.github = { owner: '', repo: '', path: '', branch: 'main' };
+  window.__pocetSlouceni = 0;
+  return true;
+});
+ok(s, bezGh, 'příprava: GitHub odpojený');
+await stranka.keyboard.press('Alt+m');
+await stranka.waitForTimeout(250);
+const stav = await stranka.evaluate(() => ({
+  pocet: window.__pocetSlouceni,
+  toast: (document.querySelector('.toast') || {}).textContent || ''
+}));
+ok(s, stav.pocet === 0 && /GitHub/.test(stav.toast),
+  'bez nastaveného GitHubu zkratka jen poradí, nic nespustí', stav);
+await stranka.evaluate(() => { window.slucitZGithubuRucne = window.__puvodniSluc; });
 
 await prohlizec.close();
 process.exit(uzavri(s));

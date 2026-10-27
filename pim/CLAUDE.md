@@ -329,6 +329,31 @@ Pravidla, která se nesmí porušit:
 8. **Pole bez identity prvků se neslučuje po pozici.** Zapíše se spor a vyhraje
    ukládající; míchání podle indexu by řádky rozjelo.
 
+### Změna během nahrávání: nahrávání trvá, uživatel pracuje dál
+
+Nahrávání celého souboru trvá u větší báze i desítky sekund a snímek obsahu
+(`pripravObsah()`) se bere na začátku zápisu. Změna provedená během něj **v odeslaných
+datech není**. Čtyři chyby, které z toho vznikly, a čím jsou zalepené:
+
+1. **Změnu nikdo nenaplánoval k odeslání.** `scheduleAutosaveGh()` má v době zápisu
+   plánování zakázané (`window._autosaveSkip`, jinak by se upload zavolal sám ze sebe),
+   takže změna zůstala v paměti **bez čekajícího uploadu** — a data se jinak nikam
+   neukládají, takže zavřená záložka ji vzala s sebou. Teď se poznamená
+   (`_autosaveZmenaBehemUploadu`) a po dojezdu se naplánuje doběhový zápis.
+2. **Příznak „vše odesláno" lhal.** `_ghNeodeslaneZmeny` se shazuje **jen když se
+   `_ghCitacZmen` od snímku nezvedl**. Počítadlo zvedá `save()`.
+3. **Cizí commit tu změnu tiše zahodil.** Převzetí cizí verze vcelku (`db = jejich`) se
+   proto dělá **jen bez základu**. Se základem dá sloučení tentýž výsledek (moje ==
+   základ → u každého pole vyhrají jejich, včetně smazání), ale nemá útes: kdyby příznak
+   byť jednou lhal, přepsání vcelku změnu zahodí, zatímco sloučení ji udrží.
+4. **Oprava si vyrobila nekonečnou řadu commitů.** `upload()` si na konci volá `save()`
+   sám (kvůli `ghMeta`) a tím si označil „změna během nahrávání" → naplánoval další
+   upload → ten zase zavolal `save()`. Proto `window._ghVlastniSave`: zápis metadat
+   z uploadu se **nepočítá ani neznačí**.
+
+Kdo sahá na `save()`, `upload()` nebo autosave, ať tenhle odstavec přečte celý — jsou to
+čtyři pravidla, která drží jedno chování, a každé z nich se dá rozbít samostatně.
+
 ### Sloučení běží samo; ptát se je výjimka
 
 Cizí commit se slučuje automaticky (`zkontrolujVzdalene` → `slucSVzdalenym({tiche:true})`).
@@ -355,6 +380,13 @@ rozdělanou práci, jen přidává.
 
 **Sloučit je čtení, ne zápis.** `slucitZGithubuRucne()` (tlačítko `btn-gh-slucit`, taky
 v paletě) stáhne a sloučí, ale neukládá — co jde ven, si má uživatel říct sám.
+
+Zkratka je **ve vlastní klávesové vrstvě** (`setupKeyboard`, Alt+M i Alt+Shift+M), ne jen
+jako `accesskey="m"`. Accesskey má každý prohlížeč jinak (Firefox Alt+Shift, Chrome Alt,
+macOS Ctrl+Alt) a v bezhlavém Chromiu **nefunguje vůbec** — ani u stávajících tlačítek,
+takže se nedá otestovat. `accesskey` na tlačítku zůstává (stejné písmeno jako DKM).
+Handler vylučuje `ctrlKey` i `AltGraph`: na české klávesnici je pravý Alt modifikátor
+pro znaky a uživatel by jím omylem spouštěl sloučení.
 
 Hlídá to `pim/testy/slouceni.mjs` (pravidla na čisté `slucDb()`, celé kolečko přes
 podvrženou `GH._api`, kanárci na obsah entit).

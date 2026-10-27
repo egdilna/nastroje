@@ -1298,7 +1298,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
   <nav aria-label="Hlavní navigace">
     <ul id="main-nav">
       <li><button id="btn-sync" accesskey="s" title="Uložit na GitHub" hidden>☁ Sync</button></li>
-      <li><button id="btn-gh-slucit" accesskey="m" title="Stáhne změny od ostatních a spojí je s vašimi. Neukládá." hidden>↻ Sloučit</button></li>
+      <li><button id="btn-gh-slucit" accesskey="m" title="Sloučit s ostatními (Alt+Shift+M) – stáhne jejich změny a spojí je s vašimi. Neukládá." hidden>↻ Sloučit</button></li>
       <li><button id="btn-autosave-gh" title="Automatické ukládání na GitHub" hidden aria-pressed="false">⚪ Autosave</button></li>
       <li><button id="btn-new-entity" accesskey="n" title="Nová entita (Alt+Shift+N)">+ Nová entita</button></li>
       <li><button id="btn-tt-popover" accesskey="z" title="Aktivní časomíry (Alt+Shift+Z)" aria-live="off">⏱ Časomíry</button></li>
@@ -1424,6 +1424,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
     <thead><tr><th scope="col">Klávesa</th><th scope="col">Akce</th></tr></thead>
     <tbody>
       <tr><td><kbd>F1</kbd> nebo <kbd>Ctrl+Shift+P</kbd></td><td>Otevřít paletu příkazů (také tlačítko <strong>⌘ Příkazy</strong> v záhlaví, <kbd>Alt+Shift+K</kbd>)</td></tr>
+      <tr><td><kbd>Alt+Shift+M</kbd></td><td>Sloučit s ostatními – stáhne cizí změny z GitHubu a spojí je s vašimi (<strong>neukládá</strong>; tlačítko <strong>↻ Sloučit</strong> v záhlaví)</td></tr>
       <tr><td><kbd>Shift+F1</kbd> nebo <kbd>?</kbd></td><td>Tato nápověda</td></tr>
       <tr><td><kbd>↑</kbd> <kbd>↓</kbd>, <kbd>PageUp</kbd>/<kbd>PageDown</kbd>, <kbd>Home</kbd>/<kbd>End</kbd></td><td>Pohyb ve výsledcích</td></tr>
       <tr><td><kbd>Enter</kbd></td><td>Spustit vybranou položku</td></tr>
@@ -2470,7 +2471,12 @@ function save() {
   // nebo ručně tlačítkem/menu „Uložit na GitHub".
   // V localStorage zůstávají jen drobnosti: nastavení (vč. konfigurace GitHubu), token, odkládací prostor.
   db.updated_at = new Date().toISOString();
-  _ghNeodeslaneZmeny = true;
+  // Zápis metadat z `upload()` není změna dat uživatele — nesmí se počítat ani
+  // značit, jinak si uložení samo vynutí další uložení a commity by se řetězily.
+  if (!window._ghVlastniSave) {
+    _ghNeodeslaneZmeny = true;
+    _ghCitacZmen++;
+  }
   saveSettingsLocal();
   debug('Změna zaznamenána (data jen na GitHub): ' + (db.entities ? db.entities.length : 0) + ' entit');
   scheduleAutosaveGh();
@@ -2487,6 +2493,12 @@ let _ghDataNactena = false;
 // `save()`, tedy jediná cesta, kterou změny v aplikaci tečou, a shazuje ho
 // úspěšné nahrání nebo načtení.
 let _ghNeodeslaneZmeny = false;
+// Počítadlo změn. Nahrávání trvá (u větší báze klidně desítky sekund) a uživatel
+// během něj dál pracuje. Snímek obsahu se bere na začátku zápisu, takže změna,
+// která přišla po něm, v odeslaných datech NENÍ — a příznak „vše odesláno" se
+// proto smí shodit jen tehdy, když se počítadlo mezitím nezvedlo. Bez toho
+// příznak lže a nejbližší cizí commit tu změnu tiše zahodí.
+let _ghCitacZmen = 0;
 function ghDataNactena(hodnota) {
   if (hodnota !== undefined) _ghDataNactena = !!hodnota;
   return _ghDataNactena;
@@ -2666,9 +2678,18 @@ function getAutosaveSeconds() {
   if (!isFinite(v) || v < 1) return 4;
   return Math.round(v);
 }
+// Změna, která přišla během nahrávání. `_autosaveSkip` v té době plánování
+// zakazuje (jinak by se upload zavolal sám ze sebe, protože `upload()` volá
+// `save()`), takže by takovou změnu nikdo nikdy neodeslal: v paměti by zůstala
+// až do další ruční akce — a na GitHub se data jinak neukládají, takže zavřená
+// záložka by ji vzala s sebou. Proto se poznamená a po dojezdu se naplánuje znovu.
+let _autosaveZmenaBehemUploadu = false;
 function scheduleAutosaveGh() {
   // Guard: save() vyvolaný uvnitř upload() (kvůli aktualizaci ghMeta) nesmí znovu plánovat upload.
-  if (window._autosaveSkip) return;
+  if (window._autosaveSkip) {
+    if (!window._ghVlastniSave) _autosaveZmenaBehemUploadu = true;
+    return;
+  }
   if (!_autosaveGhEnabled) return;
   if (!GH || !GH.isConfigured || !GH.isConfigured()) return;
   if (!GH.getToken || !GH.getToken()) return;
@@ -2680,12 +2701,18 @@ function scheduleAutosaveGh() {
     _autosaveGhTimer = null;
     window._autosaveSkip = true;
     try {
-      const p = GH.upload({ autosave: true });
-      if (p && typeof p.finally === 'function') {
-        p.finally(() => { window._autosaveSkip = false; });
-      } else {
+      _autosaveZmenaBehemUploadu = false;
+      const dokonci = () => {
         window._autosaveSkip = false;
-      }
+        // Přišlo během nahrávání něco, co v odeslaném snímku nebylo? Naplánovat znovu.
+        if (_autosaveZmenaBehemUploadu || _ghNeodeslaneZmeny) {
+          _autosaveZmenaBehemUploadu = false;
+          scheduleAutosaveGh();
+        }
+      };
+      const p = GH.upload({ autosave: true });
+      if (p && typeof p.finally === 'function') p.finally(dokonci);
+      else dokonci();
     } catch (e) {
       window._autosaveSkip = false;
       debug('Autosave GH chyba: ' + e.message);
@@ -26282,6 +26309,21 @@ function setupKeyboard() {
       return;
     }
 
+    // Alt+Shift+M / Alt+M — sloučit s GitHubem (stáhnout cizí změny, neukládat).
+    // `!ev.ctrlKey` a `AltGraph` vylučují pravý Alt: na české klávesnici je to
+    // modifikátor pro znaky a uživatel by jím omylem spouštěl sloučení.
+    if (ev.altKey && !ev.ctrlKey && !ev.metaKey && !ev.getModifierState('AltGraph') &&
+        (ev.key === 'm' || ev.key === 'M')) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (typeof slucitZGithubuRucne === 'function' && GH.isConfigured() && GH.getToken()) {
+        slucitZGithubuRucne();
+      } else {
+        toast('Sloučení potřebuje nastavený GitHub (Nastavení → GitHub).', 4000);
+      }
+      return;
+    }
+
     // Alt+Shift+P — jen focus na první panel, NE jeho aktivace.
     // Prohlížeč by jinak triggernul accesskey="p" který by spustil onclick = switchToPanel.
     if (ev.altKey && ev.shiftKey && (ev.key === 'p' || ev.key === 'P')) {
@@ -28875,10 +28917,12 @@ function ghPrevezmiSlouceni(jejich, vzdalenaSha, opts) {
     return false;
   }
 
-  // Nic rozdělaného a žádný základ k porovnání? Pak je nejčistší převzít cizí
-  // verzi vcelku — spor nemůže vzniknout a je to nejčastější případ: jeden čte,
-  // druhý píše.
-  const nicMeho = !_ghNeodeslaneZmeny;
+  // Převzetí cizí verze vcelku se dělá **jen bez základu**. Se základem dá
+  // trojcestné sloučení tentýž výsledek (moje == základ → u každého pole vyhraje
+  // jejich, včetně smazání), ale nemá útes: kdyby příznak „nic neodeslaného" byť
+  // jednou lhal, přepsání vcelku tu změnu tiše zahodí, zatímco sloučení ji udrží.
+  // Jednou to tak spadlo — změna provedená během nahrávání zmizela bez hlásky.
+  const nicMeho = !_ghNeodeslaneZmeny && !zaklad;
   let spory = [], ozivene = [];
   if (nicMeho) {
     db = jejich;
@@ -28976,7 +29020,7 @@ function ghAktualizujTlacitkoSlouceni() {
   const lze = GH.isConfigured() && !!GH.getToken();
   btn.disabled = !lze;
   btn.title = (lze
-    ? 'Stáhne změny od ostatních a spojí je s vašimi. Neukládá.'
+    ? 'Sloučit s ostatními (Alt+Shift+M) – stáhne jejich změny a spojí je s vašimi. Neukládá.'
     : 'Nejdřív nastavte GitHub (Nastavení → GitHub).') +
     (_ghPosledniSlouceniPopis ? ' — ' + _ghPosledniSlouceniPopis : '');
 }
@@ -29418,11 +29462,14 @@ const GH = {
       // 4) Nahrát hlavní JSON. Když mezitím uložil někdo jiný, sloučit a zkusit
       // znovu — nejvýš třikrát, aby se z toho nestala nekonečná smyčka.
       toast('Nahrávám hlavní JSON…', 60000);
-      let res = null, sizeBytes = 0, odeslano = null;
+      let res = null, sizeBytes = 0, odeslano = null, citacPriSnimku = 0;
       for (let pokus = 1; pokus <= 3; pokus++) {
         const priprava = pripravObsah();
         sizeBytes = priprava.sizeBytes;
         odeslano = priprava.exportData;
+        // Stav počítadla v okamžiku snímku: cokoli, co přijde potom, v odeslaných
+        // datech není a příznak neodeslaných změn se nesmí shodit.
+        citacPriSnimku = _ghCitacZmen;
         const body = {
           message: 'PIM update – ' + new Date().toISOString() + ' (' + db.entities.length + ' entit' + (pendingUploads.length > 0 ? ', +' + attUploaded + ' příloh' : '') + ')',
           content: priprava.b64,
@@ -29473,9 +29520,14 @@ const GH = {
       // Vlastní commit se nesmí tvářit jako cizí, jinak se aplikace sloučí sama
       // se sebou. Sha bereme rovnou z odpovědi.
       ghZapamatujCommit(res.commit && res.commit.sha ? res.commit.sha : null);
-      save();
-      // `save()` příznak zvedá, takže shodit ho musíme až po něm.
-      _ghNeodeslaneZmeny = false;
+      const citacPredSave = _ghCitacZmen;
+      window._ghVlastniSave = true;
+      try { save(); } finally { window._ghVlastniSave = false; }
+      // `save()` příznak i počítadlo zvedá, takže se obojí vyhodnocuje až po něm —
+      // a jeho vlastní zvednutí se odečte. Když uživatel během nahrávání něco
+      // změnil, příznak zůstává: ta změna na GitHubu opravdu není.
+      if (citacPredSave === citacPriSnimku) _ghNeodeslaneZmeny = false;
+      else statusMsg('Uloženo na GitHub. Změny z doby nahrávání se odešlou hned po nich.');
       this._setStatus('ok', 'Nahráno na GitHub (' + fmtBytes(sizeBytes) + ').');
       const wasNew = !currentSha;
       const parts = ['✓ Uloženo na GitHub (' + fmtBytes(sizeBytes) + ')'];
