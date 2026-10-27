@@ -3995,6 +3995,10 @@ function _tap(freq) {
 // někdejší modem (0,8 s) a fanfára (2 s) by z nástroje udělaly orchestr.
 // Pravidlo: do 120 ms, hlasitost do 0,06, žádné sweepy a žádné akordy.
 // Fanfára zůstává jen tam, kde si o ni uživatel řekl sám — u dokončeného úkolu.
+// Hlasitost je **plná** (1.0 = celý rozsah). Tóny rodiny `_pip` jdou vždy po sobě
+// bez překryvu — kdyby dva zněly současně, jejich součet by přetekl za plný rozsah
+// a místo hlasitějšího zvuku by vznikl zkreslený. Kdo přidá další tón, ať zkontroluje,
+// že jeho okno (zpoždění + délka) nezasahuje do okna sousedního.
 function _pip(freq, delka, hlasitost, zpozdeni, typ) {
   const a = _audioCtx(); if (!a) return;
   const t0 = a.currentTime + 0.02 + (zpozdeni || 0);
@@ -4005,22 +4009,22 @@ function _pip(freq, delka, hlasitost, zpozdeni, typ) {
   const g = a.createGain();
   // Náběh i doznění exponenciálou — skoková hlasitost lupe.
   g.gain.setValueAtTime(0.0001, t0);
-  g.gain.exponentialRampToValueAtTime(hlasitost || 0.05, t0 + 0.008);
+  g.gain.exponentialRampToValueAtTime(hlasitost || 1, t0 + 0.008);
   g.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
   osc.connect(g); g.connect(a.destination);
   osc.start(t0); osc.stop(t0 + d + 0.02);
 }
 // Uloženo lokálně (entita, atribut, nastavení): jeden krátký tón. Nic víc — je to
 // nejčastější zvuk v aplikaci, zní při každé drobné úpravě.
-function _zvukUlozeno() { _pip(880, 0.05, 0.05); }
+function _zvukUlozeno() { _pip(880, 0.05, 1); }
 // Začátek nahrávání: **dva rychlé nízké tiky** („tik-tik"), oba krátké a tiché.
 // Jeden tón to být nemůže — proti úspěšnému uložení byl k nerozeznání, protože
 // krátký pip v podobném registru zní při téhle hlasitosti pokaždé stejně.
 // Dva tiky nízko a rychle za sebou se od stoupavého trojzvuku nahoře nedají
 // splést ani potichu.
 function _zvukZacatekUploadu() {
-  _pip(392, 0.03, 0.035, 0,     'square');
-  _pip(392, 0.03, 0.035, 0.055, 'square');
+  _pip(392, 0.03, 1, 0,     'square');
+  _pip(392, 0.03, 1, 0.055, 'square');
 }
 // Úspěšně uloženo na GitHub: **stoupavý trojzvuk nahoře, trojúhelníkovou barvou
 // a hlasitěji**. Je to jediný zvuk, který říká „hotovo, je to venku".
@@ -4030,16 +4034,16 @@ function _zvukZacatekUploadu() {
 // vs square) a hlasitostí. Na jediný rozměr se spoléhat nejde: ukázalo se, že
 // dva krátké sinusové pipy o různé výšce uživatel vnímá jako týž zvuk.
 function _zvukUlozenoNaGithub() {
-  _pip(659, 0.06, 0.08, 0,    'triangle');
-  _pip(988, 0.06, 0.085, 0.07, 'triangle');
-  _pip(1319, 0.11, 0.085, 0.14, 'triangle');
+  _pip(659, 0.06, 1, 0,    'triangle');
+  _pip(988, 0.06, 1, 0.07, 'triangle');
+  _pip(1319, 0.11, 1, 0.14, 'triangle');
 }
 // Synchronizováno: dva tóny vzhůru, celkem 110 ms, tiše. Od úspěšného uložení se
 // odlišuje počtem tónů (dva místo tří) i tím, že je zřetelně tišší — sloučení
 // přitéká samo a nemá si říkat o pozornost.
-function _zvukSync() { _pip(740, 0.045, 0.04); _pip(988, 0.05, 0.04, 0.06); }
+function _zvukSync() { _pip(740, 0.045, 1); _pip(988, 0.05, 1, 0.06); }
 // Nepovedlo se: dva tóny dolů, nízko. Smí být slyšet, ale ne vylekat.
-function _zvukChyba() { _pip(400, 0.055, 0.05); _pip(300, 0.07, 0.05, 0.07); }
+function _zvukChyba() { _pip(400, 0.055, 1); _pip(300, 0.07, 1, 0.07); }
 function playSound(kind) {
   if (!state.settings || !state.settings.audioFeedback) return;
   switch (kind) {
@@ -15351,10 +15355,13 @@ async function copyBodyFormatted(entity) {
   const src = entity.body || '';
   if (!src) { toast('Tělo je prázdné.'); return; }
   // Expandování include a placeholderů + zjednodušení inline-selectů na (!vybraná!) — společně pro HTML i plain text.
-  const expandedSrc = expandMarkdownIncludes(src, { markIncluded: false, entity: entity });
+  // Jde to mimo PIM, takže bez interních odkazů — a to v obou podobách, které
+  // se do schránky dávají (HTML i prostý text).
+  const expandedSrc = odstranInterniOdkazyZMarkdownu(
+    expandMarkdownIncludes(src, { markIncluded: false, entity: entity }));
   try {
     // Vyrenderujeme markdown na HTML z expandovaného zdroje (žádné inline-select widgety, žádné placeholdery).
-    const renderedHtml = renderMarkdown(expandedSrc);
+    const renderedHtml = odstranInterniOdkazyZHtml(renderMarkdown(expandedSrc));
     // Obalíme do minimálního dokumentu, aby Word a Outlook správně rozeznaly nadpisy, seznamy, atd.
     const styled = '<!DOCTYPE html><html><head><meta charset="utf-8">' +
       '<style>' +
@@ -30270,6 +30277,58 @@ function formatAttrValuePlain(f, v, entityCtx) {
 }
 
 // === MARKDOWN ===
+// === INTERNÍ ODKAZY NEPATŘÍ DO VÝSTUPU, KTERÝ JDE MIMO PIM ===
+// `[[Entita]]` je mimo aplikaci nesmyslný zápis a `<a href="#" data-entity="…">`
+// je ve Wordu nebo v mailu **mrtvý odkaz**, který musí příjemce ručně odklikat.
+// DOCX je bez odkazů odjakživa, takže se tím řídí i ostatní výstupy.
+//
+// **Odebírá se jen odkaz, text zůstává celý** — včetně typu entity v závorce
+// (ta je v HTML mimo `<a>`, takže se jí to netýká) a včetně obsahu status chipu.
+// Externí odkazy (`http`) a odkazy na poznámky pod čarou v témže dokumentu
+// zůstávají: ty u příjemce fungují.
+//
+// Platí to pro výstupy, které jdou někomu jinému: export MD (kopie i stažení),
+// formátovaná kopie, kopie formátovaného těla a tisk/PDF. **Nedotýká se**
+// „Kopírovat zdroj těla" (to je zdroj pro vložení zpátky do PIM), podkladů pro
+// umělou inteligenci ani zápisu na GitHub přes `ghpath` — tam je zápis `[[…]]`
+// právě to, co se čeká.
+function odstranInterniOdkazyZMarkdownu(text) {
+  const vstup = String(text == null ? '' : text);
+  if (vstup.indexOf('[[') < 0) return vstup;
+  const radky = vstup.split('\n');
+  let vKodu = false;
+  for (let i = 0; i < radky.length; i++) {
+    if (/^\s*```/.test(radky[i])) { vKodu = !vKodu; continue; }
+    if (vKodu) continue;   // v bloku kódu je `[[…]]` ukázka zápisu, ne odkaz
+    radky[i] = radky[i].replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (cely, ref, alias) => {
+      if (alias) return alias.trim();
+      const r = String(ref).trim();
+      if (r.indexOf('id:') === 0) {
+        // Odkaz podle id by po odebrání zbyl jako nic neříkající identifikátor,
+        // takže se dohledá název entity.
+        const cil = findEntity(r.slice(3));
+        return cil ? getDisplayTitle(cil) : r.slice(3);
+      }
+      return r;
+    });
+  }
+  return radky.join('\n');
+}
+
+// Rozbalí interní odkazy ve vyrenderovaném HTML: `<a>` s `data-entity`,
+// `data-create-name` nebo třídou `wiki-link` nahradí svým obsahem. Vnořené `<a>`
+// v HTML existovat nemohou, takže nenasytná shoda je bezpečná. Poznává se podle
+// těch tří značek, ne podle `href="#"` — poznámky pod čarou (`href="#fn-…"`)
+// a kotvy na nadpisy ve vyexportovaném dokumentu fungují a mají zůstat.
+function odstranInterniOdkazyZHtml(html) {
+  return String(html == null ? '' : html).replace(/<a\b([^>]*)>([\s\S]*?)<\/a>/g, (cely, atributy, obsah) => {
+    const interni = /data-entity\s*=/.test(atributy) ||
+      /data-create-name\s*=/.test(atributy) ||
+      /class\s*=\s*"[^"]*wiki-link/.test(atributy);
+    return interni ? obsah : cely;
+  });
+}
+
 function renderEntityAsMarkdown(model) {
   const lines = [];
   lines.push('# ' + model.title);
@@ -31065,7 +31124,7 @@ function makeZip(files) {
 
 function downloadEntityAsMarkdown(entity, selection) {
   const model = buildEntityExportModel(entity, selection);
-  const md = renderEntityAsMarkdown(model);
+  const md = odstranInterniOdkazyZMarkdownu(renderEntityAsMarkdown(model));
   const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
   const baseName = sanitizeFilename(model.title || 'entita');
   const stamp = new Date().toISOString().slice(0, 10);
@@ -31112,7 +31171,7 @@ function execCommandCopyText(text) {
 
 async function copyEntityAsMarkdown(entity, selection) {
   const model = buildEntityExportModel(entity, selection);
-  const md = renderEntityAsMarkdown(model);
+  const md = odstranInterniOdkazyZMarkdownu(renderEntityAsMarkdown(model));
   const ok = await copyPlainTextToClipboard(md);
   if (ok) toast('✓ MD zkopírován do schránky (' + md.length + ' znaků).');
   else alertMsg('Kopírování se nezdařilo. Zkuste text označit a zkopírovat ručně (Ctrl+C).');
@@ -31122,10 +31181,10 @@ async function copyEntityAsMarkdown(entity, selection) {
 // Outlooku, Gmailu apod. Vyrenderuje exportní Markdown na HTML.
 async function copyEntityAsFormatted(entity, selection) {
   const model = buildEntityExportModel(entity, selection);
-  const md = renderEntityAsMarkdown(model);
+  const md = odstranInterniOdkazyZMarkdownu(renderEntityAsMarkdown(model));
   if (!md.trim()) { toast('Není co kopírovat.'); return; }
   try {
-    const renderedHtml = renderMarkdown(md);
+    const renderedHtml = odstranInterniOdkazyZHtml(renderMarkdown(md));
     const styled = '<!DOCTYPE html><html><head><meta charset="utf-8">' +
       '<style>' +
       'body { font-family: "Calibri", "Segoe UI", Arial, sans-serif; font-size: 11pt; line-height: 1.5; }' +
@@ -31434,7 +31493,7 @@ function renderEntityAsHtmlForPrint(model) {
 function exportEntityAsPdf(entity, selection) {
   try {
     const model = buildEntityExportModel(entity, selection);
-    const html = renderEntityAsHtmlForPrint(model);
+    const html = odstranInterniOdkazyZHtml(renderEntityAsHtmlForPrint(model));
     // Otevřít v novém okně, kde uživatel klikne "Tisk / Uložit jako PDF"
     const win = window.open('', '_blank');
     if (!win) {

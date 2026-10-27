@@ -402,12 +402,26 @@ hlasitost lupe.
 
 | Druh | Kdy | Tónů | Hz | Barva | Délka | Hlasitost |
 |---|---|---|---|---|---|---|
-| `upload-start` | začátek nahrávání na GitHub | 2 tiky | 392→392 | square | 125 ms | 0,035 |
-| `save` / `save-entity` / `load` / `notify` | lokální uložení, čtení | 1 | 880 | sine | 90 ms | 0,05 |
-| `sync` | cizí změny se slily | 2 vzhůru | 740→988 | sine | 150 ms | 0,04 |
-| `error` / `warning` / `delete` | nepovedlo se | 2 dolů | 400→300 | sine | 180 ms | 0,05 |
-| `save-gh` | **úspěšně uloženo na GitHub** | 3 vzhůru | 659→988→1319 | triangle | 290 ms | 0,085 |
+| `upload-start` | začátek nahrávání na GitHub | 2 tiky | 392→392 | square | 125 ms | **1,0** |
+| `save` / `save-entity` / `load` / `notify` | lokální uložení, čtení | 1 | 880 | sine | 90 ms | **1,0** |
+| `sync` | cizí změny se slily | 2 vzhůru | 740→988 | sine | 150 ms | **1,0** |
+| `error` / `warning` / `delete` | nepovedlo se | 2 dolů | 400→300 | sine | 180 ms | **1,0** |
+| `save-gh` | **úspěšně uloženo na GitHub** | 3 vzhůru | 659→988→1319 | triangle | 290 ms | **1,0** |
 | `task-done` | dokončený úkol (fanfára) | 104 | — | brass | 2150 ms | 0,22 |
+
+**Celá rodina `_pip` jede na plné hlasitosti (1,0 = celý rozsah)** — uživatel si o to
+řekl a tiché tóny v hlučném prostředí neslyšel. Plná hlasitost ale přináší jedno pravidlo:
+**dva tóny nikdy nesmí znít současně.** Jejich součet by přetekl za plný rozsah a místo
+hlasitějšího zvuku by vznikl zkreslený. Kdo přidá tón, ať zkontroluje, že se jeho okno
+(zpoždění + délka) nepotká se sousedním.
+
+Past při ověřování: `_pip` nechá oscilátor běžet ještě **20 ms po doznění obálky**, kdy je
+gain na 0,0001. Jeho *životnost* se tedy se sousedem překrývá, i když slyšet není nic —
+měřit se musí **slyšitelné okno**, ne životnost oscilátoru. První verze testu kvůli tomu
+hlásila přebuzení, které neexistovalo.
+
+Fanfára zůstává na 0,22, protože má **104 oscilátorů znějících přes sebe** — ta se
+sčítáním k plnému rozsahu dostane sama.
 
 **Start nahrávání a úspěšné uložení musí znít jinak** a je to **dvakrát prohraná** věc,
 takže pozor na ni. Nejdřív oba volaly `playSound('save-gh')` a vedly na týž tón. Pak dostal
@@ -420,7 +434,10 @@ Proto se ty dva liší **pěti rozměry zároveň**:
 2. **směr** — start stojí na jedné výšce, úspěch stoupá,
 3. **registr** — start je celý **pod** úspěchem, nepřekrývají se ani jedním tónem,
 4. **barva** — `square` vs `triangle`,
-5. **délka a hlasitost** — úspěch je víc než dvakrát delší i hlasitější.
+5. **délka** — úspěch je víc než dvakrát delší.
+
+Hlasitost už mezi nimi rozdíl nedělá: od převedení na plnou hlasitost jsou oba na 1,0.
+Zbylé čtyři rozměry na to byly navržené dřív, takže odlišení drží i bez ní.
 
 Start zůstává tichý a krátký, protože zní při každém autosave (po čtyřech sekundách práce);
 úspěch je **jediný zvuk, který říká „hotovo, je to venku"**. Kdo přidá další druh, ať se
@@ -431,6 +448,48 @@ Zvuky v šabloně prohlížeče se **neměnily** — prohlížeč neukládá ani
 Ověřuje se **odposlechem zvukové vrstvy**: test podvrhne `AudioContext` a zapíše, co se
 naplánuje (počet oscilátorů, výšky, barvy, délky, hlasitosti). Slyšet to v testu nejde,
 spočítat ano — a každý z těch pěti rozměrů má vlastní kontrolu.
+
+## Interní odkazy nepatří do výstupu, který jde mimo PIM
+
+`[[Entita]]` je mimo aplikaci nesmyslný zápis a `<a href="#" data-entity="…">` je ve Wordu
+nebo v mailu **mrtvý odkaz**, který musí příjemce ručně odklikat. DOCX byl bez odkazů
+odjakživa (`renderMarkdownBlocksToDocx` sází text kurzívou), takže se podle něj teď řídí
+i ostatní výstupy.
+
+Dělají to dvě funkce nad `renderEntityAsMarkdown()`:
+
+| Funkce | Co dělá |
+|---|---|
+| `odstranInterniOdkazyZMarkdownu(md)` | `[[ref\|alias]]` → alias, `[[Název]]` → Název, `[[id:x]]` → **název entity** (ne identifikátor) |
+| `odstranInterniOdkazyZHtml(html)` | rozbalí `<a>` s `data-entity`, `data-create-name` nebo třídou `wiki-link` na jeho obsah |
+
+Platí to pro výstupy, které jdou někomu jinému: **export MD (kopie i stažení),
+formátovaná kopie, kopie formátovaného těla a tisk/PDF**. Schválně se to **nedotýká**:
+
+- **„Kopírovat zdroj těla"** — to je zdroj k vložení zpátky do PIM, tam `[[…]]` patří,
+- **podkladů pro umělou inteligenci** — odkazy jsou tam kontext,
+- **zápisu na GitHub přes `ghpath`** — tím se spravuje web EGdílny a `[[…]]` je tam čekaný
+  vstup; změna by tiše změnila publikovaný web,
+- **renderu na obrazovku** — tam jsou odkazy k navigaci.
+
+Čtyři věci, které nejsou libovolné:
+
+1. **Odebírá se jen odkaz, text zůstává celý.** Typ entity v závorce je v HTML **mimo**
+   `<a>` (viz `resolveWikiLink`), takže se ho to netýká samo; obsah status chipu zůstává,
+   protože se rozbaluje jen jeho `<a>`.
+2. **Poznává se podle `data-entity` / `data-create-name` / `wiki-link`, ne podle `href="#"`.**
+   Poznámky pod čarou (`href="#fn-…"`) a kotvy na nadpisy ve vyexportovaném dokumentu
+   **fungují** a musí zůstat.
+3. **Bloky kódu se přeskakují** — `[[Entita]]` uvnitř ohradníků je ukázka zápisu, ne odkaz.
+   DOCX to dělá taky.
+4. **Nenasytná shoda u `<a …>…</a>`** je bezpečná, protože vnořené `<a>` v HTML existovat
+   nemůže. Dva odkazy za sebou se tím rozliší.
+
+Past při ověřování: `[[` v DOCX **je** — ale jen uvnitř bloku kódu. Hledat se proto musí
+po odstavcích, ne v celém dokumentu; první verze kontroly hlásila chybu, která žádná nebyla.
+
+Hlídá to `pim/testy/export-bez-odkazu.mjs` (kanárek na zdrojová těla — odebírá se jen ve
+výstupu, do dat se nesahá).
 
 ## Hlášení o průběhu se nepředčítá
 

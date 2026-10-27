@@ -381,11 +381,27 @@ const zvuk = await stranka.evaluate(() => {
   const zmer = (kind) => {
     zaznam.length = 0;
     playSound(kind);
-    const t = zaznam.map(o => ({ hz: Math.round(o.frequency.value), konec: o._stop - cas,
+    const t = zaznam.map(o => ({ hz: Math.round(o.frequency.value),
+      od: o._start - cas, konec: o._stop - cas,
       typ: o.type, hlasitost: o._gain ? o._gain.gain._max : 0 }));
+    // Nejvíc tónů, které v kterémkoli okamžiku **slyšitelně** zní současně. Při plné
+    // hlasitosti je to to jediné, co může zvuk zkreslit: dva tóny po 1.0 dají 2.0.
+    //
+    // Pozor na to, co se měří: `_pip` nechá oscilátor běžet ještě 20 ms po doznění
+    // obálky, takže jeho *životnost* se sousedem překrývá, i když je gain v té době
+    // na 0,0001, tedy neslyšitelný. Počítá se proto slyšitelné okno [start, konec
+    // obálky], ne životnost oscilátoru — jinak test hlásí přebuzení, které neexistuje.
+    const TICHY_DOZVUK = 0.02;
+    const okna = t.map(x => ({ od: x.od, do: x.konec - TICHY_DOZVUK }));
+    let soucasne = 0;
+    okna.forEach(a => {
+      const v = okna.filter(b => b.od <= a.od + 0.0005 && b.do > a.od + 0.0005).length;
+      if (v > soucasne) soucasne = v;
+    });
     return { tonu: t.length,
       delkaMs: t.length ? Math.round(Math.max(...t.map(x => x.konec)) * 1000) : 0,
       hlasitost: t.length ? Math.max(...t.map(x => x.hlasitost)) : 0,
+      soucasne: soucasne,
       hz: t.map(x => x.hz),
       typy: [...new Set(t.map(x => x.typ))] };
   };
@@ -412,17 +428,28 @@ ok(s, Math.max.apply(null, zvuk.start.hz) < Math.min.apply(null, zvuk.ulozeno.hz
   { start: zvuk.start.hz, ulozeno: zvuk.ulozeno.hz });
 ok(s, zvuk.start.typy.join(',') !== zvuk.ulozeno.typy.join(','),
   '4. barva tónu je jiná', { start: zvuk.start.typy, ulozeno: zvuk.ulozeno.typy });
-ok(s, zvuk.ulozeno.hlasitost > zvuk.start.hlasitost * 2 && zvuk.ulozeno.delkaMs > zvuk.start.delkaMs * 2,
-  '5. úspěch je víc než dvakrát hlasitější i delší',
-  { start: [zvuk.start.hlasitost, zvuk.start.delkaMs], ulozeno: [zvuk.ulozeno.hlasitost, zvuk.ulozeno.delkaMs] });
-ok(s, zvuk.start.hlasitost <= 0.04 && zvuk.start.delkaMs <= 140,
-  'start je přitom pořád tichý a krátký — zní při každém autosave', zvuk.start);
+ok(s, zvuk.ulozeno.delkaMs > zvuk.start.delkaMs * 2,
+  '5. úspěch je víc než dvakrát delší',
+  { start: zvuk.start.delkaMs, ulozeno: zvuk.ulozeno.delkaMs });
+ok(s, zvuk.start.delkaMs <= 140,
+  'start je přitom pořád krátký — zní při každém autosave', zvuk.start);
 ok(s, zvuk.chyba.hz[0] > zvuk.chyba.hz[1],
   'chyba naopak klesá', zvuk.chyba.hz);
-ok(s, zvuk.sync.tonu === 2 && zvuk.sync.hlasitost < zvuk.ulozeno.hlasitost &&
-     zvuk.sync.typy.join(',') !== zvuk.start.typy.join(','),
-  'synchronizace se neplete ani se startem (jiná barva i registr), ani s uložením (tišší)',
+ok(s, zvuk.sync.tonu === 2 && zvuk.sync.typy.join(',') !== zvuk.start.typy.join(',') &&
+     Math.min.apply(null, zvuk.sync.hz) > Math.max.apply(null, zvuk.start.hz),
+  'synchronizace se neplete se startem — jiná barva i celý registr výš',
   { sync: zvuk.sync, start: zvuk.start });
+
+nadpis('Plná hlasitost: tóny se nesmí překrývat');
+// Hlasitost je na 1.0, tedy na celém rozsahu. Dva tóny současně by daly součet 2.0
+// a místo hlasitějšího zvuku by vznikl zkreslený — „100 %" tedy znamená taky
+// „nikdy dva zároveň".
+['start', 'ulozeno', 'sync', 'lokalne', 'chyba'].forEach(druh => {
+  ok(s, zvuk[druh].hlasitost === 1, druh + ': hlasitost je plná (1.0)', zvuk[druh].hlasitost);
+  ok(s, zvuk[druh].soucasne <= 1,
+    druh + ': v žádném okamžiku nezní víc než jeden tón, takže se součtem nic nepřebudí',
+    zvuk[druh].soucasne);
+});
 ok(s, zvuk.lokalne.tonu === 1 && zvuk.lokalne.delkaMs <= 120,
   'lokální uložení zůstává jeden krátký tón — zní při každé drobné úpravě', zvuk.lokalne);
 ok(s, zvuk.ulozeno.delkaMs < 400,
