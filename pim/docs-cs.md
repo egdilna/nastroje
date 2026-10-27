@@ -1323,14 +1323,30 @@ stejně nejde nic dělat, nemá přerušovat práci.
 
 #### Tlačítko ↻ Sloučit
 
-V hlavičce vedle **☁ Sync** (`Alt+Shift+M`, také z palety příkazů) stáhne změny od
-ostatních a spojí je s vašimi — **neukládá**. Rozdělaná práce zůstane, jen se k ní přidá,
+V hlavičce vedle **☁ Sync** stáhne změny od ostatních a spojí je s vašimi — **neukládá**.
+Zkratka **`Alt+Shift+M`** (funguje i `Alt+M`), stejné písmeno jako v DKM; je i v paletě
+příkazů. Rozdělaná práce zůstane, jen se k ní přidá,
 co mezitím udělali ostatní. Když nic nového není, řekne to a nic neudělá.
 
 #### Autosave a spolupráce
 
+Všechny prodlevy na jednom místě:
+
+| Co | Jak dlouho |
+|---|---|
+| od poslední úpravy do nahrání (autosave) | **4 s** (nastavitelné, min. 1) |
+| dotaz, jestli někdo uložil — při práci | **20 s** |
+| dotaz, jestli někdo uložil — v klidu (90 s bez úhozu) | **120 s** |
+| okno na pozadí | neptá se vůbec |
+| odmítnutý zápis → sloučit a zkusit znovu | hned, nejvýš 3 pokusy |
+
+V nejhorším případě tedy ostatní uvidí vaši práci do ~25 sekund (4 s na nahrání + 20 s
+na jejich dotaz), při klidu u jejich počítače do ~2 minut.
+
 Autosave čeká **4 sekundy** po poslední úpravě (dřív 15) — je to doba, po kterou ostatní
-vaši práci nevidí. Interval se dá změnit v Nastavení. **V editaci detailu autosave
+vaši práci nevidí. **Když něco změníte ve chvíli, kdy nahrávání právě běží** (u velké báze
+to může být i desítky sekund), odešle se ta změna hned dalším zápisem po jeho dokončení —
+v souboru skončí, i když se do právě odesílaného snímku nevešla. Interval se dá změnit v Nastavení. **V editaci detailu autosave
 neběží**: nahraje se teprve po jejím ukončení, takže se do souboru nedostává rozepsaný
 text. Konflikt autosave vyřeší sám a nevypne se.
 
