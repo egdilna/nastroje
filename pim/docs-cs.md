@@ -1262,6 +1262,78 @@ Ukládá se do větve `main` a **existující soubor se přepíše** (PIM si sá
 
 Oba atributy jsou nezávislé: entita může mít jen jeden z nich, nebo oba — pak se každým tlačítkem uloží jiný soubor na jiné místo.
 
+### Dva lidé na jednom souboru
+
+PIM počítá s tím, že na témž souboru dělá víc lidí. **Nepřepisuje se celý soubor** —
+uložení pošle GitHubu i tu verzi souboru, ze které jste vyšli. Když mezitím uložil někdo
+jiný, GitHub zápis odmítne a PIM ho **sloučí**: stáhne cizí verzi, porovná ji se svou
+i s tou původní a uloží výsledek.
+
+Slučuje se po jednotlivých polích, takže se dva lidé potkají opravdu jen tam, kde sáhli
+na totéž:
+
+| Situace | Výsledek |
+|---|---|
+| každý jinou entitu | obojí zůstane |
+| každý jiný atribut téže entity | obojí zůstane |
+| každý jinou vazbu téže entitě | obojí zůstane — vazba se pozná dvojicí *typ vazby + cíl* |
+| každý jiný komentář, tag, aspekt, anotaci, přílohu | obojí zůstane |
+| každý jiný řádek téže databáze | obojí zůstane |
+| oba přidali entitu | obojí zůstane |
+| druhý smazal, vy jste se nedotkli | smazání platí |
+| druhý smazal, vy jste upravili | entita **zůstane** a řekne se vám to |
+| **oba změnili totéž pole jinak** | vyhraje ten, kdo ukládá — a vypíše se to |
+
+Střet a vrácená entita se hlásí **pruhem, který sám nezmizí**, a je v něm vypsané, kterých
+entit a polí se to týká. Cizí hodnota není ztracená — je v historii commitů na GitHubu.
+
+Dvě věci k číslům entit: `numericId` se rozdává jako nejvyšší + 1, takže dva lidé offline
+dostanou stejné číslo. Protože `#42` je odkazovací syntaxe v textu, **přečíslují se při
+sloučení ty entity, které přišly od druhého** — vaše čísla zůstanou, aby odkazy ve vašem
+rozepsaném textu platily dál. Přečíslování se vypíše.
+
+Obsah entity (Markdown tělo, dlouhý text) se slučuje jako jedno pole: když ho oba změnili,
+vyhraje ten, kdo ukládá, a řekne se to. **Souběžné psaní do jednoho textu PIM neumí** —
+na to by byl potřeba server.
+
+#### Cizí změny přitečou samy
+
+PIM se po očku dívá, jestli se souborem nehnul cizí commit — je to jeden levný dotaz, ne
+stahování dat. Ptá se **každých 20 sekund**, když se u počítače pracuje, a **jednou za
+dvě minuty**, když je klid. Na pozadí (jiná záložka) se neptá vůbec. Když někdo uložil,
+PIM to **sloučí samo a nic se neptá**.
+
+Ptát se totiž nemá proč: sloučení nikdy nesebere rozdělanou práci, jenom přidává. A když
+zrovna nic rozdělaného nemáte, přebírá se cizí verze rovnou — spor tam nemůže vzniknout.
+
+| Situace | Co se stane |
+|---|---|
+| nemáte nic rozdělaného, druhý uložil | **převezme se jeho verze, potichu** |
+| máte rozdělané, druhý sáhl jinam | **sloučí se, potichu** |
+| oba jste sáhli na totéž pole | sloučí se, vaše verze vyhraje — a **ukáže se pruh** |
+| druhý smazal, vy upravili | entita zůstane — a **ukáže se pruh** |
+| máte otevřený dialog | počká se, až ho zavřete |
+| máte otevřenou editaci | sloučí se, ale obrazovka se nepřekreslí — nepřijdete o kurzor |
+| okno je na pozadí | nic; sloučí se po návratu |
+| na té cestě je **jiný soubor** (ani jedna společná entita) | **nesloučí se** a napíše se to do stavového řádku |
+
+Řádky označené *potichu* opravdu nic nevypíšou — jediná stopa je krátký tón a popisek
+tlačítka **↻ Sloučit**, ve kterém stojí, kdy se naposledy slučovalo. Informace, se kterou
+stejně nejde nic dělat, nemá přerušovat práci.
+
+#### Tlačítko ↻ Sloučit
+
+V hlavičce vedle **☁ Sync** (`Alt+Shift+M`, také z palety příkazů) stáhne změny od
+ostatních a spojí je s vašimi — **neukládá**. Rozdělaná práce zůstane, jen se k ní přidá,
+co mezitím udělali ostatní. Když nic nového není, řekne to a nic neudělá.
+
+#### Autosave a spolupráce
+
+Autosave čeká **4 sekundy** po poslední úpravě (dřív 15) — je to doba, po kterou ostatní
+vaši práci nevidí. Interval se dá změnit v Nastavení. **V editaci detailu autosave
+neběží**: nahraje se teprve po jejím ukončení, takže se do souboru nedostává rozepsaný
+text. Konflikt autosave vyřeší sám a nevypne se.
+
 ### Pojistka proti přepsání dat
 
 Dokud data v okně neprošla načtením z GitHubu, aplikace **nic nenahraje** — ani
@@ -1314,5 +1386,10 @@ o změny přijdete.
 **Mohu mít víc oddělených databází?** Ano, přes URL parametr `?id=NAZEV`. Každý ID má vlastní storage.
 
 **Jak zálohovat?** Nástroje → Export → JSON. Nebo zapnout GitHub sync.
+
+**Zvuky jsou krátké a tiché.** Uložení, synchronizace i nepovedená akce mají vlastní
+tón do 120 ms: uložení jeden tón, synchronizace dva vzhůru („něco přišlo zvenčí"),
+chyba dva dolů. Delší fanfára zůstala jen u dokončeného úkolu. Vypnout se to dá
+v Nastavení → Zvuková odezva.
 
 **Mohou ostatní vidět mé Zabezpečené poznámky?** Ne. Jejich obsah je AES-GCM šifrovaný heslem, které se nikam neukládá. Bez hesla nikdo nezíská plain text.

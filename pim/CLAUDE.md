@@ -289,6 +289,90 @@ ne do nastavení GitHubu, které může být zavřené.
 
 Hlídá to `pim/testy/samostatne-okno.mjs`.
 
+## Dva lidé na jednom souboru: sloučení místo přepsání
+
+`GH.upload()` posílá **`db.ghMeta.sha`, tedy verzi, ze které jsme vyšli** — ne tu
+nejčerstvější. Právě tím GitHub pozná cizí zápis a odmítne ho (409, u chybějící sha 422).
+Dřív se sha načítala těsně před zápisem, takže se ta ochrana zahazovala a poslední
+uložení tiše přepsalo cizí práci. **Nikdy si sha nenačítej znovu jen proto, aby zápis
+prošel** — tím se celá věc vypne.
+
+Konflikt řeší `slucDb(zaklad, moje, jejich)` a zápis se zkusí znovu, nejvýš třikrát.
+Základ drží `ghZaklad()` a **nastavuje se výhradně ze vzdáleného stavu**: po načtení,
+po vlastním uložení (= co jsme odeslali), po sloučení (= `jejich`) a z okna, které data
+předalo. Kdyby se do základu dostaly neodeslané lokální změny, sloučení by je vyhodnotilo
+jako „tohle druhý smazal" a tiše je zahodilo.
+
+Pravidla, která se nesmí porušit:
+
+1. **Vazba se pozná dvojicí `(type, to)`**, ne indexem ani id — dvě různé nové vazby téže
+   entity by se jinak hlásily jako spor. Proto `slucEntitu` vazby řeší sám a `slucObjekt`
+   dostává `['links']` do `vynech`: generickou cestou by se zapsaly jako „pole bez
+   identity", tedy falešný spor ještě předtím, než se dostanou ke svému slučovači.
+2. **Smazat smí jen ten, koho se druhý nedotkl.** Úprava přebíjí smazání; opačné pořadí
+   by zahodilo cizí práci. Vrácená entita jde do pruhu, ne do toastu.
+3. **`updated_at` není změna, jen razítko** — bere se novější a spor z něj nevzniká.
+   Jinak by každé sloučení hlásilo spor na každé entitě.
+4. **Porovnává se stabilním JSONem** (`stabilniJson`, řazené klíče, výsledky ve WeakMapě).
+   Dva klienti vyrobí stejný obsah s jiným pořadím klíčů a bez řazení by z toho byl
+   falešný spor; bez mezipaměti by se každá entita serializovala třikrát.
+5. **Po sloučení běží `uklidOdkazyPoSlouceni`** — vazba na entitu, kterou druhý smazal,
+   nesmí zůstat.
+6. **`numericId` se u příchozích entit přečísluje** (`srovnejCislaEntit`). Je to `max + 1`,
+   takže dva lidé offline dostanou stejné číslo, a `#42` je odkazovací syntaxe v textu.
+   Přečíslují se **cizí**, aby odkazy v mém rozepsaném textu platily dál.
+7. **Řádky databází nesou `_rid`** (`doplnIdRadkumDatabazi` při načtení i při sloučení).
+   Bez identity by se slučovaly podle pozice a při sporu by zmizela celá tabulka. Starší
+   verze aplikace klíč ignoruje, protože sloupce se berou z `db_fields`. Když má část
+   řádků `_rid` a část ne, `klicPole` vrátí `null` a tabulka se bere jako jedna hodnota —
+   bezpečný ústup, ne tichá chyba.
+8. **Pole bez identity prvků se neslučuje po pozici.** Zapíše se spor a vyhraje
+   ukládající; míchání podle indexu by řádky rozjelo.
+
+### Sloučení běží samo; ptát se je výjimka
+
+Cizí commit se slučuje automaticky (`zkontrolujVzdalene` → `slucSVzdalenym({tiche:true})`).
+**Otázka, na kterou se vždycky odpovídá stejně, není otázka** — a sloučení nikdy nesebere
+rozdělanou práci, jen přidává.
+
+- **Nic rozdělaného (`!_ghNeodeslaneZmeny`) → převzít `jejich` vcelku.** Spor tam nemůže
+  vzniknout. `_ghNeodeslaneZmeny` zvedá `save()` (jediná cesta, kudy změny tečou) a shazuje
+  ho úspěšné nahrání nebo načtení. **`syncPrevezmiData()` ho zvedá taky**: data z druhého
+  okna mohou obsahovat změny, které na GitHubu ještě nejsou, a převzetí cizí verze vcelku
+  by je zahodilo.
+- **Vlastní commit se nesmí tvářit jako cizí** — `upload()` si sha commitu bere rovnou
+  z odpovědi (`res.commit.sha` → `ghZapamatujCommit`). Bez toho se aplikace sloučí sama
+  se sebou.
+- **Odkládá se jen to, co by překáželo.** Otevřený dialog → `_ghSlouceniPoDialogu`
+  a dohoní to tick kontroly (`ghDokonciOdlozeneSlouceni` porovnává sha **souboru**, ne
+  commitu, takže se odložené sloučení dohojí i po zapamatování cizího commitu). Otevřený
+  editor překážka není: slučuje se, ale nepřekresluje (`syncMuzePrevzit`).
+- **Jediná otázka, která zbyla, je jiný soubor na té cestě** (`jeJinyProjekt`: ani jedno
+  společné id entity). Hlásí se **jednou na danou sha**, jinak by to při tempu 20 s psalo
+  do stavového řádku pořád.
+- Tempo: `GH_KONTROLA_CILA_MS` (20 s) při práci, `GH_KONTROLA_KLID_MS` (120 s) v klidu,
+  na skryté stránce vůbec. 180 dotazů za hodinu proti limitu 5000 je zanedbatelné.
+
+**Sloučit je čtení, ne zápis.** `slucitZGithubuRucne()` (tlačítko `btn-gh-slucit`, taky
+v paletě) stáhne a sloučí, ale neukládá — co jde ven, si má uživatel říct sám.
+
+Hlídá to `pim/testy/slouceni.mjs` (pravidla na čisté `slucDb()`, celé kolečko přes
+podvrženou `GH._api`, kanárci na obsah entit).
+
+## Zvuky: krátké a tiché, protože zní pořád
+
+Ukládání se po zkrácení autosave děje každé čtyři sekundy a sloučení přitéká samo, takže
+někdejší `_modem()` (0,8 s) a `_fanfare()` (2 s) by z nástroje udělaly orchestr. Pravidlo:
+**do 120 ms, hlasitost do 0,06, žádné sweepy ani akordy** (`_pip()` a nad ním
+`_zvukUlozeno` / `_zvukSync` / `_zvukChyba`). Náběh i doznění veď exponenciálou, skoková
+hlasitost lupe. Fanfára zůstává jen u dokončeného úkolu — tam si o ni uživatel řekl sám.
+
+`playSound('sync')` je nový druh pro „něco přišlo zvenčí" (dva tóny vzhůru). Zvuky
+v šabloně prohlížeče se **neměnily** — prohlížeč neukládá ani neslučuje.
+
+Autosave čeká **4 s** (dřív 15). Kratší nemá smysl: v edit modu detailu autosave
+schválně neběží a každé uložení je celý soubor.
+
 ## Ukončení editace vede přes jedno místo
 
 `ukonciEditaciEntity({ pred, hlaska, zvuk })` dělá pořadí **datum z názvu →
