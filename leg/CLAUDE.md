@@ -81,6 +81,8 @@ klik se zachytí a vykreslí bez načtení stránky (`pushState`/`popstate`); ko
 v rámci stránky nechává prohlížeči.
 
 ## Štítky a hromadné úpravy
+- Oblasti, skupiny vyznačení, skupiny komentářů i štítky se drží seřazené (`seraditSlovniky()`
+  při načtení a na začátku `vykreslit()`, české řazení bez ohledu na velikost písmen).
 - Názvy štítků jsou **vždy malými písmeny** a všude se řadí `ceskeRazeni` (Intl.Collator „cs“).
   `normalizovatWs()` starší štítky převede a shodné sloučí; import i `zajistitStitek()` převádějí.
 - Slovník `W.stitky` (`{id, nazev, popis}`) je společný pro předpisy (`P.stitky`) a ustanovení
