@@ -322,6 +322,19 @@ nabídne `nahradniSchranka()` okno s polem na ruční vložení.
 šifrované poznámky). Historie je součást stavu a putuje do repozitáře, takže co se do ní
 zapíše, to se uloží; tohle je jediná výjimka, ostatní obsah se zapisuje bez ptaní.
 
+**Obsah záznamu se v okně historie sází jako Markdown** (`md()`), ne jako prostý text:
+nadpisy, tučné, odrážky, kód a hlavně **klikací odkazy**, včetně holých adres. `md()`
+proto autolinkuje i holé `http(s)://` adresy — až **za** odkazy v závorkách a jen tam,
+kde adresa začíná po mezeře nebo na začátku, jinak by se chytla i adresa uvnitř hotového
+`href="…"`. Koncová interpunkce do odkazu nepatří. Odkazy mají `target="_blank"`, bez
+toho by kliknutí opustilo prostředí. Vysoký záznam dostane vlastní posuvník
+(`max-height`), obsah má v položce celý řádek a tlačítka jsou pod ním.
+
+Dvě věci okolo, na které se u Markdownu naráží: `.md p:empty` je schované, protože
+prohlížeč odstavec kolem nadpisu nebo seznamu rozdělí na prázdný `<p>` a ten blok
+(ze řetězce to odstranit nejde), a řádková pravidla seznamu jsou `.seznam>li`, aby
+odrážky z Markdownu uvnitř položky nevypadaly jako řádky tabulky.
+
 `doSchranky()` vrací `true`, když opravdu přibyl záznam — shodný text hned za sebou jen
 posune čas u prvního. Po každém zápisu volá `obnovitSchranku()`, které překreslí otevřené
 okno historie; nedělá to, když je v okně zaostřené tlačítko, aby uživatel nepřišel o fokus.

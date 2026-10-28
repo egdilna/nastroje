@@ -208,8 +208,9 @@ h3.nadpis{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var
 h3.nadpis:first-child{margin-top:0}
 .karta{border:1px solid var(--ram);border-radius:var(--r-stredni);padding:13px;margin-bottom:10px;background:color-mix(in srgb,var(--okno) 96%,#000)}
 .seznam{list-style:none;margin:0;padding:0}
-.seznam li{display:flex;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid var(--ram)}
-.seznam li:last-child{border-bottom:0}
+/* jen přímé položky seznamu — vnořené <li> (odrážky z Markdownu) nejsou řádky tabulky */
+.seznam>li{display:flex;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid var(--ram)}
+.seznam>li:last-child{border-bottom:0}
 .seznam .rostouci{flex:1;min-width:0}
 .tichy{color:var(--dlazdice-slaby);font-size:12.5px}
 .vysledek{background:color-mix(in srgb,var(--okno-text) 5%,transparent);border-radius:var(--r-maly);padding:11px;font-family:var(--pismo-mono);font-size:12.5px;white-space:pre-wrap;word-break:break-word;max-height:340px;overflow:auto}
@@ -217,6 +218,11 @@ table.mrizka-tab{border-collapse:collapse;width:100%;font-size:13px}
 table.mrizka-tab td,table.mrizka-tab th{border:1px solid var(--ram);padding:6px 8px;text-align:left}
 table.mrizka-tab input{border:0;padding:2px;background:none}
 .md h1,.md h2,.md h3{margin:.7em 0 .3em}
+.md p:empty{display:none}   /* zbytek po odstavci rozděleném nadpisem nebo seznamem */
+/* Markdown v úzkém sloupci (historie schránky) — nadpisy nemají dělat plakát */
+.md-maly h1,.md-maly h2,.md-maly h3{font-size:13.5px;margin:.4em 0 .2em}
+.md-maly p{margin:.35em 0}
+.md-maly ul{margin:.3em 0;padding-left:18px}
 .md code{font-family:var(--pismo-mono);background:rgba(0,0,0,.06);padding:1px 5px;border-radius:5px}
 .md blockquote{margin:.6em 0;padding-left:12px;border-left:3px solid var(--akcent);color:var(--dlazdice-slaby)}
 .pruh{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
@@ -632,8 +638,18 @@ function md(t){
   h=h.replace(/`([^`]+)`/g,"<code>$1</code>");
   h=h.replace(/\*\*([^*]+)\*\*/g,"<strong>$1</strong>").replace(/(^|\W)\*([^*]+)\*/g,"$1<em>$2</em>");
   h=h.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  /* Holé adresy ať jsou taky klikací. Musí to být až za odkazy v závorkách a jen tam,
+     kde adresa začíná po mezeře nebo na začátku — jinak by se chytla i adresa uvnitř
+     už hotového href="…" nebo text odkazu za „>". Koncová interpunkce do odkazu nepatří. */
+  h=h.replace(/(^|[\s(])(https?:\/\/[^\s<>"'`)\]]+)/g,(cely,pred,adresa)=>{
+    const ocas=(adresa.match(/[.,:!?]+$/)||[""])[0];
+    const cista=adresa.slice(0,adresa.length-ocas.length);
+    return pred+'<a href="'+cista+'" target="_blank" rel="noopener">'+cista+"</a>"+ocas;
+  });
   h=h.replace(/^[-*] (.*)$/gm,"<li>$1</li>").replace(/(<li>[\s\S]*?<\/li>)(?!\s*<li>)/g,"<ul>$1</ul>");
   h=h.replace(/\n{2,}/g,"</p><p>");
+  /* Odstavec kolem nadpisu nebo seznamu rozdělí prohlížeč na prázdný <p> a ten blok;
+     prázdné odstavce schovává CSS (.md p:empty), ze řetězce je odstranit nejde. */
   return "<p>"+h+"</p>";
 }
 
@@ -781,6 +797,7 @@ function postupHtml(hotovo,celkem,popis,dovetek){
 }
 const sklonovanePolozky=n=>n===1?"položka":n<5?"položky":"položek";
 const sklonovaneDlazdice=n=>n===1?"dlaždici":n<5?"dlaždice":"dlaždic";
+const sklonovaneRadky=n=>n===1?"řádek":n<5?"řádky":"řádků";
 /* stručný stav do popisku dlaždice, aby ho odečítač obrazovky přečetl spolu s názvem */
 function souhrnDlazdice(o){
   const c=o.obsah||{};
@@ -3135,11 +3152,15 @@ const NASTROJE={
       const ul=el("ul",{class:"seznam"});
       S.schranka.forEach((z,n)=>{
         const vice=z.text.includes("\n");
-        ul.append(el("li",{},
-          el("span",{class:"rostouci"},
-            /* víceřádkový text by se v náhledu slil do jedné věty — oddělíme řádky tečkou */
-            el("div",{style:"font-size:12.5px"},z.text.replace(/\s*\n\s*/g," · ").slice(0,120)),
-            el("div",{class:"tichy"},cas(z.kdy)+(vice?" · "+textNaPolozky(z.text).length+" řádků":""))),
+        /* obsah má vlastní řádek přes celou šířku, tlačítka jsou pod ním — jinak by
+           na vysázený záznam zbyl proužek vedle čtyř tlačítek */
+        ul.append(el("li",{style:"flex-wrap:wrap;align-items:flex-start;gap:8px"},
+          el("span",{class:"rostouci",style:"flex:1 1 100%"},
+            /* Obsah se sází jako Markdown — nadpisy, seznamy, kód a hlavně klikací
+               odkazy, včetně holých adres. Vysoký záznam se neroztáhne přes celé okno,
+               ale dostane vlastní posuvník. */
+            el("div",{class:"md md-maly",style:"font-size:12.5px;max-height:190px;overflow:auto",html:md(z.text)}),
+            el("div",{class:"tichy"},cas(z.kdy)+(vice?(r=>" · "+r+" "+sklonovaneRadky(r))(textNaPolozky(z.text).length):""))),
           el("button",{class:"btn druhy mini",onclick:()=>{navigator.clipboard?.writeText(z.text);hlas("Zkopírováno");}},"Kopírovat"),
           el("button",{class:"btn druhy mini",onclick:()=>{const o=vytvorit("text","Ze schránky",{text:z.text});otevritObjekt(o.id);}},"Jako poznámku"),
           vice?el("button",{class:"btn druhy mini",onclick:()=>{
