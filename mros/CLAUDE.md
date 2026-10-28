@@ -331,6 +331,11 @@ zavření okna; statistika, proužek i náhled na ploše počítají dál se vš
 Když se při zapnutém skrývání položka zaškrtne, zmizí ze seznamu — fokus proto přeskočí
 na další položku podle `data-poradi`, ne do prázdna.
 
+**Náhled kontrolního seznamu a úkolů ukazuje jen to, co zbývá** — hotové položky
+v něm místo neberou. Statistika v hlavičce i popisek dlaždice přitom počítají dál se
+všemi a „a další N" počítá jen z nedokončených; když nezbývá nic, stojí tam *Vše hotovo*.
+Nápadník se to netýká, ten položky neodškrtává.
+
 **Ministatistiku** kontrolního seznamu a úkolů kreslí `postupHtml()` do náhledu
 dlaždice a `souhrnDlazdice()` ji přidává do `aria-label` dlaždice, aby ji přečetl
 i odečítač obrazovky. Proužek postupu je `.postup` s vnořeným `<i>` o šířce v procentech.
