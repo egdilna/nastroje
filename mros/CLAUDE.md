@@ -263,6 +263,14 @@ dlaždice, volba uspořádání oken a křížky na odebrání. Práce s obsahem
 vyjmout na plochu, smazat, vytvořit ve složce novou, spustit sezení) je dostupná v obou
 režimech — to není úprava objektu, ale práce s ním.
 
+**Ukotvení na půlku plochy** je první čtveřice v nabídce *Další akce* — *Levá*, *Pravá*,
+*Horní* a *Dolní polovina*. Dělá totéž co Ctrl+Alt+šipka (`ukotvit(okno, klávesa)`,
+klíče jsou proto názvy kláves a `POLOVINY` k nim přidává jméno do nabídky i do hlášení).
+Okno se hledá podle klíče `obj-<id>` až při kliknutí, takže položka funguje i po
+překreslení obsahu. Z maximalizace se napřed vrátí `obnovitVelikost()` a zavolá
+`izolovatMaximalizovane()` — jinak by se rozměry přepsaly zpátky a plocha by zůstala
+nedostupná.
+
 **Lišta okna je jedno tlačítko, ne řada.** Co není ovládání okna (minimalizovat,
 maximalizovat, zavřít) ani přepínač režimu na F4, patří do nabídky *Další akce* —
 `listaDlazdice(o, navic)` bere volitelné akce navíc a přidá je **před** obecné
