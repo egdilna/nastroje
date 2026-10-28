@@ -2,6 +2,11 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.13.1] — 2026-10-28
+
+### Změněno
+- Oblasti, skupiny vyznačení a skupiny komentářů se stejně jako štítky všude řadí podle české abecedy bez ohledu na velikost písmen (přehledy, výběry, souhrny, filtry, přenos dat i exporty).
+
 ## [1.13.0] — 2026-10-28
 
 ### Změněno
