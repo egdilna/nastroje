@@ -155,7 +155,9 @@ aplikace zeptá; seznam se maže při každém vykreslení.
 `slozeniUstanoveni(model, f)` vrátí kořen (nejbližší strukturní předek, typicky §), cestu
 nestrukturních předků s textem (návětí) a množinu klíčů k vykreslení (cesta + podstrom
 ustanovení + `Pokracovani_Text` předků). `slozenyText()` z toho skládá text pro kopírování
-a snímky (`text` u vyznačení, `textUst` u komentářů a štítků). Detail ustanovení vykresluje
+a snímky (`text` u vyznačení, `textUst` u komentářů a štítků) — **vždy přes `slozenaVeta()` /
+`vetaZTextu()`**: souvislá věta bez označení „(2)“, „d)“, „1.“ a bez nadpisů struktury (požadavek
+uživatele). `vetaZTextu()` se volá i při zobrazení a exportu uložených textů (staré snímky). Detail ustanovení vykresluje
 složené ustanovení přes filtr s podbarvením. Kopírování ani exporty neuvádějí „ve znění…“.
 
 ## Části stránky předpisu
