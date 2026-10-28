@@ -451,7 +451,7 @@ rozbijí regulární výrazy.
 | Hlavní nabídka (Ctrl+F10), nabídka dlaždice, „Další akce ▾" | `role="menu"` + `menuitem`, `ozivitMenu()` |
 | Ovládání okna, akce plochy, lišta dlaždice a složky, patička | `role="toolbar"`, `ozivitListu()` — jen když má lišta **víc než jeden** ovládací prvek |
 | Okno | `article` + `aria-labelledby` → `h5` |
-| Dlaždice | `<a href>`, `aria-label` = **typ, pak název**, pak stav, štítky a poloha v mřížce (u typu `aplikace` se typ vynechává); `aria-describedby` → vykreslený náhled |
+| Dlaždice | `<a href>`, `aria-label` = **název, pak typ**, pak stav, štítky a poloha v mřížce (u typu `aplikace` se typ vynechává); `aria-describedby` → vykreslený náhled, který začíná názvem |
 | Paleta příkazů | nativní `<dialog>` + `showModal()` (jediné modální místo), vstup `role="combobox"` nad `role="listbox"` s `role="option"`, výběr přes `aria-activedescendant` |
 | Přepínače velikosti dlaždice | tlačítka s `aria-pressed` v `role="group"` |
 
@@ -495,6 +495,14 @@ akce nad stránkou, a odečítač ji tak nabídne i v seznamu odkazů. V `href` 
 takže se nikam nenaviguje. `tabindex` ani `role` dlaždice nepotřebuje — odkaz je
 zaostřitelný sám. Enter obsluhuje `keydown` s `preventDefault()`, aby se okno neotevřelo
 dvakrát (nativní aktivace odkazu by poslala ještě `click`), mezerník funguje navíc.
+
+**Název je první, všude.** V `aria-label` dlaždice stojí na začátku a typ, stav, štítky
+i poloha jsou upřesnění za ním (`popisDlazdice()`) — hledá se podle názvu a při chození
+šipkami je to jediné, co musí zaznít hned. Stejně začíná názvem i popis z náhledu:
+`.d-telo` má na začátku `<span class="jenproctecku">Název: </span>`, takže se popis dá
+přečíst samostatně a je poznat, ke které dlaždici patří, ale vizuálně se nic neopakuje —
+název je vidět v hlavičce dlaždice. Podmínka pro `aria-describedby` proto porovnává
+obsah těla s tím samotným názvem; prázdný náhled popis nedostane.
 
 **Obsah náhledu je popis, ne jméno.** Dlaždice má `aria-describedby` na své vlastní
 `.d-telo` (`id="telo-<id>"`), takže odečítač přečte i to, co je v náhledu vidět — položky
