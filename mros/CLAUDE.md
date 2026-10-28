@@ -498,11 +498,16 @@ dvakrát (nativní aktivace odkazu by poslala ještě `click`), mezerník funguj
 
 **Název je první, všude.** V `aria-label` dlaždice stojí na začátku a typ, stav, štítky
 i poloha jsou upřesnění za ním (`popisDlazdice()`) — hledá se podle názvu a při chození
-šipkami je to jediné, co musí zaznít hned. Stejně začíná názvem i popis z náhledu:
-`.d-telo` má na začátku `<span class="jenproctecku">Název: </span>`, takže se popis dá
-přečíst samostatně a je poznat, ke které dlaždici patří, ale vizuálně se nic neopakuje —
-název je vidět v hlavičce dlaždice. Podmínka pro `aria-describedby` proto porovnává
-obsah těla s tím samotným názvem; prázdný náhled popis nedostane.
+šipkami je to jediné, co musí zaznít hned.
+
+Stejně začíná názvem i popis z náhledu, a to **bez jediné kopie textu navíc**:
+`aria-describedby` bere **dva** prvky, `nazev-<id>` (název v hlavičce) a `telo-<id>`
+(náhled), takže popis zní „Lhůty Splněno 0 z 1 · 0 % Podat odvolání". Název v hlavičce
+proto **nesmí být `aria-hidden`** — jinak by byl jen ve jméně odkazu a obsah dlaždice
+by žádný název neměl. Ikona `aria-hidden` zůstává, ta je dekorace. Nedělej to skrytým
+`<span>` s názvem uvnitř těla: text by na dlaždici byl dvakrát a při přejmenování se
+rozejdou. Prázdný náhled (aplikace s adresou) `aria-describedby` nedostane vůbec —
+popis by byl jen název znovu.
 
 **Obsah náhledu je popis, ne jméno.** Dlaždice má `aria-describedby` na své vlastní
 `.d-telo` (`id="telo-<id>"`), takže odečítač přečte i to, co je v náhledu vidět — položky
