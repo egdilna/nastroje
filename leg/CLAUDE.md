@@ -102,6 +102,10 @@ v rámci stránky nechává prohlížeči.
 - `exportniPanel(titul, md, tsv)` — Markdown a TSV do schránky (`kopirovat`) i do souboru
   (`stahnoutSoubor`, Blob s atributem `download`; globální obsluha kliknutí odkazy
   s `download` nechává být). TSV: tabulátory a konce řádků v buňce se nahrazují, soubor má BOM.
+- Markdown komentářů (`komentareJakoMarkdown(titul, poznamka, seznam, odkaz)`) má šablonu
+  danou uživatelem: H1, *Export z knihovny …*, *Exportováno … — N komentářů.*, poznámka skupiny,
+  odkaz na skupinu; pod H2 předpisu odkaz na předpis; ustanovení tučně „citace: text“ (každý
+  řádek zvlášť), odkaz na ustanovení a jen texty komentářů — bez data a skupin.
 - Balíček `{format: "legprohlizec-balik", verze: 1, zdroj, predpisy, oblasti, skupiny,
   skupinyKomentaru, vyznaceni, komentare, poznamky}` — bez textů předpisů. Import umí
   i samotný `legprohlizec.json`, proto jde číst přímo z jiného úložiště (`ghCist` a `gh`
