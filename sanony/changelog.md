@@ -6,6 +6,29 @@ jsou zaznamenány v tomto souboru.
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/)
 a nástroj se drží [sémantického verzování](https://semver.org/lang/cs/).
 
+## [1.9.0] - 2026-10-29
+
+### Změněno
+
+- **Offline výřez nově stáhne i to, na co míří propojení** — jinak by propojení v kopii
+  nedávala smysl. Platí to řetězově: propojení uvnitř přitažených desek se dotáhnou taky.
+- **Přitažené položky se přerovnají do kartotéky „Propojené položky“**, aby z výřezu nešlo
+  vyčíst, v jakých kartotékách a šanonech doopravdy leží. Původní cesta se nikam nezapisuje:
+  přepisuje se i cíl uložený v propojení.
+  - propojený soubor nebo odkaz leží volně v této kartotéce;
+  - propojený šanon se vloží pod police „Přiložené“, propojené desky pod šanon
+    „Přiložené desky“, aby seděla úroveň a vykreslení;
+  - propojená kartotéka si ponechá vlastní název — nadřazené místo nemá, takže neprozradí nic.
+- **Do výřezu se přibalí jen štítky, které v něm někdo nese.** Dosud se kopíroval celý
+  seznam štítků archivu, což prozrazovalo i názvy štítků, které se ve výřezu vůbec nevyskytují.
+- Hlášení po uložení říká, kolik položek se kvůli propojením přibralo. Slepá zůstanou jen
+  propojení, jejichž cíl v archivu vůbec není.
+
+### Opraveno
+
+- Výřez pracoval s živými objekty archivu, ne s kopiemi. Přepsání cest kvůli přerovnání
+  by poškodilo skutečný archiv otevřený v prohlížeči; nově se vše kopíruje.
+
 ## [1.8.0] - 2026-09-30
 
 ### Změněno
@@ -218,6 +241,7 @@ Ostatní obrazovky — kartotéky i desky — zůstávají beze změny; ověřen
 - Označení offline kopie zůstává zachováno na konci titulku:
   `Byty · Nájmy · Můj archiv (offline kopie)`.
 
+[1.9.0]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.8.0]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.7.0]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.6.0]: https://github.com/egdilna/nastroje/tree/main/sanony
