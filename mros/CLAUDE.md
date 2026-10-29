@@ -263,6 +263,14 @@ dlaždice, volba uspořádání oken a křížky na odebrání. Práce s obsahem
 vyjmout na plochu, smazat, vytvořit ve složce novou, spustit sezení) je dostupná v obou
 režimech — to není úprava objektu, ale práce s ním.
 
+**Ukotvení na půlku plochy** je první čtveřice v nabídce *Další akce* — *Levá*, *Pravá*,
+*Horní* a *Dolní polovina*. Dělá totéž co Ctrl+Alt+šipka (`ukotvit(okno, klávesa)`,
+klíče jsou proto názvy kláves a `POLOVINY` k nim přidává jméno do nabídky i do hlášení).
+Okno se hledá podle klíče `obj-<id>` až při kliknutí, takže položka funguje i po
+překreslení obsahu. Z maximalizace se napřed vrátí `obnovitVelikost()` a zavolá
+`izolovatMaximalizovane()` — jinak by se rozměry přepsaly zpátky a plocha by zůstala
+nedostupná.
+
 **Lišta okna je jedno tlačítko, ne řada.** Co není ovládání okna (minimalizovat,
 maximalizovat, zavřít) ani přepínač režimu na F4, patří do nabídky *Další akce* —
 `listaDlazdice(o, navic)` bere volitelné akce navíc a přidá je **před** obecné
@@ -314,6 +322,19 @@ nabídne `nahradniSchranka()` okno s polem na ruční vložení.
 šifrované poznámky). Historie je součást stavu a putuje do repozitáře, takže co se do ní
 zapíše, to se uloží; tohle je jediná výjimka, ostatní obsah se zapisuje bez ptaní.
 
+**Obsah záznamu se v okně historie sází jako Markdown** (`md()`), ne jako prostý text:
+nadpisy, tučné, odrážky, kód a hlavně **klikací odkazy**, včetně holých adres. `md()`
+proto autolinkuje i holé `http(s)://` adresy — až **za** odkazy v závorkách a jen tam,
+kde adresa začíná po mezeře nebo na začátku, jinak by se chytla i adresa uvnitř hotového
+`href="…"`. Koncová interpunkce do odkazu nepatří. Odkazy mají `target="_blank"`, bez
+toho by kliknutí opustilo prostředí. Vysoký záznam dostane vlastní posuvník
+(`max-height`), obsah má v položce celý řádek a tlačítka jsou pod ním.
+
+Dvě věci okolo, na které se u Markdownu naráží: `.md p:empty` je schované, protože
+prohlížeč odstavec kolem nadpisu nebo seznamu rozdělí na prázdný `<p>` a ten blok
+(ze řetězce to odstranit nejde), a řádková pravidla seznamu jsou `.seznam>li`, aby
+odrážky z Markdownu uvnitř položky nevypadaly jako řádky tabulky.
+
 `doSchranky()` vrací `true`, když opravdu přibyl záznam — shodný text hned za sebou jen
 posune čas u prvního. Po každém zápisu volá `obnovitSchranku()`, které překreslí otevřené
 okno historie; nedělá to, když je v okně zaostřené tlačítko, aby uživatel nepřišel o fokus.
@@ -330,6 +351,11 @@ v obsahu dlaždice (`obsah.skryvatHotove`), takže platí pro čtení i úpravy 
 zavření okna; statistika, proužek i náhled na ploše počítají dál se všemi položkami.
 Když se při zapnutém skrývání položka zaškrtne, zmizí ze seznamu — fokus proto přeskočí
 na další položku podle `data-poradi`, ne do prázdna.
+
+**Náhled kontrolního seznamu a úkolů ukazuje jen to, co zbývá** — hotové položky
+v něm místo neberou. Statistika v hlavičce i popisek dlaždice přitom počítají dál se
+všemi a „a další N" počítá jen z nedokončených; když nezbývá nic, stojí tam *Vše hotovo*.
+Nápadník se to netýká, ten položky neodškrtává.
 
 **Ministatistiku** kontrolního seznamu a úkolů kreslí `postupHtml()` do náhledu
 dlaždice a `souhrnDlazdice()` ji přidává do `aria-label` dlaždice, aby ji přečetl
@@ -446,7 +472,7 @@ rozbijí regulární výrazy.
 | Hlavní nabídka (Ctrl+F10), nabídka dlaždice, „Další akce ▾" | `role="menu"` + `menuitem`, `ozivitMenu()` |
 | Ovládání okna, akce plochy, lišta dlaždice a složky, patička | `role="toolbar"`, `ozivitListu()` — jen když má lišta **víc než jeden** ovládací prvek |
 | Okno | `article` + `aria-labelledby` → `h5` |
-| Dlaždice | `<a href>`, `aria-label` = **typ, pak název**, pak stav, štítky a poloha v mřížce (u typu `aplikace` se typ vynechává); `aria-describedby` → vykreslený náhled |
+| Dlaždice | `<a href>`, `aria-label` = **název, pak typ**, pak stav, štítky a poloha v mřížce (u typu `aplikace` se typ vynechává); `aria-describedby` → vykreslený náhled, který začíná názvem |
 | Paleta příkazů | nativní `<dialog>` + `showModal()` (jediné modální místo), vstup `role="combobox"` nad `role="listbox"` s `role="option"`, výběr přes `aria-activedescendant` |
 | Přepínače velikosti dlaždice | tlačítka s `aria-pressed` v `role="group"` |
 
@@ -490,6 +516,19 @@ akce nad stránkou, a odečítač ji tak nabídne i v seznamu odkazů. V `href` 
 takže se nikam nenaviguje. `tabindex` ani `role` dlaždice nepotřebuje — odkaz je
 zaostřitelný sám. Enter obsluhuje `keydown` s `preventDefault()`, aby se okno neotevřelo
 dvakrát (nativní aktivace odkazu by poslala ještě `click`), mezerník funguje navíc.
+
+**Název je první, všude.** V `aria-label` dlaždice stojí na začátku a typ, stav, štítky
+i poloha jsou upřesnění za ním (`popisDlazdice()`) — hledá se podle názvu a při chození
+šipkami je to jediné, co musí zaznít hned.
+
+Stejně začíná názvem i popis z náhledu, a to **bez jediné kopie textu navíc**:
+`aria-describedby` bere **dva** prvky, `nazev-<id>` (název v hlavičce) a `telo-<id>`
+(náhled), takže popis zní „Lhůty Splněno 0 z 1 · 0 % Podat odvolání". Název v hlavičce
+proto **nesmí být `aria-hidden`** — jinak by byl jen ve jméně odkazu a obsah dlaždice
+by žádný název neměl. Ikona `aria-hidden` zůstává, ta je dekorace. Nedělej to skrytým
+`<span>` s názvem uvnitř těla: text by na dlaždici byl dvakrát a při přejmenování se
+rozejdou. Prázdný náhled (aplikace s adresou) `aria-describedby` nedostane vůbec —
+popis by byl jen název znovu.
 
 **Obsah náhledu je popis, ne jméno.** Dlaždice má `aria-describedby` na své vlastní
 `.d-telo` (`id="telo-<id>"`), takže odečítač přečte i to, co je v náhledu vidět — položky

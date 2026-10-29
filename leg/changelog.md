@@ -2,6 +2,16 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.13.1] — 2026-10-28
+
+### Změněno
+- Oblasti, skupiny vyznačení a skupiny komentářů se stejně jako štítky všude řadí podle české abecedy bez ohledu na velikost písmen (přehledy, výběry, souhrny, filtry, přenos dat i exporty).
+
+## [1.13.0] — 2026-10-28
+
+### Změněno
+- Text ustanovení pro kopírování, ukládání a exporty (Markdown, TSV, DKM) je souvislá česká věta: bez označení odstavců, písmen a bodů a bez nadpisů struktury; návětí se s písmenem či bodem a se společnou částí za výčtem spojí do jedné věty. U celého paragrafu zůstávají odstavce na samostatných řádcích. Platí i pro dříve uložené texty. Detail ustanovení na obrazovce zůstává strukturovaný.
+
 ## [1.12.0] — 2026-10-22
 
 ### Přidáno
