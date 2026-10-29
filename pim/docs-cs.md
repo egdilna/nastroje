@@ -683,11 +683,48 @@ V **section-edit režimu** (přepínač `d` v read modu nebo tlačítko „Edito
 
 Po uložení se markdown ve zdrojovém textu nahradí novou tabulkou. Přístupné pro screen readery (každý input má `<label>` s pozicí, tlačítka mají `aria-label`).
 
+## Plán 📋 — tabulka WBS a její editor
+
+Entita s aspektem **Plán** drží úkoly ve **WBS tabulce**: číslo (1, 1.1, 1.2…), název,
+stav, začátek, trvání, konec a předchůdce. Úrovně se dělají odsazením, takže z úkolu
+se stane rodič tím, že se pod něj něco zařadí. Termíny a trvání rodiče i stav rodiče
+**počítá aplikace z podúkolů**; u úkolu s předchůdcem se počítá i začátek.
+
+V detailu entity je tabulka ke čtení. Editor se otevře tlačítkem **✏ Upravit plán**
+a přidává u každého řádku akce: ✏ upravit, ▲ ▼ posunout, → ← odsadit a vrátit,
+➕ vložit úkol pod tento a 🗑 smazat (i s podúkoly).
+
+### Příznak a stav rovnou v tabulce
+
+Dvě věci, se kterými se pracuje nejčastěji, nepotřebují otevírat dialog úkolu:
+
+- **Tlačítko příznaku před názvem.** Prázdná vlaječka 🏳️ znamená „úkol je bez
+  příznaku"; kliknutí nabídne emoji ze seznamu příznaků (Nastavení → Příznaky)
+  a vybrané se zapíše **na začátek názvu**. Má-li úkol příznak už teď, je na tlačítku
+  vidět a nabídka slouží ke **změně**; navíc je v ní **Bez příznaku**, které ho odebere.
+  V řádku je emoji jen jednou — z názvu se vyjme a ukáže se na tlačítku. Dokud nejsou
+  v Nastavení žádná příznaková emoji, tlačítko se nezobrazuje: nebylo by co nabídnout.
+- **Select stavu ve sloupci Stav.** Změna se uloží hned. U **rodičovského** úkolu je
+  select zamčený a je u něj napsané proč — jeho stav se počítá z podúkolů, takže by se
+  jakákoli ruční změna hned vrátila.
+
+Obojí tabulku překreslí (mění se souhrn nad ní i stav rodiče), ale **fokus zůstane na
+prvku, se kterým jste pracovali**, takže se dá pokračovat klávesnicí.
+
+Příznak je obyčejné emoji v názvu, takže se přenese do kopie Markdownu, do CSV
+i do nabídky Předchůdce — a **pohled Příznaky ho najde** stejně jako příznak v textu
+(viz níže).
+
 ## Příznaky 🏳️‍🌈
 
 Příznaky jsou **emoji uvnitř textu**, která fungují jako vizuální značky. Nejsou součástí markdownu — jsou to obyčejné znaky, které aplikace umí najít a zobrazit přehled.
 
 **Použití**: do těla nebo textarea atributu napište emoji ze seznamu příznaků (definujete v Nastavení → Příznaky). V navigaci se objeví karta **🏳️‍🌈 Příznaky** s přehledem všech výskytů: kde se emoji objevuje, v jakém typu řádku (nadpis, odrážka, úkol…), a s kontextem.
+
+**Kde se příznaky hledají**: v těle entity, v jejích textových (textarea) atributech
+a v **názvech úkolů v plánu**. U úkolu plánu se v přehledu píše jeho číslo WBS
+(„Úkol plánu 1.1") a obě akce níž fungují i tam — příznak se u něj nejpohodlněji
+nastaví tlačítkem přímo v tabulce plánu.
 
 **Akce u každého výskytu**:
 - **✕** — odstranit emoji z textu (uloží entitu)

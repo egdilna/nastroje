@@ -635,6 +635,18 @@ body.theme-dark .plan-st-preruseno { background: #2a2a2a; color: #aaa; }
 body.theme-dark .plan-st-zruseno { background: #1f1f1f; color: #666; text-decoration: line-through; }
 .plan-pred { font-family: Consolas, monospace; font-size: 0.85em; color: #666; }
 body.theme-dark .plan-pred { color: #aaa; }
+.plan-priznak-btn { background: transparent; border: 1px solid transparent; border-radius: 3px; cursor: pointer; padding: 0 0.2em; font-size: 1em; line-height: 1.3; }
+.plan-priznak-btn:hover, .plan-priznak-btn:focus-visible { border-color: #bbb; background: #e8f0fa; }
+body.theme-dark .plan-priznak-btn:hover, body.theme-dark .plan-priznak-btn:focus-visible { border-color: #555; background: #2a3950; }
+.plan-priznak-prazdny { opacity: 0.4; }
+.plan-priznak-prazdny:hover, .plan-priznak-prazdny:focus-visible { opacity: 1; }
+.plan-status-sel { font-size: 0.85em; font-weight: 500; padding: 0.1em 0.2em; border-radius: 3px; border: 1px solid #bbb; max-width: 11em; }
+body.theme-dark .plan-status-sel { border-color: #555; }
+/* Zamčený select u rodiče musí být poznat i bez najetí myší na title. */
+.plan-status-sel:disabled { opacity: 0.7; cursor: not-allowed; font-style: italic; }
+/* Barevné pozadí platí jen pro zavřený select – nabídka musí zůstat čitelná. */
+.plan-status-sel option { background: #fff; color: #222; }
+body.theme-dark .plan-status-sel option { background: #1f1f1f; color: #eee; }
 .plan-actions { white-space: nowrap; }
 .plan-actions button { padding: 0.1em 0.4em; font-size: 0.85em; margin: 0 0.05em; }
 .plan-desc-row td, .plan-links-row td { background: #fafafa; padding: 0.5em 1em; }
@@ -686,6 +698,9 @@ body.theme-dark .flag-change-btn:hover { background: #2a3950; }
 .flag-change-dialog .flag-change-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(60px, 1fr)); gap: 0.4em; margin: 0.5em 0; }
 .flag-change-dialog .flag-change-pick { font-size: 1.8em; padding: 0.2em 0.4em; cursor: pointer; background: #f8f8f8; border: 1px solid #ccc; border-radius: 4px; }
 .flag-change-dialog .flag-change-pick:hover { background: #e8f0fa; transform: scale(1.05); }
+/* Nastavený příznak musí být v nabídce vidět, ne jen slyšet (aria-pressed). */
+.flag-change-dialog .flag-change-pick[aria-pressed="true"] { border-color: #0066cc; box-shadow: inset 0 0 0 2px #0066cc; }
+body.theme-dark .flag-change-dialog .flag-change-pick[aria-pressed="true"] { border-color: #6aa9ff; box-shadow: inset 0 0 0 2px #6aa9ff; }
 body.theme-dark .flag-change-dialog .flag-change-pick { background: #1a1a1a; border-color: #555; }
 body.theme-dark .flag-change-dialog .flag-change-pick:hover { background: #2a3950; }
 .flags-section { margin: 0.8em 0; padding: 0.5em 0.7em; background: #fafafa; border-radius: 4px; }
@@ -6285,6 +6300,61 @@ function planComputeWbs(tasks) {
     t._wbs = counters.join('.');
   }
 }
+// Jediný zdroj nabídky stavů plánu je `PLAN_STATUSES` — dialog úkolu i select
+// v tabulce berou options odtud. Kopie seznamu v UI se dřív nebo později rozejde
+// (přesně to se stalo stavům úkolů: „Zrušeno" vs „Zrušené").
+// Neznámý stav ze starších dat se do nabídky přidá, aby ho výběr tiše nepřepsal.
+function planStatusOptionsHtml(vybrany) {
+  const sez = PLAN_STATUSES.slice();
+  if (vybrany && sez.indexOf(vybrany) < 0) sez.push(vybrany);
+  return sez.map(st => '<option value="' + escapeHtml(st) + '"' +
+    (st === vybrany ? ' selected' : '') + '>' + escapeHtml(st) + '</option>').join('');
+}
+
+// === PŘÍZNAK NA ZAČÁTKU NÁZVU ÚKOLU PLÁNU ===
+// Příznak není vlastní pole úkolu: je to **emoji na začátku názvu**, tedy
+// stejný zápis, jaký `scanTextForFlags()` hledá v textu entit. Díky tomu se
+// přenese do Markdownu, CSV i do dialogu Předchůdce, aniž by se na to muselo
+// kdekoli myslet.
+//
+// `planPriznakNazvu` vrací `{ emoji, delka }` — `emoji` tak, jak je
+// v `db.flagEmojis`, a `delka` v **znacích názvu**, ne podle seznamu. Na tom se
+// dá uklouznout: když má emoji v seznamu VS16 (U+FE0F) a v názvu ne, odečtení
+// délky ze seznamu by odřízlo první znak názvu.
+function planPriznakNazvu(nazev, priznaky) {
+  const s = String(nazev == null ? '' : nazev);
+  if (!s) return null;
+  const sez = Array.isArray(priznaky) ? priznaky : getFlagEmojis();
+  for (const em of sez) {
+    const jadro = String(em).replace(/\uFE0F/g, '');
+    if (!jadro) continue;
+    let i = 0, j = 0;
+    while (j < jadro.length && i < s.length) {
+      if (s[i] === '\uFE0F') { i++; continue; }   // VS16 v názvu, v seznamu ne
+      if (s[i] !== jadro[j]) break;
+      i++; j++;
+    }
+    if (j < jadro.length) continue;
+    if (s[i] === '\uFE0F') i++;
+    // ZWJ znamená, že v názvu je **delší** emoji sekvence, která tímhle jen
+    // začíná — to není tenhle příznak.
+    if (s[i] === '\u200D') continue;
+    let delka = i;
+    if (s[delka] === ' ' || s[delka] === '\u00A0') delka++;
+    return { emoji: em, delka: delka };
+  }
+  return null;
+}
+
+// Vrátí název s nastaveným příznakem; prázdný `novy` příznak odebere.
+function planNazevSPriznakem(nazev, novy, priznaky) {
+  const s = String(nazev == null ? '' : nazev);
+  const naj = planPriznakNazvu(s, priznaky);
+  const zbytek = naj ? s.slice(naj.delka) : s;
+  if (!novy) return zbytek;
+  return novy + ' ' + zbytek;
+}
+
 function planRecalc(tasks) {
   if (!Array.isArray(tasks) || tasks.length === 0) return;
   let changed = true, iter = 0;
@@ -7310,6 +7380,71 @@ function removeEmojiFromTextAt(text, line, col, emoji) {
   return lines.join('\n');
 }
 
+// Jeden výběr příznaku pro celou aplikaci: mřížka emoji z `db.flagEmojis`.
+// Volající řekne, co se má s vybraným emoji stát; dialog se sám zavře **před**
+// zavoláním `onVyber`, protože ta cesta typicky překresluje a otevřený dialog by
+// překreslení překážel.
+//
+// `vynechatAktualni` je pro „změnit na jiný" (nabízet to, co už je nastavené,
+// nemá smysl), `onOdebrat` přidá tlačítko „Bez příznaku".
+function otevriVyberPriznaku(opts) {
+  opts = opts || {};
+  const vsechny = getFlagEmojis();
+  const nabidka = opts.vynechatAktualni ? vsechny.filter(em => em !== opts.aktualni) : vsechny;
+  if (nabidka.length === 0) {
+    toast(opts.vynechatAktualni
+      ? 'Žádné jiné příznaky nejsou k dispozici. Přidejte další v Nastavení.'
+      : 'Žádná příznaková emoji nejsou definována. Zadejte je v Nastavení.');
+    return;
+  }
+  const titul = opts.titul || 'Vybrat příznak';
+  const d = document.createElement('dialog');
+  d.className = 'flag-change-dialog';
+  d.innerHTML =
+    '<h2>' + escapeHtml(titul) + '</h2>' +
+    (opts.popis ? '<p>' + escapeHtml(opts.popis) + '</p>' : '') +
+    '<div class="flag-change-grid">' +
+      nabidka.map(em => '<button type="button" class="flag-change-pick" data-em="' + escapeHtml(em) + '"' +
+        (em === opts.aktualni ? ' aria-pressed="true"' : '') +
+        ' aria-label="Příznak ' + escapeHtml(em) + (em === opts.aktualni ? ' (nastavený)' : '') + '">' +
+        em + '</button>').join('') +
+    '</div>' +
+    '<div class="btn-group" style="margin-top:1em;">' +
+      (opts.onOdebrat ? '<button type="button" id="flag-pick-off">Bez příznaku</button>' : '') +
+      '<button type="button" id="flag-pick-cancel">Zrušit</button>' +
+    '</div>';
+  document.body.appendChild(d);
+  function zavri() { if (d.close && d.open) d.close(); d.remove(); }
+  d.querySelectorAll('.flag-change-pick').forEach(b => {
+    b.onclick = () => { const em = b.dataset.em; zavri(); if (opts.onVyber) opts.onVyber(em); };
+  });
+  const off = d.querySelector('#flag-pick-off');
+  if (off) off.onclick = () => { zavri(); if (opts.onOdebrat) opts.onOdebrat(); };
+  d.querySelector('#flag-pick-cancel').onclick = () => {
+    zavri();
+    if (opts.fokusPo) { const c = document.querySelector(opts.fokusPo); if (c) c.focus(); }
+  };
+  if (d.showModal) d.showModal(); else d.setAttribute('open', 'open');
+  const prvni = d.querySelector('.flag-change-pick');
+  if (prvni) prvni.focus();
+}
+
+// Náhrada emoji na dané pozici — jedno místo pro všechny zdroje (tělo, atribut,
+// název úkolu plánu). Když tam emoji přesně není (text se mezitím změnil), padá
+// se na první výskyt v tom řádku; není-li ani ten, text zůstane, jak byl.
+function zmenEmojiVTextuNa(text, line, col, stare, nove) {
+  const vstup = String(text == null ? '' : text);
+  const radky = vstup.split('\n');
+  if (radky[line] === undefined) return vstup;
+  const ln = radky[line];
+  if (ln.slice(col, col + stare.length) === stare) {
+    radky[line] = ln.slice(0, col) + nove + ln.slice(col + stare.length);
+  } else {
+    radky[line] = ln.replace(stare, nove);
+  }
+  return radky.join('\n');
+}
+
 function scanEntityForFlags(entity, flagEmojis) {
   const result = { byEmoji: {}, total: 0 };
   if (!flagEmojis || flagEmojis.length === 0) return result;
@@ -7341,6 +7476,28 @@ function scanEntityForFlags(entity, flagEmojis) {
           it.source = 'attr';
           it.attrKey = key;
           it.attrLabel = field.label || key;
+          result.byEmoji[em].push(it);
+          result.total++;
+        });
+      });
+    });
+  }
+  // Plán: příznak na začátku názvu úkolu je příznak jako každý jiný. Bez tohohle
+  // bloku by ho tlačítko v tabulce plánu umělo nastavit, ale pohled Příznaky
+  // (jehož jediná práce je „kde mám příznaky") by o něm nevěděl.
+  //
+  // Úkoly plánu nejsou text, takže se **adresují id úkolu**, ne řádkem a sloupcem
+  // jako tělo; `line` je proto vždycky 0 a `col` pozice v názvu.
+  if ((entity.aspects || []).includes('Plan') && typeof planGetTasks === 'function') {
+    const planTasks = planGetTasks(entity);
+    if (planTasks.length > 0 && typeof planComputeWbs === 'function') planComputeWbs(planTasks);
+    planTasks.forEach(pt => {
+      const r = scanTextForFlags(String(pt.title || ''), flagEmojis);
+      Object.keys(r.byEmoji).forEach(em => {
+        r.byEmoji[em].forEach(it => {
+          it.source = 'plan';
+          it.planTaskId = pt.id;
+          it.descKind = 'Úkol plánu' + (pt._wbs ? ' ' + pt._wbs : '');
           result.byEmoji[em].push(it);
           result.total++;
         });
@@ -14747,16 +14904,19 @@ function renderDetailRead(main, e) {
         const items = scan.byEmoji[em];
         h += '<div class="flags-group"><h4>' + em + ' (' + items.length + '×)</h4><ul class="flags-list">';
         items.forEach((it, idx) => {
+          // U úkolu plánu říká zdroj už `descKind` („Úkol plánu 1.1"), takže by
+          // popisek navíc jen opakoval totéž.
           const srcLabel = it.source === 'attr' ? ' v atributu „' + escapeHtml(it.attrLabel) + '"' : '';
+          const dataUkol = it.planTaskId ? ' data-flag-task="' + escapeHtml(it.planTaskId) + '"' : '';
           h += '<li class="flag-item">' +
             '<span class="flag-kind">' + escapeHtml(it.descKind) + srcLabel + '</span>' +
             ' — <span class="flag-context">' + escapeHtml(it.contextPlain) + '</span>' +
             ' <button type="button" class="flag-change-btn" data-flag-em="' + escapeHtml(em) + '" data-flag-src="' + escapeHtml(it.source) + '"' +
-              (it.attrKey ? ' data-flag-attr="' + escapeHtml(it.attrKey) + '"' : '') +
+              (it.attrKey ? ' data-flag-attr="' + escapeHtml(it.attrKey) + '"' : '') + dataUkol +
               ' data-flag-line="' + it.line + '" data-flag-col="' + it.col + '"' +
               ' title="Změnit emoji na jiný příznak" aria-label="Změnit ' + em + ' na jiný příznak">🔄</button>' +
             ' <button type="button" class="danger flag-remove-btn" data-flag-em="' + escapeHtml(em) + '" data-flag-src="' + escapeHtml(it.source) + '"' +
-              (it.attrKey ? ' data-flag-attr="' + escapeHtml(it.attrKey) + '"' : '') +
+              (it.attrKey ? ' data-flag-attr="' + escapeHtml(it.attrKey) + '"' : '') + dataUkol +
               ' data-flag-line="' + it.line + '" data-flag-col="' + it.col + '"' +
               ' title="Odstranit toto emoji z textu a uložit" aria-label="Odstranit ' + em + ' z této pozice">✕</button>' +
           '</li>';
@@ -14993,11 +15153,16 @@ function renderDetailRead(main, e) {
       const line = Number(btn.dataset.flagLine);
       const col = Number(btn.dataset.flagCol);
       const attrKey = btn.dataset.flagAttr;
+      const taskId = btn.dataset.flagTask;
       if (src === 'body') {
         e.body = removeEmojiFromTextAt(e.body || '', line, col, em);
       } else if (src === 'attr' && attrKey && e.attributes) {
         const cur = e.attributes[attrKey] || '';
         e.attributes[attrKey] = removeEmojiFromTextAt(cur, line, col, em);
+      } else if (src === 'plan' && taskId) {
+        // Úkol se hledá podle id, ne podle pořadí: pořadí se v plánu posouvá.
+        const pt = planGetTasks(e).find(x => x.id === taskId);
+        if (pt) pt.title = removeEmojiFromTextAt(String(pt.title || ''), line, col, em);
       }
       e.updated_at = nowIso();
       save();
@@ -15013,60 +15178,27 @@ function renderDetailRead(main, e) {
       const line = Number(btn.dataset.flagLine);
       const col = Number(btn.dataset.flagCol);
       const attrKey = btn.dataset.flagAttr;
-      // Otevřít minimalistický popup s nabídkou ostatních emoji
-      const flagList = getFlagEmojis();
-      const alternatives = flagList.filter(f => f !== oldEm);
-      if (alternatives.length === 0) {
-        toast('Žádné jiné příznaky nejsou k dispozici. Přidejte další v Nastavení.');
-        return;
-      }
-      const d = document.createElement('dialog');
-      d.className = 'flag-change-dialog';
-      d.innerHTML =
-        '<h2>Změnit příznak</h2>' +
-        '<p>Změnit emoji <strong>' + oldEm + '</strong> na:</p>' +
-        '<div class="flag-change-grid">' +
-          alternatives.map(em => '<button type="button" class="flag-change-pick" data-em="' + escapeHtml(em) + '">' + em + '</button>').join('') +
-        '</div>' +
-        '<div class="btn-group" style="margin-top:1em;"><button type="button" id="flag-change-cancel">Zrušit</button></div>';
-      document.body.appendChild(d);
-      d.querySelectorAll('.flag-change-pick').forEach(b => {
-        b.onclick = () => {
-          const newEm = b.dataset.em;
+      const taskId = btn.dataset.flagTask;
+      otevriVyberPriznaku({
+        titul: 'Změnit příznak',
+        popis: 'Změnit emoji ' + oldEm + ' na jiný příznak.',
+        aktualni: oldEm,
+        vynechatAktualni: true,
+        onVyber: (newEm) => {
           if (src === 'body') {
-            const lines = (e.body || '').split('\n');
-            if (lines[line] !== undefined) {
-              const ln = lines[line];
-              if (ln.slice(col, col + oldEm.length) === oldEm) {
-                lines[line] = ln.slice(0, col) + newEm + ln.slice(col + oldEm.length);
-              } else {
-                // fallback: první výskyt
-                lines[line] = ln.replace(oldEm, newEm);
-              }
-              e.body = lines.join('\n');
-            }
+            e.body = zmenEmojiVTextuNa(e.body || '', line, col, oldEm, newEm);
           } else if (src === 'attr' && attrKey && e.attributes) {
-            const cur = e.attributes[attrKey] || '';
-            const lines = cur.split('\n');
-            if (lines[line] !== undefined) {
-              const ln = lines[line];
-              if (ln.slice(col, col + oldEm.length) === oldEm) {
-                lines[line] = ln.slice(0, col) + newEm + ln.slice(col + oldEm.length);
-              } else {
-                lines[line] = ln.replace(oldEm, newEm);
-              }
-              e.attributes[attrKey] = lines.join('\n');
-            }
+            e.attributes[attrKey] = zmenEmojiVTextuNa(e.attributes[attrKey] || '', line, col, oldEm, newEm);
+          } else if (src === 'plan' && taskId) {
+            const pt = planGetTasks(e).find(x => x.id === taskId);
+            if (pt) pt.title = zmenEmojiVTextuNa(String(pt.title || ''), line, col, oldEm, newEm);
           }
           e.updated_at = nowIso();
           save();
-          d.close(); d.remove();
           toast('Příznak změněn: ' + oldEm + ' → ' + newEm);
           render();
-        };
+        }
       });
-      d.querySelector('#flag-change-cancel').onclick = () => { d.close(); d.remove(); };
-      d.showModal();
     };
   });
   // Otevřít v novém panelu (z project dashboard a dalších míst)
@@ -45382,6 +45514,9 @@ function renderPlanTable(entity, tasks, editable) {
       (editable ? '<th>Akce</th>' : '<th>Detail</th>') +
     '</tr></thead><tbody>';
   const byId = planIndexById(tasks);
+  // Seznam příznaků se bere jednou na tabulku, ne u každého řádku — `getFlagEmojis()`
+  // kopíruje pole a řádků může být stovka.
+  const priznaky = editable ? getFlagEmojis() : [];
   for (let i = 0; i < tasks.length; i++) {
     if (hidden.has(i)) continue;
     const t = tasks[i];
@@ -45390,17 +45525,41 @@ function renderPlanTable(entity, tasks, editable) {
     const stClass = PLAN_STATUS_CLASS[t.status] || '';
     const hasLinks = Array.isArray(t.linkedEntities) && t.linkedEntities.length > 0;
     const hasDesc = (t.description || '').trim().length > 0;
+    // Příznak se z názvu vyjme a ukáže na tlačítku, aby emoji nestálo v textu
+    // dvakrát. V režimu čtení se název vypisuje celý, včetně příznaku.
+    const priznakNaz = editable ? planPriznakNazvu(t.title, priznaky) : null;
+    const nazevText = priznakNaz ? t.title.slice(priznakNaz.delka) : t.title;
+    const priznakBtn = (editable && priznaky.length > 0)
+      ? '<button type="button" class="plan-priznak-btn' + (priznakNaz ? '' : ' plan-priznak-prazdny') + '"' +
+          ' data-plan-priznak="' + i + '"' +
+          ' title="' + (priznakNaz
+            ? 'Příznak ' + escapeHtml(priznakNaz.emoji) + ' – změnit nebo odebrat'
+            : 'Přidat příznak na začátek názvu') + '"' +
+          ' aria-label="' + escapeHtml(nazevText) + ' – ' + (priznakNaz
+            ? 'příznak ' + escapeHtml(priznakNaz.emoji) + ', změnit nebo odebrat'
+            : 'bez příznaku, přidat') + '">' +
+          '<span aria-hidden="true">' + (priznakNaz ? priznakNaz.emoji : '\uD83C\uDFF3\uFE0F') + '</span>' +
+        '</button> '
+      : '';
     h += '<tr class="plan-row' + (isParent ? ' plan-row-parent' : '') + '" data-plan-row="' + i + '">' +
       '<td class="plan-wbs">' + escapeHtml(t._wbs || '') + '</td>' +
       '<td class="plan-title" style="padding-left:' + indent + 'em;">' +
         (isParent
           ? '<button type="button" class="plan-toggle" data-plan-toggle="' + i + '" aria-label="' + (t.collapsed ? 'Rozbalit' : 'Sbalit') + ' ' + escapeHtml(t.title) + '">' + (t.collapsed ? '\u25B8' : '\u25BE') + '</button> '
           : '') +
-        escapeHtml(t.title) +
-        (hasDesc ? ' <button type="button" class="plan-desc-toggle" data-plan-desc="' + i + '" title="Zobrazit popis" aria-label="Zobrazit popis úkolu ' + escapeHtml(t.title) + '">📄</button>' : '') +
+        priznakBtn +
+        escapeHtml(nazevText) +
+        (hasDesc ? ' <button type="button" class="plan-desc-toggle" data-plan-desc="' + i + '" title="Zobrazit popis" aria-label="Zobrazit popis úkolu ' + escapeHtml(nazevText) + '">📄</button>' : '') +
         (hasLinks ? ' <button type="button" class="plan-links-toggle" data-plan-links="' + i + '" title="Propojené entity" aria-label="Zobrazit ' + t.linkedEntities.length + ' propojených entit">🔗 ' + t.linkedEntities.length + '</button>' : '') +
       '</td>' +
-      '<td><span class="plan-status-chip ' + stClass + '">' + escapeHtml(t.status) + '</span></td>' +
+      '<td>' + (editable
+        // Stav rodiče počítá `planRecalc()` z podúkolů, takže by ho select jen
+        // naoko změnil a hned by se vrátil — proto je u rodiče zamčený.
+        ? '<select class="plan-status-sel ' + stClass + '" data-plan-status="' + i + '"' +
+            (isParent ? ' disabled title="Stav rodičovského úkolu se počítá z podúkolů."' : '') +
+            ' aria-label="Stav úkolu ' + escapeHtml(nazevText) + '">' +
+            planStatusOptionsHtml(t.status) + '</select>'
+        : '<span class="plan-status-chip ' + stClass + '">' + escapeHtml(t.status) + '</span>') + '</td>' +
       '<td>' + escapeHtml(planFmtDate(t.start)) + '</td>' +
       '<td>' + escapeHtml(planFmtDuration(t.duration)) + '</td>' +
       '<td>' + escapeHtml(planFmtDate(t.end)) + '</td>' +
@@ -45600,6 +45759,58 @@ function renderPlanEdit(main) {
       else if (act === 'delete') planDeleteTask(entity, i);
     };
   });
+  // Příznak a stav rovnou v tabulce: kvůli oběma se dřív musel otevírat dialog
+  // úkolu. Obojí překresluje celý editor (mění se souhrn i stav rodiče), takže
+  // se **musí vrátit fokus** — jinak spadne na <body> a klávesnicí není kde
+  // pokračovat. Řádky plánu se nepřeskládávají, takže index zůstává platný.
+  function planFokusZpet(selektor) {
+    const cil = main.querySelector(selektor) || document.querySelector(selektor);
+    if (cil && cil.focus) cil.focus();
+  }
+  main.querySelectorAll('button[data-plan-priznak]').forEach(btn => {
+    btn.onclick = () => {
+      const i = Number(btn.dataset.planPriznak);
+      const ts = planGetTasks(entity);
+      const t = ts[i];
+      if (!t) return;
+      const naj = planPriznakNazvu(t.title);
+      const cistyNazev = naj ? t.title.slice(naj.delka) : t.title;
+      const nastav = (em) => {
+        const novy = planNazevSPriznakem(t.title, em);
+        if (novy !== t.title) {
+          t.title = novy;
+          entity.updated_at = nowIso();
+          save();
+          render();
+          toast(em ? 'Příznak ' + em + ' nastaven.' : 'Příznak odebrán.');
+        }
+        planFokusZpet('button[data-plan-priznak="' + i + '"]');
+      };
+      otevriVyberPriznaku({
+        titul: naj ? 'Změnit příznak úkolu' : 'Přidat příznak úkolu',
+        popis: 'Zapíše se na začátek názvu „' + cistyNazev + '".',
+        aktualni: naj ? naj.emoji : '',
+        onVyber: nastav,
+        onOdebrat: naj ? (() => nastav('')) : null,
+        fokusPo: 'button[data-plan-priznak="' + i + '"]'
+      });
+    };
+  });
+  main.querySelectorAll('select[data-plan-status]').forEach(sel => {
+    sel.onchange = () => {
+      const i = Number(sel.dataset.planStatus);
+      const ts = planGetTasks(entity);
+      if (!ts[i] || ts[i].status === sel.value) return;
+      ts[i].status = sel.value;
+      // Stav rodiče se dopočítá z podúkolů ještě před uložením, jinak by se
+      // do dat dostal až s příštím překreslením.
+      planRecalc(ts);
+      entity.updated_at = nowIso();
+      save();
+      render();
+      planFokusZpet('select[data-plan-status="' + i + '"]');
+    };
+  });
   main.querySelectorAll('button[data-plan-toggle]').forEach(btn => {
     btn.onclick = () => {
       const i = Number(btn.dataset.planToggle);
@@ -45725,7 +45936,7 @@ function openPlanTaskDialog(entity, taskIdx) {
     document.body.appendChild(d);
   }
   const isParent = planDescendantsOf(tasks, taskIdx).length > 0;
-  const optsStatus = PLAN_STATUSES.map(s => '<option value="' + escapeHtml(s) + '"' + (s === t.status ? ' selected' : '') + '>' + escapeHtml(s) + '</option>').join('');
+  const optsStatus = planStatusOptionsHtml(t.status);
   const desc = new Set(planDescendantsOf(tasks, taskIdx));
   let optsPred = '<option value="">— žádný —</option>';
   tasks.forEach((other, j) => {

@@ -634,6 +634,74 @@ Panel je **jen v aplikaci**, ne v šabloně prohlížeče.
 
 Hlídá to `pim/testy/ukol-panel.mjs` (kanárci na ostatní entity).
 
+## Plán: příznak a stav rovnou v tabulce
+
+Editor WBS tabulky (`renderPlanTable(entity, tasks, editable)` s `editable === true`)
+má u každého řádku **tlačítko příznaku před názvem** a **select stavu**. Dřív se obojí
+dalo změnit jen dialogem „Upravit úkol", a to jsou právě ty dvě věci, které se mění
+nejčastěji.
+
+**Příznak není vlastní pole úkolu.** Je to **emoji na začátku `t.title`**, tedy přesně
+ten zápis, který `scanTextForFlags()` hledá v textu entit. Díky tomu se sám propíše do
+kopie Markdownu, do CSV i do nabídky Předchůdce a nikde se na něj nemusí myslet. Druhé
+pole v datech by znamenalo druhé místo, kde se příznak může rozejít se zobrazením.
+
+| Funkce | Co dělá |
+|---|---|
+| `planPriznakNazvu(nazev, priznaky)` | `{ emoji, delka }`, nebo `null`. `emoji` tak, jak je v `db.flagEmojis`; `delka` **v znacích názvu** |
+| `planNazevSPriznakem(nazev, novy, priznaky)` | nastaví, změní (prázdný `novy` odebere) — jedno místo pro všechny tři případy |
+| `planStatusOptionsHtml(vybrany)` | nabídka stavů; bere ji dialog úkolu i select v tabulce |
+| `otevriVyberPriznaku(opts)` | dialog „jaký příznak má tohle místo mít" — nastavení i změna na existujícím místě (úkol plánu, výskyt v textu) |
+
+Šest věcí, které nejsou libovolné:
+
+1. **`delka` se počítá podle názvu, ne podle seznamu.** Když má emoji v `db.flagEmojis`
+   VS16 (U+FE0F) a v názvu ne, odečtení `em.length` by **odřízlo první znak názvu**.
+   Proto se jádro (bez VS16) porovnává znak po znaku a délka se bere z názvu.
+   Následuje-li ZWJ (U+200D), je v názvu **delší** emoji sekvence, která tím jen
+   začíná — to není ten příznak a hledá se dál.
+2. **Emoji je v řádku jednou.** Z vykresleného názvu se vyjme a ukáže se na tlačítku;
+   v režimu čtení se název vypisuje celý, protože tam žádné tlačítko není.
+3. **Stav rodiče `planRecalc()` počítá z podúkolů**, takže select je u rodiče
+   `disabled` a `title` říká proč. Jinak by změna naoko prošla a hned se vrátila.
+   Dialog úkolu stav rodiče nezamyká schválně: `planRecalc` si ho při „všechno zrušeno
+   nebo přerušeno" nechává, takže tam cesta zůstává.
+4. **`planRecalc()` se volá před `save()`.** Jinak by se přepočítaný stav rodiče dostal
+   do dat až s příštím překreslením.
+5. **Fokus se vrací na týž prvek** (`planFokusZpet`). Obojí překresluje celý editor
+   (mění se souhrn i rodič) a bez toho fokus spadne na `<body>` — tatáž past jako
+   u Připomenutí. Řádky plánu se nepřeskládávají, takže index zůstává platný.
+6. **Bez emoji v `db.flagEmojis` se tlačítko nevykreslí.** Nabídka by byla prázdná.
+   Seznam se bere **jednou na tabulku**, ne u každého řádku: `getFlagEmojis()` kopíruje
+   pole a řádků může být stovka.
+
+### Příznak v úkolu plánu je příznak jako každý jiný
+
+`scanEntityForFlags()` kvůli tomu prochází i názvy úkolů plánu (`source: 'plan'`).
+Bez toho by tlačítko v tabulce příznak nastavilo, ale pohled Příznaky — jehož jediná
+práce je „kde mám příznaky" — by o něm nevěděl; `scanEntityForFlags` přitom atribut
+`tasks` schválně přeskakuje, protože to není text.
+
+Dvě pravidla:
+
+- **Úkol se adresuje `id`, ne pořadím.** Řádky plánu se posouvají, id ne. Tlačítka 🔄
+  a ✕ proto nesou `data-flag-task`.
+- **Náhrada emoji na pozici je v `zmenEmojiVTextuNa()`** — jedno místo pro tělo,
+  atribut i název úkolu. Dřív byla ta logika v obsluze dvakrát opsaná.
+
+Mřížku emoji ukazují i dva **jiné** dialogy a to je v pořádku: „Vložit příznak"
+v nástrojích nad textem vkládá emoji **na pozici kurzoru** a picker v editoru seznamu
+ho dává **k položce seznamu**. `otevriVyberPriznaku()` odpovídá na jinou otázku —
+*jaký příznak má tohle místo mít* — a proto má i „Bez příznaku".
+
+Celé je to **jen v aplikaci**: šablona prohlížeče `renderPlanTable()` vůbec nemá
+(plán se v ní ukazuje přes Markdown) a editor do ní nepatří.
+
+Hlídá to `pim/testy/plan-tabulka.mjs` (58 kontrol: podoba řádku, přidání/změna/odebrání,
+zamčený rodič, vrácení fokusu, VS16 a ZWJ v `planPriznakNazvu`, propsání do pohledu
+Příznaky, kanárci na okolní úkoly i na poznámku s emoji v těle) a v sekci Příznaky
+u entity `pim/testy/sekce-detailu.mjs`.
+
 ## Rychlý výběr ze seznamu: tagy (L) a aspekty (K)
 
 `otevriRychlyVyber(opts)` je **jeden** dialog „zaškrtej, co k entitě patří".

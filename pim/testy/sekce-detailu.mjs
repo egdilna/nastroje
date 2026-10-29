@@ -146,5 +146,50 @@ ok(soucet, obrana.telo === TELO, 'text entity se nezměnil, když očekávaný �
 ok(soucet, obrana.zaskrtnuto === false, 'zaškrtávátko se vrátilo zpátky', obrana);
 ok(soucet, obrana.hlaska === true, 'a uživatel se to dozvěděl hláškou', obrana);
 
+nadpis('Příznak v textu: změna i odebrání jede přes sdílený výběr')
+// Výběr příznaku je **jeden** dialog pro celou aplikaci (`otevriVyberPriznaku`) —
+// tenhle blok hlídá, že ho sekce Příznaky v detailu používá a že přes něj zapíše
+// do správného řádku těla. Kanárkem je zbytek těla, kterého se to nemá dotknout.
+await priprav();
+await stranka.evaluate(() => { db.flagEmojis = ['🚩', '⭐']; render(); });
+await stranka.waitForTimeout(300);
+const tlacitka = await stranka.evaluate(() => ({
+  zmenit: document.querySelectorAll('button.flag-change-btn').length,
+  odebrat: document.querySelectorAll('button.flag-remove-btn').length
+}));
+ok(soucet, tlacitka.zmenit === 1 && tlacitka.odebrat === 1,
+  'u výskytu příznaku jsou tlačítka změnit i odebrat', tlacitka);
+
+await stranka.click('button.flag-change-btn');
+await stranka.waitForTimeout(250);
+const vyber = await stranka.evaluate(() => {
+  const d = document.querySelector('dialog.flag-change-dialog');
+  return d ? {
+    titul: d.querySelector('h2').textContent,
+    volby: [...d.querySelectorAll('.flag-change-pick')].map(b => b.textContent),
+    maOdebrat: !!d.querySelector('#flag-pick-off')
+  } : null;
+});
+ok(soucet, vyber && vyber.titul === 'Změnit příznak', 'otevřel se sdílený výběr příznaku', vyber);
+ok(soucet, vyber && vyber.volby.join('') === '⭐',
+  'nastavený příznak se tady do nabídky nedává — měníme ho na jiný', vyber);
+ok(soucet, vyber && vyber.maOdebrat === false,
+  'a „Bez příznaku" tu není: na odebrání je vlastní tlačítko u výskytu', vyber);
+await stranka.click('dialog.flag-change-dialog .flag-change-pick[data-em="⭐"]');
+await stranka.waitForTimeout(350);
+const poZmene = await stranka.evaluate(() => findEntity('e1').body);
+ok(soucet, poZmene.split('\n')[0] === '# Kanarek-NADPIS ⭐',
+  'emoji se změnilo na tom řádku, kde bylo', poZmene.split('\n')[0]);
+ok(soucet, poZmene.split('\n').slice(1).join('\n') === TELO.split('\n').slice(1).join('\n'),
+  'zbytek těla zůstal znak za znakem stejný');
+
+await stranka.click('button.flag-remove-btn');
+await stranka.waitForTimeout(350);
+const poOdebrani = await stranka.evaluate(() => findEntity('e1').body);
+ok(soucet, poOdebrani.split('\n')[0] === '# Kanarek-NADPIS',
+  'odebrání sundá emoji i mezeru před ním', poOdebrani.split('\n')[0]);
+ok(soucet, poOdebrani.split('\n').slice(1).join('\n') === TELO.split('\n').slice(1).join('\n'),
+  'a zbytku těla se to opět nedotklo');
+
 await prohlizec.close();
 process.exit(uzavri(soucet));

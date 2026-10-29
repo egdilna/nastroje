@@ -693,11 +693,50 @@ In **section-edit mode** (toggle `d` in read mode or the "Edit sections" button)
 
 After saving, the markdown in the source text is replaced with the new table. Accessible for screen readers (every input has a `<label>` with position, buttons have `aria-label`).
 
+## Plan 📋 — the WBS table and its editor
+
+An entity with the **Plan** aspect keeps its tasks in a **WBS table**: number (1, 1.1,
+1.2…), title, status, start, duration, end and predecessor. Levels are made by
+indenting, so a task becomes a parent as soon as something is filed under it. A parent's
+dates, duration **and status are computed from its subtasks**; a task with a predecessor
+gets its start computed too.
+
+In the entity detail the table is read-only. The editor opens with **✏ Upravit plán**
+and adds per-row actions: ✏ edit, ▲ ▼ move, → ← indent and outdent, ➕ insert a task
+below this one and 🗑 delete (together with its subtasks).
+
+### Flag and status right in the table
+
+The two things you touch most often no longer need the task dialog:
+
+- **A flag button in front of the title.** An empty flag 🏳️ means "this task has no
+  flag"; clicking it offers the emoji from your flag list (Settings → Flags) and writes
+  the chosen one **at the start of the title**. If the task already has a flag, the
+  button shows it and the list serves to **change** it; it also offers **Bez příznaku**,
+  which removes it. The emoji appears only once in the row — it is taken out of the
+  title and shown on the button. While no flag emoji are defined in Settings the button
+  is not rendered: there would be nothing to offer.
+- **A status select in the Stav column.** The change is saved immediately. On a
+  **parent** task the select is disabled and says why — its status is computed from the
+  subtasks, so any manual change would be reverted at once.
+
+Both redraw the table (the summary above it and the parent's status change), but the
+**focus stays on the control you were using**, so you can carry on with the keyboard.
+
+A flag is an ordinary emoji in the title, so it travels into the Markdown copy, the CSV
+export and the Predecessor list — and the **Flags view finds it** just like a flag in
+text (see below).
+
 ## Flags 🏳️‍🌈
 
 Flags are **emoji inside text** that act as visual markers. They're not part of markdown — they're regular characters the app can find and show an overview for.
 
 **Usage**: in body or in a textarea attribute, type an emoji from the flags list (defined in Settings → Flags). A **🏳️‍🌈 Flags** card appears in the navigation with an overview of all occurrences: where the emoji appears, in what kind of line (heading, bullet, task…), with context.
+
+**Where flags are searched for**: in the entity body, in its textarea attributes and in
+**plan task titles**. For a plan task the overview shows its WBS number ("Úkol plánu
+1.1") and both actions below work there too — though the handiest way to set it is the
+button right in the plan table.
 
 **Per-occurrence actions**:
 - **✕** — remove emoji from text (saves the entity)
