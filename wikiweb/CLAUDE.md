@@ -106,6 +106,7 @@ Parametry: `?repo=vlastnik/repo&slozka=web&vetev=main` načte web z raw.githubus
 - Režimy **Prohlížet** (prohlížeč přes celou plochu; přepínač Zobrazit koncepty — vypnutý ukáže web jako návštěvník, posílá se ve zprávě `wikiweb-nahled` jako `koncepty`) a **Upravovat** (strom | editor | volitelně náhled). Při přepnutí se otevře stránka, která byla zrovna vidět; proklik v náhledu přepne i editor.
 - S tokenem se po načtení dotáhnou všechny místní stránky přes API — prohlížení pak funguje i u soukromého repozitáře.
 - Obsah z cizího repozitáře nebo URL se v aplikaci jen čte.
+- **Nezařazené soubory** (`najitNezarazene()`): po načtení a po každém uložení projde `git/trees/{větev}?recursive=1` a najde `.md` ve složce webu a podsložkách, které nejsou v `contents.json` (ani jako `sidebar_file`, ani ve skryté složce). Položka „📥 Nezařazené soubory (N)“ nad stromem vede na seznam; soubor jde zařadit jako stránku (název z prvního `# nadpisu` nebo z názvu souboru, umístění, typ, ikona, koncept) nebo smazat. Soubor se nepřesouvá. Vzor je přihrádka k zařazení v `sanony`.
 
 ### Ukládání — pravidla z kořenového CLAUDE.md
 
