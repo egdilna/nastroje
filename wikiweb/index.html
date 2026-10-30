@@ -58,7 +58,7 @@ label.pole > span,.pole-t{font-size:12px;color:var(--muted);font-weight:600}
 .strom-panel h2{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:14px 14px 6px}
 .strom-scroll{overflow:auto;flex:1;padding:0 8px 8px}
 .strom ul{list-style:none;margin:0;padding:0}
-.strom ul ul{padding-left:14px;border-left:1px solid var(--line);margin-left:10px}
+.strom ul ul{padding-left:8px;border-left:1px solid var(--line);margin-left:12px}
 .strom a.u{display:flex;gap:6px;width:100%;border-radius:7px;padding:5px 8px;align-items:baseline;color:var(--ink);text-decoration:none}
 .strom a.u:hover{background:var(--soft)}
 .strom a.u[aria-current]{background:var(--accent-soft);font-weight:600}
@@ -71,8 +71,16 @@ label.pole > span,.pole-t{font-size:12px;color:var(--muted);font-weight:600}
 .strom .ext{font-size:11px;color:var(--muted);flex:none}
 .strom .skryta{opacity:.55}
 .strom a.odkaz{font-style:italic}
-.strom details.sbalene{margin:0 0 4px 22px}
-.strom details.sbalene > summary{cursor:pointer;font-size:12px;color:var(--muted);padding:2px 6px}
+.strom .uzel{display:flex;align-items:stretch;gap:2px}
+.strom .uzel a.u{flex:1;min-width:0}
+.strom button.rozbal{flex:none;width:24px;border:0;background:transparent;color:var(--muted);border-radius:6px;cursor:pointer;font-size:14px}
+.strom button.rozbal:hover{background:var(--soft);color:var(--ink)}
+.strom button.rozbal::before{content:"›";display:inline-block;transition:transform .15s}
+.strom button.rozbal[aria-expanded="true"]::before{transform:rotate(90deg)}
+.strom .rozbal-misto{flex:none;width:24px}
+.strom .pocet{margin-left:auto;font-size:11px;color:var(--muted);flex:none}
+.strom-hlava{display:flex;align-items:center;gap:4px;margin:14px 14px 6px}
+.strom-hlava h2{margin:0 auto 0 0 !important}
 .strom .koncept{font-size:11px;color:var(--warn);flex:none;font-style:italic}
 .strom-akce{display:flex;flex-wrap:wrap;gap:4px;padding:8px;border-top:1px solid var(--line)}
 .zvlastni{padding:4px 8px 0}
@@ -159,7 +167,8 @@ dialog::backdrop{background:rgba(10,14,22,.5)}
       <li><a class="u" href="#postranni-panel" id="u-sidebar"><span class="em" aria-hidden="true">🧩</span>Postranní panel (sidebar.md)</a></li>
       <li><a class="u" href="#nezarazene" id="u-nezarazene" hidden><span class="em" aria-hidden="true">📥</span><span id="u-nezarazene-t">Nezařazené soubory</span></a></li>
     </ul></div>
-    <h2 id="h-strom">Obsah webu</h2>
+    <div class="strom-hlava"><h2 id="h-strom">Obsah webu</h2>
+      <button class="btn mini" type="button" id="s-rozbalit">Rozbalit vše</button><button class="btn mini" type="button" id="s-sbalit">Sbalit vše</button></div>
     <div class="strom-scroll strom" id="strom" aria-labelledby="h-strom"></div>
     <div class="strom-akce" role="toolbar" aria-label="Úpravy stromu stránek">
       <button class="btn mini" type="button" id="s-nova">+ Stránka</button>
@@ -468,31 +477,44 @@ function obnovitOdkazWebu(){
 /* =============================================================
    STROM STRÁNEK
    ============================================================= */
-/* Sekce s hide_children má v editoru podstránky sbalené (na webu je v panelu nezobrazuje vůbec) */
-const otevreneSekce=new Set();
-function podstrankySbalene(u,kresli){
-  const uvnitr=vsechnyUzlyPod(u).includes(E.vybrano?.uzel)&&E.vybrano?.uzel!==u;
-  const d=el("details",{class:"sbalene",open:uvnitr||otevreneSekce.has(u._k)},
-    el("summary",{},`${u.children.length} ${u.children.length===1?"podstránka":u.children.length<5?"podstránky":"podstránek"}`),kresli(u.children,u));
-  d.addEventListener("toggle",()=>{ if(d.open) otevreneSekce.add(u._k); else otevreneSekce.delete(u._k); });
-  return d;
+/* Sbalování stromu: výchozí je rozbalená jen hlavní úroveň (sekce s hide_children sbalená),
+   cesta k vybrané stránce je rozbalená vždy. Ruční volba se pamatuje v E.rozbaleni (_k → bool). */
+E.rozbaleni=new Map();
+function jeRozbaleny(u,hloubka,cesta){
+  if(cesta.has(u)) return true;
+  if(E.rozbaleni.has(u._k)) return E.rozbaleni.get(u._k);
+  return hloubka===0&&!u.hide_children;
+}
+function rozbalitVse(stav){
+  vsechnyUzly().forEach(u=>{ if((u.children||[]).length) E.rozbaleni.set(u._k,stav); });
+  kreslitStrom();
 }
 function kreslitStrom(){
   E.mapa=new Map(); vsechnyUzly().forEach(u=>E.mapa.set(u._k,u));
+  const cesta=new Set(); for(let m=E.vybrano?.uzel&&najitMisto(E.vybrano.uzel); m&&m.rodic; m=najitMisto(m.rodic)) cesta.add(m.rodic);
   const titulUzlu=u=>u.ref?(u.title||stranky().find(x=>x.id===u.ref)?.title||""):(u.title||"");
-  const kresli=(uzly,rodic)=>el("ul",{},(rodic?.sort_children?[...uzly].sort((a,b)=>titulUzlu(a).localeCompare(titulUzlu(b),"cs",{sensitivity:"base",numeric:true})):uzly).map(u=>{
+  const kresli=(uzly,rodic,hloubka=0)=>el("ul",{},(rodic?.sort_children?[...uzly].sort((a,b)=>titulUzlu(a).localeCompare(titulUzlu(b),"cs",{sensitivity:"base",numeric:true})):uzly).map(u=>{
     if(u.ref){
       const cil=stranky().find(x=>x.id===u.ref);
-      return el("li",{},el("a",{class:"u odkaz"+(u.hidden?" skryta":""),href:"#odkaz-"+u._k,"data-k":u._k,"aria-current":E.vybrano?.uzel===u?"page":false,
+      return el("li",{},el("div",{class:"uzel"},el("span",{class:"rozbal-misto","aria-hidden":"true"}),el("a",{class:"u odkaz"+(u.hidden?" skryta":""),href:"#odkaz-"+u._k,"data-k":u._k,"aria-current":E.vybrano?.uzel===u?"page":false,
         onclick:e=>{ e.preventDefault(); vybrat({druh:"stranka",uzel:u}); }},
         el("span",{class:"em","aria-hidden":"true"},ikonaUzlu(u)||"·"),
         el("span",{},u.title||cil?.title||"(chybějící stránka)"),
         el("span",{class:"ext",title:"Odkaz na stránku z jiné sekce"},"↪"),
         el("span",{class:"sr-only"},", odkaz na stránku"+(cil?"":", cílová stránka neexistuje")),
-        el("span",{class:"zn","aria-hidden":"true"})));
+        el("span",{class:"zn","aria-hidden":"true"}))));
     }
-    const d=druhZdroje(u);
-    return el("li",{},
+    const d=druhZdroje(u), deti=(u.children||[]).length;
+    const rozbaleno=deti&&jeRozbaleny(u,hloubka,cesta), idPod="pod-"+u._k;
+    const prepinac=deti?el("button",{type:"button",class:"rozbal","aria-expanded":rozbaleno?"true":"false","aria-controls":idPod,
+      "aria-label":(rozbaleno?"Sbalit: ":"Rozbalit: ")+(u.title||"")+`, ${deti} ${deti===1?"podstránka":deti<5?"podstránky":"podstránek"}`,
+      onclick:e=>{ const b=e.currentTarget, otevrit=b.getAttribute("aria-expanded")!=="true";
+        E.rozbaleni.set(u._k,otevrit); b.setAttribute("aria-expanded",otevrit); document.getElementById(idPod).hidden=!otevrit;
+        const pc=b.parentNode.querySelector(".pocet"); if(pc) pc.hidden=otevrit;
+        b.setAttribute("aria-label",(otevrit?"Sbalit: ":"Rozbalit: ")+b.getAttribute("aria-label").replace(/^(Sbalit|Rozbalit): /,"")); }}):el("span",{class:"rozbal-misto","aria-hidden":"true"});
+    let pod=null;
+    if(deti){ pod=kresli(u.children,u,hloubka+1); pod.id=idPod; pod.hidden=!rozbaleno; }
+    return el("li",{},el("div",{class:"uzel"},prepinac,
       el("a",{class:"u"+(u.hidden?" skryta":"")+(u.draft?" je-koncept":""),href:"#"+encodeURIComponent(u.id||"stranka-"+u._k),"data-k":u._k,"aria-current":E.vybrano?.uzel===u?"page":false,
         onclick:e=>{ e.preventDefault(); vybrat({druh:"stranka",uzel:u}); }},
         el("span",{class:"em","aria-hidden":"true"},ikonaUzlu(u)||"·"),
@@ -500,8 +522,9 @@ function kreslitStrom(){
         d==="repo"||d==="url"?el("span",{class:"ext",title:"Obsah z jiného zdroje"},"↗"):null,
         u.hidden?el("span",{class:"sr-only"},", skrytá v menu"):null,
         u.draft?el("span",{class:"koncept"},"koncept"):null,
-        el("span",{class:"zn","aria-hidden":"true"})),
-      u.children&&u.children.length?(u.hide_children?podstrankySbalene(u,kresli):kresli(u.children,u)):null);
+        deti?el("span",{class:"pocet","aria-hidden":"true",hidden:!!rozbaleno},String(deti)):null,
+        el("span",{class:"zn","aria-hidden":"true"}))),
+      pod);
   }));
   const box=$("#strom"); box.innerHTML="";
   box.append(E.strom.length?kresli(E.strom):el("p",{class:"tichy",style:"padding:0 8px"},"Zatím žádné stránky. Přidejte první tlačítkem + Stránka."));
@@ -1039,6 +1062,9 @@ function kreslitNastaveni(ed){
   p.append(editorBloku(c,zmena));
   const rozb=el("input",{type:"checkbox",checked:c.expand_sections!==false}); rozb.addEventListener("change",()=>{ c.expand_sections=rozb.checked; zmena(); });
   p.append(el("label",{class:"radek",style:"margin-top:10px"},rozb,"Hlavní sekce v panelu rozbalené"));
+  const jenSekce=el("input",{type:"checkbox",checked:c.sidebar_scope!=="vse"});
+  jenSekce.addEventListener("change",()=>{ if(jenSekce.checked) delete c.sidebar_scope; else c.sidebar_scope="vse"; zmena(); });
+  p.append(el("label",{class:"radek",style:"margin-top:6px"},jenSekce,"Sekce webu v panelu jen pro aktuální sekci (s tlačítkem Všechny sekce webu)"));
   ed.append(p);
 
   const f=el("section",{class:"karta","aria-labelledby":"h-pata"},el("h3",{id:"h-pata"},"Patička"));
@@ -1448,6 +1474,8 @@ $("#u-nastaveni").addEventListener("click",e=>{ e.preventDefault(); if(E.webNact
 $("#u-sidebar").addEventListener("click",e=>{ e.preventDefault(); if(E.webNacten) vybrat({druh:"sidebar"}); });
 $("#u-nezarazene").addEventListener("click",e=>{ e.preventDefault(); if(E.webNacten) vybrat({druh:"nezarazene"}); });
 $("#s-nova").addEventListener("click",()=>novaStranka(false));
+$("#s-rozbalit").addEventListener("click",()=>rozbalitVse(true));
+$("#s-sbalit").addEventListener("click",()=>rozbalitVse(false));
 $("#s-pod").addEventListener("click",()=>novaStranka(true));
 $("#s-odkaz").addEventListener("click",novyOdkaz);
 $("#s-nahoru").addEventListener("click",()=>posun("nahoru"));
