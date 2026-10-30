@@ -80,6 +80,15 @@ Pohled se dá odvodit (`predpis`+`ust` → detail ustanovení). Odkazy jsou bě�
 klik se zachytí a vykreslí bez načtení stránky (`pushState`/`popstate`); kotvy `#u-…`
 v rámci stránky nechává prohlížeči.
 
+## Režim úprav
+Přepínač `#prepinac-uprav` v záhlaví (`aria-pressed`, stav `upravy` v
+`localStorage["legprohlizec-upravy"]`, výchozí vypnuto = jen čtení). **Každý nový prvek, který
+mění data, musí být jen v režimu úprav** — `jenUpravy(x)` vrací `x` nebo `null`, případně
+`if (!upravy) return out;` před sekcí správy. Ke čtení zůstává: text, vyznačení (skupiny,
+poznámka), komentáře, štítky, poznámky, hledání, filtry, volba komentářů v čtecím pohledu,
+exporty a export balíčku. Hromadné úpravy (`hromadnaUprava`, `zaskrtavatkoPolozky`) jsou
+navíc až uvnitř režimu úprav. Menu skrývá „Přidat předpis“, Přenos dat skrývá import.
+
 ## Štítky a hromadné úpravy
 - Oblasti, skupiny vyznačení, skupiny komentářů i štítky se drží seřazené (`seraditSlovniky()`
   při načtení a na začátku `vykreslit()`, české řazení bez ohledu na velikost písmen).

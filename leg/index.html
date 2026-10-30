@@ -35,6 +35,9 @@ a{color:var(--odkaz)} a:visited{color:var(--odkaz-navstiveny)}
 .aplikace{margin:0;font-weight:600;color:var(--tlumeny)}
 .menu{list-style:none;margin:.3rem 0;padding:0;display:flex;flex-wrap:wrap;gap:.3rem 1.2rem}
 .stav-ulozeni{margin:.2rem 0 0;color:var(--tlumeny);font-size:.92rem}
+.rezim-uprav{margin:.3rem 0 0}
+#prepinac-uprav[aria-pressed="true"]{background:var(--tlacitko);color:var(--tlacitko-text)}
+#prepinac-uprav[aria-pressed="true"]::before{content:"✓ "}
 .stav-ulozeni.chyba{color:var(--chyba);font-weight:600}
 .drobecky ol{list-style:none;margin:.6rem 0 0;padding:0;display:flex;flex-wrap:wrap;gap:.2rem}
 .drobecky li+li::before{content:"›";margin:0 .4rem;color:var(--tlumeny)}
@@ -116,6 +119,7 @@ mark{background:var(--zvyrazneni);color:inherit}
   <nav aria-label="Hlavní nabídka">
     <ul class="menu" id="menu"></ul>
   </nav>
+  <p class="rezim-uprav"><button type="button" id="prepinac-uprav" class="druhe" aria-pressed="false">Úpravy</button></p>
   <p id="stav-ulozeni" class="stav-ulozeni"></p>
 </header>
 <nav class="drobecky" id="drobecky" aria-label="Drobečková navigace"></nav>
@@ -138,7 +142,7 @@ mark{background:var(--zvyrazneni);color:inherit}
    čtení metodou GET kvůli CORS). Úložiště: složka v GitHub repozitáři.
    Podrobnosti k architektuře jsou v leg/CLAUDE.md.
    ===================================================================== */
-const APP_VERZE = "1.14.1";
+const APP_VERZE = "1.15.0";
 
 /* ==================== POMOCNÉ ==================== */
 const $ = (s, r) => (r || document).querySelector(s);
@@ -1073,6 +1077,27 @@ function provestHromadne(druh, akce, klice, cilId){
   }
   return n;
 }
+/* Režim úprav: standardně je vše jen ke čtení (text, vyznačení, komentáře, štítky, exporty).
+   Formuláře a tlačítka, která něco mění, se vykreslí jen se zapnutým přepínačem Úpravy
+   v hlavičce. Volba platí pro celou aplikaci a pamatuje si ji prohlížeč. */
+const KLIC_UPRAVY = "legprohlizec-upravy";
+let upravy = false;
+try { upravy = localStorage.getItem(KLIC_UPRAVY) === "ano"; } catch (e){}
+const jenUpravy = x => upravy ? x : null;
+function nastavitPrepinacUprav(){
+  const b = $("#prepinac-uprav");
+  if (!b) return;
+  b.setAttribute("aria-pressed", upravy ? "true" : "false");
+  if (b.dataset.pripojeno) return;
+  b.dataset.pripojeno = "ano";
+  b.addEventListener("click", () => {
+    if (upravy && jeRozepsano() && !confirm("Máte rozepsaný neuložený text. Vypnout úpravy a zahodit ho?")) return;
+    upravy = !upravy;
+    try { localStorage.setItem(KLIC_UPRAVY, upravy ? "ano" : "ne"); } catch (e){}
+    nastavitPrepinacUprav();
+    vykreslit({fokus: false}).then(() => { b.focus(); oznam(upravy ? "Úpravy zapnuty" : "Úpravy vypnuty — jen čtení"); });
+  });
+}
 /* Hromadné úpravy jsou standardně skryté: zaškrtávátka u položek i panel akcí se ukážou
    až po zapnutí přepínačem. Volba platí pro všechny přehledy a pamatuje si ji prohlížeč. */
 const KLIC_HROMADNE = "legprohlizec-hromadne";
@@ -1092,6 +1117,7 @@ function prepinacHromadnych(){
   return t;
 }
 function hromadnaUprava(druh, zaskrtavatka, uroven){
+  if (!upravy) return null;
   if (!hromadne) return el("p", null, prepinacHromadnych());
   if (!zaskrtavatka.length) return null;
   const idNadpisu = novyId("hromadne");
@@ -1136,7 +1162,7 @@ function hromadnaUprava(druh, zaskrtavatka, uroven){
     }}, pole("Akce", akce), poleCil, poleNovy, el("button", {type: "submit"}, "Provést u vybraných"), stav));
 }
 const zaskrtavatkoPolozky = (hodnota, popis, seznam) => {
-  if (!hromadne) return null;
+  if (!hromadne || !upravy) return null;
   const c = el("input", {type: "checkbox", value: hodnota});
   seznam.push(c);
   return el("label", {class: "radek-volby"}, c, " Vybrat", vh(" " + popis));
@@ -1542,9 +1568,10 @@ function vykreslitMenu(){
   const m = $("#menu");
   const p = parametry();
   const polozky = [["prehled", "Přehled"], ["hledat", "Hledat"], ["vyznacena", "Vyznačená ustanovení"], ["komentare", "Komentáře"], ["stitky", "Štítky"], ["pridat", "Přidat předpis"], ["prenos", "Přenos dat"], ["nastaveni", "Nastavení"]];
-  m.replaceChildren(...polozky.map(([k, t]) => el("li", null,
+  m.replaceChildren(...polozky.filter(([k]) => upravy || k !== "pridat").map(([k, t]) => el("li", null,
     el("a", {href: adresa({pohled: k}), "aria-current": p.pohled === k ? "page" : null}, t))));
   $("#ws-nazev").textContent = W && W.nazev ? " — " + W.nazev : "";
+  nastavitPrepinacUprav();
 }
 function drobecky(polozky){
   const n = $("#drobecky");
@@ -1665,7 +1692,7 @@ async function pohledPrehled(){
       el("a", {href: adresa({pohled: "oblast", oblast: o.id})}, o.nazev),
       " — " + pocetSlov(o.predpisy.length, "předpis", "předpisy", "předpisů")))));
   } else out.push(zprava("Zatím žádná oblast. Oblasti fungují jako složky, do kterých předpisy řadíte; jeden předpis může být ve více oblastech."));
-  out.push(formularOblasti(null));
+  out.push(jenUpravy(formularOblasti(null)));
 
   out.push(el("h2", null, "Předpisy v knihovně"));
   if (ids.length){
@@ -1679,9 +1706,10 @@ async function pohledPrehled(){
     })));
     out.push(hromadnaUprava("predpis", zaskrtP, 3));
     const stav = el("p", {class: "tichy"});
-    out.push(el("p", null, el("a", {href: adresa({pohled: "pridat"})}, "Přidat předpis"), " ",
+    if (upravy) out.push(el("p", null, el("a", {href: adresa({pohled: "pridat"})}, "Přidat předpis"), " ",
       el("button", {type: "button", class: "druhe", onclick: () => zkontrolovatVse(stav)}, "Zkontrolovat aktualizace předpisů")), stav);
-  } else out.push(zprava("Knihovna je prázdná."), el("p", null, el("a", {href: adresa({pohled: "pridat"})}, "Přidat první předpis")));
+  } else out.push(zprava("Knihovna je prázdná."), upravy ? el("p", null, el("a", {href: adresa({pohled: "pridat"})}, "Přidat první předpis"))
+    : zprava("Předpisy přidáte po zapnutí přepínače Úpravy v záhlaví stránky."));
 
   out.push(el("h2", null, "Skupiny vyznačení"));
   if (W.skupiny.length){
@@ -1689,7 +1717,7 @@ async function pohledPrehled(){
       el("a", {href: adresa({pohled: "skupina", skupina: s.id})}, s.nazev),
       " — " + pocetSlov(W.vyznaceni.filter(v => v.skupiny.indexOf(s.id) >= 0).length, "ustanovení", "ustanovení", "ustanovení")))));
   } else out.push(zprava("Zatím žádná skupina. Skupiny slouží k třídění vyznačených ustanovení napříč předpisy."));
-  out.push(formularSkupiny(null));
+  out.push(jenUpravy(formularSkupiny(null)));
 
   out.push(el("h2", null, "Skupiny komentářů"));
   if (W.skupinyKomentaru.length){
@@ -1697,12 +1725,12 @@ async function pohledPrehled(){
       el("a", {href: adresa({pohled: "komentare", skupinakom: s.id})}, s.nazev),
       " — " + pocetKomentaru(W.komentare.filter(k => k.skupiny.indexOf(s.id) >= 0).length)))));
   } else out.push(zprava("Zatím žádná skupina komentářů. Skupiny třídí komentáře k ustanovením napříč předpisy."));
-  out.push(formularSkupinyKomentaru(null));
+  out.push(jenUpravy(formularSkupinyKomentaru(null)));
   if (W.komentare.length) out.push(el("p", null, el("a", {href: adresa({pohled: "komentare"})}, "Všechny komentáře (" + W.komentare.length + ")")));
 
   out.push(el("h2", null, "Štítky"));
   if (W.stitky.length) out.push(el("p", null, odkazyStitku(W.stitky.map(x => x.id))), el("p", null, el("a", {href: adresa({pohled: "stitky"})}, "Přehled štítků")));
-  else out.push(zprava("Zatím žádné štítky. Štítky přidáte předpisům i jednotlivým ustanovením."), el("p", null, el("a", {href: adresa({pohled: "stitky"})}, "Založit štítek")));
+  else out.push(zprava("Zatím žádné štítky. Štítky přidáte předpisům i jednotlivým ustanovením."), el("p", null, el("a", {href: adresa({pohled: "stitky"})}, upravy ? "Založit štítek" : "Přehled štítků")));
 
   const posledni = W.vyznaceni.slice().sort((a, b) => (b.upraveno || "").localeCompare(a.upraveno || "")).slice(0, 10);
   if (posledni.length){
@@ -1783,12 +1811,12 @@ POHLED_FUNKCE.oblast = async p => {
     out.push(el("ul", {class: "seznam"}, o.predpisy.map(id => {
       const P = W.predpisy[id];
       return el("li", null, el("a", {href: adresa({pohled: "predpis", predpis: id})}, nazevPredpisu(P, id)), " ",
-        el("button", {type: "button", class: "druhe", "aria-label": "Vyřadit " + kratkyNazev(P, id) + " z oblasti " + o.nazev, onclick: () => {
+        !upravy ? null : el("button", {type: "button", class: "druhe", "aria-label": "Vyřadit " + kratkyNazev(P, id) + " z oblasti " + o.nazev, onclick: () => {
           o.predpisy = o.predpisy.filter(x => x !== id); zmeneno(); oznam("Předpis vyřazen z oblasti"); vykreslit({fokus: true});
         }}, "Vyřadit z oblasti"), souhrnPredpisu(id, false));
     })));
   } else out.push(zprava("Oblast je zatím prázdná."));
-  out.push(el("p", null, el("a", {href: adresa({pohled: "pridat", oblast: o.id})}, "Přidat předpis do oblasti")));
+  if (upravy) out.push(el("p", null, el("a", {href: adresa({pohled: "pridat", oblast: o.id})}, "Přidat předpis do oblasti")));
   const vsechnyVyz = W.vyznaceni.filter(v => o.predpisy.indexOf(v.predpis) >= 0);
   out.push(el("h2", null, "Vyznačená ustanovení v oblasti"));
   out.push(el("p", null, vsechnyVyz.length
@@ -1799,6 +1827,7 @@ POHLED_FUNKCE.oblast = async p => {
     ? el("a", {href: adresa({pohled: "komentare", oblast: o.id})}, "Zobrazit " + pocetKomentaru(komO))
     : "K předpisům této oblasti zatím nemáte žádné komentáře."));
   out.push(el("p", null, el("a", {href: adresa({pohled: "hledat", rozsah: "oblast:" + o.id})}, "Hledat v předpisech oblasti")));
+  if (!upravy) return out;
   out.push(el("h2", null, "Správa oblasti"));
   out.push(formularOblasti(o));
   out.push(el("p", null, el("button", {type: "button", class: "druhe", onclick: () => {
@@ -1835,6 +1864,7 @@ function souhrnPredpisu(id, sOblastmi){
 POHLED_FUNKCE.pridat = async p => {
   drobecky([["Přehled", {}], ["Přidat předpis", null]]);
   const out = [nadpis("Přidat předpis do knihovny")];
+  if (!upravy) return out.concat([zprava("Předpisy přidáte po zapnutí přepínače Úpravy v záhlaví stránky.")]);
   const vstup = el("input", {type: "text", autocomplete: "off", spellcheck: "false"});
   if (p.predpis) vstup.value = citacePredpisuZId(p.predpis);
   const vysledek = el("div");
@@ -1921,12 +1951,12 @@ POHLED_FUNKCE.predpis = async p => {
   info.append(el("p", null, "Štítky předpisu: ", odkazyStitku(P.stitky)));
   if (P.popis) info.append(el("p", null, "Popis: " + P.popis));
   info.append(el("ul", {class: "seznam"},
-    el("li", null, el("a", {href: adresa({pohled: "poznamka", predpis: id})}, P.poznamka ? "Upravit poznámku k předpisu" : "Napsat poznámku k předpisu")),
+    upravy ? el("li", null, el("a", {href: adresa({pohled: "poznamka", predpis: id})}, P.poznamka ? "Upravit poznámku k předpisu" : "Napsat poznámku k předpisu")) : null,
     el("li", null, el("a", {href: adresa({pohled: "hledat", rozsah: "predpis:" + id})}, "Hledat v předpisu")),
     el("li", null, el("a", {href: adresaESbirky(id, datum), target: "_blank", rel: "noopener noreferrer"}, "Otevřít v e-Sbírce", vh(" (otevře se v nové kartě)")))));
   out.push(info);
   if (P.poznamka) out.push(el("h2", null, "Poznámka k předpisu"), await poznamkaDom(id, 3),
-    el("p", null, el("a", {href: adresa({pohled: "poznamka", predpis: id})}, "Upravit poznámku k předpisu")));
+    jenUpravy(el("p", null, el("a", {href: adresa({pohled: "poznamka", predpis: id})}, "Upravit poznámku k předpisu"))));
 
 
   /* Co z předpisu zobrazit: text (výchozí), nebo seznam vyznačených ustanovení,
@@ -2056,6 +2086,7 @@ POHLED_FUNKCE.predpis = async p => {
     out.push(text);
   
   })();
+  if (!upravy) return out;
   out.push(el("h2", {id: "sprava-predpisu", tabindex: "-1"}, "Správa předpisu"));
   const sprava = el("div");
   const fs = el("fieldset", null, el("legend", null, "Oblasti předpisu"));
@@ -2147,7 +2178,7 @@ async function pohledMimoKnihovnu(id, ust){
   } catch (e){ log("Údaje o předpisu nelze načíst", e.message); }
   out.push(nadpis(nazevPredpisu(P0, id)));
   out.push(el("p", null, "Tento předpis zatím ve vaší knihovně není" + (ust ? ", proto nelze zobrazit odkazované ustanovení." : ".")));
-  out.push(el("p", null, el("a", {href: adresa({pohled: "pridat", predpis: id})}, "Zařadit předpis do knihovny"), " · ",
+  out.push(el("p", null, upravy ? el("a", {href: adresa({pohled: "pridat", predpis: id})}, "Zařadit předpis do knihovny") : null, upravy ? " · " : null,
     el("a", {href: adresaESbirky(id, null, ust), target: "_blank", rel: "noopener noreferrer"}, "Otevřít v e-Sbírce", vh(" (otevře se v nové kartě)"))));
   return out;
 }
@@ -2225,7 +2256,9 @@ POHLED_FUNKCE.poznamka = async p => {
   const nahled = el("div", {class: "markdown"});
   const vykreslitNahled = t => nahled.replaceChildren(t.trim() ? markdownDom(t, 3) : zprava("Poznámka je zatím prázdná."));
   vykreslitNahled(ulozeny);
-  out.push(nahled, el("h2", null, "Upravit poznámku"));
+  out.push(nahled);
+  if (!upravy) return out;
+  out.push(el("h2", null, "Upravit poznámku"));
   const text = el("textarea", {rows: "18"});
   text.value = ulozeny;
   hlidatRozepsane(() => text.value !== ulozeny);
@@ -2264,11 +2297,12 @@ function sekceKomentaru(id, model, f){
           + (k.upraveno && k.upraveno !== k.vytvoreno ? " Upraveno " + casCz(k.upraveno) + "." : "")
           + (k.zneni && k.zneni !== model.datum ? " Psáno ke znění " + datumCz(k.zneni) + "." : "")),
         el("div", {class: "markdown"}, markdownDom(k.text, 4)),
-        el("details", null, el("summary", null, "Upravit komentář " + (i + 1)), formularKomentare(id, model, f, k, poUlozeni))));
+        jenUpravy(el("details", null, el("summary", null, "Upravit komentář " + (i + 1)), formularKomentare(id, model, f, k, poUlozeni)))));
     });
     sekce.append(ol);
-  } else sekce.append(zprava("K ustanovení zatím nemáte žádný komentář."));
-  sekce.append(el("h3", null, "Nový komentář"), formularKomentare(id, model, f, null, poUlozeni));
+  } else if (!upravy) return null;
+  else sekce.append(zprava("K ustanovení zatím nemáte žádný komentář."));
+  if (upravy) sekce.append(el("h3", null, "Nový komentář"), formularKomentare(id, model, f, null, poUlozeni));
   return sekce;
 }
 function formularKomentare(id, model, f, k, poUlozeni){
@@ -2349,6 +2383,7 @@ POHLED_FUNKCE.komentare = async p => {
   if (skupina) out.push(el("p", {class: "tichy"}, "Skupina komentářů."), ...poznamkaSkupiny(skupina.popis, "Poznámka ke skupině"));
   out.push(...seznamKomentaru(seznam, !p.predpis));
   if (seznam.length) out.push(exportniPanel(titul, () => komentareJakoMarkdown(titul, skupina ? skupina.popis : "", seznam, [skupina ? "Odkaz na skupinu komentářů" : "Odkaz na komentáře", adresaAbsolutni(skupina ? {pohled: "komentare", skupinakom: skupina.id} : p.oblast ? {pohled: "komentare", oblast: p.oblast} : p.predpis ? {pohled: "komentare", predpis: p.predpis} : {pohled: "komentare"})]), () => komentareJakoTsv(seznam), null, () => seznam));
+  if (!upravy) return out;
   if (skupina){
     out.push(el("h2", null, "Správa skupiny"), formularSkupinyKomentaru(skupina),
       el("p", null, el("button", {type: "button", class: "druhe", onclick: () => {
@@ -2392,7 +2427,7 @@ function seznamKomentaru(seznam, poPredpisech, zaklad){
       out.push(el("ol", {class: "seznam"}, kom.map(k => el("li", {class: "komentar"},
         zaskrtavatkoPolozky(k.id, "komentář z " + casCz(k.vytvoreno) + " k " + cit, zaskrt),
         el("p", {class: "tichy"}, casCz(k.vytvoreno) + " — skupiny: " + nazvySkupinKom(k) + ". ",
-          el("a", {href: adresa({pohled: "ust", predpis: id, ust: klic}) + "#k-" + k.id, "aria-label": "Upravit komentář z " + casCz(k.vytvoreno) + " k " + cit}, "Upravit")),
+          jenUpravy(el("a", {href: adresa({pohled: "ust", predpis: id, ust: klic}) + "#k-" + k.id, "aria-label": "Upravit komentář z " + casCz(k.vytvoreno) + " k " + cit}, "Upravit"))),
         el("div", {class: "markdown"}, markdownDom(k.text, Math.min(6, poPredpisech ? zaklad + 2 : zaklad + 1)))))));
       vyvoz.push(cit + "\n" + textKomentareProKopii(kom));
     }
@@ -2872,6 +2907,7 @@ POHLED_FUNKCE.prenos = async () => {
 
   /* Import */
   out.push(el("h2", null, "Import"));
+  if (!upravy) return out.concat([zprava("Import dat je dostupný po zapnutí přepínače Úpravy v záhlaví stránky.")]);
   out.push(el("p", null, "Vyberte zdroj. Po načtení si zvolíte, co převzít."));
   const vysledek = el("div");
   const nactenoZ = async (text, zdrojPopis, nactiPozn) => {
@@ -3051,7 +3087,9 @@ async function importovatBalik(b, politika, prubeh){
 function sekceStitkuUst(id, model, f){
   const sekce = el("section", {"aria-labelledby": "st-nadpis"}, el("h2", {id: "st-nadpis", tabindex: "-1"}, "Štítky ustanovení"));
   const akt = stitkyUst(id, f.k);
+  if (!upravy && !akt.length) return null;
   sekce.append(el("p", null, "Štítky: ", odkazyStitku(akt)));
+  if (!upravy) return sekce;
   const vyb = vyberStitku(akt, "Štítky ustanovení");
   sekce.append(el("form", {onsubmit: e => {
     e.preventDefault();
@@ -3094,7 +3132,7 @@ POHLED_FUNKCE.stitky = async () => {
         " — " + pocetSlov(np, "předpis", "předpisy", "předpisů") + ", " + pocetSlov(nu, "ustanovení", "ustanovení", "ustanovení"));
     })));
   } else out.push(zprava("Zatím žádné štítky."));
-  out.push(formularStitku(null));
+  out.push(jenUpravy(formularStitku(null)));
   return out;
 };
 POHLED_FUNKCE.stitek = async p => {
@@ -3133,6 +3171,7 @@ POHLED_FUNKCE.stitek = async p => {
     out.push(hromadnaUprava("ust", zaskrt, 2));
     out.push(exportniPanel("Štítek " + x.nazev, () => ustanoveniJakoMarkdown("Štítek: " + x.nazev, x.popis, ust), () => ustanoveniJakoTsv(ust), null, () => ust));
   } else out.push(zprava("Žádné ustanovení tento štítek nemá. Štítek ustanovení přidáte na jeho stránce nebo hromadně v přehledu vyznačených ustanovení či komentářů."));
+  if (!upravy) return out;
   out.push(el("h2", null, "Správa štítku"), formularStitku(x),
     el("p", null, el("button", {type: "button", class: "druhe", onclick: () => {
       if (!confirm("Smazat štítek „" + x.nazev + "“? Odebere se ze všech předpisů a ustanovení.")) return;
@@ -3248,6 +3287,7 @@ POHLED_FUNKCE.ust = async p => {
   return out;
 };
 function formularVyznaceni(id, P, model, f, v){
+  if (!upravy && !v) return null;
   const sekce = el("section", {"aria-labelledby": "vyz-nadpis"}, el("h2", {id: "vyz-nadpis"}, v ? "Vyznačení — ustanovení je vyznačené" : "Vyznačení"));
   if (v){
     sekce.append(el("p", {class: "tichy"}, "Vyznačeno " + casCz(v.vytvoreno) + (v.upraveno && v.upraveno !== v.vytvoreno ? ", upraveno " + casCz(v.upraveno) : "") + ", ve znění " + datumCz(v.zneni) + "."));
@@ -3257,6 +3297,13 @@ function formularVyznaceni(id, P, model, f, v){
       sekce.append(zprava("Text ustanovení se od vyznačení změnil.", "chyba"),
         el("details", null, el("summary", null, "Text v době vyznačení"), el("blockquote", {class: "poznamka"}, vetaZTextu(v.text))));
     }
+  }
+  if (!upravy){
+    /* jen ke čtení: skupiny a poznámka bez formuláře */
+    sekce.append(el("p", null, "Skupiny: ", ...(v.skupiny.map(x => W.skupiny.find(s => s.id === x)).filter(Boolean)
+      .sort((a, b) => ceskeRazeni.compare(a.nazev, b.nazev)).flatMap((s, i) => [i ? ", " : "", el("a", {href: adresa({pohled: "skupina", skupina: s.id})}, s.nazev)])), v.skupiny.length ? "." : "bez skupiny."));
+    if (v.poznamka && v.poznamka.trim()) sekce.append(el("p", null, el("strong", null, "Poznámka:")), el("p", {class: "poznamka"}, v.poznamka));
+    return sekce;
   }
   const nazevU = el("input", {type: "text", autocomplete: "off"});
   if (v) nazevU.value = v.nazev || "";
@@ -3326,6 +3373,7 @@ POHLED_FUNKCE.skupina = async p => {
   const vyzSk = W.vyznaceni.filter(v => v.skupiny.indexOf(s.id) >= 0);
   out.push(...seznamVyznaceni(vyzSk, true));
   if (vyzSk.length) out.push(exportniPanel(s.nazev, () => vyznaceniJakoMarkdown(s.nazev, s.popis, vyzSk), () => vyznaceniJakoTsv(vyzSk), null, () => vyzSk));
+  if (!upravy) return out;
   out.push(el("h2", null, "Správa skupiny"));
   out.push(formularSkupiny(s));
   out.push(el("p", null, el("button", {type: "button", class: "druhe", onclick: () => {
