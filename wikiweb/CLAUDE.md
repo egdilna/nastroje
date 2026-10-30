@@ -73,6 +73,7 @@ Odkaz v menu má buď `page` (id stránky), nebo `url`.
 - `{ "ref": "id" }` je **odkaz** na stránku, která má domovské místo jinde ve stromu. Ukáže se v menu i ve výpisech na svém místě (volitelně s vlastním `title` a `emoji`, i `hidden`), drobečková navigace, předchozí/další a adresa se řídí domovem. Odkaz nemá podstránky. Na neexistující id se nezobrazí. Aplikace při změně id stránky odkazy přepíše a při smazání stránky smaže i odkazy na ni.
 - `type`: id typu z `page_types` nebo vestavěného (`stranka` je výchozí, stránka bez `file` s podstránkami je `rozcestnik`). Typ mění vzhled a výchozí ikonu; obsah je vždy Markdown.
 - `hidden: true` — stránka není v sekcích webu, odkazem je dostupná.
+- `draft: true` — **koncept**. Na webu se stránka i s podstránkami vůbec nenabízí: není v menu, výpisech, hledání, štítcích ani zpětných odkazech, přímá adresa hlásí, že stránka neexistuje, odkaz na ni je prostý text a vložení `![[…]]` nic nevloží. V aplikaci (`?nahled`) a s parametrem `?koncepty=1` je vidět se značkou Koncept. Soubor zůstává v repozitáři veřejně čitelný — koncept není tajný, jen neodkazovaný. `new_as_draft: true` ve wiki.json zakládá nové stránky jako koncepty.
 - **Data vytvoření a úprav se do contents.json záměrně nedávají** — obsah chodí z různých zdrojů a nedaly by se udržet. Datum mají jen články a novinky přímo v Markdownu.
 
 ### Markdown
@@ -87,7 +88,8 @@ Parser je převzatý z md2web (stejná syntaxe i HTML výstup) a doplněný:
 - úkoly `- [ ]` / `- [x]`, jazyk u bloku kódu se nezobrazuje,
 - úvodní `# Nadpis` v souboru se vynechá (H1 stránky je její název z contents.json), další H1 se sníží na H2,
 - **novinky**: řádek `2026-10-30: Titulek` (také `30.10.2026:` a `10/30/2026:`), pod ním text do dalšího data nebo nadpisu; v panelu se ukáže kalendář,
-- **sekce článků**: soubor začíná řádkem `articles` (smí mu předcházet `# Název`), každý článek je `## Nadpis`, pod ním `Datum:` a `Tagy:`, první odstavec je perex. Přesně formát md2web; víc sekcí článků = víc takových souborů, každá má vlastní štítky.
+- **štítky** stránek (`tags`) a článků (`Tagy:`) jsou jeden jmenný prostor bez ohledu na velikost písmen. Stránka `#/stitek/x` vypíše stránky i články ze všech sekcí; filtr `#sekce?tag=x` zůstává uvnitř sekce článků (jako md2web) a nabízí odkaz na štítek na celém webu. Blok `stitky` v panelu ukazuje štítky toho, co čtete (stránky, článku, sekce článků), volitelný blok `vsestitky` je mrak celého webu s počty. Index buduje `indexStitku()`,
+- **sekce článků**: soubor začíná řádkem `articles` (smí mu předcházet `# Název`), každý článek je `## Nadpis`, pod ním `Datum:` a `Tagy:`, první odstavec je perex. Navíc (md2web ho nezná a ukázal by ho jako text) řádek `Stav: koncept` / `Status: draft` — takový článek se na webu nezobrazí. Přesně formát md2web; víc sekcí článků = víc takových souborů, každá má vlastní štítky.
 
 ## Adresy v prohlížeči
 
