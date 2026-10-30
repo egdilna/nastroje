@@ -40,11 +40,18 @@ Klíče sdílené s md2web (`website.json`) mají stejný význam: `title`, `tag
   "pager": true,
   "expand_sections": true,
   "edit_link": false,
+  "page_types": {
+    "postup":  { "label": "Postup", "emoji": "🧭", "layout": "stranka", "show_label": true,
+                 "template": "## Kroky\n\n1. ", "toc": true, "pager": true },
+    "stranka": { "emoji": "📃" }
+  },
   "github": { "repo": "vlastnik/repo", "branch": "main", "folder": "web" }
 }
 ```
 
-Odkaz v menu má buď `page` (id stránky), nebo `url`. `github` zapisuje aplikace při každém uložení (kvůli odkazu Upravit v patičce) — **token do souboru nikdy nepatří**.
+Odkaz v menu má buď `page` (id stránky), nebo `url`.
+
+`page_types` — vlastní typy stránek a úpravy vestavěných. Vestavěné typy (`stranka` 📄, `uvod` 🏠, `rozcestnik` 🗂️, `clanky` ✍️, `novinky` 📣) jsou zároveň vzhledy; vlastní typ si v `layout` vybere jeden z nich. `emoji` je výchozí ikona stránek typu (stránka bez vlastního `emoji` ji převezme, prázdný řetězec = bez ikony), `template` je text nové stránky (`{dnes}` = dnešní datum), `show_label` ukáže název typu u nadpisu, `toc: false` skryje obsah stránky v panelu, `pager: false` vypne předchozí/další. U vestavěných typů se ukládají jen změny proti výchozímu stavu. V aplikaci: Nastavení webu → Typy stránek. `github` zapisuje aplikace při každém uložení (kvůli odkazu Upravit v patičce) — **token do souboru nikdy nepatří**.
 
 ### contents.json
 
@@ -63,7 +70,8 @@ Odkaz v menu má buď `page` (id stránky), nebo `url`. `github` zapisuje aplika
 - `file` — cesta ve složce webu, nebo adresa `https://…` (odkaz `github.com/…/blob/…` se převede na raw), nebo zkratka `gh:vlastnik/repo[@vetev]/cesta.md`.
 - `repo` — `vlastnik/repo` nebo `vlastnik/repo@vetev`; pak se `file` čte z `raw.githubusercontent.com`. V aplikaci se zadává jedním polem `vlastnik/repo/cesta.md`.
 - Bez `file` je stránka čistý rozcestník podstránek.
-- `type`: `stranka` (výchozí), `uvod`, `rozcestnik`, `clanky`, `novinky`. Typ mění jen vzhled; obsah je vždy Markdown.
+- `{ "ref": "id" }` je **odkaz** na stránku, která má domovské místo jinde ve stromu. Ukáže se v menu i ve výpisech na svém místě (volitelně s vlastním `title` a `emoji`, i `hidden`), drobečková navigace, předchozí/další a adresa se řídí domovem. Odkaz nemá podstránky. Na neexistující id se nezobrazí. Aplikace při změně id stránky odkazy přepíše a při smazání stránky smaže i odkazy na ni.
+- `type`: id typu z `page_types` nebo vestavěného (`stranka` je výchozí, stránka bez `file` s podstránkami je `rozcestnik`). Typ mění vzhled a výchozí ikonu; obsah je vždy Markdown.
 - `hidden: true` — stránka není v sekcích webu, odkazem je dostupná.
 - **Data vytvoření a úprav se do contents.json záměrně nedávají** — obsah chodí z různých zdrojů a nedaly by se udržet. Datum mají jen články a novinky přímo v Markdownu.
 

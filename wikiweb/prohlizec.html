@@ -227,6 +227,7 @@ main{grid-column:2;grid-row:1;min-width:0}
 .stitky{display:flex;flex-wrap:wrap;gap:6px}
 .stitek{font:inherit;font-size:12px;padding:2px 10px;border-radius:999px;background:var(--color-surface);border:1px solid var(--color-border);color:var(--color-text-muted);text-decoration:none;cursor:pointer}
 .stitek:hover{border-color:var(--odkaz);color:var(--odkaz)}
+.typ-stitek{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:5px;background:var(--color-bg-alt);color:var(--color-text-muted)}
 .stitek[aria-pressed="true"],.stitek.aktivni{background:var(--odkaz);border-color:var(--odkaz);color:var(--color-surface)}
 .odkazy-seznam{list-style:none;margin:0;padding:0;display:grid;gap:4px}
 .odkazy-seznam a{overflow-wrap:anywhere}
@@ -688,8 +689,28 @@ function parametry(){
   if(p.get("owner")&&repo&&!repo.includes("/")) repo=p.get("owner")+"/"+repo;
   return {repo,vetev:p.get("vetev")||p.get("branch")||"",slozka:(p.get("slozka")||p.get("path")||"").replace(/^\/+|\/+$/g,""),nahled:p.has("nahled")};
 }
+/* Typy stránek: vestavěné + vlastní z wiki.json → page_types.
+   Vlastní typ má název, výchozí ikonu a vzhled (layout) jednoho z vestavěných typů. */
+const VESTAVENE_TYPY={
+  stranka:{label:"Wiki stránka",emoji:"📄",layout:"stranka"},
+  uvod:{label:"Úvodní stránka",emoji:"🏠",layout:"uvod"},
+  rozcestnik:{label:"Rozcestník",emoji:"🗂️",layout:"rozcestnik"},
+  clanky:{label:"Články",emoji:"✍️",layout:"clanky"},
+  novinky:{label:"Novinky",emoji:"📣",layout:"novinky"}
+};
+function typStranky(u){
+  const id=u.type||(u.children?.length&&!u.file?"rozcestnik":"stranka");
+  const vest=VESTAVENE_TYPY[id], vl=(W.cfg.page_types||{})[id];
+  const t={...(vest||VESTAVENE_TYPY.stranka),...(vl||{})};
+  t.id=id; if(!VESTAVENE_TYPY[t.layout]) t.layout=vest?.layout||"stranka";
+  if(!vest&&!vl) t.label=id;
+  return t;
+}
+/* Položka {"ref":"id"} je odkaz na stránku, která má domovské místo jinde ve stromu.
+   V menu a výpisech se ukáže na svém místě, drobečky a předchozí/další se řídí domovem. */
 function pripravitStrom(uzly,rodic,hloubka){
   return (uzly||[]).map(u=>{
+    if(u.ref) return {jeOdkaz:true,ref:u.ref,vlastniTitul:u.title,vlastniEmoji:u.emoji,hidden:u.hidden,rodic,children:[]};
     const uzel={...u};
     uzel.title=uzel.title||uzel.id||"(bez názvu)";
     let id=uzel.id||slug(uzel.title)||"stranka";
@@ -709,6 +730,13 @@ async function nactiWeb(data){
   W.cfg=cfg||{};
   T=TEXTY[W.cfg.language==="en"?"en":"cs"];
   W.koren=pripravitStrom(Array.isArray(obsah)?obsah:(obsah.pages||[]),null,0);
+  for(const u of W.stranky.values()){ u.typ=typStranky(u); if(!u.emoji) u.emoji=u.typ.emoji||""; }
+  const odkazy=uzly=>uzly.flatMap(u=>{
+    if(!u.jeOdkaz){ u.children=odkazy(u.children); return [u]; }
+    const cil=W.stranky.get(u.ref); if(!cil) return [];
+    return [{...cil,jeOdkaz:true,title:u.vlastniTitul||cil.title,emoji:u.vlastniEmoji||cil.emoji,hidden:u.hidden,rodic:u.rodic}];
+  });
+  W.koren=odkazy(W.koren);
   const sbSoubor=W.cfg.sidebar_file||"sidebar.md";
   try{ W.sidebarMD=await nactiText(adresaSouboru(sbSoubor)); }catch{ W.sidebarMD=""; }
 }
@@ -815,7 +843,7 @@ function vykreslitPanel(){
 function stromHtml(uzly,hloubka){
   const vid=uzly.filter(u=>!u.hidden); if(!vid.length) return "";
   return `<ul>${vid.map(u=>{
-    const deti=u.children.filter(c=>!c.hidden);
+    const deti=u.jeOdkaz?[]:u.children.filter(c=>!c.hidden);
     const otevreno=hloubka===0&&W.cfg.expand_sections!==false;
     return `<li><div class="uzel"><a href="#${escAttr(u.id)}" data-id="${escAttr(u.id)}"><span class="em" aria-hidden="true">${esc(u.emoji||"")}</span><span class="t">${esc(u.title)}</span></a>${deti.length?`<button type="button" aria-expanded="${otevreno}" aria-controls="pod-${escAttr(u.id)}" aria-label="${escAttr(T.rozbalit+": "+u.title)}"></button>`:""}</div>${deti.length?`<div id="pod-${escAttr(u.id)}"${otevreno?"":" hidden"}>${stromHtml(deti,hloubka+1)}</div>`:""}</li>`;
   }).join("")}</ul>`;
@@ -932,7 +960,7 @@ async function vykreslitStranku(u,r){
     const nov=`<ul class="novinky">${novinky.map(n=>{const f=formatDatum(n.datum);return `<li class="novinka" id="novinka-${n.klic}"><div class="novinka-datum"><span aria-hidden="true">📅</span><span>${esc(f.den)}</span><b>${esc(f.datum)}</b></div>${n.titul?`<div class="novinka-titul">${inline(n.titul,zakl)}</div>`:""}${n.telo.trim()?`<div class="obsah-n">${md(n.telo,zakl)}</div>`:""}</li>`;}).join("")}</ul>`;
     const i=html.indexOf("<h2"); html=i===-1?html+nov:html.slice(0,i)+nov+html.slice(i);
   }
-  const typ=u.type||(u.children.length&&!u.file?"rozcestnik":"stranka");
+  const typ=u.typ.layout;
   let vypis="";
   const deti=u.children.filter(c=>!c.hidden);
   if(typ==="uvod"){
@@ -943,13 +971,14 @@ async function vykreslitStranku(u,r){
   }
   if(!html.trim()&&!vypis) html=`<p>${esc(T.prazdna)}</p>`;
   vykreslitDrobky(drobkyStranky(u));
-  art.innerHTML=hlavaHtml(u,u.title,u.emoji,u.perex?esc(u.perex):"",stitkyStrankyHtml(u))
+  art.innerHTML=hlavaHtml(u,u.title,u.emoji,u.perex?esc(u.perex):"",typStitek(u)+stitkyStrankyHtml(u))
     +`<div class="obsah" id="obsah-stranky">${html}${vypis}</div>`
-    +(typ==="stranka"&&W.cfg.pager!==false?strankovani(u):"");
+    +(typ==="stranka"&&W.cfg.pager!==false&&u.typ.pager!==false?strankovani(u):"");
   aktivovatOdkazy(art);
   panelProStranku(u,html,novinky,(u.tags||[]));
   nastavitTitulek(u.title);
 }
+const typStitek=u=>u&&u.typ?.show_label?`<span class="typ-stitek">${esc(u.typ.label)}</span>`:"";
 function navrhChyby(u,e){
   const kde=u.repo?`${esc(u.repo)} / ${esc(u.file)}`:esc(u.file);
   return `<div class="ep ep-danger" role="note"><span class="ep-icon" aria-hidden="true">❗</span><div class="ep-body"><strong>${esc(T.chybaStranky)}.</strong> <code>${kde}</code> (${esc(e.message)})</div></div>`;
@@ -1047,7 +1076,7 @@ function panelProStranku(u,html,novinky,stitky){
   const toc=$("#toc");
   if(toc){
     const h=nadpisy($("#stranka").innerHTML).filter(x=>!x.id.startsWith("cl-"));
-    toc.hidden=h.length<2||!u;
+    toc.hidden=h.length<2||!u||u.typ?.toc===false;
     $("#toc-ol").innerHTML=h.map(x=>`<li class="u${x.u}"><a href="#${escAttr((u?.id||"")+":"+x.id)}" data-k="${escAttr(x.id)}">${esc(x.t)}</a></li>`).join("");
     sledovatToc();
   }
