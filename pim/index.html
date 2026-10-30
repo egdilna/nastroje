@@ -7943,13 +7943,13 @@ async function attachFile(entity, file) {
   if (!entity.attachments) entity.attachments = [];
   entity.attachments.push(att);
   entity.updated_at = nowIso();
-  // Přidání přílohy samo o sobě nevolá autosave na GitHub —
-  // uživatel typicky uloží teprve až klikne "Uložit entitu" (kdy se uloží i další změny).
-  // localStorage uložení proběhne, jen scheduleAutosaveGh() se přeskočí.
-  const _prevSkip = window._autosaveSkip;
-  window._autosaveSkip = true;
+  // Autosave na GitHub se tady **nevypíná**. V edit modu detailu ho `scheduleAutosaveGh()`
+  // přeskakuje samo (uživatel tam průběžně píše a uloží tlačítkem „Uložit entitu"), takže
+  // tu dřívější pojistka `window._autosaveSkip` na 500 ms nic nepřidávala — zato spolkla
+  // každé `save()` zavolané hned po přidání přílohy. Odneslo to „Uložit verzi" i přidání
+  // přílohy z režimu čtení: příloha zůstala jen v prohlížeči a na GitHub se dostala až
+  // s nějakou další, nesouvisející změnou.
   saveDebounced();
-  setTimeout(() => { window._autosaveSkip = _prevSkip || false; }, 500);
   return att;
 }
 async function getAttachmentBlobUrl(att) {
@@ -14952,7 +14952,12 @@ function renderDetailRead(main, e) {
       return h;
     })() +
     (refsHtml ? '<details class="section-collapsible"><summary>Odkazy</summary><h3>Odkazy</h3>' + refsHtml + '</details>' : '') +
-    (attachmentsHtml ? '<details open class="section-collapsible"><summary>Přílohy (' + e.attachments.length + ')</summary><h3>Přílohy (' + e.attachments.length + ')</h3>' + attachmentsHtml + '</details>' : '') +
+    (attachmentsHtml ? '<details open class="section-collapsible"><summary>Přílohy (' + e.attachments.length + ')</summary><h3>Přílohy (' + e.attachments.length + ')</h3>' +
+      // Nahrát další přílohu jde rovnou odsud, bez otevírání editace. Do šablony
+      // prohlížeče to nepatří — ten needituje (a svou kopii téhle sekce má).
+      ((typeof window !== 'undefined' && window.__VIEWER_MODE) ? ''
+        : '<div class="btn-group" style="margin-bottom:0.5em;"><button type="button" id="att-read-add">📎 Přidat přílohu</button></div>') +
+      attachmentsHtml + '</details>' : '') +
     ((linksHtml || inverseHtml) ? '<details open class="section-collapsible"><summary>Vazby</summary><h3>Vazby</h3>' +
       '<div class="btn-group" style="margin-bottom:0.5em;">' +
         '<button type="button" id="btn-tag-matice" title="Porovnat a upravit tagy všech navázaných entit najednou">🏷 Tagy vazeb…</button>' +
@@ -16510,6 +16515,8 @@ function renderAttachmentsRead(e) {
   return h + '</div>';
 }
 function attachAttachmentReadHandlers(root, entity) {
+  const pridat = root.querySelector('#att-read-add');
+  if (pridat) pridat.onclick = () => pridejPrilohuZeCteni(entity, '#att-read-add');
   root.querySelectorAll('img[data-att-preview]').forEach(async (img) => {
     const att = entity.attachments.find(a => a.id === img.dataset.attPreview);
     if (!att) return;
@@ -17972,23 +17979,69 @@ function setupAudioRecorder(entity) {
   };
 }
 
+// === NAHRÁNÍ PŘÍLOHY: JEDNA CESTA PRO EDITACI I PRO REŽIM ČTENÍ ===
+// Dropzone v editaci, tlačítko v sekci Přílohy i příkaz v paletě jdou tudy.
+// Pojmenování (`promptAttachmentName`) i uložení (`attachFile`, a tedy volba
+// mezi IndexedDB a GitHubem) tak zůstávají na jednom místě — druhá kopie by se
+// rozešla a uživatel by podle toho, odkud soubor přidal, dostal jiné chování.
+// Vrací počet opravdu přidaných souborů (uživatel může pojmenování zrušit).
+async function nahrajSouboryDoEntity(entity, soubory, opts) {
+  opts = opts || {};
+  let pridano = 0;
+  for (const f of soubory) {
+    try {
+      const finalName = await promptAttachmentName(entity, f.name);
+      if (finalName === null) continue;   // uživatel zrušil pojmenování
+      // Nová File instance s upraveným názvem (zachová type i obsah)
+      const novy = finalName === f.name ? f : new File([f], finalName, { type: f.type });
+      await attachFile(entity, novy);
+      pridano++;
+      if (!opts.tiche) toast('Příloha „' + finalName + '" přidána.');
+    } catch (err) {
+      alertMsg('Chyba: ' + err.message);
+    }
+  }
+  return pridano;
+}
+
+// Přidání přílohy **mimo editaci** — z tlačítka v sekci Přílohy i z palety.
+// Dvě věci, které tuhle cestu odlišují od dropzony v editaci:
+//
+// 1. **Ukládá se hned.** `attachFile()` schválně přeskakuje autosave na GitHub,
+//    protože v editaci na něj navazuje tlačítko „Uložit entitu". V režimu čtení
+//    žádné takové tlačítko není, takže by příloha zůstala jen v prohlížeči.
+// 2. **Výběr souboru jde přes dočasný `<input type="file">`**, aby nezáleželo na
+//    tom, odkud se akce spustila (v paletě žádné pole na stránce není).
+function pridejPrilohuZeCteni(entity, fokusPo) {
+  if (!entity) return;
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.multiple = true;
+  inp.style.cssText = 'position:fixed;left:-10000px;top:0;';
+  document.body.appendChild(inp);
+  const uklid = () => { try { inp.remove(); } catch (e) {} };
+  inp.oncancel = uklid;
+  inp.onchange = async () => {
+    const soubory = Array.from(inp.files || []);
+    uklid();
+    if (soubory.length === 0) return;
+    const pridano = await nahrajSouboryDoEntity(entity, soubory);
+    if (pridano === 0) return;
+    save();
+    render();
+    if (fokusPo) { const cil = document.querySelector(fokusPo); if (cil && cil.focus) cil.focus(); }
+  };
+  inp.click();
+}
+
 function setupDropzone(entity) {
   const dz = document.getElementById('d-dropzone'), fi = document.getElementById('d-file-input');
   if (!dz || !fi) return;
-  async function attachWithNamePrompt(f) {
-    const finalName = await promptAttachmentName(entity, f.name);
-    if (finalName === null) return; // uživatel zrušil
-    // Vytvoř novou File instanci s upraveným názvem (zachová type a obsah)
-    const newFile = finalName === f.name ? f : new File([f], finalName, { type: f.type });
-    await attachFile(entity, newFile);
-    toast('Příloha „' + finalName + '" přidána.');
-  }
   fi.onchange = async (ev) => {
-    for (const f of ev.target.files) {
-      try { await attachWithNamePrompt(f); }
-      catch (e) { alertMsg('Chyba: ' + e.message); }
-    }
-    fi.value = ''; renderEditAttachments(entity);
+    const soubory = Array.from(ev.target.files || []);
+    fi.value = '';
+    await nahrajSouboryDoEntity(entity, soubory);
+    renderEditAttachments(entity);
   };
   dz.onclick = (ev) => { if (ev.target === fi) return; fi.click(); };
   dz.ondragover = (ev) => { ev.preventDefault(); dz.classList.add('dragover'); };
@@ -17996,10 +18049,7 @@ function setupDropzone(entity) {
   dz.ondrop = async (ev) => {
     ev.preventDefault(); dz.classList.remove('dragover');
     if (ev.dataTransfer && ev.dataTransfer.files) {
-      for (const f of ev.dataTransfer.files) {
-        try { await attachWithNamePrompt(f); }
-        catch (e) { alertMsg('Chyba: ' + e.message); }
-      }
+      await nahrajSouboryDoEntity(entity, Array.from(ev.dataTransfer.files));
       renderEditAttachments(entity);
     }
   };
@@ -27107,6 +27157,10 @@ function paletaSestavPrikazy() {
       keywords: 'nova s vazbou', run: () => openCreateRelatedDialog(ent) });
     pridej({ id: 'ent-komentar', label: '💬 Přidat komentář', klavesa: 'c', kategorie: 'Entita', hint: jmeno,
       keywords: 'poznamka diskuse', run: () => openCommentDialog(ent) });
+    // I pro entitu, která zatím žádnou přílohu nemá — v sekci Přílohy by nebylo
+    // kde tlačítko ukázat, protože se celá sekce bez příloh nevykresluje.
+    pridej({ id: 'ent-priloha', label: '📎 Přidat přílohu', kategorie: 'Entita', hint: jmeno,
+      keywords: 'soubor nahrat dokument obrazek attachment', run: () => pridejPrilohuZeCteni(ent) });
     pridej({ id: 'ent-export', label: '🖨 Export / tisk…', klavesa: 'x', kategorie: 'Entita', hint: jmeno,
       keywords: 'pdf tisknout markdown html', run: () => openEntityExportDialog(ent) });
     pridej({ id: 'ent-outline', label: '🧭 Osnova (outline)', kategorie: 'Entita', hint: jmeno,

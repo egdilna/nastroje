@@ -523,6 +523,33 @@ Zapisuje se přesně na ten řádek, ze kterého úkol pochází, takže dva ste
 Když se text mezitím změní tak, že úkol na svém řádku není, aplikace **nezapíše nic**
 a řekne to.
 
+## Přílohy 📎
+
+Entita může mít soubory. Ukládají se do prohlížeče (IndexedDB) a když je nastavený
+GitHub, při nejbližší synchronizaci se nahrají do repozitáře — v seznamu to poznáte
+podle stavu: ⏳ čeká na nahrání, ☁ na GitHubu, 💾 jen v prohlížeči.
+
+**Přidat přílohu jde dvěma způsoby:**
+
+| Odkud | Jak |
+|---|---|
+| **z režimu čtení** | tlačítko **📎 Přidat přílohu** v sekci Přílohy, nebo týž příkaz v paletě (`F1`) |
+| **z editace entity** | dropzona „Přetáhněte soubory sem" — umí i přetažení myší a víc souborů najednou |
+
+Obě cesty se chovají stejně: ptají se na název (pokud už entita nějakou přílohu má,
+dá se **použít název existující přílohy** a nahrát tak novou verzi téhož souboru)
+a soubor uloží stejným způsobem.
+
+Jeden rozdíl tu je, a je záměrný: **přidání z režimu čtení se rovnou uloží**
+a naplánuje nahrání na GitHub. V editaci se neukládá, protože tam na to navazuje
+tlačítko **Uložit entitu**, které uloží všechno najednou.
+
+Tlačítko v sekci je vidět jen u entity, která **už nějakou přílohu má** — bez příloh
+se celá sekce nevykresluje. Pro první přílohu použijte příkaz z palety nebo editaci.
+
+Odebrat přílohu jde dál jen v editaci; v režimu čtení se dá stáhnout, u obrázku je
+náhled a u zvuku přehrávač.
+
 ## 📁 Filtr podle projektu
 
 Pohledy **Úkoly**, **Kalendář**, **Tagy**, **Příznaky**, **Vazby** a **Komentáře** mají
