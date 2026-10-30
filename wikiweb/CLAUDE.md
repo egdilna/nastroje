@@ -73,6 +73,9 @@ Odkaz v menu má buď `page` (id stránky), nebo `url`.
 - `{ "ref": "id" }` je **odkaz** na stránku, která má domovské místo jinde ve stromu. Ukáže se v menu i ve výpisech na svém místě (volitelně s vlastním `title` a `emoji`, i `hidden`), drobečková navigace, předchozí/další a adresa se řídí domovem. Odkaz nemá podstránky. Na neexistující id se nezobrazí. Aplikace při změně id stránky odkazy přepíše a při smazání stránky smaže i odkazy na ni.
 - `type`: id typu z `page_types` nebo vestavěného (`stranka` je výchozí, stránka bez `file` s podstránkami je `rozcestnik`). Typ mění vzhled a výchozí ikonu; obsah je vždy Markdown.
 - `hidden: true` — stránka není v sekcích webu, odkazem je dostupná.
+- `hide_children: true` — sekce v postranním panelu neukazuje podstránky (jen jejich počet), ve výpisu sekce zůstanou. Když je otevřená některá z nich, zvýrazní se sekce (`aria-current="true"`). V editoru jsou podstránky takové sekce sbalené.
+- `sort_children: true` — podstránky se řadí podle abecedy (v panelu, výpisech i předchozí/další); pořadí v souboru zůstává.
+- Přesun stránky do jiné sekce: v editoru výběr **Umístění** ve vlastnostech stránky (i odkazu) — stránka i s podstránkami jde na konec vybrané sekce.
 - `draft: true` — **koncept**. Na webu se stránka i s podstránkami vůbec nenabízí: není v menu, výpisech, hledání, štítcích ani zpětných odkazech, přímá adresa hlásí, že stránka neexistuje, odkaz na ni je prostý text a vložení `![[…]]` nic nevloží. V aplikaci (`?nahled`) a s parametrem `?koncepty=1` je vidět se značkou Koncept. Soubor zůstává v repozitáři veřejně čitelný — koncept není tajný, jen neodkazovaný. `new_as_draft: true` ve wiki.json zakládá nové stránky jako koncepty.
 - **Data vytvoření a úprav se do contents.json záměrně nedávají** — obsah chodí z různých zdrojů a nedaly by se udržet. Datum mají jen články a novinky přímo v Markdownu.
 

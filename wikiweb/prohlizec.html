@@ -814,11 +814,17 @@ async function nactiWeb(data){
   W.koren=pripravitStrom(Array.isArray(obsah)?obsah:(obsah.pages||[]),null,0);
   for(const u of W.stranky.values()){ u.typ=typStranky(u); if(!u.emoji) u.emoji=u.typ.emoji||""; }
   const odkazy=uzly=>uzly.flatMap(u=>{
-    if(!u.jeOdkaz){ u.children=odkazy(u.children); return [u]; }
+    if(!u.jeOdkaz){
+      u.children=odkazy(u.children);
+      // sort_children: podstránky podle abecedy (na webu i v předchozí/další)
+      if(u.sort_children) u.children.sort((a,b)=>String(a.title).localeCompare(String(b.title),W.cfg.language||"cs",{sensitivity:"base",numeric:true}));
+      return [u];
+    }
     const cil=W.stranky.get(u.ref); if(!cil) return [];
     return [{...cil,jeOdkaz:true,title:u.vlastniTitul||cil.title,emoji:u.vlastniEmoji||cil.emoji,hidden:u.hidden,rodic:u.rodic}];
   });
   W.koren=odkazy(W.koren);
+  W.poradi=[]; (function linearne(uzly){ uzly.forEach(u=>{ if(!u.hidden&&!u.jeOdkaz) W.poradi.push(u); linearne(u.children||[]); }); })(W.koren);
   const sbSoubor=W.cfg.sidebar_file||"sidebar.md";
   try{ W.sidebarMD=await vlozitStranky(await nactiText(adresaSouboru(sbSoubor))); }catch{ W.sidebarMD=""; }
 }
@@ -934,9 +940,11 @@ function vykreslitPanel(){
 function stromHtml(uzly,hloubka){
   const vid=uzly.filter(u=>!u.hidden); if(!vid.length) return "";
   return `<ul>${vid.map(u=>{
-    const deti=u.jeOdkaz?[]:u.children.filter(c=>!c.hidden);
+    const vsechnyDeti=u.jeOdkaz?[]:u.children.filter(c=>!c.hidden);
+    // hide_children: sekce s mnoha stránkami — v panelu bez podstránek, jen s počtem
+    const deti=u.hide_children?[]:vsechnyDeti;
     const otevreno=hloubka===0&&W.cfg.expand_sections!==false;
-    return `<li><div class="uzel"><a href="#${escAttr(u.id)}" data-id="${escAttr(u.id)}"><span class="em" aria-hidden="true">${esc(u.emoji||"")}</span><span class="t">${esc(u.title)}${u.draft?`<span class="koncept-zn"> · ${esc(T.koncept)}</span>`:""}</span>${deti.length?pocetHtml(pocetStranek(u)):""}</a>${deti.length?`<button type="button" aria-expanded="${otevreno}" aria-controls="pod-${escAttr(u.id)}" aria-label="${escAttr(T.rozbalit+": "+u.title)}"></button>`:""}</div>${deti.length?`<div id="pod-${escAttr(u.id)}"${otevreno?"":" hidden"}>${stromHtml(deti,hloubka+1)}</div>`:""}</li>`;
+    return `<li><div class="uzel"><a href="#${escAttr(u.id)}" data-id="${escAttr(u.id)}"><span class="em" aria-hidden="true">${esc(u.emoji||"")}</span><span class="t">${esc(u.title)}${u.draft?`<span class="koncept-zn"> · ${esc(T.koncept)}</span>`:""}</span>${vsechnyDeti.length?pocetHtml(pocetStranek(u)):""}</a>${deti.length?`<button type="button" aria-expanded="${otevreno}" aria-controls="pod-${escAttr(u.id)}" aria-label="${escAttr(T.rozbalit+": "+u.title)}"></button>`:""}</div>${deti.length?`<div id="pod-${escAttr(u.id)}"${otevreno?"":" hidden"}>${stromHtml(deti,hloubka+1)}</div>`:""}</li>`;
   }).join("")}</ul>`;
 }
 function slovoStranek(n){
@@ -946,6 +954,10 @@ function slovoStranek(n){
 const pocetHtml=n=>`<span class="pocet"><span aria-hidden="true">${n}</span><span class="sr-only">, ${n} ${slovoStranek(n)}</span></span>`;
 function oznacitVeStromu(id){
   document.querySelectorAll("#strom a[data-id]").forEach(a=>{ if(a.dataset.id===id) a.setAttribute("aria-current","page"); else a.removeAttribute("aria-current"); });
+  // stránka schovaná pod sekcí se skrytými podstránkami: zvýraznit tu sekci
+  if(id&&!document.querySelector(`#strom a[data-id="${CSS.escape(id)}"]`)){
+    for(let p=W.stranky.get(id)?.rodic; p; p=p.rodic){ const a=document.querySelector(`#strom a[data-id="${CSS.escape(p.id)}"]`); if(a){ a.setAttribute("aria-current","true"); break; } }
+  }
   document.querySelectorAll("#quick a[data-stranka]").forEach(a=>{ if(a.dataset.stranka===id) a.setAttribute("aria-current","page"); else a.removeAttribute("aria-current"); });
   // rozbalit cestu k aktuální stránce
   for(let p=W.stranky.get(id); p; p=p.rodic){
