@@ -496,6 +496,7 @@ async function nacistWeb(){
   rozlozeni();
   nacistVsechnyStranky();
   najitNezarazene();
+  zjistitNovyProhlizec();
 }
 /* Veřejná adresa webu je jen to, co je ve wiki.json → url. Nic se nedomýšlí —
    web může běžet na vlastní doméně a odhad z GitHub Pages by byl špatně. */
@@ -1556,13 +1557,26 @@ function editorBloku(c,zmena){
   };
   kresli(); return ul;
 }
+/* Automatická aktualizace prohlížeče: když ve složce leží WikiWeb index.html ve starší verzi,
+   přibalí se nová verze (prohlizec.html) k nejbližšímu uložení. Cizí index.html se nepřepisuje
+   a bez index.html ve složce se nic nepřidává (web může běžet jinde). */
+async function zjistitNovyProhlizec(){
+  E.novyProhlizec=null;
+  try{
+    const [vRepu,aktualni]=await Promise.all([ghNacist("index.html"),fetch("prohlizec.html",{cache:"no-store"}).then(r=>r.ok?r.text():null)]);
+    if(!vRepu||!aktualni||!/name="generator" content="WikiWeb"/.test(vRepu.text)) return;
+    if(vRepu.text.replace(/\r\n?/g,"\n")===aktualni.replace(/\r\n?/g,"\n")) return;
+    if(E.soubory.get("index.html")?.stav==="novy") return;   // instalace už čeká na uložení
+    E.novyProhlizec={text:aktualni,sha:vRepu.sha};
+  }catch{}
+}
 async function stavProhlizece(p){
   try{
     const [vRepu,aktualni]=await Promise.all([ghNacist("index.html"),fetch("prohlizec.html",{cache:"no-store"}).then(r=>r.ok?r.text():null)]);
     if(E.soubory.get("index.html")?.stav==="novy"){ p.textContent="Prohlížeč se zapíše při příštím uložení."; return; }
     p.textContent=!vRepu?"Ve složce zatím index.html není — web na GitHub Pages zatím nepoběží.":
       aktualni&&vRepu.text.replace(/\r\n?/g,"\n")===aktualni.replace(/\r\n?/g,"\n")?"Prohlížeč je nainstalovaný a aktuální.":
-      /name="generator" content="WikiWeb"/.test(vRepu.text)?"Prohlížeč je nainstalovaný, je k dispozici novější verze.":"Ve složce je jiný index.html (ne WikiWeb). Instalace by ho přepsala.";
+      /name="generator" content="WikiWeb"/.test(vRepu.text)?"Prohlížeč je nainstalovaný ve starší verzi — nová verze se zapíše sama při příštím uložení webu.":"Ve složce je jiný index.html (ne WikiWeb). Instalace by ho přepsala.";
   }catch(e){ p.textContent="Stav prohlížeče se nepodařilo zjistit: "+e.message; }
 }
 async function instalovatProhlizec(){
@@ -1618,6 +1632,8 @@ async function ulozitVse(){
   if(!E.gh.token){ stav("Uložení vyžaduje token — doplňte ho v Připojení","chyba"); otevritPripojeni(); return; }
   const zmeny=seznamZmen();
   if(!zmeny.length){ stav("Není co ukládat","ok"); return; }
+  const sProhlizecem=!!E.novyProhlizec&&!zmeny.some(z=>z.cesta==="index.html");
+  if(sProhlizecem) zmeny.push({cesta:"index.html",text:E.novyProhlizec.text,sha:E.novyProhlizec.sha,prohlizec:true});
   E.ukladam=true; stav("Kontroluji, jestli se soubory mezitím nezměnily…");
   try{
     /* pojistka proti přepsání cizích změn: SHA v repozitáři musí sedět s tím, co jsme načetli */
@@ -1637,11 +1653,12 @@ async function ulozitVse(){
       if(z.cesta==="wiki.json"){ E.cfgSha=sha[z.cesta]; E.cfgPuvodni=z.text; }
       else if(z.cesta==="contents.json"){ E.obsahSha=sha[z.cesta]; E.obsahPuvodni=z.text; }
       else if(z.smazat){ E.smazat.delete(z.cesta); }
+      else if(z.prohlizec){ E.novyProhlizec=null; }
       else{ const s=E.soubory.get(z.cesta); if(s){ s.sha=sha[z.cesta]; s.puvodni=s.text; s.stav="nacteno"; s.vytvorit=false; if(s.bin){ s.b64=null; } } }
     }
     vsechnyUzly().forEach(u=>{ u._auto=false; });
     najitNezarazene();
-    stav(`Uloženo (${zmeny.length} ${zmeny.length===1?"soubor":zmeny.length<5?"soubory":"souborů"}). Web na GitHub Pages se obnoví do minuty.`,"ok");
+    stav(`Uloženo (${zmeny.length} ${zmeny.length===1?"soubor":zmeny.length<5?"soubory":"souborů"})${sProhlizecem?", včetně nové verze prohlížeče index.html":""}. Web na GitHub Pages se obnoví do minuty.`,"ok");
     obnovitStav();
   }catch(e){
     stav("Uložení selhalo: "+e.message,"chyba");
