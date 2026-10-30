@@ -100,7 +100,7 @@ Parametry: `?repo=vlastnik/repo&slozka=web&vetev=main` načte web z raw.githubus
 ## Aplikace
 
 - Parametry `?repo=vlastnik/repo&slozka=web&vetev=main` (přijme i `owner`+`repo`, `path`, `branch` jako editor md2web). Token je jen v `localStorage` (`wikiweb-token-v1`).
-- Režimy **Prohlížet** (prohlížeč přes celou plochu) a **Upravovat** (strom | editor | volitelně náhled). Při přepnutí se otevře stránka, která byla zrovna vidět; proklik v náhledu přepne i editor.
+- Režimy **Prohlížet** (prohlížeč přes celou plochu; přepínač Zobrazit koncepty — vypnutý ukáže web jako návštěvník, posílá se ve zprávě `wikiweb-nahled` jako `koncepty`) a **Upravovat** (strom | editor | volitelně náhled). Při přepnutí se otevře stránka, která byla zrovna vidět; proklik v náhledu přepne i editor.
 - S tokenem se po načtení dotáhnou všechny místní stránky přes API — prohlížení pak funguje i u soukromého repozitáře.
 - Obsah z cizího repozitáře nebo URL se v aplikaci jen čte.
 
