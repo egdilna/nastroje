@@ -79,6 +79,11 @@ label.pole > span,.pole-t{font-size:12px;color:var(--muted);font-weight:600}
 .strom button.rozbal[aria-expanded="true"]::before{transform:rotate(90deg)}
 .strom .rozbal-misto{flex:none;width:24px}
 .strom .pocet{margin-left:auto;font-size:11px;color:var(--muted);flex:none}
+.hoist{padding:0 14px 6px}
+.hoist ol{list-style:none;margin:0;padding:6px 8px;display:flex;flex-wrap:wrap;gap:2px 6px;background:var(--accent-soft);border-radius:8px;font-size:12.5px}
+.hoist li+li::before{content:"›";margin-right:6px;color:var(--muted)}
+.hoist a{color:var(--accent)}
+.hoist li[aria-current]{font-weight:600}
 .strom-hlava{display:flex;align-items:center;gap:4px;margin:14px 14px 6px}
 .strom-hlava h2{margin:0 auto 0 0 !important}
 .strom .koncept{font-size:11px;color:var(--warn);flex:none;font-style:italic}
@@ -186,6 +191,7 @@ dialog::backdrop{background:rgba(10,14,22,.5)}
     </ul></div>
     <div class="strom-hlava"><h2 id="h-strom">Obsah webu</h2>
       <button class="btn mini" type="button" id="s-rozbalit">Rozbalit vše</button><button class="btn mini" type="button" id="s-sbalit">Sbalit vše</button></div>
+    <nav class="hoist" id="hoist" aria-label="Zobrazená část obsahu" hidden></nav>
     <div class="strom-scroll strom" id="strom" aria-labelledby="h-strom"></div>
     <div class="strom-akce" role="toolbar" aria-label="Úpravy stromu stránek">
       <button class="btn mini" type="button" id="s-nova">+ Stránka</button>
@@ -195,6 +201,7 @@ dialog::backdrop{background:rgba(10,14,22,.5)}
       <button class="btn mini" type="button" id="s-dolu" aria-label="Posunout dolů" title="Alt+↓">↓</button>
       <button class="btn mini" type="button" id="s-ven" aria-label="Předsadit o úroveň výš" title="Alt+←">←</button>
       <button class="btn mini" type="button" id="s-dovnitr" aria-label="Odsadit pod předchozí stránku" title="Alt+→">→</button>
+      <button class="btn mini" type="button" id="s-hoist" aria-pressed="false" title="Ukázat jen vybranou stránku a její podstránky">Jen tato část</button>
       <button class="btn mini nebezpecne" type="button" id="s-smazat">Odebrat</button>
     </div>
   </nav>
@@ -506,6 +513,13 @@ function rozbalitVse(stav){
   vsechnyUzly().forEach(u=>{ if((u.children||[]).length) E.rozbaleni.set(u._k,stav); });
   kreslitStrom();
 }
+function nastavitHoist(u){
+  E.hoist=u&&!u.ref?u:null;
+  if(E.hoist) E.rozbaleni.set(E.hoist._k,true);
+  kreslitStrom();
+  stav(E.hoist?`Zobrazeno jen „${E.hoist.title}“ a podstránky`:"Zobrazen celý obsah webu");
+  const a=E.hoist?document.querySelector(`#strom a[data-k="${E.hoist._k}"]`):$("#s-hoist"); if(a) a.focus();
+}
 function kreslitStrom(){
   E.mapa=new Map(); vsechnyUzly().forEach(u=>E.mapa.set(u._k,u));
   const cesta=new Set(); for(let m=E.vybrano?.uzel&&najitMisto(E.vybrano.uzel); m&&m.rodic; m=najitMisto(m.rodic)) cesta.add(m.rodic);
@@ -544,7 +558,20 @@ function kreslitStrom(){
       pod);
   }));
   const box=$("#strom"); box.innerHTML="";
-  box.append(E.strom.length?kresli(E.strom):el("p",{class:"tichy",style:"padding:0 8px"},"Zatím žádné stránky. Přidejte první tlačítkem + Stránka."));
+  /* Hoist: strom zúžený na jednu stránku a její podstránky; nad ním cesta k ní jako odkazy */
+  if(E.hoist&&!vsechnyUzly().includes(E.hoist)) E.hoist=null;
+  const h=$("#hoist"); h.innerHTML=""; h.hidden=!E.hoist;
+  $("#s-hoist").setAttribute("aria-pressed",!!E.hoist);
+  $("#s-hoist").textContent=E.hoist?"Celý obsah":"Jen tato část";
+  if(E.hoist){
+    const predci=[]; for(let m=najitMisto(E.hoist); m&&m.rodic; m=najitMisto(m.rodic)) predci.unshift(m.rodic);
+    const odkaz=(text,cil)=>el("a",{href:cil?"#"+encodeURIComponent(cil.id||""):"#obsah-webu",onclick:e=>{ e.preventDefault(); nastavitHoist(cil); }},text);
+    h.append(el("ol",{},el("li",{},odkaz("Celý obsah",null)),...predci.map(x=>el("li",{},odkaz(x.title||"(bez názvu)",x))),
+      el("li",{"aria-current":"location"},(ikonaUzlu(E.hoist)?ikonaUzlu(E.hoist)+" ":"")+(E.hoist.title||""))));
+    cesta.add(E.hoist);
+    const m=najitMisto(E.hoist);
+    box.append(kresli([E.hoist],m?.rodic||null,0));
+  }else box.append(E.strom.length?kresli(E.strom):el("p",{class:"tichy",style:"padding:0 8px"},"Zatím žádné stránky. Přidejte první tlačítkem + Stránka."));
   for(const [sel,druh] of [["#u-nastaveni","nastaveni"],["#u-sidebar","sidebar"],["#u-nezarazene","nezarazene"],["#u-sprava","sprava"]]){
     if(E.vybrano?.druh===druh) $(sel).setAttribute("aria-current","page"); else $(sel).removeAttribute("aria-current");
   }
@@ -557,7 +584,8 @@ function novaStranka(podstranka){
   const slozka=(E.cfg.folders?.pages||"").replace(/^\/+|\/+$/g,"");
   const u={_k:E.dalsiKlic++,id,title:"Nová stránka",emoji:"",file:(slozka?slozka+"/":"")+id+".md",children:[],_auto:true,...(E.cfg.new_as_draft?{draft:true}:{})};
   if(rodic){ (rodic.children=rodic.children||[]).push(u); }
-  else if(E.vybrano?.druh==="stranka"){ const m=najitMisto(E.vybrano.uzel); m.pole.splice(m.i+1,0,u); }
+  else if(E.vybrano?.druh==="stranka"&&E.vybrano.uzel!==E.hoist){ const m=najitMisto(E.vybrano.uzel); m.pole.splice(m.i+1,0,u); }
+  else if(E.hoist) (E.hoist.children=E.hoist.children||[]).push(u);   // zúžený strom: nová stránka patří do zobrazené části
   else E.strom.push(u);
   E.soubory.set(u.file,{text:sablonaTypu(typUzlu(u)),puvodni:"",sha:null,stav:"novy",vytvorit:true});
   vybrat({druh:"stranka",uzel:u});
@@ -1680,6 +1708,12 @@ $("#s-dolu").addEventListener("click",()=>posun("dolu"));
 $("#s-ven").addEventListener("click",()=>posun("ven"));
 $("#s-dovnitr").addEventListener("click",()=>posun("dovnitr"));
 $("#s-smazat").addEventListener("click",odebrat);
+$("#s-hoist").addEventListener("click",()=>{
+  if(E.hoist) return nastavitHoist(null);
+  const u=E.vybrano?.druh==="stranka"?E.vybrano.uzel:null;
+  if(!u||u.ref){ stav("Nejdřív vyberte stránku, na kterou se má strom zúžit","chyba"); return; }
+  nastavitHoist(u);
+});
 $("#strom").addEventListener("keydown",e=>{
   if(!e.altKey) return;
   const m={ArrowUp:"nahoru",ArrowDown:"dolu",ArrowLeft:"ven",ArrowRight:"dovnitr"}[e.key];
