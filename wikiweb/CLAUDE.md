@@ -97,6 +97,8 @@ Parser je převzatý z md2web (stejná syntaxe i HTML výstup) a doplněný:
 - úvodní `# Nadpis` v souboru se vynechá (H1 stránky je její název z contents.json), další H1 se sníží na H2,
 - **novinky**: řádek `2026-10-30: Titulek` (také `30.10.2026:` a `10/30/2026:`), pod ním text do dalšího data nebo nadpisu; v panelu se ukáže kalendář,
 - **štítky** stránek (`tags`) a článků (`Tagy:`) jsou jeden jmenný prostor bez ohledu na velikost písmen. Stránka `#/stitek/x` vypíše stránky i články ze všech sekcí; filtr `#sekce?tag=x` zůstává uvnitř sekce článků (jako md2web) a nabízí odkaz na štítek na celém webu. Blok `stitky` v panelu ukazuje štítky toho, co čtete (stránky, článku, sekce článků), volitelný blok `vsestitky` je mrak celého webu s počty. Index buduje `indexStitku()`,
+- **interní štítky**: štítek začínající tečkou (`.navody-it`) se na webu nikde neukazuje (u stránky, článku, v panelu, v mraku, na stránce štítku ani v hledání), `verejnyStitek()`. V editoru je vidět s čárkovaným okrajem.
+- **výpis štítku**: řádek `{{štítek:název}}` (také `{{stitek:…}}`, `{{tag:…}}`) vypíše stránky s tímto štítkem — jen stránky, ne články — podle abecedy, s ikonou a perexem (`vypisStitku()`, zpracovává se ve `vlozitStranky()`). Funguje i pro interní štítky. V editoru tlačítko Výpis štítku; Správa webu ho nebere jako chybějící stránku.
 - **sekce článků**: soubor začíná řádkem `articles` (smí mu předcházet `# Název`), každý článek je `## Nadpis`, pod ním `Datum:` a `Tagy:`, první odstavec je perex. Navíc (md2web ho nezná a ukázal by ho jako text) řádek `Stav: koncept` / `Status: draft` — takový článek se na webu nezobrazí. Přesně formát md2web; víc sekcí článků = víc takových souborů, každá má vlastní štítky.
 
 ## Adresy v prohlížeči
