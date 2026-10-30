@@ -86,6 +86,7 @@ label.pole > span,.pole-t{font-size:12px;color:var(--muted);font-weight:600}
 .hoist li[aria-current]{font-weight:600}
 .strom-hlava{display:flex;align-items:center;gap:4px;margin:14px 14px 6px}
 .strom-hlava h2{margin:0 auto 0 0 !important}
+.strom .needit{font-size:11px;color:var(--muted);flex:none;font-style:italic}
 .strom .koncept{font-size:11px;color:var(--warn);flex:none;font-style:italic}
 .strom-akce{display:flex;flex-wrap:wrap;gap:4px;padding:8px;border-top:1px solid var(--line)}
 .zvlastni{padding:4px 8px 0}
@@ -417,17 +418,20 @@ async function ghPut(z,zprava){
 
 /* ---------- stavový řádek ---------- */
 function stav(text,druh){ const s=$("#stav"); s.textContent=text; s.className=druh||""; }
+/* managed: true — obsah .md souboru plní jiná aplikace; WikiWeb ho jen čte */
+const spravovaneSoubory=()=>new Set(stranky().filter(u=>u.managed&&druhZdroje(u)==="mistni").map(u=>u.file));
 function seznamZmen(){
   const z=[];
   if(!E.webNacten) return z;
+  const ciziSoubory=spravovaneSoubory();
   if(textCfg()!==E.cfgPuvodni) z.push({cesta:"wiki.json",text:textCfg(),sha:E.cfgSha});
   if(textObsahu()!==E.obsahPuvodni) z.push({cesta:"contents.json",text:textObsahu(),sha:E.obsahSha});
   for(const [cesta,s] of E.soubory){
-    if(s.stav==="chyba"||s.stav==="nacitam") continue;
+    if(s.stav==="chyba"||s.stav==="nacitam"||ciziSoubory.has(cesta)) continue;
     if(s.bin){ if(s.stav==="novy") z.push({cesta,b64:s.b64,sha:s.sha}); continue; }
     if(s.text!==s.puvodni||(s.stav==="novy"&&!s.sha&&s.vytvorit)) z.push({cesta,text:s.text,sha:s.sha});
   }
-  for(const [cesta,sha] of E.smazat) if(!E.soubory.has(cesta)) z.push({cesta,smazat:true,sha});
+  for(const [cesta,sha] of E.smazat) if(!E.soubory.has(cesta)&&!ciziSoubory.has(cesta)) z.push({cesta,smazat:true,sha});
   return z;
 }
 function obnovitStav(){
@@ -552,6 +556,7 @@ function kreslitStrom(){
         d==="repo"||d==="url"?el("span",{class:"ext",title:"Obsah z jiného zdroje"},"↗"):null,
         u.hidden?el("span",{class:"sr-only"},", skrytá v menu"):null,
         u.draft?el("span",{class:"koncept"},"koncept"):null,
+        u.managed?el("span",{class:"needit"},"needitovatelné"):null,
         deti?el("span",{class:"pocet","aria-hidden":"true",hidden:!!rozbaleno},String(deti)):null,
         el("span",{class:"zn","aria-hidden":"true"}))),
       pod);
@@ -673,7 +678,7 @@ function odebrat(){
   const pocet=vsechnyUzlyPod(u).length-1;
   if(!confirm(`Odebrat stránku „${u.title}“ z obsahu webu${pocet?` i s ${pocet} podstránkami`:""}?`)) return;
   for(const x of vsechnyUzlyPod(u)){
-    if(druhZdroje(x)!=="mistni") continue;
+    if(druhZdroje(x)!=="mistni"||x.managed) continue;
     const s=E.soubory.get(x.file);
     const sha=s?.sha;
     if(s&&s.stav==="novy"&&!sha){ E.soubory.delete(x.file); continue; }
@@ -782,9 +787,9 @@ function kreslitStranku(ed,u){
   const napoveda=el("p",{class:"tichy",style:"margin:4px 0 0"});
   const popisZdroje=()=>{
     const d=druhZdroje(u);
-    souborPole.disabled=d==="zadny";
+    souborPole.disabled=d==="zadny"||!!u.managed;
     souborPole.placeholder=d==="repo"?"vlastnik/repo/cesta/soubor.md":d==="url"?"https://…/soubor.md":"cesta/soubor.md";
-    napoveda.textContent=d==="mistni"?"Cesta ve složce webu, libovolná podsložka. Soubor se tu dá upravovat.":
+    napoveda.textContent=d==="mistni"?(u.managed?"Cesta ve složce webu. Soubor spravuje jiná aplikace, cesta se tu proto nemění.":"Cesta ve složce webu, libovolná podsložka. Soubor se tu dá upravovat."):
       d==="repo"?"Například michalradacz/testweb/obsah/testovaci-clanek.md, jinou větev zapíšete jako vlastnik/repo@vetev/cesta.md. Obsah se načítá z raw.githubusercontent.com a tady se jen čte.":
       d==="url"?"Přímá adresa Markdownu. Odkaz github.com/…/blob/… se převede sám. Obsah se tu jen čte.":
       "Stránka nemá vlastní text, zobrazí jen dlaždice svých podstránek.";
@@ -802,6 +807,21 @@ function kreslitStranku(ed,u){
     karta.append(el("fieldset",{style:"margin-top:12px"},el("legend",{},`Podstránky (${u.children.length})`),
       volba("Nezobrazovat podstránky v postranním panelu (jen počet; ve výpisu sekce zůstanou)","hide_children",z=>z?"Podstránky se v panelu nezobrazí":"Podstránky se v panelu zobrazí"),
       volba("Řadit podstránky automaticky podle abecedy","sort_children",z=>z?"Podstránky se řadí podle abecedy":"Podstránky jsou v ručním pořadí")));
+  }
+  if(druhZdroje(u)==="mistni"||u.managed){
+    const sprav=el("input",{type:"checkbox",checked:!!u.managed,"aria-describedby":"sprav-napoveda"});
+    sprav.addEventListener("change",()=>{
+      const sb=E.soubory.get(u.file);
+      if(sprav.checked&&sb&&!sb.bin&&sb.text!==sb.puvodni){
+        if(!confirm("Obsah stránky má neuložené úpravy. Zahodit je? Soubor spravovaný jinou aplikací WikiWeb nezapisuje.")){ sprav.checked=false; return; }
+        sb.text=sb.puvodni; sb.vytvorit=false;
+      }
+      if(sprav.checked) u.managed=true; else delete u.managed;
+      vybrat({druh:"stranka",uzel:u});
+      stav(sprav.checked?"Obsah stránky je jen ke čtení — spravuje ho jiná aplikace":"Obsah stránky jde zase upravovat");
+    });
+    karta.append(el("label",{class:"radek",style:"margin-top:6px"},sprav,el("b",{},"Spravováno jinou aplikací"),"— obsah souboru je tady jen ke čtení"),
+      el("p",{class:"tichy",id:"sprav-napoveda",style:"margin:2px 0 0 26px"},"Pro soubory, které plní jiný nástroj. WikiWeb je nezapíše, nepřesune ani nesmaže; vlastnosti stránky (název, štítky, umístění…) se upravovat dají."));
   }
   const koncept=el("input",{type:"checkbox",checked:!!u.draft,"aria-describedby":"koncept-napoveda"});
   koncept.addEventListener("change",()=>{ u.draft=koncept.checked; kreslitStrom(); obnovitStav(); planNahled(); stav(u.draft?"Stránka je koncept — na webu se po uložení nezobrazí":"Stránka bude po uložení zveřejněná"); });
@@ -929,6 +949,12 @@ async function kreslitObsah(box,u){
       el("div",{class:"radek",style:"margin-top:8px"},
         el("button",{class:"btn mini",type:"button",onclick:()=>{ E.soubory.delete(u.file); vybrat({druh:"stranka",uzel:u}); }},"Zkusit znovu načíst"),
         el("button",{class:"btn mini nebezpecne",type:"button",onclick:()=>{ if(!confirm("Opravdu psát do prázdného souboru? Uložení přepíše, co je teď v repozitáři.")) return; Object.assign(s,{stav:"novy",text:"",puvodni:"\0",vytvorit:true}); vybrat({druh:"stranka",uzel:u}); }},"Přesto upravovat (přepíše soubor)"))));
+    return;
+  }
+  if(u.managed){
+    lista.hidden=true; t.readOnly=true; t.value=s.text; t.setAttribute("aria-label","Obsah stránky (jen ke čtení — spravuje jiná aplikace)");
+    info.append(el("div",{class:"upozorneni info"},"🔒 Obsah spravuje jiná aplikace, tady je jen ke čtení. Úpravy dělejte v ní; WikiWeb soubor nezapíše."));
+    box.insertBefore(info,lista);
     return;
   }
   if(s.stav==="novy"&&!s.sha) info.append(el("p",{class:"tichy"},"Soubor zatím v repozitáři není, vznikne při uložení."));
@@ -1186,8 +1212,9 @@ function prepsatStitek(stary,novy){
     const t=[]; for(const x of u.tags){ const y=x.toLowerCase()===k?novy:x; if(y&&!t.some(z=>z.toLowerCase()===y.toLowerCase())) t.push(y); }
     if(t.length) u.tags=t; else delete u.tags; n++;
   }
-  for(const [,x] of E.soubory){
-    if(x.bin||!x.text||x.stav==="chyba") continue;
+  const cizi=spravovaneSoubory();
+  for(const [cesta,x] of E.soubory){
+    if(x.bin||!x.text||x.stav==="chyba"||cizi.has(cesta)) continue;
     const nt=x.text.replace(RADEK_TAGU,(cely,pred,seznam)=>{
       const t=[]; for(const a of seznam.split(",").map(s=>s.trim()).filter(Boolean)){ const y=a.toLowerCase()===k?novy:a; if(y&&!t.some(z=>z.toLowerCase()===y.toLowerCase())) t.push(y); }
       return pred+t.join(", ");
