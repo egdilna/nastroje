@@ -1,0 +1,3737 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Espanso Editor — správa zkratek</title>
+<script>
+  // Prohlížeče blokují stahování souborů ze stránek běžících po nezabezpečeném spojení.
+  // Editor soubory nabízí ke stažení, tak se hned na začátku přesuneme na HTTPS.
+  // Přesuneme se ale jen tehdy, když HTTPS opravdu odpovídá — jinak bychom editor znepřístupnili.
+  (function () {
+    var mistni = /^(localhost|127\.0\.0\.1|\[::1\])?$/.test(location.hostname);
+    if (location.protocol !== "http:" || mistni) return;
+    var cil = "https:" + location.href.slice(location.protocol.length);
+    try {
+      fetch(cil, { method: "HEAD", mode: "no-cors", cache: "no-store" })
+        .then(function () { location.replace(cil); })
+        .catch(function () { /* HTTPS neodpovídá, zůstaneme tady a upozorníme až u stahování */ });
+    } catch (e) { /* starý prohlížeč bez fetch — necháme být */ }
+  })();
+</script>
+<style>
+  :root {
+    --bg: #10131a;
+    --panel: #181c25;
+    --panel2: #212736;
+    --ram: #39415a;
+    --ram-silny: #5a668c;
+    --text: #eef1f7;
+    --text-tlumeny: #a8b0c4;
+    --akcent: #6fb3ff;
+    --akcent-tmavy: #123a63;
+    --chyba: #ff8a80;
+    --chyba-pozadi: #3a1a1a;
+    --varovani: #ffcf6b;
+    --ok: #7ee0a2;
+    --radius: 6px;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f4f6fa;
+      --panel: #ffffff;
+      --panel2: #eef1f7;
+      --ram: #c3cad9;
+      --ram-silny: #8d97ad;
+      --text: #14181f;
+      --text-tlumeny: #4e5668;
+      --akcent: #0b4da2;
+      --akcent-tmavy: #d7e6ff;
+      --chyba: #a4121a;
+      --chyba-pozadi: #ffe9e9;
+      --varovani: #6d4a00;
+      --ok: #0d6b34;
+    }
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  body, h1, h2, h3, p, ul, ol, li, figure, fieldset, legend { margin: 0; padding: 0; }
+  ul, ol { list-style: none; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 16px;
+    line-height: 1.55;
+    min-height: 100vh;
+  }
+
+  .jen-pro-ctecku {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .preskocit {
+    position: absolute;
+    top: -100px;
+    left: 0;
+    background: var(--akcent);
+    color: var(--bg);
+    padding: 0.6rem 1rem;
+    font-weight: 600;
+    z-index: 100;
+    text-decoration: none;
+  }
+  .preskocit:focus { top: 0; }
+
+  :focus-visible {
+    outline: 3px solid var(--akcent);
+    outline-offset: 2px;
+  }
+
+  /* ── Hlavička ─────────────────────────────────────────── */
+  header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--ram);
+    padding: 0.7rem 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem 1rem;
+  }
+  header h1 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  header h1 .verze { color: var(--text-tlumeny); font-weight: 400; font-size: 0.85rem; }
+  .nastroje { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+
+  /* ── Tlačítka a pole ──────────────────────────────────── */
+  button, .tlacitko {
+    font: inherit;
+    font-size: 0.92rem;
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid var(--ram);
+    border-radius: var(--radius);
+    padding: 0.42rem 0.75rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  button:hover, .tlacitko:hover { border-color: var(--ram-silny); background: var(--ram); }
+  button[disabled] { opacity: 0.45; cursor: not-allowed; }
+  button.hlavni { background: var(--akcent-tmavy); border-color: var(--akcent); font-weight: 600; }
+  button.nebezpecne:hover { border-color: var(--chyba); color: var(--chyba); }
+  button.drobne { font-size: 0.82rem; padding: 0.25rem 0.5rem; }
+
+  input[type="text"], input[type="number"], input[type="search"], select, textarea {
+    font: inherit;
+    font-size: 0.95rem;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--ram);
+    border-radius: var(--radius);
+    padding: 0.42rem 0.55rem;
+    width: 100%;
+  }
+  textarea { line-height: 1.5; resize: vertical; }
+  textarea.kod, input.kod, .kod {
+    font-family: ui-monospace, "SFMono-Regular", "Cascadia Code", Consolas, monospace;
+    font-size: 0.9rem;
+  }
+  label { display: block; font-size: 0.88rem; color: var(--text-tlumeny); margin-bottom: 0.15rem; }
+  .radek-pole { margin-bottom: 0.75rem; }
+  .mrizka { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+  .zaskrtavatko { display: flex; align-items: flex-start; gap: 0.45rem; font-size: 0.92rem; color: var(--text); margin-bottom: 0.3rem; }
+  .zaskrtavatko { flex-wrap: wrap; }
+  .zaskrtavatko input { width: auto; margin-top: 0.3rem; }
+  .zaskrtavatko .napoveda { flex-basis: 100%; margin: 0 0 0.15rem 1.6rem; }
+  .zaskrtavatko label { color: var(--text); margin: 0; font-size: 0.92rem; }
+  .napoveda { font-size: 0.82rem; color: var(--text-tlumeny); margin-top: 0.2rem; }
+
+  fieldset { border: 1px solid var(--ram); border-radius: var(--radius); padding: 0.85rem; margin-bottom: 1rem; }
+  legend { font-weight: 600; padding: 0 0.4rem; font-size: 0.95rem; }
+  .prepinace { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin-bottom: 0.8rem; }
+  .prepinace > div { display: flex; align-items: center; gap: 0.35rem; }
+  .prepinace input { width: auto; }
+  .prepinace label { color: var(--text); margin: 0; }
+
+  /* ── Záložky ──────────────────────────────────────────── */
+  .zalozky { display: flex; gap: 0.25rem; padding: 0 1rem; background: var(--panel); border-bottom: 1px solid var(--ram); flex-wrap: wrap; }
+  .zalozky button {
+    background: none;
+    border: none;
+    border-bottom: 3px solid transparent;
+    border-radius: 0;
+    padding: 0.55rem 0.8rem;
+    color: var(--text-tlumeny);
+  }
+  .zalozky button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--akcent); font-weight: 600; }
+  .zalozky button:hover { background: var(--panel2); }
+
+  /* ── Rozvržení ────────────────────────────────────────── */
+  .panel-zalozky { padding: 1rem; }
+  .rozdeleni { display: grid; grid-template-columns: minmax(240px, 340px) 1fr; gap: 1rem; align-items: start; }
+  @media (max-width: 900px) { .rozdeleni { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--ram);
+    border-radius: var(--radius);
+    padding: 0.85rem;
+  }
+  .panel > h2 { font-size: 1rem; margin-bottom: 0.6rem; }
+
+  /* ── Seznam zkratek ───────────────────────────────────── */
+  #seznam-zkratek { max-height: 62vh; overflow: auto; border: 1px solid var(--ram); border-radius: var(--radius); }
+  #seznam-zkratek li + li { border-top: 1px solid var(--ram); }
+  #seznam-zkratek a {
+    display: block;
+    padding: 0.5rem 0.6rem;
+    color: inherit;
+    text-decoration: none;
+  }
+  #seznam-zkratek a:hover .spoustec { text-decoration: underline; }
+  #seznam-zkratek a[aria-current="true"] { background: var(--akcent-tmavy); box-shadow: inset 4px 0 0 var(--akcent); }
+  #seznam-zkratek .spoustec { font-family: ui-monospace, Consolas, monospace; font-weight: 600; display: block; }
+  #seznam-zkratek .ukazka { display: block; font-size: 0.82rem; color: var(--text-tlumeny); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .prazdno { color: var(--text-tlumeny); font-size: 0.9rem; padding: 0.75rem; }
+
+  /* ── Stavový řádek a hlášení ──────────────────────────── */
+  #stav {
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+    background: var(--panel2);
+    border-bottom: 1px solid var(--ram);
+    min-height: 2.2rem;
+  }
+  #stav.chyba { background: var(--chyba-pozadi); color: var(--chyba); font-weight: 600; }
+  #kontrola { margin-bottom: 1rem; }
+  #kontrola ul { border: 1px solid var(--varovani); border-radius: var(--radius); padding: 0.6rem 0.8rem; }
+  #kontrola li { font-size: 0.9rem; }
+  #kontrola li::before { content: "⚠ "; color: var(--varovani); }
+
+  /* ── Seznamy proměnných a polí ────────────────────────── */
+  .karta {
+    border: 1px solid var(--ram);
+    border-radius: var(--radius);
+    padding: 0.65rem;
+    margin-bottom: 0.6rem;
+    background: var(--panel2);
+  }
+  .karta-hlavicka { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+  .karta-hlavicka h3 { font-size: 0.95rem; font-family: ui-monospace, Consolas, monospace; }
+  .karta-hlavicka .typ { font-size: 0.8rem; color: var(--text-tlumeny); border: 1px solid var(--ram); border-radius: 999px; padding: 0 0.5rem; }
+  .karta-hlavicka .mezera { flex: 1; }
+
+  .lista-vkladani { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.5rem 0; }
+
+  /* ── Dialog ───────────────────────────────────────────── */
+  .zaclona {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 2rem 1rem;
+    overflow: auto;
+    z-index: 50;
+  }
+  .zaclona[hidden] { display: none; }
+  .dialog {
+    background: var(--panel);
+    border: 1px solid var(--ram-silny);
+    border-radius: var(--radius);
+    padding: 1rem;
+    width: min(680px, 100%);
+  }
+  .dialog h2 { font-size: 1.05rem; margin-bottom: 0.75rem; }
+  .dialog-paticka { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; flex-wrap: wrap; }
+
+  .zetony { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+  .zetony button { font-size: 0.82rem; padding: 0.2rem 0.45rem; font-family: ui-monospace, Consolas, monospace; }
+
+  pre.nahled {
+    background: var(--bg);
+    border: 1px solid var(--ram);
+    border-radius: var(--radius);
+    padding: 0.6rem;
+    overflow: auto;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  details.sekce { margin-bottom: 1rem; }
+  details.sekce > summary { cursor: pointer; font-weight: 600; padding: 0.3rem 0; }
+
+  table.tabulka { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+  table.tabulka th, table.tabulka td { border: 1px solid var(--ram); padding: 0.3rem 0.5rem; text-align: left; vertical-align: top; }
+  table.tabulka th { background: var(--panel2); }
+  table.tabulka code { font-family: ui-monospace, Consolas, monospace; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<a class="preskocit" href="#hlavni">Přejít na hlavní obsah</a>
+
+<header>
+  <h1>Espanso Editor <span class="verze">správa zkratek</span></h1>
+  <div class="nastroje" role="group" aria-label="Práce se souborem">
+    <button type="button" id="tl-nacist" accesskey="o" aria-keyshortcuts="Alt+O Control+O" title="Přístupová klávesa O (obvykle Alt+O), nebo Ctrl+O">Načíst soubor…</button>
+    <input type="file" id="vstup-soubor" accept=".yml,.yaml,text/yaml" class="jen-pro-ctecku" aria-label="Vybrat YAML soubor">
+    <button type="button" id="tl-ulozit" accesskey="s" aria-keyshortcuts="Alt+S Control+S" title="Přístupová klávesa S (obvykle Alt+S), nebo Ctrl+S">Uložit soubor</button>
+    <button type="button" id="tl-ze-schranky">Načíst ze schránky</button>
+    <button type="button" id="tl-do-schranky" accesskey="c" aria-keyshortcuts="Alt+C Control+Shift+S" title="Přístupová klávesa C (obvykle Alt+C), nebo Ctrl+Shift+S">Kopírovat do schránky</button>
+    <button type="button" id="tl-html" accesskey="w" aria-keyshortcuts="Alt+W" title="Přístupová klávesa W (obvykle Alt+W) — vygeneruje samostatnou HTML verzi pro rychlé vkládání">Vytvořit HTML verzi</button>
+    <button type="button" id="tl-nova-sada" class="nebezpecne">Nová prázdná sada</button>
+    <button type="button" id="tl-napoveda">Nápověda</button>
+  </div>
+</header>
+
+<p id="stav" role="status">Připraveno. Načti YAML soubor Espansa, nebo rovnou přidej první zkratku.</p>
+
+<div class="zalozky" role="tablist" aria-label="Části souboru">
+  <button type="button" role="tab" id="zal-zkratky" aria-controls="obl-zkratky" aria-selected="true">Zkratky</button>
+  <button type="button" role="tab" id="zal-globalni" aria-controls="obl-globalni" aria-selected="false" tabindex="-1">Globální proměnné</button>
+  <button type="button" role="tab" id="zal-importy" aria-controls="obl-importy" aria-selected="false" tabindex="-1">Importy</button>
+  <button type="button" role="tab" id="zal-plocha" aria-controls="obl-plocha" aria-selected="false" tabindex="-1">Psací plocha</button>
+  <button type="button" role="tab" id="zal-zdroj" aria-controls="obl-zdroj" aria-selected="false" tabindex="-1">Zdroj YAML</button>
+</div>
+
+<main id="hlavni">
+  <!-- ═══ Záložka: Zkratky ═══════════════════════════════ -->
+  <div class="panel-zalozky" role="tabpanel" id="obl-zkratky" aria-labelledby="zal-zkratky" tabindex="-1">
+    <div class="rozdeleni">
+      <section class="panel" aria-labelledby="nadpis-seznam">
+        <h2 id="nadpis-seznam">Zkratky <span id="pocet-zkratek" class="napoveda"></span></h2>
+        <div class="radek-pole">
+          <label for="hledani">Hledat ve zkratkách</label>
+          <input type="search" id="hledani" placeholder="spouštěč, popisek nebo text">
+        </div>
+        <div class="nastroje" role="group" aria-label="Úpravy seznamu zkratek" style="margin-bottom:0.6rem">
+          <button type="button" id="tl-pridat" class="hlavni" accesskey="n" aria-keyshortcuts="Alt+N Control+N" title="Přístupová klávesa N (obvykle Alt+N), nebo Ctrl+N">+ Přidat zkratku</button>
+          <button type="button" id="tl-duplikovat">Duplikovat</button>
+          <button type="button" id="tl-smazat" class="nebezpecne">Smazat</button>
+        </div>
+        <ul id="seznam-zkratek" aria-label="Seznam zkratek (řazeno abecedně podle spouštěče)"></ul>
+      </section>
+
+      <section class="panel" aria-labelledby="nadpis-editor">
+        <h2 id="nadpis-editor" tabindex="-1">Úprava zkratky</h2>
+        <div id="kontrola" role="status"></div>
+        <div id="editor"></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ═══ Záložka: Globální proměnné ═════════════════════ -->
+  <div class="panel-zalozky" role="tabpanel" id="obl-globalni" aria-labelledby="zal-globalni" tabindex="-1" hidden>
+    <section class="panel" aria-labelledby="nadpis-globalni">
+      <h2 id="nadpis-globalni">Globální proměnné</h2>
+      <p class="napoveda">Globální proměnné (<code>global_vars</code>) jsou dostupné ve všech zkratkách v tomhle souboru. Používají se stejně: <code>{{jméno}}</code>.</p>
+      <div class="nastroje" style="margin:0.6rem 0">
+        <button type="button" id="tl-pridat-globalni" class="hlavni">+ Přidat globální proměnnou</button>
+      </div>
+      <div id="seznam-globalnich"></div>
+    </section>
+  </div>
+
+  <!-- ═══ Záložka: Importy ═══════════════════════════════ -->
+  <div class="panel-zalozky" role="tabpanel" id="obl-importy" aria-labelledby="zal-importy" tabindex="-1" hidden>
+    <section class="panel" aria-labelledby="nadpis-importy">
+      <h2 id="nadpis-importy">Importy</h2>
+      <p class="napoveda">Cesty k dalším souborům se zkratkami, které se mají načíst spolu s tímhle (<code>imports</code>). Jedna cesta na řádek.</p>
+      <div class="radek-pole" style="margin-top:0.6rem">
+        <label for="importy">Cesty k souborům</label>
+        <textarea id="importy" rows="6" class="kod" placeholder="../match/dalsi.yml"></textarea>
+      </div>
+    </section>
+  </div>
+
+  <!-- ═══ Záložka: Psací plocha ══════════════════════════ -->
+  <div class="panel-zalozky" role="tabpanel" id="obl-plocha" aria-labelledby="zal-plocha" tabindex="-1" hidden>
+    <div id="plocha-obal"></div>
+  </div>
+
+  <!-- ═══ Záložka: Zdroj YAML ════════════════════════════ -->
+  <div class="panel-zalozky" role="tabpanel" id="obl-zdroj" aria-labelledby="zal-zdroj" tabindex="-1" hidden>
+    <section class="panel" aria-labelledby="nadpis-zdroj">
+      <h2 id="nadpis-zdroj">Zdroj YAML</h2>
+      <p class="napoveda">Vygenerovaný soubor. Můžeš ho tady i ručně upravit a tlačítkem „Použít změny“ načíst zpátky do editoru.</p>
+      <div class="radek-pole" style="max-width:26rem">
+        <label for="nazev-souboru">Název souboru při ukládání</label>
+        <input type="text" id="nazev-souboru" class="kod" value="base.yml">
+      </div>
+      <div class="nastroje" style="margin:0.6rem 0">
+        <button type="button" id="tl-obnovit-zdroj">Obnovit z editoru</button>
+        <button type="button" id="tl-pouzit-zdroj" class="hlavni">Použít změny ze zdroje</button>
+        <button type="button" id="tl-do-schranky-2">Kopírovat do schránky</button>
+      </div>
+      <label for="zdroj" class="jen-pro-ctecku">Obsah YAML souboru</label>
+      <textarea id="zdroj" rows="26" class="kod" spellcheck="false"></textarea>
+    </section>
+  </div>
+</main>
+
+<div class="zaclona" id="zaclona" hidden>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-nadpis" id="dialog">
+    <h2 id="dialog-nadpis"></h2>
+    <div id="dialog-telo"></div>
+    <div class="dialog-paticka">
+      <button type="button" id="dialog-zrusit">Zrušit</button>
+      <button type="button" id="dialog-potvrdit" class="hlavni">Vložit</button>
+    </div>
+  </div>
+</div>
+
+<p id="hlaseni" aria-live="polite" class="jen-pro-ctecku"></p>
+
+<!-- Sdílený kód editoru a samostatné HTML verze. Editor si ho při startu vloží jako skript,
+     generátor ho vepíše do vygenerovaného souboru — obojí tak běží na jednom kódu. -->
+<script type="text/plain" id="kod-sdileny">
+/* ═══════════════════════════════════════════════════════════════════════════
+   SDÍLENÝ KÓD EDITORU A SAMOSTATNÉ HTML VERZE
+
+   Vyhodnocování zkratek (proměnné, formuláře, vnořené zkratky) a psací plocha.
+   Je to jeden a týž kód na obou stranách: editor si tenhle blok při startu
+   vloží jako skript, generátor ho vepíše do vygenerovaného souboru. Díky tomu
+   se zkratky chovají v obou aplikacích stejně.
+
+   Data si modul nedrží, bere je přes „ctx“:
+     ctx.zkratky()  → pole zkratek ve vnitřním tvaru editoru
+     ctx.globalni() → pole globálních proměnných
+     ctx.ohlas(t)   → krátké hlášení do živé oblasti (pro čtečku)
+     ctx.stav(t, chyba) → stavový řádek aplikace
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function (globalniObjekt) {
+  "use strict";
+
+  /* ─── Drobnosti ─────────────────────────────────────────────────────── */
+
+  function prvek(tag, vlastnosti, deti) {
+    var e = document.createElement(tag);
+    vlastnosti = vlastnosti || {};
+    for (var k in vlastnosti) {
+      var v = vlastnosti[k];
+      if (v === undefined || v === null || v === false) continue;
+      if (k === "text") e.textContent = v;
+      else if (k === "trida") e.className = v;
+      else if (k.indexOf("on") === 0) e.addEventListener(k.slice(2), v);
+      else e.setAttribute(k, v === true ? "" : v);
+    }
+    deti = deti || [];
+    if (!(deti instanceof Array)) deti = [deti];
+    for (var i = 0; i < deti.length; i++) if (deti[i]) e.appendChild(deti[i]);
+    return e;
+  }
+
+  function text(hodnota) {
+    return hodnota === undefined || hodnota === null ? "" : String(hodnota);
+  }
+
+  /* ─── Datum a čas (podmnožina strftime, kterou používá Espanso) ─────── */
+
+  var MESICE = ["ledna", "února", "března", "dubna", "května", "června", "července", "srpna", "září", "října", "listopadu", "prosince"];
+  var MESICE_K = ["led", "úno", "bře", "dub", "kvě", "čvn", "čvc", "srp", "zář", "říj", "lis", "pro"];
+  var DNY = ["neděle", "pondělí", "úterý", "středa", "čtvrtek", "pátek", "sobota"];
+  var DNY_K = ["ne", "po", "út", "st", "čt", "pá", "so"];
+
+  function naDatum(format, offset, locale) {
+    var d = new Date(Date.now() + (Number(offset) || 0) * 1000);
+    var cs = !locale || /^cs/i.test(locale);
+    function dva(n) { return String(n).length < 2 ? "0" + n : String(n); }
+    var mapa = {
+      Y: d.getFullYear(), y: dva(d.getFullYear() % 100), m: dva(d.getMonth() + 1), d: dva(d.getDate()),
+      e: (String(d.getDate()).length < 2 ? " " : "") + d.getDate(),
+      H: dva(d.getHours()), I: dva(((d.getHours() + 11) % 12) + 1), M: dva(d.getMinutes()), S: dva(d.getSeconds()),
+      p: d.getHours() < 12 ? "AM" : "PM",
+      B: cs ? MESICE[d.getMonth()] : d.toLocaleString(locale, { month: "long" }),
+      b: cs ? MESICE_K[d.getMonth()] : d.toLocaleString(locale, { month: "short" }),
+      A: cs ? DNY[d.getDay()] : d.toLocaleString(locale, { weekday: "long" }),
+      a: cs ? DNY_K[d.getDay()] : d.toLocaleString(locale, { weekday: "short" }),
+      j: String(Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000)),
+      s: Math.floor(d.getTime() / 1000),
+      F: d.getFullYear() + "-" + dva(d.getMonth() + 1) + "-" + dva(d.getDate()),
+      T: dva(d.getHours()) + ":" + dva(d.getMinutes()) + ":" + dva(d.getSeconds()),
+      R: dva(d.getHours()) + ":" + dva(d.getMinutes()),
+      D: dva(d.getMonth() + 1) + "/" + dva(d.getDate()) + "/" + dva(d.getFullYear() % 100),
+      n: "\n", t: "\t", "%": "%"
+    };
+    return text(format).replace(/%(-|0)?([A-Za-z%])/g, function (cele, mod, zn) {
+      var v = mapa[zn];
+      if (v === undefined) return cele;
+      v = String(v);
+      if (mod === "-") v = v.replace(/^[0\s]+(?=.)/, "");
+      return v;
+    });
+  }
+
+  /* ─── Zkratky ───────────────────────────────────────────────────────── */
+
+  function textNahrady(z) {
+    if (z.typNahrady === "markdown") return text(z.markdown);
+    if (z.typNahrady === "html") return text(z.html);
+    if (z.typNahrady === "obrazek") return text(z.image_path);
+    if (z.typNahrady === "formular") return text(z.form);
+    return text(z.replace);
+  }
+
+  // Spouštěče tak, jak se opravdu píšou — tedy i se závěrečnou mezerou.
+  function spousteceKPouziti(z) {
+    if (z.typSpoustece === "regex") return [];
+    var konec = z.mezeraNaKonci ? " " : "";
+    var seznam = z.typSpoustece === "vice" ? (z.triggers || []) : [z.trigger];
+    var ven = [];
+    for (var i = 0; i < seznam.length; i++) {
+      var t = text(seznam[i]);
+      if (t === "") continue;
+      ven.push(/ $/.test(t) ? t : t + konec);
+    }
+    return ven;
+  }
+
+  function popisSpoustece(z) {
+    if (z.typSpoustece === "regex") return text(z.regex);
+    var s = spousteceKPouziti(z);
+    return s.length ? s.join(", ") : "(bez spouštěče)";
+  }
+
+  function najdiPromennou(z, jmeno, ctx) {
+    var vsechny = (z.vars || []).concat(ctx.globalni());
+    for (var i = 0; i < vsechny.length; i++) if (vsechny[i].name === jmeno) return vsechny[i];
+    return null;
+  }
+
+  function najdiZkratku(spoustec, ctx) {
+    var zkratky = ctx.zkratky();
+    var hledany = text(spoustec).replace(/ $/, "");
+    for (var i = 0; i < zkratky.length; i++) {
+      var s = spousteceKPouziti(zkratky[i]);
+      for (var j = 0; j < s.length; j++) if (s[j].replace(/ $/, "") === hledany) return zkratky[i];
+    }
+    return null;
+  }
+
+  function pouziteJmena(obsah) {
+    var ven = [], re = /\{\{\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\}\}/g, m;
+    while ((m = re.exec(text(obsah)))) if (ven.indexOf(m[1]) < 0) ven.push(m[1]);
+    return ven;
+  }
+
+  function pouzitaPole(obsah) {
+    var ven = [], re = /\[\[\s*([A-Za-z_][A-Za-z0-9_]*)\s*\]\]/g, m;
+    while ((m = re.exec(text(obsah)))) if (ven.indexOf(m[1]) < 0) ven.push(m[1]);
+    return ven;
+  }
+
+  function skupinyRegexu(vyraz) {
+    var ven = [], re = /\(\?P?<([A-Za-z_][A-Za-z0-9_]*)>/g, m;
+    while ((m = re.exec(text(vyraz)))) if (ven.indexOf(m[1]) < 0) ven.push(m[1]);
+    return ven;
+  }
+
+  /* Používá zkratka příkaz shellu nebo skript? Ty prohlížeč spustit neumí. */
+  function potrebujePrikaz(z, ctx, hloubka) {
+    hloubka = hloubka || 0;
+    if (hloubka > 4) return false;
+    return projdiJmena(textNahrady(z), z, ctx, hloubka);
+  }
+
+  function projdiJmena(obsah, z, ctx, hloubka) {
+    var jmena = pouziteJmena(obsah);
+    for (var i = 0; i < jmena.length; i++) {
+      var v = najdiPromennou(z, jmena[i].split(".")[0], ctx);
+      if (!v) continue;
+      if (v.type === "shell" || v.type === "script") return true;
+      if (v.type === "echo" && projdiJmena((v.params || {}).echo, z, ctx, hloubka + 1)) return true;
+      if (v.type === "match") {
+        var cil = najdiZkratku((v.params || {}).trigger, ctx);
+        if (cil && cil !== z && potrebujePrikaz(cil, ctx, hloubka + 1)) return true;
+      }
+    }
+    return false;
+  }
+
+  /* ─── Na co se musíme zeptat uživatele ──────────────────────────────── */
+
+  function pridejPole(ven, pole) {
+    for (var i = 0; i < ven.length; i++) if (ven[i].klic === pole.klic) return;
+    ven.push(pole);
+  }
+
+  function potrebnaPole(z, ctx, prefix, hloubka, ven) {
+    prefix = prefix || "";
+    hloubka = hloubka || 0;
+    ven = ven || [];
+    if (hloubka > 4) return ven;
+    var obsah = textNahrady(z);
+
+    if (z.typSpoustece === "regex") {
+      skupinyRegexu(z.regex).forEach(function (jmeno) {
+        pridejPole(ven, { klic: prefix + jmeno, popisek: jmeno, typ: "text",
+          napoveda: "Hodnota skupiny " + jmeno + " z regulárního výrazu" });
+      });
+    }
+
+    var definovana = {};
+    (z.poleFormulare || []).forEach(function (f) { definovana[f.name] = f; });
+    pouzitaPole(obsah).forEach(function (jmeno) {
+      var f = definovana[jmeno];
+      pridejPole(ven, {
+        klic: prefix + jmeno,
+        popisek: jmeno,
+        typ: f && (f.type === "choice" || f.type === "list") ? "vyber" : (f && f.multiline ? "textarea" : "text"),
+        volby: f ? f.values || [] : [],
+        vychozi: f ? f["default"] || "" : ""
+      });
+    });
+
+    pouziteJmena(obsah).forEach(function (jmeno) {
+      potrebyProJmeno(z, jmeno, ctx, prefix, hloubka, ven);
+    });
+    return ven;
+  }
+
+  function potrebyProJmeno(z, jmeno, ctx, prefix, hloubka, ven) {
+    var v = najdiPromennou(z, jmeno.split(".")[0], ctx);
+    if (!v) return;
+    var p = v.params || {};
+    if (v.type === "clipboard") {
+      pridejPole(ven, { klic: prefix + "var:" + v.name, popisek: "Obsah schránky", typ: "textarea", schranka: true,
+        napoveda: "Espanso sem vloží to, co máš zkopírované. Tady si to vlož nebo napiš." });
+    } else if (v.type === "form") {
+      var pole = p.fields || {};
+      var jmenaPoli = pouzitaPole(p.layout);
+      Object.keys(pole).forEach(function (n) { if (jmenaPoli.indexOf(n) < 0) jmenaPoli.push(n); });
+      jmenaPoli.forEach(function (n) {
+        var def = pole[n] || {};
+        pridejPole(ven, {
+          klic: prefix + v.name + "." + n,
+          popisek: v.name + " → " + n,
+          typ: (def.type === "choice" || def.type === "list") ? "vyber" : (def.multiline ? "textarea" : "text"),
+          volby: def.values || [],
+          vychozi: def["default"] || ""
+        });
+      });
+    } else if (v.type === "match") {
+      var cil = najdiZkratku(p.trigger, ctx);
+      if (cil && cil !== z) potrebnaPole(cil, ctx, prefix + v.name + ">", hloubka + 1, ven);
+    } else if (v.type === "echo") {
+      pouziteJmena(p.echo).forEach(function (dalsi) {
+        potrebyProJmeno(z, dalsi, ctx, prefix, hloubka, ven);
+      });
+    }
+  }
+
+  /* ─── Sestavení výsledku ────────────────────────────────────────────── */
+
+  function sestav(z, hodnoty, ctx, prefix, hloubka) {
+    prefix = prefix || "";
+    hloubka = hloubka || 0;
+    if (hloubka > 4) return "";
+    return dosad(textNahrady(z), z, hodnoty, ctx, prefix, hloubka);
+  }
+
+  function dosad(obsah, z, hodnoty, ctx, prefix, hloubka) {
+    var s = text(obsah).replace(/\[\[\s*([A-Za-z_][A-Za-z0-9_]*)\s*\]\]/g, function (cele, jmeno) {
+      var h = hodnoty[prefix + jmeno];
+      return h === undefined ? "" : h;
+    });
+    return s.replace(/\{\{\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\}\}/g, function (cele, jmeno) {
+      return hodnotaPromenne(z, jmeno, hodnoty, ctx, prefix, hloubka);
+    });
+  }
+
+  function hodnotaPromenne(z, jmeno, hodnoty, ctx, prefix, hloubka) {
+    if (hodnoty[prefix + jmeno] !== undefined) return hodnoty[prefix + jmeno];
+    var v = najdiPromennou(z, jmeno.split(".")[0], ctx);
+    if (!v) return "";
+    var p = v.params || {};
+    if (v.type === "date") return naDatum(p.format, p.offset, p.locale);
+    if (v.type === "echo") return dosad(p.echo, z, hodnoty, ctx, prefix, hloubka + 1);
+    if (v.type === "random") {
+      var volby = p.choices || [];
+      return volby.length ? volby[Math.floor(Math.random() * volby.length)] : "";
+    }
+    if (v.type === "clipboard") {
+      var h = hodnoty[prefix + "var:" + v.name];
+      return h === undefined ? "" : h;
+    }
+    if (v.type === "match") {
+      var cil = najdiZkratku(p.trigger, ctx);
+      return cil && cil !== z ? sestav(cil, hodnoty, ctx, prefix + v.name + ">", hloubka + 1) : "";
+    }
+    return "";
+  }
+
+  /* ─── Hledání zkratky v napsaném textu ──────────────────────────────── */
+
+  function naJsRegex(vyraz) {
+    try {
+      return new RegExp("(?:" + text(vyraz).replace(/\(\?P</g, "(?<") + ")$");
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function jeSlovni(znak) {
+    return !!znak && /[\p{L}\p{N}_]/u.test(znak);
+  }
+
+  function upravVelikost(vysledek, napsano, styl) {
+    var pismena = napsano.replace(/[^\p{L}]/gu, "");
+    if (!pismena) return vysledek;
+    if (pismena === pismena.toLocaleUpperCase() && pismena !== pismena.toLocaleLowerCase()) {
+      if (styl === "capitalize_words") {
+        return vysledek.replace(/(^|\s)(\p{L})/gu, function (c, mezera, p) { return mezera + p.toLocaleUpperCase(); });
+      }
+      return vysledek.toLocaleUpperCase();
+    }
+    var prvni = pismena.charAt(0);
+    if (prvni === prvni.toLocaleUpperCase() && prvni !== prvni.toLocaleLowerCase()) {
+      return vysledek.replace(/\p{L}/u, function (p) { return p.toLocaleUpperCase(); });
+    }
+    return vysledek;
+  }
+
+  // Vrátí { zkratka, delka, napsano, hodnoty } pro text končící spouštěčem.
+  function najdiShodu(pred, ctx) {
+    var zkratky = ctx.zkratky();
+    var nejlepsi = null;
+    for (var i = 0; i < zkratky.length; i++) {
+      var z = zkratky[i];
+      if (z.typNahrady === "obrazek") continue;
+      if (potrebujePrikaz(z, ctx)) continue;
+
+      if (z.typSpoustece === "regex") {
+        var re = naJsRegex(z.regex);
+        if (!re) continue;
+        var m = pred.match(re);
+        if (!m || !m[0]) continue;
+        nejlepsi = lepsi(nejlepsi, { zkratka: z, delka: m[0].length, napsano: m[0], hodnoty: zpracujSkupiny(m) });
+        continue;
+      }
+
+      var spoustece = spousteceKPouziti(z);
+      for (var j = 0; j < spoustece.length; j++) {
+        var t = spoustece[j];
+        var konec = pred.slice(-t.length);
+        var sedi = z.propagate_case ? konec.toLocaleLowerCase() === t.toLocaleLowerCase() : konec === t;
+        if (!sedi) continue;
+        if (z.word || z.left_word) {
+          var znakPred = pred.slice(0, pred.length - t.length).slice(-1);
+          if (jeSlovni(znakPred)) continue;
+        }
+        nejlepsi = lepsi(nejlepsi, { zkratka: z, delka: t.length, napsano: konec, hodnoty: {} });
+      }
+    }
+    return nejlepsi;
+  }
+
+  function zpracujSkupiny(m) {
+    var hodnoty = {};
+    if (m.groups) for (var k in m.groups) if (m.groups[k] !== undefined) hodnoty[k] = m.groups[k];
+    return hodnoty;
+  }
+
+  function lepsi(a, b) {
+    if (!a) return b;
+    var pa = Number(a.zkratka.priority) || 0, pb = Number(b.zkratka.priority) || 0;
+    if (pb !== pa) return pb > pa ? b : a;
+    return b.delka > a.delka ? b : a;
+  }
+
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     PSACÍ PLOCHA
+     Velká textarea, ve které zkratky fungují samy od sebe — napíšeš spouštěč
+     a rovnou se rozbalí. Vpravo je seznam zkratek jako odkazy, kdyby některá
+     sama nezabrala nebo si ji chtěl jen vybrat.
+
+     Pozor na fokus: dokud uživatel píše, fokus z textarey nesaháme. Přesouvá
+     se jen tehdy, když si o to řekne (klik na odkaz) nebo když se zkratka musí
+     doptat na údaje — a vždy se pak vrací zpátky na svoje místo v textu.
+     ═══════════════════════════════════════════════════════════════════════ */
+
+  var STYL_PLOCHY = [
+    ".plocha { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 320px); gap: 1rem;",
+    "  height: calc(100vh - 12rem); min-height: 22rem; align-items: stretch; }",
+    "@media (max-width: 860px) { .plocha { grid-template-columns: 1fr; height: auto; } }",
+    ".plocha-psani { display: flex; flex-direction: column; min-width: 0; }",
+    ".plocha-lista { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.5rem; }",
+    ".plocha-psani textarea { flex: 1; min-height: 14rem; font-family: ui-monospace, Consolas, monospace;",
+    "  font-size: 1rem; line-height: 1.6; }",
+    ".plocha-bok { display: flex; flex-direction: column; min-height: 0; }",
+    ".plocha-bok h3 { font-size: 0.95rem; margin: 0 0 0.4rem; }",
+    ".plocha-seznam { list-style: none; margin: 0.5rem 0 0; padding: 0; overflow: auto; flex: 1;",
+    "  border: 1px solid var(--ram); border-radius: var(--radius); }",
+    ".plocha-seznam li + li { border-top: 1px solid var(--ram); }",
+    ".plocha-seznam a { display: block; padding: 0.45rem 0.6rem; color: inherit; text-decoration: none; }",
+    ".plocha-seznam a:hover .spoustec { text-decoration: underline; }",
+    ".plocha-seznam .spoustec { display: block; font-family: ui-monospace, Consolas, monospace; font-weight: 600; }",
+    ".plocha-seznam .ukazka { display: block; font-size: 0.8rem; color: var(--text-tlumeny);",
+    "  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
+    ".plocha-formular { border: 1px solid var(--akcent); border-radius: var(--radius); padding: 0.7rem; margin-top: 0.6rem; }",
+    ".plocha-formular h3 { font-size: 0.95rem; margin: 0 0 0.5rem; }",
+    ".plocha-formular .radek-pole { margin-bottom: 0.6rem; }",
+    ".plocha:fullscreen, .plocha:-webkit-full-screen { height: 100vh; padding: 1rem; background: var(--bg); }"
+  ].join("\n");
+
+  function vlozStyl() {
+    if (document.getElementById("styl-plochy")) return;
+    document.head.appendChild(prvek("style", { id: "styl-plochy", text: STYL_PLOCHY }));
+  }
+
+  var KLIC_TEXTU = "espanso_plocha_text";
+
+  function vytvorPlochu(kontejner, ctx) {
+    vlozStyl();
+    kontejner.innerHTML = "";
+
+    var probihaVkladani = false;
+    var posledniPozice = 0;
+    var cekajici = null;        // rozepsaná zkratka, která se ptá na údaje
+    var hodnoty = {};
+
+    var obal = prvek("div", { trida: "plocha", id: "plocha" });
+    var psani = prvek("div", { trida: "plocha-psani" });
+
+    /* ── Lišta ───────────────────────────────────────────────────────── */
+    var lista = prvek("div", { trida: "plocha-lista" });
+    lista.appendChild(prvek("button", { type: "button", trida: "hlavni", text: "Zkopírovat vše",
+      onclick: function () { zkopirujVse(); } }));
+    lista.appendChild(prvek("button", { type: "button", text: "Vyprázdnit",
+      onclick: function () { vyprazdni(); } }));
+    var tlCela = prvek("button", { type: "button", text: "Na celou obrazovku",
+      onclick: function () { prepniCelouObrazovku(); } });
+    lista.appendChild(tlCela);
+    psani.appendChild(lista);
+
+    /* ── Textarea ────────────────────────────────────────────────────── */
+    psani.appendChild(prvek("label", { "for": "plocha-text",
+      text: "Psací plocha — napiš spouštěč a zkratka se rozbalí sama" }));
+    var pole = prvek("textarea", { id: "plocha-text", spellcheck: "false",
+      "aria-describedby": "plocha-napoveda" });
+    try { pole.value = localStorage.getItem(KLIC_TEXTU) || ""; } catch (e) { /* nevadí */ }
+    psani.appendChild(pole);
+    psani.appendChild(prvek("p", { trida: "napoveda", id: "plocha-napoveda",
+      text: "Zkratky se rozbalují při psaní. Vpravo je jejich seznam — odkazem vložíš zkratku i bez psaní spouštěče." }));
+
+    var formular = prvek("div", { trida: "plocha-formular", id: "plocha-formular", hidden: true });
+    psani.appendChild(formular);
+    obal.appendChild(psani);
+
+    /* ── Seznam zkratek ──────────────────────────────────────────────── */
+    var bok = prvek("aside", { trida: "plocha-bok panel", "aria-labelledby": "plocha-bok-nadpis" });
+    bok.appendChild(prvek("h3", { id: "plocha-bok-nadpis", text: "Zkratky" }));
+    bok.appendChild(prvek("label", { "for": "plocha-hledani", text: "Hledat" }));
+    var hledani = prvek("input", { type: "search", id: "plocha-hledani", autocomplete: "off",
+      placeholder: "spouštěč, popisek nebo text" });
+    bok.appendChild(hledani);
+    var seznam = prvek("ul", { trida: "plocha-seznam", id: "plocha-seznam",
+      "aria-label": "Zkratky k vložení" });
+    bok.appendChild(seznam);
+    obal.appendChild(bok);
+
+    kontejner.appendChild(obal);
+
+    /* ── Sledování kurzoru ───────────────────────────────────────────── */
+    ["click", "keyup", "select", "focus", "blur"].forEach(function (ev) {
+      pole.addEventListener(ev, function () { posledniPozice = pole.selectionStart; });
+    });
+
+    pole.addEventListener("input", function () {
+      posledniPozice = pole.selectionStart;
+      ulozText();
+      if (probihaVkladani || cekajici) return;
+      var shoda = Zkratky.najdiShodu(pole.value.slice(0, pole.selectionStart), ctx);
+      if (shoda) spustZkratku(shoda, pole.selectionStart);
+    });
+
+    function ulozText() {
+      try { localStorage.setItem(KLIC_TEXTU, pole.value); } catch (e) { /* nevadí */ }
+    }
+
+    /* ── Spuštění zkratky ────────────────────────────────────────────── */
+
+    function spustZkratku(shoda, pozice) {
+      var pole2 = Zkratky.potrebnaPole(shoda.zkratka, ctx);
+      shoda.pozice = pozice;
+      hodnoty = {};
+      for (var k in shoda.hodnoty) hodnoty[k] = shoda.hodnoty[k];
+      pole2.forEach(function (p) { if (p.vychozi && hodnoty[p.klic] === undefined) hodnoty[p.klic] = p.vychozi; });
+      // Na skupiny z regulárního výrazu se ptát nemusíme, hodnotu už mají z napsaného textu.
+      var kZeptani = pole2.filter(function (p) { return shoda.hodnoty[p.klic] === undefined; });
+      if (!kZeptani.length) {
+        vlozVysledek(shoda);
+        return;
+      }
+      cekajici = shoda;
+      zobrazFormular(shoda, kZeptani);
+    }
+
+    function vysledekZkratky(shoda) {
+      var vysledek = Zkratky.sestav(shoda.zkratka, hodnoty, ctx);
+      if (shoda.zkratka.propagate_case && shoda.napsano) {
+        vysledek = Zkratky.upravVelikost(vysledek, shoda.napsano, shoda.zkratka.uppercase_style);
+      }
+      return vysledek;
+    }
+
+    function vlozVysledek(shoda) {
+      var vysledek = vysledekZkratky(shoda);
+      var od = shoda.pozice === undefined ? posledniPozice : shoda.pozice - shoda.delka;
+      var doKam = shoda.pozice === undefined ? posledniPozice : shoda.pozice;
+      vlozDoPole(od, doKam, vysledek);
+      ctx.ohlas("Vloženo " + Zkratky.popisSpoustece(shoda.zkratka));
+    }
+
+    function vlozDoPole(od, doKam, obsah) {
+      var casti = String(obsah).split("$|$");
+      var cely = casti.join("");
+      probihaVkladani = true;
+      pole.focus();
+      pole.setSelectionRange(od, doKam);
+      var hotovo = false;
+      try { hotovo = document.execCommand("insertText", false, cely); } catch (e) { hotovo = false; }
+      if (!hotovo) {
+        var v = pole.value;
+        pole.value = v.slice(0, od) + cely + v.slice(doKam);
+      }
+      var poz = casti.length > 1 ? od + casti[0].length : od + cely.length;
+      pole.setSelectionRange(poz, poz);
+      posledniPozice = poz;
+      probihaVkladani = false;
+      ulozText();
+    }
+
+    /* ── Formulář pro zkratky, které se ptají ────────────────────────── */
+
+    function zobrazFormular(shoda, pole2) {
+      formular.innerHTML = "";
+      formular.hidden = false;
+      formular.appendChild(prvek("h3", { text: "Doplň údaje pro " + Zkratky.popisSpoustece(shoda.zkratka) }));
+
+      pole2.forEach(function (p, i) {
+        var id = "plocha-pole-" + i;
+        var radek = prvek("div", { trida: "radek-pole" });
+        radek.appendChild(prvek("label", { "for": id, text: p.popisek }));
+        var vstup;
+        if (p.typ === "vyber" && (p.volby || []).length) {
+          vstup = prvek("select", { id: id });
+          p.volby.forEach(function (v) { vstup.appendChild(prvek("option", { value: v, text: v })); });
+          if (hodnoty[p.klic] && p.volby.indexOf(hodnoty[p.klic]) >= 0) vstup.value = hodnoty[p.klic];
+          hodnoty[p.klic] = vstup.value;
+        } else if (p.typ === "textarea") {
+          vstup = prvek("textarea", { id: id, rows: 3 });
+          vstup.value = hodnoty[p.klic] || "";
+        } else {
+          vstup = prvek("input", { type: "text", id: id });
+          vstup.value = hodnoty[p.klic] || "";
+        }
+        vstup.addEventListener("input", function () { hodnoty[p.klic] = vstup.value; obnovNahled(); });
+        vstup.addEventListener("change", function () { hodnoty[p.klic] = vstup.value; obnovNahled(); });
+        vstup.addEventListener("keydown", function (e) {
+          if (e.key === "Enter" && (p.typ !== "textarea" || e.ctrlKey)) { e.preventDefault(); potvrd(); }
+          if (e.key === "Escape") { e.preventDefault(); zrus(); }
+        });
+        radek.appendChild(vstup);
+        if (p.napoveda) radek.appendChild(prvek("p", { trida: "napoveda", text: p.napoveda }));
+        formular.appendChild(radek);
+        if (p.schranka) predvyplnSchranku(p.klic, vstup);
+      });
+
+      var nahled = prvek("p", { trida: "napoveda", id: "plocha-nahled", role: "status" });
+      formular.appendChild(nahled);
+
+      var nastroje = prvek("div", { trida: "plocha-lista" });
+      nastroje.appendChild(prvek("button", { type: "button", trida: "hlavni", text: "Vložit do textu", onclick: potvrd }));
+      nastroje.appendChild(prvek("button", { type: "button", text: "Zrušit", onclick: zrus }));
+      formular.appendChild(nastroje);
+
+      function obnovNahled() {
+        nahled.textContent = "Vloží se: " + vysledekZkratky(shoda).replace(/\$\|\$/g, "").replace(/\s+/g, " ").slice(0, 120);
+      }
+      obnovNahled();
+
+      var prvni = formular.querySelector("input, select, textarea");
+      if (prvni) prvni.focus();
+      ctx.ohlas("Zkratka " + Zkratky.popisSpoustece(shoda.zkratka) + " se ptá na "
+        + (pole2.length === 1 ? "jeden údaj" : pole2.length + " údaje") + ". Vyplň a stiskni Enter.");
+    }
+
+    function potvrd() {
+      var shoda = cekajici;
+      cekajici = null;
+      formular.hidden = true;
+      formular.innerHTML = "";
+      if (shoda) vlozVysledek(shoda);
+    }
+
+    function zrus() {
+      cekajici = null;
+      formular.hidden = true;
+      formular.innerHTML = "";
+      pole.focus();
+      pole.setSelectionRange(posledniPozice, posledniPozice);
+      ctx.ohlas("Vkládání zrušeno.");
+    }
+
+    function predvyplnSchranku(klic, vstup) {
+      if (!navigator.clipboard || !navigator.clipboard.readText) return;
+      navigator.clipboard.readText().then(function (obsah) {
+        if (!obsah || vstup.value) return;
+        vstup.value = obsah;
+        hodnoty[klic] = obsah;
+      })["catch"](function () { /* prohlížeč nepovolil, uživatel vloží ručně */ });
+    }
+
+    /* ── Seznam zkratek vpravo ───────────────────────────────────────── */
+
+    function odpovidaFiltru(z, filtr) {
+      if (!filtr) return true;
+      var vse = Zkratky.popisSpoustece(z) + " " + (z.label || "") + " " + Zkratky.textNahrady(z)
+        + " " + (z.search_terms || []).join(" ");
+      return vse.toLocaleLowerCase().indexOf(filtr.toLocaleLowerCase()) >= 0;
+    }
+
+    function obnovSeznam() {
+      seznam.innerHTML = "";
+      var filtr = hledani.value.trim();
+      var zkratky = ctx.zkratky().filter(function (z) {
+        return z.typNahrady !== "obrazek" && !Zkratky.potrebujePrikaz(z, ctx) && odpovidaFiltru(z, filtr);
+      }).sort(function (a, b) {
+        return popisSpoustece(a).toLocaleLowerCase("cs")
+          .localeCompare(popisSpoustece(b).toLocaleLowerCase("cs"), "cs", { numeric: true, sensitivity: "base" });
+      });
+      if (!zkratky.length) {
+        seznam.appendChild(prvek("li", {}, prvek("p", { trida: "prazdno",
+          text: filtr ? "Nic neodpovídá hledání." : "Žádné zkratky k vložení." })));
+        return;
+      }
+      zkratky.forEach(function (z) {
+        var odkaz = prvek("a", { href: "#plocha-text" });
+        odkaz.appendChild(prvek("span", { trida: "spoustec", text: Zkratky.popisSpoustece(z) }));
+        var ukazka = (z.label ? z.label + " — " : "") + Zkratky.textNahrady(z).replace(/\s+/g, " ").slice(0, 60);
+        odkaz.appendChild(prvek("span", { trida: "ukazka", text: ukazka }));
+        odkaz.addEventListener("click", function (e) {
+          e.preventDefault();
+          if (cekajici) zrus();
+          spustZkratku({ zkratka: z, delka: 0, napsano: "", hodnoty: {} }, undefined);
+        });
+        odkaz.addEventListener("keydown", function (e) {
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            var vsechny = [].slice.call(seznam.querySelectorAll("a"));
+            var poz = vsechny.indexOf(e.currentTarget);
+            var cil = vsechny[poz + (e.key === "ArrowDown" ? 1 : -1)];
+            if (cil) cil.focus();
+          }
+        });
+        seznam.appendChild(prvek("li", {}, odkaz));
+      });
+    }
+
+    hledani.addEventListener("input", obnovSeznam);
+
+    /* ── Lišta ───────────────────────────────────────────────────────── */
+
+    function zkopirujVse() {
+      var obsah = pole.value;
+      if (!obsah) { ctx.stav("Plocha je prázdná, není co kopírovat.", true); return; }
+      var hotovo = function () { ctx.stav("Celý text z plochy je ve schránce."); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(obsah).then(hotovo)["catch"](function () { nouzove(obsah, hotovo); });
+      } else {
+        nouzove(obsah, hotovo);
+      }
+    }
+
+    function nouzove(obsah, hotovo) {
+      pole.focus();
+      pole.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      pole.setSelectionRange(posledniPozice, posledniPozice);
+      if (ok) hotovo();
+      else ctx.stav("Schránku se nepodařilo naplnit, zkopíruj text ručně.", true);
+    }
+
+    function vyprazdni() {
+      if (pole.value && !window.confirm("Opravdu vymazat celý text na ploše?")) return;
+      pole.value = "";
+      posledniPozice = 0;
+      ulozText();
+      pole.focus();
+      ctx.stav("Plocha vyprázdněna.");
+    }
+
+    function prepniCelouObrazovku() {
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+        return;
+      }
+      if (obal.requestFullscreen) {
+        obal.requestFullscreen()["catch"](function () {
+          ctx.stav("Celou obrazovku prohlížeč nepovolil.", true);
+        });
+      }
+    }
+
+    document.addEventListener("fullscreenchange", function () {
+      var vCele = document.fullscreenElement === obal;
+      tlCela.textContent = vCele ? "Zpět z celé obrazovky" : "Na celou obrazovku";
+      if (vCele) pole.focus();
+    });
+
+    obnovSeznam();
+    return { obnovSeznam: obnovSeznam, zamer: function () { pole.focus(); } };
+  }
+
+  globalniObjekt.Zkratky = {
+    prvek: prvek,
+    naDatum: naDatum,
+    textNahrady: textNahrady,
+    spousteceKPouziti: spousteceKPouziti,
+    popisSpoustece: popisSpoustece,
+    potrebnaPole: potrebnaPole,
+    potrebujePrikaz: potrebujePrikaz,
+    sestav: sestav,
+    najdiShodu: najdiShodu,
+    upravVelikost: upravVelikost,
+    skupinyRegexu: skupinyRegexu,
+    vytvorPlochu: vytvorPlochu
+  };
+})(window);
+</script>
+
+<!-- Šablona samostatné HTML verze (rozbalovače). Generátor z ní udělá jeden soubor;
+     uvnitř se zavírací značka skriptu píše jako <\/script>, jinak by tenhle blok skončil dřív. -->
+<script type="text/plain" id="sablona-rozbalovac">
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>%%NAZEV%% — zkratky</title>
+<style>
+  :root {
+    --bg: #10131a; --panel: #181c25; --panel2: #212736; --ram: #39415a; --ram-silny: #5a668c;
+    --text: #eef1f7; --text-tlumeny: #a8b0c4; --akcent: #6fb3ff; --akcent-tmavy: #123a63;
+    --chyba: #ff8a80; --chyba-pozadi: #3a1a1a; --ok: #7ee0a2; --radius: 6px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f4f6fa; --panel: #fff; --panel2: #eef1f7; --ram: #c3cad9; --ram-silny: #8d97ad;
+      --text: #14181f; --text-tlumeny: #4e5668; --akcent: #0b4da2; --akcent-tmavy: #d7e6ff;
+      --chyba: #a4121a; --chyba-pozadi: #ffe9e9; --ok: #0d6b34;
+    }
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  body, h1, h2, h3, p, ul, li, fieldset, legend { margin: 0; padding: 0; }
+  ul { list-style: none; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 16px; line-height: 1.55; }
+  .jen-pro-ctecku { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .preskocit { position: absolute; top: -100px; left: 0; background: var(--akcent); color: var(--bg); padding: 0.6rem 1rem; font-weight: 600; z-index: 100; text-decoration: none; }
+  .preskocit:focus { top: 0; }
+  :focus-visible { outline: 3px solid var(--akcent); outline-offset: 2px; }
+  header { background: var(--panel); border-bottom: 1px solid var(--ram); padding: 0.7rem 1rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; }
+  header h1 { font-size: 1.1rem; font-weight: 700; }
+  header .pocet { color: var(--text-tlumeny); font-size: 0.85rem; font-weight: 400; }
+  #stav { padding: 0.5rem 1rem; font-size: 0.9rem; background: var(--panel2); border-bottom: 1px solid var(--ram); min-height: 2.2rem; }
+  #stav.chyba { background: var(--chyba-pozadi); color: var(--chyba); font-weight: 600; }
+  #stav.hotovo { color: var(--ok); font-weight: 600; }
+  .zalozky { display: flex; gap: 0.25rem; padding: 0 1rem; background: var(--panel); border-bottom: 1px solid var(--ram); flex-wrap: wrap; }
+  .zalozky button { background: none; border: none; border-bottom: 3px solid transparent; border-radius: 0; padding: 0.55rem 0.8rem; color: var(--text-tlumeny); }
+  .zalozky button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--akcent); font-weight: 600; }
+  .zalozky button:hover { background: var(--panel2); }
+  .obl-plocha { padding: 1rem; }
+  main { display: grid; grid-template-columns: minmax(240px, 380px) 1fr; gap: 1rem; padding: 1rem; align-items: start; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--ram); border-radius: var(--radius); padding: 0.85rem; }
+  .panel > h2 { font-size: 1rem; margin-bottom: 0.6rem; }
+  label { display: block; font-size: 0.88rem; color: var(--text-tlumeny); margin-bottom: 0.15rem; }
+  input[type="text"], input[type="search"], select, textarea {
+    font: inherit; font-size: 0.95rem; background: var(--bg); color: var(--text);
+    border: 1px solid var(--ram); border-radius: var(--radius); padding: 0.42rem 0.55rem; width: 100%;
+  }
+  textarea { resize: vertical; }
+  button {
+    font: inherit; font-size: 0.92rem; background: var(--panel2); color: var(--text);
+    border: 1px solid var(--ram); border-radius: var(--radius); padding: 0.45rem 0.8rem; cursor: pointer;
+  }
+  button:hover { border-color: var(--ram-silny); background: var(--ram); }
+  button.hlavni { background: var(--akcent-tmavy); border-color: var(--akcent); font-weight: 600; }
+  #seznam { max-height: 70vh; overflow: auto; border: 1px solid var(--ram); border-radius: var(--radius); }
+  #seznam li + li { border-top: 1px solid var(--ram); }
+  #seznam a { display: block; padding: 0.5rem 0.6rem; color: inherit; text-decoration: none; }
+  #seznam a:hover .spoustec { text-decoration: underline; }
+  #seznam a[aria-current="true"] { background: var(--akcent-tmavy); box-shadow: inset 4px 0 0 var(--akcent); }
+  #seznam .spoustec { display: block; font-family: ui-monospace, Consolas, monospace; font-weight: 600; }
+  #seznam .ukazka { display: block; font-size: 0.82rem; color: var(--text-tlumeny); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #seznam .znacka { font-size: 0.75rem; color: var(--text-tlumeny); border: 1px solid var(--ram); border-radius: 999px; padding: 0 0.4rem; margin-left: 0.3rem; }
+  .prazdno { color: var(--text-tlumeny); font-size: 0.9rem; padding: 0.75rem; }
+  .radek-pole { margin-bottom: 0.75rem; }
+  .napoveda { font-size: 0.82rem; color: var(--text-tlumeny); margin-top: 0.2rem; }
+  pre.vysledek {
+    background: var(--bg); border: 1px solid var(--ram); border-radius: var(--radius); padding: 0.6rem;
+    white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, Consolas, monospace; font-size: 0.9rem;
+    max-height: 40vh; overflow: auto;
+  }
+  .nastroje { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.8rem; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<a class="preskocit" href="#seznam">Přejít na seznam zkratek</a>
+
+<header>
+  <h1>%%NAZEV%% <span class="pocet" id="pocet"></span></h1>
+</header>
+
+<p id="stav" role="status">Najdi zkratku a klikni na ni — obsah se rovnou zkopíruje do schránky.</p>
+
+<div class="zalozky" role="tablist" aria-label="Režim">
+  <button type="button" role="tab" id="zal-vyber" aria-controls="obl-vyber" aria-selected="true">Výběr zkratky</button>
+  <button type="button" role="tab" id="zal-plocha" aria-controls="obl-plocha" aria-selected="false" tabindex="-1">Psací plocha</button>
+</div>
+
+<main id="obl-vyber" role="tabpanel" aria-labelledby="zal-vyber" tabindex="-1">
+  <section class="panel" aria-labelledby="nadpis-seznam">
+    <h2 id="nadpis-seznam">Zkratky</h2>
+    <div class="radek-pole">
+      <label for="hledani">Hledat (lomítko skočí sem)</label>
+      <input type="search" id="hledani" accesskey="h" placeholder="spouštěč, popisek nebo text" autocomplete="off">
+    </div>
+    <ul id="seznam" aria-label="Seznam zkratek (řazeno abecedně)"></ul>
+  </section>
+
+  <section class="panel" aria-labelledby="nadpis-detail">
+    <h2 id="nadpis-detail" tabindex="-1">Vybraná zkratka</h2>
+    <div id="detail"></div>
+  </section>
+</main>
+
+<div class="obl-plocha" id="obl-plocha" role="tabpanel" aria-labelledby="zal-plocha" tabindex="-1" hidden>
+  <div id="plocha-obal"></div>
+</div>
+
+<p id="hlaseni" aria-live="polite" class="jen-pro-ctecku"></p>
+
+<script type="application/json" id="data-zkratek">%%DATA%%<\/script>
+<script>
+%%SDILENE%%
+<\/script>
+<script>
+"use strict";
+
+var DATA = JSON.parse(document.getElementById("data-zkratek").textContent);
+var ZKRATKY = DATA.zkratky || [];
+var GLOBALNI = DATA.globalniPromenne || [];
+var vybrana = -1;
+var hodnoty = {};
+var poslednivysledek = "";
+
+function $(sel) { return document.querySelector(sel); }
+
+function prvek(tag, vlastnosti, deti) {
+  var e = document.createElement(tag);
+  vlastnosti = vlastnosti || {};
+  for (var k in vlastnosti) {
+    var v = vlastnosti[k];
+    if (v === undefined || v === null || v === false) continue;
+    if (k === "text") e.textContent = v;
+    else if (k === "trida") e.className = v;
+    else if (k.indexOf("on") === 0) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? "" : v);
+  }
+  deti = deti || [];
+  if (!(deti instanceof Array)) deti = [deti];
+  for (var i = 0; i < deti.length; i++) if (deti[i]) e.appendChild(deti[i]);
+  return e;
+}
+
+function ohlas(zprava) {
+  var el = $("#hlaseni");
+  el.textContent = "";
+  setTimeout(function () { el.textContent = zprava; }, 40);
+}
+
+function nastavStav(zprava, druh) {
+  var el = $("#stav");
+  el.textContent = zprava;
+  el.className = druh || "";
+  ohlas(zprava);
+}
+
+/* ─── Napojení na sdílený kód ──────────────────────────── */
+
+// Vyhodnocování zkratek (proměnné, formuláře, vnořené zkratky) i psací plocha
+// jsou ve sdíleném kódu výš — je to tentýž kód, jaký běží v editoru.
+var ctx = {
+  zkratky: function () { return ZKRATKY; },
+  globalni: function () { return GLOBALNI; },
+  ohlas: function (t) { ohlas(t); },
+  stav: function (t, chyba) { nastavStav(t, chyba ? "chyba" : ""); }
+};
+
+function textNahrady(z) { return Zkratky.textNahrady(z); }
+function popisSpoustece(z) { return Zkratky.popisSpoustece(z); }
+function potrebnaPole(z) { return Zkratky.potrebnaPole(z, ctx); }
+function sestav(z) { return Zkratky.sestav(z, hodnoty, ctx); }
+
+/* ─── Seznam ────────────────────────────────────────────── */
+
+function odpovidaFiltru(z, filtr) {
+  if (!filtr) return true;
+  var f = filtr.toLowerCase();
+  var vse = popisSpoustece(z) + " " + (z.label || "") + " " + textNahrady(z) + " " + (z.search_terms || []).join(" ");
+  return vse.toLowerCase().indexOf(f) >= 0;
+}
+
+function vykresliSeznam() {
+  var seznam = $("#seznam");
+  var filtr = $("#hledani").value.trim();
+  seznam.innerHTML = "";
+  var viditelne = [];
+  for (var i = 0; i < ZKRATKY.length; i++) if (odpovidaFiltru(ZKRATKY[i], filtr)) viditelne.push(i);
+
+  $("#pocet").textContent = filtr ? "(" + viditelne.length + " z " + ZKRATKY.length + ")" : "(" + ZKRATKY.length + ")";
+
+  if (!viditelne.length) {
+    seznam.appendChild(prvek("li", {}, prvek("p", { trida: "prazdno", text: "Nic neodpovídá hledání." })));
+    return;
+  }
+  viditelne.forEach(function (i) {
+    var z = ZKRATKY[i];
+    var odkaz = prvek("a", { href: "#nadpis-detail", "aria-current": i === vybrana ? "true" : null });
+    var hlava = prvek("span", { trida: "spoustec", text: popisSpoustece(z) });
+    if (z.__potrebuje) {
+      hlava.appendChild(document.createTextNode(" "));
+      hlava.appendChild(prvek("span", { trida: "znacka", text: "formulář" }));
+    }
+    odkaz.appendChild(hlava);
+    var ukazka = (z.label && z.label !== popisSpoustece(z) ? z.label + " — " : "") + textNahrady(z).replace(/\s+/g, " ").slice(0, 80);
+    odkaz.appendChild(prvek("span", { trida: "ukazka", text: ukazka }));
+    odkaz.addEventListener("click", function (e) { e.preventDefault(); pouzij(i); });
+    odkaz.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        var vsechny = [].slice.call(seznam.querySelectorAll("a"));
+        var poz = vsechny.indexOf(e.currentTarget);
+        var cil = vsechny[poz + (e.key === "ArrowDown" ? 1 : -1)];
+        if (cil) cil.focus();
+      }
+    });
+    seznam.appendChild(prvek("li", {}, odkaz));
+  });
+}
+
+/* ─── Použití zkratky ──────────────────────────────────── */
+
+function pouzij(i) {
+  vybrana = i;
+  hodnoty = {};
+  var z = ZKRATKY[i];
+  var pole = potrebnaPole(z);
+  pole.forEach(function (p) { if (p.vychozi) hodnoty[p.klic] = p.vychozi; });
+  vykresliSeznam();
+  vykresliDetail(pole);
+  if (!pole.length) {
+    zkopirujVysledek(true);
+    $("#nadpis-detail").focus();
+  } else {
+    var prvni = $("#detail").querySelector("input, select, textarea");
+    if (prvni) prvni.focus(); else $("#nadpis-detail").focus();
+    nastavStav("Zkratka " + popisSpoustece(z) + " potřebuje doplnit "
+      + (pole.length === 1 ? "jeden údaj." : (pole.length <= 4 ? pole.length + " údaje." : pole.length + " údajů.")));
+    pole.forEach(function (p) { if (p.schranka) zkusPredvyplnitSchranku(p.klic); });
+  }
+}
+
+function vykresliDetail(pole) {
+  var kontejner = $("#detail");
+  kontejner.innerHTML = "";
+  var z = ZKRATKY[vybrana];
+  if (!z) {
+    kontejner.appendChild(prvek("p", { trida: "prazdno", text: "Vyber zkratku vlevo. Jednoduchá se rovnou zkopíruje, u formuláře se nejdřív zeptám na údaje." }));
+    return;
+  }
+
+  kontejner.appendChild(prvek("p", { trida: "napoveda", text: popisSpoustece(z) + (z.label && z.label !== popisSpoustece(z) ? " — " + z.label : "") }));
+
+  if (pole.length) {
+    var fs = prvek("fieldset", { style: "border:1px solid var(--ram);border-radius:var(--radius);padding:0.8rem;margin:0.6rem 0" });
+    fs.appendChild(prvek("legend", { text: "Doplň údaje", style: "padding:0 0.4rem;font-weight:600" }));
+    pole.forEach(function (p, i) {
+      var id = "pole-" + i;
+      var obal = prvek("div", { trida: "radek-pole" });
+      obal.appendChild(prvek("label", { "for": id, text: p.popisek }));
+      var vstup;
+      if (p.typ === "vyber" && (p.volby || []).length) {
+        vstup = prvek("select", { id: id });
+        p.volby.forEach(function (v) { vstup.appendChild(prvek("option", { value: v, text: v })); });
+        if (p.vychozi && p.volby.indexOf(p.vychozi) >= 0) vstup.value = p.vychozi;
+        hodnoty[p.klic] = vstup.value;
+      } else if (p.typ === "textarea") {
+        vstup = prvek("textarea", { id: id, rows: 4 });
+        vstup.value = hodnoty[p.klic] || "";
+      } else {
+        vstup = prvek("input", { type: "text", id: id });
+        vstup.value = hodnoty[p.klic] || "";
+      }
+      vstup.setAttribute("data-klic", p.klic);
+      vstup.addEventListener("input", function () { hodnoty[p.klic] = vstup.value; obnovNahled(); });
+      vstup.addEventListener("change", function () { hodnoty[p.klic] = vstup.value; obnovNahled(); });
+      vstup.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" && (p.typ !== "textarea" || e.ctrlKey)) { e.preventDefault(); zkopirujVysledek(false); }
+      });
+      obal.appendChild(vstup);
+      if (p.napoveda) obal.appendChild(prvek("p", { trida: "napoveda", text: p.napoveda }));
+      fs.appendChild(obal);
+    });
+    kontejner.appendChild(fs);
+  }
+
+  kontejner.appendChild(prvek("h3", { text: "Výsledek", style: "font-size:0.95rem;margin:0.6rem 0 0.3rem" }));
+  kontejner.appendChild(prvek("pre", { trida: "vysledek", id: "nahled" }));
+
+  var nastroje = prvek("div", { trida: "nastroje" });
+  nastroje.appendChild(prvek("button", { type: "button", trida: "hlavni", text: "Zkopírovat do schránky",
+    onclick: function () { zkopirujVysledek(false); } }));
+  nastroje.appendChild(prvek("button", { type: "button", text: "Zpět na seznam",
+    onclick: function () { var a = $("#seznam").querySelector("a[aria-current]"); if (a) a.focus(); } }));
+  kontejner.appendChild(nastroje);
+  obnovNahled();
+}
+
+function obnovNahled() {
+  var z = ZKRATKY[vybrana];
+  if (!z) return;
+  poslednivysledek = sestav(z);
+  var nahled = document.getElementById("nahled");
+  if (nahled) nahled.textContent = poslednivysledek;
+}
+
+function zkusPredvyplnitSchranku(klic) {
+  if (!navigator.clipboard || !navigator.clipboard.readText) return;
+  navigator.clipboard.readText().then(function (text) {
+    if (!text) return;
+    hodnoty[klic] = text;
+    var vstup = $("#detail").querySelector("[data-klic=\"" + klic + "\"]");
+    if (vstup && !vstup.value) { vstup.value = text; obnovNahled(); }
+  })["catch"](function () { /* prohlížeč čtení schránky nepovolil, uživatel vloží ručně */ });
+}
+
+function zkopirujDoSchranky(text, jeHtml) {
+  if (jeHtml && window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+    try {
+      var polozka = new ClipboardItem({
+        "text/html": new Blob([text], { type: "text/html" }),
+        "text/plain": new Blob([text], { type: "text/plain" })
+      });
+      return navigator.clipboard.write([polozka]);
+    } catch (e) { /* spadneme na prostý text */ }
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+  return Promise.reject(new Error("bez podpory"));
+}
+
+function nouzoveKopirovani(text) {
+  var pomocna = document.createElement("textarea");
+  pomocna.value = text;
+  pomocna.style.position = "fixed";
+  pomocna.style.left = "-9999px";
+  document.body.appendChild(pomocna);
+  pomocna.select();
+  var ok = false;
+  try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+  pomocna.remove();
+  return ok;
+}
+
+function zkopirujVysledek(rovnou) {
+  var z = ZKRATKY[vybrana];
+  if (!z) return;
+  obnovNahled();
+  var text = poslednivysledek;
+  var popis = popisSpoustece(z);
+  zkopirujDoSchranky(text, z.typNahrady === "html").then(function () {
+    nastavStav("Zkopírováno do schránky: " + popis + (rovnou ? "" : " (s doplněnými údaji)"), "hotovo");
+  })["catch"](function () {
+    if (nouzoveKopirovani(text)) nastavStav("Zkopírováno do schránky: " + popis, "hotovo");
+    else nastavStav("Schránku se nepodařilo naplnit. Text je níž ve Výsledku, zkopíruj ho ručně.", "chyba");
+  });
+}
+
+/* ─── Ovládání ─────────────────────────────────────────── */
+
+$("#hledani").addEventListener("input", vykresliSeznam);
+$("#hledani").addEventListener("keydown", function (e) {
+  if (e.key === "ArrowDown" || e.key === "Enter") {
+    var prvni = $("#seznam").querySelector("a");
+    if (prvni) { e.preventDefault(); prvni.focus(); }
+  }
+});
+
+document.addEventListener("keydown", function (e) {
+  var v = document.activeElement;
+  var pisu = v && (v.tagName === "INPUT" || v.tagName === "TEXTAREA" || v.tagName === "SELECT");
+  if (e.key === "/" && !pisu && !document.getElementById("obl-vyber").hidden) {
+    e.preventDefault(); $("#hledani").focus(); $("#hledani").select();
+  }
+  if (e.key === "Escape" && v === $("#hledani")) { $("#hledani").value = ""; vykresliSeznam(); }
+});
+
+/* ─── Záložky a psací plocha ───────────────────────────── */
+
+var zalozky = [].slice.call(document.querySelectorAll('[role="tab"]'));
+var plocha = null;
+
+function prepniZalozku(id) {
+  zalozky.forEach(function (z) {
+    var aktivni = z.id === id;
+    z.setAttribute("aria-selected", aktivni ? "true" : "false");
+    z.tabIndex = aktivni ? 0 : -1;
+    document.getElementById(z.getAttribute("aria-controls")).hidden = !aktivni;
+  });
+  if (id === "zal-plocha") {
+    if (!plocha) plocha = Zkratky.vytvorPlochu(document.getElementById("plocha-obal"), ctx);
+    else plocha.obnovSeznam();
+  }
+}
+
+zalozky.forEach(function (z) {
+  z.addEventListener("click", function () { prepniZalozku(z.id); z.focus(); });
+  z.addEventListener("keydown", function (e) {
+    var i = zalozky.indexOf(z), cil = null;
+    if (e.key === "ArrowRight") cil = zalozky[(i + 1) % zalozky.length];
+    else if (e.key === "ArrowLeft") cil = zalozky[(i - 1 + zalozky.length) % zalozky.length];
+    else if (e.key === "Home") cil = zalozky[0];
+    else if (e.key === "End") cil = zalozky[zalozky.length - 1];
+    if (cil) { e.preventDefault(); prepniZalozku(cil.id); cil.focus(); }
+  });
+});
+
+/* ─── Start ────────────────────────────────────────────── */
+
+ZKRATKY.forEach(function (z) { z.__potrebuje = potrebnaPole(z).length > 0; });
+vykresliSeznam();
+vykresliDetail([]);
+function pocetZkratek(n) {
+  if (n === 1) return "1 zkratku";
+  if (n >= 2 && n <= 4) return n + " zkratky";
+  return n + " zkratek";
+}
+
+if (DATA.vynechano) {
+  nastavStav("Vynechal jsem " + pocetZkratek(DATA.vynechano)
+    + (DATA.vynechano === 1 ? ", která potřebuje" : ", které potřebují")
+    + " spustit příkaz nebo skript — to prohlížeč neumí.");
+}
+<\/script>
+</body>
+</html>
+</script>
+
+<!-- js-yaml 4.1.0 (MIT, Vitaly Puzrin) — uložené lokálně, aby editor fungoval i bez připojení -->
+<script src="js-yaml.min.js"></script>
+<script>
+  // Kdyby lokální soubor chyběl (např. při otevření jediného index.html), zkusíme CDN.
+  if (typeof jsyaml === "undefined") {
+    document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"><\/script>');
+  }
+</script>
+<script>
+"use strict";
+
+/* ═══════════════════════════════════════════════════════════
+   STAV
+   ═══════════════════════════════════════════════════════════ */
+
+const stav = {
+  nazevSouboru: "base.yml",
+  importy: [],
+  globalniPromenne: [],
+  zkratky: [],
+  ostatniKlice: {},      // neznámé klíče souboru — zachováváme při round-tripu
+  vybrana: -1,
+  filtr: ""
+};
+
+let pocitadloId = 0;
+const noveId = () => "p" + (++pocitadloId);
+
+/* ═══════════════════════════════════════════════════════════
+   POMOCNÉ FUNKCE
+   ═══════════════════════════════════════════════════════════ */
+
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+function prvek(tag, vlastnosti = {}, deti = []) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(vlastnosti)) {
+    if (v === undefined || v === null || v === false) continue;
+    if (k === "text") e.textContent = v;
+    else if (k === "html") e.innerHTML = v;
+    else if (k === "trida") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const d of [].concat(deti)) if (d) e.appendChild(d);
+  return e;
+}
+
+function ohlas(zprava) {
+  const el = $("#hlaseni");
+  el.textContent = "";
+  setTimeout(() => { el.textContent = zprava; }, 40);
+}
+
+function nastavStav(zprava, jeChyba = false) {
+  const el = $("#stav");
+  el.textContent = zprava;
+  el.classList.toggle("chyba", !!jeChyba);
+  ohlas(zprava);
+}
+
+function bezpecnyText(s) {
+  return String(s === undefined || s === null ? "" : s);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   YAML — ZÁPIS
+   Vlastní generátor: dává čitelnější výstup než obecný dumper
+   (blokové skaláry u víceřádkových textů, uvozovky u spouštěčů).
+   ═══════════════════════════════════════════════════════════ */
+
+const YAML_RIZIKOVE = /^[\s]|[\s]$|^[-?:,\[\]{}#&*!|>'"%@`]|: |\s#|^$/;
+const YAML_KLICOVA = /^(true|false|null|yes|no|on|off|y|n|~)$/i;
+
+function jeCislo(s) {
+  return /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(s) || /^0[xXoObB][0-9a-fA-F_]+$/.test(s);
+}
+
+function uvozovkovanyText(s) {
+  let out = '"';
+  for (const zn of s) {
+    if (zn === '"') out += '\\"';
+    else if (zn === "\\") out += "\\\\";
+    else if (zn === "\n") out += "\\n";
+    else if (zn === "\t") out += "\\t";
+    else if (zn === "\r") out += "\\r";
+    else if (zn < " ") out += "\\x" + zn.charCodeAt(0).toString(16).padStart(2, "0");
+    else out += zn;
+  }
+  return out + '"';
+}
+
+// Vrací pole řádků pro dvojici klíč: hodnota
+function yamlDvojice(klic, hodnota, odsazeni, vzdyUvozovky = false) {
+  const radky = [];
+  if (hodnota === null || hodnota === undefined) {
+    radky.push(odsazeni + klic + ": null");
+    return radky;
+  }
+  if (typeof hodnota === "boolean") {
+    radky.push(odsazeni + klic + ": " + (hodnota ? "true" : "false"));
+    return radky;
+  }
+  if (typeof hodnota === "number") {
+    radky.push(odsazeni + klic + ": " + hodnota);
+    return radky;
+  }
+  if (Array.isArray(hodnota)) {
+    if (hodnota.length === 0) { radky.push(odsazeni + klic + ": []"); return radky; }
+    radky.push(odsazeni + klic + ":");
+    radky.push(...yamlSeznam(hodnota, odsazeni, vzdyUvozovky));
+    return radky;
+  }
+  if (typeof hodnota === "object") {
+    const klice = Object.keys(hodnota);
+    if (klice.length === 0) { radky.push(odsazeni + klic + ": {}"); return radky; }
+    radky.push(odsazeni + klic + ":");
+    radky.push(...yamlMapa(hodnota, odsazeni + "  "));
+    return radky;
+  }
+  // řetězec
+  const s = String(hodnota);
+  if (s.includes("\n")) {
+    // blokový skalár; ošetříme odseknutí koncových odřádkování i odsazení prvního řádku
+    let telo = s;
+    let ukazatel = "";
+    const konec = telo.match(/\n*$/)[0].length;
+    if (konec === 0) ukazatel = "-";
+    else if (konec === 1) ukazatel = "";
+    else ukazatel = "+";
+    const prvniRadek = telo.split("\n")[0];
+    const odsazovaci = /^\s/.test(prvniRadek) ? "2" : "";
+    radky.push(odsazeni + klic + ": |" + odsazovaci + ukazatel);
+    const vnitrni = odsazeni + "  ";
+    const teloRadky = telo.replace(/\n+$/, "").split("\n");
+    for (const r of teloRadky) radky.push(r === "" ? "" : vnitrni + r);
+    if (konec > 1) for (let i = 1; i < konec; i++) radky.push("");
+    return radky;
+  }
+  if (vzdyUvozovky || YAML_RIZIKOVE.test(s) || YAML_KLICOVA.test(s) || jeCislo(s)) {
+    radky.push(odsazeni + klic + ": " + uvozovkovanyText(s));
+  } else {
+    radky.push(odsazeni + klic + ": " + s);
+  }
+  return radky;
+}
+
+function yamlSkalar(hodnota, vzdyUvozovky = false) {
+  if (hodnota === null || hodnota === undefined) return "null";
+  if (typeof hodnota === "boolean") return hodnota ? "true" : "false";
+  if (typeof hodnota === "number") return String(hodnota);
+  const s = String(hodnota);
+  if (s.includes("\n")) return uvozovkovanyText(s);
+  if (vzdyUvozovky || YAML_RIZIKOVE.test(s) || YAML_KLICOVA.test(s) || jeCislo(s)) return uvozovkovanyText(s);
+  return s;
+}
+
+function yamlSeznam(pole, odsazeni, vzdyUvozovky = false) {
+  const radky = [];
+  for (const polozka of pole) {
+    if (polozka && typeof polozka === "object" && !Array.isArray(polozka)) {
+      const podradky = yamlMapa(polozka, odsazeni + "    ");
+      if (podradky.length === 0) { radky.push(odsazeni + "  - {}"); continue; }
+      podradky[0] = odsazeni + "  - " + podradky[0].slice(odsazeni.length + 4);
+      radky.push(...podradky);
+    } else {
+      radky.push(odsazeni + "  - " + yamlSkalar(polozka, vzdyUvozovky));
+    }
+  }
+  return radky;
+}
+
+function yamlMapa(objekt, odsazeni) {
+  const radky = [];
+  for (const [k, v] of Object.entries(objekt)) {
+    if (v === undefined) continue;
+    radky.push(...yamlDvojice(k, v, odsazeni));
+  }
+  return radky;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PŘEVOD STAV ↔ OBYČEJNÝ OBJEKT
+   ═══════════════════════════════════════════════════════════ */
+
+function promennaDoObjektu(p) {
+  const o = {};
+  o.name = p.name || "promenna";
+  o.type = p.type || "echo";
+  if (p.type === "clipboard") {
+    // bez parametrů
+  } else if (Object.keys(p.params || {}).length) {
+    o.params = JSON.parse(JSON.stringify(p.params));
+  }
+  if (p.inject_vars === false) o.inject_vars = false;
+  if (Array.isArray(p.depends_on) && p.depends_on.length) o.depends_on = p.depends_on.slice();
+  for (const [k, v] of Object.entries(p.ostatni || {})) o[k] = v;
+  return o;
+}
+
+// Spouštěč zkratky v podobě jednoho řetězce. Používá se na řazení a na porovnání
+// s popiskem — popisek shodný se spouštěčem je zbytečný a zahazuje se.
+function odvozenyPopisek(z) {
+  if (z.typSpoustece === "regex") return (z.regex || "").trim();
+  if (z.typSpoustece === "vice") return (z.triggers || []).map((t) => t.trim()).filter(Boolean)[0] || "";
+  return (z.trigger || "").trim();
+}
+
+// Spouštěče tak, jak se zapíšou do souboru — se závěrečnou mezerou, když je zaškrtnutá.
+// Mezera je fígl z cookbooku Espansa: napsaná mezera spustí náhradu a sama za vloženým
+// textem nezůstane. V modelu ji spouštěče nenesou, přidává se až tady.
+function spousteceProZapis(z) {
+  const konec = z.mezeraNaKonci ? " " : "";
+  const seznam = z.typSpoustece === "vice" ? (z.triggers || []) : [z.trigger || ""];
+  return seznam.filter((t) => t !== "").map((t) => t + konec);
+}
+
+function zkratkaDoObjektu(z) {
+  const o = {};
+  if (z.typSpoustece === "regex") o.regex = z.regex || "";
+  else if (z.typSpoustece === "vice") o.triggers = spousteceProZapis(z);
+  else o.trigger = spousteceProZapis(z)[0] || "";
+
+  const popisek = bezpecnyText(z.label).trim();
+  if (popisek && popisek !== odvozenyPopisek(z)) o.label = popisek;
+
+  if (z.typNahrady === "markdown") o.markdown = z.markdown || "";
+  else if (z.typNahrady === "html") o.html = z.html || "";
+  else if (z.typNahrady === "obrazek") o.image_path = z.image_path || "";
+  else if (z.typNahrady === "formular") o.form = z.form || "";
+  else o.replace = z.replace || "";
+
+  if (z.typNahrady === "formular") {
+    const pole = {};
+    for (const f of z.poleFormulare || []) {
+      if (!f.name) continue;
+      const def = {};
+      if (f.type && f.type !== "text") def.type = f.type;
+      if (f.type === "choice" || f.type === "list") def.values = (f.values || []).slice();
+      if (f.type === "text" || !f.type) {
+        if (f.multiline) def.multiline = true;
+        if (f.default) def.default = f.default;
+      } else if (f.default) def.default = f.default;
+      if (Object.keys(def).length) pole[f.name] = def;
+    }
+    if (Object.keys(pole).length) o.form_fields = pole;
+  }
+
+  if ((z.vars || []).length) o.vars = z.vars.map(promennaDoObjektu);
+
+  if (z.word) o.word = true;
+  if (z.left_word) o.left_word = true;
+  if (z.right_word) o.right_word = true;
+  if (z.propagate_case) o.propagate_case = true;
+  if (z.uppercase_style) o.uppercase_style = z.uppercase_style;
+  if (z.priority !== null && z.priority !== undefined && z.priority !== "") o.priority = Number(z.priority);
+  if ((z.search_terms || []).length) o.search_terms = z.search_terms.slice();
+  if (z.force_mode) o.force_mode = z.force_mode;
+  if (z.apply_patch === false) o.apply_patch = false;
+  if (z.passive_only) o.passive_only = true;
+  for (const [k, v] of Object.entries(z.ostatni || {})) o[k] = v;
+  return o;
+}
+
+function serializujSoubor() {
+  const radky = [];
+  radky.push("# Soubor se zkratkami pro Espanso");
+  radky.push("# Vytvořeno v Espanso Editoru — https://nastroje.mearin.cz/espansoeditor/");
+  radky.push("");
+
+  if (stav.importy.length) {
+    radky.push("imports:");
+    radky.push(...yamlSeznam(stav.importy, "", true));
+    radky.push("");
+  }
+  for (const [k, v] of Object.entries(stav.ostatniKlice)) {
+    radky.push(...yamlDvojice(k, v, ""));
+    radky.push("");
+  }
+  if (stav.globalniPromenne.length) {
+    radky.push("global_vars:");
+    radky.push(...yamlSeznam(stav.globalniPromenne.map(promennaDoObjektu), ""));
+    radky.push("");
+  }
+
+  radky.push("matches:");
+  if (!stav.zkratky.length) {
+    radky.push("  []");
+  } else {
+    for (const { z } of serazeneZkratky()) {
+      const o = zkratkaDoObjektu(z);
+      const podradky = yamlMapaZkratky(o, "    ");
+      podradky[0] = "  - " + podradky[0].slice(4);
+      radky.push(...podradky);
+      radky.push("");
+    }
+  }
+  let vysledek = radky.join("\n");
+  if (!vysledek.endsWith("\n")) vysledek += "\n";
+  return vysledek;
+}
+
+// Spouštěče a náhrady dáváme vždy do uvozovek — je to zvyklost Espansa a je to bezpečné.
+const KLICE_V_UVOZOVKACH = new Set(["trigger", "triggers", "regex", "image_path", "label"]);
+
+function yamlMapaZkratky(objekt, odsazeni) {
+  const radky = [];
+  for (const [k, v] of Object.entries(objekt)) {
+    if (v === undefined) continue;
+    radky.push(...yamlDvojice(k, v, odsazeni, KLICE_V_UVOZOVKACH.has(k)));
+  }
+  return radky;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   YAML — ČTENÍ
+   ═══════════════════════════════════════════════════════════ */
+
+const ZNAME_KLICE_ZKRATKY = new Set([
+  "trigger", "triggers", "regex", "label", "replace", "markdown", "html", "image_path",
+  "form", "form_fields", "vars", "word", "left_word", "right_word", "propagate_case",
+  "uppercase_style", "priority", "search_terms", "force_mode", "apply_patch", "passive_only"
+]);
+
+const ZNAME_KLICE_PROMENNE = new Set(["name", "type", "params", "inject_vars", "depends_on"]);
+
+function promennaZObjektu(o) {
+  const p = {
+    id: noveId(),
+    name: bezpecnyText(o.name),
+    type: bezpecnyText(o.type) || "echo",
+    params: o.params && typeof o.params === "object" ? JSON.parse(JSON.stringify(o.params)) : {},
+    inject_vars: o.inject_vars === false ? false : null,
+    depends_on: Array.isArray(o.depends_on) ? o.depends_on.map(bezpecnyText) : [],
+    ostatni: {}
+  };
+  if (p.type === "dummy") p.type = "echo";
+  for (const [k, v] of Object.entries(o)) if (!ZNAME_KLICE_PROMENNE.has(k)) p.ostatni[k] = v;
+  return p;
+}
+
+function poleFormulareZObjektu(mapa) {
+  const vysledek = [];
+  if (!mapa || typeof mapa !== "object") return vysledek;
+  for (const [jmeno, def] of Object.entries(mapa)) {
+    const d = def && typeof def === "object" ? def : {};
+    vysledek.push({
+      id: noveId(),
+      name: jmeno,
+      type: bezpecnyText(d.type) || "text",
+      multiline: d.multiline === true,
+      default: bezpecnyText(d.default),
+      values: Array.isArray(d.values) ? d.values.map((v) => (typeof v === "object" ? JSON.stringify(v) : bezpecnyText(v))) : []
+    });
+  }
+  return vysledek;
+}
+
+function zkratkaZObjektu(o) {
+  const z = novaZkratka();
+  if (o.regex !== undefined) { z.typSpoustece = "regex"; z.regex = bezpecnyText(o.regex); }
+  else if (Array.isArray(o.triggers)) { z.typSpoustece = "vice"; z.triggers = o.triggers.map(bezpecnyText); }
+  else { z.typSpoustece = "jeden"; z.trigger = bezpecnyText(o.trigger); }
+
+  // Končí-li všechny spouštěče mezerou, je to ten fígl z cookbooku — zaškrtneme ho
+  // a mezeru z modelu sundáme, ať ji uživatel nemusí hlídat ručně.
+  if (z.typSpoustece !== "regex") {
+    const seznam = z.typSpoustece === "vice" ? z.triggers : [z.trigger];
+    const vsechny = seznam.filter((t) => t !== "");
+    z.mezeraNaKonci = vsechny.length > 0 && vsechny.every((t) => t.length > 1 && t.endsWith(" "));
+    if (z.mezeraNaKonci) {
+      if (z.typSpoustece === "vice") z.triggers = z.triggers.map((t) => t.replace(/ $/, ""));
+      else z.trigger = z.trigger.replace(/ $/, "");
+    }
+  } else {
+    z.mezeraNaKonci = false;
+  }
+
+  z.label = bezpecnyText(o.label);
+  if (z.label.trim() === odvozenyPopisek(z)) z.label = "";
+
+  if (o.markdown !== undefined) { z.typNahrady = "markdown"; z.markdown = bezpecnyText(o.markdown); }
+  else if (o.html !== undefined) { z.typNahrady = "html"; z.html = bezpecnyText(o.html); }
+  else if (o.image_path !== undefined) { z.typNahrady = "obrazek"; z.image_path = bezpecnyText(o.image_path); }
+  else if (o.form !== undefined) { z.typNahrady = "formular"; z.form = bezpecnyText(o.form); }
+  else { z.typNahrady = "text"; z.replace = bezpecnyText(o.replace); }
+
+  z.poleFormulare = poleFormulareZObjektu(o.form_fields);
+  z.vars = Array.isArray(o.vars) ? o.vars.map(promennaZObjektu) : [];
+  z.word = o.word === true;
+  z.left_word = o.left_word === true;
+  z.right_word = o.right_word === true;
+  z.propagate_case = o.propagate_case === true;
+  z.uppercase_style = bezpecnyText(o.uppercase_style);
+  z.priority = (typeof o.priority === "number") ? o.priority : "";
+  z.search_terms = Array.isArray(o.search_terms) ? o.search_terms.map(bezpecnyText) : [];
+  z.force_mode = bezpecnyText(o.force_mode);
+  z.apply_patch = o.apply_patch === false ? false : null;
+  z.passive_only = o.passive_only === true;
+  for (const [k, v] of Object.entries(o)) if (!ZNAME_KLICE_ZKRATKY.has(k)) z.ostatni[k] = v;
+  return z;
+}
+
+function nactiZTextu(text) {
+  let data;
+  try {
+    data = jsyaml.load(text);
+  } catch (e) {
+    throw new Error("YAML se nepodařilo přečíst: " + e.message);
+  }
+  if (data === null || data === undefined) data = {};
+  if (typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("Soubor nevypadá jako sada zkratek Espansa (čekal jsem mapu s klíčem „matches“).");
+  }
+  stav.importy = Array.isArray(data.imports) ? data.imports.map(bezpecnyText) : [];
+  stav.globalniPromenne = Array.isArray(data.global_vars) ? data.global_vars.map(promennaZObjektu) : [];
+  stav.zkratky = Array.isArray(data.matches) ? data.matches.filter((m) => m && typeof m === "object").map(zkratkaZObjektu) : [];
+  stav.ostatniKlice = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (!["imports", "global_vars", "matches"].includes(k)) stav.ostatniKlice[k] = v;
+  }
+  stav.vybrana = stav.zkratky.length ? 0 : -1;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VÝCHOZÍ HODNOTY
+   ═══════════════════════════════════════════════════════════ */
+
+function novaZkratka() {
+  return {
+    id: noveId(),
+    typSpoustece: "jeden",
+    mezeraNaKonci: true,
+    trigger: "",
+    triggers: [""],
+    regex: "",
+    label: "",
+    typNahrady: "text",
+    replace: "",
+    markdown: "",
+    html: "",
+    image_path: "",
+    form: "",
+    poleFormulare: [],
+    vars: [],
+    word: false,
+    left_word: false,
+    right_word: false,
+    propagate_case: false,
+    uppercase_style: "",
+    priority: "",
+    search_terms: [],
+    force_mode: "",
+    apply_patch: null,
+    passive_only: false,
+    ostatni: {}
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════
+   KATALOG DYNAMICKÝCH PRVKŮ (typy proměnných Espansa)
+   ═══════════════════════════════════════════════════════════ */
+
+const TYPY_PROMENNYCH = [
+  {
+    id: "date",
+    nazev: "Datum a čas",
+    popis: "Vloží aktuální datum nebo čas ve zvoleném formátu. Lze i posunout o kus dopředu či dozadu.",
+    vychoziJmeno: "datum",
+    pole: [
+      { klic: "format", popisek: "Formát", typ: "text", kod: true, vychozi: "%d.%m.%Y",
+        napoveda: "Zápis podle strftime. Níž si můžeš vybrat hotový formát nebo poskládat vlastní." },
+      { klic: "offset", popisek: "Posun v sekundách", typ: "cislo",
+        napoveda: "Kladné číslo posouvá do budoucnosti, záporné do minulosti. Prázdné = teď." },
+      { klic: "locale", popisek: "Jazyk (locale)", typ: "text",
+        napoveda: "Např. cs-CZ pro české názvy měsíců. Prázdné = nastavení systému." }
+    ],
+    extra: "datum"
+  },
+  {
+    id: "clipboard",
+    nazev: "Obsah schránky",
+    popis: "Vloží to, co je právě ve schránce. Hodí se na obalování zkopírovaného textu.",
+    vychoziJmeno: "schranka",
+    pole: []
+  },
+  {
+    id: "echo",
+    nazev: "Pevný text (echo)",
+    popis: "Pevný kousek textu. Užitečné, když se stejný text opakuje víckrát ve zkratce nebo v globálních proměnných.",
+    vychoziJmeno: "text",
+    pole: [
+      { klic: "echo", popisek: "Text", typ: "textarea", vychozi: "" }
+    ]
+  },
+  {
+    id: "random",
+    nazev: "Náhodný výběr",
+    popis: "Při každém použití vybere jednu z nabídnutých variant.",
+    vychoziJmeno: "nahodne",
+    pole: [
+      { klic: "choices", popisek: "Varianty (jedna na řádek)", typ: "seznam", vychozi: [] }
+    ]
+  },
+  {
+    id: "shell",
+    nazev: "Příkaz shellu",
+    popis: "Spustí příkaz a vloží jeho výstup. Pozor, běží to na tvém počítači při každém použití zkratky.",
+    vychoziJmeno: "prikaz",
+    pole: [
+      { klic: "cmd", popisek: "Příkaz", typ: "textarea", kod: true, vychozi: "" },
+      { klic: "shell", popisek: "Shell", typ: "select", vychozi: "",
+        volby: [["", "výchozí podle systému"], ["bash", "bash"], ["sh", "sh"], ["cmd", "cmd (Windows)"], ["powershell", "powershell"], ["wsl", "wsl"], ["wslcmd", "wslcmd"]] },
+      { klic: "trim", popisek: "Odstranit bílé znaky na koncích výstupu", typ: "zaskrtavatko", vychozi: true },
+      { klic: "debug", popisek: "Ladicí režim (zapíše výstup do logu)", typ: "zaskrtavatko", vychozi: false }
+    ]
+  },
+  {
+    id: "script",
+    nazev: "Skript / externí program",
+    popis: "Spustí program se zadanými argumenty a vloží jeho výstup. První řádek je program, další řádky argumenty.",
+    vychoziJmeno: "skript",
+    pole: [
+      { klic: "args", popisek: "Program a argumenty (každý na svém řádku)", typ: "seznam", kod: true, vychozi: [] },
+      { klic: "trim", popisek: "Odstranit bílé znaky na koncích výstupu", typ: "zaskrtavatko", vychozi: true },
+      { klic: "debug", popisek: "Ladicí režim", typ: "zaskrtavatko", vychozi: false }
+    ]
+  },
+  {
+    id: "match",
+    nazev: "Jiná zkratka",
+    popis: "Vloží výsledek jiné zkratky — dá se tak skládat obsah z menších dílků.",
+    vychoziJmeno: "vnorena",
+    pole: [
+      { klic: "trigger", popisek: "Spouštěč vnořené zkratky", typ: "text", kod: true, vychozi: "" }
+    ]
+  },
+  {
+    id: "form",
+    nazev: "Vnořený formulář",
+    popis: "Před vložením se zeptá na hodnoty ve vlastním okénku. Do textu se pak dosadí {{jméno.pole}}.",
+    vychoziJmeno: "formular",
+    pole: [
+      { klic: "layout", popisek: "Rozvržení formuláře (pole zapisuj jako [[jmeno]])", typ: "textarea", kod: true, vychozi: "" }
+    ],
+    extra: "poleFormulare"
+  }
+];
+
+const TYP_PROMENNE = Object.fromEntries(TYPY_PROMENNYCH.map((t) => [t.id, t]));
+
+function nazevTypu(id) {
+  return TYP_PROMENNE[id] ? TYP_PROMENNE[id].nazev : id;
+}
+
+/* ── Náhled formátu data (podmnožina strftime) ────────────── */
+
+const MESICE_CS = ["ledna", "února", "března", "dubna", "května", "června", "července", "srpna", "září", "října", "listopadu", "prosince"];
+const MESICE_CS_KRATCE = ["led", "úno", "bře", "dub", "kvě", "čvn", "čvc", "srp", "zář", "říj", "lis", "pro"];
+const DNY_CS = ["neděle", "pondělí", "úterý", "středa", "čtvrtek", "pátek", "sobota"];
+const DNY_CS_KRATCE = ["ne", "po", "út", "st", "čt", "pá", "so"];
+
+// Vyhodnocení data má na starosti sdílený kód, ať se náhled v editoru
+// a výsledek v psací ploše i v HTML verzi nemůžou rozejít.
+function nahledData(format, offsetSekund, locale) {
+  if (nactiSdilenyKod()) return Zkratky.naDatum(format, offsetSekund, locale);
+  return vlastniNahledData(format, offsetSekund, locale);
+}
+
+function vlastniNahledData(format, offsetSekund, locale) {
+  const d = new Date(Date.now() + (Number(offsetSekund) || 0) * 1000);
+  const cs = !locale || /^cs/i.test(locale);
+  const dva = (n) => String(n).padStart(2, "0");
+  const mapa = {
+    Y: d.getFullYear(),
+    y: dva(d.getFullYear() % 100),
+    m: dva(d.getMonth() + 1),
+    d: dva(d.getDate()),
+    e: String(d.getDate()).padStart(2, " "),
+    H: dva(d.getHours()),
+    I: dva(((d.getHours() + 11) % 12) + 1),
+    M: dva(d.getMinutes()),
+    S: dva(d.getSeconds()),
+    p: d.getHours() < 12 ? "AM" : "PM",
+    B: cs ? MESICE_CS[d.getMonth()] : d.toLocaleString(locale || undefined, { month: "long" }),
+    b: cs ? MESICE_CS_KRATCE[d.getMonth()] : d.toLocaleString(locale || undefined, { month: "short" }),
+    A: cs ? DNY_CS[d.getDay()] : d.toLocaleString(locale || undefined, { weekday: "long" }),
+    a: cs ? DNY_CS_KRATCE[d.getDay()] : d.toLocaleString(locale || undefined, { weekday: "short" }),
+    j: String(Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000)).padStart(3, "0"),
+    s: Math.floor(d.getTime() / 1000),
+    F: d.getFullYear() + "-" + dva(d.getMonth() + 1) + "-" + dva(d.getDate()),
+    T: dva(d.getHours()) + ":" + dva(d.getMinutes()) + ":" + dva(d.getSeconds()),
+    R: dva(d.getHours()) + ":" + dva(d.getMinutes()),
+    D: dva(d.getMonth() + 1) + "/" + dva(d.getDate()) + "/" + dva(d.getFullYear() % 100),
+    Z: "CET",
+    n: "\n",
+    t: "\t",
+    "%": "%"
+  };
+  return String(format || "").replace(/%(-|0)?([A-Za-z%])/g, (cele, mod, zn) => {
+    let v = mapa[zn];
+    if (v === undefined) return cele;
+    v = String(v);
+    if (mod === "-") v = v.replace(/^[0\s]+(?=.)/, "");
+    return v;
+  });
+}
+
+const FORMATY_DATA = [
+  ["%d.%m.%Y", "den.měsíc.rok — 24.12.2026"],
+  ["%-d. %-m. %Y", "s mezerami bez nul — 24. 12. 2026"],
+  ["%-d. %B %Y", "slovní měsíc — 24. prosince 2026"],
+  ["%Y-%m-%d", "ISO — 2026-12-24"],
+  ["%d.%m.%Y %H:%M", "datum a čas"],
+  ["%H:%M", "jen čas"],
+  ["%H:%M:%S", "čas se sekundami"],
+  ["%A %-d.%-m.%Y", "se jménem dne"],
+  ["%B %Y", "měsíc a rok"],
+  ["%Y", "jen rok"]
+];
+
+const ZNACKY_DATA = [
+  ["%d", "den (01–31)"], ["%-d", "den bez nuly"], ["%m", "měsíc (01–12)"], ["%-m", "měsíc bez nuly"],
+  ["%Y", "rok (2026)"], ["%y", "rok (26)"], ["%B", "název měsíce"], ["%b", "zkratka měsíce"],
+  ["%A", "název dne"], ["%a", "zkratka dne"], ["%H", "hodina (00–23)"], ["%M", "minuta"],
+  ["%S", "sekunda"], ["%I", "hodina (01–12)"], ["%p", "AM/PM"], ["%j", "den v roce"], ["%%", "znak %"]
+];
+
+const POSUNY_DATA = [
+  ["", "teď"], ["86400", "zítra"], ["-86400", "včera"], ["604800", "za týden"],
+  ["-604800", "před týdnem"], ["3600", "za hodinu"], ["-3600", "před hodinou"]
+];
+
+/* ═══════════════════════════════════════════════════════════
+   DIALOG
+   ═══════════════════════════════════════════════════════════ */
+
+let dialogPotvrzeni = null;
+let predchoziFokus = null;
+
+function otevriDialog({ nadpis, telo, popisekPotvrdit = "Vložit", priPotvrzeni }) {
+  predchoziFokus = document.activeElement;
+  $("#dialog-nadpis").textContent = nadpis;
+  const kontejner = $("#dialog-telo");
+  kontejner.innerHTML = "";
+  kontejner.appendChild(telo);
+  $("#dialog-potvrdit").textContent = popisekPotvrdit;
+  $("#dialog-potvrdit").hidden = false;
+  $("#dialog-zrusit").hidden = false;
+  dialogPotvrzeni = priPotvrzeni;
+  $("#zaclona").hidden = false;
+  const prvni = kontejner.querySelector("input, select, textarea, button");
+  (prvni || $("#dialog-potvrdit")).focus();
+}
+
+function zavriDialog() {
+  $("#zaclona").hidden = true;
+  dialogPotvrzeni = null;
+  $("#dialog-telo").innerHTML = "";
+  if (predchoziFokus && document.contains(predchoziFokus)) predchoziFokus.focus();
+}
+
+$("#dialog-zrusit").addEventListener("click", zavriDialog);
+$("#dialog-potvrdit").addEventListener("click", () => {
+  if (dialogPotvrzeni && dialogPotvrzeni() === false) return;
+  zavriDialog();
+});
+$("#zaclona").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { e.preventDefault(); zavriDialog(); return; }
+  if (e.key !== "Tab") return;
+  const ohniska = Array.from($("#dialog").querySelectorAll("a[href], button, input, select, textarea, [tabindex]:not([tabindex='-1'])"))
+    .filter((el) => !el.disabled && el.offsetParent !== null);
+  if (!ohniska.length) return;
+  const prvni = ohniska[0], posledni = ohniska[ohniska.length - 1];
+  if (e.shiftKey && document.activeElement === prvni) { e.preventDefault(); posledni.focus(); }
+  else if (!e.shiftKey && document.activeElement === posledni) { e.preventDefault(); prvni.focus(); }
+});
+$("#zaclona").addEventListener("mousedown", (e) => { if (e.target === $("#zaclona")) zavriDialog(); });
+
+/* ═══════════════════════════════════════════════════════════
+   OBECNÝ FORMULÁŘ PARAMETRŮ PROMĚNNÉ
+   ═══════════════════════════════════════════════════════════ */
+
+let pocitadloPoli = 0;
+
+function vytvorPole(popis, hodnota, priZmene, idPole) {
+  const id = idPole || popis.id || ("pole" + (++pocitadloPoli));
+  const obal = prvek("div", { trida: "radek-pole" });
+  const popisek = prvek("label", { for: id, text: popis.popisek });
+  obal.appendChild(popisek);
+
+  let vstup;
+  if (popis.typ === "textarea" || popis.typ === "seznam") {
+    vstup = prvek("textarea", { id, rows: popis.typ === "seznam" ? 5 : 4, trida: popis.kod ? "kod" : "" });
+    vstup.value = popis.typ === "seznam" ? (Array.isArray(hodnota) ? hodnota.join("\n") : bezpecnyText(hodnota)) : bezpecnyText(hodnota);
+  } else if (popis.typ === "select") {
+    vstup = prvek("select", { id });
+    for (const [v, t] of popis.volby) vstup.appendChild(prvek("option", { value: v, text: t }));
+    vstup.value = bezpecnyText(hodnota);
+  } else if (popis.typ === "zaskrtavatko") {
+    obal.innerHTML = "";
+    obal.className = "zaskrtavatko";
+    vstup = prvek("input", { type: "checkbox", id });
+    vstup.checked = hodnota === undefined ? !!popis.vychozi : !!hodnota;
+    obal.appendChild(vstup);
+    obal.appendChild(prvek("label", { for: id, text: popis.popisek }));
+  } else if (popis.typ === "cislo") {
+    vstup = prvek("input", { type: "number", id });
+    vstup.value = hodnota === undefined || hodnota === null ? "" : String(hodnota);
+  } else {
+    vstup = prvek("input", { type: "text", id, trida: popis.kod ? "kod" : "" });
+    vstup.value = bezpecnyText(hodnota);
+  }
+
+  if (popis.placeholder) vstup.setAttribute("placeholder", popis.placeholder);
+  if (popis.typ !== "zaskrtavatko") obal.appendChild(vstup);
+  if (popis.napoveda) {
+    const napovedaId = id + "-napoveda";
+    obal.appendChild(prvek("p", { trida: "napoveda", id: napovedaId, text: popis.napoveda }));
+    vstup.setAttribute("aria-describedby", napovedaId);
+  }
+  if (priZmene) {
+    vstup.addEventListener("input", priZmene);
+    vstup.addEventListener("change", priZmene);
+  }
+  return { obal, vstup };
+}
+
+function prectiPole(popis, vstup) {
+  if (popis.typ === "zaskrtavatko") return vstup.checked;
+  if (popis.typ === "seznam") return vstup.value.split("\n").map((r) => r.trim()).filter((r) => r !== "");
+  if (popis.typ === "cislo") return vstup.value === "" ? undefined : Number(vstup.value);
+  return vstup.value;
+}
+
+// Postaví obsah dialogu pro jeden typ proměnné; vrací { uzel, precti }
+function formularProTyp(typId, promenna) {
+  const typ = TYP_PROMENNE[typId];
+  const uzel = prvek("div");
+  uzel.appendChild(prvek("p", { trida: "napoveda", text: typ.popis, style: "margin-bottom:0.8rem" }));
+
+  const jmenoPole = vytvorPole(
+    { popisek: "Jméno proměnné", typ: "text", kod: true, napoveda: "Tímhle jménem se proměnná vkládá do textu: {{jméno}}. Bez mezer a diakritiky." },
+    promenna ? promenna.name : navrhniJmeno(typ.vychoziJmeno)
+  );
+  uzel.appendChild(jmenoPole.obal);
+
+  const vstupy = [];
+  const parametry = promenna ? promenna.params || {} : {};
+  let obnovNahled = null;
+
+  for (const popis of typ.pole) {
+    const hodnota = parametry[popis.klic] !== undefined ? parametry[popis.klic] : popis.vychozi;
+    const p = vytvorPole(popis, hodnota, () => { if (obnovNahled) obnovNahled(); });
+    uzel.appendChild(p.obal);
+    vstupy.push({ popis, vstup: p.vstup });
+  }
+
+  let prectiExtra = () => ({});
+
+  if (typ.extra === "datum") {
+    const najdi = (k) => vstupy.find((v) => v.popis.klic === k).vstup;
+    const formatVstup = najdi("format"), offsetVstup = najdi("offset"), localeVstup = najdi("locale");
+
+    const nahled = prvek("p", { trida: "napoveda", id: "nahled-datum", role: "status", style: "font-size:1rem;color:var(--text)" });
+    obnovNahled = () => {
+      nahled.textContent = "Náhled: " + nahledData(formatVstup.value, offsetVstup.value, localeVstup.value);
+    };
+    formatVstup.setAttribute("aria-describedby", "nahled-datum");
+
+    const hotove = prvek("div", { trida: "radek-pole" });
+    hotove.appendChild(prvek("label", { for: "hotove-formaty", text: "Hotové formáty" }));
+    const vyber = prvek("select", { id: "hotove-formaty" });
+    vyber.appendChild(prvek("option", { value: "", text: "— vyber a doplní se do pole Formát —" }));
+    for (const [f, popisek] of FORMATY_DATA) {
+      vyber.appendChild(prvek("option", { value: f, text: popisek + "  (" + f + ")" }));
+    }
+    vyber.addEventListener("change", () => {
+      if (!vyber.value) return;
+      formatVstup.value = vyber.value;
+      obnovNahled();
+      ohlas("Formát nastaven na " + vyber.value);
+    });
+    hotove.appendChild(vyber);
+
+    const posuny = prvek("div", { trida: "radek-pole" });
+    posuny.appendChild(prvek("label", { for: "hotove-posuny", text: "Rychlý posun" }));
+    const vyberP = prvek("select", { id: "hotove-posuny" });
+    for (const [v, t] of POSUNY_DATA) vyberP.appendChild(prvek("option", { value: v, text: t }));
+    vyberP.value = bezpecnyText(parametry.offset === undefined ? "" : parametry.offset);
+    vyberP.addEventListener("change", () => { offsetVstup.value = vyberP.value; obnovNahled(); });
+    posuny.appendChild(vyberP);
+
+    const znacky = prvek("details", { trida: "sekce" });
+    znacky.appendChild(prvek("summary", { text: "Poskládat vlastní formát ze značek" }));
+    const zetony = prvek("div", { trida: "zetony" });
+    for (const [z, popisek] of ZNACKY_DATA) {
+      zetony.appendChild(prvek("button", {
+        type: "button", text: z, title: popisek, "aria-label": "Přidat " + z + " — " + popisek,
+        onclick: () => { formatVstup.value += z; obnovNahled(); formatVstup.focus(); }
+      }));
+    }
+    znacky.appendChild(zetony);
+    const tab = prvek("table", { trida: "tabulka", style: "margin-top:0.6rem" });
+    tab.innerHTML = "<caption class='jen-pro-ctecku'>Význam značek</caption><tr><th>Značka</th><th>Význam</th></tr>" +
+      ZNACKY_DATA.map(([z, p]) => "<tr><td><code>" + z + "</code></td><td>" + p + "</td></tr>").join("");
+    znacky.appendChild(tab);
+
+    uzel.appendChild(hotove);
+    uzel.appendChild(posuny);
+    uzel.appendChild(nahled);
+    uzel.appendChild(znacky);
+    obnovNahled();
+  }
+
+  if (typ.extra === "poleFormulare") {
+    const poleStav = { seznam: (promenna && promenna.params && promenna.params.fields)
+      ? poleFormulareZObjektu(promenna.params.fields) : [] };
+    const obal = prvek("fieldset");
+    obal.appendChild(prvek("legend", { text: "Pole formuláře" }));
+    const vypis = prvek("div");
+    const prekresli = () => vykresliPoleFormulare(vypis, poleStav.seznam, prekresli);
+    prekresli();
+    obal.appendChild(vypis);
+    obal.appendChild(prvek("button", {
+      type: "button", text: "+ Přidat pole", onclick: () => {
+        poleStav.seznam.push({ id: noveId(), name: "pole" + (poleStav.seznam.length + 1), type: "text", multiline: false, default: "", values: [] });
+        prekresli();
+      }
+    }));
+    uzel.appendChild(obal);
+    prectiExtra = () => {
+      const fields = poleFormulareDoObjektu(poleStav.seznam);
+      return Object.keys(fields).length ? { fields } : {};
+    };
+  }
+
+  const precti = () => {
+    const params = {};
+    for (const { popis, vstup } of vstupy) {
+      const h = prectiPole(popis, vstup);
+      if (h === undefined || h === "" || (Array.isArray(h) && !h.length)) {
+        if (popis.typ === "zaskrtavatko" && popis.vychozi !== h) params[popis.klic] = h;
+        continue;
+      }
+      if (popis.typ === "zaskrtavatko" && h === popis.vychozi) continue;
+      params[popis.klic] = h;
+    }
+    Object.assign(params, prectiExtra());
+    return {
+      name: jmenoPole.vstup.value.trim() || typ.vychoziJmeno,
+      type: typId,
+      params
+    };
+  };
+
+  return { uzel, precti, jmenoVstup: jmenoPole.vstup };
+}
+
+function vsechnaJmenaPromennych() {
+  const jmena = stav.globalniPromenne.map((p) => p.name);
+  const z = aktualniZkratka();
+  if (z) for (const p of z.vars) jmena.push(p.name);
+  return jmena;
+}
+
+function navrhniJmeno(zaklad) {
+  const existujici = new Set(vsechnaJmenaPromennych());
+  if (!existujici.has(zaklad)) return zaklad;
+  let i = 2;
+  while (existujici.has(zaklad + i)) i++;
+  return zaklad + i;
+}
+
+function poleFormulareDoObjektu(seznam, vzdyVse = false) {
+  const vysledek = {};
+  for (const f of seznam) {
+    if (!f.name) continue;
+    const def = {};
+    if (f.type && f.type !== "text") def.type = f.type;
+    if (f.type === "choice" || f.type === "list") def.values = (f.values || []).slice();
+    if ((!f.type || f.type === "text") && f.multiline) def.multiline = true;
+    if (f.default) def.default = f.default;
+    if (Object.keys(def).length || vzdyVse) vysledek[f.name] = def;
+  }
+  return vysledek;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   EDITOR POLÍ FORMULÁŘE
+   ═══════════════════════════════════════════════════════════ */
+
+function vykresliPoleFormulare(kontejner, seznam, prekresli, priZmene) {
+  kontejner.innerHTML = "";
+  const oznam = () => { if (priZmene) priZmene(); };
+  if (!seznam.length) {
+    kontejner.appendChild(prvek("p", { trida: "prazdno", text: "Zatím žádná pole. Přidej pole a v textu na ně odkazuj zápisem [[jméno]]." }));
+    return;
+  }
+  seznam.forEach((f, i) => {
+    const karta = prvek("div", { trida: "karta" });
+    const hlavicka = prvek("div", { trida: "karta-hlavicka" });
+    hlavicka.appendChild(prvek("h3", { text: "[[" + (f.name || "?") + "]]" }));
+    hlavicka.appendChild(prvek("span", { trida: "mezera" }));
+    hlavicka.appendChild(prvek("button", {
+      type: "button", trida: "drobne", text: "↑", "aria-label": "Posunout pole " + f.name + " nahoru",
+      disabled: i === 0,
+      onclick: () => { [seznam[i - 1], seznam[i]] = [seznam[i], seznam[i - 1]]; prekresli(); oznam(); }
+    }));
+    hlavicka.appendChild(prvek("button", {
+      type: "button", trida: "drobne", text: "↓", "aria-label": "Posunout pole " + f.name + " dolů",
+      disabled: i === seznam.length - 1,
+      onclick: () => { [seznam[i + 1], seznam[i]] = [seznam[i], seznam[i + 1]]; prekresli(); oznam(); }
+    }));
+    hlavicka.appendChild(prvek("button", {
+      type: "button", trida: "drobne nebezpecne", text: "Smazat", "aria-label": "Smazat pole " + f.name,
+      onclick: () => { seznam.splice(i, 1); prekresli(); oznam(); ohlas("Pole smazáno."); }
+    }));
+    karta.appendChild(hlavicka);
+
+    const mrizka = prvek("div", { trida: "mrizka" });
+    const jmeno = vytvorPole({ popisek: "Jméno pole", typ: "text", kod: true }, f.name, (e) => {
+      f.name = e.target.value.trim();
+      hlavicka.querySelector("h3").textContent = "[[" + (f.name || "?") + "]]";
+      oznam();
+    });
+    mrizka.appendChild(jmeno.obal);
+
+    const typ = vytvorPole({
+      popisek: "Typ pole", typ: "select",
+      volby: [["text", "textové pole"], ["choice", "výběr z nabídky (rozbalovací)"], ["list", "výběr ze seznamu"]]
+    }, f.type || "text", (e) => { f.type = e.target.value; prekresli(); oznam(); });
+    mrizka.appendChild(typ.obal);
+    karta.appendChild(mrizka);
+
+    if (f.type === "choice" || f.type === "list") {
+      const hodnoty = vytvorPole({ popisek: "Nabízené hodnoty (jedna na řádek)", typ: "seznam" }, f.values, (e) => {
+        f.values = e.target.value.split("\n").map((r) => r.trim()).filter((r) => r !== "");
+        oznam();
+      });
+      karta.appendChild(hodnoty.obal);
+    } else {
+      const vic = vytvorPole({ popisek: "Víceřádkové pole", typ: "zaskrtavatko" }, f.multiline, (e) => { f.multiline = e.target.checked; oznam(); });
+      karta.appendChild(vic.obal);
+    }
+    const vych = vytvorPole({ popisek: "Předvyplněná hodnota", typ: "text" }, f.default, (e) => { f.default = e.target.value; oznam(); });
+    karta.appendChild(vych.obal);
+
+    kontejner.appendChild(karta);
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VKLÁDÁNÍ DO TEXTU — sledování kurzoru
+   ═══════════════════════════════════════════════════════════ */
+
+let posledniTextovePole = null;
+let posledniVyber = { start: 0, end: 0 };
+
+function sledujKurzor(el) {
+  const zapamatuj = () => {
+    posledniTextovePole = el;
+    posledniVyber = { start: el.selectionStart, end: el.selectionEnd };
+  };
+  ["input", "click", "keyup", "focus", "select"].forEach((ev) => el.addEventListener(ev, zapamatuj));
+  el.addEventListener("blur", zapamatuj);
+}
+
+// Po překreslení editoru vrátí fokus i kurzor do pole s textem náhrady.
+function zamerNahradu() {
+  const el = document.getElementById("pole-nahrada");
+  if (!el) return;
+  posledniTextovePole = el;
+  el.focus();
+  const poz = Math.min(posledniVyber.start, el.value.length);
+  el.setSelectionRange(poz, poz);
+  posledniVyber = { start: poz, end: poz };
+}
+
+function vlozDoTextu(text) {
+  const el = posledniTextovePole;
+  if (!el || !document.contains(el)) {
+    nastavStav("Nejdřív klikni do pole s textem náhrady, kam se to má vložit.", true);
+    return false;
+  }
+  const h = el.value;
+  const start = posledniVyber.start ?? h.length;
+  const end = posledniVyber.end ?? h.length;
+  el.value = h.slice(0, start) + text + h.slice(end);
+  const novaPozice = start + text.length;
+  el.focus();
+  el.setSelectionRange(novaPozice, novaPozice);
+  posledniVyber = { start: novaPozice, end: novaPozice };
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  return true;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SEZNAM ZKRATEK
+   ═══════════════════════════════════════════════════════════ */
+
+function aktualniZkratka() {
+  return stav.zkratky[stav.vybrana] || null;
+}
+
+// Zkratky se všude ukazují i ukládají seřazené abecedně podle spouštěče.
+// Pořadí drží jediná funkce, aby seznam a výsledný YAML nešly od sebe.
+function klicRazeni(z) {
+  return odvozenyPopisek(z).toLocaleLowerCase("cs");
+}
+
+function serazeneZkratky() {
+  return stav.zkratky.map((z, i) => ({ z, i })).sort((a, b) => {
+    const ka = klicRazeni(a.z), kb = klicRazeni(b.z);
+    if (!ka && kb) return 1;          // rozepsané zkratky bez spouštěče patří na konec
+    if (ka && !kb) return -1;
+    const porovnani = ka.localeCompare(kb, "cs", { numeric: true, sensitivity: "base" });
+    return porovnani !== 0 ? porovnani : a.i - b.i;
+  });
+}
+
+function popisSpoustece(z) {
+  if (z.typSpoustece === "regex") return z.regex || "(prázdný regulární výraz)";
+  if (z.typSpoustece === "vice") return (z.triggers || []).filter(Boolean).join(", ") || "(bez spouštěče)";
+  return z.trigger || "(bez spouštěče)";
+}
+
+function textNahrady(z) {
+  switch (z.typNahrady) {
+    case "markdown": return z.markdown;
+    case "html": return z.html;
+    case "obrazek": return z.image_path;
+    case "formular": return z.form;
+    default: return z.replace;
+  }
+}
+
+function odpovidaFiltru(z, filtr) {
+  if (!filtr) return true;
+  const f = filtr.toLowerCase();
+  const vse = popisSpoustece(z) + " " + z.label + " " + textNahrady(z) + " " + (z.search_terms || []).join(" ");
+  return vse.toLowerCase().includes(f);
+}
+
+function vykresliSeznam() {
+  const seznam = $("#seznam-zkratek");
+  seznam.innerHTML = "";
+  const viditelne = serazeneZkratky().filter(({ z }) => odpovidaFiltru(z, stav.filtr));
+
+  $("#pocet-zkratek").textContent = stav.filtr
+    ? "(" + viditelne.length + " z " + stav.zkratky.length + ")"
+    : "(" + stav.zkratky.length + ")";
+
+  if (!viditelne.length) {
+    seznam.appendChild(prvek("li", {}, prvek("p", {
+      trida: "prazdno",
+      text: stav.zkratky.length ? "Nic neodpovídá hledání." : "Zatím tu není žádná zkratka."
+    })));
+    return;
+  }
+
+  for (const { z, i } of viditelne) {
+    const odkaz = prvek("a", { href: "#nadpis-editor", "aria-current": i === stav.vybrana ? "true" : null });
+    odkaz.appendChild(prvek("span", { trida: "spoustec", text: popisSpoustece(z) }));
+    const ukazka = (z.label ? z.label + " — " : "") + (textNahrady(z) || "").replace(/\s+/g, " ").slice(0, 70);
+    odkaz.appendChild(prvek("span", { trida: "ukazka", text: ukazka || "(bez textu)" }));
+    odkaz.addEventListener("click", (e) => {
+      e.preventDefault();
+      vyberZkratku(i);
+      $("#nadpis-editor").focus();
+    });
+    odkaz.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const vsechny = Array.from(seznam.querySelectorAll("a"));
+        const poz = vsechny.indexOf(e.currentTarget);
+        const cil = vsechny[poz + (e.key === "ArrowDown" ? 1 : -1)];
+        if (cil) cil.focus();
+      }
+    });
+    seznam.appendChild(prvek("li", {}, odkaz));
+  }
+}
+
+function vyberZkratku(index, zamerit = true) {
+  stav.vybrana = index;
+  vykresliSeznam();
+  vykresliEditor();
+  aktualizujZdroj();
+  if (zamerit) {
+    const z = aktualniZkratka();
+    ohlas("Vybrána zkratka " + (z ? popisSpoustece(z) : ""));
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   EDITOR ZKRATKY
+   ═══════════════════════════════════════════════════════════ */
+
+// Náhled YAML se obnovuje i při psaní, aniž by se překresloval celý editor.
+function aktualizujNahledZkratky() {
+  const z = aktualniZkratka();
+  if (!z) return;
+  const nahled = document.getElementById("nahled-zkratky");
+  if (nahled) {
+    const radky = yamlMapaZkratky(zkratkaDoObjektu(z), "    ");
+    if (radky.length) radky[0] = "  - " + radky[0].slice(4);
+    nahled.textContent = radky.join("\n");
+  }
+}
+
+function zmena() {
+  aktualizujNahledZkratky();
+  vykresliSeznam();
+  aktualizujZdroj();
+  zkontroluj();
+  ulozDoUloziste();
+}
+
+function prekresliEditor() {
+  const aktivniId = document.activeElement ? document.activeElement.id : null;
+  vykresliEditor();
+  if (aktivniId) {
+    const el = document.getElementById(aktivniId);
+    if (el) el.focus();
+  }
+}
+
+const POPISKY_NAHRADY = {
+  text: "Text, který se vloží",
+  markdown: "Markdown, který se vloží (Espanso ho převede na formátovaný text)",
+  html: "HTML, které se vloží",
+  obrazek: "Cesta k obrázku",
+  formular: "Text formuláře — pole zapisuj jako [[jmeno]]"
+};
+
+function vykresliEditor() {
+  const kontejner = $("#editor");
+  kontejner.innerHTML = "";
+  const z = aktualniZkratka();
+
+  if (!z) {
+    kontejner.appendChild(prvek("p", { trida: "prazdno", text: "Není vybraná žádná zkratka. Přidej novou tlačítkem „+ Přidat zkratku“ nebo načti soubor." }));
+    return;
+  }
+
+  /* ── Spouštěč ─────────────────────────────────────────── */
+  const fsSpoustec = prvek("fieldset");
+  fsSpoustec.appendChild(prvek("legend", { text: "Spouštěč" }));
+
+  const prepinaceSp = prvek("div", { trida: "prepinace", role: "radiogroup", "aria-label": "Typ spouštěče" });
+  for (const [hodnota, popisek] of [["jeden", "Jeden spouštěč"], ["vice", "Více spouštěčů"], ["regex", "Regulární výraz"]]) {
+    const id = "sp-" + hodnota;
+    const r = prvek("input", { type: "radio", name: "typ-spoustece", id, value: hodnota });
+    r.checked = z.typSpoustece === hodnota;
+    r.addEventListener("change", () => { z.typSpoustece = hodnota; prekresliEditor(); zmena(); });
+    prepinaceSp.appendChild(prvek("div", {}, [r, prvek("label", { for: id, text: popisek })]));
+  }
+  fsSpoustec.appendChild(prepinaceSp);
+
+  if (z.typSpoustece === "jeden") {
+    const p = vytvorPole({ popisek: "Spouštěč", typ: "text", kod: true, napoveda: "Text, který napíšeš a Espanso ho nahradí. Zvykem je začínat dvojtečkou, třeba :adr" },
+      z.trigger, (e) => { z.trigger = e.target.value; zmena(); }, "pole-trigger");
+    fsSpoustec.appendChild(p.obal);
+  } else if (z.typSpoustece === "vice") {
+    const obal = prvek("div");
+    obal.appendChild(prvek("p", { trida: "napoveda", text: "Všechny tyhle spouštěče vyvolají stejnou náhradu." }));
+    z.triggers.forEach((t, i) => {
+      const radek = prvek("div", { style: "display:flex;gap:0.4rem;align-items:flex-end;margin-bottom:0.4rem" });
+      const p = vytvorPole({ popisek: "Spouštěč " + (i + 1), typ: "text", kod: true }, t, (e) => { z.triggers[i] = e.target.value; zmena(); }, "pole-trigger-" + i);
+      p.obal.style.flex = "1";
+      p.obal.style.marginBottom = "0";
+      radek.appendChild(p.obal);
+      radek.appendChild(prvek("button", {
+        type: "button", text: "Odebrat", trida: "drobne nebezpecne", "aria-label": "Odebrat spouštěč " + (i + 1),
+        disabled: z.triggers.length <= 1,
+        onclick: () => { z.triggers.splice(i, 1); prekresliEditor(); zmena(); }
+      }));
+      obal.appendChild(radek);
+    });
+    obal.appendChild(prvek("button", {
+      type: "button", text: "+ Přidat další spouštěč",
+      onclick: () => { z.triggers.push(""); vykresliEditor(); const el = document.getElementById("pole-trigger-" + (z.triggers.length - 1)); if (el) el.focus(); zmena(); }
+    }));
+    fsSpoustec.appendChild(obal);
+  } else {
+    const p = vytvorPole({ popisek: "Regulární výraz", typ: "text", kod: true,
+      napoveda: "Např. :pozdrav\\((?P<jmeno>.*)\\) — pojmenovaná skupina (?P<jmeno>…) je pak v textu dostupná jako {{jmeno}}." },
+      z.regex, (e) => { z.regex = e.target.value; zmena(); }, "pole-regex");
+    fsSpoustec.appendChild(p.obal);
+  }
+
+  if (z.typSpoustece !== "regex") {
+    const mezera = vytvorPole({
+      popisek: "Spouštěč zakončit mezerou", typ: "zaskrtavatko",
+      napoveda: "Do souboru se za spouštěč přidá mezera, takže zkratku spustíš až mezerníkem. "
+        + "Ta mezera se tím spotřebuje a za vloženým textem nezůstane přebývat. Doporučeno."
+    }, z.mezeraNaKonci, (e) => { z.mezeraNaKonci = e.target.checked; zmena(); }, "sp-mezera");
+    fsSpoustec.appendChild(mezera.obal);
+  }
+
+  const popisekPole = vytvorPole({ popisek: "Popisek zkratky (nepovinné)", typ: "text",
+    napoveda: "Vlastní název zkratky pro vyhledávací okno Espansa. Nech ho prázdný, pokud by "
+      + "jen opakoval spouštěč — hledat se dá ve spouštěči, popisku i v textu." },
+    z.label, (e) => { z.label = e.target.value; zmena(); }, "pole-label");
+  fsSpoustec.appendChild(popisekPole.obal);
+  kontejner.appendChild(fsSpoustec);
+
+  /* ── Náhrada ──────────────────────────────────────────── */
+  const fsNahrada = prvek("fieldset");
+  fsNahrada.appendChild(prvek("legend", { text: "Co se vloží" }));
+
+  const prepinaceN = prvek("div", { trida: "prepinace", role: "radiogroup", "aria-label": "Typ náhrady" });
+  for (const [hodnota, popisek] of [["text", "Prostý text"], ["markdown", "Markdown"], ["html", "HTML"], ["obrazek", "Obrázek"], ["formular", "Formulář"]]) {
+    const id = "nah-" + hodnota;
+    const r = prvek("input", { type: "radio", name: "typ-nahrady", id, value: hodnota });
+    r.checked = z.typNahrady === hodnota;
+    r.addEventListener("change", () => { z.typNahrady = hodnota; prekresliEditor(); zmena(); });
+    prepinaceN.appendChild(prvek("div", {}, [r, prvek("label", { for: id, text: popisek })]));
+  }
+  fsNahrada.appendChild(prepinaceN);
+
+  const klicNahrady = { text: "replace", markdown: "markdown", html: "html", obrazek: "image_path", formular: "form" }[z.typNahrady];
+
+  if (z.typNahrady === "obrazek") {
+    const p = vytvorPole({ popisek: POPISKY_NAHRADY.obrazek, typ: "text", kod: true,
+      napoveda: "Úplná cesta k souboru, např. /home/ja/obrazky/podpis.png. Na Windows použij zpětná lomítka." },
+      z.image_path, (e) => { z.image_path = e.target.value; zmena(); }, "pole-nahrada");
+    fsNahrada.appendChild(p.obal);
+  } else {
+    const p = vytvorPole({ popisek: POPISKY_NAHRADY[z.typNahrady], typ: "textarea", kod: true },
+      z[klicNahrady], (e) => { z[klicNahrady] = e.target.value; zmena(); }, "pole-nahrada");
+    p.vstup.rows = 8;
+    sledujKurzor(p.vstup);
+    fsNahrada.appendChild(p.obal);
+    fsNahrada.appendChild(vykresliListuVkladani(z));
+  }
+
+  if (z.typNahrady === "formular") {
+    const obalPoli = prvek("div");
+    obalPoli.appendChild(prvek("h3", { text: "Pole formuláře", style: "font-size:0.95rem;margin:0.8rem 0 0.4rem" }));
+    const vypis = prvek("div");
+    const prekresli = () => vykresliPoleFormulare(vypis, z.poleFormulare, prekresli, zmena);
+    prekresli();
+    obalPoli.appendChild(vypis);
+    obalPoli.appendChild(prvek("button", {
+      type: "button", text: "+ Přidat pole formuláře",
+      onclick: () => {
+        const jmeno = "pole" + (z.poleFormulare.length + 1);
+        z.poleFormulare.push({ id: noveId(), name: jmeno, type: "text", multiline: false, default: "", values: [] });
+        prekresli(); zmena(); ohlas("Pole " + jmeno + " přidáno.");
+      }
+    }));
+    fsNahrada.appendChild(obalPoli);
+  }
+  kontejner.appendChild(fsNahrada);
+
+  /* ── Proměnné ─────────────────────────────────────────── */
+  const fsPromenne = prvek("fieldset");
+  fsPromenne.appendChild(prvek("legend", { text: "Proměnné této zkratky" }));
+  const vypisPromennych = prvek("div");
+  vykresliPromenne(vypisPromennych, z.vars, () => { prekresliEditor(); zmena(); });
+  fsPromenne.appendChild(vypisPromennych);
+  fsPromenne.appendChild(prvek("button", {
+    type: "button", text: "+ Přidat proměnnou…",
+    onclick: () => dialogVyberTypu((typId) => dialogPromenne(typId, null, (nova) => {
+      z.vars.push(Object.assign({ id: noveId(), inject_vars: null, depends_on: [], ostatni: {} }, nova));
+      prekresliEditor(); zmena(); ohlas("Proměnná " + nova.name + " přidána.");
+    }))
+  }));
+  kontejner.appendChild(fsPromenne);
+
+  /* ── Chování ──────────────────────────────────────────── */
+  kontejner.appendChild(vykresliChovani(z));
+
+  /* ── Náhled YAML ──────────────────────────────────────── */
+  const det = prvek("details", { trida: "sekce" });
+  det.appendChild(prvek("summary", { text: "YAML této zkratky" }));
+  const pre = prvek("pre", { trida: "nahled", id: "nahled-zkratky" });
+  const radky = yamlMapaZkratky(zkratkaDoObjektu(z), "    ");
+  if (radky.length) radky[0] = "  - " + radky[0].slice(4);
+  pre.textContent = radky.join("\n");
+  det.appendChild(pre);
+  kontejner.appendChild(det);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LIŠTA VKLÁDÁNÍ DYNAMICKÝCH PRVKŮ
+   ═══════════════════════════════════════════════════════════ */
+
+function vykresliListuVkladani(z) {
+  const obal = prvek("div");
+  obal.appendChild(prvek("p", { trida: "napoveda", id: "napoveda-vkladani",
+    text: "Vkládání do textu — kurzor si nejdřív dej na místo, kam to má přijít:" }));
+  const lista = prvek("div", { trida: "lista-vkladani", role: "group", "aria-labelledby": "napoveda-vkladani" });
+
+  lista.appendChild(prvek("button", {
+    type: "button", text: "Sem skočí kurzor",
+    title: "Vloží značku $|$ — po vložení textu se tam postaví kurzor",
+    onclick: () => { if (vlozDoTextu("$|$")) ohlas("Vložena značka kurzoru."); }
+  }));
+
+  for (const typ of TYPY_PROMENNYCH) {
+    if (typ.id === "form" && z.typNahrady === "formular") continue;
+    lista.appendChild(prvek("button", {
+      type: "button", text: typ.nazev + "…", title: typ.popis,
+      onclick: () => dialogPromenne(typ.id, null, (nova) => {
+        z.vars.push(Object.assign({ id: noveId(), inject_vars: null, depends_on: [], ostatni: {} }, nova));
+        vlozDoTextu("{{" + nova.name + "}}");
+        prekresliEditor(); zmena(); zamerNahradu();
+        ohlas("Vložena proměnná " + nova.name + ".");
+      })
+    }));
+  }
+
+  if (z.typNahrady === "formular") {
+    lista.appendChild(prvek("button", {
+      type: "button", text: "Pole formuláře…",
+      title: "Přidá pole formuláře a vloží [[jméno]] do textu",
+      onclick: () => dialogPoleFormulare(z)
+    }));
+  }
+
+  lista.appendChild(prvek("button", {
+    type: "button", text: "Hotová proměnná…",
+    title: "Vloží {{jméno}} některé z už nadefinovaných proměnných",
+    onclick: () => dialogHotovaPromenna(z)
+  }));
+
+  obal.appendChild(lista);
+  return obal;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DIALOGY PRO PROMĚNNÉ
+   ═══════════════════════════════════════════════════════════ */
+
+function dialogVyberTypu(priVyberu) {
+  const telo = prvek("div");
+  telo.appendChild(prvek("p", { trida: "napoveda", text: "Vyber, co má proměnná dělat." }));
+  const seznam = prvek("div", { style: "display:grid;gap:0.5rem" });
+  for (const typ of TYPY_PROMENNYCH) {
+    const tl = prvek("button", { type: "button", style: "display:block;text-align:left;width:100%", onclick: () => { zavriDialog(); priVyberu(typ.id); } });
+    tl.appendChild(prvek("strong", { text: typ.nazev }));
+    tl.appendChild(prvek("span", { trida: "napoveda", text: typ.popis, style: "display:block" }));
+    seznam.appendChild(tl);
+  }
+  telo.appendChild(seznam);
+  otevriDialog({ nadpis: "Jaká proměnná?", telo, popisekPotvrdit: "Zavřít", priPotvrzeni: () => true });
+  $("#dialog-potvrdit").hidden = true;
+}
+
+function dialogPromenne(typId, existujici, priHotovo) {
+  const formular = formularProTyp(typId, existujici);
+  otevriDialog({
+    nadpis: (existujici ? "Upravit: " : "Nová proměnná: ") + nazevTypu(typId),
+    telo: formular.uzel,
+    popisekPotvrdit: existujici ? "Uložit" : "Vložit",
+    priPotvrzeni: () => {
+      const vysledek = formular.precti();
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(vysledek.name)) {
+        nastavStav("Jméno proměnné může obsahovat jen písmena bez diakritiky, číslice a podtržítko a nesmí začínat číslicí.", true);
+        formular.jmenoVstup.focus();
+        return false;
+      }
+      priHotovo(vysledek);
+      return true;
+    }
+  });
+  $("#dialog-potvrdit").hidden = false;
+}
+
+function dialogHotovaPromenna(z) {
+  const jmena = [];
+  for (const p of stav.globalniPromenne) jmena.push([p.name, p.name + " (globální, " + nazevTypu(p.type) + ")"]);
+  for (const p of z.vars) jmena.push([p.name, p.name + " (" + nazevTypu(p.type) + ")"]);
+  for (const f of z.poleFormulare) jmena.push(["[[" + f.name + "]]", f.name + " (pole formuláře)"]);
+  if (z.typSpoustece === "regex") {
+    for (const m of (z.regex || "").matchAll(/\(\?P<([A-Za-z_][A-Za-z0-9_]*)>/g)) jmena.push([m[1], m[1] + " (skupina z regulárního výrazu)"]);
+  }
+  if (!jmena.length) {
+    nastavStav("Zatím nemáš žádnou proměnnou, kterou by šlo vložit. Přidej ji některým z tlačítek vlevo.", true);
+    return;
+  }
+  const telo = prvek("div");
+  const p = vytvorPole({ popisek: "Kterou proměnnou vložit", typ: "select", volby: jmena }, jmena[0][0]);
+  telo.appendChild(p.obal);
+  otevriDialog({
+    nadpis: "Vložit hotovou proměnnou",
+    telo,
+    priPotvrzeni: () => {
+      const v = p.vstup.value;
+      vlozDoTextu(v.startsWith("[[") ? v : "{{" + v + "}}");
+      ohlas("Vloženo " + v);
+      return true;
+    }
+  });
+  $("#dialog-potvrdit").hidden = false;
+}
+
+function dialogPoleFormulare(z) {
+  const telo = prvek("div");
+  const pole = { id: noveId(), name: "pole" + (z.poleFormulare.length + 1), type: "text", multiline: false, default: "", values: [] };
+  const jmeno = vytvorPole({ popisek: "Jméno pole", typ: "text", kod: true, napoveda: "Do textu se vloží jako [[jméno]]." }, pole.name, (e) => { pole.name = e.target.value.trim(); });
+  telo.appendChild(jmeno.obal);
+  const typ = vytvorPole({ popisek: "Typ pole", typ: "select", volby: [["text", "textové pole"], ["choice", "výběr z nabídky"], ["list", "výběr ze seznamu"]] }, "text", (e) => {
+    pole.type = e.target.value;
+    hodnoty.obal.hidden = !(pole.type === "choice" || pole.type === "list");
+    vic.obal.hidden = pole.type !== "text";
+  });
+  telo.appendChild(typ.obal);
+  const hodnoty = vytvorPole({ popisek: "Nabízené hodnoty (jedna na řádek)", typ: "seznam" }, [], (e) => {
+    pole.values = e.target.value.split("\n").map((r) => r.trim()).filter(Boolean);
+  });
+  hodnoty.obal.hidden = true;
+  telo.appendChild(hodnoty.obal);
+  const vic = vytvorPole({ popisek: "Víceřádkové pole", typ: "zaskrtavatko" }, false, (e) => { pole.multiline = e.target.checked; });
+  telo.appendChild(vic.obal);
+  const vych = vytvorPole({ popisek: "Předvyplněná hodnota", typ: "text" }, "", (e) => { pole.default = e.target.value; });
+  telo.appendChild(vych.obal);
+
+  otevriDialog({
+    nadpis: "Nové pole formuláře",
+    telo,
+    priPotvrzeni: () => {
+      if (!pole.name) { nastavStav("Pole musí mít jméno.", true); return false; }
+      z.poleFormulare.push(pole);
+      vlozDoTextu("[[" + pole.name + "]]");
+      prekresliEditor(); zmena(); zamerNahradu();
+      ohlas("Pole " + pole.name + " přidáno a vloženo.");
+      return true;
+    }
+  });
+  $("#dialog-potvrdit").hidden = false;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VÝPIS PROMĚNNÝCH
+   ═══════════════════════════════════════════════════════════ */
+
+function shrnutiPromenne(p) {
+  const par = p.params || {};
+  switch (p.type) {
+    case "date": return "formát " + (par.format || "?") + (par.offset ? ", posun " + par.offset + " s" : "") + " → " + nahledData(par.format, par.offset, par.locale);
+    case "echo": return bezpecnyText(par.echo).replace(/\s+/g, " ").slice(0, 80);
+    case "random": return (par.choices || []).length + " variant: " + (par.choices || []).join(" / ").slice(0, 70);
+    case "shell": return bezpecnyText(par.cmd).replace(/\s+/g, " ").slice(0, 80);
+    case "script": return (par.args || []).join(" ").slice(0, 80);
+    case "match": return "vloží zkratku " + bezpecnyText(par.trigger);
+    case "clipboard": return "obsah schránky";
+    case "form": return Object.keys(par.fields || {}).length + " polí";
+    default: return "";
+  }
+}
+
+function vykresliPromenne(kontejner, seznam, prekresliVse) {
+  kontejner.innerHTML = "";
+  if (!seznam.length) {
+    kontejner.appendChild(prvek("p", { trida: "prazdno", text: "Žádné proměnné. Přidávají se samy, když v textu použiješ některé z tlačítek pro vkládání." }));
+    return;
+  }
+  seznam.forEach((p, i) => {
+    const karta = prvek("div", { trida: "karta" });
+    const hlavicka = prvek("div", { trida: "karta-hlavicka" });
+    hlavicka.appendChild(prvek("h3", { text: "{{" + p.name + "}}" }));
+    hlavicka.appendChild(prvek("span", { trida: "typ", text: nazevTypu(p.type) }));
+    hlavicka.appendChild(prvek("span", { trida: "mezera" }));
+    hlavicka.appendChild(prvek("button", {
+      type: "button", trida: "drobne", text: "Vložit do textu", "aria-label": "Vložit proměnnou " + p.name + " do textu",
+      onclick: () => { if (vlozDoTextu("{{" + p.name + "}}")) ohlas("Vloženo {{" + p.name + "}}"); }
+    }));
+    hlavicka.appendChild(prvek("button", {
+      type: "button", trida: "drobne", text: "Upravit…", "aria-label": "Upravit proměnnou " + p.name,
+      onclick: () => dialogPromenne(p.type, p, (nova) => {
+        p.name = nova.name; p.params = nova.params;
+        prekresliVse();
+      })
+    }));
+    hlavicka.appendChild(prvek("button", {
+      type: "button", trida: "drobne", text: "↑", "aria-label": "Posunout proměnnou " + p.name + " nahoru",
+      disabled: i === 0,
+      onclick: () => { [seznam[i - 1], seznam[i]] = [seznam[i], seznam[i - 1]]; prekresliVse(); }
+    }));
+    hlavicka.appendChild(prvek("button", {
+      type: "button", trida: "drobne", text: "↓", "aria-label": "Posunout proměnnou " + p.name + " dolů",
+      disabled: i === seznam.length - 1,
+      onclick: () => { [seznam[i + 1], seznam[i]] = [seznam[i], seznam[i + 1]]; prekresliVse(); }
+    }));
+    hlavicka.appendChild(prvek("button", {
+      type: "button", trida: "drobne nebezpecne", text: "Smazat", "aria-label": "Smazat proměnnou " + p.name,
+      onclick: () => { seznam.splice(i, 1); prekresliVse(); ohlas("Proměnná smazána."); }
+    }));
+    karta.appendChild(hlavicka);
+    const shrnuti = shrnutiPromenne(p);
+    if (shrnuti) karta.appendChild(prvek("p", { trida: "napoveda", text: shrnuti }));
+    kontejner.appendChild(karta);
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CHOVÁNÍ ZKRATKY
+   ═══════════════════════════════════════════════════════════ */
+
+function vykresliChovani(z) {
+  const fs = prvek("fieldset");
+  fs.appendChild(prvek("legend", { text: "Chování" }));
+
+  const zaskrtavatka = [
+    ["word", "Jen jako celé slovo", "Zkratka se spustí, jen když kolem ní nejsou jiná písmena. Hodí se u zkratek bez dvojtečky."],
+    ["left_word", "Hlídat hranici jen vlevo", "Před spouštěčem nesmí být písmeno."],
+    ["right_word", "Hlídat hranici jen vpravo", "Za spouštěčem nesmí být písmeno."],
+    ["propagate_case", "Přenášet velikost písmen", "Napíšeš-li spouštěč velkými písmeny, vloží se i náhrada velkými."],
+    ["passive_only", "Jen v pasivním režimu", "Zkratka se použije pouze při pasivním rozbalování."]
+  ];
+  for (const [klic, popisek, napoveda] of zaskrtavatka) {
+    const p = vytvorPole({ popisek, typ: "zaskrtavatko", napoveda }, z[klic],
+      (e) => { z[klic] = e.target.checked; prekresliEditor(); zmena(); }, "chov-" + klic);
+    fs.appendChild(p.obal);
+  }
+
+  const mrizka = prvek("div", { trida: "mrizka" });
+
+  if (z.propagate_case) {
+    const p = vytvorPole({
+      popisek: "Styl velkých písmen", typ: "select",
+      volby: [["", "výchozí (capitalize)"], ["capitalize", "První písmeno věty"], ["capitalize_words", "První Písmena Slov"], ["uppercase", "VŠECHNO VELKÝMI"]],
+      napoveda: "Platí jen při zapnutém přenášení velikosti písmen."
+    }, z.uppercase_style, (e) => { z.uppercase_style = e.target.value; zmena(); }, "chov-uppercase");
+    mrizka.appendChild(p.obal);
+  }
+
+  const priorita = vytvorPole({ popisek: "Priorita", typ: "cislo",
+    napoveda: "Když se dvě zkratky perou o stejný spouštěč, vyhraje vyšší priorita." },
+    z.priority, (e) => { z.priority = e.target.value === "" ? "" : Number(e.target.value); zmena(); }, "chov-priorita");
+  mrizka.appendChild(priorita.obal);
+
+  const rezim = vytvorPole({ popisek: "Způsob vložení", typ: "select",
+    volby: [["", "výchozí podle nastavení"], ["clipboard", "přes schránku (rychlé, spolehlivé)"], ["keys", "simulací kláves (pomalé, ale všude)"]],
+    napoveda: "Když se někde text vkládá špatně, zkus přepnout." },
+    z.force_mode, (e) => { z.force_mode = e.target.value; zmena(); }, "chov-rezim");
+  mrizka.appendChild(rezim.obal);
+
+  const hledani = vytvorPole({ popisek: "Klíčová slova pro hledání", typ: "text",
+    napoveda: "Oddělená čárkou. Podle nich zkratku najdeš ve vyhledávacím okně Espansa." },
+    (z.search_terms || []).join(", "),
+    (e) => { z.search_terms = e.target.value.split(",").map((s) => s.trim()).filter(Boolean); zmena(); }, "chov-hledani");
+  mrizka.appendChild(hledani.obal);
+
+  fs.appendChild(mrizka);
+
+  const patch = vytvorPole({ popisek: "Nepoužívat opravy pro problémové aplikace (apply_patch: false)", typ: "zaskrtavatko" },
+    z.apply_patch === false, (e) => { z.apply_patch = e.target.checked ? false : null; zmena(); }, "chov-patch");
+  fs.appendChild(patch.obal);
+
+  return fs;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   KONTROLA
+   ═══════════════════════════════════════════════════════════ */
+
+function pouzitePromenne(text) {
+  const nalezene = new Set();
+  for (const m of String(text || "").matchAll(/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)/g)) nalezene.add(m[1]);
+  return nalezene;
+}
+
+function zkontroluj() {
+  const obal = $("#kontrola");
+  obal.innerHTML = "";
+  const potize = [];
+  const z = aktualniZkratka();
+
+  // Porovnáváme spouštěče tak, jak se zapíšou — :zkr a :zkr s mezerou jsou dva různé.
+  const vsechnySpoustece = [];
+  for (const zk of stav.zkratky) {
+    if (zk.typSpoustece !== "regex") vsechnySpoustece.push(...spousteceProZapis(zk));
+  }
+  const duplicity = vsechnySpoustece.filter((t, i) => vsechnySpoustece.indexOf(t) !== i);
+  if (duplicity.length) potize.push("Stejný spouštěč je použitý víckrát: " + Array.from(new Set(duplicity)).join(", "));
+
+  if (z) {
+    if (z.typSpoustece === "jeden" && !z.trigger.trim()) potize.push("Zkratka nemá vyplněný spouštěč.");
+    if (z.typSpoustece === "vice" && !z.triggers.filter(Boolean).length) potize.push("Zkratka nemá vyplněný ani jeden spouštěč.");
+    if (z.typSpoustece === "regex") {
+      if (!z.regex.trim()) potize.push("Není vyplněný regulární výraz.");
+      else {
+        try { new RegExp(z.regex.replace(/\(\?P</g, "(?<")); }
+        catch (e) { potize.push("Regulární výraz nejspíš není platný: " + e.message); }
+      }
+    }
+    const text = textNahrady(z);
+    if (!text.trim() && z.typNahrady !== "obrazek") potize.push("Náhrada je prázdná — zkratka by nevložila nic.");
+
+    const znama = new Set([...stav.globalniPromenne.map((p) => p.name), ...z.vars.map((p) => p.name)]);
+    for (const p of z.vars) if (p.type === "form") for (const f of Object.keys((p.params || {}).fields || {})) znama.add(p.name + "." + f);
+    if (z.typSpoustece === "regex") for (const m of z.regex.matchAll(/\(\?P<([A-Za-z_][A-Za-z0-9_]*)>/g)) znama.add(m[1]);
+    for (const jmeno of pouzitePromenne(text)) {
+      if (!znama.has(jmeno)) potize.push("V textu je {{" + jmeno + "}}, ale taková proměnná není nadefinovaná.");
+    }
+    const jmenaVars = z.vars.map((p) => p.name);
+    const dvojite = jmenaVars.filter((n, i) => jmenaVars.indexOf(n) !== i);
+    if (dvojite.length) potize.push("Dvě proměnné mají stejné jméno: " + Array.from(new Set(dvojite)).join(", "));
+
+    if (z.typNahrady === "formular") {
+      const poleVTextu = new Set(Array.from(String(z.form || "").matchAll(/\[\[\s*([A-Za-z_][A-Za-z0-9_]*)\s*\]\]/g)).map((m) => m[1]));
+      if (!poleVTextu.size) potize.push("Formulář nemá v textu žádné pole ve tvaru [[jmeno]].");
+      for (const f of z.poleFormulare) if (!poleVTextu.has(f.name)) potize.push("Pole „" + f.name + "“ je nadefinované, ale v textu formuláře se nepoužívá.");
+    }
+    for (const p of z.vars) {
+      if (p.type === "shell" && !(p.params || {}).cmd) potize.push("Proměnná {{" + p.name + "}} nemá vyplněný příkaz.");
+      if (p.type === "random" && !((p.params || {}).choices || []).length) potize.push("Proměnná {{" + p.name + "}} nemá žádné varianty.");
+      if (p.type === "match" && !(p.params || {}).trigger) potize.push("Proměnná {{" + p.name + "}} nemá vyplněný spouštěč vnořené zkratky.");
+    }
+  }
+
+  if (!potize.length) return;
+  const ul = prvek("ul", { "aria-label": "Upozornění" });
+  for (const t of potize) ul.appendChild(prvek("li", { text: t }));
+  obal.appendChild(ul);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   GLOBÁLNÍ PROMĚNNÉ A IMPORTY
+   ═══════════════════════════════════════════════════════════ */
+
+function vykresliGlobalni() {
+  const kontejner = $("#seznam-globalnich");
+  vykresliPromenne(kontejner, stav.globalniPromenne, () => { vykresliGlobalni(); zmena(); });
+}
+
+$("#tl-pridat-globalni").addEventListener("click", () => {
+  dialogVyberTypu((typId) => dialogPromenne(typId, null, (nova) => {
+    stav.globalniPromenne.push(Object.assign({ id: noveId(), inject_vars: null, depends_on: [], ostatni: {} }, nova));
+    vykresliGlobalni(); zmena();
+    ohlas("Globální proměnná " + nova.name + " přidána.");
+  }));
+});
+
+$("#importy").addEventListener("input", (e) => {
+  stav.importy = e.target.value.split("\n").map((r) => r.trim()).filter(Boolean);
+  zmena();
+});
+
+/* ═══════════════════════════════════════════════════════════
+   ZDROJ YAML
+   ═══════════════════════════════════════════════════════════ */
+
+let zdrojRucneUpraven = false;
+
+function aktualizujZdroj() {
+  if (zdrojRucneUpraven) return;
+  try {
+    $("#zdroj").value = serializujSoubor();
+  } catch (e) {
+    $("#zdroj").value = "# Chyba při vytváření YAML: " + e.message;
+  }
+}
+
+$("#zdroj").addEventListener("input", () => { zdrojRucneUpraven = true; });
+
+$("#nazev-souboru").addEventListener("input", (e) => {
+  stav.nazevSouboru = e.target.value.trim() || "base.yml";
+  ulozDoUloziste();
+});
+
+$("#tl-obnovit-zdroj").addEventListener("click", () => {
+  zdrojRucneUpraven = false;
+  aktualizujZdroj();
+  nastavStav("Zdroj přegenerován z editoru.");
+});
+
+$("#tl-pouzit-zdroj").addEventListener("click", () => {
+  try {
+    nactiZTextu($("#zdroj").value);
+    zdrojRucneUpraven = false;
+    prekresliVse();
+    nastavStav("Změny ze zdroje byly načteny: " + stav.zkratky.length + " zkratek.");
+  } catch (e) {
+    nastavStav(e.message, true);
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════
+   PRÁCE SE SOUBOREM A SCHRÁNKOU
+   ═══════════════════════════════════════════════════════════ */
+
+$("#tl-nacist").addEventListener("click", () => $("#vstup-soubor").click());
+
+$("#vstup-soubor").addEventListener("change", (e) => {
+  const soubor = e.target.files[0];
+  if (!soubor) return;
+  const ctecka = new FileReader();
+  ctecka.onload = () => {
+    try {
+      nactiZTextu(String(ctecka.result));
+      stav.nazevSouboru = soubor.name;
+      zdrojRucneUpraven = false;
+      prekresliVse();
+      nastavStav("Načteno „" + soubor.name + "“ — " + stav.zkratky.length + " zkratek.");
+    } catch (chyba) {
+      nastavStav(chyba.message, true);
+    }
+  };
+  ctecka.onerror = () => nastavStav("Soubor se nepodařilo přečíst.", true);
+  ctecka.readAsText(soubor, "utf-8");
+  e.target.value = "";
+});
+
+// Všechno stahování jde tudy. Vrací varování, když stránka neběží v zabezpečeném
+// kontextu — prohlížeč pak stažení nejspíš zablokuje a uživatel by nevěděl proč.
+function stahniSoubor(nazev, obsah, typ) {
+  const blob = new Blob([obsah], { type: typ });
+  const url = URL.createObjectURL(blob);
+  const a = prvek("a", { href: url, download: nazev });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  if (window.isSecureContext) return "";
+  return " Pozor: stránka neběží přes HTTPS, takže prohlížeč mohl stahování zablokovat."
+    + " Otevři si editor na adrese začínající https:// a zkus to znovu.";
+}
+
+$("#tl-ulozit").addEventListener("click", () => {
+  const obsah = zdrojRucneUpraven ? $("#zdroj").value : serializujSoubor();
+  const nazev = stav.nazevSouboru || "base.yml";
+  const varovani = stahniSoubor(nazev, obsah, "text/yaml;charset=utf-8");
+  nastavStav("Soubor „" + nazev + "“ uložen do stažených souborů." + varovani, !!varovani);
+});
+
+async function zkopirujText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (e) {
+    const pomocna = prvek("textarea");
+    pomocna.value = text;
+    pomocna.style.position = "fixed";
+    pomocna.style.left = "-9999px";
+    document.body.appendChild(pomocna);
+    pomocna.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch (chyba) { ok = false; }
+    pomocna.remove();
+    return ok;
+  }
+}
+
+async function zkopirujDoSchranky() {
+  const obsah = zdrojRucneUpraven ? $("#zdroj").value : serializujSoubor();
+  if (await zkopirujText(obsah)) nastavStav("Celý YAML je ve schránce.");
+  else {
+    nastavStav("Schránku se nepodařilo naplnit. Otevři záložku Zdroj YAML a zkopíruj text ručně.", true);
+    prepniZalozku("zal-zdroj");
+    $("#zdroj").focus();
+    $("#zdroj").select();
+  }
+}
+
+$("#tl-do-schranky").addEventListener("click", zkopirujDoSchranky);
+$("#tl-do-schranky-2").addEventListener("click", zkopirujDoSchranky);
+
+function nactiZTextuSHlasenim(text, popisZdroje) {
+  try {
+    nactiZTextu(text);
+    zdrojRucneUpraven = false;
+    prekresliVse();
+    nastavStav("Načteno " + popisZdroje + " — " + stav.zkratky.length + " zkratek.");
+    return true;
+  } catch (e) {
+    nastavStav(e.message, true);
+    return false;
+  }
+}
+
+$("#tl-ze-schranky").addEventListener("click", async () => {
+  let text = null;
+  try {
+    text = await navigator.clipboard.readText();
+  } catch (e) {
+    text = null;
+  }
+  if (text && text.trim()) {
+    if (!potvrzenoPrepsani()) return;
+    nactiZTextuSHlasenim(text, "ze schránky");
+    return;
+  }
+  // Prohlížeč čtení schránky nepovolil — nabídneme vložení do pole.
+  const telo = prvek("div");
+  const p = vytvorPole({ popisek: "Vlož sem YAML (Ctrl+V)", typ: "textarea", kod: true }, "");
+  p.vstup.rows = 12;
+  telo.appendChild(p.obal);
+  telo.appendChild(prvek("p", { trida: "napoveda", text: "Prohlížeč nedovolil číst schránku přímo, tak to prosím vlož sem." }));
+  otevriDialog({
+    nadpis: "Načíst YAML ze schránky",
+    telo,
+    popisekPotvrdit: "Načíst",
+    priPotvrzeni: () => {
+      if (!p.vstup.value.trim()) { nastavStav("Nic tam není.", true); return false; }
+      return nactiZTextuSHlasenim(p.vstup.value, "ze schránky");
+    }
+  });
+  $("#dialog-potvrdit").hidden = false;
+});
+
+function potvrzenoPrepsani() {
+  if (!stav.zkratky.length) return true;
+  return window.confirm("Tím se nahradí " + stav.zkratky.length + " zkratek, které máš teď otevřené. Pokračovat?");
+}
+
+$("#tl-nova-sada").addEventListener("click", () => {
+  if (!potvrzenoPrepsani()) return;
+  stav.importy = [];
+  stav.globalniPromenne = [];
+  stav.zkratky = [];
+  stav.ostatniKlice = {};
+  stav.vybrana = -1;
+  stav.nazevSouboru = "base.yml";
+  zdrojRucneUpraven = false;
+  prekresliVse();
+  nastavStav("Nová prázdná sada zkratek.");
+});
+
+// Přetažení souboru kamkoli do okna
+document.addEventListener("dragover", (e) => { e.preventDefault(); });
+document.addEventListener("drop", (e) => {
+  const soubor = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (!soubor) return;
+  e.preventDefault();
+  if (!potvrzenoPrepsani()) return;
+  const ctecka = new FileReader();
+  ctecka.onload = () => {
+    if (nactiZTextuSHlasenim(String(ctecka.result), "přetažením souboru „" + soubor.name + "“")) {
+      stav.nazevSouboru = soubor.name;
+      $("#nazev-souboru").value = soubor.name;
+    }
+  };
+  ctecka.readAsText(soubor, "utf-8");
+});
+
+/* ═══════════════════════════════════════════════════════════
+   TLAČÍTKA SEZNAMU
+   ═══════════════════════════════════════════════════════════ */
+
+$("#tl-pridat").addEventListener("click", () => {
+  const z = novaZkratka();
+  stav.zkratky.push(z);
+  stav.vybrana = stav.zkratky.length - 1;
+  stav.filtr = "";
+  $("#hledani").value = "";
+  prekresliVse();
+  const pole = document.getElementById("pole-trigger");
+  if (pole) pole.focus();
+  nastavStav("Přidána nová zkratka. Vyplň spouštěč a text.");
+});
+
+$("#tl-duplikovat").addEventListener("click", () => {
+  const z = aktualniZkratka();
+  if (!z) { nastavStav("Nejdřív vyber zkratku.", true); return; }
+  const kopie = JSON.parse(JSON.stringify(z));
+  kopie.id = noveId();
+  if (kopie.typSpoustece === "jeden") kopie.trigger = kopie.trigger + "2";
+  stav.zkratky.splice(stav.vybrana + 1, 0, kopie);
+  stav.vybrana += 1;
+  prekresliVse();
+  nastavStav("Zkratka zduplikována.");
+});
+
+$("#tl-smazat").addEventListener("click", () => {
+  const z = aktualniZkratka();
+  if (!z) { nastavStav("Nejdřív vyber zkratku.", true); return; }
+  if (!window.confirm("Opravdu smazat zkratku " + popisSpoustece(z) + "?")) return;
+  stav.zkratky.splice(stav.vybrana, 1);
+  stav.vybrana = Math.min(stav.vybrana, stav.zkratky.length - 1);
+  prekresliVse();
+  nastavStav("Zkratka smazána.");
+});
+
+$("#hledani").addEventListener("input", (e) => {
+  stav.filtr = e.target.value.trim();
+  vykresliSeznam();
+});
+
+/* ═══════════════════════════════════════════════════════════
+   ZÁLOŽKY
+   ═══════════════════════════════════════════════════════════ */
+
+const zalozky = $$('[role="tab"]');
+
+function prepniZalozku(id) {
+  for (const z of zalozky) {
+    const aktivni = z.id === id;
+    z.setAttribute("aria-selected", aktivni ? "true" : "false");
+    z.tabIndex = aktivni ? 0 : -1;
+    document.getElementById(z.getAttribute("aria-controls")).hidden = !aktivni;
+  }
+  if (id === "zal-zdroj") aktualizujZdroj();
+  if (id === "zal-plocha") otevriPlochu();
+}
+
+for (const z of zalozky) {
+  z.addEventListener("click", () => { prepniZalozku(z.id); z.focus(); });
+  z.addEventListener("keydown", (e) => {
+    const i = zalozky.indexOf(z);
+    let cil = null;
+    if (e.key === "ArrowRight") cil = zalozky[(i + 1) % zalozky.length];
+    else if (e.key === "ArrowLeft") cil = zalozky[(i - 1 + zalozky.length) % zalozky.length];
+    else if (e.key === "Home") cil = zalozky[0];
+    else if (e.key === "End") cil = zalozky[zalozky.length - 1];
+    if (cil) { e.preventDefault(); prepniZalozku(cil.id); cil.focus(); }
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ULOŽIŠTĚ PROHLÍŽEČE
+   ═══════════════════════════════════════════════════════════ */
+
+const KLIC_ULOZISTE = "espanso_editor_rozpracovane";
+
+function ulozDoUloziste() {
+  try {
+    localStorage.setItem(KLIC_ULOZISTE, JSON.stringify({
+      nazevSouboru: stav.nazevSouboru,
+      importy: stav.importy,
+      globalniPromenne: stav.globalniPromenne,
+      zkratky: stav.zkratky,
+      ostatniKlice: stav.ostatniKlice
+    }));
+  } catch (e) { /* plné úložiště nebo soukromý režim — nevadí */ }
+}
+
+function nactiZUloziste() {
+  try {
+    const s = localStorage.getItem(KLIC_ULOZISTE);
+    if (!s) return false;
+    const d = JSON.parse(s);
+    if (!d || !Array.isArray(d.zkratky) || !d.zkratky.length) return false;
+    stav.nazevSouboru = d.nazevSouboru || "base.yml";
+    stav.importy = d.importy || [];
+    stav.globalniPromenne = d.globalniPromenne || [];
+    stav.zkratky = d.zkratky;
+    stav.ostatniKlice = d.ostatniKlice || {};
+    stav.vybrana = 0;
+    return true;
+  } catch (e) { return false; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   NÁPOVĚDA
+   ═══════════════════════════════════════════════════════════ */
+
+$("#tl-napoveda").addEventListener("click", () => {
+  const telo = prvek("div");
+  telo.innerHTML = `
+    <p>Editor pracuje se soubory zkratek Espansa (<code>match/*.yml</code>). Nic se nikam neposílá, všechno běží v prohlížeči.</p>
+    <h3 style="margin:0.8rem 0 0.3rem;font-size:1rem">Jak na to</h3>
+    <ol style="padding-left:1.2rem;list-style:decimal">
+      <li>Načti svůj soubor tlačítkem <strong>Načíst soubor</strong> nebo <strong>Načíst ze schránky</strong>.</li>
+      <li>Vlevo vyber zkratku (seznam je řazený abecedně podle spouštěče, stejně se ukládá i do souboru; hledá se ve spouštěči, popisku i v textu), vpravo ji uprav. Nová se přidává tlačítkem <strong>+ Přidat zkratku</strong>.</li>
+      <li>Do textu náhrady se dynamické věci vkládají tlačítky pod polem — datum, schránka, příkaz, náhodný výběr, formulář…</li>
+      <li>Hotovo uložíš tlačítkem <strong>Uložit soubor</strong> nebo <strong>Kopírovat do schránky</strong>.</li>
+      <li>Záložka <strong>Psací plocha</strong> je velké pole, ve kterém zkratky fungují samy — napíšeš spouštěč a rovnou se rozbalí, značka <code>$|$</code> postaví kurzor kam patří. Vpravo je seznam zkratek, odkazem vložíš zkratku i bez psaní spouštěče. Stejná plocha je i ve vygenerované HTML verzi.</li>
+      <li><strong>Vytvořit HTML verzi</strong> udělá jeden samostatný soubor se všemi zkratkami, hledáním a kopírováním do schránky — funguje offline, bez Espansa, i na cizím počítači nebo v mobilu. Zkratky, které potřebují spustit příkaz nebo skript, v něm nejsou; prohlížeč je spustit neumí.</li>
+    </ol>
+    <h3 style="margin:0.8rem 0 0.3rem;font-size:1rem">Klávesové zkratky</h3>
+    <table class="tabulka">
+      <tr><th>Přístupová klávesa</th><th>Klávesa</th><th>Akce</th></tr>
+      <tr><td><kbd>N</kbd></td><td><kbd>Ctrl</kbd>+<kbd>N</kbd></td><td>přidat zkratku</td></tr>
+      <tr><td><kbd>O</kbd></td><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>otevřít soubor</td></tr>
+      <tr><td><kbd>S</kbd></td><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>uložit soubor</td></tr>
+      <tr><td><kbd>C</kbd></td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd></td><td>zkopírovat YAML do schránky</td></tr>
+      <tr><td><kbd>W</kbd></td><td>—</td><td>vytvořit HTML verzi</td></tr>
+      <tr><td>—</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd></td><td>skočit do hledání</td></tr>
+      <tr><td>—</td><td><kbd>Esc</kbd></td><td>zavřít okno dialogu</td></tr>
+    </table>
+    <p class="napoveda">Přístupová klávesa se mačká podle prohlížeče: ve Chrome a Edge <kbd>Alt</kbd>+klávesa,
+    ve Firefoxu <kbd>Alt</kbd>+<kbd>Shift</kbd>+klávesa, na Macu <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+klávesa.
+    Hodí se hlavně tam, kde si <kbd>Ctrl</kbd>+<kbd>N</kbd> nebo <kbd>Ctrl</kbd>+<kbd>O</kbd> vezme sám prohlížeč.</p>
+    <h3 style="margin:0.8rem 0 0.3rem;font-size:1rem">Značky v textu</h3>
+    <table class="tabulka">
+      <tr><th>Zápis</th><th>Význam</th></tr>
+      <tr><td><code>{{jmeno}}</code></td><td>hodnota proměnné</td></tr>
+      <tr><td><code>[[jmeno]]</code></td><td>pole formuláře</td></tr>
+      <tr><td><code>$|$</code></td><td>kam se po vložení postaví kurzor</td></tr>
+    </table>`;
+  otevriDialog({ nadpis: "Nápověda", telo, popisekPotvrdit: "Zavřít", priPotvrzeni: () => true });
+  $("#dialog-potvrdit").hidden = false;
+  $("#dialog-zrusit").hidden = true;
+});
+
+// Ctrl+N a Ctrl+O si některé prohlížeče berou pro sebe a stránce je nepředají;
+// proto mají stejné akce i přístupové klávesy (accesskey) na tlačítkách.
+document.addEventListener("keydown", (e) => {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  const k = e.key.toLowerCase();
+  if (k === "s" && e.shiftKey) { e.preventDefault(); zkopirujDoSchranky(); }
+  else if (k === "s") { e.preventDefault(); $("#tl-ulozit").click(); }
+  else if (k === "o" && !e.shiftKey) { e.preventDefault(); $("#tl-nacist").click(); }
+  else if (k === "n" && !e.shiftKey) { e.preventDefault(); prepniZalozku("zal-zkratky"); $("#tl-pridat").click(); }
+  else if (k === "f" && e.shiftKey) { e.preventDefault(); prepniZalozku("zal-zkratky"); $("#hledani").focus(); }
+});
+
+
+/* ═══════════════════════════════════════════════════════════
+   SAMOSTATNÁ HTML VERZE (ROZBALOVAČ)
+   Jeden soubor se všemi zkratkami, hledáním a kopírováním do
+   schránky. Zkratky, které potřebují spustit příkaz nebo skript,
+   se do něj nedávají — prohlížeč to neumí.
+   ═══════════════════════════════════════════════════════════ */
+
+function pouziteVTextu(text) {
+  const ven = [];
+  for (const m of String(text || "").matchAll(/\{\{\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\}\}/g)) {
+    const jmeno = m[1].split(".")[0];
+    if (!ven.includes(jmeno)) ven.push(jmeno);
+  }
+  return ven;
+}
+
+function potrebujePrikaz(z, hloubka = 0) {
+  if (nactiSdilenyKod()) return Zkratky.potrebujePrikaz(z, kontextPlochy);
+  return vlastniPotrebujePrikaz(z, hloubka);
+}
+
+function vlastniPotrebujePrikaz(z, hloubka = 0) {
+  if (hloubka > 4) return false;
+  const vsechny = z.vars.concat(stav.globalniPromenne);
+  const najdi = (jmeno) => vsechny.find((p) => p.name === jmeno);
+  const projdi = (text, uroven) => {
+    for (const jmeno of pouziteVTextu(text)) {
+      const v = najdi(jmeno);
+      if (!v) continue;
+      if (v.type === "shell" || v.type === "script") return true;
+      if (v.type === "echo" && projdi((v.params || {}).echo, uroven + 1)) return true;
+      if (v.type === "match") {
+        const spoustec = (v.params || {}).trigger || "";
+        const cil = stav.zkratky.find((c) => c.trigger === spoustec || (c.triggers || []).includes(spoustec));
+        if (cil && cil !== z && vlastniPotrebujePrikaz(cil, hloubka + 1)) return true;
+      }
+    }
+    return false;
+  };
+  return projdi(textNahrady(z), 0);
+}
+
+function zkratkaProRozbalovac(z) {
+  const o = {
+    typSpoustece: z.typSpoustece,
+    typNahrady: z.typNahrady,
+    label: bezpecnyText(z.label).trim()
+  };
+  if (z.typSpoustece === "regex") o.regex = z.regex;
+  else if (z.typSpoustece === "vice") o.triggers = spousteceProZapis(z);
+  else o.trigger = spousteceProZapis(z)[0] || "";
+  o[{ text: "replace", markdown: "markdown", html: "html", obrazek: "image_path", formular: "form" }[z.typNahrady]] =
+    textNahrady(z);
+  if (z.typNahrady === "formular" && z.poleFormulare.length) {
+    o.poleFormulare = z.poleFormulare.map((f) => ({
+      name: f.name, type: f.type, multiline: !!f.multiline, default: f.default, values: f.values || []
+    }));
+  }
+  if (z.vars.length) o.vars = z.vars.map(promennaDoObjektu);
+  if ((z.search_terms || []).length) o.search_terms = z.search_terms;
+  return o;
+}
+
+// „1 zkratku / 2 zkratky / 5 zkratek“ — počty v hlášeních mají být česky.
+function pocetZkratek(n) {
+  if (n === 1) return "1 zkratku";
+  if (n >= 2 && n <= 4) return n + " zkratky";
+  return n + " zkratek";
+}
+
+function vytvorHtmlVerzi() {
+  const sablona = document.getElementById("sablona-rozbalovac").textContent;
+  const vsechny = serazeneZkratky().map(({ z }) => z).filter((z) => odvozenyPopisek(z));
+  const pouzitelne = vsechny.filter((z) => !potrebujePrikaz(z));
+  const vynechano = vsechny.length - pouzitelne.length;
+
+  if (!pouzitelne.length) {
+    nastavStav("Není co vygenerovat — žádná zkratka se spouštěčem, kterou by šlo použít bez příkazu.", true);
+    return;
+  }
+
+  const zaklad = (stav.nazevSouboru || "zkratky").replace(/\.(ya?ml|html?)$/i, "");
+  const data = {
+    nazev: zaklad,
+    vytvoreno: new Date().toISOString().slice(0, 10),
+    globalniPromenne: stav.globalniPromenne.map(promennaDoObjektu),
+    zkratky: pouzitelne.map(zkratkaProRozbalovac),
+    vynechano
+  };
+
+  const json = JSON.stringify(data).replace(/</g, "\\u003c");
+  const nazevHtml = zaklad.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const sdileny = document.getElementById("kod-sdileny").textContent;
+  const html = sablona
+    .split("<\\/script>").join("<" + "/script>")
+    .split("%%SDILENE%%").join(sdileny)
+    .split("%%NAZEV%%").join(nazevHtml)
+    .split("%%DATA%%").join(json);
+
+  const varovani = stahniSoubor(zaklad + "-zkratky.html", html, "text/html;charset=utf-8");
+
+  nastavStav("Hotovo — HTML verze s " + (pouzitelne.length === 1 ? "1 zkratkou" : pouzitelne.length + " zkratkami")
+    + " je ve stažených souborech"
+    + (vynechano ? ". Vynechal jsem " + pocetZkratek(vynechano) + " s příkazem nebo skriptem — prohlížeč je spustit neumí." : ".")
+    + varovani, !!varovani);
+}
+
+$("#tl-html").addEventListener("click", vytvorHtmlVerzi);
+
+/* ═══════════════════════════════════════════════════════════
+   PSACÍ PLOCHA (sdílený kód)
+   ═══════════════════════════════════════════════════════════ */
+
+// Sdílený blok je v dokumentu jako neprováděný text; tady ho spustíme,
+// aby editor i vygenerovaná HTML verze běžely na jednom a tomtéž kódu.
+function nactiSdilenyKod() {
+  if (window.Zkratky) return true;
+  const kod = document.getElementById("kod-sdileny");
+  if (!kod) return false;
+  const skript = document.createElement("script");
+  skript.textContent = kod.textContent;
+  document.head.appendChild(skript);
+  return !!window.Zkratky;
+}
+
+const kontextPlochy = {
+  zkratky: () => stav.zkratky,
+  globalni: () => stav.globalniPromenne,
+  ohlas: (zprava) => ohlas(zprava),
+  stav: (zprava, chyba) => nastavStav(zprava, !!chyba)
+};
+
+let plocha = null;
+
+function otevriPlochu() {
+  if (!nactiSdilenyKod()) {
+    nastavStav("Psací plochu se nepodařilo spustit — chybí sdílený kód.", true);
+    return;
+  }
+  if (!plocha) plocha = Zkratky.vytvorPlochu($("#plocha-obal"), kontextPlochy);
+  else plocha.obnovSeznam();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   START
+   ═══════════════════════════════════════════════════════════ */
+
+function prekresliVse() {
+  $("#importy").value = stav.importy.join("\n");
+  $("#nazev-souboru").value = stav.nazevSouboru;
+  vykresliSeznam();
+  vykresliEditor();
+  vykresliGlobalni();
+  aktualizujZdroj();
+  zkontroluj();
+  ulozDoUloziste();
+}
+
+function ukazkovaSada() {
+  const z = novaZkratka();
+  z.trigger = ":datum";
+  z.label = "Dnešní datum";
+  z.replace = "{{datum}}";
+  z.vars = [{ id: noveId(), name: "datum", type: "date", params: { format: "%d.%m.%Y" }, inject_vars: null, depends_on: [], ostatni: {} }];
+  stav.zkratky = [z];
+  stav.vybrana = 0;
+}
+
+function start() {
+  nactiSdilenyKod();
+  if (typeof jsyaml === "undefined") {
+    nastavStav("Nepodařilo se načíst knihovnu pro čtení YAML. Bez připojení k síti půjde soubor jen vytvářet a ukládat, ne načítat.", true);
+  }
+  if (!nactiZUloziste()) ukazkovaSada();
+  prekresliVse();
+  prepniZalozku("zal-zkratky");
+  $("#dialog-zrusit").hidden = false;
+}
+
+start();
+</script>
+</body>
+</html>
