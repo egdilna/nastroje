@@ -23,6 +23,7 @@
 [SpisPlanEdit](https://nastroje.egdilna.cz/spisplanedit),
 [Šablonář](https://nastroje.egdilna.cz/mdt),
 [TIN editor](https://nastroje.egdilna.cz/tin),
+[WikiWeb](https://nastroje.egdilna.cz/wikiweb),
 [TTSedit](https://nastroje.egdilna.cz/ttsedit),
 [Video editor](https://nastroje.egdilna.cz/mp4edit),
 [WaveCZ auditor](https://nastroje.egdilna.cz/wavecz),
