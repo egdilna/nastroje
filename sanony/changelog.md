@@ -6,6 +6,28 @@ jsou zaznamenány v tomto souboru.
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/)
 a nástroj se drží [sémantického verzování](https://semver.org/lang/cs/).
 
+## [1.9.1] - 2026-10-30
+
+### Opraveno
+
+- **Vložení nové verze ze schránky odmítalo text podle přípony cílového souboru.**
+  Kontrola se vůbec nedívala do schránky — testovala jméno souboru proti pevnému seznamu
+  přípon. Do `.json` tedy vložit šlo, ale do `.jsondb`, `.geojson` nebo do souboru bez
+  přípony to hlásilo „Ze schránky lze vložit pouze textový obsah“, i když ve schránce
+  byl čistý text. Nově rozhoduje obsah schránky:
+  - je-li ve schránce text, vloží se do libovolného souboru;
+  - prázdná schránka se hlásí srozumitelně a nic se neuloží;
+  - u souboru, který podle přípony na text nevypadá, se v potvrzení objeví upozornění —
+    ale akce se nezakazuje;
+  - když prohlížeč stránce čtení schránky nedovolí, hláška to řekne a odkáže
+    na „Nahrát novou verzi“.
+- **Kopírování do schránky se řídí obsahem souboru, ne jeho příponou.** Textový soubor bez
+  přípony nebo s neobvyklou příponou jde zkopírovat; binární soubor se odmítne podle
+  nulových bajtů a neplatného UTF-8, tedy i tehdy, když má příponu textového souboru.
+- Seznam přípon, které se považují za textové, se rozšířil (`jsondb`, `geojson`, `jsonl`,
+  `ndjson`, `toml`, `env`, `properties`, `bib`, `diff`, `patch`, `srt`, `vtt`, `puml`,
+  `opml` a další). Nově slouží jen k upozornění, nic nezakazuje.
+
 ## [1.9.0] - 2026-10-29
 
 ### Změněno
@@ -241,6 +263,7 @@ Ostatní obrazovky — kartotéky i desky — zůstávají beze změny; ověřen
 - Označení offline kopie zůstává zachováno na konci titulku:
   `Byty · Nájmy · Můj archiv (offline kopie)`.
 
+[1.9.1]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.9.0]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.8.0]: https://github.com/egdilna/nastroje/tree/main/sanony
 [1.7.0]: https://github.com/egdilna/nastroje/tree/main/sanony
