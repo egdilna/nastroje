@@ -82,7 +82,7 @@ Parser je převzatý z md2web (stejná syntaxe i HTML výstup) a doplněný:
 
 - emoji na začátku odstavce dělá barevné upozornění (třídy `ep-*` jako md2web),
 - CriticMarkup `{++ ++} {-- --} {~~ ~> ~~} {== ==} {>> <<}`,
-- **vkládání stránek** (`vlozitStranky()`, běží nad surovým textem před parserem): řádek `![[Název nebo id]]` vloží celý obsah jiné stránky bez jejího úvodního H1, `![[Název#Nadpis]]` jen sekci pod nadpisem (bez nadpisu samotného, do dalšího nadpisu stejné nebo vyšší úrovně). Příkaz musí stát na samostatném řádku a mimo blok kódu. Vkládá se do hloubky 3, cyklus a neexistující cíl se vyznačí (`.chybi`). Relativní cesty ve vloženém textu se přepíšou na absolutní vůči vložené stránce. Funguje i v `sidebar.md`, v článcích a v hledání. V editoru tlačítko Vložit stránku,
+- **vkládání stránek** (`vlozitStranky()`, běží nad surovým textem před parserem): řádek `{{Název nebo id}}` vloží celý obsah jiné stránky bez jejího úvodního H1, `{{Název#Nadpis}}` jen sekci pod nadpisem (bez nadpisu samotného, do dalšího nadpisu stejné nebo vyšší úrovně). Příkaz musí stát na samostatném řádku a mimo blok kódu. Starší zápis `![[…]]` funguje dál. Vkládá se do hloubky 3, cyklus a neexistující cíl se vyznačí (`.chybi`). Relativní cesty ve vloženém textu se přepíšou na absolutní vůči vložené stránce. Funguje i v `sidebar.md`, v článcích a v hledání. V editoru tlačítko Vložit stránku,
 - interní odkazy: `[[Název]]`, `[[Název|text]]`, md2web `[Název]` a `[text](jina-stranka.md)`; neexistující cíl se vyznačí,
 - relativní cesty obrázků a odkazů se řeší vůči umístění `.md` souboru (funguje i u cizího repozitáře),
 - úkoly `- [ ]` / `- [x]`, jazyk u bloku kódu se nezobrazuje,
