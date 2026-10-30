@@ -967,6 +967,44 @@ Export do souboru má přepínač `includeFiles`. Při mazání entity nezapome�
 `localStorage` má limit ~5 MB (`LIMIT`) — kód s tím počítá a hlídá to; nezvyšuj objem
 ukládaných dat bez rozmyslu.
 
+### Nahrání přílohy: jedna cesta, dva vstupy
+
+`nahrajSouboryDoEntity(entity, soubory, opts)` je **jediné místo**, kudy soubor do
+entity vstupuje. Jde tudy dropzona v editaci (`setupDropzone`), tlačítko
+**📎 Přidat přílohu** v sekci Přílohy v režimu čtení i příkaz `ent-priloha` v paletě.
+Pojmenování (`promptAttachmentName`) a uložení (`attachFile`, a tím i volba mezi
+IndexedDB a GitHubem) tak zůstávají na jednom místě; druhá kopie by znamenala, že se
+chování liší podle toho, odkud uživatel soubor přidal.
+
+Mimo editaci se volá `pridejPrilohuZeCteni(entity, fokusPo)`. Dva rozdíly proti
+editaci, oba záměrné:
+
+1. **Ukládá se hned** (`save()` → naplánuje nahrání na GitHub). V editaci na přidání
+   navazuje tlačítko „Uložit entitu"; v režimu čtení žádné takové není, takže by
+   příloha zůstala jen v prohlížeči.
+2. **Výběr souboru jde přes dočasný `<input type="file">`**, který se po `change`
+   i po `cancel` odstraní. Z palety totiž na stránce žádné pole není a dvě různé
+   cesty k výběru souboru by se rozešly.
+
+**Past, na které to stálo:** `attachFile()` si dřív na 500 ms zapínalo
+`window._autosaveSkip`, aby „přidání přílohy nevolalo autosave". Jenže
+`scheduleAutosaveGh()` v edit modu detailu **nic neplánuje sám od sebe**, takže ta
+pojistka pro svůj vlastní případ nedělala nic — zato spolkla **každé `save()`
+zavolané hned po přidání přílohy**. Odnesla to i existující „Uložit verzi"
+(`attachFile(e, file); save();`): příloha se na GitHub dostala až s nějakou další,
+nesouvisející změnou. Pojistka je pryč; edit mód chrání `scheduleAutosaveGh()` sám.
+
+Tlačítko je **jen v aplikaci**, ne ve `STATIC_VIEWER_TEMPLATE` — ten má vlastní kopii
+sekce Přílohy a needituje. Hlídá to test přímo nad textem šablony.
+
+Sekce Přílohy se v režimu čtení vykresluje **jen když entita nějakou přílohu má**,
+takže tlačítko není kde ukázat u entity bez příloh — proto ten příkaz v paletě, který
+funguje i tam.
+
+Hlídá to `pim/testy/prilohy-ze-cteni.mjs` (24 kontrol: obě cesty proti témuž
+očekávání, naplánovaný autosave v režimu čtení i jeho nepřítomnost v editaci, úklid
+dočasného pole, vrácení fokusu, kanárek na druhou entitu).
+
 ## Šifrované atributy (aspekt Secured)
 `deriveKey` = **PBKDF2, `SECURED_ITERATIONS = 100000`, SHA-256**, s náhodnou solí;
 `encryptPayload`/`decryptPayload`, stav odemčení drží `isSecuredUnlocked` /

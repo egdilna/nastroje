@@ -530,6 +530,34 @@ written back into that attribute, not into the body. If the text changed in the
 meantime so that the task is no longer on its line, nothing is written and you are
 told so.
 
+## Attachments 📎
+
+An entity can hold files. They are stored in the browser (IndexedDB) and, when GitHub
+is configured, uploaded to the repository on the next sync — the list shows the state:
+⏳ waiting to be uploaded, ☁ on GitHub, 💾 in the browser only.
+
+**There are two ways to add one:**
+
+| From where | How |
+|---|---|
+| **read mode** | the **📎 Přidat přílohu** button in the Attachments section, or the same command in the palette (`F1`) |
+| **entity editing** | the drop zone "Přetáhněte soubory sem" — it also takes drag & drop and several files at once |
+
+Both behave the same: they ask for a name (if the entity already has an attachment you
+can **reuse an existing attachment's name** and upload a new version of that file) and
+store the file the same way.
+
+There is one deliberate difference: **adding from read mode saves right away** and
+schedules the GitHub upload. Editing does not save, because the **Uložit entitu**
+button follows there and saves everything at once.
+
+The button in the section only shows for an entity that **already has an attachment** —
+without attachments the whole section is not rendered. For the first one use the palette
+command or editing.
+
+Removing an attachment is still only possible while editing; in read mode you can
+download it, an image gets a preview and audio gets a player.
+
 ## 📁 Project filter
 
 The **Tasks**, **Calendar**, **Tags**, **Flags**, **Links** and **Comments** views have
