@@ -48,6 +48,16 @@ Při jakékoli práci s GitHub API v nástroji si těchto pět bodů projdi — 
 něco jiného. Hotové vzory jsou v `mros/index.html` (`ghObsahSouboru`, `ghUlozitVelke`,
 `ghNacteno`, `ghHistorieOkno`) a v `stor/index.html`.
 
+## Seznamy jsou odkazy, ne tlačítka
+
+**Kde je seznam položek, mezi kterými se vybírá nebo přechází** — obsah webu, strom stránek,
+výsledky hledání, výběr stránky v dialogu, historie verzí, naposledy otevřené položky —, **je
+každá položka odkaz `<a href>`, nikdy tlačítko.** Kliknutí si může vzít obsluha
+(`preventDefault()`), ale prvek zůstává odkaz s `href` (kotva nebo skutečná adresa) a vybraná
+položka má `aria-current`. Odečítač je tak nabízí v seznamu odkazů a chovají se jako navigace.
+Tlačítko je jen pro akci, která nikam nevede (uložit, smazat, posunout, zkopírovat).
+Uživatel to požadoval opakovaně — platí pro každý nástroj v repozitáři.
+
 ## Jazyk
 
 Kód, komentáře, názvy funkcí i proměnných, commity, pull requesty i všechny texty
