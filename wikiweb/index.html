@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WikiWeb</title>
+<style>
+/* WikiWeb editor — správa webu/wiki uloženého v repozitáři na GitHubu.
+   Rozvržení: hlavička se stavem a akcemi, pod ní strom stránek | editor | náhled. */
+*,*::before,*::after{box-sizing:border-box}
+:root{
+  --bg:#f4f5f8; --panel:#fff; --ink:#18202c; --muted:#5b6577; --line:#dce1e9; --soft:#eef1f6;
+  --accent:#3646c9; --accent-ink:#fff; --accent-soft:#e7e9fb;
+  --ok:#2b7a52; --warn:#9a5b00; --bad:#b3261e; --bad-soft:#fbe7e5; --warn-soft:#fbf0dc;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --ui:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0f131b; --panel:#171d28; --ink:#e5e9f0; --muted:#98a3b5; --line:#2a3344; --soft:#1e2532;
+  --accent:#8f9bff; --accent-ink:#10142a; --accent-soft:#252c55;
+  --ok:#72c69c; --warn:#f0b65e; --bad:#f28b82; --bad-soft:#3a1a19; --warn-soft:#352812; color-scheme:dark}}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 var(--ui);display:flex;flex-direction:column}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+a{color:var(--accent)}
+[hidden]{display:none!important}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+button,input,select,textarea{font:inherit;color:inherit}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px 12px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.hl{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.mini{padding:3px 8px;font-size:13px}
+.btn.nebezpecne{color:var(--bad)}
+.btn[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.btn:disabled{opacity:.5;cursor:default}
+input[type=text],input[type=password],input[type=url],input[type=number],select,textarea{width:100%;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:7px 10px}
+textarea{resize:vertical}
+label.pole{display:grid;gap:4px;min-width:0}
+label.pole > span,.pole-t{font-size:12px;color:var(--muted);font-weight:600}
+.radek{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tichy{color:var(--muted);font-size:13px}
+.mrizka{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+
+/* hlavička */
+.hlavicka{display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+.hlavicka h1{font-size:17px;margin:0;display:flex;gap:8px;align-items:baseline;min-width:0}
+.hlavicka h1 small{font-weight:400;color:var(--muted);font-size:13px}
+#stav{flex:1;min-width:200px;font-size:13px;color:var(--muted)}
+#stav.zmeny{color:var(--warn)}
+#stav.chyba{color:var(--bad);font-weight:600}
+#stav.ok{color:var(--ok)}
+.akce{display:flex;gap:6px;flex-wrap:wrap}
+
+/* kostra */
+.kostra{flex:1;display:grid;grid-template-columns:270px minmax(0,1fr);min-height:0}
+.kostra.s-nahledem{grid-template-columns:270px minmax(0,1fr) minmax(0,1fr)}
+.strom-panel{border-right:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;min-height:0}
+.strom-panel h2{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:14px 14px 6px}
+.strom-scroll{overflow:auto;flex:1;padding:0 8px 8px}
+.strom ul{list-style:none;margin:0;padding:0}
+.strom ul ul{padding-left:14px;border-left:1px solid var(--line);margin-left:10px}
+.strom button.u{display:flex;gap:6px;width:100%;text-align:left;border:0;background:transparent;border-radius:7px;padding:5px 8px;cursor:pointer;align-items:baseline}
+.strom button.u:hover{background:var(--soft)}
+.strom button.u[aria-current="true"]{background:var(--accent-soft);font-weight:600}
+.strom .em{width:1.3em;flex:none;text-align:center}
+.strom .zn{margin-left:auto;font-size:11px;color:var(--warn);flex:none}
+.strom .ext{font-size:11px;color:var(--muted);flex:none}
+.strom .skryta{opacity:.55}
+.strom-akce{display:flex;flex-wrap:wrap;gap:4px;padding:8px;border-top:1px solid var(--line)}
+.zvlastni{padding:4px 8px 0}
+
+.editor{overflow:auto;padding:18px 22px 40px;min-width:0}
+.editor h2{font-size:20px;margin:0 0 4px;display:flex;gap:8px;align-items:center}
+.karta{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:14px}
+.karta > h3{font-size:13px;margin:0 0 10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+fieldset{border:0;padding:0;margin:0;min-width:0}
+legend{font-size:12px;color:var(--muted);font-weight:600;padding:0;margin-bottom:4px}
+.zdroj{display:flex;gap:4px 14px;flex-wrap:wrap;margin-bottom:6px}
+.zdroj label{display:flex;gap:6px;align-items:center}
+.lista{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.lista .btn{padding:3px 9px;font-size:13px}
+#text{font-family:var(--mono);font-size:13.5px;line-height:1.55;min-height:420px;tab-size:2}
+#text[readonly]{background:var(--soft)}
+.upozorneni{border-radius:10px;padding:10px 12px;margin-top:10px;font-size:13.5px}
+.upozorneni.chyba{background:var(--bad-soft);color:var(--bad)}
+.upozorneni.info{background:var(--soft)}
+.upozorneni.varovani{background:var(--warn-soft);color:var(--warn)}
+.emoji-mrizka{display:grid;grid-template-columns:repeat(auto-fill,minmax(34px,1fr));gap:2px;margin-top:6px;max-width:420px}
+.emoji-mrizka button{border:0;background:var(--soft);border-radius:6px;font-size:18px;padding:4px;cursor:pointer}
+.emoji-mrizka button:hover{background:var(--accent-soft)}
+.emoji-pole{display:flex;gap:6px}
+.emoji-pole input{width:70px;text-align:center;font-size:18px}
+.seznam-odkazu{display:grid;gap:6px}
+.seznam-odkazu .r{display:grid;grid-template-columns:minmax(0,1fr) 120px minmax(0,1.3fr) auto;gap:6px;align-items:center}
+.bloky{list-style:none;margin:0;padding:0;display:grid;gap:4px;max-width:420px}
+.bloky li{display:flex;gap:8px;align-items:center;background:var(--soft);border-radius:8px;padding:4px 8px}
+.bloky li label{flex:1;display:flex;gap:8px;align-items:center}
+
+.kostra.cteni{grid-template-columns:minmax(0,1fr)}
+.kostra.cteni .strom-panel,.kostra.cteni .editor,.kostra.cteni .nahled .tichy{display:none}
+.kostra.cteni .nahled{border-left:0}
+.nahled{border-left:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;min-height:0}
+.nahled iframe{flex:1;border:0;width:100%;background:#fff}
+.nahled .tichy{padding:6px 12px;border-bottom:1px solid var(--line)}
+
+.uvodni{max-width:640px;margin:40px auto;padding:0 20px}
+.uvodni h2{font-size:24px}
+.uvodni ol li{margin-bottom:6px}
+
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--panel);color:var(--ink);padding:0;width:min(640px,calc(100vw - 24px));max-height:88vh}
+dialog::backdrop{background:rgba(10,14,22,.5)}
+.dl-hlava{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.dl-hlava h2{margin:0;font-size:17px}
+.dl-telo{padding:14px 16px;overflow:auto;max-height:calc(88vh - 60px);display:grid;gap:12px}
+.historie{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.historie li{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px;border-radius:8px;background:var(--soft)}
+.historie small{color:var(--muted)}
+
+@media (max-width:1000px){
+  .kostra,.kostra.s-nahledem{grid-template-columns:minmax(0,1fr);overflow:auto}
+  .strom-panel{border-right:0;border-bottom:1px solid var(--line);max-height:45vh}
+  .nahled{min-height:70vh;border-left:0;border-top:1px solid var(--line)}
+  .editor{overflow:visible}
+  .seznam-odkazu .r{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+<header class="hlavicka">
+  <h1><span id="nazev-webu">WikiWeb</span> <small id="nazev-repo"></small></h1>
+  <div id="stav" role="status" aria-live="polite">Nepřipojeno</div>
+  <div class="akce">
+    <button class="btn" id="b-rezim" type="button">✏️ Upravovat</button>
+    <button class="btn hl" id="b-ulozit" type="button" title="Ctrl+S">Uložit vše</button>
+    <button class="btn" id="b-nahled" type="button" aria-pressed="false">Náhled</button>
+    <button class="btn" id="b-historie" type="button">Historie souboru</button>
+    <a class="btn" id="b-web" href="#" target="_blank" rel="noopener">Otevřít web ↗</a>
+    <button class="btn" id="b-pripojeni" type="button">Připojení</button>
+  </div>
+</header>
+
+<div class="kostra" id="kostra">
+  <nav class="strom-panel" aria-label="Stránky webu">
+    <div class="zvlastni strom"><ul>
+      <li><button class="u" type="button" id="u-nastaveni"><span class="em" aria-hidden="true">⚙️</span>Nastavení webu</button></li>
+      <li><button class="u" type="button" id="u-sidebar"><span class="em" aria-hidden="true">🧩</span>Postranní panel (sidebar.md)</button></li>
+    </ul></div>
+    <h2 id="h-strom">Obsah webu</h2>
+    <div class="strom-scroll strom" id="strom" aria-labelledby="h-strom"></div>
+    <div class="strom-akce" role="toolbar" aria-label="Úpravy stromu stránek">
+      <button class="btn mini" type="button" id="s-nova">+ Stránka</button>
+      <button class="btn mini" type="button" id="s-pod">+ Podstránka</button>
+      <button class="btn mini" type="button" id="s-nahoru" aria-label="Posunout nahoru" title="Alt+↑">↑</button>
+      <button class="btn mini" type="button" id="s-dolu" aria-label="Posunout dolů" title="Alt+↓">↓</button>
+      <button class="btn mini" type="button" id="s-ven" aria-label="Předsadit o úroveň výš" title="Alt+←">←</button>
+      <button class="btn mini" type="button" id="s-dovnitr" aria-label="Odsadit pod předchozí stránku" title="Alt+→">→</button>
+      <button class="btn mini nebezpecne" type="button" id="s-smazat">Odebrat</button>
+    </div>
+  </nav>
+  <main class="editor" id="editor" tabindex="-1"></main>
+  <section class="nahled" id="nahled" aria-label="Náhled webu" hidden>
+    <div class="tichy">Náhled s neuloženými změnami. Odkazy v něm fungují.</div>
+    <iframe id="nahled-iframe" title="Náhled webu"></iframe>
+  </section>
+</div>
+
+<dialog id="dl-pripojeni" aria-labelledby="dl-pripojeni-h">
+  <form method="dialog" id="f-pripojeni">
+    <div class="dl-hlava"><h2 id="dl-pripojeni-h">Připojení k repozitáři</h2><button class="btn mini" value="zrusit" type="submit">Zavřít</button></div>
+    <div class="dl-telo">
+      <p class="tichy" style="margin:0">Web leží ve složce repozitáře na GitHubu. Token zůstává jen v tomto prohlížeči a do repozitáře se nikdy nezapisuje. Stačí jemný token s právem <em>Contents: Read and write</em> pro daný repozitář.</p>
+      <label class="pole"><span>Repozitář (vlastník/repo)</span><input type="text" id="p-repo" placeholder="egdilna/prirucka" autocomplete="off" required></label>
+      <div class="mrizka">
+        <label class="pole"><span>Větev</span><input type="text" id="p-vetev" placeholder="main"></label>
+        <label class="pole"><span>Složka webu (prázdné = kořen)</span><input type="text" id="p-slozka" placeholder="web"></label>
+      </div>
+      <label class="pole"><span>Osobní přístupový token</span><input type="password" id="p-token" placeholder="github_pat_…" autocomplete="off"></label>
+      <p class="tichy" style="margin:0">Adresu editoru s repozitářem si můžete uložit do záložek: <code>?repo=vlastnik/repo&amp;slozka=web&amp;vetev=main</code></p>
+      <div id="p-nedavne"></div>
+      <div class="radek"><button class="btn hl" value="ok" type="submit">Připojit a načíst</button></div>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dl-historie" aria-labelledby="dl-historie-h">
+  <div class="dl-hlava"><h2 id="dl-historie-h">Historie souboru</h2><button class="btn mini" type="button" id="h-zavrit">Zavřít</button></div>
+  <div class="dl-telo" id="h-telo"></div>
+</dialog>
+
+<script>
+"use strict";
+/* =============================================================
+   WikiWeb editor
+   Web = složka v repozitáři: wiki.json (nastavení), contents.json (strom stránek),
+   sidebar.md a .md soubory stránek kdekoli ve složce. Stránka může brát obsah
+   i z jiného veřejného repozitáře nebo z adresy URL — ty se tu jen čtou.
+   ============================================================= */
+
+/* ---------- pomůcky ---------- */
+const $=s=>document.querySelector(s);
+function el(tag,atr={},...deti){
+  const e=document.createElement(tag);
+  for(const [k,v] of Object.entries(atr||{})){
+    if(v===false||v==null) continue;
+    if(k.startsWith("on")) e.addEventListener(k.slice(2),v);
+    else if(k==="text") e.textContent=v;
+    else if(k==="value") e.value=v;
+    else if(k==="checked") e.checked=!!v;
+    else e.setAttribute(k,v===true?"":v);
+  }
+  for(const d of deti.flat()) if(d!=null&&d!==false) e.append(d.nodeType?d:document.createTextNode(String(d)));
+  return e;
+}
+function slug(t){ return String(t).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""); }
+const dnes=()=>{ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+const cas=d=>new Date(d).toLocaleString("cs-CZ",{day:"numeric",month:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit"});
+
+/* base64 po blocích přes TextEncoder (vzor bytyDoBase64 z mros) */
+function bytyDoBase64(b){ let s=""; for(let i=0;i<b.length;i+=8192) s+=String.fromCharCode.apply(null,b.subarray(i,i+8192)); return btoa(s); }
+function base64DoBytu(t){ const s=atob(t), b=new Uint8Array(s.length); for(let i=0;i<s.length;i++) b[i]=s.charCodeAt(i); return b; }
+const textDoBase64=t=>bytyDoBase64(new TextEncoder().encode(t));
+const base64DoTextu=b=>new TextDecoder().decode(base64DoBytu(String(b).replace(/\s+/g,"")));
+
+/* ---------- stav ---------- */
+const KLIC_PRIPOJENI="wikiweb-pripojeni-v1", KLIC_TOKEN="wikiweb-token-v1", KLIC_NEDAVNE="wikiweb-nedavne-v1";
+const E={
+  gh:{repo:"",vetev:"main",slozka:"",token:""},
+  cfg:null, strom:[],
+  cfgPuvodni:null, obsahPuvodni:null,
+  /* true, až když víme, co v wiki.json a contents.json opravdu je (načteno, nebo soubory ještě nejsou).
+     Dokud je false, neukládá se nic — jinak by neúspěšné načtení přepsalo celý web prázdným obsahem. */
+  nacteno:false, duvodZastaveni:"",
+  soubory:new Map(),   // cesta ve složce → {text, puvodni, sha, stav:"nacteno"|"novy"|"chyba"|"nacitam", bin, b64}
+  smazat:new Map(),    // cesta → sha (soubory ke smazání při příštím uložení)
+  vybrano:null,        // {druh:"nastaveni"|"sidebar"|"stranka", uzel}
+  dalsiKlic:1, ukladam:false, webNacten:false
+};
+const PALETY=["indigo","blue","green","red","purple","teal","orange","slate","rose","brown","gold","cyan","forest","dusk","mint","warm","cool","earth","dark","night"];
+const BLOKY={hledani:"Hledání",sidebar:"Obsah sidebar.md",sekce:"Sekce webu",obsah:"Na této stránce (obsah)",stitky:"Štítky",kalendar:"Kalendář novinek",odkazy:"Odkazy na stránce",komentare:"Komentáře (CriticMarkup)"};
+const TYPY={stranka:"Wiki stránka",uvod:"Úvodní stránka",rozcestnik:"Rozcestník (dlaždice podstránek)",clanky:"Sekce článků (formát md2web)",novinky:"Novinky"};
+const EMOJI="📄 📝 📘 📚 🏠 🧭 📥 📮 📨 🗄️ 💰 🚗 🏗️ 🧱 🗺️ 📦 🗃️ ✍️ 📋 🖋️ 🖥️ 💾 🖨️ ☎️ 📣 🗓️ 📅 💡 ℹ️ ⚠️ ✅ ❗ 🔒 🔧 ⚙️ 🚀 🔥 🎯 📈 📊 🧩 🔗 🏷️ 👥 👤 🏛️ ⚖️ 🎓 🌍 🧪 🛠️ ❓ ⭐".split(" ");
+
+function vychoziCfg(){
+  return {title:"Nový web",tagline:"",language:"cs",color:"indigo",home:"uvod",
+    menu_links:[],footer_links:[],copyright:{name:"",url:"",year:new Date().getFullYear()},
+    sidebar:["hledani","sidebar","sekce","obsah","stitky","kalendar","odkazy","komentare"],
+    folders:{pages:"stranky",media:"obrazky"},sidebar_file:"sidebar.md",pager:true,expand_sections:true,edit_link:false};
+}
+
+/* ---------- cesty ---------- */
+const plnaCesta=c=>(E.gh.slozka?E.gh.slozka.replace(/\/+$/,"")+"/":"")+c.replace(/^\/+/,"");
+function rawGithub(repo,vetev,cesta){ return `https://raw.githubusercontent.com/${repo}/${vetev||"HEAD"}/${String(cesta).replace(/^\/+/,"").split("/").map(encodeURIComponent).join("/")}`; }
+const zakladWebu=()=>rawGithub(E.gh.repo,E.gh.vetev||"main",plnaCesta("x")).replace(/x$/,"");
+/* Druh zdroje stránky: místní soubor, jiný repozitář, adresa URL */
+function druhZdroje(u){
+  if(!u.file) return "zadny";
+  if(/^https?:\/\//.test(u.file)) return "url";
+  if(u.repo||/^gh:/.test(u.file)) return "repo";
+  return "mistni";
+}
+function adresaExterni(u){
+  let m=u.file.match(/^https?:\/\/github\.com\/([^/]+\/[^/]+)\/blob\/([^/]+)\/(.+)$/);
+  if(m) return rawGithub(m[1],m[2],decodeURIComponent(m[3]));
+  if(/^https?:\/\//.test(u.file)) return u.file;
+  m=u.file.match(/^gh:([^/]+\/[^/@]+)(?:@([^/]+))?\/(.+)$/);
+  if(m) return rawGithub(m[1],m[2],m[3]);
+  const [r,v]=String(u.repo).split("@");
+  return rawGithub(r,v,u.file);
+}
+function relativniCesta(odSouboru,k){
+  const a=odSouboru.split("/").slice(0,-1), b=k.split("/");
+  while(a.length&&b.length>1&&a[0]===b[0]){ a.shift(); b.shift(); }
+  return "../".repeat(a.length)+b.join("/");
+}
+
+/* ---------- strom ---------- */
+function projit(fn,uzly=E.strom,rodic=null){ for(let i=0;i<uzly.length;i++){ if(fn(uzly[i],uzly,i,rodic)===false) return false; if(projit(fn,uzly[i].children||[],uzly[i])===false) return false; } }
+function vsechnyUzly(){ const a=[]; projit(u=>{a.push(u);}); return a; }
+function najitMisto(uzel){ let v=null; projit((u,pole,i,rodic)=>{ if(u===uzel){ v={pole,i,rodic}; return false; } }); return v; }
+function pripravitUzly(uzly){ return (uzly||[]).map(u=>({...u,_k:E.dalsiKlic++,children:pripravitUzly(u.children)})); }
+function ocistitUzly(uzly){
+  return uzly.map(u=>{ const o={}; for(const [k,v] of Object.entries(u)){ if(k.startsWith("_")) continue; if(k==="children"){ if(v&&v.length) o.children=ocistitUzly(v); continue; } if(v===""||v==null||(Array.isArray(v)&&!v.length)||v===false) continue; o[k]=v; } return o; });
+}
+const textObsahu=()=>JSON.stringify({pages:ocistitUzly(E.strom)},null,2)+"\n";
+function textCfg(){
+  const c={...E.cfg,github:{repo:E.gh.repo,branch:E.gh.vetev||"main",folder:E.gh.slozka||""}};
+  if(!c.github.folder) delete c.github.folder;
+  return JSON.stringify(c,null,2)+"\n";   // token sem nikdy nepatří
+}
+function unikatniId(zaklad,krome){
+  let id=slug(zaklad)||"stranka", n=2; const ids=new Set(vsechnyUzly().filter(u=>u!==krome).map(u=>u.id));
+  const puv=id; while(ids.has(id)) id=puv+"-"+n++;
+  return id;
+}
+
+/* =============================================================
+   GITHUB — vzory z mros: záložní čtení přes blob, velké zápisy přes
+   Git Data API, pojistka proti přepsání, historie souboru
+   ============================================================= */
+const GH_MEZ=1000000;
+async function ghFetch(cesta,volby={}){
+  const r=await fetch(`https://api.github.com/repos/${E.gh.repo}/${cesta}`,{...volby,cache:"no-store",
+    headers:{Accept:"application/vnd.github+json",...(E.gh.token?{Authorization:"Bearer "+E.gh.token}:{}),...(volby.headers||{})}});
+  if(!r.ok){ const e=new Error(r.status+" "+(await r.text()).slice(0,200)); e.status=r.status; throw e; }
+  return r.status===204?null:r.json();
+}
+const kodovat=c=>c.split("/").map(encodeURIComponent).join("/");
+/* Contents API vydá obsah jen do 1 MB — u většího souboru přijde prázdný a obsah se dotáhne z blobu podle SHA. */
+async function ghObsahSouboru(sr){
+  if(sr.content&&sr.encoding==="base64") return base64DoTextu(sr.content);
+  const blob=await ghFetch("git/blobs/"+sr.sha);
+  if(blob.encoding!=="base64") throw new Error("nečekané kódování blobu: "+blob.encoding);
+  return base64DoTextu(blob.content);
+}
+/* Načte soubor ze složky webu. Vrací {text, sha}, nebo null, když soubor neexistuje. */
+async function ghNacist(cesta,ref){
+  let sr;
+  try{ sr=await ghFetch("contents/"+kodovat(plnaCesta(cesta))+"?ref="+encodeURIComponent(ref||E.gh.vetev||"main")); }
+  catch(e){ if(e.status===404) return null; throw e; }
+  if(Array.isArray(sr)) throw new Error(cesta+" je složka, ne soubor");
+  return {text:(await ghObsahSouboru(sr)).replace(/\r\n?/g,"\n"),sha:sr.sha};
+}
+async function ghShaSouboru(cesta){
+  try{ const sr=await ghFetch("contents/"+kodovat(plnaCesta(cesta))+"?ref="+encodeURIComponent(E.gh.vetev||"main")); return sr.sha; }
+  catch(e){ if(e.status===404) return null; throw e; }
+}
+/* Víc souborů najednou (a cokoli nad 1 MB) jde jedním commitem přes Git Data API:
+   blob → strom s base_tree → commit → posun větve. */
+async function ghCommit(zmeny,zprava){
+  const vetev=E.gh.vetev||"main";
+  const ref=await ghFetch("git/ref/heads/"+encodeURIComponent(vetev));
+  const rodic=ref.object.sha;
+  const rodicCommit=await ghFetch("git/commits/"+rodic);
+  const polozky=[], vysledek={};
+  for(const z of zmeny){
+    if(z.smazat){ polozky.push({path:plnaCesta(z.cesta),mode:"100644",type:"blob",sha:null}); continue; }
+    const blob=await ghFetch("git/blobs",{method:"POST",body:JSON.stringify({content:z.b64??textDoBase64(z.text),encoding:"base64"})});
+    polozky.push({path:plnaCesta(z.cesta),mode:"100644",type:"blob",sha:blob.sha});
+    vysledek[z.cesta]=blob.sha;
+  }
+  const strom=await ghFetch("git/trees",{method:"POST",body:JSON.stringify({base_tree:rodicCommit.tree.sha,tree:polozky})});
+  const commit=await ghFetch("git/commits",{method:"POST",body:JSON.stringify({message:zprava,tree:strom.sha,parents:[rodic]})});
+  await ghFetch("git/refs/heads/"+encodeURIComponent(vetev),{method:"PATCH",body:JSON.stringify({sha:commit.sha})});
+  return vysledek;
+}
+async function ghPut(z,zprava){
+  const r=await ghFetch("contents/"+kodovat(plnaCesta(z.cesta)),{method:"PUT",body:JSON.stringify({message:zprava,content:z.b64??textDoBase64(z.text),branch:E.gh.vetev||"main",...(z.sha?{sha:z.sha}:{})})});
+  return {[z.cesta]:r.content.sha};
+}
+
+/* ---------- stavový řádek ---------- */
+function stav(text,druh){ const s=$("#stav"); s.textContent=text; s.className=druh||""; }
+function seznamZmen(){
+  const z=[];
+  if(!E.webNacten) return z;
+  if(textCfg()!==E.cfgPuvodni) z.push({cesta:"wiki.json",text:textCfg(),sha:E.cfgSha});
+  if(textObsahu()!==E.obsahPuvodni) z.push({cesta:"contents.json",text:textObsahu(),sha:E.obsahSha});
+  for(const [cesta,s] of E.soubory){
+    if(s.stav==="chyba"||s.stav==="nacitam") continue;
+    if(s.bin){ if(s.stav==="novy") z.push({cesta,b64:s.b64,sha:s.sha}); continue; }
+    if(s.text!==s.puvodni||(s.stav==="novy"&&!s.sha&&s.vytvorit)) z.push({cesta,text:s.text,sha:s.sha});
+  }
+  for(const [cesta,sha] of E.smazat) if(!E.soubory.has(cesta)) z.push({cesta,smazat:true,sha});
+  return z;
+}
+function obnovitStav(){
+  if(!E.gh.repo){ stav("Nepřipojeno — nastavte repozitář v Připojení."); return; }
+  if(!E.nacteno){ stav("Ukládání zastaveno: "+(E.duvodZastaveni||"web se zatím nenačetl"),"chyba"); return; }
+  const n=seznamZmen().length;
+  if(n) stav(`Neuloženo: ${n} ${n===1?"soubor":n<5?"soubory":"souborů"}`,"zmeny");
+  else if(!$("#stav").classList.contains("ok")) stav("Vše uloženo");
+  $("#b-ulozit").textContent=n?`Uložit vše (${n})`:"Uložit vše";
+  // značky neuložených změn ve stromu
+  document.querySelectorAll("#strom button.u").forEach(b=>{
+    const u=E.mapa?.get(+b.dataset.k), zn=b.querySelector(".zn");
+    const s=u&&druhZdroje(u)==="mistni"&&E.soubory.get(u.file);
+    zn.textContent=s&&s.stav!=="chyba"&&(s.text!==s.puvodni||s.vytvorit&&!s.sha)?"●":"";
+    zn.title=zn.textContent?"Neuloženo":"";
+  });
+}
+
+/* =============================================================
+   NAČTENÍ WEBU
+   ============================================================= */
+async function nacistWeb(){
+  E.nacteno=false; E.webNacten=false; E.duvodZastaveni="načítám…"; E.soubory.clear(); E.smazat.clear(); E.vybrano=null;
+  $("#nazev-repo").textContent=E.gh.repo+(E.gh.slozka?" / "+E.gh.slozka:"")+(E.gh.vetev&&E.gh.vetev!=="main"?" @ "+E.gh.vetev:"");
+  $("#b-web").href=adresaWebu();
+  stav("Načítám web z GitHubu…");
+  let cfg,obsah;
+  try{
+    [cfg,obsah]=await Promise.all([ghNacist("wiki.json"),ghNacist("contents.json")]);
+  }catch(e){
+    E.duvodZastaveni="soubory webu se nepodařilo načíst ("+e.message+"). Zkontrolujte Připojení.";
+    obnovitStav(); kreslitUvod(e.message); return;
+  }
+  if(!cfg&&!obsah){ E.duvodZastaveni="ve složce zatím není žádný web"; obnovitStav(); kreslitNovyWeb(); return; }
+  try{
+    E.cfg=cfg?{...vychoziCfg(),...JSON.parse(cfg.text)}:vychoziCfg();
+    const o=obsah?JSON.parse(obsah.text):{pages:[]};
+    E.strom=pripravitUzly(Array.isArray(o)?o:o.pages);
+  }catch(e){
+    E.duvodZastaveni="wiki.json nebo contents.json není platný JSON ("+e.message+"). Opravte ho v repozitáři, nebo vezměte starší verzi z historie.";
+    obnovitStav(); kreslitUvod(E.duvodZastaveni); return;
+  }
+  delete E.cfg.github;
+  E.cfgSha=cfg?.sha||null; E.obsahSha=obsah?.sha||null;
+  E.cfgPuvodni=cfg?textCfg():null; E.obsahPuvodni=obsah?textObsahu():null;
+  const sb=E.cfg.sidebar_file||"sidebar.md";
+  try{ const s=await ghNacist(sb); E.soubory.set(sb,s?{text:s.text,puvodni:s.text,sha:s.sha,stav:"nacteno"}:{text:"",puvodni:"",sha:null,stav:"novy"}); }
+  catch(e){ E.soubory.set(sb,{text:"",puvodni:"",stav:"chyba",chyba:e.message}); }
+  E.nacteno=true; E.webNacten=true; E.duvodZastaveni="";
+  $("#nazev-webu").textContent=E.cfg.title||"WikiWeb";
+  document.title=(E.cfg.title||"Web")+" · WikiWeb editor";
+  pamatovatNedavne();
+  kreslitStrom();
+  const prvni=vsechnyUzly()[0];
+  if(prvni) vybrat({druh:"stranka",uzel:prvni}); else vybrat({druh:"nastaveni"});
+  stav("Načteno","ok"); obnovitStav();
+  rozlozeni();
+  nacistVsechnyStranky();
+}
+function adresaWebu(){
+  const [vl,repo]=E.gh.repo.split("/");
+  if(!vl||!repo) return "#";
+  const zaklad=repo.toLowerCase()===vl.toLowerCase()+".github.io"?`https://${repo}/`:`https://${vl}.github.io/${repo}/`;
+  return zaklad+(E.gh.slozka?E.gh.slozka.replace(/\/+$/,"")+"/":"");
+}
+
+/* =============================================================
+   STROM STRÁNEK
+   ============================================================= */
+function kreslitStrom(){
+  E.mapa=new Map(); vsechnyUzly().forEach(u=>E.mapa.set(u._k,u));
+  const kresli=uzly=>el("ul",{},uzly.map(u=>{
+    const d=druhZdroje(u);
+    return el("li",{},
+      el("button",{class:"u"+(u.hidden?" skryta":""),type:"button","data-k":u._k,"aria-current":E.vybrano?.uzel===u?"true":"false",
+        onclick:()=>vybrat({druh:"stranka",uzel:u})},
+        el("span",{class:"em","aria-hidden":"true"},u.emoji||"·"),
+        el("span",{},u.title||"(bez názvu)"),
+        d==="repo"||d==="url"?el("span",{class:"ext",title:"Obsah z jiného zdroje"},"↗"):null,
+        u.hidden?el("span",{class:"sr-only"},", skrytá v menu"):null,
+        el("span",{class:"zn","aria-hidden":"true"})),
+      u.children&&u.children.length?kresli(u.children):null);
+  }));
+  const box=$("#strom"); box.innerHTML="";
+  box.append(E.strom.length?kresli(E.strom):el("p",{class:"tichy",style:"padding:0 8px"},"Zatím žádné stránky. Přidejte první tlačítkem + Stránka."));
+  $("#u-nastaveni").setAttribute("aria-current",E.vybrano?.druh==="nastaveni"?"true":"false");
+  $("#u-sidebar").setAttribute("aria-current",E.vybrano?.druh==="sidebar"?"true":"false");
+  obnovitStav();
+}
+function novaStranka(podstranka){
+  if(!E.webNacten) return;
+  const rodic=podstranka&&E.vybrano?.druh==="stranka"?E.vybrano.uzel:null;
+  const id=unikatniId("nova-stranka");
+  const slozka=(E.cfg.folders?.pages||"").replace(/^\/+|\/+$/g,"");
+  const u={_k:E.dalsiKlic++,id,title:"Nová stránka",emoji:"📄",file:(slozka?slozka+"/":"")+id+".md",children:[],_auto:true};
+  if(rodic){ (rodic.children=rodic.children||[]).push(u); }
+  else if(E.vybrano?.druh==="stranka"){ const m=najitMisto(E.vybrano.uzel); m.pole.splice(m.i+1,0,u); }
+  else E.strom.push(u);
+  E.soubory.set(u.file,{text:"",puvodni:"",sha:null,stav:"novy",vytvorit:true});
+  vybrat({druh:"stranka",uzel:u});
+  setTimeout(()=>{ const t=$("#f-title"); if(t){ t.focus(); t.select(); } });
+}
+function posun(smer){
+  const u=E.vybrano?.druh==="stranka"&&E.vybrano.uzel; if(!u) return;
+  const m=najitMisto(u); let hlaseni="";
+  if(smer==="nahoru"&&m.i>0){ m.pole.splice(m.i,1); m.pole.splice(m.i-1,0,u); hlaseni="Posunuto nahoru"; }
+  else if(smer==="dolu"&&m.i<m.pole.length-1){ m.pole.splice(m.i,1); m.pole.splice(m.i+1,0,u); hlaseni="Posunuto dolů"; }
+  else if(smer==="dovnitr"&&m.i>0){ const novy=m.pole[m.i-1]; m.pole.splice(m.i,1); (novy.children=novy.children||[]).push(u); hlaseni="Odsazeno pod „"+novy.title+"“"; }
+  else if(smer==="ven"&&m.rodic){ const mr=najitMisto(m.rodic); m.pole.splice(m.i,1); mr.pole.splice(mr.i+1,0,u); hlaseni="Předsazeno o úroveň výš"; }
+  if(!hlaseni) return;
+  kreslitStrom(); stav(hlaseni);
+  const b=document.querySelector(`#strom button[data-k="${u._k}"]`); if(b) b.focus();
+  aktualizovatNahled();
+}
+function odebrat(){
+  const u=E.vybrano?.druh==="stranka"&&E.vybrano.uzel; if(!u) return;
+  const pocet=vsechnyUzlyPod(u).length-1;
+  if(!confirm(`Odebrat stránku „${u.title}“ z obsahu webu${pocet?` i s ${pocet} podstránkami`:""}?`)) return;
+  for(const x of vsechnyUzlyPod(u)){
+    if(druhZdroje(x)!=="mistni") continue;
+    const s=E.soubory.get(x.file);
+    const sha=s?.sha;
+    if(s&&s.stav==="novy"&&!sha){ E.soubory.delete(x.file); continue; }
+    if(sha!==undefined||!s){
+      if(confirm(`Smazat i soubor ${x.file} z repozitáře? (Zrušit = soubor v repozitáři zůstane)`)){
+        E.soubory.delete(x.file); E.smazat.set(x.file,sha||null);
+      }
+    }
+  }
+  const m=najitMisto(u); m.pole.splice(m.i,1);
+  const dalsi=m.pole[m.i]||m.pole[m.i-1]||m.rodic;
+  vybrat(dalsi?{druh:"stranka",uzel:dalsi}:{druh:"nastaveni"});
+  stav("Stránka odebrána — projeví se po uložení");
+}
+function vsechnyUzlyPod(u){ const a=[u]; (u.children||[]).forEach(c=>a.push(...vsechnyUzlyPod(c))); return a; }
+
+/* =============================================================
+   EDITORY
+   ============================================================= */
+function vybrat(v){
+  E.vybrano=v; kreslitStrom();
+  const ed=$("#editor"); ed.innerHTML="";
+  if(v.druh==="nastaveni") kreslitNastaveni(ed);
+  else if(v.druh==="sidebar") kreslitSidebar(ed);
+  else kreslitStranku(ed,v.uzel);
+  aktualizovatNahled();
+}
+
+/* ---------- stránka ---------- */
+function kreslitStranku(ed,u){
+  const druh=druhZdroje(u);
+  const nadpis=el("h2",{},el("span",{"aria-hidden":"true"},u.emoji||"📄"),el("span",{id:"ed-nadpis"},u.title||"(bez názvu)"));
+  ed.append(nadpis,el("p",{class:"tichy",style:"margin:0"},TYPY[u.type||"stranka"]||u.type));
+
+  /* vlastnosti */
+  const karta=el("section",{class:"karta","aria-labelledby":"h-vlastnosti"},el("h3",{id:"h-vlastnosti"},"Vlastnosti stránky"));
+  const mriz=el("div",{class:"mrizka"});
+  const titul=el("input",{type:"text",id:"f-title",value:u.title||""});
+  titul.addEventListener("input",()=>{
+    u.title=titul.value; $("#ed-nadpis").textContent=u.title||"(bez názvu)";
+    if(u._auto){ // nová, ještě neuložená stránka: id a soubor jdou s názvem
+      const stare=u.file; u.id=unikatniId(u.title,u); idPole.value=u.id;
+      const slozka=(E.cfg.folders?.pages||"").replace(/^\/+|\/+$/g,"");
+      u.file=(slozka?slozka+"/":"")+u.id+".md"; souborPole.value=u.file;
+      const s=E.soubory.get(stare); E.soubory.delete(stare); if(s) E.soubory.set(u.file,s);
+    }
+    kreslitStrom(); planNahled();
+  });
+  const idPole=el("input",{type:"text",value:u.id||"",spellcheck:"false"});
+  idPole.addEventListener("change",()=>{ u.id=unikatniId(idPole.value||u.title,u); idPole.value=u.id; u._auto=false; obnovitStav(); planNahled(); });
+  mriz.append(el("label",{class:"pole"},el("span",{},"Název stránky"),titul),
+    el("label",{class:"pole"},el("span",{},"Identifikátor v adrese (#…)"),idPole));
+  const typ=el("select",{},Object.entries(TYPY).map(([k,n])=>el("option",{value:k,selected:(u.type||"stranka")===k},n)));
+  typ.addEventListener("change",()=>{
+    u.type=typ.value==="stranka"?"":typ.value;
+    const s=E.soubory.get(u.file);
+    if(s&&!s.text.trim()&&s.stav==="novy"){ s.text=sablona(u.type); const t=$("#text"); if(t) t.value=s.text; }
+    obnovitStav(); planNahled(); ed.querySelector("p.tichy").textContent=TYPY[u.type||"stranka"];
+  });
+  mriz.append(el("label",{class:"pole"},el("span",{},"Typ stránky"),typ));
+  const stitky=el("input",{type:"text",value:(u.tags||[]).join(", "),placeholder:"oddělte čárkou"});
+  stitky.addEventListener("input",()=>{ u.tags=stitky.value.split(",").map(s=>s.trim()).filter(Boolean); obnovitStav(); planNahled(); });
+  mriz.append(el("label",{class:"pole"},el("span",{},"Štítky"),stitky));
+  karta.append(mriz);
+
+  const perex=el("textarea",{rows:"2",placeholder:"Krátký popis pod nadpisem, v dlaždicích a ve výpisech"});
+  perex.value=u.perex||"";
+  perex.addEventListener("input",()=>{ u.perex=perex.value.trim(); obnovitStav(); planNahled(); });
+  karta.append(el("label",{class:"pole",style:"margin-top:12px"},el("span",{},"Perex"),perex));
+
+  karta.append(el("div",{style:"margin-top:12px"},el("div",{class:"pole-t"},"Ikona (emoji před názvem)"),vyberEmoji(u.emoji||"",em=>{ u.emoji=em; nadpis.firstChild.textContent=em||"📄"; kreslitStrom(); planNahled(); })));
+
+  /* zdroj obsahu */
+  const zdroj=el("fieldset",{style:"margin-top:14px"},el("legend",{},"Zdroj obsahu"));
+  const volby=el("div",{class:"zdroj"});
+  const mod=druh==="zadny"?"mistni":druh;
+  [["mistni","Soubor v tomto webu"],["repo","Jiný veřejný repozitář na GitHubu"],["url","Adresa URL"],["zadny","Bez obsahu (jen rozcestník)"]].forEach(([k,n])=>{
+    const r=el("input",{type:"radio",name:"zdroj",value:k,checked:(druh==="zadny"?"zadny":mod)===k});
+    r.addEventListener("change",()=>zmenaZdroje(u,k));
+    volby.append(el("label",{},r,n));
+  });
+  const souborPole=el("input",{type:"text",id:"f-soubor",spellcheck:"false",value:druh==="repo"&&u.repo?u.repo+"/"+u.file:druh==="repo"?u.file.replace(/^gh:/,""):u.file||""});
+  const napoveda=el("p",{class:"tichy",style:"margin:4px 0 0"});
+  const popisZdroje=()=>{
+    const d=druhZdroje(u);
+    souborPole.disabled=d==="zadny";
+    souborPole.placeholder=d==="repo"?"vlastnik/repo/cesta/soubor.md":d==="url"?"https://…/soubor.md":"cesta/soubor.md";
+    napoveda.textContent=d==="mistni"?"Cesta ve složce webu, libovolná podsložka. Soubor se tu dá upravovat.":
+      d==="repo"?"Například michalradacz/testweb/obsah/testovaci-clanek.md, jinou větev zapíšete jako vlastnik/repo@vetev/cesta.md. Obsah se načítá z raw.githubusercontent.com a tady se jen čte.":
+      d==="url"?"Přímá adresa Markdownu. Odkaz github.com/…/blob/… se převede sám. Obsah se tu jen čte.":
+      "Stránka nemá vlastní text, zobrazí jen dlaždice svých podstránek.";
+  };
+  souborPole.addEventListener("change",()=>zmenaCesty(u,souborPole.value.trim()));
+  zdroj.append(volby,el("label",{class:"pole"},el("span",{class:"sr-only"},"Soubor"),souborPole),napoveda);
+  karta.append(zdroj);
+  popisZdroje();
+
+  const skryta=el("input",{type:"checkbox",checked:!!u.hidden});
+  skryta.addEventListener("change",()=>{ u.hidden=skryta.checked; kreslitStrom(); planNahled(); });
+  karta.append(el("label",{class:"radek",style:"margin-top:12px"},skryta,"Skrýt v sekcích webu (stránka zůstane dostupná odkazem)"));
+  ed.append(karta);
+
+  /* obsah */
+  const kObsah=el("section",{class:"karta","aria-labelledby":"h-obsah"},el("h3",{id:"h-obsah"},"Obsah stránky (Markdown)"));
+  ed.append(kObsah);
+  kreslitObsah(kObsah,u);
+}
+function sablona(typ){
+  if(typ==="clanky") return `articles\n\n## První článek\nDatum: ${dnes()}\nTagy: novinka\n\nPerex článku — první odstavec se ukáže ve výpisu.\n\nText článku.\n`;
+  if(typ==="novinky") return `Úvodní text stránky s novinkami.\n\n${dnes()}: Nadpis novinky\nText novinky.\n`;
+  if(typ==="uvod") return `Vítejte na webu. Tenhle text je úvod, pod ním se ukážou dlaždice hlavních sekcí.\n`;
+  return "";
+}
+function zmenaZdroje(u,k){
+  const stary=druhZdroje(u);
+  if(k===stary) return;
+  if(k==="zadny"){ u.file=""; delete u.repo; }
+  else if(k==="mistni"){ delete u.repo; const sl=(E.cfg.folders?.pages||"").replace(/^\/+|\/+$/g,""); u.file=(sl?sl+"/":"")+u.id+".md"; if(!E.soubory.has(u.file)) E.soubory.set(u.file,{text:"",puvodni:"",sha:null,stav:"nacitam"}); E.soubory.delete(u.file); }
+  else if(k==="repo"){ u.file="gh:vlastnik/repo/soubor.md"; delete u.repo; }
+  else if(k==="url"){ u.file="https://"; delete u.repo; }
+  vybrat({druh:"stranka",uzel:u});
+  if(k!=="mistni"&&k!=="zadny"){ const p=$("#f-soubor"); p.value=""; p.focus(); }
+}
+function zmenaCesty(u,hodnota){
+  const d=druhZdroje(u);
+  if(d==="repo"){
+    const m=hodnota.replace(/^gh:/,"").replace(/^https?:\/\/github\.com\//,"").match(/^([^/]+)\/([^/@]+)(?:@([^/]+))?\/(.+)$/);
+    if(!m){ stav("Zadejte vlastnik/repo/cesta/soubor.md","chyba"); return; }
+    u.repo=m[1]+"/"+m[2]+(m[3]?"@"+m[3]:""); u.file=m[4].replace(/\/blob\/[^/]+\//,"");
+  }else if(d==="url"){ u.file=hodnota; delete u.repo; }
+  else{
+    const nova=hodnota.replace(/^\.?\/+/,"");
+    if(!nova||nova===u.file) return;
+    const s=E.soubory.get(u.file);
+    if(s&&s.sha&&s.stav!=="chyba"){
+      if(!confirm(`Přesunout soubor ${u.file} na ${nova}? Starý soubor se při uložení smaže.`)){ $("#f-soubor").value=u.file; return; }
+      E.smazat.set(u.file,s.sha);
+      E.soubory.delete(u.file);
+      E.soubory.set(nova,{text:s.text,puvodni:"",sha:null,stav:"novy",vytvorit:true});
+    }else if(s){ E.soubory.delete(u.file); E.soubory.set(nova,{...s,sha:null}); }
+    u.file=nova; u._auto=false;
+  }
+  vybrat({druh:"stranka",uzel:u});
+}
+
+/* ---------- textový editor ---------- */
+async function kreslitObsah(box,u){
+  const d=druhZdroje(u);
+  if(d==="zadny"){ box.append(el("p",{class:"tichy"},"Stránka nemá vlastní obsah. Na webu ukáže dlaždice svých podstránek.")); return; }
+  if(d!=="mistni"){
+    const adr=adresaExterni(u);
+    box.append(el("div",{class:"upozorneni info"},"Obsah se bere z ",el("a",{href:adr,target:"_blank",rel:"noopener"},adr)," a tady se jen zobrazuje. Upravit ho můžete v jeho repozitáři."));
+    const t=el("textarea",{id:"text",readonly:true,rows:"18","aria-label":"Obsah stránky (jen ke čtení)"});
+    t.value="Načítám…"; box.append(t);
+    try{ const r=await fetch(adr+(adr.includes("?")?"&":"?")+"_="+Date.now(),{cache:"no-store"}); if(!r.ok) throw new Error("HTTP "+r.status); t.value=await r.text(); }
+    catch(e){ t.value=""; box.append(el("div",{class:"upozorneni chyba"},"Soubor se nepodařilo načíst: "+e.message+". Je repozitář veřejný a cesta správná?")); }
+    return;
+  }
+  let s=E.soubory.get(u.file);
+  const t=el("textarea",{id:"text",rows:"22",spellcheck:"true","aria-label":"Obsah stránky v Markdownu"});
+  const lista=nastrojovaLista(t,u);
+  box.append(lista,t);
+  const info=el("div");
+  box.append(info);
+  while(s&&s.stav==="nacitam"){ t.readOnly=true; t.value="Načítám…"; await new Promise(r=>setTimeout(r,150)); s=E.soubory.get(u.file); }
+  if(!s){
+    s={text:"",puvodni:"",stav:"nacitam"}; E.soubory.set(u.file,s);
+    t.readOnly=true; t.value="Načítám…";
+    try{
+      const r=await ghNacist(u.file);
+      if(r){ Object.assign(s,{text:r.text,puvodni:r.text,sha:r.sha,stav:"nacteno"}); }
+      else Object.assign(s,{text:"",puvodni:"",sha:null,stav:"novy"});  // soubor ještě není, přepsat se nedá nic
+    }catch(e){ Object.assign(s,{stav:"chyba",chyba:e.message}); }
+  }
+  if(E.vybrano?.uzel!==u) return;
+  if(s.stav==="chyba"){
+    t.readOnly=true; t.value="";
+    info.append(el("div",{class:"upozorneni chyba"},`Soubor ${u.file} se nepodařilo načíst (${s.chyba}). Úpravy jsou zastavené, aby se obsah v repozitáři nepřepsal.`,
+      el("div",{class:"radek",style:"margin-top:8px"},
+        el("button",{class:"btn mini",type:"button",onclick:()=>{ E.soubory.delete(u.file); vybrat({druh:"stranka",uzel:u}); }},"Zkusit znovu načíst"),
+        el("button",{class:"btn mini nebezpecne",type:"button",onclick:()=>{ if(!confirm("Opravdu psát do prázdného souboru? Uložení přepíše, co je teď v repozitáři.")) return; Object.assign(s,{stav:"novy",text:"",puvodni:"\0",vytvorit:true}); vybrat({druh:"stranka",uzel:u}); }},"Přesto upravovat (přepíše soubor)"))));
+    return;
+  }
+  if(s.stav==="novy"&&!s.sha) info.append(el("p",{class:"tichy"},"Soubor zatím v repozitáři není, vznikne při uložení."));
+  t.readOnly=false; t.value=s.text;
+  t.addEventListener("input",()=>{ s.text=t.value; s.vytvorit=true; obnovitStav(); planNahled(); });
+  klavesyEditoru(t,u);
+}
+function vlozit(t,pred,po="",vychozi=""){
+  const a=t.selectionStart,b=t.selectionEnd,vyber=t.value.slice(a,b)||vychozi;
+  t.setRangeText(pred+vyber+po,a,b,"end");
+  if(!t.value.slice(a,b-0)&&vychozi){ t.selectionStart=a+pred.length; t.selectionEnd=a+pred.length+vyber.length; }
+  t.focus(); t.dispatchEvent(new Event("input"));
+}
+function naZacatekRadku(t,pred){
+  const a=t.value.lastIndexOf("\n",t.selectionStart-1)+1;
+  t.setRangeText(pred,a,a,"end"); t.focus(); t.dispatchEvent(new Event("input"));
+}
+function nastrojovaLista(t,u){
+  const b=(txt,popis,fn)=>el("button",{class:"btn",type:"button",title:popis,"aria-label":popis,onclick:fn},txt);
+  const upoz=el("select",{"aria-label":"Vložit barevné upozornění",class:"btn",style:"width:auto;padding:3px 6px"},
+    el("option",{value:""},"Upozornění…"),
+    [["ℹ️","Informace"],["⚠️","Varování"],["❗","Důležité"],["✅","Tip / hotovo"],["📌","Poznámka"],["🔒","Bezpečnost"],["🚧","Rozpracováno"],["📖","Citace"]].map(([e,n])=>el("option",{value:e},e+" "+n)));
+  upoz.addEventListener("change",()=>{ if(upoz.value){ vlozit(t,"\n"+upoz.value+" ","\n","Text upozornění"); upoz.value=""; } });
+  const obr=el("input",{type:"file",accept:"image/*",hidden:true});
+  obr.addEventListener("change",()=>{ if(obr.files[0]) vlozitObrazek(t,u,obr.files[0]); obr.value=""; });
+  const lista=el("div",{class:"lista",role:"toolbar","aria-label":"Formátování"},
+    b("B","Tučně (Ctrl+B)",()=>vlozit(t,"**","**","tučně")),
+    b("I","Kurzíva (Ctrl+I)",()=>vlozit(t,"*","*","kurzíva")),
+    b("H2","Nadpis",()=>naZacatekRadku(t,"## ")),
+    b("H3","Podnadpis",()=>naZacatekRadku(t,"### ")),
+    b("• Seznam","Odrážka",()=>naZacatekRadku(t,"- ")),
+    b("☐ Úkol","Úkol",()=>naZacatekRadku(t,"- [ ] ")),
+    b("Odkaz","Odkaz na adresu",()=>vlozit(t,"[","](https://)","text odkazu")),
+    b("[[Stránka]]","Odkaz na jinou stránku webu",()=>vybratStrankuProOdkaz(t)),
+    b("Tabulka","Tabulka",()=>vlozit(t,"\n| Sloupec | Sloupec |\n|---|---|\n| ","  |  |\n","hodnota")),
+    b("Kód","Blok kódu",()=>vlozit(t,"\n```\n","\n```\n","kód")),
+    upoz,
+    b("Obrázek","Nahrát obrázek",()=>obr.click()),obr,
+    b("+ Článek","Nový článek (sekce článků)",()=>{ if(!/^\s*(#[^\n]*\n\s*)?articles\s*$/im.test(t.value.split("\n").slice(0,3).join("\n"))&&!confirm("Soubor nezačíná řádkem „articles“, takže se nezobrazí jako sekce článků. Vložit článek přesto?")) return; t.selectionStart=t.selectionEnd=t.value.length; vlozit(t,`\n\n## `,`\nDatum: ${dnes()}\nTagy: \n\nPerex článku.\n\nText článku.\n`,"Název článku"); }),
+    b("+ Novinka","Novinka s dnešním datem",()=>vlozit(t,`\n${dnes()}: `,"\n","Nadpis novinky"))
+  );
+  return lista;
+}
+function vybratStrankuProOdkaz(t){
+  const vsech=vsechnyUzly();
+  const dl=el("dialog",{"aria-label":"Odkaz na stránku"});
+  const filtr=el("input",{type:"text",placeholder:"Hledat stránku…","aria-label":"Hledat stránku"});
+  const ul=el("ul",{class:"historie"});
+  const kresli=()=>{ ul.innerHTML=""; vsech.filter(u=>u.title.toLowerCase().includes(filtr.value.toLowerCase())).slice(0,40).forEach(u=>ul.append(el("li",{},el("span",{},(u.emoji||"")+" "+u.title),el("button",{class:"btn mini",type:"button",onclick:()=>{ dl.close(); vlozit(t,"[["+u.title+"]]"); }},"Vložit")))); };
+  filtr.addEventListener("input",kresli);
+  dl.append(el("div",{class:"dl-hlava"},el("h2",{},"Odkaz na stránku"),el("button",{class:"btn mini",type:"button",onclick:()=>dl.close()},"Zavřít")),el("div",{class:"dl-telo"},filtr,ul));
+  dl.addEventListener("close",()=>dl.remove());
+  document.body.append(dl); kresli(); dl.showModal(); filtr.focus();
+}
+async function vlozitObrazek(t,u,soubor){
+  const media=(E.cfg.folders?.media||"").replace(/^\/+|\/+$/g,"");
+  const nazev=soubor.name.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9._-]+/g,"-");
+  let cesta=(media?media+"/":"")+nazev, n=2;
+  while(E.soubory.has(cesta)) cesta=(media?media+"/":"")+nazev.replace(/(\.[^.]+)?$/,"-"+(n++)+"$1");
+  const b64=bytyDoBase64(new Uint8Array(await soubor.arrayBuffer()));
+  E.soubory.set(cesta,{bin:true,b64,stav:"novy",text:"",puvodni:""});
+  vlozit(t,"![",`](${relativniCesta(u.file,cesta)})`,nazev.replace(/\.[^.]+$/,""));
+  stav("Obrázek se nahraje do "+cesta+" při uložení","zmeny");
+}
+function klavesyEditoru(t){
+  t.addEventListener("keydown",e=>{
+    if((e.ctrlKey||e.metaKey)&&!e.altKey&&e.key.toLowerCase()==="b"){ e.preventDefault(); vlozit(t,"**","**","tučně"); }
+    if((e.ctrlKey||e.metaKey)&&!e.altKey&&e.key.toLowerCase()==="i"){ e.preventDefault(); vlozit(t,"*","*","kurzíva"); }
+  });
+}
+function vyberEmoji(hodnota,zmena){
+  const pole=el("input",{type:"text",value:hodnota,"aria-label":"Emoji",maxlength:"8"});
+  pole.addEventListener("input",()=>zmena(pole.value.trim()));
+  const mriz=el("div",{class:"emoji-mrizka",hidden:true,role:"group","aria-label":"Nabídka emoji"},
+    EMOJI.map(e=>el("button",{type:"button","aria-label":e,onclick:()=>{ pole.value=e; zmena(e); mriz.hidden=true; tl.setAttribute("aria-expanded","false"); pole.focus(); }},e)));
+  const tl=el("button",{class:"btn mini",type:"button","aria-expanded":"false",onclick:()=>{ mriz.hidden=!mriz.hidden; tl.setAttribute("aria-expanded",!mriz.hidden); }},"Vybrat…");
+  const smaz=el("button",{class:"btn mini",type:"button",onclick:()=>{ pole.value=""; zmena(""); }},"Bez ikony");
+  return el("div",{},el("div",{class:"emoji-pole"},pole,tl,smaz),mriz);
+}
+
+/* ---------- postranní panel ---------- */
+function kreslitSidebar(ed){
+  const sb=E.cfg.sidebar_file||"sidebar.md";
+  ed.append(el("h2",{},el("span",{"aria-hidden":"true"},"🧩"),"Postranní panel"),
+    el("p",{class:"tichy",style:"margin:0"},`Text ze souboru ${sb} se ukáže v postranním panelu nad sekcemi webu (podle pořadí bloků v Nastavení). Hodí se na kontakty, krátké oznámení nebo odkazy.`));
+  const k=el("section",{class:"karta","aria-label":"Obsah postranního panelu"}); ed.append(k);
+  let s=E.soubory.get(sb);
+  if(!s){ s={text:"",puvodni:"",sha:null,stav:"novy"}; E.soubory.set(sb,s); }
+  if(s.stav==="chyba"){ k.append(el("div",{class:"upozorneni chyba"},`${sb} se nepodařilo načíst (${s.chyba}). Úpravy jsou zastavené, aby se soubor nepřepsal.`)); return; }
+  const t=el("textarea",{id:"text",rows:"16","aria-label":"Obsah sidebar.md v Markdownu"});
+  t.value=s.text;
+  t.addEventListener("input",()=>{ s.text=t.value; s.vytvorit=true; obnovitStav(); planNahled(); });
+  k.append(nastrojovaLista(t,{file:sb}),t);
+  klavesyEditoru(t);
+}
+
+/* ---------- nastavení webu ---------- */
+function kreslitNastaveni(ed){
+  const c=E.cfg;
+  const zmena=()=>{ $("#nazev-webu").textContent=c.title||"WikiWeb"; obnovitStav(); planNahled(); };
+  const pole=(popis,klic,vlastnosti={})=>{ const i=el("input",{type:"text",value:c[klic]??"",...vlastnosti}); i.addEventListener("input",()=>{ c[klic]=i.value; zmena(); }); return el("label",{class:"pole"},el("span",{},popis),i); };
+  ed.append(el("h2",{},el("span",{"aria-hidden":"true"},"⚙️"),"Nastavení webu"),el("p",{class:"tichy",style:"margin:0"},"Ukládá se do wiki.json ve složce webu."));
+
+  const z=el("section",{class:"karta","aria-labelledby":"h-zaklad"},el("h3",{id:"h-zaklad"},"Web"));
+  const jazyk=el("select",{},el("option",{value:"cs",selected:c.language!=="en"},"čeština"),el("option",{value:"en",selected:c.language==="en"},"angličtina"));
+  jazyk.addEventListener("change",()=>{ c.language=jazyk.value; zmena(); });
+  const barva=el("select",{},PALETY.map(p=>el("option",{value:p,selected:(c.color||"indigo")===p},p)));
+  barva.addEventListener("change",()=>{ c.color=barva.value; zmena(); });
+  const domov=el("select",{},el("option",{value:""},"první stránka v obsahu"),vsechnyUzly().map(u=>el("option",{value:u.id,selected:c.home===u.id},(u.emoji?u.emoji+" ":"")+u.title)));
+  domov.addEventListener("change",()=>{ c.home=domov.value; zmena(); });
+  z.append(el("div",{class:"mrizka"},pole("Název webu","title"),pole("Podnázev","tagline"),
+    el("label",{class:"pole"},el("span",{},"Jazyk webu"),jazyk),el("label",{class:"pole"},el("span",{},"Barevná paleta (jako md2web)"),barva),
+    el("label",{class:"pole"},el("span",{},"Úvodní stránka"),domov)));
+  ed.append(z);
+
+  const m=el("section",{class:"karta","aria-labelledby":"h-menu"},el("h3",{id:"h-menu"},"Rychlé menu v hlavičce"));
+  m.append(editorOdkazu(c.menu_links=c.menu_links||[],zmena));
+  ed.append(m);
+
+  const p=el("section",{class:"karta","aria-labelledby":"h-panel"},el("h3",{id:"h-panel"},"Postranní panel — bloky a pořadí"));
+  p.append(editorBloku(c,zmena));
+  const rozb=el("input",{type:"checkbox",checked:c.expand_sections!==false}); rozb.addEventListener("change",()=>{ c.expand_sections=rozb.checked; zmena(); });
+  p.append(el("label",{class:"radek",style:"margin-top:10px"},rozb,"Hlavní sekce v panelu rozbalené"));
+  ed.append(p);
+
+  const f=el("section",{class:"karta","aria-labelledby":"h-pata"},el("h3",{id:"h-pata"},"Patička"));
+  c.copyright=c.copyright||{};
+  const cp=(popis,klic)=>{ const i=el("input",{type:"text",value:c.copyright[klic]??""}); i.addEventListener("input",()=>{ c.copyright[klic]=klic==="year"?(+i.value||i.value):i.value; zmena(); }); return el("label",{class:"pole"},el("span",{},popis),i); };
+  f.append(el("div",{class:"mrizka"},cp("Copyright — jméno","name"),cp("Copyright — odkaz","url"),cp("Rok","year")));
+  f.append(el("div",{class:"pole-t",style:"margin:12px 0 6px"},"Odkazy v patičce"),editorOdkazu(c.footer_links=c.footer_links||[],zmena));
+  const ed1=el("input",{type:"checkbox",checked:!!c.edit_link}); ed1.addEventListener("change",()=>{ c.edit_link=ed1.checked; zmena(); });
+  f.append(el("label",{class:"radek",style:"margin-top:10px"},ed1,"Přidat do patičky odkaz Upravit v editoru"));
+  ed.append(f);
+
+  const s=el("section",{class:"karta","aria-labelledby":"h-soubory"},el("h3",{id:"h-soubory"},"Soubory a chování"));
+  c.folders=c.folders||{};
+  const sl=(popis,klic)=>{ const i=el("input",{type:"text",value:c.folders[klic]??"",spellcheck:"false"}); i.addEventListener("input",()=>{ c.folders[klic]=i.value.replace(/^\/+|\/+$/g,""); zmena(); }); return el("label",{class:"pole"},el("span",{},popis),i); };
+  s.append(el("div",{class:"mrizka"},sl("Složka pro nové stránky (prázdné = kořen webu)","pages"),sl("Složka pro nahrané obrázky","media"),pole("Soubor postranního panelu","sidebar_file",{spellcheck:"false"})));
+  const pg=el("input",{type:"checkbox",checked:c.pager!==false}); pg.addEventListener("change",()=>{ c.pager=pg.checked; zmena(); });
+  s.append(el("label",{class:"radek",style:"margin-top:10px"},pg,"Pod wiki stránkou odkazy na předchozí a další stránku"));
+  ed.append(s);
+
+  const pr=el("section",{class:"karta","aria-labelledby":"h-prohlizec"},el("h3",{id:"h-prohlizec"},"Prohlížeč webu (index.html)"));
+  const pstav=el("p",{class:"tichy",style:"margin:0 0 8px"},"Zjišťuji, jestli je ve složce prohlížeč…");
+  pr.append(el("p",{style:"margin:0 0 6px"},"Aby web běžel na GitHub Pages, musí ve složce ležet soubor index.html s prohlížečem WikiWeb. Editor ho umí nainstalovat a později aktualizovat na nejnovější verzi."),
+    pstav,el("button",{class:"btn",type:"button",onclick:instalovatProhlizec},"Nainstalovat nebo aktualizovat index.html"));
+  ed.append(pr);
+  stavProhlizece(pstav);
+
+  const j=el("details",{class:"karta"},el("summary",{},"Upravit wiki.json ručně"));
+  const ta=el("textarea",{rows:"16",style:"font-family:var(--mono);font-size:13px;margin-top:10px","aria-label":"wiki.json"});
+  ta.value=JSON.stringify(c,null,2);
+  const chyba=el("p",{class:"tichy",role:"status"});
+  ta.addEventListener("change",()=>{ try{ const n=JSON.parse(ta.value); delete n.github; E.cfg=n; chyba.textContent="Použito."; zmena(); }catch(e){ chyba.textContent="Neplatný JSON: "+e.message; } });
+  j.append(ta,chyba);
+  ed.append(j);
+}
+function editorOdkazu(pole,zmena){
+  const box=el("div",{class:"seznam-odkazu"});
+  const kresli=()=>{
+    box.innerHTML="";
+    pole.forEach((o,i)=>{
+      const nazev=el("input",{type:"text",value:o.label||"","aria-label":`Odkaz ${i+1}: text`,placeholder:"Text"});
+      nazev.addEventListener("input",()=>{ o.label=nazev.value; zmena(); });
+      const druh=el("select",{"aria-label":`Odkaz ${i+1}: druh`},el("option",{value:"page",selected:!!o.page||!o.url},"Stránka webu"),el("option",{value:"url",selected:!!o.url&&!o.page},"Adresa"));
+      const cil=o.url&&!o.page
+        ?el("input",{type:"url",value:o.url,"aria-label":`Odkaz ${i+1}: adresa`,placeholder:"https://"})
+        :el("select",{"aria-label":`Odkaz ${i+1}: stránka`},el("option",{value:""},"— vyberte —"),vsechnyUzly().map(u=>el("option",{value:u.id,selected:o.page===u.id},(u.emoji?u.emoji+" ":"")+u.title)));
+      cil.addEventListener(cil.tagName==="SELECT"?"change":"input",()=>{ if(cil.tagName==="SELECT"){ o.page=cil.value; delete o.url; } else { o.url=cil.value; delete o.page; } zmena(); });
+      druh.addEventListener("change",()=>{ if(druh.value==="url"){ delete o.page; o.url="https://"; } else { delete o.url; o.page=""; } zmena(); kresli(); });
+      box.append(el("div",{class:"r"},nazev,druh,cil,el("div",{class:"radek"},
+        el("button",{class:"btn mini",type:"button","aria-label":`Odkaz ${i+1} nahoru`,disabled:i===0,onclick:()=>{ pole.splice(i-1,0,pole.splice(i,1)[0]); zmena(); kresli(); }},"↑"),
+        el("button",{class:"btn mini",type:"button","aria-label":`Odkaz ${i+1} dolů`,disabled:i===pole.length-1,onclick:()=>{ pole.splice(i+1,0,pole.splice(i,1)[0]); zmena(); kresli(); }},"↓"),
+        el("button",{class:"btn mini nebezpecne",type:"button","aria-label":`Odebrat odkaz ${i+1}`,onclick:()=>{ pole.splice(i,1); zmena(); kresli(); }},"✕"))));
+    });
+    box.append(el("div",{},el("button",{class:"btn mini",type:"button",onclick:()=>{ pole.push({label:"",page:""}); zmena(); kresli(); box.querySelectorAll("input")[pole.length*1-1]?.focus(); }},"+ Přidat odkaz")));
+  };
+  kresli(); return box;
+}
+function editorBloku(c,zmena){
+  const ul=el("ul",{class:"bloky"});
+  const kresli=()=>{
+    const zap=Array.isArray(c.sidebar)?c.sidebar:Object.keys(BLOKY);
+    const poradi=[...zap,...Object.keys(BLOKY).filter(k=>!zap.includes(k))];
+    ul.innerHTML="";
+    poradi.forEach((k,i)=>{
+      const ch=el("input",{type:"checkbox",checked:zap.includes(k)});
+      ch.addEventListener("change",()=>{ c.sidebar=poradi.filter(x=>x===k?ch.checked:zap.includes(x)); zmena(); });
+      const pres=(d)=>{ const p=[...poradi]; p.splice(i+d,0,p.splice(i,1)[0]); c.sidebar=p.filter(x=>zap.includes(x)); zmena(); kresli(); ul.querySelectorAll("li")[i+d]?.querySelector(`button[data-s="${d}"]`)?.focus(); };
+      ul.append(el("li",{},el("label",{},ch,BLOKY[k]||k),
+        el("button",{class:"btn mini",type:"button","data-s":"-1","aria-label":BLOKY[k]+" výš",disabled:i===0,onclick:()=>pres(-1)},"↑"),
+        el("button",{class:"btn mini",type:"button","data-s":"1","aria-label":BLOKY[k]+" níž",disabled:i===poradi.length-1,onclick:()=>pres(1)},"↓")));
+    });
+  };
+  kresli(); return ul;
+}
+async function stavProhlizece(p){
+  try{
+    const [vRepu,aktualni]=await Promise.all([ghNacist("index.html"),fetch("prohlizec.html",{cache:"no-store"}).then(r=>r.ok?r.text():null)]);
+    if(E.soubory.get("index.html")?.stav==="novy"){ p.textContent="Prohlížeč se zapíše při příštím uložení."; return; }
+    p.textContent=!vRepu?"Ve složce zatím index.html není — web na GitHub Pages zatím nepoběží.":
+      aktualni&&vRepu.text.replace(/\r\n?/g,"\n")===aktualni.replace(/\r\n?/g,"\n")?"Prohlížeč je nainstalovaný a aktuální.":
+      /name="generator" content="WikiWeb"/.test(vRepu.text)?"Prohlížeč je nainstalovaný, je k dispozici novější verze.":"Ve složce je jiný index.html (ne WikiWeb). Instalace by ho přepsala.";
+  }catch(e){ p.textContent="Stav prohlížeče se nepodařilo zjistit: "+e.message; }
+}
+async function instalovatProhlizec(){
+  try{
+    const r=await fetch("prohlizec.html",{cache:"no-store"}); if(!r.ok) throw new Error("HTTP "+r.status);
+    const text=await r.text();
+    const stary=await ghNacist("index.html");
+    if(stary&&!/name="generator" content="WikiWeb"/.test(stary.text)&&!confirm("Ve složce je jiný index.html. Opravdu ho přepsat prohlížečem WikiWeb?")) return;
+    E.soubory.set("index.html",{text,puvodni:stary?.text??"",sha:stary?.sha||null,stav:"novy",vytvorit:true});
+    stav("Prohlížeč připraven — zapíše se při uložení","zmeny"); obnovitStav();
+    if(E.vybrano?.druh==="nastaveni") vybrat({druh:"nastaveni"});
+  }catch(e){ stav("Prohlížeč se nepodařilo připravit: "+e.message,"chyba"); }
+}
+
+/* ---------- úvodní obrazovky ---------- */
+function kreslitUvod(chyba){
+  E.rezim="uprava"; rozlozeni();
+  $("#strom").innerHTML=""; const ed=$("#editor"); ed.innerHTML="";
+  const box=el("div",{class:"uvodni"},el("h2",{},"WikiWeb editor"),
+    el("p",{},"Editor webů a wiki, které leží jako Markdown v repozitáři na GitHubu. Web tvoří složka se soubory wiki.json (nastavení), contents.json (strom stránek), sidebar.md a .md stránkami; prohlížeč index.html z nich na GitHub Pages poskládá web."),
+    chyba?el("div",{class:"upozorneni chyba"},chyba):null,
+    el("p",{},el("button",{class:"btn hl",type:"button",onclick:()=>otevritPripojeni()},"Připojit repozitář")));
+  ed.append(box);
+}
+function kreslitNovyWeb(){
+  E.rezim="uprava"; rozlozeni();
+  $("#strom").innerHTML=""; const ed=$("#editor"); ed.innerHTML="";
+  ed.append(el("div",{class:"uvodni"},el("h2",{},"Ve složce zatím žádný web není"),
+    el("p",{},`Ve složce ${E.gh.slozka||"(kořen repozitáře)"} repozitáře ${E.gh.repo} není wiki.json ani contents.json. Můžete tu založit nový web:`),
+    el("ol",{},el("li",{},"vytvoří se nastavení, úvodní stránka a postranní panel,"),el("li",{},"přidá se prohlížeč index.html,"),el("li",{},"všechno se zapíše jedním commitem, až dáte Uložit vše.")),
+    el("p",{},el("button",{class:"btn hl",type:"button",onclick:zalozitWeb},"Založit nový web"))));
+}
+async function zalozitWeb(){
+  E.cfg=vychoziCfg(); E.cfg.title=E.gh.repo.split("/")[1]||"Nový web";
+  E.cfgSha=null; E.obsahSha=null; E.cfgPuvodni=null; E.obsahPuvodni=null;
+  const sl=E.cfg.folders.pages;
+  E.strom=pripravitUzly([{id:"uvod",title:"Úvod",emoji:"🏠",file:sl+"/uvod.md",type:"uvod"}]);
+  E.soubory.set(sl+"/uvod.md",{text:"Vítejte na novém webu. Tenhle text najdete v souboru "+sl+"/uvod.md.\n\nℹ️ Stránky přidáte v editoru tlačítkem + Stránka.\n",puvodni:"",sha:null,stav:"novy",vytvorit:true});
+  E.soubory.set("sidebar.md",{text:"**Vítejte!** Tenhle text je v souboru sidebar.md.\n",puvodni:"",sha:null,stav:"novy",vytvorit:true});
+  E.nacteno=true; E.webNacten=true; E.duvodZastaveni="";
+  await instalovatProhlizec();
+  $("#nazev-webu").textContent=E.cfg.title;
+  kreslitStrom(); vybrat({druh:"nastaveni"});
+  stav("Nový web je připravený — uložte ho tlačítkem Uložit vše","zmeny");
+}
+
+/* =============================================================
+   ULOŽENÍ
+   ============================================================= */
+async function ulozitVse(){
+  if(!E.nacteno){ obnovitStav(); return; }
+  if(E.ukladam) return;
+  if(!E.gh.token){ stav("Uložení vyžaduje token — doplňte ho v Připojení","chyba"); otevritPripojeni(); return; }
+  const zmeny=seznamZmen();
+  if(!zmeny.length){ stav("Není co ukládat","ok"); return; }
+  E.ukladam=true; stav("Kontroluji, jestli se soubory mezitím nezměnily…");
+  try{
+    /* pojistka proti přepsání cizích změn: SHA v repozitáři musí sedět s tím, co jsme načetli */
+    for(const z of zmeny){
+      const ted=await ghShaSouboru(z.cesta);
+      if((ted||null)!==(z.sha||null)){
+        stav(`Uložení zastaveno: ${z.cesta} se v repozitáři mezitím změnil. Zkopírujte si úpravy a načtěte web znovu (Připojení → Připojit a načíst).`,"chyba");
+        return;
+      }
+    }
+    stav("Ukládám do GitHubu…");
+    const nazvy=zmeny.map(z=>z.cesta.split("/").pop());
+    const zprava="WikiWeb: "+(nazvy.length<=3?nazvy.join(", "):nazvy.length+" souborů");
+    const velke=zmeny.some(z=>(z.b64?z.b64.length*.75:new TextEncoder().encode(z.text||"").length)>GH_MEZ);
+    const sha=zmeny.length===1&&!zmeny[0].smazat&&!velke?await ghPut(zmeny[0],zprava):await ghCommit(zmeny,zprava);
+    for(const z of zmeny){
+      if(z.cesta==="wiki.json"){ E.cfgSha=sha[z.cesta]; E.cfgPuvodni=z.text; }
+      else if(z.cesta==="contents.json"){ E.obsahSha=sha[z.cesta]; E.obsahPuvodni=z.text; }
+      else if(z.smazat){ E.smazat.delete(z.cesta); }
+      else{ const s=E.soubory.get(z.cesta); if(s){ s.sha=sha[z.cesta]; s.puvodni=s.text; s.stav="nacteno"; s.vytvorit=false; if(s.bin){ s.b64=null; } } }
+    }
+    vsechnyUzly().forEach(u=>{ u._auto=false; });
+    stav(`Uloženo (${zmeny.length} ${zmeny.length===1?"soubor":zmeny.length<5?"soubory":"souborů"}). Web na GitHub Pages se obnoví do minuty.`,"ok");
+    obnovitStav();
+  }catch(e){
+    stav("Uložení selhalo: "+e.message,"chyba");
+  }finally{ E.ukladam=false; }
+}
+
+/* =============================================================
+   HISTORIE SOUBORU — každé uložení je commit, starší verze jde načíst
+   ============================================================= */
+function aktualniSoubor(){
+  const v=E.vybrano; if(!v) return null;
+  if(v.druh==="nastaveni") return "wiki.json";
+  if(v.druh==="sidebar") return E.cfg.sidebar_file||"sidebar.md";
+  if(druhZdroje(v.uzel)==="mistni") return v.uzel.file;
+  return null;
+}
+async function historie(){
+  if(!E.webNacten) return;
+  const dl=$("#dl-historie"), telo=$("#h-telo"); telo.innerHTML="";
+  const volba=el("select",{"aria-label":"Soubor"},[aktualniSoubor(),"contents.json","wiki.json"].filter((x,i,a)=>x&&a.indexOf(x)===i).map(c=>el("option",{value:c},c)));
+  const vypis=el("div");
+  telo.append(el("label",{class:"pole"},el("span",{},"Soubor"),volba),el("p",{class:"tichy",style:"margin:0"},"Vybraná verze se načte do editoru. Do repozitáře se zapíše, až dáte Uložit vše."),vypis);
+  const kresli=async()=>{
+    const cesta=volba.value; vypis.innerHTML=""; const st=el("p",{class:"tichy",role:"status"},"Načítám historii…"); vypis.append(st);
+    try{
+      const seznam=await ghFetch("commits?path="+encodeURIComponent(plnaCesta(cesta))+"&sha="+encodeURIComponent(E.gh.vetev||"main")+"&per_page=30");
+      st.textContent=seznam.length?seznam.length+" posledních verzí":"Soubor zatím nemá žádnou historii.";
+      const ul=el("ul",{class:"historie"});
+      seznam.forEach(c=>ul.append(el("li",{},el("span",{},el("b",{},cas(c.commit.committer.date)),el("br"),el("small",{},c.sha.slice(0,7)+" · "+(c.commit.message||"").split("\n")[0].slice(0,80))),
+        el("button",{class:"btn mini",type:"button",onclick:()=>nacistVerzi(cesta,c.sha,st)},"Načíst tuto verzi"))));
+      vypis.append(ul);
+    }catch(e){ st.textContent="Historii se nepodařilo načíst: "+e.message; }
+  };
+  volba.addEventListener("change",kresli);
+  dl.showModal(); kresli();
+}
+async function nacistVerzi(cesta,sha,st){
+  st.textContent="Načítám verzi…";
+  try{
+    const r=await ghNacist(cesta,sha); if(!r) throw new Error("soubor v této verzi neexistuje");
+    if(cesta==="wiki.json"){ const n=JSON.parse(r.text); delete n.github; E.cfg={...vychoziCfg(),...n}; }
+    else if(cesta==="contents.json"){ const o=JSON.parse(r.text); E.strom=pripravitUzly(Array.isArray(o)?o:o.pages); }
+    else{ const s=E.soubory.get(cesta); if(s){ s.text=r.text; s.vytvorit=true; } else E.soubory.set(cesta,{text:r.text,puvodni:"",sha:await ghShaSouboru(cesta),stav:"nacteno"}); }
+    st.textContent="Verze načtena. Zkontrolujte ji a pak dejte Uložit vše.";
+    const v=E.vybrano;
+    vybrat(v?.druh==="stranka"&&!vsechnyUzly().includes(v.uzel)?{druh:"nastaveni"}:v);
+  }catch(e){ st.textContent="Nepodařilo se: "+e.message; }
+}
+
+/* =============================================================
+   PROHLÍŽENÍ A NÁHLED — prohlizec.html dostane neuložený stav zprávou.
+   V režimu Prohlížet je prohlížeč přes celou plochu, v Úpravách může běžet vedle editoru.
+   ============================================================= */
+let nahledPripraven=false, nahledCasovac=null;
+const KLIC_REZIM="wikiweb-rezim-v1";
+function rozlozeni(){
+  const cteni=E.rezim==="cteni", nahled=cteni||E.nahledZap;
+  $("#kostra").classList.toggle("cteni",cteni);
+  $("#kostra").classList.toggle("s-nahledem",!cteni&&E.nahledZap);
+  $("#nahled").hidden=!nahled;
+  $("#b-rezim").textContent=cteni?"✏️ Upravovat":"👁 Prohlížet";
+  $("#b-nahled").hidden=cteni; $("#b-historie").hidden=cteni;
+  $("#b-nahled").setAttribute("aria-pressed",!!E.nahledZap);
+  if(nahled&&!$("#nahled-iframe").src){ nahledPripraven=false; $("#nahled-iframe").src="prohlizec.html?nahled=1"; }
+  else aktualizovatNahled();
+}
+function nastavitRezim(r){
+  if(r==="uprava"&&E.zobrazeno&&E.webNacten){
+    const u=vsechnyUzly().find(x=>x.id===E.zobrazeno);
+    if(u&&E.vybrano?.uzel!==u){ E.rezim=r; rozlozeni(); vybrat({druh:"stranka",uzel:u}); try{localStorage.setItem(KLIC_REZIM,r);}catch{} return; }
+  }
+  E.rezim=r; try{localStorage.setItem(KLIC_REZIM,r);}catch{}
+  rozlozeni();
+  if(r==="uprava") $("#editor").focus(); else $("#nahled-iframe").focus();
+}
+function prepnoutNahled(){ E.nahledZap=!E.nahledZap; rozlozeni(); }
+function planNahled(){ clearTimeout(nahledCasovac); nahledCasovac=setTimeout(()=>aktualizovatNahled(true),450); }
+function aktualizovatNahled(zachovatPosun){
+  if($("#nahled").hidden||!nahledPripraven||!E.webNacten) return;
+  const zakl=zakladWebu(), soubory={};
+  for(const [c,s] of E.soubory) if(!s.bin&&(s.stav==="nacteno"||s.stav==="novy")) soubory[new URL(c,zakl).href]=s.text;
+  for(const [c,s] of E.soubory) if(s.bin&&s.b64) soubory[new URL(c,zakl).href]="";
+  const v=E.vybrano;
+  $("#nahled-iframe").contentWindow.postMessage({typ:"wikiweb-nahled",cfg:JSON.parse(textCfg()),obsah:{pages:ocistitUzly(E.strom)},soubory,zaklad:zakl,
+    stranka:E.rezim==="cteni"?(E.zobrazeno||null):(v?.druh==="stranka"?v.uzel.id:null),zachovatPosun:!!zachovatPosun},location.origin);
+}
+addEventListener("message",e=>{
+  if(e.origin!==location.origin) return;
+  if(e.data?.typ==="wikiweb-nahled-pripraven"){ nahledPripraven=true; aktualizovatNahled(); }
+  if(e.data?.typ==="wikiweb-stranka"){
+    E.zobrazeno=e.data.id;
+    // proklik v náhledu vedle editoru otevře stránku i v editoru
+    if(e.data.uzivatel&&E.rezim==="uprava"&&e.data.id&&E.vybrano?.uzel?.id!==e.data.id){
+      const u=vsechnyUzly().find(x=>x.id===e.data.id); if(u) vybrat({druh:"stranka",uzel:u});
+    }
+  }
+});
+/* S tokenem se místní stránky načtou dopředu přes API — prohlížení pak funguje i u soukromého
+   repozitáře a hledání v aplikaci prohledá všechno. */
+async function nacistVsechnyStranky(){
+  if(!E.gh.token) return;
+  const fronta=vsechnyUzly().filter(u=>druhZdroje(u)==="mistni"&&!E.soubory.has(u.file));
+  const prace=async()=>{ while(fronta.length){ const u=fronta.shift(); if(E.soubory.has(u.file)) continue;
+    const s={text:"",puvodni:"",stav:"nacitam"}; E.soubory.set(u.file,s);
+    try{ const r=await ghNacist(u.file); Object.assign(s,r?{text:r.text,puvodni:r.text,sha:r.sha,stav:"nacteno"}:{sha:null,stav:"novy"}); }
+    catch(e){ Object.assign(s,{stav:"chyba",chyba:e.message}); } } };
+  await Promise.all([prace(),prace(),prace(),prace()]);
+  aktualizovatNahled(true);
+}
+
+/* =============================================================
+   PŘIPOJENÍ
+   ============================================================= */
+function ulozitPripojeni(){
+  try{
+    localStorage.setItem(KLIC_PRIPOJENI,JSON.stringify({repo:E.gh.repo,vetev:E.gh.vetev,slozka:E.gh.slozka}));
+    if(E.gh.token) localStorage.setItem(KLIC_TOKEN,E.gh.token); else localStorage.removeItem(KLIC_TOKEN);
+  }catch{}
+}
+function pamatovatNedavne(){
+  try{
+    const n=JSON.parse(localStorage.getItem(KLIC_NEDAVNE)||"[]").filter(x=>!(x.repo===E.gh.repo&&x.slozka===E.gh.slozka&&x.vetev===E.gh.vetev));
+    n.unshift({repo:E.gh.repo,slozka:E.gh.slozka,vetev:E.gh.vetev,nazev:E.cfg?.title||""});
+    localStorage.setItem(KLIC_NEDAVNE,JSON.stringify(n.slice(0,8)));
+  }catch{}
+}
+function otevritPripojeni(){
+  $("#p-repo").value=E.gh.repo; $("#p-vetev").value=E.gh.vetev||""; $("#p-slozka").value=E.gh.slozka; $("#p-token").value=E.gh.token;
+  const box=$("#p-nedavne"); box.innerHTML="";
+  let n=[]; try{ n=JSON.parse(localStorage.getItem(KLIC_NEDAVNE)||"[]"); }catch{}
+  if(n.length){
+    box.append(el("div",{class:"pole-t"},"Naposledy otevřené weby"),el("div",{class:"radek",style:"margin-top:4px"},n.map(x=>el("button",{class:"btn mini",type:"button",onclick:()=>{ $("#p-repo").value=x.repo; $("#p-slozka").value=x.slozka||""; $("#p-vetev").value=x.vetev||""; }},(x.nazev?x.nazev+" — ":"")+x.repo+(x.slozka?"/"+x.slozka:"")))));
+  }
+  $("#dl-pripojeni").showModal();
+}
+$("#dl-pripojeni").addEventListener("close",()=>{
+  if($("#dl-pripojeni").returnValue!=="ok") return;
+  if(seznamZmen().length&&!confirm("Máte neuložené změny. Opravdu načíst web znovu a změny zahodit?")) return;
+  E.gh.repo=$("#p-repo").value.trim().replace(/^https?:\/\/github\.com\//,"").replace(/\/+$/,"");
+  E.gh.vetev=$("#p-vetev").value.trim()||"main";
+  E.gh.slozka=$("#p-slozka").value.trim().replace(/^\/+|\/+$/g,"");
+  E.gh.token=$("#p-token").value.trim();
+  ulozitPripojeni();
+  const u=new URL(location.href); u.search=new URLSearchParams({repo:E.gh.repo,...(E.gh.slozka?{slozka:E.gh.slozka}:{}),...(E.gh.vetev!=="main"?{vetev:E.gh.vetev}:{})}).toString();
+  history.replaceState(null,"",u);
+  if(E.gh.repo) nacistWeb();
+});
+
+/* =============================================================
+   START
+   ============================================================= */
+$("#b-ulozit").addEventListener("click",ulozitVse);
+$("#b-nahled").addEventListener("click",prepnoutNahled);
+$("#b-rezim").addEventListener("click",()=>nastavitRezim(E.rezim==="cteni"?"uprava":"cteni"));
+$("#b-historie").addEventListener("click",historie);
+$("#b-pripojeni").addEventListener("click",otevritPripojeni);
+$("#h-zavrit").addEventListener("click",()=>$("#dl-historie").close());
+$("#u-nastaveni").addEventListener("click",()=>E.webNacten&&vybrat({druh:"nastaveni"}));
+$("#u-sidebar").addEventListener("click",()=>E.webNacten&&vybrat({druh:"sidebar"}));
+$("#s-nova").addEventListener("click",()=>novaStranka(false));
+$("#s-pod").addEventListener("click",()=>novaStranka(true));
+$("#s-nahoru").addEventListener("click",()=>posun("nahoru"));
+$("#s-dolu").addEventListener("click",()=>posun("dolu"));
+$("#s-ven").addEventListener("click",()=>posun("ven"));
+$("#s-dovnitr").addEventListener("click",()=>posun("dovnitr"));
+$("#s-smazat").addEventListener("click",odebrat);
+$("#strom").addEventListener("keydown",e=>{
+  if(!e.altKey) return;
+  const m={ArrowUp:"nahoru",ArrowDown:"dolu",ArrowLeft:"ven",ArrowRight:"dovnitr"}[e.key];
+  if(m){ e.preventDefault(); posun(m); }
+});
+document.addEventListener("keydown",e=>{
+  if((e.ctrlKey||e.metaKey)&&!e.altKey&&e.key.toLowerCase()==="s"){ e.preventDefault(); ulozitVse(); }
+});
+addEventListener("beforeunload",e=>{ if(seznamZmen().length){ e.preventDefault(); e.returnValue=""; } });
+
+(function(){
+  const p=new URLSearchParams(location.search);
+  let ulozene={}; try{ ulozene=JSON.parse(localStorage.getItem(KLIC_PRIPOJENI)||"{}"); E.gh.token=localStorage.getItem(KLIC_TOKEN)||""; }catch{}
+  let repo=p.get("repo")||"";
+  if(p.get("owner")&&repo&&!repo.includes("/")) repo=p.get("owner")+"/"+repo;
+  if(repo){
+    E.gh.repo=repo;
+    E.gh.vetev=p.get("vetev")||p.get("branch")||"main";
+    E.gh.slozka=(p.get("slozka")||p.get("path")||"").replace(/^\/+|\/+$/g,"");
+  }else Object.assign(E.gh,{repo:ulozene.repo||"",vetev:ulozene.vetev||"main",slozka:ulozene.slozka||""});
+  try{ E.rezim=localStorage.getItem(KLIC_REZIM)||"cteni"; }catch{ E.rezim="cteni"; }
+  if(E.gh.repo){ rozlozeni(); ulozitPripojeni(); nacistWeb(); }
+  else{ kreslitUvod(); obnovitStav(); }
+})();
+</script>
+</body>
+</html>

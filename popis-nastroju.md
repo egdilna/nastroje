@@ -369,6 +369,20 @@ Hlavní funkce:
 
 ---
 
+## wikiweb — WikiWeb
+
+**Web a wiki z Markdownu v repozitáři na GitHubu, s prohlížením i úpravami v jedné aplikaci.**
+
+Web je složka v repozitáři: `wiki.json` (nastavení), `contents.json` (strom stránek), `sidebar.md` a `.md` soubory stránek v libovolných podsložkách. Aplikace `wikiweb/` web zobrazí a v režimu Úpravy ho edituje a ukládá commity přes GitHub API; samostatný `prohlizec.html` se nakopíruje do složky webu jako `index.html` a web z něj běží na GitHub Pages.
+
+- Hlavička s názvem, podnázvem a konfigurovatelným rychlým menu; postranní panel s hledáním, `sidebar.md`, sekcemi webu (strom o více úrovních), obsahem stránky a štítky
+- Emoji u každé stránky, typy stránek (wiki stránka, úvodní, rozcestník, sekce článků, novinky)
+- Obsah stránky může být i v jiném veřejném repozitáři nebo na adrese URL
+- Sekce článků, novinky, emoji upozornění a CriticMarkup kompatibilní s md2web
+- Náhled neuložených změn, historie souboru, pojistky proti přepsání a soubory nad 1 MB
+
+---
+
 ## wavecz — Audit přístupnosti webu
 
 **Audit přístupnosti webu pomocí WAVE API od WebAIM.**
