@@ -72,6 +72,7 @@ Odkaz v menu má buď `page` (id stránky), nebo `url`.
 - Bez `file` je stránka čistý rozcestník podstránek.
 - `{ "ref": "id" }` je **odkaz** na stránku, která má domovské místo jinde ve stromu. Ukáže se v menu i ve výpisech na svém místě (volitelně s vlastním `title` a `emoji`, i `hidden`), drobečková navigace, předchozí/další a adresa se řídí domovem. Odkaz nemá podstránky. Na neexistující id se nezobrazí. Aplikace při změně id stránky odkazy přepíše a při smazání stránky smaže i odkazy na ni.
 - `type`: id typu z `page_types` nebo vestavěného (`stranka` je výchozí, stránka bez `file` s podstránkami je `rozcestnik`). Typ mění vzhled a výchozí ikonu; obsah je vždy Markdown.
+- `aliases: ["telefony", "Recepce"]` — další názvy stránky. Wikiodkazy `[[…]]`, md2web `[Název]`, vkládání `{{…}}`, adresa `#alias`, hledání, zpětné odkazy i Správa webu je znají stejně jako název (porovnává se slug). Když alias koliduje s jinou stránkou, vyhraje ta dřív ve stromu; editor na to u pole Aliasy upozorní.
 - `hidden: true` — stránka není v sekcích webu, odkazem je dostupná.
 - `hide_children: true` — sekce v postranním panelu neukazuje podstránky (jen jejich počet), ve výpisu sekce zůstanou. Když je otevřená některá z nich, zvýrazní se sekce (`aria-current="true"`). V editoru jsou podstránky takové sekce sbalené.
 - `sort_children: true` — podstránky se řadí podle abecedy (v panelu, výpisech i předchozí/další); pořadí v souboru zůstává.
