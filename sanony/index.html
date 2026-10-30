@@ -582,9 +582,24 @@ function pripona(nazev){
   return i > 0 ? nazev.slice(i+1).toLowerCase() : "";
 }
 function mime(nazev){ return MIME[pripona(nazev)] || "application/octet-stream"; }
+/* Přípony, u kterých se text čeká. Nic nezakazuje – slouží jen k upozornění,
+   když se text vkládá do souboru, který na něj nevypadá. */
 function textovy(nazev){
-  return /^(txt|md|markdown|csv|tsv|json|xml|html|htm|css|js|mjs|yml|yaml|ini|cfg|conf|log|sql|py|sh|bat|svg|rst|adoc|tex)$/
+  return /^(txt|md|markdown|csv|tsv|json|jsonl|ndjson|geojson|jsondb|xml|html|htm|css|js|mjs|yml|yaml|toml|ini|cfg|conf|env|properties|log|sql|py|sh|bat|svg|rst|adoc|tex|bib|diff|patch|srt|vtt|puml|opml)$/
     .test(pripona(nazev));
+}
+
+/* Je obsah text? Rozhoduje samotný obsah, ne přípona: soubor bez přípony nebo
+   s neobvyklou příponou bývá text stejně dobře jako .txt. */
+function bajtyJsouText(bajty){
+  if (!bajty || !bajty.length) return true;          /* prázdný soubor textu nevadí */
+  var n = Math.min(bajty.length, 65536);
+  for (var i = 0; i < n; i++){ if (bajty[i] === 0) return false; }   /* nulový bajt = binárka */
+  try{
+    /* stream:true snese vícebajtový znak přeťatý na konci vzorku */
+    new TextDecoder("utf-8", { fatal:true }).decode(bajty.subarray(0, n), { stream:true });
+    return true;
+  }catch(e){ return false; }
 }
 
 var IKONY = {
@@ -3781,11 +3796,16 @@ function nahrat(nazev){
 function kopirovat(nazev){
   if (!kontrola(false)) return;
   if (jeOdkaz(najdi(nazev))){ stav("Odkaz na web nemá obsah ke zkopírování.", "err"); return; }
-  if (!textovy(nazev)){ stav("Do schránky lze zkopírovat pouze textový soubor.", "err"); return; }
+  stav("Načítám obsah " + nazev + ".");
   stahniBytes(nazev).then(function(bajty){
+    if (!bajtyJsouText(bajty)){
+      stav("Soubor " + nazev + " není text, do schránky ho zkopírovat nelze.", "err");
+      return null;
+    }
     var text = new TextDecoder().decode(bajty);
     return navigator.clipboard.writeText(text).then(function(){
-      stav("Obsah souboru " + nazev + " byl zkopírován.", "ok");
+      stav("Obsah souboru " + nazev + " byl zkopírován do schránky.", "ok");
+      oznam("Zkopírováno do schránky");
     });
   }).catch(function(e){ stav("Kopírování se nezdařilo: " + e.message, "err"); });
 }
@@ -3794,12 +3814,27 @@ function vlozit(nazev){
   if (!kontrola(true)) return;
   if (jeOdkaz(najdi(nazev))){ stav("Do odkazu na web nelze vložit obsah.", "err"); return; }
   if (zamceno(nazev)) return;
-  if (!textovy(nazev)){ stav("Ze schránky lze vložit pouze textový obsah.", "err"); return; }
+  if (!navigator.clipboard || !navigator.clipboard.readText){
+    stav("Tento prohlížeč stránce nedovolí číst schránku. Použijte Nahrát novou verzi.", "err");
+    return;
+  }
+  /* O tom, jestli jde vložit, rozhoduje obsah schránky – ne přípona cílového souboru. */
   navigator.clipboard.readText().then(function(text){
-    if (!confirm("Nahradit obsah souboru " + nazev + " textem ze schránky (" + text.length + " znaků)?")) return;
+    if (!text){
+      stav("Ve schránce není žádný text.", "err");
+      return;
+    }
+    /* Přípona nic nezakazuje, jen upozorní: text do obrázku nejspíš nepatří. */
+    var varovani = textovy(nazev) ? "" :
+      "\n\nPozor: " + nazev + " nevypadá podle přípony na textový soubor. " +
+      "Vložením se jeho dosavadní obsah nahradí textem.";
+    if (!confirm("Nahradit obsah souboru " + nazev + " textem ze schránky (" +
+                 text.length + " " + pluralCz(text.length,"znak","znaky","znaků") + ")?" +
+                 varovani)) return;
     odesliVerzi(nazev, textNaBase64(text), "z obsahu schránky");
   }).catch(function(e){
-    stav("Ze schránky se nepodařilo číst: " + e.message, "err");
+    stav("Ze schránky se nepodařilo číst: " + e.message +
+         " Prohlížeč na čtení schránky obvykle potřebuje svolení.", "err");
   });
 }
 
@@ -4587,24 +4622,160 @@ function stahniBytes(nazev){
 /* Metadata pro offline kopii jednoho místa archivu.
    Cesty zůstávají celé, aby se struktura vykreslila ve správných úrovních; proto se
    k místu přibalí i místa nadřazená, jinak by se k němu v kopii nedalo doklikat. */
+/* Místo, kam se ve výřezu odkládá vše přitažené propojeními. Jména jsou neutrální,
+   aby z kopie nešlo vyčíst, v jakých kartotékách a šanonech položky doopravdy leží. */
+var PRIL_KARTOTEKA = "Propojené položky";
+var PRIL_POLICE    = "Přiložené";
+var PRIL_SANON     = "Přiložené desky";
+
 function vyrezMetadat(koren){
   koren = normCesta(koren || "");
   if (!koren) return metadata;
+
+  /* Pracujeme na kopiích: cesty se budou přepisovat a živý archiv se nesmí poškodit. */
+  function kopie(x){ return JSON.parse(JSON.stringify(x)); }
   function pod(c){
     c = normCesta(c);
     return c === koren || c.indexOf(koren + "/") === 0;
   }
+
   var nadrazene = {}, akt = [];
   casti(koren).forEach(function(x){ akt.push(x); nadrazene[akt.join("/")] = true; });
+
+  var vUzly = [], vSoubory = [], vLinky = [];
+  var maUzel = {}, maSoubor = {};
+
+  uzly().forEach(function(u){
+    var c = normCesta(u.path);
+    if (pod(c) || nadrazene[c]){ vUzly.push(kopie(u)); maUzel[c] = true; }
+  });
+  metadata.files.forEach(function(f){
+    if (pod(f.folder)){ vSoubory.push(kopie(f)); maSoubor[f.name] = true; }
+  });
+
+  var ted = new Date().toISOString();
+  function prazdnyUzel(cesta){
+    return { path:cesta, color:autoBarva(cesta), description:"", tags:[],
+             created:ted, updated:ted };
+  }
+  function pridejUzel(u){
+    vUzly.push(u); maUzel[normCesta(u.path)] = true;
+  }
+  /* název, který na daném místě ještě není obsazený */
+  function volny(rodic, nazev){
+    var zaklad = nazev, i = 2;
+    while (maUzel[rodic ? rodic + "/" + nazev : nazev]) nazev = zaklad + " (" + (i++) + ")";
+    return nazev;
+  }
+  function zajisti(cesta){
+    if (!maUzel[cesta]) pridejUzel(prazdnyUzel(cesta));
+    return cesta;
+  }
+
+  var novaCesta = {};   /* původní cesta uzlu -> cesta ve výřezu */
+  var fronta = [];
+  var pritazeno = 0;
+
+  propojeniSeznam().forEach(function(pr){
+    if (pod(pr.folder)){ var k = kopie(pr); vLinky.push(k); fronta.push(k); }
+  });
+
+  /* Přitáhne uzel i vše pod ním a vrátí jeho novou, neutrální cestu. */
+  function prilozUzel(cesta){
+    cesta = normCesta(cesta);
+    if (novaCesta[cesta]) return novaCesta[cesta];
+    if (maUzel[cesta]) return cesta;            /* ve výřezu už je, nic se nepřesouvá */
+    var zdroj = najdiUzel(cesta);
+    if (!zdroj) return null;
+
+    var h = hloubka(cesta), nazev = posledni(cesta), cil;
+    if (h === 1){
+      cil = volny("", nazev);                   /* kartotéka nemá nadřazené, nic neprozradí */
+    }else if (h === 3){
+      var police = zajisti(zajisti(PRIL_KARTOTEKA) + "/" + PRIL_POLICE);
+      cil = police + "/" + volny(police, nazev);
+    }else{
+      var pol = zajisti(zajisti(PRIL_KARTOTEKA) + "/" + PRIL_POLICE);
+      var san = zajisti(pol + "/" + PRIL_SANON);
+      cil = san + "/" + volny(san, nazev);
+    }
+    novaCesta[cesta] = cil;
+
+    /* uzel i jeho potomci s přepsanými cestami */
+    uzly().forEach(function(u){
+      var c = normCesta(u.path);
+      if (c !== cesta && c.indexOf(cesta + "/") !== 0) return;
+      var k = kopie(u);
+      k.path = cil + c.slice(cesta.length);
+      novaCesta[c] = k.path;
+      pridejUzel(k);
+      pritazeno++;
+    });
+    /* soubory a propojení uvnitř */
+    metadata.files.forEach(function(f){
+      var c = normCesta(f.folder);
+      if (c !== cesta && c.indexOf(cesta + "/") !== 0) return;
+      if (maSoubor[f.name]) return;
+      var k = kopie(f);
+      k.folder = cil + c.slice(cesta.length);
+      vSoubory.push(k); maSoubor[k.name] = true; pritazeno++;
+    });
+    propojeniSeznam().forEach(function(pr){
+      var c = normCesta(pr.folder);
+      if (c !== cesta && c.indexOf(cesta + "/") !== 0) return;
+      var k = kopie(pr);
+      k.folder = cil + c.slice(cesta.length);
+      vLinky.push(k); fronta.push(k);
+    });
+    return cil;
+  }
+
+  function prilozSoubor(f){
+    if (maSoubor[f.name]) return;
+    var kam = zajisti(PRIL_KARTOTEKA);          /* leží volně v přiložené kartotéce */
+    var k = kopie(f);
+    k.folder = kam;
+    vSoubory.push(k); maSoubor[k.name] = true; pritazeno++;
+  }
+
+  /* Uzávěr: propojení mají smysl jen s tím, na co míří – i přes několik kroků. */
+  var pojistka = 0;
+  while (fronta.length && pojistka++ < 2000){
+    var pr = fronta.shift();
+    if (pr.targetType === "uzel"){
+      var c = normCesta(pr.targetPath);
+      if (novaCesta[c]){ pr.targetPath = novaCesta[c]; continue; }
+      if (maUzel[c]) continue;
+      var nova = prilozUzel(c);
+      if (nova) pr.targetPath = nova;
+    }else{
+      var f = najdi(pr.targetName);
+      if (f) prilozSoubor(f);
+    }
+  }
+  /* cesty v propojeních uvnitř přitažených větví mohou mířit na dříve přesunuté uzly */
+  vLinky.forEach(function(pr){
+    if (pr.targetType === "uzel" && novaCesta[normCesta(pr.targetPath)]){
+      pr.targetPath = novaCesta[normCesta(pr.targetPath)];
+    }
+  });
+
+  /* Štítky se přibalí jen ty, které ve výřezu někdo nese. */
+  var pouzite = {};
+  vUzly.concat(vSoubory).forEach(function(x){
+    if (Array.isArray(x.tags)) x.tags.forEach(function(t){ pouzite[t] = true; });
+  });
+
   return {
     version: 1,
     folder: metadata.folder,
     title: metadata.title,
     updated: metadata.updated,
-    tags: metadata.tags,
-    nodes: uzly().filter(function(x){ var c = normCesta(x.path); return pod(c) || nadrazene[c]; }),
-    links: propojeniSeznam().filter(function(x){ return pod(x.folder); }),
-    files: metadata.files.filter(function(x){ return pod(x.folder); })
+    tags: stitkySeznam().filter(function(t){ return pouzite[t.id]; }),
+    nodes: vUzly,
+    links: vLinky,
+    files: vSoubory,
+    pritazeno: pritazeno
   };
 }
 
@@ -4722,6 +4893,7 @@ function exportZip(koren){
   var meta = vyrezMetadat(koren);
   var kde = mistoSlovy(koren);
   var mimo = koren ? propojeniMimoVyrez(meta) : 0;
+  var pritazeno = koren ? (meta.pritazeno || 0) : 0;
 
   var seznam = meta.files.filter(function(f){
     return !jeOdkaz(f) && Object.prototype.hasOwnProperty.call(shaMapa, f.name);
@@ -4746,8 +4918,11 @@ function exportZip(koren){
   dalsi().then(function(){
     stav("Sestavuji ZIP.");
     var enc = new TextEncoder();
-    polozky.unshift({ name:"index.html", data: enc.encode(offlineIndex(seznam, koren, meta)) });
-    polozky.push({ name:"folder.json", data: enc.encode(JSON.stringify(meta, null, 2)) });
+    /* průvodní počet přitažených položek do kopie nepatří */
+    var doSouboru = {};
+    for (var kl in meta){ if (kl !== "pritazeno") doSouboru[kl] = meta[kl]; }
+    polozky.unshift({ name:"index.html", data: enc.encode(offlineIndex(seznam, koren, doSouboru)) });
+    polozky.push({ name:"folder.json", data: enc.encode(JSON.stringify(doSouboru, null, 2)) });
     /* Aby GitHub Pages nepustilo na složku Jekyll a nevynechalo soubory
        začínající podtržítkem. Na jiných serverech soubor nevadí. */
     polozky.push({ name:".nojekyll", data: new Uint8Array(0) });
@@ -4766,8 +4941,12 @@ function exportZip(koren){
     stav("Offline kopie (" + kde + ") byla uložena jako " + jmeno +
          (chybi ? ". " + chybi + " " + pluralCz(chybi,"soubor v repozitáři chybí a v kopii není",
             "soubory v repozitáři chybí a v kopii nejsou","souborů v repozitáři chybí a v kopii nejsou") : ".") +
-         (mimo ? " " + pocetSlov(mimo,"propojeni") + " míří mimo výřez a v kopii " +
-            pluralCz(mimo,"zůstane slepé","zůstanou slepá","zůstanou slepá") + "." : ""), "ok");
+         (pritazeno ? " Kvůli propojením se přibralo " + pritazeno + " " +
+            pluralCz(pritazeno,"položka","položky","položek") +
+            " do kartotéky \u201e" + PRIL_KARTOTEKA + "\u201c." : "") +
+         (mimo ? " " + pocetSlov(mimo,"propojeni") + " míří na položku, která v archivu " +
+            "není, a v kopii " + pluralCz(mimo,"zůstane slepé","zůstanou slepá","zůstanou slepá") +
+            "." : ""), "ok");
     oznam("Offline kopie uložena");
   }).catch(function(e){
     stav("Export se nezdařil: " + e.message, "err");

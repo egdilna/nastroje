@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DOCX → Markdown + CriticMarkup</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;1,9..144,300&display=swap');
+
+  :root {
+    --bg: #0e0f11;
+    --surface: #16181c;
+    --surface2: #1e2026;
+    --border: #2a2d35;
+    --border2: #363a45;
+    --text: #d4d8e2;
+    --text-dim: #6b7280;
+    --text-dimmer: #3d4149;
+    --accent: #c8a96e;
+    --accent2: #7eb8a4;
+    --ins: #4a9e6e;
+    --ins-bg: #1a2e22;
+    --del: #b85c5c;
+    --del-bg: #2a1a1a;
+    --comment: #8b7cc8;
+    --comment-bg: #1e1a2e;
+    --mono: 'DM Mono', monospace;
+    --serif: 'Fraunces', Georgia, serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 14px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    padding: 28px 40px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+  }
+
+  header h1 {
+    font-family: var(--serif);
+    font-weight: 300;
+    font-size: 22px;
+    color: var(--accent);
+    letter-spacing: 0.02em;
+  }
+
+  header .subtitle {
+    font-size: 12px;
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .workspace {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto 1fr;
+    gap: 0;
+  }
+
+  .drop-zone-wrap {
+    grid-column: 1 / -1;
+    padding: 24px 40px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  #drop-zone {
+    flex: 0 0 auto;
+    width: 260px;
+    height: 80px;
+    border: 1.5px dashed var(--border2);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    background: var(--surface);
+    position: relative;
+  }
+  #drop-zone:hover, #drop-zone.drag-over {
+    border-color: var(--accent);
+    background: #1a1b1e;
+  }
+  #drop-zone input[type=file] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  #drop-zone .dz-icon {
+    font-size: 22px; line-height: 1;
+    color: var(--accent);
+  }
+  #drop-zone .dz-label {
+    font-size: 11px; color: var(--text-dim); letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  #drop-zone .dz-hint {
+    font-size: 10px; color: var(--text-dimmer);
+  }
+
+  .stats-bar {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .stat {
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .stat .val {
+    font-size: 20px; font-weight: 500; color: var(--text);
+  }
+  .stat .lbl {
+    font-size: 10px; color: var(--text-dim); letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .stat.ins .val { color: var(--ins); }
+  .stat.del .val { color: var(--del); }
+  .stat.cmt .val { color: var(--comment); }
+
+  .stat-sep {
+    width: 1px; height: 36px; background: var(--border); flex-shrink: 0;
+  }
+
+  .filename-label {
+    font-size: 12px; color: var(--accent2); font-style: italic;
+    max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  .panel {
+    display: flex; flex-direction: column;
+    border-right: 1px solid var(--border);
+    min-height: 0;
+  }
+  .panel:last-child { border-right: none; }
+
+  .panel-header {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  .panel-title {
+    font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim);
+  }
+
+  .panel-actions {
+    display: flex; gap: 8px;
+  }
+
+  button {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 5px 12px;
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    background: var(--surface2);
+    color: var(--text-dim);
+    cursor: pointer;
+    letter-spacing: 0.04em;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  button:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--surface);
+  }
+  button.primary {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  button.success {
+    border-color: var(--ins) !important;
+    color: var(--ins) !important;
+  }
+
+  .panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border2) transparent;
+  }
+
+  /* Preview panel */
+  #preview-content {
+    font-family: var(--serif);
+    font-weight: 300;
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--text);
+    max-width: 680px;
+  }
+  #preview-content p { margin-bottom: 0.9em; }
+  #preview-content h1 { font-size: 1.5em; font-weight: 600; margin-bottom: 0.6em; color: var(--accent); }
+  #preview-content h2 { font-size: 1.25em; font-weight: 600; margin-bottom: 0.5em; margin-top: 1.2em; color: var(--accent); }
+  #preview-content h3 { font-size: 1.1em; font-weight: 600; margin-bottom: 0.4em; margin-top: 1em; }
+  #preview-content ul, #preview-content ol { margin: 0.4em 0 0.8em 1.6em; }
+  #preview-content li { margin-bottom: 0.2em; }
+
+  #preview-content ins {
+    background: var(--ins-bg);
+    color: #6fcf97;
+    border-radius: 2px;
+    padding: 0 3px;
+    text-decoration: underline;
+    text-decoration-color: var(--ins);
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 2px;
+    font-style: normal;
+  }
+  #preview-content del {
+    background: var(--del-bg);
+    color: #e57373;
+    border-radius: 2px;
+    padding: 0 3px;
+    text-decoration: line-through;
+    text-decoration-color: var(--del);
+    text-decoration-thickness: 1.5px;
+  }
+  #preview-content mark {
+    background: var(--comment-bg);
+    color: #b39ddb;
+    border-radius: 2px;
+    padding: 0 3px;
+    border-bottom: 1.5px dotted var(--comment);
+    cursor: help;
+    position: relative;
+  }
+  /* Inline comment bubble after mark */
+  #preview-content mark .comment-bubble {
+    display: inline-block;
+    margin-left: 5px;
+    font-size: 10px;
+    font-family: var(--mono);
+    background: var(--comment);
+    color: #0e0f11;
+    border-radius: 3px;
+    padding: 1px 6px;
+    vertical-align: middle;
+    white-space: nowrap;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0.85;
+    cursor: default;
+  }
+
+  /* Raw Markdown panel */
+  #markdown-content {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+    tab-size: 2;
+  }
+
+  .cm-raw-ins { color: #6fcf97; }
+  .cm-raw-del { color: #e57373; }
+  .cm-raw-comment { color: #b39ddb; }
+  .cm-raw-punct { color: var(--text-dimmer); }
+
+  /* Empty state */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    height: 100%;
+    min-height: 200px;
+    color: var(--text-dimmer);
+    text-align: center;
+  }
+  .empty-state .es-icon { font-size: 36px; }
+  .empty-state .es-text { font-size: 12px; letter-spacing: 0.06em; }
+
+  /* Error / debug */
+  #debug-area {
+    grid-column: 1 / -1;
+    padding: 10px 40px;
+    font-size: 11px;
+    color: #e57373;
+    background: #1a0e0e;
+    border-top: 1px solid #3a1818;
+    display: none;
+    white-space: pre-wrap;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  #debug-area.visible { display: block; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  /* Legend */
+  .legend {
+    display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+    padding: 8px 0 0;
+  }
+  .legend-item {
+    font-size: 10px; display: flex; align-items: center; gap: 5px; color: var(--text-dim);
+  }
+  .legend-swatch {
+    width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0;
+  }
+
+  @media (max-width: 720px) {
+    .workspace { grid-template-columns: 1fr; }
+    .panel { border-right: none; border-bottom: 1px solid var(--border); }
+    header { padding: 16px 20px; flex-direction: column; gap: 4px; }
+    .drop-zone-wrap { padding: 16px 20px; flex-direction: column; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>DOCX → CriticMarkup</h1>
+  <span class="subtitle">Word revize → Markdown</span>
+</header>
+
+<div class="workspace">
+
+  <div class="drop-zone-wrap">
+    <div id="drop-zone" role="button" tabindex="0" aria-label="Nahrát DOCX soubor">
+      <input type="file" id="file-input" accept=".docx" aria-label="Vybrat soubor">
+      <span class="dz-icon" aria-hidden="true">⬆</span>
+      <span class="dz-label">Nahrát .docx</span>
+      <span class="dz-hint">nebo přetáhnout sem</span>
+    </div>
+    <div>
+      <div id="filename-label" class="filename-label" aria-live="polite"></div>
+      <div class="legend">
+        <div class="legend-item"><span class="legend-swatch" style="background:var(--ins-bg);border:1px solid var(--ins)"></span>Vložení <code style="font-size:9px;color:var(--ins)">{++ ++}</code></div>
+        <div class="legend-item"><span class="legend-swatch" style="background:var(--del-bg);border:1px solid var(--del)"></span>Smazání <code style="font-size:9px;color:var(--del)">{-- --}</code></div>
+        <div class="legend-item"><span class="legend-swatch" style="background:var(--comment-bg);border:1px solid var(--comment)"></span>Komentář <code style="font-size:9px;color:var(--comment)">{>> <<}</code></div>
+      </div>
+    </div>
+    <div class="stats-bar" id="stats-bar" aria-live="polite" style="margin-left:auto">
+      <div class="stat ins"><span class="val" id="stat-ins">—</span><span class="lbl">Vložení</span></div>
+      <div class="stat-sep"></div>
+      <div class="stat del"><span class="val" id="stat-del">—</span><span class="lbl">Smazání</span></div>
+      <div class="stat-sep"></div>
+      <div class="stat cmt"><span class="val" id="stat-cmt">—</span><span class="lbl">Komentáře</span></div>
+    </div>
+  </div>
+
+  <!-- Preview panel -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Náhled</span>
+    </div>
+    <div class="panel-body" id="preview-panel">
+      <div class="empty-state">
+        <span class="es-icon" aria-hidden="true">◻</span>
+        <span class="es-text">Nahraj .docx soubor s revizemi</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Markdown panel -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Markdown + CriticMarkup</span>
+      <div class="panel-actions">
+        <button id="btn-copy" onclick="copyMarkdown()" aria-label="Kopírovat do schránky">Kopírovat</button>
+      </div>
+    </div>
+    <div class="panel-body" id="markdown-panel">
+      <div class="empty-state">
+        <span class="es-icon" aria-hidden="true">◻</span>
+        <span class="es-text">Výstup se zobrazí zde</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="debug-area" role="alert" aria-live="assertive"></div>
+</div>
+
+<!-- JSZip CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<script>
+// ─── Drag & drop / file input ─────────────────────────────────────────────────
+
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) processFile(file);
+});
+dropZone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') fileInput.click(); });
+fileInput.addEventListener('change', e => { if (e.target.files[0]) processFile(e.target.files[0]); });
+
+// ─── State ────────────────────────────────────────────────────────────────────
+
+let rawMarkdown = '';
+
+// ─── Main processing ──────────────────────────────────────────────────────────
+
+async function processFile(file) {
+  clearDebug();
+  document.getElementById('filename-label').textContent = file.name;
+
+  try {
+    const zip = await JSZip.loadAsync(file);
+    const docXml = await zip.file('word/document.xml').async('string');
+
+    // Load comments if present
+    let commentsMap = {};
+    const commentsFile = zip.file('word/comments.xml');
+    if (commentsFile) {
+      const commentsXml = await commentsFile.async('string');
+      commentsMap = parseComments(commentsXml);
+    }
+
+    const result = convertDocxToMarkdown(docXml, commentsMap);
+    rawMarkdown = result.markdown;
+
+    updateStats(result.countIns, result.countDel, result.countCmt);
+    renderPreview(result.markdown);
+    renderMarkdownPanel(result.markdown);
+
+  } catch (err) {
+    showDebug('Chyba při zpracování: ' + err.message + '\n' + err.stack);
+  }
+}
+
+// ─── Parse comments.xml ───────────────────────────────────────────────────────
+
+function parseComments(xml) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xml, 'application/xml');
+  const map = {};
+  const comments = doc.querySelectorAll('comment');
+  comments.forEach(c => {
+    const id = c.getAttribute('w:id') || c.getAttribute('id');
+    // Extract text content from w:t elements
+    const texts = [];
+    c.querySelectorAll('t').forEach(t => texts.push(t.textContent));
+    const author = c.getAttribute('w:author') || c.getAttribute('author') || '';
+    map[id] = { text: texts.join(''), author };
+  });
+  return map;
+}
+
+// ─── Core OOXML → Markdown converter ─────────────────────────────────────────
+
+function convertDocxToMarkdown(xmlStr, commentsMap) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlStr, 'application/xml');
+
+  let countIns = 0, countDel = 0, countCmt = 0;
+
+  // Namespace resolver helper — querySelectorAll doesn't support NS well,
+  // so we use a manual tag-name approach
+  const NS = {
+    w: 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+  };
+
+  function getW(el, localName) {
+    return el.getElementsByTagNameNS(NS.w, localName);
+  }
+
+  // Collect comment range starts to know which comment IDs are used where
+  // We'll attach inline comment text at commentRangeEnd positions
+  const commentRangeEnds = new Set();
+
+  // Build markdown from body paragraphs
+  const body = doc.getElementsByTagNameNS(NS.w, 'body')[0];
+  if (!body) throw new Error('Nenalezeno w:body v dokumentu');
+
+  const paragraphs = [];
+
+  // Iterate direct children of body
+  for (const node of body.childNodes) {
+    const localName = node.localName;
+
+    if (localName === 'p') {
+      const md = processParagraph(node, commentsMap, NS);
+      paragraphs.push(md);
+      countIns += md.ins; countDel += md.del; countCmt += md.cmt;
+    } else if (localName === 'tbl') {
+      const tbl = processTable(node, commentsMap, NS);
+      paragraphs.push(tbl);
+      countIns += tbl.ins; countDel += tbl.del; countCmt += tbl.cmt;
+    }
+  }
+
+  // Join paragraphs, collapse excess blank lines
+  let markdown = paragraphs.map(p => p.text).join('\n\n');
+  markdown = markdown.replace(/\n{3,}/g, '\n\n').trim();
+
+  return { markdown, countIns, countDel, countCmt };
+}
+
+// ─── Process a single paragraph ───────────────────────────────────────────────
+
+function processParagraph(pEl, commentsMap, NS) {
+  let ins = 0, del = 0, cmt = 0;
+
+  // Determine heading level
+  let headingLevel = 0;
+  const pStyle = pEl.querySelector('pStyle');
+  if (pStyle) {
+    const val = pStyle.getAttribute('w:val') || '';
+    const m = val.match(/^Heading(\d)$/i) || val.match(/^Nadpis(\d)$/i) || val.match(/heading(\d)/i);
+    if (m) headingLevel = parseInt(m[1]);
+  }
+
+  // Check for list
+  const numPr = pEl.querySelector('numPr');
+  const isListItem = !!numPr;
+  let listPrefix = '- ';
+  if (isListItem) {
+    const ilvl = numPr.querySelector('ilvl');
+    const indent = ilvl ? parseInt(ilvl.getAttribute('w:val') || '0') : 0;
+    listPrefix = '  '.repeat(indent) + '- ';
+  }
+
+  // Process inline content
+  const parts = [];
+  const openComments = new Map(); // id -> true
+
+  for (const child of pEl.childNodes) {
+    const ln = child.localName;
+
+    if (ln === 'r') {
+      // Plain run
+      parts.push(getRunText(child, NS));
+
+    } else if (ln === 'ins') {
+      // Tracked insertion
+      const text = getNodeText(child, NS);
+      if (text.trim()) {
+        parts.push(`{++${text}++}`);
+        ins++;
+      } else {
+        parts.push(text);
+      }
+
+    } else if (ln === 'del') {
+      // Tracked deletion
+      const text = getDelText(child, NS);
+      if (text.trim()) {
+        parts.push(`{--${text}--}`);
+        del++;
+      } else {
+        parts.push(text);
+      }
+
+    } else if (ln === 'commentRangeStart') {
+      const id = child.getAttribute('w:id');
+      openComments.set(id, true);
+
+    } else if (ln === 'commentRangeEnd') {
+      const id = child.getAttribute('w:id');
+      if (openComments.has(id) && commentsMap[id]) {
+        const c = commentsMap[id];
+        const authorNote = c.author ? ` [${c.author}]` : '';
+        parts.push(`{>>${c.text}${authorNote}<<}`);
+        cmt++;
+        openComments.delete(id);
+      }
+
+    } else if (ln === 'hyperlink') {
+      // Hyperlink — extract text, relationship ID for URL not easily available in browser
+      parts.push(getNodeText(child, NS));
+    }
+  }
+
+  let text = parts.join('');
+
+  // Apply heading
+  if (headingLevel > 0) {
+    text = '#'.repeat(headingLevel) + ' ' + text.trim();
+  } else if (isListItem) {
+    text = listPrefix + text.trim();
+  }
+
+  // Bold / italic (basic — from formatting within runs is complex, skip for now)
+  return { text: text.trim() === '' ? '' : text, ins, del, cmt };
+}
+
+// ─── Process table ────────────────────────────────────────────────────────────
+
+function processTable(tblEl, commentsMap, NS) {
+  let ins = 0, del = 0, cmt = 0;
+  const rows = [];
+
+  const trEls = tblEl.getElementsByTagNameNS(NS.w, 'tr');
+  for (const tr of trEls) {
+    const cells = [];
+    const tcEls = tr.getElementsByTagNameNS(NS.w, 'tc');
+    for (const tc of tcEls) {
+      const cellParts = [];
+      const pEls = tc.getElementsByTagNameNS(NS.w, 'p');
+      for (const p of pEls) {
+        const r = processParagraph(p, commentsMap, NS);
+        ins += r.ins; del += r.del; cmt += r.cmt;
+        cellParts.push(r.text);
+      }
+      cells.push(cellParts.join(' ').replace(/\|/g, '\\|'));
+    }
+    rows.push(cells);
+  }
+
+  if (rows.length === 0) return { text: '', ins, del, cmt };
+
+  const header = '| ' + rows[0].join(' | ') + ' |';
+  const sep = '| ' + rows[0].map(() => '---').join(' | ') + ' |';
+  const body = rows.slice(1).map(r => '| ' + r.join(' | ') + ' |').join('\n');
+
+  const text = [header, sep, body].filter(Boolean).join('\n');
+  return { text, ins, del, cmt };
+}
+
+// ─── Text extraction helpers ──────────────────────────────────────────────────
+
+function getRunText(rEl, NS) {
+  // w:t elements
+  let text = '';
+  const tEls = rEl.getElementsByTagNameNS(NS.w, 't');
+  for (const t of tEls) text += t.textContent;
+  // w:br → newline
+  const brEls = rEl.getElementsByTagNameNS(NS.w, 'br');
+  if (brEls.length > 0) text += '\n';
+
+  // Basic bold/italic via rPr
+  const rPr = rEl.getElementsByTagNameNS(NS.w, 'rPr')[0];
+  if (rPr && text.trim()) {
+    const bold = rPr.getElementsByTagNameNS(NS.w, 'b')[0];
+    const italic = rPr.getElementsByTagNameNS(NS.w, 'i')[0];
+    if (bold && !bold.getAttribute('w:val') !== 'false') text = `**${text}**`;
+    if (italic && !italic.getAttribute('w:val') !== 'false') text = `*${text}*`;
+  }
+  return text;
+}
+
+function getNodeText(el, NS) {
+  // Get text from w:t inside any runs inside this element
+  let text = '';
+  const runs = el.getElementsByTagNameNS(NS.w, 'r');
+  for (const r of runs) {
+    text += getRunText(r, NS);
+  }
+  return text;
+}
+
+function getDelText(el, NS) {
+  // Deleted text uses w:delText
+  let text = '';
+  const delTexts = el.getElementsByTagNameNS(NS.w, 'delText');
+  for (const t of delTexts) text += t.textContent;
+  return text;
+}
+
+// ─── Rendering ────────────────────────────────────────────────────────────────
+
+function renderPreview(markdown) {
+  const panel = document.getElementById('preview-panel');
+
+  // Process CriticMarkup BEFORE escaping so we can inject real HTML tags.
+  // We use placeholder tokens to protect markup from escaping.
+  const tokens = [];
+  let processed = markdown;
+
+  function stash(html) {
+    const key = `\x00TOKEN${tokens.length}\x00`;
+    tokens.push(html);
+    return key;
+  }
+
+  // {++insertion++} → <ins>
+  processed = processed.replace(/\{\+\+([\s\S]*?)\+\+\}/g, (_, t) =>
+    stash(`<ins title="Vloženo">${escapeHtml(t)}</ins>`));
+
+  // {--deletion--} → <del>
+  processed = processed.replace(/\{--([\s\S]*?)--\}/g, (_, t) =>
+    stash(`<del title="Smazáno">${escapeHtml(t)}</del>`));
+
+  // {>>comment text [author]<<} → <mark title="..." >marked text<span class="comment-bubble">...</span></mark>
+  // Format from our converter: {>>comment text [author]<<} is attached AFTER the marked range.
+  // The comment wraps no source text (it's a point annotation), so we show it as a zero-width mark
+  // with a visible bubble.
+  processed = processed.replace(/\{>>([\s\S]*?)<<\}/g, (_, inner) => {
+    const safe = escapeHtml(inner);
+    // Truncate bubble label to 40 chars
+    const label = inner.length > 40 ? inner.slice(0, 40) + '…' : inner;
+    const safeLabel = escapeHtml(label);
+    return stash(
+      `<mark title="${safe}"><span class="comment-bubble" aria-label="Komentář: ${safe}">${safeLabel}</span></mark>`
+    );
+  });
+
+  // Now escape the rest of the text (non-token parts)
+  let html = processed.replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+
+  // Restore tokens (they contain real HTML, already escaped internally)
+  html = html.replace(/\x00TOKEN(\d+)\x00/g, (_, i) => tokens[parseInt(i)]);
+
+  // Basic markdown → HTML
+  const lines = html.split('\n');
+  const htmlLines = [];
+  let inList = false;
+  let inTable = false;
+  let tableRows = [];
+
+  function flushTable() {
+    if (!inTable || tableRows.length === 0) return;
+    let t = '<table style="border-collapse:collapse;font-family:var(--mono);font-size:12px;margin-bottom:0.8em;width:100%">';
+    tableRows.forEach((cells, i) => {
+      if (i === 1 && cells.every(c => c.replace(/<[^>]+>/g,'').match(/^[-: ]+$/))) return; // separator row
+      const tag = i === 0 ? 'th' : 'td';
+      const style = `border:1px solid var(--border2);padding:5px 10px;text-align:left`;
+      t += '<tr>' + cells.map(c => `<${tag} style="${style}">${c}</${tag}>`).join('') + '</tr>';
+    });
+    t += '</table>';
+    htmlLines.push(t);
+    tableRows = [];
+    inTable = false;
+  }
+
+  for (const line of lines) {
+    // Table
+    if (line.trim().startsWith('|')) {
+      if (inList) { htmlLines.push('</ul>'); inList = false; }
+      inTable = true;
+      const cells = line.split('|').slice(1, -1).map(c => c.trim());
+      tableRows.push(cells);
+      continue;
+    } else if (inTable) {
+      flushTable();
+    }
+
+    const hMatch = line.match(/^(#{1,6}) ([\s\S]+)/);
+    if (hMatch) {
+      if (inList) { htmlLines.push('</ul>'); inList = false; }
+      const lvl = hMatch[1].length;
+      htmlLines.push(`<h${lvl}>${hMatch[2]}</h${lvl}>`);
+    } else if (line.match(/^(\s*)-\s+/)) {
+      if (!inList) { htmlLines.push('<ul>'); inList = true; }
+      htmlLines.push(`<li>${line.replace(/^\s*-\s+/, '')}</li>`);
+    } else if (line.trim() === '') {
+      if (inList) { htmlLines.push('</ul>'); inList = false; }
+      htmlLines.push('');
+    } else {
+      if (inList) { htmlLines.push('</ul>'); inList = false; }
+      let l = line.replace(/\*\*([\s\S]*?)\*\*/g, '<strong>$1</strong>');
+      l = l.replace(/\*([\s\S]*?)\*/g, '<em>$1</em>');
+      htmlLines.push(`<p>${l}</p>`);
+    }
+  }
+  if (inList) htmlLines.push('</ul>');
+  if (inTable) flushTable();
+
+  const container = document.createElement('div');
+  container.id = 'preview-content';
+  container.innerHTML = htmlLines.join('\n');
+  panel.innerHTML = '';
+  panel.appendChild(container);
+}
+
+function renderMarkdownPanel(markdown) {
+  const panel = document.getElementById('markdown-panel');
+
+  // Syntax highlight CriticMarkup in raw view
+  let html = escapeHtml(markdown);
+  html = html.replace(/(\{\+\+)([\s\S]*?)(\+\+\})/g,
+    `<span class="cm-raw-punct">$1</span><span class="cm-raw-ins">$2</span><span class="cm-raw-punct">$3</span>`);
+  html = html.replace(/(\{--)([\s\S]*?)(--\})/g,
+    `<span class="cm-raw-punct">$1</span><span class="cm-raw-del">$2</span><span class="cm-raw-punct">$3</span>`);
+  html = html.replace(/(\{>>)([\s\S]*?)(<<\})/g,
+    `<span class="cm-raw-punct">$1</span><span class="cm-raw-comment">$2</span><span class="cm-raw-punct">$3</span>`);
+
+  const pre = document.createElement('pre');
+  pre.id = 'markdown-content';
+  pre.innerHTML = html;
+  panel.innerHTML = '';
+  panel.appendChild(pre);
+}
+
+// ─── Stats ────────────────────────────────────────────────────────────────────
+
+function updateStats(ins, del, cmt) {
+  document.getElementById('stat-ins').textContent = ins;
+  document.getElementById('stat-del').textContent = del;
+  document.getElementById('stat-cmt').textContent = cmt;
+}
+
+// ─── Copy ─────────────────────────────────────────────────────────────────────
+
+async function copyMarkdown() {
+  if (!rawMarkdown) return;
+  try {
+    await navigator.clipboard.writeText(rawMarkdown);
+    const btn = document.getElementById('btn-copy');
+    btn.textContent = 'Zkopírováno ✓';
+    btn.classList.add('success');
+    setTimeout(() => {
+      btn.textContent = 'Kopírovat';
+      btn.classList.remove('success');
+    }, 2000);
+  } catch {
+    // Fallback
+    const ta = document.createElement('textarea');
+    ta.value = rawMarkdown;
+    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+}
+
+// ─── Utils ────────────────────────────────────────────────────────────────────
+
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function showDebug(msg) {
+  const el = document.getElementById('debug-area');
+  el.textContent = msg;
+  el.classList.add('visible');
+}
+
+function clearDebug() {
+  const el = document.getElementById('debug-area');
+  el.textContent = '';
+  el.classList.remove('visible');
+}
+</script>
+</body>
+</html>

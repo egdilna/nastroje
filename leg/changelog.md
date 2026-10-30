@@ -2,6 +2,16 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.14.1] — 2026-10-29
+
+### Změněno
+- Export vyznačení a štítků do Markdownu: odkazy v odrážkách jsou pojmenované Markdown odkazy „Odkaz na ustanovení § … zákona …“ a „Odkaz do e-Sbírky na § … zákona …“ místo holých adres.
+
+## [1.14.0] — 2026-10-29
+
+### Změněno
+- Nová podoba exportu komentářů do Markdownu: pod nadpisem název knihovny, čas exportu s počtem komentářů, poznámka skupiny a odkaz na skupinu (či přehled komentářů); u každého předpisu odkaz na předpis; u ustanovení tučně citace s textem ustanovení, odkaz na ustanovení a pod ním jen texty komentářů (bez data a skupin).
+
 ## [1.13.1] — 2026-10-28
 
 ### Změněno
