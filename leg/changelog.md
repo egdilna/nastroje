@@ -2,6 +2,11 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.15.0] — 2026-10-30
+
+### Přidáno
+- Přepínač „Úpravy“ v záhlaví stránky. Ve výchozím stavu je aplikace jen ke čtení: text předpisů, vyznačení, komentáře, štítky, poznámky, hledání a exporty jsou vidět, ale formuláře a tlačítka, která něco mění, ne — správa předpisu, oblastí, skupin a štítků, vyznačování, psaní a úpravy komentářů, štítky ustanovení, poznámka k předpisu, přidání předpisu, kontrola aktualizací, import dat a hromadné úpravy. Po zapnutí se vše ukáže; volbu si prohlížeč pamatuje.
+
 ## [1.14.1] — 2026-10-29
 
 ### Změněno
