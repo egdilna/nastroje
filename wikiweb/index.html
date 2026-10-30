@@ -612,15 +612,45 @@ function novyOdkaz(){
     stav("Odkaz přidán — posuňte ho šipkami do sekce, kam patří");
   });
 }
-function vyberStranky(nadpis,tlacitko,hotovo){
+/* Výběr stránky: hledání (bez ohledu na diakritiku, i v aliasech a umístění), seznam odkazů podle abecedy.
+   S volbou aliasy:true je každý alias samostatná položka a hotovo(u, alias) ho dostane. */
+const bezDiakritiky=t=>String(t||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+const podleAbecedy=(a,b)=>String(a).localeCompare(String(b),"cs",{sensitivity:"base",numeric:true});
+function vyberStranky(nadpis,tlacitko,hotovo,volby={}){
   const dl=el("dialog",{"aria-label":nadpis});
-  const filtr=el("input",{type:"text",placeholder:"Hledat stránku…","aria-label":"Hledat stránku"});
-  const ul=el("ul",{class:"vyber","aria-label":tlacitko});
-  const kresli=()=>{ ul.innerHTML=""; stranky().filter(u=>u.title.toLowerCase().includes(filtr.value.toLowerCase())).slice(0,60).forEach(u=>ul.append(el("li",{},
-    el("a",{href:"#"+encodeURIComponent(u.id),onclick:e=>{ e.preventDefault(); dl.close(); hotovo(u); }},(ikonaUzlu(u)||"")+" "+u.title,el("small",{}," · "+cestaUzlu(u)))))); };
+  const filtr=el("input",{type:"search",placeholder:"Hledat stránku (název, alias, sekce)…","aria-label":"Hledat stránku","aria-controls":"vyber-seznam"});
+  const pocet=el("p",{class:"tichy",role:"status",style:"margin:0"});
+  const ul=el("ul",{class:"vyber",id:"vyber-seznam","aria-label":tlacitko});
+  const polozky=[];
+  stranky().forEach(u=>{
+    const kde=cestaUzlu(u);
+    polozky.push({u,text:u.title||"(bez názvu)",kde,hledat:bezDiakritiky([u.title,u.id,kde,...(u.aliases||[])].join(" "))});
+    if(volby.aliasy) (u.aliases||[]).forEach(a=>polozky.push({u,alias:a,text:a,kde,hledat:bezDiakritiky([a,u.title,kde].join(" "))}));
+  });
+  polozky.sort((a,b)=>podleAbecedy(a.text,b.text));
+  const zvolit=x=>{ dl.close(); hotovo(x.u,x.alias||null); };
+  const kresli=()=>{
+    const slova=bezDiakritiky(filtr.value).split(/\s+/).filter(Boolean);
+    // nejdřív položky, jejichž název (alias) začíná hledaným, pak ty, kde ho obsahuje, pak ostatní shody; uvnitř podle abecedy
+    const poradi=x=>{ if(!slova.length) return 0; const t=bezDiakritiky(x.text); return t.startsWith(slova[0])?0:t.includes(slova[0])?1:2; };
+    const vyber=polozky.filter(x=>slova.every(w=>x.hledat.includes(w))).map((x,i)=>[poradi(x),i,x]).sort((a,b)=>a[0]-b[0]||a[1]-b[1]).map(z=>z[2]);
+    ul.innerHTML="";
+    vyber.slice(0,150).forEach(x=>ul.append(el("li",{},el("a",{href:"#"+encodeURIComponent(x.u.id),onclick:e=>{ e.preventDefault(); zvolit(x); }},
+      x.alias?[x.alias,el("small",{}," → "+(ikonaUzlu(x.u)?ikonaUzlu(x.u)+" ":"")+x.u.title+" · alias")]:[(ikonaUzlu(x.u)?ikonaUzlu(x.u)+" ":"")+x.text,el("small",{}," · "+x.kde)]))));
+    pocet.textContent=vyber.length?`${vyber.length} ${vyber.length===1?"položka":vyber.length<5?"položky":"položek"}${vyber.length>150?", zobrazeno prvních 150":""}`:"Nic neodpovídá. Zkuste jiné slovo.";
+  };
   filtr.addEventListener("input",kresli);
-  dl.append(el("div",{class:"dl-hlava"},el("h2",{},nadpis),el("button",{class:"btn mini",type:"button",onclick:()=>dl.close()},"Zavřít")),el("div",{class:"dl-telo"},filtr,ul));
-  dl.addEventListener("close",()=>dl.remove());
+  filtr.addEventListener("keydown",e=>{
+    if(e.key==="Enter"){ e.preventDefault(); ul.querySelector("a")?.click(); }
+    if(e.key==="ArrowDown"){ e.preventDefault(); ul.querySelector("a")?.focus(); }
+  });
+  ul.addEventListener("keydown",e=>{
+    const odk=[...ul.querySelectorAll("a")], i=odk.indexOf(document.activeElement);
+    if(e.key==="ArrowDown"&&i<odk.length-1){ e.preventDefault(); odk[i+1].focus(); }
+    if(e.key==="ArrowUp"){ e.preventDefault(); (i>0?odk[i-1]:filtr).focus(); }
+  });
+  dl.append(el("div",{class:"dl-hlava"},el("h2",{},nadpis),el("button",{class:"btn mini",type:"button",onclick:()=>dl.close()},"Zavřít")),el("div",{class:"dl-telo"},filtr,pocet,ul));
+  dl.addEventListener("close",()=>{ dl.remove(); volby.zavreno?.(); });
   document.body.append(dl); kresli(); dl.showModal(); filtr.focus();
 }
 function cestaUzlu(u){ const c=[]; for(let m=najitMisto(u); m&&m.rodic; m=najitMisto(m.rodic)) c.unshift(m.rodic.title); return c.length?c.join(" / "):"hlavní úroveň"; }
@@ -648,7 +678,7 @@ function vyberUmisteni(u){
   const rodic=najitMisto(u)?.rodic||null;
   const sel=el("select",{});
   sel.append(el("option",{value:"",selected:!rodic},"— hlavní úroveň —"));
-  (function moznosti(uzly,hloubka){ uzly.forEach(x=>{ if(x.ref||zakazane.has(x)) return;
+  (function moznosti(uzly,hloubka){ [...uzly].sort((a,b)=>podleAbecedy(a.title||"",b.title||"")).forEach(x=>{ if(x.ref||zakazane.has(x)) return;
     sel.append(el("option",{value:String(x._k),selected:x===rodic},"\u00a0\u00a0".repeat(hloubka)+(hloubka?"└ ":"")+(ikonaUzlu(x)?ikonaUzlu(x)+" ":"")+(x.title||"(bez názvu)")));
     moznosti(x.children||[],hloubka+1); }); })(E.strom,0);
   sel.addEventListener("change",()=>{
@@ -992,7 +1022,7 @@ function nastrojovaLista(t,u){
     b("☐ Úkol","Úkol",()=>naZacatekRadku(t,"- [ ] ")),
     b("Odkaz","Odkaz na adresu",()=>vlozit(t,"[","](https://)","text odkazu")),
     b("[[Stránka]]","Odkaz na jinou stránku webu",()=>vybratStrankuProOdkaz(t)),
-    b("Vložit stránku","Vložit obsah jiné stránky ({{…}})",()=>vyberStranky("Vložit obsah jiné stránky","Vložit",x=>{
+    b("Vložit stránku","Vložit obsah jiné stránky ({{…}})",()=>vyberStranky("Vložit obsah jiné stránky","Vložit",(u,alias)=>{ const x={title:alias||u.title};
       const a=t.selectionStart, zacatek=a===0||t.value[a-1]==="\n";
       vlozit(t,(zacatek?"":"\n")+"{{"+x.title+"}}\n");
       stav("Vloženo {{"+x.title+"}} — jen jedna sekce: {{"+x.title+"#Nadpis}}");
@@ -1006,17 +1036,17 @@ function nastrojovaLista(t,u){
   );
   return lista;
 }
-function vybratStrankuProOdkaz(t){
-  const vsech=stranky();
-  const dl=el("dialog",{"aria-label":"Odkaz na stránku"});
-  const filtr=el("input",{type:"text",placeholder:"Hledat stránku…","aria-label":"Hledat stránku"});
-  const ul=el("ul",{class:"vyber","aria-label":"Vložit odkaz na stránku"});
-  const kresli=()=>{ ul.innerHTML=""; vsech.filter(u=>u.title.toLowerCase().includes(filtr.value.toLowerCase())).slice(0,40).forEach(u=>ul.append(el("li",{},
-    el("a",{href:"#"+encodeURIComponent(u.id),onclick:e=>{ e.preventDefault(); dl.close(); vlozit(t,"[["+u.title+"]]"); }},(ikonaUzlu(u)||"")+" "+u.title)))); };
-  filtr.addEventListener("input",kresli);
-  dl.append(el("div",{class:"dl-hlava"},el("h2",{},"Odkaz na stránku"),el("button",{class:"btn mini",type:"button",onclick:()=>dl.close()},"Zavřít")),el("div",{class:"dl-telo"},filtr,ul));
-  dl.addEventListener("close",()=>dl.remove());
-  document.body.append(dl); kresli(); dl.showModal(); filtr.focus();
+/* Wikiodkaz: [[Název]], [[alias]], s vybraným textem [[Název|text]] */
+function vybratStrankuProOdkaz(t,poZapsani){
+  const a=t.selectionStart,b=t.selectionEnd, text=poZapsani?"":t.value.slice(a,b);
+  let vlozeno=false;
+  vyberStranky("Odkaz na stránku","Vložit odkaz",(u,alias)=>{
+    vlozeno=true;
+    const cil=alias||u.title;
+    t.focus();
+    if(poZapsani){ t.setRangeText(cil+"]]",a,a,"end"); t.dispatchEvent(new Event("input")); }
+    else{ t.setSelectionRange(a,b); vlozit(t,"[["+cil+(text?"|"+text:"")+"]]"); }
+  },{aliasy:true,zavreno:()=>{ if(!vlozeno) t.focus(); }});
 }
 async function vlozitObrazek(t,u,soubor){
   const media=(E.cfg.folders?.media||"").replace(/^\/+|\/+$/g,"");
@@ -1029,6 +1059,11 @@ async function vlozitObrazek(t,u,soubor){
   stav("Obrázek se nahraje do "+cesta+" při uložení","zmeny");
 }
 function klavesyEditoru(t){
+  t.addEventListener("input",e=>{
+    if(e.inputType!=="insertText"||e.data!=="[") return;
+    const a=t.selectionStart;
+    if(t.value.slice(a-2,a)==="[["&&t.value.slice(a,a+2)!=="]]") vybratStrankuProOdkaz(t,true);
+  });
   t.addEventListener("keydown",e=>{
     if((e.ctrlKey||e.metaKey)&&!e.altKey&&e.key.toLowerCase()==="b"){ e.preventDefault(); vlozit(t,"**","**","tučně"); }
     if((e.ctrlKey||e.metaKey)&&!e.altKey&&e.key.toLowerCase()==="i"){ e.preventDefault(); vlozit(t,"*","*","kurzíva"); }
@@ -1103,7 +1138,7 @@ async function kreslitZarazeni(ed,cesta){
   const titul=el("input",{type:"text",value:titulZTextu(soubor?.text,cesta)});
   const typ=el("select",{},Object.entries(typyWebu()).map(([id,t])=>el("option",{value:id,selected:id==="stranka"},(t.emoji?t.emoji+" ":"")+t.label)));
   const misto=el("select",{},el("option",{value:""},"— hlavní úroveň —"));
-  (function moznosti(uzly,h){ uzly.forEach(u=>{ if(u.ref) return; misto.append(el("option",{value:String(u._k)},"\u00a0\u00a0".repeat(h)+(h?"└ ":"")+(ikonaUzlu(u)?ikonaUzlu(u)+" ":"")+(u.title||"(bez názvu)"))); moznosti(u.children||[],h+1); }); })(E.strom,0);
+  (function moznosti(uzly,h){ [...uzly].sort((a,b)=>podleAbecedy(a.title||"",b.title||"")).forEach(u=>{ if(u.ref) return; misto.append(el("option",{value:String(u._k)},"\u00a0\u00a0".repeat(h)+(h?"└ ":"")+(ikonaUzlu(u)?ikonaUzlu(u)+" ":"")+(u.title||"(bez názvu)"))); moznosti(u.children||[],h+1); }); })(E.strom,0);
   if(E.posledniZarazeni&&E.mapa.has(E.posledniZarazeni)) misto.value=String(E.posledniZarazeni);
   let emoji="";
   const koncept=el("input",{type:"checkbox",checked:!!E.cfg.new_as_draft});
@@ -1301,7 +1336,7 @@ function kreslitNastaveni(ed){
   jazyk.addEventListener("change",()=>{ c.language=jazyk.value; zmena(); });
   const barva=el("select",{},PALETY.map(p=>el("option",{value:p,selected:(c.color||"indigo")===p},p)));
   barva.addEventListener("change",()=>{ c.color=barva.value; zmena(); });
-  const domov=el("select",{},el("option",{value:""},"první stránka v obsahu"),stranky().map(u=>el("option",{value:u.id,selected:c.home===u.id},(ikonaUzlu(u)?ikonaUzlu(u)+" ":"")+u.title)));
+  const domov=el("select",{},el("option",{value:""},"první stránka v obsahu"),stranky().sort((a,b)=>podleAbecedy(a.title,b.title)).map(u=>el("option",{value:u.id,selected:c.home===u.id},(ikonaUzlu(u)?ikonaUzlu(u)+" ":"")+u.title)));
   domov.addEventListener("change",()=>{ c.home=domov.value; zmena(); });
   const urlPole=pole("Veřejná adresa webu (URL)","url",{type:"url",placeholder:"https://www.example.cz/web/","aria-describedby":"url-napoveda"});
   z.append(el("div",{style:"margin-bottom:12px"},urlPole,
@@ -1373,7 +1408,7 @@ function editorOdkazu(pole,zmena){
       const druh=el("select",{"aria-label":`Odkaz ${i+1}: druh`},el("option",{value:"page",selected:!!o.page||!o.url},"Stránka webu"),el("option",{value:"url",selected:!!o.url&&!o.page},"Adresa"));
       const cil=o.url&&!o.page
         ?el("input",{type:"url",value:o.url,"aria-label":`Odkaz ${i+1}: adresa`,placeholder:"https://"})
-        :el("select",{"aria-label":`Odkaz ${i+1}: stránka`},el("option",{value:""},"— vyberte —"),stranky().map(u=>el("option",{value:u.id,selected:o.page===u.id},(u.emoji?u.emoji+" ":"")+u.title)));
+        :el("select",{"aria-label":`Odkaz ${i+1}: stránka`},el("option",{value:""},"— vyberte —"),stranky().sort((a,b)=>podleAbecedy(a.title,b.title)).map(u=>el("option",{value:u.id,selected:o.page===u.id},(u.emoji?u.emoji+" ":"")+u.title)));
       cil.addEventListener(cil.tagName==="SELECT"?"change":"input",()=>{ if(cil.tagName==="SELECT"){ o.page=cil.value; delete o.url; } else { o.url=cil.value; delete o.page; } zmena(); });
       druh.addEventListener("change",()=>{ if(druh.value==="url"){ delete o.page; o.url="https://"; } else { delete o.url; o.page=""; } zmena(); kresli(); });
       box.append(el("div",{class:"r"},nazev,druh,cil,el("div",{class:"radek"},
