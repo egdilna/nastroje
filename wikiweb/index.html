@@ -101,6 +101,10 @@ legend{font-size:12px;color:var(--muted);font-weight:600;padding:0;margin-bottom
 .upozorneni.chyba{background:var(--bad-soft);color:var(--bad)}
 .upozorneni.info{background:var(--soft)}
 .upozorneni.varovani{background:var(--warn-soft);color:var(--warn)}
+.stitky-volby{display:flex;flex-wrap:wrap;gap:6px}
+.stitek-volba{display:inline-flex;gap:6px;align-items:center;padding:3px 10px 3px 6px;border:1px solid var(--line);border-radius:999px;background:var(--panel);cursor:pointer}
+.stitek-volba:has(input:checked){background:var(--accent-soft);border-color:var(--accent)}
+.stitky-editor .radek input[type=text]{flex:1;max-width:280px}
 .emoji-mrizka{display:grid;grid-template-columns:repeat(auto-fill,minmax(34px,1fr));gap:2px;margin-top:6px;max-width:420px}
 .emoji-mrizka button{border:0;background:var(--soft);border-radius:6px;font-size:18px;padding:4px;cursor:pointer}
 .emoji-mrizka button:hover{background:var(--accent-soft)}
@@ -703,11 +707,9 @@ function kreslitStranku(ed,u){
     kreslitStrom(); obnovitStav(); planNahled(); obnovPopis();
   });
   mriz.append(el("label",{class:"pole"},el("span",{},"Typ stránky"),typ));
-  const stitky=el("input",{type:"text",value:(u.tags||[]).join(", "),placeholder:"oddělte čárkou"});
-  stitky.addEventListener("input",()=>{ u.tags=stitky.value.split(",").map(s=>s.trim()).filter(Boolean); obnovitStav(); planNahled(); });
-  mriz.append(el("label",{class:"pole"},el("span",{},"Štítky"),stitky));
   mriz.append(vyberUmisteni(u));
   karta.append(mriz);
+  karta.append(editorStitku(u));
 
   const perex=el("textarea",{rows:"2",placeholder:"Krátký popis pod nadpisem, v dlaždicích a ve výpisech"});
   perex.value=u.perex||"";
@@ -764,6 +766,45 @@ function kreslitStranku(ed,u){
 }
 function prejmenovatOdkazy(stare,nove){ if(stare!==nove) vsechnyUzly().forEach(x=>{ if(x.ref===stare) x.ref=nove; }); }
 function sablonaTypu(t){ return t.template!=null&&t.template!==""?t.template.replace(/\{dnes\}/g,dnes()):sablona(t.layout); }
+/* Štítky zaškrtávátky: všechny štítky webu (stránek i článků v načtených souborech),
+   bez ohledu na velikost písmen, a pole pro nový štítek. */
+function stitkyWebu(){
+  const m=new Map(), pridat=t=>{ t=String(t).trim(); if(t&&!m.has(t.toLowerCase())) m.set(t.toLowerCase(),t); };
+  stranky().forEach(u=>(u.tags||[]).forEach(pridat));
+  for(const [,x] of E.soubory) if(!x.bin&&x.text) for(const r of x.text.matchAll(/^(?:tagy|tags|štítky|stitky)\s*:\s*(.+)$/gim)) r[1].split(",").forEach(pridat);
+  return [...m.values()].sort((a,b)=>a.localeCompare(b,"cs",{sensitivity:"base"}));
+}
+function editorStitku(u){
+  const fs=el("fieldset",{class:"stitky-editor",style:"margin-top:14px"},el("legend",{},"Štítky"));
+  const box=el("div",{class:"stitky-volby"});
+  const kresli=(zaostrit)=>{
+    box.innerHTML="";
+    const vybrane=new Set((u.tags||[]).map(t=>t.toLowerCase()));
+    const vse=[...new Map([...stitkyWebu(),...(u.tags||[])].map(t=>[t.toLowerCase(),t])).values()].sort((a,b)=>a.localeCompare(b,"cs",{sensitivity:"base"}));
+    if(!vse.length) box.append(el("span",{class:"tichy"},"Na webu zatím žádné štítky nejsou. Přidejte první níže."));
+    vse.forEach(t=>{
+      const ch=el("input",{type:"checkbox",checked:vybrane.has(t.toLowerCase())});
+      ch.addEventListener("change",()=>{
+        const zbytek=(u.tags||[]).filter(x=>x.toLowerCase()!==t.toLowerCase());
+        u.tags=ch.checked?[...zbytek,t]:zbytek; if(!u.tags.length) delete u.tags;
+        obnovitStav(); planNahled();
+      });
+      box.append(el("label",{class:"stitek-volba"},ch,t));
+      if(zaostrit&&t.toLowerCase()===zaostrit.toLowerCase()) setTimeout(()=>ch.focus());
+    });
+  };
+  const novy=el("input",{type:"text",placeholder:"Nový štítek","aria-label":"Nový štítek"});
+  const pridat=()=>{
+    const t=novy.value.trim(); if(!t) return;
+    const ex=stitkyWebu().find(x=>x.toLowerCase()===t.toLowerCase())||t;   // stejný štítek jiným písmem se nezdvojí
+    if(!(u.tags||[]).some(x=>x.toLowerCase()===ex.toLowerCase())) u.tags=[...(u.tags||[]),ex];
+    novy.value=""; kresli(); obnovitStav(); planNahled(); stav("Štítek „"+ex+"“ přidán"); novy.focus();
+  };
+  novy.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); pridat(); } });
+  fs.append(box,el("div",{class:"radek",style:"margin-top:8px"},novy,el("button",{class:"btn mini",type:"button",onclick:pridat},"+ Přidat štítek")));
+  kresli();
+  return fs;
+}
 function sablona(typ){
   if(typ==="clanky") return `articles\n\n## První článek\nDatum: ${dnes()}\nTagy: novinka\n\nPerex článku — první odstavec se ukáže ve výpisu.\n\nText článku.\n`;
   if(typ==="novinky") return `Úvodní text stránky s novinkami.\n\n${dnes()}: Nadpis novinky\nText novinky.\n`;
