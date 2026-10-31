@@ -160,8 +160,10 @@ aplikace zeptá; seznam se maže při každém vykreslení.
   seznamu), `Tabulka`, `Block_Citace` (blockquote), `Virtual_PPC` (poznámky pod čarou),
   `Prefix`/`Postfix`, ostatní obecně.
 - HTML textu jde vždy přes whitelist `prevestHtml()`; první `<var>` je označení ustanovení
-  a stává se odkazem na detail ustanovení (`oznaceni()`). Přístupný název začíná viditelným
-  textem a přidá citaci a stav vyznačení. Vyznačení je i viditelná značka ★ (✎ s poznámkou).
+  a stává se odkazem na detail ustanovení (`oznaceni()`). Přístupný název je **krátký** — viditelný
+  text, případně citace. Vyznačení, komentáře a štítky přidává `znackyUstanoveni()` až **za text**
+  ustanovení (značky ★ ✎ 💬 🏷 skryté čtečce + jedna věta v `vh`); dlouhý název před textem
+  čtečka uživateli „sežrala“ text.
 - Odkazy `prevestOdkaz()`: týž předpis → kotva, jiný předpis v knihovně → detail ustanovení,
   mimo knihovnu → stránka předpisu s nabídkou zařazení (nic se nestahuje automaticky),
   EU a ostatní → externě do nové karty se skrytým upozorněním.
@@ -172,7 +174,7 @@ nestrukturních předků s textem (návětí) a množinu klíčů k vykreslení 
 ustanovení + `Pokracovani_Text` předků). `slozenyText()` z toho skládá text pro kopírování
 a snímky (`text` u vyznačení, `textUst` u komentářů a štítků) — **vždy přes `slozenaVeta()` /
 `vetaZTextu()`**: souvislá věta bez označení „(2)“, „d)“, „1.“ a bez nadpisů struktury (požadavek
-uživatele). `vetaZTextu()` se volá i při zobrazení a exportu uložených textů (staré snímky). Detail ustanovení vykresluje
+uživatele). `vetaZTextu()` se volá i při zobrazení a exportu uložených textů (staré snímky), proto musí být idempotentní. Detail ustanovení vykresluje
 složené ustanovení přes filtr s podbarvením. Kopírování ani exporty neuvádějí „ve znění…“.
 
 ## Části stránky předpisu
