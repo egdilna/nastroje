@@ -2,6 +2,12 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.16.0] — 2026-10-31
+
+### Přidáno
+- Pořadí předpisů v knihovně: nová stránka „Pořadí předpisů“ (z přehledu odkazem „Změnit pořadí předpisů“, jen v režimu úprav). U každého předpisu tlačítka Nahoru, Dolů, Na začátek a Na konec; fokus zůstává na přesunutém předpisu a ohlásí se jeho nové místo. Tlačítko „Seřadit podle roku a čísla“ vrátí výchozí řazení. Pořadí platí všude — v přehledu, v oblastech, v seznamech vyznačených ustanovení, komentářů a štítků, v hledání i v exportech. Nově přidaný předpis se zařadí na konec.
+- Přepínač znění na stránce ustanovení (když je staženo víc znění předpisu) — totéž ustanovení jde zobrazit v jiném znění bez návratu na předpis.
+
 ## [1.15.1] — 2026-10-31
 
 ### Opraveno
