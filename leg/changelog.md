@@ -2,6 +2,12 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.15.1] — 2026-10-31
+
+### Opraveno
+- Čtečka obrazovky u ustanovení s vyznačením, komentáři či štítky četla nejdřív velmi dlouhý název odkazu a samotný text ustanovení zanikal. Odkaz na ustanovení má teď krátký přístupný název (označení, případně citace) a informace o vyznačení, komentářích a štítcích se čtou až za textem ustanovení, jednou větou v závorce; viditelné značky ★ 💬 🏷 jsou tamtéž.
+- Po uložení vyznačení celého paragrafu či článku se mylně hlásilo, že se text ustanovení od vyznačení změnil. Úprava textu do souvislé věty je nově při opakování stabilní (odstavce se znovu neslepí) a porovnání nezávisí na mezerách a zalomení řádků.
+
 ## [1.15.0] — 2026-10-30
 
 ### Přidáno

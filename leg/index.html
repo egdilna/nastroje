@@ -142,7 +142,7 @@ mark{background:var(--zvyrazneni);color:inherit}
    čtení metodou GET kvůli CORS). Úložiště: složka v GitHub repozitáři.
    Podrobnosti k architektuře jsou v leg/CLAUDE.md.
    ===================================================================== */
-const APP_VERZE = "1.15.0";
+const APP_VERZE = "1.15.1";
 
 /* ==================== POMOCNÉ ==================== */
 const $ = (s, r) => (r || document).querySelector(s);
@@ -1235,6 +1235,8 @@ function vykreslitUzel(model, f, cil, uroven, ctx, sourozenci){
     h.append(prevestHtml(f.t, ctx, text => oznaceni(model, f, text, ctx)));
     if (!f.t) h.append(oznaceni(model, f, f.c || "", ctx));
     if (titulek) h.append(" ", el("span", {class: "titulek"}, titulek));
+    const znH = znackyUstanoveni(f, ctx);
+    if (znH) h.append(znH);
     if (ctx.zvyraznit === f.k) h.classList.add("zvyrazneno");
     sekce.append(h);
     const d = model.deti.get(f.k) || [];
@@ -1278,6 +1280,8 @@ function vykreslitObsahUzlu(model, f, obal, uroven, ctx){
   if (f.t){
     const p = el("p");
     p.append(prevestHtml(f.t, ctx, text => oznaceni(model, f, text, ctx)));
+    const zn = znackyUstanoveni(f, ctx);
+    if (zn) p.append(zn);
     if (ctx.zvyraznit === f.k) p.classList.add("zvyrazneno");
     obal.append(p);
   }
@@ -1305,13 +1309,28 @@ function oznaceni(model, f, text, ctx){
   const nk = ctx.komentare ? (ctx.komentare.get(f.k) || 0) : 0;
   const stU = ctx.stitky ? (ctx.stitky.get(f.k) || []) : [];
   const citaceNavic = !STRUKTURA.has(f.typ) && normCitace(f.c) !== normCitace(text) ? " – " + f.c : "";
-  const popis = text + citaceNavic + (v ? ", vyznačeno: " + nazvySkupin(v) + (v.poznamka ? ", s poznámkou" : "") : "") + (nk ? ", " + pocetKomentaru(nk) : "") + (stU.length ? ", štítky: " + nazvyStitku(stU) : "");
-  const frag = document.createDocumentFragment();
-  frag.append(el("a", {class: "oznaceni", href: adresa({pohled: "ust", predpis: model.id, ust: f.k, zneni: ctx.zneniVUrl || null}), "aria-label": popis}, text));
-  if (v) frag.append(el("span", {class: "znacka", "aria-hidden": "true", title: "Vyznačeno"}, v.poznamka ? "★✎" : "★"));
-  if (nk) frag.append(el("span", {class: "znacka", "aria-hidden": "true", title: pocetKomentaru(nk)}, "💬" + nk));
-  if (stU.length) frag.append(el("span", {class: "znacka", "aria-hidden": "true", title: "Štítky: " + nazvyStitku(stU)}, "🏷"));
-  return frag;
+  /* Přístupný název je krátký (označení a citace). Vyznačení, komentáře a štítky se čtou až za
+     textem ustanovení (znackyUstanoveni) — dlouhý název odkazu před textem čtečky zahlcoval
+     a text samotný pak uživateli unikal. */
+  return el("a", {class: "oznaceni", href: adresa({pohled: "ust", predpis: model.id, ust: f.k, zneni: ctx.zneniVUrl || null}), "aria-label": citaceNavic ? text + citaceNavic : null}, text);
+}
+/* Značky za textem ustanovení: viditelně ★ 💬 🏷, pro čtečku jedna věta v závorce. */
+function znackyUstanoveni(f, ctx){
+  if (!f.c || !f.k || ctx.bezOdkazu) return null;
+  const v = ctx.vyznaceni && ctx.vyznaceni.get(f.k);
+  const nk = ctx.komentare ? (ctx.komentare.get(f.k) || 0) : 0;
+  const stU = ctx.stitky ? (ctx.stitky.get(f.k) || []) : [];
+  if (!v && !nk && !stU.length) return null;
+  const casti = [];
+  if (v) casti.push("vyznačeno: " + nazvySkupin(v) + (v.poznamka ? ", s poznámkou" : ""));
+  if (nk) casti.push(pocetKomentaru(nk));
+  if (stU.length) casti.push("štítky: " + nazvyStitku(stU));
+  const s = el("span", {class: "znacky"}, " ");
+  if (v) s.append(el("span", {class: "znacka", "aria-hidden": "true", title: "Vyznačeno"}, v.poznamka ? "★✎" : "★"));
+  if (nk) s.append(el("span", {class: "znacka", "aria-hidden": "true", title: pocetKomentaru(nk)}, "💬" + nk));
+  if (stU.length) s.append(el("span", {class: "znacka", "aria-hidden": "true", title: "Štítky: " + nazvyStitku(stU)}, "🏷"));
+  s.append(vh("(" + casti.join("; ") + ")"));
+  return s;
 }
 /* Filtr předpisu: nalezené ustanovení se zobrazí celé (i s písmeny a body), nad ním
    celá cesta nadřazených částí, hlav, paragrafů a odstavců jako kontext. Shoda
@@ -1473,11 +1492,13 @@ function slozenyText(model, klic){
    texty s označeními (je idempotentní). */
 function vetaZTextu(text){
   const odstavce = [];
-  for (let radek of String(text || "").split("\n")){
-    radek = radek.trim();
-    if (!radek) continue;
+  const radky = String(text || "").split("\n").map(x => x.trim()).filter(Boolean);
+  /* Text už jednou upravený (odstavce na řádcích bez označení) se nesmí znovu slepit do jednoho
+     řádku — funkce se volá i na uložené snímky, takže musí dát při opakování stejný výsledek. */
+  const uzUpraveny = radky.length > 1 && !radky.some(x => /^(\(\d+[a-z]*\)|[a-z]{1,2}\)|\d+[a-z]*\.)\s/.test(x));
+  for (let radek of radky){
     if (/^(§\s*\d|Čl\.\s|ČÁST\s|HLAVA\s|DÍL\s|Díl\s|ODDÍL\s|Oddíl\s|PŘÍLOHA|Příloha\s)/.test(radek) && !/[.,;:]$/.test(radek)) continue;
-    const novy = /^\(\d+[a-z]*\)\s/.test(radek);
+    const novy = uzUpraveny || /^\(\d+[a-z]*\)\s/.test(radek);
     radek = radek.replace(/^(\(\d+[a-z]*\)|[a-z]{1,2}\)|\d+[a-z]*\.)\s+/, "");
     if (novy || !odstavce.length) odstavce.push(radek); else odstavce[odstavce.length - 1] += " " + radek;
   }
@@ -3293,7 +3314,9 @@ function formularVyznaceni(id, P, model, f, v){
     sekce.append(el("p", {class: "tichy"}, "Vyznačeno " + casCz(v.vytvoreno) + (v.upraveno && v.upraveno !== v.vytvoreno ? ", upraveno " + casCz(v.upraveno) : "") + ", ve znění " + datumCz(v.zneni) + "."));
     const aktualniText = model.mapa.has(f.k) ? slozenaVeta(model, f.k) : null;
     /* starší vyznačení ukládala text bez návětí — za změnu se to nepovažuje */
-    if (aktualniText !== null && v.text && aktualniText !== vetaZTextu(v.text) && textStromu(model, f.k) !== v.text){
+    /* porovnává se bez ohledu na mezery a zalomení řádků; starší snímky jsou surový text */
+    const plochy = t => String(t || "").replace(/\s+/g, " ").trim();
+    if (aktualniText !== null && v.text && plochy(aktualniText) !== plochy(v.text) && plochy(aktualniText) !== plochy(vetaZTextu(v.text)) && textStromu(model, f.k) !== v.text){
       sekce.append(zprava("Text ustanovení se od vyznačení změnil.", "chyba"),
         el("details", null, el("summary", null, "Text v době vyznačení"), el("blockquote", {class: "poznamka"}, vetaZTextu(v.text))));
     }
