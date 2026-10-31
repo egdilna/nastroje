@@ -89,6 +89,14 @@ poznámka), komentáře, štítky, poznámky, hledání, filtry, volba komentá�
 exporty a export balíčku. Hromadné úpravy (`hromadnaUprava`, `zaskrtavatkoPolozky`) jsou
 navíc až uvnitř režimu úprav. Menu skrývá „Přidat předpis“, Přenos dat skrývá import.
 
+## Pořadí předpisů
+`W.poradi` (pole id) je jediné pořadí předpisů pro celou aplikaci; `srovnatPoradi()` (volá ho
+`seraditSlovniky()`) odstraní neexistující a chybějící připojí na konec — bez uloženého pořadí
+se začne podle roku a čísla. **Kdekoli se vypisují předpisy, řaď přes `predpisyVPoradi()`,
+`seraditIds(ids)` nebo `seraditPodlePredpisu()`**, ne přes `Object.keys(W.predpisy)`. Úprava na
+stránce `pohled=poradi` (jen v režimu úprav). `o.predpisy` v oblasti zůstává v pořadí přidání,
+zobrazuje se seřazené.
+
 ## Štítky a hromadné úpravy
 - Oblasti, skupiny vyznačení, skupiny komentářů i štítky se drží seřazené (`seraditSlovniky()`
   při načtení a na začátku `vykreslit()`, české řazení bez ohledu na velikost písmen).
