@@ -119,6 +119,9 @@ legend{font-size:12px;color:var(--muted);font-weight:600;padding:0;margin-bottom
 .sprava-seznam{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .sprava-seznam li{background:var(--soft);border-radius:8px;padding:8px 10px}
 .tabulka-obal{overflow-x:auto}
+.konflikty{margin:0;padding-left:20px;display:grid;gap:4px}
+.konflikt-volby{display:grid;gap:10px}
+.konflikt-volby p{margin:4px 0 0}
 .tab-stitky{border-collapse:collapse;width:100%}
 .tab-stitky th,.tab-stitky td{text-align:left;padding:6px 8px;border-top:1px solid var(--line);vertical-align:middle}
 .tab-stitky thead th{border-top:0;font-size:12px;color:var(--muted)}
@@ -1656,6 +1659,46 @@ async function zalozitWeb(){
 /* =============================================================
    ULOŽENÍ
    ============================================================= */
+/* Dialog při konfliktu: seznam změněných souborů, u textových možnost zkopírovat svou verzi */
+function volbaKonfliktu(konflikty){
+  return new Promise(hotovo=>{
+    let vysledek=null;
+    const dl=el("dialog",{"aria-labelledby":"konflikt-h"});
+    const popisSouboru=c=>c==="contents.json"?"obsah webu (strom stránek a jejich vlastnosti)":c==="wiki.json"?"nastavení webu":c;
+    const radky=konflikty.map(k=>{
+      const text=k.z.text;
+      return el("li",{},el("b",{},popisSouboru(k.z.cesta)),
+        el("span",{class:"tichy"},k.z.smazat?" · chtěli jste ho smazat":k.ted?" · v repozitáři je jiná verze":" · v repozitáři mezitím zmizel"),
+        text!=null?el("button",{class:"btn mini",type:"button",style:"margin-left:8px",onclick:async e=>{
+          try{ await navigator.clipboard.writeText(text); e.target.textContent="Zkopírováno"; }catch{ e.target.textContent="Kopírování selhalo"; } }},"Zkopírovat mou verzi"):null);
+    });
+    const tl=(text,trida,v)=>el("button",{class:"btn "+trida,type:"button",onclick:()=>{ vysledek=v; dl.close(); }},text);
+    dl.append(el("div",{class:"dl-hlava"},el("h2",{id:"konflikt-h"},"Soubory se mezitím změnily")),
+      el("div",{class:"dl-telo"},
+        el("p",{style:"margin:0"},"Od načtení webu je v repozitáři jiná verze těchto souborů (změnil je někdo jiný, jiná aplikace nebo jiné okno):"),
+        el("ul",{class:"konflikty"},radky),
+        el("div",{class:"konflikt-volby"},
+          el("div",{},tl("Přepsat mými změnami","hl","prepsat"),el("p",{class:"tichy"},"Uloží se všechno. Změny v repozitáři u těchto souborů se přepíšou (zůstanou v historii souboru).")),
+          el("div",{},tl("Uložit ostatní, tyto načíst z repozitáře","","nacist"),el("p",{class:"tichy"},"Vaše změny v ostatních souborech se uloží. Tyto soubory se načtou ve stavu z repozitáře a vaše úpravy v nich se zahodí — případně si je předtím zkopírujte.")),
+          el("div",{},tl("Zrušit","","" ),el("p",{class:"tichy"},"Nic se neuloží, změny zůstanou rozpracované.")))));
+    dl.addEventListener("close",()=>{ dl.remove(); hotovo(vysledek||null); });
+    document.body.append(dl); dl.showModal();
+  });
+}
+/* Načte jeden soubor znovu z repozitáře a zahodí jeho místní změny */
+async function nacistZRepozitare(z){
+  const r=await ghNacist(z.cesta);
+  if(z.cesta==="wiki.json"){
+    if(r){ const n=JSON.parse(r.text); delete n.github; E.cfg={...vychoziCfg(),...n}; E.cfgSha=r.sha; E.cfgPuvodni=textCfg(); }
+    $("#nazev-webu").textContent=E.cfg.title||"WikiWeb";
+  }else if(z.cesta==="contents.json"){
+    if(r){ const o=JSON.parse(r.text); E.strom=pripravitUzly(Array.isArray(o)?o:o.pages); E.obsahSha=r.sha; E.obsahPuvodni=textObsahu(); }
+    if(E.vybrano?.druh==="stranka"){ const id=E.vybrano.uzel?.id; const u=stranky().find(x=>x.id===id); E.vybrano=u?{druh:"stranka",uzel:u}:{druh:"nastaveni"}; }
+    kreslitStrom();
+  }else if(z.smazat){ E.smazat.delete(z.cesta); }
+  else if(z.b64){ E.soubory.delete(z.cesta); }
+  else E.soubory.set(z.cesta,r?{text:r.text,puvodni:r.text,sha:r.sha,stav:"nacteno"}:{text:"",puvodni:"",sha:null,stav:"novy"});
+}
 async function ulozitVse(){
   if(!E.nacteno){ obnovitStav(); return; }
   if(E.ukladam) return;
@@ -1666,14 +1709,30 @@ async function ulozitVse(){
   if(sProhlizecem) zmeny.push({cesta:"index.html",text:E.novyProhlizec.text,sha:E.novyProhlizec.sha,prohlizec:true});
   E.ukladam=true; stav("Kontroluji, jestli se soubory mezitím nezměnily…");
   try{
-    /* pojistka proti přepsání cizích změn: SHA v repozitáři musí sedět s tím, co jsme načetli */
+    /* pojistka proti přepsání cizích změn: SHA v repozitáři musí sedět s tím, co jsme načetli.
+       Když nesedí, rozhodne uživatel: přepsat mými změnami, nebo změněné soubory načíst z repozitáře. */
+    const konflikty=[]; let nactenoZRepa=false;
     for(const z of zmeny){
       const ted=await ghShaSouboru(z.cesta);
-      if((ted||null)!==(z.sha||null)){
-        stav(`Uložení zastaveno: ${z.cesta} se v repozitáři mezitím změnil. Zkopírujte si úpravy a načtěte web znovu (Připojení → Připojit a načíst).`,"chyba");
-        return;
+      if((ted||null)!==(z.sha||null)) konflikty.push({z,ted:ted||null});
+    }
+    // novou verzi prohlížeče při konfliktu jen vynecháme — doplní se příště
+    for(const k of konflikty.filter(k=>k.z.prohlizec)){ zmeny.splice(zmeny.indexOf(k.z),1); E.novyProhlizec=null; }
+    const skutecne=konflikty.filter(k=>!k.z.prohlizec);
+    if(skutecne.length){
+      stav(`${skutecne.length===1?"Soubor se":"Soubory se"} v repozitáři mezitím změnil${skutecne.length===1?"":"y"} — vyberte, jak pokračovat`,"chyba");
+      const volba=await volbaKonfliktu(skutecne);
+      if(!volba){ stav("Ukládání zrušeno, změny zůstávají neuložené","zmeny"); return; }
+      if(volba==="prepsat") skutecne.forEach(k=>{ if(k.z.smazat&&!k.ted) zmeny.splice(zmeny.indexOf(k.z),1); else k.z.sha=k.ted; });   // co už je smazané, se mazat nemusí
+      else{
+        nactenoZRepa=true;
+        stav("Načítám změněné soubory z repozitáře…");
+        for(const k of skutecne){ await nacistZRepozitare(k.z); zmeny.splice(zmeny.indexOf(k.z),1); }
+        obnovitStav();
+        if(!zmeny.length){ stav("Změněné soubory jsou načtené z repozitáře, nic dalšího k uložení nebylo","ok"); if(E.vybrano) vybrat(E.vybrano); return; }
       }
     }
+    if(!zmeny.length){ stav("Není co ukládat","ok"); return; }
     stav("Ukládám do GitHubu…");
     const nazvy=zmeny.map(z=>z.cesta.split("/").pop());
     const zprava="WikiWeb: "+(nazvy.length<=3?nazvy.join(", "):nazvy.length+" souborů");
@@ -1688,6 +1747,7 @@ async function ulozitVse(){
     }
     vsechnyUzly().forEach(u=>{ u._auto=false; });
     najitNezarazene();
+    if(nactenoZRepa&&E.vybrano) vybrat(E.vybrano);   // editor ukáže soubory načtené z repozitáře
     stav(`Uloženo (${zmeny.length} ${zmeny.length===1?"soubor":zmeny.length<5?"soubory":"souborů"})${sProhlizecem?", včetně nové verze prohlížeče index.html":""}. Web na GitHub Pages se obnoví do minuty.`,"ok");
     obnovitStav();
   }catch(e){

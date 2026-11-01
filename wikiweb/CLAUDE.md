@@ -125,7 +125,7 @@ Parametry: `?repo=vlastnik/repo&slozka=web&vetev=main` načte web z raw.githubus
 - čtení přes `ghObsahSouboru()` se záložním `git/blobs/{sha}`,
 - jeden malý soubor = Contents API `PUT`, víc souborů nebo soubor nad 1 MB = jeden commit přes Git Data API (`ghCommit()`: blob → strom s `base_tree` → commit → `PATCH` větve); mazání souborů je položka stromu se `sha: null`,
 - pojistka `E.nacteno`: dokud nejsou načtené `wiki.json` a `contents.json` (nebo potvrzeně chybí), neuloží se nic a důvod je ve stavovém řádku. Stránka, kterou se nepodařilo načíst, je jen ke čtení, dokud uživatel přepsání výslovně nepotvrdí,
-- před uložením se porovná SHA každého měněného souboru s repozitářem; když se mezitím změnil, uložení se zastaví,
+- před uložením se porovná SHA každého měněného souboru s repozitářem; když se mezitím změnil, `volbaKonfliktu()` ukáže dialog se seznamem těchto souborů (u textových tlačítko Zkopírovat mou verzi) a volbami **Přepsat mými změnami** (SHA se převezme z repozitáře a uloží se vše), **Uložit ostatní, tyto načíst z repozitáře** (`nacistZRepozitare()` je načte znovu a vyřadí z uložení, ostatní se uloží) a **Zrušit**. Novější prohlížeč `index.html` se při konfliktu jen vynechá,
 - Historie souboru vypíše `commits?path=…` a starší verzi načte do editoru (zapíše se až při uložení),
 - base64 po blocích (`bytyDoBase64`).
 
