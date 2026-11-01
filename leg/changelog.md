@@ -2,6 +2,11 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.17.0] — 2026-11-01
+
+### Změněno
+- Po otevření detailu ustanovení jde fokus rovnou na text ustanovení (ne na nadpis stránky) a čtečka přečte citaci a celé ustanovení jako souvislou větu. Při překreslení po uložení (vyznačení, komentář, štítky) zůstává fokus tam, kde byl.
+
 ## [1.16.0] — 2026-10-31
 
 ### Přidáno
