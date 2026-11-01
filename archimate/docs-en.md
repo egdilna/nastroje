@@ -2,14 +2,14 @@
 
 Web-based editor for creating and managing architectural models according to the ArchiMate 3.2 standard with extensions for Architecture Decision Records (ADR), notes, and tasks management.
 
-## Online Version and Download
+## Online Version and Links
 
-- **Online version:** https://egdilna.github.io/nastroje/archimate
-- **GitHub:** https://github.com/egdilna/nastroje
+- **The tool:** https://nastroje.egdilna.cz/archimate
+- **Tool page:** https://nastroje.egdilna.cz/#archimate
+- **Source code:** https://github.com/egdilna/nastroje
 
-On GitHub you will find:
-- Editor for download as a single HTML file
-- DokuWiki plugin for wiki system integration
+In the repository you will find:
+- The editor as a single HTML file (`archimate/index.html`) — downloadable and usable offline
 - Application documentation in Czech and English
 - JSON Schema for AJX format validation (`ajx-schema.json`)
 
@@ -30,9 +30,9 @@ On GitHub you will find:
 11. [Text Generator](#text-generator)
 12. [Import and Export](#import-and-export)
 13. [Model Merging](#model-merging)
-14. [Bulk Tag Operations](#bulk-tag-operations)
-15. [GitHub Integration](#github-integration)
-16. [DokuWiki Plugin](#dokuwiki-plugin)
+14. [Tag Management](#tag-management)
+15. [Change Log](#change-log)
+16. [GitHub Integration](#github-integration)
 17. [Tips and Tricks](#tips-and-tricks)
 18. [Keyboard Shortcuts](#keyboard-shortcuts)
 19. [ArchiMate Reference Guide](#archimate-reference-guide)
@@ -55,9 +55,13 @@ ArchiMate Editor is a complete tool for enterprise architecture modeling accordi
 - **ADR (Architecture Decision Records)** - architecture decision management
 - **Text generator** - documentation creation from model using templates
 - **Diagrams** - visual editor with drag & drop and SVG/PNG export
-- **Bulk operations** - working with tags
+- **Bulk operations** - working with tags and bulk edits of elements and relationships
+- **Markdown and Word export** - tasks, ADR and diagrams as `.md` or `.docx`
+- **CSV/TSV import** - bulk element loading from a table with column mapping
+- **Change log** - overview of all changes made in the current session
 - **Accessibility** - fully accessible interface for screen readers
-- **DokuWiki integration** - plugin for team collaboration
+- **GitHub and Git integration** - load and store models in a Git repository through an
+  API token, so private repositories work too
 
 ---
 
@@ -117,10 +121,14 @@ In the header you will find:
 - **Model version** - displays the current version
 - **Statistics** - number of elements, relationships, diagrams, and layers
 - **Language switcher** - CZ/EN
+- **Quick actions** - 📄 **New** (Alt+N), 📂 **Open** (Alt+O) and 💾 **Save** (Alt+S or Ctrl+S)
+
+The **Save** button decides by itself: when a GitHub path and a stored token are present,
+it saves the model to GitHub, otherwise it downloads an AJX file.
 
 ### Tabs
 
-The editor is divided into nine main tabs:
+The editor is divided into ten main tabs:
 
 1. **Model** - metadata and model settings
 2. **Elements** - architectural elements management
@@ -129,7 +137,7 @@ The editor is divided into nine main tabs:
 5. **Tasks** - task tracking and management
 6. **Notes** - text notes with Markdown
 7. **ADR** - architecture decisions
-8. **Tools** - text generator and bulk operations
+8. **Tools** - change log, tag management and text generator
 9. **Export/Import** - data exchange with other systems
 10. **Reference** - ArchiMate specification overview
 
@@ -185,11 +193,33 @@ Element ID is automatically generated from type and name:
 
 ### Element Operations
 
-| Icon | Action | Description |
-|------|--------|-------------|
-| ✏️ | Edit | Opens element for editing |
-| 📋 | Duplicate | Creates a copy with new ID |
-| 🗑️ | Delete | Deletes element and its relationships |
+| Action | Description |
+|--------|-------------|
+| **Edit** | Opens the element in the form below the table |
+| 📋 | Duplicates the element (copy with a new ID) |
+| **Delete** | Deletes the element and its relationships |
+
+The element name in the table is a link to its relationships — clicking it switches to the
+Relationships tab filtered to that element. The **Diagrams** column shows which diagrams
+the element appears on.
+
+Next to the element name there are also small **Z:** (from) and **Do:** (to) buttons with
+the number of outgoing and incoming relationships. Clicking one opens a popup listing those
+relationships, so there is no need to switch to the Relationships tab and filter.
+
+### Bulk Element Operations
+
+Checking elements in the first column (or the toggle in the table header) reveals a bulk
+action panel above the table:
+
+| Action | Description |
+|--------|-------------|
+| Change type | Overwrites the type of all selected elements |
+| Change stereotype | Sets the same stereotype |
+| Change defines | Sets the same value of the Defines field |
+| Change description | Sets the same description |
+| Add tags | Adds tags (comma-separated) to the selected elements |
+| Delete selected | Deletes the selected elements and their relationships |
 
 ### Filtering Elements
 
@@ -246,6 +276,19 @@ After selecting source, target, and relationship type, a preview is displayed as
 
 In the elements table, you can click on the relationship count to go to a filtered list of relationships for that element.
 
+### Bulk Relationship Operations
+
+Relationships can be checked and edited in bulk the same way as elements:
+
+| Action | Description |
+|--------|-------------|
+| Change relationship type | Overwrites the type of all selected relationships |
+| Change source / Change target | Repoints the selected relationships to another element |
+| Change name | Sets the same name |
+| Change description | Sets the same description |
+| Add tags | Adds tags to the selected relationships |
+| Delete selected | Deletes the selected relationships |
+
 ---
 
 ## Diagrams
@@ -258,27 +301,42 @@ Diagrams (views) allow organizing elements into logical groups and visualizing t
 2. Optionally add **description**
 3. Click **Create Diagram**
 
+### Diagram List
+
+- The diagram name is a link that opens the diagram editor
+- The **↑** and **↓** buttons change the diagram order in the model
+- **✏️ Visually** opens the visual editor, **Edit** the catalog editor
+- Check diagrams and use **📝 Export MD**, **📋 Copy MD** and **📄 Export DOCX** to export
+  the selected diagrams into one document (**☑️ Select All** checks them all)
+
 ### Diagram Editor
 
-After clicking **Open**, the editor displays three sub-tabs:
+The editor has four sub-tabs:
 
-#### Diagram Elements
+#### Settings
 
-- Adding elements using cascading selection (layer → type → element)
-- List of elements in the diagram with removal option
-- Elements can be added or removed
+- **Diagram name** and **description**
+- **Element layout** - By layers (layered) or Grid; used when the preview is laid out
+  automatically
 
-#### Diagram Relationships
+#### Elements
 
-- Automatically displays relationships between elements in the diagram
-- Read-only - relationships are managed in the Relationships tab
+- Adding elements using cascading selection (layer → type → element) with a filter in the
+  element list
+- Table of elements on the diagram with a removal option
+
+#### Relationships
+
+- The table shows relationships whose source and target are both on the diagram
+- Another relationship can be added by searching its source, target, name or description
 
 #### Preview
 
 Visual diagram preview:
-- Elements are displayed as rectangles colored by layer
+- Elements are displayed as ArchiMate notation shapes colored by layer
 - Relationships are displayed as lines with appropriate markers
 - Automatic layout by layers (layered) or grid
+- The **Redraw** button recalculates the preview
 
 ### Visual Diagram Editor
 
@@ -330,6 +388,11 @@ In the diagram preview, export buttons are available:
 |--------|-------------|
 | **Download SVG** | Export diagram as vector SVG file |
 | **Download PNG** | Export diagram as raster PNG image (2x resolution) |
+| **📄 Export DOCX** | The diagram with its element and relationship lists as a Word document |
+| **📝 Export MD** | The same as a Markdown file |
+| **📋 Copy MD** | The Markdown form of the diagram to the clipboard |
+
+Several diagrams at once are exported from the diagram list (see above).
 
 ---
 
@@ -339,26 +402,43 @@ Tasks are used for tracking and managing architecture work.
 
 ### Creating a Task
 
-1. Enter task **name**
-2. Select **priority** (Low, Medium, High, Critical)
-3. Enter **assignee** and **reporter**
-4. Set **due date**
-5. Add **description** (supports Markdown)
-6. Optionally link to model **elements** or **relationships**
+1. Click **+ New Task** to open the editor
+2. The **number** is filled in automatically and can be overwritten
+3. Enter task **name**
+4. Select **status** and **priority** (Low, Medium, High, Critical)
+5. Enter **assignee** and **reporter**
+6. Set **due date**
+7. Optionally add **tags** (comma-separated)
+8. Add **description** and **current state / resolution notes** (both support Markdown)
+9. Optionally link to model **elements** or **relationships**
 
 ### Task States
 
 | State | Icon | Description |
 |-------|------|-------------|
 | New | ⚪ | Newly created task |
-| Open | 🔵 | Task is in progress |
-| On Hold | ⏸️ | Task is on hold |
+| In Progress | 🔵 | Task is being worked on |
+| Blocked | 🔴 | Task cannot proceed |
+| In Review | 🟡 | Task awaits verification |
 | Done | 🟢 | Task is completed |
-| Cancelled | 🔴 | Task was cancelled |
+| Cancelled | ⚫ | Task was cancelled |
+
+Priorities have their own icons: 🟢 Low, 🟡 Medium, 🟠 High, 🔴 Critical.
+
+### Filtering Tasks
+
+Above the table are filters by **status**, **priority** and **assignee**, plus a full-text
+search (name, assignee, reporter, description, current state, tags).
 
 ### Current State
 
 You can add notes about current state to each task (supports Markdown).
+
+### Task Preview and Export
+
+Clicking a task name opens a preview; from the preview and the editor a task can be saved
+as **📄 Markdown** or **📝 DOCX**, and **📋 Copy Markdown** puts it on the clipboard.
+The **📦 Export All Tasks** button saves all tasks into a single Markdown file.
 
 ---
 
@@ -368,17 +448,25 @@ Notes are used for recording information related to architecture.
 
 ### Creating a Note
 
-1. Enter note **title**
-2. Enter **author**
-3. Write **content** (supports Markdown)
-4. Optionally add **tags** and link to elements/relationships
+1. Click **+ New Note** to open the editor
+2. Enter note **title**
+3. Enter **author**
+4. Write **content** (supports Markdown)
+5. Optionally add **tags** (comma-separated) and link to elements/relationships
+
+Above the notes table is a full-text search (title, author, content, tags).
+
+### Note Preview
+
+Clicking the title opens a preview with rendered Markdown, links to the linked items, a
+**📋 Copy** button (content to the clipboard) and **📜 Version History**.
 
 ### Versioning
 
 Notes have automatic versioning:
 - Each change creates a new version
-- Version history is available in note detail
-- Previous versions can be viewed and restored
+- Version history is available in the note preview
+- An older version can be viewed and brought back with **Restore This Version**
 
 ---
 
@@ -388,28 +476,40 @@ ADR (Architecture Decision Records) document important architecture decisions.
 
 ### ADR Structure
 
-- **Number** - automatically generated sequence number
-- **Title** - brief decision description
-- **Status** - current decision state
-- **Author** and **Approver**
-- **Context** - situation leading to decision
+The ADR editor is split into sections:
+
+- **Basic information** - number (generated automatically), title, status, author,
+  approver, deciders, tags
+- **Context** - situation leading to the decision
 - **Decision** - what was decided
 - **Consequences** - decision impacts
+- **Considered alternatives** - list of options, the selected one and the selection rationale
+- **Implementation** - implementation status (Not started / In progress / Completed),
+  start date, target date and notes
+- **Related ADR** - Supersedes, Superseded by, Related to
+- **Links** - external links with a description
+- **Linked items** - model elements and relationships
+- **Status history** - automatic record of status changes
 
 ### ADR States
 
 | State | Icon | Description |
 |-------|------|-------------|
-| Draft | ⚪ | Decision in draft |
-| Discussed | 💬 | Under discussion |
-| Approved | 🟢 | Approved decision |
+| Draft | ⚪ | Decision is being prepared |
+| Proposed | 🔵 | Proposal submitted |
+| Under Discussion | 💬 | Under discussion |
+| Returned | 🔙 | Returned for rework |
+| Accepted | 🟢 | Accepted decision |
 | Rejected | 🔴 | Rejected decision |
 | Updated | 🔄 | Decision was updated |
 | Implemented | 🟣 | Decision is implemented |
-| Tracked | 👁️ | Decision is being tracked |
+| Monitored | 👁️ | Decision is being monitored |
 | Deprecated | 🟠 | Decision is deprecated |
 | Superseded | ⚫ | Superseded by another ADR |
 | Closed | 🔒 | Closed decision |
+
+Above the ADR table is a status filter and a full-text search (title, author, context,
+decision, tags).
 
 ### Alternatives and Selection
 
@@ -424,8 +524,11 @@ Every status change is automatically recorded including date and author.
 ### ADR Export
 
 - **📄 Save as Markdown** - downloads individual ADR
+- **📝 Save as DOCX** - downloads the ADR as a Word document
 - **📋 Copy Markdown** - copies to clipboard
 - **📦 Export All ADR** - downloads all ADR as one file
+
+The buttons are in the ADR editor as well as in the preview opened by clicking the title.
 
 ---
 
@@ -490,7 +593,18 @@ Enter a template with placeholders in curly brackets:
 | **Export AJX** | Download model in AJX (JSON) format |
 | **Copy AJX** | Copies AJX data to clipboard |
 | **Export XML** | ArchiMate Open Exchange format (including visual data) |
-| **Export CSV** | Elements and relationships as CSV files |
+| **Export CSV** | Elements and relationships in one CSV file (two blocks: Elements, Relationships) |
+
+### Export by Tag
+
+A selected tag can be used to export just that part of the model:
+
+1. In the **Export by tag** section pick a tag (the count of matching elements and
+   relationships appears below the list)
+2. Click **Export AJX** or **Export XML**
+
+The output contains elements carrying the tag, relationships carrying the tag, and also
+relationships whose source and target are both in the selection.
 
 ### XML Export with Visual Data
 
@@ -517,6 +631,23 @@ When importing XML, visual diagram data is also loaded if present in the file.
 3. **From clipboard** - "Paste from Clipboard" button
 4. **Drag & Drop** - drag file onto the page
 
+An import replaces the whole content of the editor. The **Delete All** button empties the
+model and the data stored in the browser.
+
+### Element Import from CSV/TSV
+
+The **CSV Import** sub-tab loads elements from a table:
+
+1. Select a CSV/TSV file, or paste the data manually or with **📋 Paste from Clipboard**
+   (the delimiter is detected automatically)
+2. In **Column Mapping** assign columns to the ID, Name, Type, Documentation, Stereotype,
+   Tags and Defines fields — unassigned columns are not imported
+3. Choose the behaviour **on ID conflict** (skip / overwrite existing)
+4. Check the preview and click **Import Elements**
+
+Element type spelling is tolerant (`business actor`, `BusinessActor`, `Business Actor`) and
+the layer is derived from the type. Rows with an unknown type are listed as not imported.
+
 ---
 
 ## Model Merging
@@ -541,26 +672,54 @@ When choosing "Manual selection":
 
 ### Imported Items Marking
 
-Imported items automatically get the tag `Import from: [source model name]`.
+Imported items automatically get the tag `Imported from [source model name]`.
 
 ---
 
-## Bulk Tag Operations
+## Tag Management
 
-### Available Operations
+Tags are managed on the **Tools** tab.
+
+### Managing a Single Tag
+
+In the **Tag Management** section pick a tag from the list (collected from the whole model)
+and then:
 
 | Operation | Description |
 |-----------|-------------|
-| Add tag | Adds tag to all selected items |
-| Remove tag | Removes tag from selected items |
-| Replace tag | Replaces one tag with another |
-| Unify spelling | Rewrites variants differing only in letter case to the most frequent spelling (Tools → Tag Management) |
+| Remove from elements / from relationships / Delete everywhere | Removes the tag from that part of the model |
+| Replace in elements / in relationships / everywhere | Rewrites the tag to the new spelling from the **Replace with tag** field |
+| Unify spelling | Rewrites variants differing only in letter case to the most frequent spelling (in elements, relationships, tasks, notes and ADR) |
 
-### Item Selection
+The result is printed below the form (how many elements and relationships changed).
 
-- Check items for operation
-- **Select All** / **Deselect All**
-- **Select Currently Filtered** - selects items matching active filters
+### Bulk Tag Management
+
+The **Open Bulk Management** button opens a window for adding or removing one tag on
+selected items:
+
+1. Pick the **source** (elements or relationships) and the **action** (add / remove tag)
+2. Enter the tag — the list then shows only the items the action makes sense for
+3. Check the items: **☑ Select All**, **☐ Deselect All**, or **🔍 Select Filtered**
+   (items matching the active filters in the tables)
+4. Click **Execute Action**
+
+Tags can also be added straight from the element and relationship tables with the
+**Add tags** bulk action.
+
+---
+
+## Change Log
+
+While you work, the editor records every significant change (creating, editing and deleting
+elements, relationships, diagrams, tasks, notes and ADR, imports, merges, bulk operations).
+
+On the **Tools** tab, the **📋 Show Change Log** button opens a window listing the changes
+since you started working in the browser; the content can be copied to the clipboard and
+used as a basis for a commit message or a meeting recap.
+
+The log belongs to the current browser session — closing and reopening the editor starts it
+anew.
 
 ---
 
@@ -598,42 +757,22 @@ The file path is encoded in the URL parameter `?gh=...`, so you can share a dire
 
 ---
 
-## DokuWiki Plugin
-
-The editor can be integrated with DokuWiki using the included plugin.
-
-### Installation
-
-1. Extract `archimateeditor.zip` to `lib/plugins/`
-2. Plugin activates automatically
-
-### Usage
-
-Insert into wiki page:
-```
-<archimate instance="instance-name">
-</archimate>
-```
-
-### Features
-
-- Editor opens in popup window
-- **Save to Wiki** button saves directly to wiki page
-- Data is transferred via postMessage API
-- Support for multiple instances on one page
-
----
-
 ## Tips and Tricks
 
 ### Auto-save
 
 Model is automatically saved to browser after each change.
 
+### Several Models at Once
+
+The browser window title contains the name of the open model (`Model name - ArchiMate
+Editor`), so several tabs with different models can be told apart.
+
 ### Suggestions
 
 - **Stereotypes** - offers previously used stereotypes
-- **Tags** - offers existing tags from entire model (including ADR, notes, and tasks)
+- **Tags** - offers existing tags from elements and relationships; the filters offer tags
+  from the whole model including ADR, notes and tasks
 - **Relationship names** - offers previously used names
 
 ### Linking Items
@@ -665,10 +804,22 @@ Regularly export the model to an AJX file. Browser data may be deleted when clea
 
 | Shortcut | Action |
 |----------|--------|
+| Ctrl+S / Cmd+S | Save the model (to GitHub, otherwise to a file) |
+| Alt+N | New model |
+| Alt+O | Open file |
+| Alt+S | Save model |
+| Alt+E | Elements tab |
+| Alt+R | Relationships tab |
+| Alt+D | Diagrams tab |
+| Alt+M | Notes tab |
+| Alt+T | Tools tab |
+| Alt+U | Save relationship (in the relationship form) |
 | Tab | Move between form fields |
 | Enter | Confirm form |
-| Escape | Close modal window |
-| Ctrl+S | Save to Wiki (in DokuWiki mode) |
+
+The Alt shortcuts are `accesskey` values — depending on the browser they are pressed as
+Alt, Alt+Shift (Firefox) or Ctrl+Option (Safari). Modal windows are closed with the **×**
+button, the **Close** button, or by clicking outside the window.
 
 ---
 
@@ -709,8 +860,9 @@ Regularly export the model to an AJX file. Browser data may be deleted when clea
 
 The editor is an open-source tool available on GitHub.
 
-- **Online version:** https://egdilna.github.io/nastroje/archimate
-- **GitHub repository:** https://github.com/egdilna/nastroje
+- **The tool:** https://nastroje.egdilna.cz/archimate
+- **Tool page:** https://nastroje.egdilna.cz/#archimate
+- **Source code:** https://github.com/egdilna/nastroje
 - **Bug reports:** https://github.com/egdilna/nastroje/issues
 
 ### System Requirements
@@ -727,5 +879,5 @@ The editor is an open-source tool available on GitHub.
 
 ---
 
-*Documentation version: 3.0*
+*Documentation version: 3.1 (1 November 2026)*
 *ArchiMate® is a registered trademark of The Open Group.*

@@ -1,6 +1,6 @@
 
 
-⛓️ [Archimate editor](https://nastroje.egdilna.cz/archimate) je webový komplexní nástroj pro tvorbu a správu architektury, především pro architektonické modely v jazyce ArchiMate, ale umí na jednom místě také spravovat ADR dokumenty, architektonické úkoly a poznámky. Má spoustu různých vychytávek, jako je generátor textových výstupů z architektury, slučování modelů s uživatelským výběrem a mnoho dalšího. Je stoprocentně přístupný, ale podporuje i grafické modelování. Online běží na https://egdilna.github-io/nastroje/archimate
+⛓️ [Archimate editor](https://nastroje.egdilna.cz/archimate) je webový komplexní nástroj pro tvorbu a správu architektury, především pro architektonické modely v jazyce ArchiMate, ale umí na jednom místě také spravovat ADR dokumenty, architektonické úkoly a poznámky. Má spoustu různých vychytávek, jako je generátor textových výstupů z architektury, slučování modelů s uživatelským výběrem a mnoho dalšího. Je stoprocentně přístupný, ale podporuje i grafické modelování. Online běží na https://nastroje.egdilna.cz/archimate
 
 
 
@@ -24,7 +24,6 @@ Pokročilý editor architektury v jazyce ArchiMate, který může ale sloužit i
 - **Hromadné operace** - práce s příznaky (tagy)
 - **Přístupnost** - plně přístupné rozhraní pro odečítače obrazovky
 - **Integrace s GitHub a GIT**: Možnost načíst a ukládat modely a projekty v GIT repozitáři, přístup je zajištěn přes API klíč, takže to bude fungovat i u privátních repos.
-- **DokuWiki integrace** - plugin pro spolupráci v týmu
 
 ## Dokumentace a odkazy na repo
 
