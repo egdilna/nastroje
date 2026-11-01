@@ -458,6 +458,11 @@ popisku zmizela, nadpis ji nechce. Prohlížeč má vlastní kopii (`skupinaOdka
 Strukturální pohled (`out-gl`) nadpisy **nemá** a mít nemá: je to strom libovolné hloubky,
 úroveň nadpisu by v něm nic neznamenala.
 
+**Titulek okna nese `getTitleWithType(e)`, ne `getTitle(e)`** — tedy totéž co nadpis
+detailu. Dvě stejně pojmenované entity různých typů se jinak v liště prohlížeče, v přepínači
+oken ani v historii nerozeznaly. Prohlížeč má vlastní kopii (jeden řádek v detailu šablony)
+— měň obě.
+
 **Počty patří do názvu karty** (`3→ 4←`, `2`). Schované sekce jinak není poznat, že vůbec
 něco obsahují. Značka je jen pro oči (`aria-hidden`), odečítači se počty řeknou slovy
 v `aria-label`.
