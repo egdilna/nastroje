@@ -15,16 +15,13 @@ Jednoduchý ale komplexní prohlížeč Registru práv a povinností
 
 ## Odkazy a dokumentace
 
-Existuje i [Uživatelská dokumentace](https://nastroje.egdilna.cz/rpp/dokumentace)
+K dispozici je [[Uživatelská příručka k RPP prohlížeči]]
 
-* Prohlížeč RPP má svoje vlastní repository na GitHubu a to na adrese https://github.com/michalradacz/rpp-prohlizec
-* Přímý odkaz na složku na hlavním repository nástrojů je https://github.com/egdilna/nastroje/blob/main/rpp
 
 ## Historie změn a oprav
 
+{{Novinky a změny/Změny a novinky v RPP prohlížeči}}
 
-| Datum | Typ | Popis |
-| --- | --- | --- |
-| (žádný záznam) |  |  |
+
 
 
