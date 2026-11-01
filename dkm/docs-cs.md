@@ -241,6 +241,10 @@ i štítek v kalendáři. Stejné emotikony nese i nadpis v detailu entity.
 - **← Zpět** (klávesa Alt+B) — vrátí se na předchozí zobrazenou stránku. Nikdy se nevrací do editace — přeskočí ji.
 - **▾ Historie navigace** — rozbalovátko vedle Zpět se seznamem posledních navštívených entit a pohledů v této session. U entit vidíš ikonu typu, název a typ.
 - **Nadpis** — ikona typu + název entity + badge typu, badges aspektů, stavu
+- **Titulek okna** nese totéž co nadpis: `Název (Typ)`, za ním název projektu. V liště
+  prohlížeče, v přepínači oken i v historii jsou tak dvě stejně pojmenované entity různých
+  typů od sebe k rozeznání. Entita bez typu závorku nemá, lístek z Inboxu v ní má „Inbox".
+  Totéž dělá statický prohlížeč.
 - **Akce**: Upravit (E), Duplikovat, Změnit typ, 🖨 Export / tisk, 🪟 V samostatném okně, Archivovat, Smazat
 - **Atributy** — vyplněné atributy (typu, aspektu, vlastní)
 
