@@ -242,6 +242,10 @@ calendar chip as well. The entity detail heading carries the same emoji.
 - **← Back** (Alt+B) — returns to previously shown page. Never returns into editing — skips edit states.
 - **▾ Navigation history** — dropdown next to Back with recently visited entities and views in this session. For entities you see type icon, name and type.
 - **Heading** — type icon + entity name + type badge, aspect badges, status badges
+- **The window title** carries the same as the heading: `Name (Type)`, followed by the
+  project name. In the browser's tab bar, in the window switcher and in history, two
+  identically named entities of different types are then told apart. An entity with no type
+  has no parentheses; an Inbox note has "Inbox" in them. The static viewer does the same.
 - **Actions**: Edit (E), Duplicate, Change type, 🖨 Export / print, 🪟 Standalone window, Archive, Delete
 - **Attributes** — filled attributes (type, aspects, custom)
 
