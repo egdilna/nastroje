@@ -224,7 +224,9 @@ s pozdějším datem (`rozdelZneni`). Aktuální znění se počítá z data př
 - Formuláře místo modálních dialogů, popisky přes `label`, nápovědy přes `aria-describedby`.
 - `#oznameni` (`aria-live`) jen pro krátká potvrzení akcí (`oznam()`); průběh stahování je
   běžný text na stránce.
-- Po přechodu se fokus přesune na H1 (nebo na cíl kotvy).
+- Po přechodu se fokus přesune na H1 (nebo na cíl kotvy). Pohled může určit vlastní cíl prvkem
+  `[data-uvodni-fokus]` s `tabindex="-1"`; jeho `data-precist` se po přechodu ohlásí přes `oznam()`.
+  Detail ustanovení tak fokusuje `#text-ustanoveni` a přečte citaci se složenou větou.
 - Ladění jen do `#ladeni-seznam` na stránce (`log()`), nikdy do konzole.
 - Nic se nepředvyplňuje.
 
