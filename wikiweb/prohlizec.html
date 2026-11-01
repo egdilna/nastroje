@@ -691,7 +691,7 @@ async function vlozitStranky(text,hloubka=0,cesta=[]){
     if(!u||!u.adresa){ vystup.push(chyba(T.chybiOdkaz)); continue; }
     if(cesta.includes(u.id)||hloubka>=3){ vystup.push(chyba(T.vlozeniCyklus)); continue; }
     let vlozeny;
-    try{ vlozeny=await nactiText(u.adresa); }catch(e){ vystup.push(chyba(T.chybaStranky+": "+e.message)); continue; }
+    try{ vlozeny=u.virtualni?u.telo:await nactiText(u.adresa); }catch(e){ vystup.push(chyba(T.chybaStranky+": "+e.message)); continue; }
     vlozeny=vlozeny.replace(/^\s*#(?!#)\s+.+\n?/,"");
     if(m[2]){ const sekce=vyriznoutSekci(vlozeny,m[2]); if(sekce==null){ vystup.push(chyba(T.vlozeniSekce)); continue; } vlozeny=sekce; }
     vlozeny=absolutniCesty(vlozeny,zaklad(u.adresa));
@@ -736,6 +736,45 @@ function vytahnoutNovinky(text){
   }
   return {novinky,zbytek:zbytek.join("\n")};
 }
+
+/* ---------- multisection (formát md2web): soubor začíná řádkem „multisection“,
+   každý ## nadpis je samostatná podstránka; text před prvním ## je úvod skupiny ---------- */
+function rozpoznatMulti(text){
+  const radky=String(text||"").split("\n"); let i=0;
+  while(i<radky.length&&!radky[i].trim()) i++;
+  if(/^#(?!#)\s+/.test(radky[i]||"")){ i++; while(i<radky.length&&!radky[i].trim()) i++; }
+  if((radky[i]||"").trim().toLowerCase()!=="multisection") return null;
+  const uvod=[], casti=[]; let cur=null, vKodu=false;
+  for(const l of radky.slice(i+1)){
+    if(/^```/.test(l.trim())) vKodu=!vKodu;
+    const h2=!vKodu&&l.match(/^##(?!#)\s+(.+?)\s*#*\s*$/);
+    if(h2){ cur={titul:h2[1].trim(),slug:slug(h2[1]),radky:[]}; casti.push(cur); continue; }
+    (cur?cur.radky:uvod).push(l);
+  }
+  const vidno=new Set();
+  return {uvod:uvod.join("\n"),casti:casti.map(c=>{ let sl=c.slug||"cast", n=2; while(vidno.has(sl)) sl=c.slug+"-"+n++; vidno.add(sl); return {titul:c.titul,slug:sl,telo:c.radky.join("\n")}; })};
+}
+/* Podstránky multisection jsou virtuální uzly stromu: id „stranka/podstranka“, rodič je stránka se souborem.
+   Vrací true, když se změnil jejich seznam (pak se překreslí strom a pořadí). */
+function rozbalitMulti(u,multi){
+  const klic=JSON.stringify(multi.casti.map(c=>[c.slug,c.titul]));
+  if(u.multiKlic===klic){ multi.casti.forEach(c=>{ const x=W.stranky.get(u.id+"/"+c.slug); if(x) x.telo=c.telo; }); return false; }
+  (u.multiPod||[]).forEach(x=>W.stranky.delete(x.id));
+  const pod=multi.casti.map(c=>{
+    const x={id:u.id+"/"+c.slug,title:c.titul,telo:c.telo,virtualni:true,rodic:u,children:[],hloubka:(u.hloubka||0)+1,
+      adresa:u.adresa,file:u.file,repo:u.repo,draft:u.draft,managed:u.managed,tags:[]};
+    x.typ={...typStranky({type:"stranka"}),toc:u.typ?.toc,actions:u.typ?.actions,backlinks:u.typ?.backlinks};
+    x.emoji=x.typ.emoji||"";
+    if(!W.stranky.has(x.id)) W.stranky.set(x.id,x);
+    return x;
+  });
+  u.children=[...pod,...(u.children||[]).filter(c=>!c.virtualni)];
+  if(u.sort_children) u.children.sort((a,b)=>String(a.title).localeCompare(String(b.title),W.cfg.language||"cs",{sensitivity:"base",numeric:true}));
+  u.multiPod=pod; u.multiKlic=klic;
+  prepocitatPoradi(); W.zpetne=null; W.index=null;
+  return true;
+}
+function prepocitatPoradi(){ W.poradi=[]; (function linearne(uzly){ uzly.forEach(u=>{ if(!u.hidden&&!u.jeOdkaz) W.poradi.push(u); linearne(u.children||[]); }); })(W.koren); }
 
 /* ---------- články (formát md2web: soubor začíná řádkem „articles“, každý článek je H2) ---------- */
 function rozpoznatClanky(text){
@@ -845,7 +884,12 @@ async function nactiWeb(data){
     return [{...cil,jeOdkaz:true,title:u.vlastniTitul||cil.title,emoji:u.vlastniEmoji||cil.emoji,hidden:u.hidden,rodic:u.rodic}];
   });
   W.koren=odkazy(W.koren);
-  W.poradi=[]; (function linearne(uzly){ uzly.forEach(u=>{ if(!u.hidden&&!u.jeOdkaz) W.poradi.push(u); linearne(u.children||[]); }); })(W.koren);
+  prepocitatPoradi();
+  /* Stránky označené multisection (značku zapisuje editor) se načtou hned, aby jejich podstránky
+     byly ve stromu a fungovaly na ně wikiodkazy odkudkoli. */
+  await Promise.all([...W.stranky.values()].filter(u=>u.multisection&&u.adresa).map(async u=>{
+    try{ const m=rozpoznatMulti(await nactiText(u.adresa)); if(m) rozbalitMulti(u,m); }catch{}
+  }));
   const sbSoubor=W.cfg.sidebar_file||"sidebar.md";
   try{ W.sidebarMD=await vlozitStranky(await nactiText(adresaSouboru(sbSoubor))); }catch{ W.sidebarMD=""; }
 }
@@ -1019,7 +1063,7 @@ function rozebratHash(){
   if(!h) return {id:domovId()};
   if(h.startsWith("/stitek/")) return {stitek:h.slice(8)};
   let m=h.match(/^([^/?:]+)\?tag=(.+)$/); if(m) return {id:m[1],tag:m[2]};
-  m=h.match(/^([^/?:]+)\/(.+)$/); if(m) return {id:m[1],clanek:m[2]};
+  m=h.match(/^([^/?:]+)\/([^:]+)(?::(.+))?$/); if(m) return {id:m[1],clanek:m[2],kotva:m[3]};
   m=h.match(/^([^/?:]+):(.+)$/); if(m) return {id:m[1],kotva:m[2]};
   return {id:h};
 }
@@ -1030,7 +1074,7 @@ function skocitNa(id){
 }
 async function navigovat(){
   const r=rozebratHash();
-  if(r.kotva&&W.aktualni?.id===r.id&&!$("#stranka").hidden&&skocitNa(r.kotva)) return;
+  if(r.kotva&&W.aktualni?.id===(r.clanek?r.id+"/"+r.clanek:r.id)&&!$("#stranka").hidden&&skocitNa(r.kotva)) return;
   if(r.id&&!W.stranky.has(r.id)){
     // kotva na aktuální stránce (např. odkaz #nadpis z md2web obsahu)
     const el=document.getElementById(r.id);
@@ -1100,6 +1144,16 @@ async function vykreslitStranku(u,r){
   }
   const clanky=rozpoznatClanky(text);
   if(clanky) return vykreslitClanky(u,clanky,r);
+  const multi=rozpoznatMulti(text);
+  if(multi){
+    if(rozbalitMulti(u,multi)){ const nav=$("#strom"); if(nav) nav.dataset.klic=""; }
+    if(r.clanek){
+      const pod=W.stranky.get(u.id+"/"+r.clanek);
+      if(!pod) return vykreslitChybu(T.neexistuje,T.neexistujeText);
+      u=pod; W.aktualni=pod; text=pod.telo; W.zdrojStranky=pod.telo;
+    }else text=multi.uvod;
+    oznacitVeStromu(u.id);
+  }
 
   // Úvodní H1 v souboru je název stránky — H1 na stránce je jen jedno
   let mdText=text.replace(/^\s*#(?!#)\s+.+\n?/,"").replace(/^#(?!#)\s/gm,"## ");
@@ -1282,7 +1336,7 @@ async function zpetneOdkazy(u){
   if(!W.zpetne){
     const mapa=new Map();
     await Promise.all([...W.stranky.values()].map(async zdroj=>{
-      if(!zdroj.adresa) return;
+      if(!zdroj.adresa||zdroj.virtualni) return;
       let text=""; try{ text=await nactiText(zdroj.adresa); }catch{ return; }
       const zakl=zaklad(zdroj.adresa), cile=new Set();
       text=text.replace(/```[\s\S]*?```/g,"");
@@ -1310,7 +1364,7 @@ async function indexStitku(){
   if(W.stitkyIndex) return W.stitkyIndex;
   const mapa=new Map();
   const pridat=(t,polozka)=>{ const k=t.toLowerCase(); if(!mapa.has(k)) mapa.set(k,{nazev:t,polozky:[]}); mapa.get(k).polozky.push(polozka); };
-  const st=[...W.stranky.values()].filter(u=>!u.hidden);
+  const st=[...W.stranky.values()].filter(u=>!u.hidden&&!u.virtualni);
   for(const u of st) for(const t of (u.tags||[]).filter(verejnyStitek)) pridat(t,{druh:"stranka",u});
   await Promise.all(st.filter(u=>u.adresa).map(async u=>{
     let text=""; try{ text=await nactiText(u.adresa); }catch{ return; }
@@ -1445,10 +1499,16 @@ function kalendar(novinky){
 /* ---------- hledání ---------- */
 async function pripravitIndex(){
   if(W.index) return W.index;
-  const st=[...W.stranky.values()].filter(u=>!u.hidden);
+  const st=[...W.stranky.values()].filter(u=>!u.hidden&&!u.virtualni);
   W.index=await Promise.all(st.map(async u=>{
     let text="";
     try{ if(u.adresa) text=await vlozitStranky(await nactiText(u.adresa),0,[u.id]); }catch{}
+    const multi=rozpoznatMulti(text);
+    if(multi){
+      rozbalitMulti(u,multi);
+      return [{u,titul:u.title,text:naText((u.perex||"")+" "+aliasy(u).join(" ")+" "+multi.uvod),h:"#"+u.id},
+        ...(u.multiPod||[]).map(x=>({u:x,titul:x.title,text:naText(x.telo),h:"#"+x.id}))];
+    }
     const cl=rozpoznatClanky(text);
     const zaznamy=[{u,titul:u.title,text:naText((u.perex||"")+" "+aliasy(u).join(" ")+" "+(u.tags||[]).filter(verejnyStitek).join(" ")+" "+(cl?"":text)),h:"#"+u.id}];
     if(cl) cl.clanky.forEach(c=>zaznamy.push({u,titul:c.titul,text:naText(c.perex+" "+c.stitky.join(" ")+" "+c.telo),h:"#"+u.id+"/"+c.slug,clanek:true}));
