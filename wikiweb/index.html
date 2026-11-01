@@ -630,6 +630,7 @@ function vyberStranky(nadpis,tlacitko,hotovo,volby={}){
     const kde=cestaUzlu(u);
     polozky.push({u,text:u.title||"(bez názvu)",kde,hledat:bezDiakritiky([u.title,u.id,kde,...(u.aliases||[])].join(" "))});
     if(volby.aliasy) (u.aliases||[]).forEach(a=>polozky.push({u,alias:a,text:a,kde,hledat:bezDiakritiky([a,u.title,kde].join(" "))}));
+    if(volby.aliasy&&druhZdroje(u)==="mistni") (castiMulti(E.soubory.get(u.file)?.text)||[]).forEach(a=>polozky.push({u,alias:a,text:a,kde,pod:true,hledat:bezDiakritiky([a,u.title,kde].join(" "))}));
   });
   polozky.sort((a,b)=>podleAbecedy(a.text,b.text));
   const zvolit=x=>{ dl.close(); hotovo(x.u,x.alias||null); };
@@ -640,13 +641,14 @@ function vyberStranky(nadpis,tlacitko,hotovo,volby={}){
     const vyber=polozky.filter(x=>slova.every(w=>x.hledat.includes(w))).map((x,i)=>[poradi(x),i,x]).sort((a,b)=>a[0]-b[0]||a[1]-b[1]).map(z=>z[2]);
     ul.innerHTML="";
     vyber.slice(0,150).forEach(x=>ul.append(el("li",{},el("a",{href:"#"+encodeURIComponent(x.u.id),onclick:e=>{ e.preventDefault(); zvolit(x); }},
-      x.alias?[x.alias,el("small",{}," → "+(ikonaUzlu(x.u)?ikonaUzlu(x.u)+" ":"")+x.u.title+" · alias")]:[(ikonaUzlu(x.u)?ikonaUzlu(x.u)+" ":"")+x.text,el("small",{}," · "+x.kde)]))));
+      x.alias?[x.alias,el("small",{},(x.pod?" · podstránka v ":" → ")+(ikonaUzlu(x.u)?ikonaUzlu(x.u)+" ":"")+x.u.title+(x.pod?"":" · alias"))]:[(ikonaUzlu(x.u)?ikonaUzlu(x.u)+" ":"")+x.text,el("small",{}," · "+x.kde)]))));
     pocet.textContent=vyber.length?`${vyber.length} ${vyber.length===1?"položka":vyber.length<5?"položky":"položek"}${vyber.length>150?", zobrazeno prvních 150":""}`:"Nic neodpovídá. Zkuste jiné slovo.";
   };
   filtr.addEventListener("input",kresli);
   filtr.addEventListener("keydown",e=>{
     if(e.key==="Enter"){ e.preventDefault(); ul.querySelector("a")?.click(); }
     if(e.key==="ArrowDown"){ e.preventDefault(); ul.querySelector("a")?.focus(); }
+    if(e.key==="Escape"){ e.preventDefault(); dl.close(); }   // jinak by první Escape jen smazal hledaný text
   });
   ul.addEventListener("keydown",e=>{
     const odk=[...ul.querySelectorAll("a")], i=odk.indexOf(document.activeElement);
@@ -997,7 +999,12 @@ async function kreslitObsah(box,u){
   }
   if(s.stav==="novy"&&!s.sha) info.append(el("p",{class:"tichy"},"Soubor zatím v repozitáři není, vznikne při uložení."));
   t.readOnly=false; t.value=s.text;
-  t.addEventListener("input",()=>{ s.text=t.value; s.vytvorit=true; obnovitStav(); planNahled(); });
+  const multiInfo=el("div");
+  const ukazMulti=()=>{ const c=castiMulti(s.text); multiInfo.innerHTML="";
+    if(c) multiInfo.append(el("div",{class:"upozorneni info"},`Soubor je rozdělený na podstránky (multisection z md2web): každý nadpis ## je samostatná stránka webu s adresou #${u.id}/…`,
+      c.length?el("ul",{style:"margin:6px 0 0"},c.map(x=>el("li",{},x))):el("p",{style:"margin:4px 0 0"},"Zatím žádný nadpis ##."))); };
+  box.append(multiInfo); ukazMulti();
+  t.addEventListener("input",()=>{ s.text=t.value; s.vytvorit=true; obnovitZnackyMulti(u); ukazMulti(); obnovitStav(); planNahled(); });
   klavesyEditoru(t,u);
 }
 function vlozit(t,pred,po="",vychozi=""){
@@ -1201,6 +1208,28 @@ async function kreslitZarazeni(ed,cesta){
   titul.focus(); titul.select();
 }
 
+/* Multisection (md2web): soubor začíná řádkem „multisection“, každý ## je podstránka.
+   Editor značku multisection:true v contents.json udržuje sám — podle ní prohlížeč načte
+   podstránky hned při startu (strom, wikiodkazy). */
+function castiMulti(text){
+  const radky=String(text||"").split("\n"); let i=0;
+  while(i<radky.length&&!radky[i].trim()) i++;
+  if(/^#(?!#)\s+/.test(radky[i]||"")){ i++; while(i<radky.length&&!radky[i].trim()) i++; }
+  if((radky[i]||"").trim().toLowerCase()!=="multisection") return null;
+  let vKodu=false; const casti=[];
+  for(const l of radky.slice(i+1)){ if(/^```/.test(l.trim())) vKodu=!vKodu; const h=!vKodu&&l.match(/^##(?!#)\s+(.+?)\s*#*\s*$/); if(h) casti.push(h[1].trim()); }
+  return casti;
+}
+function obnovitZnackyMulti(jenUzel){
+  for(const u of (jenUzel?[jenUzel]:stranky())){
+    if(druhZdroje(u)!=="mistni") continue;
+    const sb=E.soubory.get(u.file); if(!sb||sb.bin||sb.stav==="chyba"||sb.stav==="nacitam") continue;
+    const je=!!castiMulti(sb.text);
+    if(je&&!u.multisection) u.multisection=true; else if(!je&&u.multisection) delete u.multisection;
+  }
+}
+const podstrankyMulti=()=>stranky().flatMap(u=>druhZdroje(u)==="mistni"?(castiMulti(E.soubory.get(u.file)?.text)||[]):[]);
+
 /* =============================================================
    SPRÁVA WEBU — chybějící stránky, štítky hromadně, koncepty, prázdné a chybějící soubory
    ============================================================= */
@@ -1215,13 +1244,14 @@ function najitStrankuEd(cil){
 /* Odkazy bez cíle: [[…]], ![[…]], {{…}} a [text](soubor.md) v textech místních stránek (mimo bloky kódu) */
 function chybejiciCile(){
   const mistni=new Set(stranky().filter(u=>druhZdroje(u)==="mistni").map(u=>u.file));
+  const podstranky=new Set(podstrankyMulti().map(t=>slug(t)));
   const mapa=new Map();
   const pridat=(nazev,klic,zdroj,druh)=>{ if(!mapa.has(klic)) mapa.set(klic,{nazev,druh,zdroje:new Set()}); mapa.get(klic).zdroje.add(zdroj); };
   for(const u of stranky()){
     if(druhZdroje(u)!=="mistni") continue;
     const sb=E.soubory.get(u.file); if(!sb||sb.bin||!sb.text) continue;
     const text=sb.text.replace(/```[\s\S]*?```/g,"");
-    for(const m of text.matchAll(/(?:!?\[\[|\{\{)([^\]|#}]+)/g)){ const c=m[1].trim(); if(/^(?:štítek|stitek|tag)\s*:/i.test(c)) continue; if(c&&!najitStrankuEd(c)) pridat(c,"s:"+slug(c),u,"stranka"); }
+    for(const m of text.matchAll(/(?:!?\[\[|\{\{)([^\]|#}]+)/g)){ const c=m[1].trim(); if(/^(?:štítek|stitek|tag)\s*:/i.test(c)||podstranky.has(slug(c))) continue; if(c&&!najitStrankuEd(c)) pridat(c,"s:"+slug(c),u,"stranka"); }
     for(const m of text.matchAll(/\]\(([^)\s#]+\.md)(?:#[^)]*)?\)/gi)){ if(/^[a-z]+:/i.test(m[1])) continue; const c=cestaVuci(u.file,m[1]); if(!mistni.has(c)) pridat(c,"f:"+c,u,"soubor"); }
   }
   return [...mapa.values()].sort((a,b)=>b.zdroje.size-a.zdroje.size||a.nazev.localeCompare(b.nazev,"cs"));
@@ -1762,6 +1792,7 @@ async function nacistVsechnyStranky(vynutit){
     try{ const r=await ghNacist(u.file); Object.assign(s,r?{text:r.text,puvodni:r.text,sha:r.sha,stav:"nacteno"}:{sha:null,stav:"novy"}); }
     catch(e){ Object.assign(s,{stav:"chyba",chyba:e.message}); } } };
   await Promise.all([prace(),prace(),prace(),prace()]);
+  obnovitZnackyMulti(); obnovitStav();
   aktualizovatNahled(true);
 }
 
