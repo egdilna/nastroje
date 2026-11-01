@@ -1125,6 +1125,19 @@ function obnovitNezarazene(){
   $("#u-nezarazene-li").hidden=!n;
   $("#u-nezarazene-t").textContent=`Nezařazené soubory (${n})`;
 }
+/* wiki.json → ignore_files: soubory, které se k zařazení nenabízejí; položka končící „/“ je celá složka */
+function jeIgnorovany(cesta){ return (E.cfg?.ignore_files||[]).some(v=>v.endsWith("/")?cesta.startsWith(v):cesta===v); }
+function rozdelitIgnorovane(){
+  const vse=E.vsechnyNezarazene||[];
+  E.nezarazene=vse.filter(x=>!jeIgnorovany(x.cesta));
+  E.ignorovane=vse.filter(x=>jeIgnorovany(x.cesta));
+}
+function nastavitIgnorovani(polozka,ignorovat){
+  const s=new Set(E.cfg.ignore_files||[]);
+  if(ignorovat) s.add(polozka); else s.delete(polozka);
+  if(s.size) E.cfg.ignore_files=[...s].sort((a,b)=>a.localeCompare(b,"cs")); else delete E.cfg.ignore_files;
+  rozdelitIgnorovane(); obnovitNezarazene(); obnovitStav();
+}
 async function najitNezarazene(){
   if(!E.webNacten) return;
   try{
@@ -1133,11 +1146,12 @@ async function najitNezarazene(){
     const pouzite=new Set(stranky().filter(u=>druhZdroje(u)==="mistni").map(u=>u.file.replace(/^\.?\/+/,"")));
     pouzite.add((E.cfg.sidebar_file||"sidebar.md").replace(/^\.?\/+/,""));
     for(const c of E.smazat.keys()) pouzite.add(c);
-    E.nezarazene=(strom.tree||[]).filter(x=>x.type==="blob"&&/\.md$/i.test(x.path)&&x.path.startsWith(pred))
+    E.vsechnyNezarazene=(strom.tree||[]).filter(x=>x.type==="blob"&&/\.md$/i.test(x.path)&&x.path.startsWith(pred))
       .map(x=>({cesta:x.path.slice(pred.length),velikost:x.size}))
       .filter(x=>!pouzite.has(x.cesta)&&!x.cesta.split("/").some(c=>c.startsWith(".")))
       .sort((a,b)=>a.cesta.localeCompare(b.cesta,"cs"));
     E.nezarazeneOrezane=!!strom.truncated;
+    rozdelitIgnorovane();
   }catch(e){ E.nezarazene=null; E.nezarazeneChyba=e.message; }
   obnovitNezarazene();
   if(E.vybrano?.druh==="sprava"&&E.vybrano.nastroj==="nezarazene") vybrat(E.vybrano);
@@ -1148,10 +1162,20 @@ function kreslitNezarazene(k){
     el("p",{class:"tichy",style:"margin:0 0 10px"},"Soubory .md, které leží ve složce webu nebo jejích podsložkách, ale v obsahu webu nejsou. Vyberte soubor a zařaďte ho jako stránku — soubor se nikam nepřesouvá."));
   if(E.nezarazene==null){ k.append(el("p",{class:"tichy",role:"status"},E.nezarazeneChyba?"Obsah repozitáře se nepodařilo zjistit: "+E.nezarazeneChyba:"Prohledávám repozitář…")); return; }
   if(E.nezarazeneOrezane) k.append(el("div",{class:"upozorneni varovani",style:"margin:0 0 10px"},"Repozitář je tak velký, že GitHub vrátil jen část seznamu souborů. Některé nezařazené soubory tu proto chybět mohou."));
-  if(!E.nezarazene.length){ k.append(el("p",{style:"margin:0"},"Všechny soubory .md ve složce webu jsou zařazené.")); return; }
-  k.append(el("ul",{class:"vyber","aria-label":"Soubory k zařazení"},E.nezarazene.map(x=>el("li",{},
+  if(!E.nezarazene.length) k.append(el("p",{style:"margin:0"},"Všechny soubory .md ve složce webu jsou zařazené nebo ignorované."));
+  else k.append(el("ul",{class:"vyber","aria-label":"Soubory k zařazení"},E.nezarazene.map(x=>el("li",{},
     el("a",{href:"#zaradit-"+encodeURIComponent(x.cesta),onclick:e=>{ e.preventDefault(); vybrat({druh:"zaradit",cesta:x.cesta}); }},
       el("b",{},x.cesta.split("/").pop()),el("br"),el("small",{},(x.cesta.includes("/")?x.cesta.slice(0,x.cesta.lastIndexOf("/")+1)+" · ":"")+velikostTextem(x.velikost)))))));
+  const pravidla=E.cfg.ignore_files||[];
+  if(pravidla.length){
+    const d=el("details",{style:"margin-top:16px"},el("summary",{},`Ignorované (${pravidla.length} ${pravidla.length===1?"pravidlo":pravidla.length<5?"pravidla":"pravidel"}, ${E.ignorovane?.length||0} ${(E.ignorovane?.length||0)===1?"soubor":(E.ignorovane?.length||0)>=2&&(E.ignorovane?.length||0)<=4?"soubory":"souborů"})`),
+      el("p",{class:"tichy",style:"margin:6px 0"},"Uloženo ve wiki.json (ignore_files). Položka končící lomítkem ignoruje celou složku."),
+      el("ul",{class:"sprava-seznam"},pravidla.map(v=>el("li",{},el("div",{class:"radek"},el("code",{},v),
+        el("small",{class:"tichy"},v.endsWith("/")?` · složka, ${E.ignorovane.filter(x=>x.cesta.startsWith(v)).length} souborů`:(E.ignorovane.some(x=>x.cesta===v)?"":" · soubor už v repozitáři není")),
+        el("button",{class:"btn mini",type:"button",style:"margin-left:auto",onclick:()=>{ nastavitIgnorovani(v,false); stav(`„${v}“ se znovu nabízí k zařazení — uloží se do wiki.json tlačítkem Uložit vše`,"zmeny"); vybrat({druh:"sprava",nastroj:"nezarazene"}); }},"Přestat ignorovat"))))));
+    d.open=!!E.otevritIgnorovane; d.addEventListener("toggle",()=>{ E.otevritIgnorovane=d.open; });
+    k.append(d);
+  }
 }
 function titulZTextu(text,cesta){
   const h=String(text||"").match(/^#(?!#)\s+(.+?)\s*#*\s*$/m);
@@ -1196,18 +1220,25 @@ async function kreslitZarazeni(ed,cesta){
     if(cil) (cil.children=cil.children||[]).push(u); else E.strom.push(u);
     E.posledniZarazeni=cil?._k||null;
     E.soubory.set(cesta,{text:soubor.text,puvodni:soubor.text,sha:soubor.sha,stav:"nacteno"});
-    E.nezarazene=(E.nezarazene||[]).filter(y=>y.cesta!==cesta);
+    E.nezarazene=(E.nezarazene||[]).filter(y=>y.cesta!==cesta); E.vsechnyNezarazene=(E.vsechnyNezarazene||[]).filter(y=>y.cesta!==cesta);
     vybrat({druh:"stranka",uzel:u});
     stav(`Zařazeno: ${u.title} — zapíše se do contents.json při uložení`,"zmeny");
   };
   const smazat=()=>{
     if(!confirm(`Smazat soubor ${cesta} z repozitáře? Smaže se při uložení.`)) return;
     E.smazat.set(cesta,soubor?.sha||null);
-    E.nezarazene=(E.nezarazene||[]).filter(y=>y.cesta!==cesta);
+    E.nezarazene=(E.nezarazene||[]).filter(y=>y.cesta!==cesta); E.vsechnyNezarazene=(E.vsechnyNezarazene||[]).filter(y=>y.cesta!==cesta);
     vybrat({druh:"sprava",nastroj:"nezarazene"}); obnovitStav();
   };
   k.append(el("div",{class:"radek",style:"margin-top:14px"},el("button",{class:"btn hl",type:"button",onclick:zaradit},"Zařadit do webu"),
+    el("button",{class:"btn",type:"button",onclick:()=>ignorovat(cesta)},"Ignorovat soubor"),
+    cesta.includes("/")?el("button",{class:"btn",type:"button",onclick:()=>ignorovat(cesta.slice(0,cesta.lastIndexOf("/")+1))},"Ignorovat celou složku "+cesta.slice(0,cesta.lastIndexOf("/")+1)):null,
     el("button",{class:"btn nebezpecne",type:"button",onclick:smazat},"Smazat soubor z repozitáře")));
+  function ignorovat(polozka){
+    nastavitIgnorovani(polozka,true);
+    vybrat({druh:"sprava",nastroj:"nezarazene"});
+    stav(`„${polozka}“ se už nebude nabízet k zařazení — uloží se do wiki.json tlačítkem Uložit vše`,"zmeny");
+  }
   titul.focus(); titul.select();
 }
 
@@ -1281,7 +1312,7 @@ async function kreslitSpravu(ed,nastroj){
   const nav=el("nav",{"aria-label":"Nástroje správy"});
   const kreslitZalozky=pocty=>{
     nav.innerHTML="";
-    nav.append(el("ul",{class:"vyber vodorovne"},NASTROJE_SPRAVY.filter(([k])=>k!=="nezarazene"||E.nezarazene?.length||nastroj==="nezarazene").map(([k,i,n])=>{
+    nav.append(el("ul",{class:"vyber vodorovne"},NASTROJE_SPRAVY.filter(([k])=>k!=="nezarazene"||E.nezarazene?.length||(E.cfg.ignore_files||[]).length||nastroj==="nezarazene").map(([k,i,n])=>{
       const c=pocty?.[k];
       return el("li",{},el("a",{href:"#sprava-"+k,"aria-current":k===nastroj?"page":false,onclick:e=>{ e.preventDefault(); vybrat({druh:"sprava",nastroj:k}); }},
         i+" "+n,c!=null?el("span",{class:"zalozka-pocet"+(c&&k!=="stitky"?" nenulovy":"")},` (${c})`):null));
