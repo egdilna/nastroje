@@ -28,8 +28,9 @@ Pokročilý editor architektury v jazyce ArchiMate, který může ale sloužit i
 
 ## Dokumentace a odkazy na repo
 
-* [Kompletní uživatelská příručka Archimate editoru](https://nastroje.egdilna.cz/archimate/docs-cs
-* Nástroj má vlastní repozitář na GitHubu na adrese https://github.com/michalradacz/archimate-editor
+* [[Uživatelská příručka k ArchiMate editoru]]
+* V angličtině [[🇬🇧 Full User Guide for ArchiMate editor]]
+
 
 ## Změny a novinky
 
