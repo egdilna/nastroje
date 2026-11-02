@@ -823,6 +823,11 @@ při načtení z adresy nikdy neuplatnilo.
 Zastaralý cíl z předchozího projektu se ignoruje a otevře se výchozí záložka.
 
 ## Dva lidé na jednom souboru: sloučení místo přepsání
+**Celý mechanismus je rozepsaný v `dkm/dkm-sync-cs.md` a `dkm/dkm-sync-en.md`** — formát
+`dkmdata`, pravidla sloučení po úrovních, pseudokód, osm invariantů, šestnáct testovacích
+scénářů a zadání pro AI, která má totéž postavit nad `dkmdata` jinde. Když měníš slučování,
+uprav **oba** dokumenty; zdejší sekce zůstává krátkým výtahem.
+
 `saveToGitHub` posílá **`state.ghSha`, tedy verzi, ze které jsme vyšli** — ne tu nejčerstvější.
 Právě tím GitHub pozná cizí zápis a odmítne ho (409, u chybějící sha 422). Dřív se sha načítala
 těsně před zápisem, takže se ta ochrana zahazovala a poslední uložení tiše přepsalo cizí práci.
@@ -1635,6 +1640,10 @@ atributu).
 
 **Když měníš tvar dat, uprav obě schémata i kapitolu 37.** Kanonickým zdrojem pravdy
 je `mergeEmpty` — co projde jím, to je platný `.dkmdata`.
+
+Zkrácený, samonosný popis formátu pro předání dál (a popis synchronizace k němu) je
+v `dkm/dkm-sync-cs.md` / `dkm/dkm-sync-en.md`. Při změně tvaru dat projdi i je —
+mají vlastní tabulku tvarů hodnot podle typu atributu.
 
 Dvě věci na nich nerozbíjej:
 - **Jsou samonosná.** Neodkazují na sebe navzájem ani na síť, aby se dalo jedno

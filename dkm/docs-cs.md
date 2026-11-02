@@ -3743,6 +3743,11 @@ Tahle kapitola je pro toho, kdo chce s daty DKM pracovat zvenčí: vlastním skr
 jiným nástrojem nebo přes AI. Popisuje oba souborové formáty závazně — co v nich je,
 co v nich být musí a co z nich smí čekat čtečka.
 
+Vedle ní leží **`dkm/dkm-sync-cs.md`** (anglicky `dkm/dkm-sync-en.md`): zkrácený, samonosný
+popis formátu plus podrobný popis toho, jak nad jedním souborem pracuje víc lidí —
+trojcestné sloučení, optimistický zápis, pseudokód a zadání pro AI, která má totéž
+postavit v jiné aplikaci. Pro předání dál je to ten dokument, který se posílá celý.
+
 ### 37.1 Dva formáty a rozdíl mezi nimi
 
 | | `.dkmdata` | `.dkmpkg` |

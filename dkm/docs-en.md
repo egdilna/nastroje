@@ -3811,6 +3811,12 @@ This chapter is for anyone who wants to work with DKM data from the outside: wit
 their own script, another tool, or through an AI. It describes both file formats
 normatively — what is in them, what has to be in them, and what a reader may expect.
 
+Alongside it there is **`dkm/dkm-sync-en.md`** (in Czech `dkm/dkm-sync-cs.md`): a condensed,
+self-contained description of the format plus a detailed account of how several people work
+over a single file — the three-way merge, the optimistic write, pseudocode, and a brief for
+an AI that is to build the same thing in another application. That is the document to hand
+over whole.
+
 ### 37.1 Two formats and the difference between them
 
 | | `.dkmdata` | `.dkmpkg` |
