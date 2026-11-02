@@ -3805,6 +3805,9 @@ ohlídat čtečka i ten, kdo soubor vyrábí:
 | `…attributes[].listId` | `selectLists[].id` |
 | `…attributes[].tagSetId` | `tagSets[].id` |
 | `…attributes[].targetType` | `entityTypes[].id`, nebo `any` |
+| `…attributes[].filtrCile[].scopeId` | `entityTypes[].id` nebo `aspects[].id` (podle `scope`); u `scope: "system"` je `null` |
+| `…attributes[].filtrCile[].attrId` | `id` definice atributu **na tom** typu či aspektu; u `scope: "system"` klíč `name` |
+| `…attributes[].filtrCile[].value` u `op: "targetIs"` | `entities[].id` |
 | `relationTypes[].fromTypes[]`, `toTypes[]` | `entityTypes[].id` |
 | `settings.tabs[].typeIds[]`, `aspectId`, `tagSetId`, `viewId`, `entityId`, `typeId` | `entityTypes[].id`, `aspects[].id`, `tagSets[].id`, `savedViews[].id`, `entities[].id` — podle druhu záložky |
 | `settings.tabs[].modulId` | `settings.modules[].id`. Neplatný odkaz čtečka **zahodí** a záložka se tím stane společnou — zmizet nesmí |
@@ -3820,6 +3823,20 @@ u typu vazby: neprázdný seznam omezuje, prázdný seznam i chybějící klíč
 volnou. Kdo to přečte obráceně, zakáže všechno. Omezení se navíc čte jen podle `scope` —
 u `from` se dívá na `fromTypes`, u `to` na `toTypes`, u `specific` na obojí, u `universal`
 na nic.
+
+**Omezení cíle (`filtrCile`) je schválně přísnější ve schématu než ve čtečce.** Pole smí
+nést jen operátory, které jsou u **nevyplněné** hodnoty nepravdivé, a schéma je proto
+vypisuje výčtem. Záporné operátory (`notEquals`, `notContains`, `empty`, `isFalse`, `notIn`,
+`hasNotTag`, `hasNoTags`, `hasNoTarget`) tam chybí záměrně: entita, která ten atribut vůbec
+nemá, by jimi prošla, takže by omezení místo zúžení pustilo i všechno ostatní. V uloženém
+pohledu (`savedViews[].filter.attrFilters`) jsou tytéž operátory dál **povolené** — tam se
+filtruje už hotový seznam, ne nabídka. `mergeEmpty` jiný operátor nezahodí; soubor s ním
+projde načtením, jen se bude chovat špatně, proto to hlídá schéma.
+
+Pole `filtrCile` je nepovinné a dává smysl jen u atributu typu `relation`. Prázdné pole
+i chybějící klíč znamenají „bez omezení" — stejně jako prázdné `fromTypes` u typu vazby.
+Hodnota, která omezení přestane splňovat, se u entity **nemaže**; zůstane uložená
+a aplikace ji jen označí.
 
 ### 37.4 Hodnoty atributů podle typu
 
