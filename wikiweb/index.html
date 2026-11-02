@@ -1441,7 +1441,7 @@ const podstrankyMulti=()=>stranky().flatMap(u=>druhZdroje(u)==="mistni"?[...(cas
 /* =============================================================
    SPRÁVA WEBU — chybějící stránky, štítky hromadně, koncepty, prázdné a chybějící soubory
    ============================================================= */
-const NASTROJE_SPRAVY=[["chybejici","🔗","Chybějící stránky"],["nezarazene","📥","Nezařazené soubory"],["stitky","🏷️","Štítky"],["koncepty","✏️","Koncepty"],["prazdne","📭","Prázdné stránky"],["soubory","❗","Chybějící soubory"]];
+const NASTROJE_SPRAVY=[["chybejici","🔗","Chybějící stránky"],["nezarazene","📥","Nezařazené soubory"],["stitky","🏷️","Štítky"],["nahradit","🔁","Najít a nahradit"],["koncepty","✏️","Koncepty"],["prazdne","📭","Prázdné stránky"],["soubory","❗","Chybějící soubory"]];
 function cestaVuci(odSouboru,rel){
   try{ return decodeURIComponent(new URL(rel,"https://w/"+odSouboru).pathname.slice(1)); }catch{ return rel; }
 }
@@ -1513,6 +1513,7 @@ async function kreslitSpravu(ed,nastroj){
       el("div",{class:"tichy"},"Odkazuje sem: ",...[...x.zdroje].flatMap((u,i)=>[i?", ":"",odkazNaStranku(u)]))))));
   }
   else if(nastroj==="stitky") kreslitSpravuStitku(k);
+  else if(nastroj==="nahradit") kreslitNahrazeni(k);
   else if(nastroj==="nezarazene") kreslitNezarazene(k);
   else if(nastroj==="koncepty"){
     const z=stranky().filter(u=>u.draft);
@@ -1589,6 +1590,89 @@ function kreslitSpravuStitku(k){
     });
     pr.append(box); pr.querySelector("input")?.focus();
   };
+}
+
+/* Najít a nahradit ve všech .md souborech webu ve složce webu — kromě souborů spravovaných
+   jinou aplikací, cizích zdrojů a souborů, které se nepodařilo načíst. Prostý text nebo
+   regulární výraz ($1 … ve „Nahradit za“), volitelně velikost písmen a celá slova. Mění jen
+   texty v paměti, do repozitáře jde všechno až tlačítkem Uložit vše. */
+function souboryKNahrazeni(){
+  const cizi=spravovaneSoubory(), m=new Map();
+  for(const u of stranky()){
+    if(druhZdroje(u)!=="mistni"||!u.file||cizi.has(u.file)) continue;
+    if(!m.has(u.file)) m.set(u.file,u);
+  }
+  const sb=E.cfg.sidebar_file||"sidebar.md";
+  if(E.soubory.has(sb)&&!m.has(sb)) m.set(sb,null);
+  return [...m].filter(([c])=>{ const x=E.soubory.get(c); return x&&!x.bin&&x.stav!=="chyba"&&typeof x.text==="string"; });
+}
+function vyrazNahrazeni(n){
+  if(!n.najit) return null;
+  let z=n.regex?n.najit:n.najit.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  if(n.slova) z="(?<![\\p{L}\\p{N}_])(?:"+z+")(?![\\p{L}\\p{N}_])";
+  return new RegExp(z,"gu"+(n.velikost?"":"i"));
+}
+function kreslitNahrazeni(k){
+  const n=E.nahrazeni=E.nahrazeni||{najit:"",nahradit:"",velikost:false,slova:false,regex:false,vynechat:new Set()};
+  const najit=el("input",{type:"text",value:n.najit,autocomplete:"off",spellcheck:"false"});
+  const nahradit=el("input",{type:"text",value:n.nahradit,autocomplete:"off",spellcheck:"false"});
+  const volba=(klic,popis)=>{ const ch=el("input",{type:"checkbox",checked:n[klic]}); ch.addEventListener("change",()=>{ n[klic]=ch.checked; hledat(); }); return el("label",{class:"radek"},ch,popis); };
+  const vysledek=el("div",{"aria-live":"polite"});
+  const form=el("form",{class:"karta-form"},
+    el("label",{class:"pole"},el("span",{},"Najít"),najit),
+    el("label",{class:"pole"},el("span",{},"Nahradit za"),nahradit),
+    el("div",{class:"radek",style:"flex-wrap:wrap;gap:14px;margin:6px 0"},volba("velikost","Rozlišovat velikost písmen"),volba("slova","Jen celá slova"),volba("regex","Regulární výraz ($1 … v náhradě)")),
+    el("div",{class:"radek"},el("button",{class:"btn",type:"submit"},"Hledat")));
+  form.addEventListener("submit",e=>{ e.preventDefault(); n.vynechat=new Set(); hledat(); });
+  najit.addEventListener("input",()=>{ n.najit=najit.value; });
+  nahradit.addEventListener("input",()=>{ n.nahradit=nahradit.value; });
+  k.append(el("h3",{},"Najít a nahradit"),
+    el("p",{class:"tichy",style:"margin:0 0 10px"},"Hledá v textech všech stránek ve složce webu i v postranním panelu. Soubory spravované jinou aplikací a obsah odjinud se nemění. Nahrazení se uloží až tlačítkem Uložit vše."),
+    form,vysledek);
+  function hledat(){
+    vysledek.innerHTML="";
+    if(!n.najit) return;
+    let re; try{ re=vyrazNahrazeni(n); }catch(chyba){ vysledek.append(el("div",{class:"upozorneni chyba",role:"alert"},"Regulární výraz není platný: "+chyba.message)); return; }
+    const nalezy=[];
+    for(const [cesta,u] of souboryKNahrazeni()){
+      const t=E.soubory.get(cesta).text, mista=[...t.matchAll(re)].filter(m=>m[0]!=="");
+      if(mista.length) nalezy.push({cesta,u,mista,t});
+    }
+    const celkem=nalezy.reduce((a,x)=>a+x.mista.length,0);
+    vysledek.append(el("h4",{},nalezy.length?`Nalezeno ${celkem} výskytů v ${nalezy.length} souborech`:"Nic nenalezeno"));
+    if(!nalezy.length) return;
+    const ukazka=(t,m)=>{ const z=Math.max(0,m.index-40), kon=Math.min(t.length,m.index+m[0].length+40);
+      return el("div",{class:"tichy",style:"font-family:var(--mono,monospace);font-size:.85em;white-space:pre-wrap;overflow-wrap:anywhere"},
+        (z?"…":"")+t.slice(z,m.index).replace(/\n/g," ⏎ "),el("del",{style:"background:#f8d7da;color:#721c24"},m[0]),
+        el("ins",{style:"background:#d4edda;color:#155724;text-decoration:none"},(n.regex?m[0].replace(new RegExp(re.source,re.flags.replace("g","")),n.nahradit):n.nahradit)),
+        t.slice(m.index+m[0].length,kon).replace(/\n/g," ⏎ ")+(kon<t.length?"…":"")); };
+    const tlacitko=el("button",{class:"btn",type:"button"});
+    const obnovitTlacitko=()=>{ const z=nalezy.filter(x=>!n.vynechat.has(x.cesta)); const p=z.reduce((a,x)=>a+x.mista.length,0);
+      tlacitko.textContent=`Nahradit ve vybraných (${p} výskytů v ${z.length} souborech)`; tlacitko.disabled=!z.length; };
+    vysledek.append(el("ul",{class:"sprava-seznam"},nalezy.map(x=>{
+      const ch=el("input",{type:"checkbox",checked:!n.vynechat.has(x.cesta),"aria-label":"Nahradit v "+(x.u?x.u.title:x.cesta)});
+      ch.addEventListener("change",()=>{ ch.checked?n.vynechat.delete(x.cesta):n.vynechat.add(x.cesta); obnovitTlacitko(); });
+      return el("li",{},
+        el("div",{class:"radek"},ch,x.u?odkazNaStranku(x.u):el("a",{href:"#sidebar",onclick:e=>{ e.preventDefault(); vybrat({druh:"sidebar"}); }},"🧩 Postranní panel"),
+          el("small",{class:"tichy"},` · ${x.cesta} · ${x.mista.length}×`)),
+        ...x.mista.slice(0,5).map(m=>ukazka(x.t,m)),
+        x.mista.length>5?el("div",{class:"tichy"},`… a dalších ${x.mista.length-5}`):null);
+    })),el("div",{class:"radek",style:"margin-top:10px"},tlacitko));
+    obnovitTlacitko();
+    tlacitko.addEventListener("click",()=>{
+      const z=nalezy.filter(x=>!n.vynechat.has(x.cesta)); if(!z.length) return;
+      let pocet=0;
+      for(const x of z){ const s=E.soubory.get(x.cesta); if(s.text!==x.t) continue;
+        pocet+=[...s.text.matchAll(re)].filter(m=>m[0]!=="").length;
+        const nt=s.text.replace(re,n.regex?n.nahradit:()=>n.nahradit);
+        if(nt!==s.text){ s.text=nt; s.vytvorit=true; } }
+      obnovitStav(); planNahled();
+      stav(`Nahrazeno ${pocet} výskytů v ${z.length} souborech — uloží se tlačítkem Uložit vše`,"zmeny");
+      hledat(); najit.focus();
+    });
+  }
+  hledat();
+  najit.focus();
 }
 
 /* ---------- postranní panel ---------- */
