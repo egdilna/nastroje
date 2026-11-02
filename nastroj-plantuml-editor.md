@@ -16,6 +16,10 @@ PlantUML je dnes asi nejpoužívanější framework pro tzv. text diagramming, t
 * Export a import diagramů a složek, přenos diagramů mezi projekty
 * Funguje i s projekty uloženými na GitHubu s více diagramy
 
+## Dokumentace
+
+* [[Uživatelská příručka k PlantUML editoru]]
+
 ## Historie změn a oprav
 
 {{Novinky a změny/Změny a novinky v PlantUML editoru}}
