@@ -5,4 +5,5 @@ Nástroj či miniplatforma [[DKM manažer dat]] neslouží jen pro modelování 
 2. Jakýkoliv nástroj může zajistit plnohodnotnou výměnu dat a přenos dat s nástroji a aplikacemi v DKM, protože existuje výměnný formát DKMPKG umožňující plný přenos dat i s byznys inteligencí nad nimi - viz také [[Popis formátů DKMDATA a DKMPKG s rozšířeními]]
 3. V DKM se skvěle vytvářejí logické a konceptuální datové modely (existují pro to i šablony) a nebo i fakedata modely, které pak přes DKMPKG a nebo exportem datového modelu i dat přenesete. A DKM má i export datového modelu aplikace do fyzických modelů v různých formátech (XML, JSON, JSONLD, SQL DDL apod.)
 4. Asi nejjjednodušší je si udělat aplikaci rovnou v DKM a využívat nativně všechny jeho funkce - k tomu si projděte dokument [[Uživatelská příručka DKM]]
-5. Nad DKM formátem a nástrojem se dají dělat i vlastní aplikace s vlastním frontendem, jak popisujeme třeba v [[Jak jsme dělali aplikaci pro zápisy nad DKM]]
+5. Nad DKM formátem a nástrojem se dají dělat i vlastní aplikace s vlastním frontendem, jak popisujeme třeba v článku [[Články/Jak jsme dělali aplikaci pro zápisy nad DKM|Jak jsme dělali aplikaci pro zápisy nad DKM]]
+

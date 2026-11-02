@@ -4,7 +4,8 @@
 
 **Dynamický správce znalostí — flexibilní znalostní báze.**
 
-Webová aplikace pro správu znalostí s entitním modelem a aspekty. Podporuje import z CSV s automatickým rozpoznáním sloupců (název, typ, aspekty, archiv, inbox, atributy), hromadné operace nad výběrem entit a vícejazyčné rozhraní.
+Webová aplikace pro správu znalostí s entitním modelem a aspekty. Podporuje import z CSV s automatickým rozpoznáním sloupců (název, typ, aspekty, archiv, inbox, atributy), hromadné operace nad výběrem entit a vícejazyčné rozhraní. Ale také pokročilé filtrování, vazby mezi entitami, organizaci přes tagy a skupiny, různé pohledy, nebo kompletní pokročilý export (včetně tvorby DOCX) a šablony i s daty.
+
 
 * Možno využít jak pro modelování dynamických datových modelů, tak i pro samotné datové aplikace nad DDM
 * {++Tvorba a správa datových modelů a EDM, včetně detailního validního popisu dat++}
@@ -25,8 +26,13 @@ Webová aplikace pro správu znalostí s entitním modelem a aspekty. Podporuje 
 
 ## Dokumentace
 
-- [[Uživatelská příručka DKM]]
-- In english there is [[🇬🇧 User guide for DKM data manager]]
+Dokumentace nám trochu roste a proto je zde zvláštní sekce [[Dokumentace DKM]]
+
+{{Dokumentace DKM}}
+
+
+
+
 
 ## Změny a novinky v DKM
 
