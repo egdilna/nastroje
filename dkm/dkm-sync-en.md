@@ -2,7 +2,7 @@
 
 This document has four parts:
 
-1. **Format** — what is in a `.dkmdata` file (and in a portable `.dkmpkg`), and where its authoritative description lives.
+1. **What matters about the format for merging** — the short version; the full description of the format is in `dkm-formats-en.md`.
 2. **Synchronisation** — how several people work on one file in a repository.
 3. **Programmer's description** — the function map, pseudocode and the invariants that must not be broken.
 4. **Brief for an AI** — what to do so that the same synchronisation works in another application built on the `dkmdata` format.
@@ -17,137 +17,70 @@ When sources disagree, the one higher up wins:
 
 1. **`dkm/index.html`** — the actual behaviour of the application. For the format, the canonical function is `mergeEmpty`: whatever passes through it is valid `.dkmdata`.
 2. **`dkm/dkmdata-scheme.json`** and **`dkm/dkmpkg-scheme.json`** — JSON Schema 2020-12. A machine-checkable description of both formats, and **self-contained**: neither references the network nor the other file, so one can be copied whole, validated offline, or pasted into a conversation with an AI. Shared definitions are therefore duplicated in both files and **must stay identical**.
-3. **`dkm/docs-en.md`, chapter 37** — prose for what a schema cannot capture: referential integrity, identity on import, the shape of a value according to the attribute type.
-4. **This document** — the map, the reasoning and the how-to. Where it disagrees with the above, the above wins.
+3. **`dkm/dkm-formats-en.md`** (in Czech `dkm-formats-cs.md`) — the prose description of the format, including what a schema cannot capture: referential integrity, identity on import, the shape of a value according to the attribute type.
+4. **This document** — synchronisation: the map, the reasoning and the how-to. Where it disagrees with the above, the above wins.
 
-This document is written to be handed over on its own: the format section is condensed, but complete enough to write and read a file from.
+This document covers **synchronisation only**. Anyone writing a reader or a writer for the file needs `dkm-formats-en.md` alongside it; the two are handed over together.
 
 ---
 
-# PART 1 — THE FORMAT
+# PART 1 — WHAT MATTERS ABOUT THE FORMAT FOR MERGING
 
-## 1.1 Two files, two schemas
+**The full description of the format is in `dkm-formats-en.md`** (in Czech
+`dkm-formats-cs.md`) and machine-readably in `dkmdata-scheme.json` /
+`dkmpkg-scheme.json`. What follows is only what the merge rules rest on — anyone who needs
+to read or write the file should go there.
 
-| File | What it holds | Schema |
-|---|---|---|
-| `*.dkmdata` | the **whole project** — model, entities, settings, saved views | `dkmdata-scheme.json` |
-| `*.dkmpkg` | a **portable package** — a slice of entities and model to import into another project | `dkmpkg-scheme.json` |
+The synchronisation described in part 2 applies **to `.dkmdata` only**, i.e. to the whole
+project. A `.dkmpkg` package is a one-off transfer, not a shared file.
 
-Both are plain JSON in UTF-8. DKM writes `.dkmdata` as `JSON.stringify(data, null, 2)`, i.e. indented by two spaces; the reader does not care about formatting.
-
-The synchronisation described in part 2 applies **to `.dkmdata` only**. A package is a one-off transfer, not a shared file.
-
-## 1.2 The project — top level
+## 1.1 The shape of a project in brief
 
 ```json
-{
-  "version": 1,
-  "projectName": "Data management",
-  "projectDescription": "",
-  "ghPath": "owner/repo/path/file.dkmdata",
+{ "version": 1, "projectName": "…", "ghPath": "owner/repo/path/file.dkmdata",
   "settings": { "tabs": [], "modules": [] },
-  "entityTypes": [],
-  "aspects": [],
-  "relationTypes": [],
-  "selectLists": [],
-  "tagSets": [],
-  "savedViews": [],
-  "jsonExports": [],
-  "entities": []
-}
-```
-
-- Only **`entities`** is required. Everything else is filled in empty by `mergeEmpty`, so `{"entities":[]}` is a valid project.
-- `additionalProperties` is **`false`** at this level — deliberately: `mergeEmpty` really does drop unknown keys, so the schema describes the reader's actual behaviour, not a wish. **Inside entities it is `true`**, because those pass through load and save unchanged.
-- `ghPath` is the triple `owner/repo/path` and is **the only thing about synchronisation that belongs in the data**. The token, the comment author's name, the theme, the language and the autosave switch are **not** in the file and must never be.
-
-## 1.3 The model
-
-| Collection | What it is | Key fields |
-|---|---|---|
-| `entityTypes` | entity type — a named set of attributes | `id`, `name`, `icon`, `attributes[]`, `sablonaDetailu`, `nazevZe`, `jsonKey` |
-| `aspects` | a **cross-cutting** set of attributes, addable to an entity independently of its type | the same plus `pinned` |
-| `relationTypes` | relation type | `id`, `name`, `reverseName`, `scope`, `fromTypes[]`, `toTypes[]` |
-| `selectLists` | select list | `id`, `name`, `values[]` |
-| `tagSets` | tag set | `id`, `name`, `tags[]`, `uzavrena` (closed) |
-| `savedViews` | saved view (filter + display) | `id`, `name`, `filters`, `pravidla[]` |
-| `jsonExports` | JSON/XML export profile | `id`, `name`, `keyOverrides`, `vynechane` |
-
-An attribute definition (`attributes[]` on a type or an aspect) carries `id`, `name`, `type` and, depending on the type, more: `listId` (select list), `tagSetId` (tag set), `targetType` and `multi` (relation), `template` (composed), `min`/`max`/`krok`/`jednotka` (slider), `autoInc`/`posledni` (auto-numbering), `filtrCile[]` (restricting a relation target by conditions) and four display switches (`hidden`, `copyable`, `highlight`, `hideEmpty`).
-
-Attribute types: `text`, `textarea`, `date`, `url`, `select`, `yesno`, `relation`, `number`, `range`, `checklist`, `tags`, `composed`.
-
-**Relation scope** (`relationTypes[].scope`) is `universal`, `from`, `to` or `specific`. Empty `fromTypes`/`toTypes` means **"anything"**, not "nothing".
-
-## 1.4 An entity
-
-```json
-{
-  "id": "e_lz3k9a1b2c",
-  "name": "Alice Novakova",
-  "typeId": "ty_person",
-  "aspects": ["asp_contact"],
-  "attributes": { "at_email": "a@b.cz", "at_state": "Active" },
-  "relations": [{ "id": "r_1", "relationTypeId": "rt_belongs", "targetId": "e_2" }],
-  "customAttributes": [{ "id": "ca_1", "name": "Internal no.", "type": "text", "value": "7" }],
-  "comments": [{ "id": "c_1", "content": "verified", "author": "mr", "createdAt": "2026-09-08T14:03:22.184Z" }],
-  "objects": [{ "id": "o_1", "name": "Minutes", "content": "…" }],
-  "inInbox": false,
-  "archived": false,
-  "locked": false,
-  "pinned": false,
-  "createdAt": "2026-09-01T07:00:00.000Z",
-  "updatedAt": "2026-09-08T14:03:22.184Z"
-}
-```
-
-Only `id` is required. The rules you cannot see in the JSON:
-
-- **An identifier is never renumbered.** All referencing, and the recognition of entities on a repeated package import, rests on it.
-- **A relation is written on the source entity only.** The reverse direction ("Referenced by") is computed; it is not duplicated in the data.
-- **A relation's `id` means nothing.** A relation's identity is the pair `(relationTypeId, targetId)` — and that is crucial for synchronisation, see § 2.5.
-- **A relation can also come from an attribute** of type `relation`: the value is the target entity's `id` (an array of ids with `multi: true`). For the model this is a fully-fledged relation, just written elsewhere than in `relations`.
-- **An empty value is not stored** — the key is removed from `attributes`. `null` does not arise in freshly written data, even though the schema tolerates it. In `customAttributes` an empty string is stored instead, because the key cannot be removed.
-- **`updatedAt` is the time the content changed.** Locking, pinning and wiki-link renaming do not move it.
-
-## 1.5 The shape of a value by attribute type
-
-| Type | Value |
-|---|---|
-| `text`, `textarea`, `url`, `select` | string (`textarea` renders as Markdown + CriticMarkup; `select` must be one of the linked list's values) |
-| `date` | `YYYY-MM-DD`, **not** a full ISO timestamp |
-| `number`, `range` | a **number**, not a string |
-| `yesno` | `true` / `false` |
-| `checklist` | array of `{text, hotovo}` objects — the rows belong to the **entity**, not to the definition |
-| `tags` | array of strings from the linked tag set (DKM keeps them alphabetical) |
-| `relation` | the target entity's `id`, or an array of ids with `multi: true` |
-| `composed` | **none** — the value is computed from the `template` on every render; only the template is stored |
-
-Timestamps are ISO 8601 in UTC with a trailing `Z` (`new Date().toISOString()`).
-
-## 1.6 What the schema does not enforce
-
-JSON Schema can describe shape, not relationships. Neither a reader nor a writer may rely on validation alone:
-
-- **Referential integrity.** `typeId`, `aspects[]`, the keys of `attributes`, `relationTypeId`, `targetId`, `listId`, `tagSetId`, `targetType`, `scopeId`/`attrId` in filter rules — all are references into other collections and the schema does not check them. DKM does not fall over on a broken reference: an unknown attribute is not displayed, a relation to a non-existent entity is cleaned up during merging (`uklidOdkazy`).
-- **The value matching the attribute type.** The `oneOf` in `hodnotaAtributu` lets a string through where a number belongs, because the type lives in the attribute definition. A value must therefore be checked against that definition's `type`.
-- **Uniqueness of `id`.** The schema does not require it; a reader must cope with a foreign file holding two entities with the same `id`, and a writer must maintain it itself.
-- **Auto-numbering values are not unique.** `posledni` is a counter, not a reservation — see § 2.15.
-
-## 1.7 The `.dkmpkg` package
-
-```json
-{ "format": "dkmpkg", "version": 1, "kind": "model",
-  "exportedFrom": "…", "exportedAt": "2026-09-08T…",
-  "model": { "entityTypes": [], "aspects": [], "relationTypes": [], "selectLists": [], "tagSets": [] },
+  "entityTypes": [], "aspects": [], "relationTypes": [], "selectLists": [], "tagSets": [],
+  "savedViews": [], "jsonExports": [],
   "entities": [] }
 ```
 
-`format` and `entities` are required. `kind: "model"` with empty `entities` is a **model transfer**; otherwise it is a slice of entities plus the model those entities asked for. A package carries no settings, tabs, modules or saved views — and its `entities[]` use the same definitions as `.dkmdata`, because entities **carry their own `id`** so that a repeated import is recognised.
+Only **`entities`** is required. The seven model collections (`entityTypes`, `aspects`,
+`relationTypes`, `selectLists`, `tagSets`, `savedViews`, `jsonExports`) merge by one rule,
+`entities` by another, and `settings` travels as a scalar — see § 2.5.
 
-## 1.8 How to verify a file
+`ghPath` is **the only thing about synchronisation that belongs in the data**. The token,
+the comment author's name, the theme, the language and the autosave switch are not in the file.
 
-The schemas are checked with **two validators** (`python -m jsonschema` and `ajv` in strict mode), against **real files out of the application**, and **always negatively as well** — that is, that broken data really does fail. "Zero errors" on its own proves nothing.
+## 1.2 The properties of the format without which a merge cannot be written
+
+1. **Identifiers are stable and never renumbered.** The whole merge is a union by `id`;
+   renumbering would turn every entity into a new one.
+2. **A relation's identity is the pair `(relationTypeId, targetId)`, not `id`.** Every client
+   makes relation `id`s up itself, so by `id` two new relations on the same entity would be
+   reported as a conflict.
+3. **A relation is written on the source entity only.** The reverse direction is computed; it
+   is not in the data, so it is not merged either.
+4. **A relation can also come from an attribute** of type `relation` — the value is the target
+   entity's `id`, an array of ids with `multi: true`. Reference cleanup (§ 2.5) must reach
+   there too, not only into `relations`.
+5. **An empty value is not stored** — the key is removed from `attributes`. A missing key is a
+   normal state, not an error. In `customAttributes` an empty string stands for "not filled in",
+   because the key cannot be removed.
+6. **A composed attribute (`composed`) has no value** — the data holds its template. There is
+   nothing to merge.
+7. **`updatedAt` is the time the content changed.** Locking, pinning and wiki-link fixes do not
+   move it; a merge takes the later of the two and it decides nothing (§ 2.15).
+8. **The auto-numbering counter (`autoInc`, `posledni`) lives in the attribute definition**,
+   i.e. in the model — and it merges differently from the rest of the model (§ 2.5).
+
+## 1.3 What the schema does not enforce
+
+JSON Schema can describe shape, not relationships, so a writer must not rely on validation
+alone: **referential integrity** (`typeId`, `aspects[]`, the keys of `attributes`,
+`relationTypeId`, `targetId`, `listId`, `tagSetId`, `targetType`, `scopeId`/`attrId` in filter
+rules), **the value matching the attribute type** (the type lives in the definition, not with
+the value), **uniqueness of `id`** and **uniqueness of assigned numbers** (`posledni` is a
+counter, not a reservation). The complete list of references is in `dkm-formats-en.md`, § 7.
 
 ---
 
@@ -356,7 +289,33 @@ DKM handles this with a fallback read: when the content does not arrive in the r
 
 Part of the same thing is an **overwrite guard**: until the file has genuinely been loaded, nothing may be saved. Without it, one failed load leaves an empty state running and automatic saving overwrites the user's entire data with it. In DKM that role is played by `ghSha` and the base: without a load there is no `ghSha`, and without a `ghSha` the only write that succeeds is into a file that **does not exist** (a `PUT` with no `sha` over an existing file returns 422, i.e. a conflict, and a conflict is resolved by merging, not by overwriting).
 
-**The same limit applies to writing, from the other side.** The repository's rule is to leave Contents `PUT` for ordinary small saves and to assemble larger content from the Git Data API (blob → `git/trees` with `base_tree` → `git/commits` → `PATCH git/refs/heads/{branch}`). DKM today saves **through Contents `PUT` only**; for a project with large embedded texts that is a gap to fill, and anyone building this mechanism afresh should plan for that path from the start.
+**The same limit applies to writing, from the other side.** Contents `PUT` stays for
+ordinary small saves; above `GH_MEZ_VELKEHO` (1 MB of content bytes) the commit is assembled
+from the Git Data API: blob → `git/trees` with `base_tree` → `git/commits` →
+`PATCH git/refs/heads/{branch}`. The path to the project does not carry a branch (the Contents
+API writes to the default branch), so the Git Data API path has to look it up on the
+repository — `ghVychoziVetev` remembers it per repository.
+
+**The overwrite guard must not be bypassed in the process**, and it is the only thing that
+really matters on this path. The Contents API provides it for us when we send the `sha` in the
+body of the `PUT`. The Git Data API has no such parameter, so it is assembled from two pieces:
+
+1. **the file's sha is compared with the one we started from** (`ghShaSouboru`). A mismatch
+   means somebody else's write → a conflict. **A fresh sha is never fetched to make the write
+   succeed.**
+2. **The branch update goes without `force`.** If somebody committed in the meantime, our
+   parent is stale, the update is not a fast-forward, and GitHub rejects it (422) → a conflict.
+
+Both return **the same response shape, `{__konflikt:true}`**, as 409/422 from the Contents API,
+so the "download, merge, retry" loop is one for both paths and does not have to know about the
+large one.
+
+Two edge cases this path otherwise gets stuck on: **the file does not exist yet** (the sha is
+`null` on both sides, so nothing is compared and the tree is simply added on top of
+`base_tree`), and **a repository without a single commit** — that one has no branch, so the
+commit is assembled with no parent, the tree with no `base_tree`, and the branch is **created**
+with `POST git/refs` rather than updated. Without the second case, the first save of a large
+project into a fresh repository ends on a 404.
 
 And for large files, build base64 **in chunks** (`TextEncoder` + `String.fromCharCode.apply`): `btoa(unescape(encodeURIComponent(text)))` over a multi-megabyte string creates enormous intermediate copies.
 
@@ -564,7 +523,7 @@ The text below is written to be handed over as a brief to a model that is to bui
 
 Build multi-user work over a single file in the `dkmdata` format stored in a repository (GitHub, or any other store with a conditional write). The application runs **without a server**: all of the logic is on the client, the store is dumb.
 
-**The authority on the format** is `dkmdata-scheme.json` (JSON Schema 2020-12, self-contained). Parts 1–3 of this document describe the format in prose and the reference implementation in `dkm/index.html`.
+**The authority on the format** is `dkmdata-scheme.json` (JSON Schema 2020-12, self-contained) and, in prose, `dkm-formats-en.md`; hand both over with this document. Parts 2 and 3 describe the reference implementation in `dkm/index.html`.
 
 ### What to build
 
@@ -573,7 +532,8 @@ Build multi-user work over a single file in the `dkmdata` format stored in a rep
 3. **Watching for foreign changes**: the cheapest request the store offers (latest commit, ETag, `If-None-Match`), only while the window is visible, with an adaptive cadence of tens of seconds while working and single minutes when idle.
 4. **Reporting** at three levels — silence (the ordinary course of a silent merge), a transient message (a manual merge), a persistent element (conflict, revival). No dialog.
 5. **Reference cleanup** after every merge.
-6. **A fallback read** for files over the store's limit, and **a guard that nothing is saved until the file has genuinely been loaded**.
+6. **A fallback read and a fallback write** for files over the store's limit — and **the same overwrite guard on both**: when the fallback path has no "I am writing against this version" parameter, replace it with a version comparison plus a conditional update (on GitHub: the file's sha plus a branch update without `force`). Plus **a guard that nothing is saved until the file has genuinely been loaded**.
+7. **Base64 in chunks** over `TextEncoder` / `TextDecoder`, not `btoa(unescape(encodeURIComponent(…)))`.
 
 ### What to hold to
 
@@ -611,13 +571,15 @@ Mistakes that look like simplifications of this design and quietly destroy data:
 | putting the merged data into the base | the next difference is computed against something that was never in the file |
 | cleaning up references before merging | the cleanup runs against a stale list of records |
 | a naive `atob(response.content)` | a file over 1 MB looks damaged while it is perfectly fine |
+| a fallback write without a version comparison | it bypasses the protection the ordinary path provides by itself — and you find out only when data is lost |
 | saving without a confirmed load | one failed load plus automatic saving equals overwritten data |
 
 ---
 
 ## Related documents
 
-- `dkm/dkmdata-scheme.json`, `dkm/dkmpkg-scheme.json` — the authoritative format description
-- `dkm/docs-en.md` ch. 34 (technical background: browser storage, the GitHub API), ch. 37 (formats and schemas)
+- `dkm/dkm-formats-en.md` (in Czech `dkm-formats-cs.md`) — the normative description of both formats
+- `dkm/dkmdata-scheme.json`, `dkm/dkmpkg-scheme.json` — the machine-readable schemas
+- `dkm/docs-en.md` ch. 34 (technical background: browser storage, the GitHub API) — the user manual; it does not describe the formats
 - `dkm/CLAUDE.md` — the sections "Dva lidé na jednom souboru: sloučení místo přepsání" and "Sloučení běží samo; ptát se je výjimka"
 - `dkm/dkm-sync-cs.md` — the Czech version of this document

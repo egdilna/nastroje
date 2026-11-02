@@ -46,7 +46,14 @@ Každý nástroj, který čte nebo zapisuje soubor přes GitHub API, proto musí
 
 Při jakékoli práci s GitHub API v nástroji si těchto pět bodů projdi — i když měníš
 něco jiného. Hotové vzory jsou v `mros/index.html` (`ghObsahSouboru`, `ghUlozitVelke`,
-`ghNacteno`, `ghHistorieOkno`) a v `stor/index.html`.
+`ghNacteno`, `ghHistorieOkno`), v `stor/index.html` a v `dkm/index.html` (`ghNactiSoubor`,
+`ghUlozitVelke`, `bytyDoBase64`).
+
+U nástroje, kde nad jedním souborem pracuje víc lidí, platí ještě šestý bod:
+**obchozí zápis nesmí obejít ochranu proti přepsání.** Contents API ji dělá tím, že se
+v těle `PUT`u posílá `sha` verze, ze které jsme vyšli; Git Data API takový parametr nemá,
+takže se musí nahradit porovnáním sha souboru a posunem větve **bez `force`**. Rozepsané
+je to v `dkm/dkm-sync-cs.md`; DKM je referenční implementace.
 
 ## Seznamy jsou odkazy, ne tlačítka
 

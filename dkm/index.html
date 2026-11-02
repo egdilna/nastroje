@@ -3746,8 +3746,22 @@ toast(t('loaded')+(state.data.projectName?' – '+state.data.projectName:''));
 /* GITHUB */
 function ghEncode(s){return btoa(unescape(encodeURIComponent(s)))}
 function ghDecode(s){return decodeURIComponent(escape(atob(s)))}
-function ghB64ToText(b64){return decodeURIComponent(escape(atob(b64.replace(/\n/g,''))))}
-function ghTextToB64(text){return btoa(unescape(encodeURIComponent(text)))}
+/* base64 po blocích a přes TextEncoder/TextDecoder. `btoa(unescape(encodeURIComponent(…)))`
+   ani `decodeURIComponent(escape(atob(…)))` nad několikamegabajtovým řetězcem nejdou —
+   vyrábějí obří mezikopie. Projekt s vloženými texty tu velikosti snadno dosáhne
+   a base64 ho navíc nafoukne o třetinu. */
+function bytyDoBase64(b){
+let s='';
+for(let i=0;i<b.length;i+=8192)s+=String.fromCharCode.apply(null,b.subarray(i,i+8192));
+return btoa(s);
+}
+function base64DoBytu(t){
+const s=atob(String(t).replace(/\s+/g,'')),b=new Uint8Array(s.length);
+for(let i=0;i<s.length;i++)b[i]=s.charCodeAt(i);
+return b;
+}
+function ghB64ToText(b64){return new TextDecoder().decode(base64DoBytu(b64))}
+function ghTextToB64(text){return bytyDoBase64(new TextEncoder().encode(text))}
 function parseGhPath(p){if(!p)return null;const parts=String(p).trim().split('/').filter(Boolean);if(parts.length<3)return null;return{owner:parts[0],repo:parts[1],path:parts.slice(2).join('/')}}
 /* Motiv je nastavení prohlížeče, ne dat projektu — stejně jako jazyk a GitHub token.
    Stanoví se už ve skriptu v <head>, tohle je jen čtení a přepínání za běhu. */
@@ -3833,6 +3847,78 @@ if(!res.ok)throw new Error(ghErrFromStatus(res.status));
 return res.json();
 }).then(blob=>({text:ghB64ToText(blob.content),sha:meta.sha}));
 });
+}
+
+/* =============================================================
+   ZÁPIS NAD MEZ CONTENTS API
+   Contents API `PUT` je na běžná malá uložení. U většího obsahu se commit
+   skládá z Git Data API: blob → strom (s `base_tree`) → commit → posun větve.
+   Je to táž mez jako u čtení, jen z druhé strany — a projekt s vloženými
+   texty na ni dosáhne snadno.
+
+   **Pojistka proti přepsání zůstává stejná.** Píše se proti verzi, ze které
+   jsme vyšli: nesedící sha souboru i pohnutá větev jsou konflikt, a konflikt
+   se řeší sloučením, ne přepsáním. `{__konflikt:true}` je týž tvar odpovědi,
+   jaký vrací 409/422 z Contents API, takže smyčka v `saveToGitHub` nepozná
+   rozdíl a nemusí se o tuhle cestu starat.
+   ============================================================= */
+const GH_MEZ_VELKEHO=1000000;
+let ghVetevPamet=null;
+/* Cesta k projektu (`vlastník/repozitář/cesta`) větev nenese, takže Contents API
+   píše do výchozí větve repozitáře. Git Data API ji ale pojmenovat musí — tady se
+   zjistí. Pamatuje se per repozitář, aby se nedotahovala při každém uložení. */
+function ghVychoziVetev(parsed){
+const klic=parsed.owner+'/'+parsed.repo;
+if(ghVetevPamet&&ghVetevPamet.klic===klic)return Promise.resolve(ghVetevPamet.vetev);
+return fetch('https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo,{headers:ghHeaders()}).then(res=>{
+if(!res.ok)throw new Error(ghErrFromStatus(res.status));
+return res.json();
+}).then(j=>{ghVetevPamet={klic:klic,vetev:j.default_branch||'main'};return ghVetevPamet.vetev});
+}
+/* Jen sha souboru, bez obsahu. Chybějící soubor není chyba — ještě nevznikl. */
+function ghShaSouboru(parsed){
+return fetch('https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/contents/'+parsed.path,{headers:ghHeaders()}).then(res=>{
+if(res.status===404)return null;
+if(!res.ok)throw new Error(ghErrFromStatus(res.status));
+return res.json().then(j=>(j&&j.sha)||null);
+});
+}
+function ghUlozitVelke(parsed,byty,zprava,ocekavanaSha){
+const zaklad='https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/';
+const posli=(cesta,volby)=>fetch(zaklad+cesta,Object.assign({headers:Object.assign({'Content-Type':'application/json'},ghHeaders())},volby||{})).then(res=>{
+if(!res.ok)return res.json().catch(()=>({})).then(j=>{
+const e=new Error(ghErrFromStatus(res.status)+(j.message?' – '+j.message:''));e.status=res.status;throw e;
+});
+return res.json();
+});
+return ghVychoziVetev(parsed).then(vetev=>ghShaSouboru(parsed).then(sha=>{
+/* Tohle je ta ochrana, kterou u Contents API dělá `sha` v těle `PUT`u.
+   Nikdy ji neobcházej dotažením čerstvé sha — tím se vypne. */
+if((sha||null)!==(ocekavanaSha||null)){dbg('Velké uložení: cizí zápis (sha '+String(sha).slice(0,8)+' ≠ '+String(ocekavanaSha).slice(0,8)+')');return{__konflikt:true}}
+/* Prázdný repozitář bez jediného commitu větev nemá — pak se zakládá
+   (commit bez rodiče a `POST git/refs`), ne posouvá. Bez toho by první
+   uložení velkého projektu do čerstvého repozitáře skončilo na 404. */
+return posli('git/ref/heads/'+encodeURIComponent(vetev)).then(ref=>ref.object.sha,err=>{
+if(err&&err.status===404)return null;
+throw err;
+}).then(rodic=>
+(rodic?posli('git/commits/'+rodic).then(c=>c.tree.sha):Promise.resolve(null)).then(rodicStrom=>
+posli('git/blobs',{method:'POST',body:JSON.stringify({content:bytyDoBase64(byty),encoding:'base64'})}).then(blob=>{
+const strom={tree:[{path:parsed.path,mode:'100644',type:'blob',sha:blob.sha}]};
+if(rodicStrom)strom.base_tree=rodicStrom;
+return posli('git/trees',{method:'POST',body:JSON.stringify(strom)}).then(strom=>
+posli('git/commits',{method:'POST',body:JSON.stringify({message:zprava,tree:strom.sha,parents:rodic?[rodic]:[]})}).then(commit=>{
+const hotovo=()=>({content:{sha:blob.sha},commit:{sha:commit.sha}});
+/* Posun větve bez `force`. Když mezitím někdo commitoval, není to fast-forward
+   a GitHub ho odmítne — což je přesně ten konflikt, který chceme. */
+if(!rodic)return posli('git/refs',{method:'POST',body:JSON.stringify({ref:'refs/heads/'+vetev,sha:commit.sha})}).then(hotovo);
+return posli('git/refs/heads/'+encodeURIComponent(vetev),{method:'PATCH',body:JSON.stringify({sha:commit.sha,force:false})}).then(hotovo,err=>{
+if(err&&(err.status===422||err.status===409)){dbg('Velké uložení: větev se pohnula, konflikt');return{__konflikt:true}}
+throw err;
+});
+}));
+})));
+}));
 }
 
 function loadFromGitHub(ghPath,opts){
@@ -4215,7 +4301,13 @@ dbg('GitHub PUT '+apiUrl+(tiche?' (auto)':''));
    uložení tiše přepsalo cizí práci. Konflikt se teď vyřeší sloučením a zkusí znovu. */
 const doPut=sha=>{
 const kdo=userName();
-const body={message:t('ghCommitMsg')+(state.data.projectName?' – '+state.data.projectName:'')+(kdo?' ('+kdo+')':''),content:ghTextToB64(JSON.stringify(state.data,null,2))};
+const zprava=t('ghCommitMsg')+(state.data.projectName?' – '+state.data.projectName:'')+(kdo?' ('+kdo+')':'');
+/* Jedno zakódování na pokus: z bajtů se počítá velikost i base64. */
+const byty=new TextEncoder().encode(JSON.stringify(state.data,null,2));
+/* Nad mezí Contents API se commit skládá z Git Data API. Vrací týž tvar
+   odpovědi včetně `{__konflikt:true}`, takže smyčka níž je na obě cesty jedna. */
+if(byty.length>GH_MEZ_VELKEHO){dbg('Velký soubor ('+byty.length+' B), ukládám přes Git Data API');return ghUlozitVelke(parsed,byty,zprava,sha)}
+const body={message:zprava,content:bytyDoBase64(byty)};
 if(sha)body.sha=sha;
 return fetch(apiUrl,{method:'PUT',headers:Object.assign({'Content-Type':'application/json'},ghHeaders()),body:JSON.stringify(body)}).then(res=>{
 if(res.status===409||res.status===422)return{__konflikt:true};
