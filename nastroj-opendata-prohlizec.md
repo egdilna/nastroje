@@ -24,9 +24,5 @@
 
 ## Historie změn
 
-
-| Datum | Typ | Popis |
-| --- | --- | --- |
-| 19. 4. 2026 | Funkce | Po načtení lze vytvořit statický URL odkaz, kterým se rovnou načtou data připravené datové sady. Tímhle se z toho stává opravdu univerzální prohlížeč, kterým lze rovnou přes odkaz zobrazit jakoukoliv datovou sadu otevřených dat. |
-| 18. 4. 2026 | Vylepšení | Nyní načítá datové sady ve formátech JSON, JSONLD, JSONTABLE a CSV, TSV. |
+[[Novinky a změny/Změny a novinky v Opendata prohlížeči|Změny a novinky v Opendata prohlížeči]]
 
