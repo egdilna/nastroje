@@ -2,7 +2,7 @@
 
 Dokument má čtyři části:
 
-1. **Formát** — co je v souboru `.dkmdata` (a v přenosném `.dkmpkg`) a kde je jeho závazný popis.
+1. **Co z formátu je pro slučování podstatné** — zkratka; celý popis formátu je v `dkm-formats-cs.md`.
 2. **Synchronizace** — jak v DKM funguje práce několika lidí nad jedním souborem v repozitáři.
 3. **Programátorský popis** — mapa funkcí, pseudokód a invarianty, které se nesmí porušit.
 4. **Zadání pro AI** — co udělat, aby táž synchronizace fungovala v jiné aplikaci postavené nad formátem `dkmdata`.
@@ -17,137 +17,65 @@ Když si zdroje odporují, platí ten výš:
 
 1. **`dkm/index.html`** — skutečné chování aplikace. Pro formát je kanonická funkce `mergeEmpty`: co projde jí, je platný `.dkmdata`.
 2. **`dkm/dkmdata-scheme.json`** a **`dkm/dkmpkg-scheme.json`** — JSON Schema 2020-12. Strojově ověřitelný popis obou formátů, **samonosný**: neodkazuje na síť ani jedno na druhé, takže se dá zkopírovat celé, validovat offline nebo vložit AI do rozhovoru. Sdílené definice jsou proto v obou souborech duplicitně a **musí zůstat totožné**.
-3. **`dkm/docs-cs.md`, kapitola 37** — slovní popis toho, co schéma zachytit neumí: referenční integrita, identita při importu, tvar hodnoty podle typu atributu.
-4. **Tento dokument** — mapa, souvislosti a návod. Při rozporu platí body výš.
+3. **`dkm/dkm-formats-cs.md`** (anglicky `dkm-formats-en.md`) — slovní popis formátu včetně toho, co schéma zachytit neumí: referenční integrita, identita při importu, tvar hodnoty podle typu atributu.
+4. **Tento dokument** — synchronizace: mapa, souvislosti a návod. Při rozporu platí body výš.
 
-Tenhle dokument je napsaný tak, aby se dal poslat samostatně: popis formátu je zkrácený, ale úplný natolik, aby podle něj šel soubor napsat i přečíst.
+Tenhle dokument se zabývá **jen synchronizací**. Kdo chce psát čtečku nebo zapisovatele souboru, potřebuje k němu `dkm-formats-cs.md`; obojí se posílá spolu.
 
 ---
 
-# ČÁST 1 — FORMÁT
+# ČÁST 1 — CO Z FORMÁTU JE PRO SLUČOVÁNÍ PODSTATNÉ
 
-## 1.1 Dva soubory, dvě schémata
+**Celý popis formátu je v `dkm-formats-cs.md`** (anglicky `dkm-formats-en.md`) a strojově
+v `dkmdata-scheme.json` / `dkmpkg-scheme.json`. Tady je jen to, na čem stojí pravidla
+sloučení — kdo potřebuje soubor přečíst nebo zapsat, ať jde tam.
 
-| Soubor | Co nese | Schéma |
-|---|---|---|
-| `*.dkmdata` | **celý projekt** — model, entity, nastavení, uložené pohledy | `dkmdata-scheme.json` |
-| `*.dkmpkg` | **přenosný balíček** — výřez entit a modelu k importu do jiného projektu | `dkmpkg-scheme.json` |
+Synchronizace popsaná v části 2 se týká **výhradně `.dkmdata`**, tedy celého projektu.
+Balíček `.dkmpkg` je jednorázový přenos, ne společný soubor.
 
-Oba jsou obyčejný JSON v UTF-8. DKM `.dkmdata` zapisuje jako `JSON.stringify(data, null, 2)`, tedy odsazené dvěma mezerami; čtečka na formátování nehledí.
-
-Synchronizace popsaná v části 2 se týká **výhradně `.dkmdata`**. Balíček je jednorázový přenos, ne společný soubor.
-
-## 1.2 Projekt — nejvyšší úroveň
+## 1.1 Tvar projektu v kostce
 
 ```json
-{
-  "version": 1,
-  "projectName": "Správa dat",
-  "projectDescription": "",
-  "ghPath": "vlastnik/repozitar/cesta/soubor.dkmdata",
+{ "version": 1, "projectName": "…", "ghPath": "vlastnik/repozitar/cesta/soubor.dkmdata",
   "settings": { "tabs": [], "modules": [] },
-  "entityTypes": [],
-  "aspects": [],
-  "relationTypes": [],
-  "selectLists": [],
-  "tagSets": [],
-  "savedViews": [],
-  "jsonExports": [],
-  "entities": []
-}
-```
-
-- Povinné je **jen `entities`**. Všechno ostatní si `mergeEmpty` doplní prázdné, takže `{"entities":[]}` je platný projekt.
-- `additionalProperties` je na téhle úrovni **`false`** — a je to záměr: `mergeEmpty` neznámé klíče doopravdy zahodí, takže schéma popisuje skutečné chování čtečky, ne přání. **Uvnitř entit je naopak `true`**, protože ty projdou načtením i uložením beze změny.
-- `ghPath` je trojice `vlastník/repozitář/cesta` a je **jediná věc ze synchronizace, která patří do dat**. Token, jméno autora komentářů, motiv, jazyk ani zapnuté automatické ukládání v souboru **nejsou** a nikdy tam nesmí být.
-
-## 1.3 Model
-
-| Kolekce | Co to je | Klíčová pole |
-|---|---|---|
-| `entityTypes` | typ entity — pojmenovaná sada atributů | `id`, `name`, `icon`, `attributes[]`, `sablonaDetailu`, `nazevZe`, `jsonKey` |
-| `aspects` | **průřezová** sada atributů, přidatelná entitě nezávisle na typu | totéž + `pinned` |
-| `relationTypes` | typ vazby | `id`, `name`, `reverseName`, `scope`, `fromTypes[]`, `toTypes[]` |
-| `selectLists` | číselník | `id`, `name`, `values[]` |
-| `tagSets` | soustava tagů | `id`, `name`, `tags[]`, `uzavrena` |
-| `savedViews` | uložený pohled (filtr + zobrazení) | `id`, `name`, `filters`, `pravidla[]` |
-| `jsonExports` | profil exportu do JSON/XML | `id`, `name`, `keyOverrides`, `vynechane` |
-
-Definice atributu (`attributes[]` u typu i u aspektu) nese `id`, `name`, `type` a podle typu další pole: `listId` (číselník), `tagSetId` (soustava tagů), `targetType` a `multi` (vazba), `template` (složený), `min`/`max`/`krok`/`jednotka` (posuvník), `autoInc`/`posledni` (samočíslování), `filtrCile[]` (omezení cíle vazby podmínkami) a čtyři přepínače zobrazení (`hidden`, `copyable`, `highlight`, `hideEmpty`).
-
-Typy atributů: `text`, `textarea`, `date`, `url`, `select`, `yesno`, `relation`, `number`, `range`, `checklist`, `tags`, `composed`.
-
-**Rozsah vazby** (`relationTypes[].scope`) je `universal`, `from`, `to` nebo `specific`. Prázdné `fromTypes`/`toTypes` znamená **„cokoli"**, ne „nic".
-
-## 1.4 Entita
-
-```json
-{
-  "id": "e_lz3k9a1b2c",
-  "name": "Alice Nováková",
-  "typeId": "ty_osoba",
-  "aspects": ["asp_kontakt"],
-  "attributes": { "at_email": "a@b.cz", "at_stav": "Aktivní" },
-  "relations": [{ "id": "r_1", "relationTypeId": "rt_patri", "targetId": "e_2" }],
-  "customAttributes": [{ "id": "ca_1", "name": "Interní číslo", "type": "text", "value": "7" }],
-  "comments": [{ "id": "c_1", "content": "ověřeno", "author": "mr", "createdAt": "2026-09-08T14:03:22.184Z" }],
-  "objects": [{ "id": "o_1", "name": "Zápis", "content": "…" }],
-  "inInbox": false,
-  "archived": false,
-  "locked": false,
-  "pinned": false,
-  "createdAt": "2026-09-01T07:00:00.000Z",
-  "updatedAt": "2026-09-08T14:03:22.184Z"
-}
-```
-
-Povinné je jen `id`. Pravidla, která se v JSONu nevidí:
-
-- **Identifikátor se nikdy nepřečísluje.** Na něm stojí veškeré odkazování i rozpoznání entit při opakovaném importu balíčku.
-- **Vazba se zapisuje jen u zdrojové entity.** Opačný směr („Odkazuje sem") se dopočítává, v datech se neduplikuje.
-- **Vazba `id` neznamená nic.** Identita vazby je dvojice `(relationTypeId, targetId)` — a je to pro synchronizaci klíčové, viz § 2.5.
-- **Vazba může vzniknout i atributem** typu `relation`: hodnota je `id` cílové entity (při `multi: true` pole `id`). Pro model je to plnohodnotná vazba, jen zapsaná jinde než v `relations`.
-- **Prázdná hodnota se neukládá** — klíč se z `attributes` smaže. `null` v čerstvě zapsaných datech nevzniká, i když ho schéma toleruje. U `customAttributes` se naopak ukládá prázdný řetězec, protože klíč smazat nelze.
-- **`updatedAt` je čas úpravy obsahu.** Zamčení, připnutí ani přejmenování wiki odkazů jím nehýbe.
-
-## 1.5 Tvar hodnoty podle typu atributu
-
-| Typ | Hodnota |
-|---|---|
-| `text`, `textarea`, `url`, `select` | řetězec (`textarea` se vykresluje jako Markdown + CriticMarkup; `select` musí být hodnota z navázaného číselníku) |
-| `date` | `RRRR-MM-DD`, **ne** plné ISO razítko |
-| `number`, `range` | **číslo**, ne řetězec |
-| `yesno` | `true` / `false` |
-| `checklist` | pole objektů `{text, hotovo}` — řádky patří **entitě**, ne definici |
-| `tags` | pole řetězců z navázané soustavy (DKM je drží abecedně) |
-| `relation` | `id` cílové entity, při `multi: true` pole `id` |
-| `composed` | **žádná** — hodnota se počítá ze šablony `template` při každém vykreslení; do dat se zapisuje jen šablona |
-
-Časové údaje jsou ISO 8601 v UTC s koncovým `Z` (`new Date().toISOString()`).
-
-## 1.6 Co schéma nevynucuje
-
-JSON Schema umí tvar, ne vztahy. Čtečka ani zapisovatel se proto nesmí spoléhat jen na validaci:
-
-- **Referenční integrita.** `typeId`, `aspects[]`, `attributes` klíče, `relationTypeId`, `targetId`, `listId`, `tagSetId`, `targetType`, `scopeId`/`attrId` v pravidlech filtrů — všechno jsou odkazy do jiných kolekcí a schéma je nehlídá. DKM se s rozbitým odkazem nehroutí: neznámý atribut se nezobrazí, vazba na neexistující entitu se při sloučení uklidí (`uklidOdkazy`).
-- **Shoda hodnoty s typem atributu.** `oneOf` v `hodnotaAtributu` pustí řetězec tam, kde má být číslo, protože typ je až v definici atributu. Hodnotu je tedy nutné ověřovat proti `type` té definice.
-- **Jedinečnost `id`.** Schéma ji nevyžaduje; čtečka musí počítat s tím, že cizí soubor může mít dvě entity se stejným `id`, a zapisovatel ji musí držet sám.
-- **Čísla samočíslujícího atributu nejsou unikátní.** `posledni` je čítač, ne rezervace — viz § 2.15.
-
-## 1.7 Balíček `.dkmpkg`
-
-```json
-{ "format": "dkmpkg", "version": 1, "kind": "model",
-  "exportedFrom": "…", "exportedAt": "2026-09-08T…",
-  "model": { "entityTypes": [], "aspects": [], "relationTypes": [], "selectLists": [], "tagSets": [] },
+  "entityTypes": [], "aspects": [], "relationTypes": [], "selectLists": [], "tagSets": [],
+  "savedViews": [], "jsonExports": [],
   "entities": [] }
 ```
 
-Povinné je `format` a `entities`. `kind: "model"` s prázdnými `entities` je **přenos modelu**; jinak jde o výřez entit s modelem, který si vyžádaly. Balíček nenese nastavení, záložky, moduly ani uložené pohledy — a `entities[]` používá tytéž definice jako `.dkmdata`, protože entity si v balíčku **nesou svoje `id`**, aby se opakovaný import poznal.
+Povinné je **jen `entities`**. Sedm kolekcí modelu (`entityTypes`, `aspects`,
+`relationTypes`, `selectLists`, `tagSets`, `savedViews`, `jsonExports`) se slučuje jedním
+pravidlem, `entities` druhým a `settings` se nesou jako skalár — viz § 2.5.
 
-## 1.8 Jak soubor ověřit
+`ghPath` je **jediná věc kolem synchronizace, která patří do dat**. Token, jméno autora
+komentářů, motiv, jazyk ani zapnuté automatické ukládání v souboru nejsou.
 
-Schémata se ověřují **dvěma validátory** (`python -m jsonschema` a `ajv` ve strict režimu), proti **skutečným souborům z aplikace** a **vždycky i negativně** — tedy že vadná data opravdu propadnou. Samotné „nula chyb" nedokazuje nic.
+## 1.2 Vlastnosti formátu, bez kterých se sloučení nedá napsat
+
+1. **Identifikátory jsou stabilní a nikdy se nepřečíslovávají.** Celé sloučení je sjednocení
+   podle `id`; přečíslování by z každé entity udělalo novou.
+2. **Identita vazby je dvojice `(relationTypeId, targetId)`, ne `id`.** `id` vazby si vyrábí
+   každý klient sám, takže podle něj by se dvě nové vazby téže entity hlásily jako spor.
+3. **Vazba se zapisuje jen u zdrojové entity.** Opačný směr se dopočítává; v datech není,
+   takže se ani neslučuje.
+4. **Vazba může vzniknout i atributem** typu `relation` — hodnota je `id` cílové entity,
+   při `multi: true` pole `id`. Úklid odkazů (§ 2.5) musí sahat i tam, ne jen do `relations`.
+5. **Prázdná hodnota se neukládá** — klíč se z `attributes` smaže. Chybějící klíč je normální
+   stav, ne chyba. U `customAttributes` je nevyplněno prázdný řetězec, protože klíč smazat nelze.
+6. **Složený atribut (`composed`) hodnotu nemá** — v datech je jeho šablona. Není co slučovat.
+7. **`updatedAt` je čas úpravy obsahu.** Zamčení, připnutí ani oprava wiki odkazů jím nehýbe;
+   při sloučení se bere pozdější z obou a o vítězi nerozhoduje (§ 2.15).
+8. **Čítač samočíslování (`autoInc`, `posledni`) je v definici atributu**, tedy v modelu —
+   a slučuje se jinak než zbytek modelu (§ 2.5).
+
+## 1.3 Co schéma nevynucuje
+
+JSON Schema umí tvar, ne vztahy. Zapisovatel se proto nesmí spoléhat jen na validaci:
+**referenční integrita** (`typeId`, `aspects[]`, klíče `attributes`, `relationTypeId`,
+`targetId`, `listId`, `tagSetId`, `targetType`, `scopeId`/`attrId` v pravidlech filtrů),
+**shoda hodnoty s typem atributu** (typ je až v definici, ne u hodnoty), **jedinečnost `id`**
+a **jedinečnost přidělených čísel** (`posledni` je čítač, ne rezervace). Úplný seznam odkazů
+je v `dkm-formats-cs.md`, § 7.
 
 ---
 
@@ -356,7 +284,31 @@ DKM to řeší záložním čtením: když obsah v odpovědi nedorazí, dotáhne
 
 K tomu patří **pojistka proti přepsání**: dokud soubor doopravdy nenačteme, nesmí se nic ukládat. Bez toho jedno neúspěšné načtení nechá běžet prázdný stav a automatické ukládání jím přepíše celá uživatelova data. V DKM tu roli plní `ghSha` a základ: bez načtení není `ghSha`, a bez `ghSha` se zapisuje jen do souboru, který **neexistuje** (`PUT` bez `sha` nad existujícím souborem vrátí 422, tedy konflikt, a konflikt se řeší sloučením, ne přepsáním).
 
-**Na zápis platí týž limit, jen z druhé strany.** Pravidlo repozitáře je nechat Contents `PUT` běžným malým uložením a větší obsah poskládat z Git Data API (blob → `git/trees` s `base_tree` → `git/commits` → `PATCH git/refs/heads/{větev}`). DKM dnes ukládá **jen přes Contents `PUT`**; u projektu s velkými vloženými texty je to místo, které je potřeba doplnit, a kdo tenhle mechanismus staví znovu, ať s tou cestou počítá od začátku.
+**Na zápis platí týž limit, jen z druhé strany.** Contents `PUT` zůstává běžným malým
+uložením; nad `GH_MEZ_VELKEHO` (1 MB bajtů obsahu) se commit skládá z Git Data API:
+blob → `git/trees` s `base_tree` → `git/commits` → `PATCH git/refs/heads/{větev}`. Cesta
+k projektu větev nenese (Contents API píše do výchozí větve), takže si ji Git Data API
+musí zjistit z repozitáře — `ghVychoziVetev` ji pamatuje per repozitář.
+
+**Pojistka proti přepsání se tím nesmí obejít**, a je to to jediné, na čem u téhle cesty
+záleží. Contents API ji dělá za nás tím, že v těle `PUT`u pošleme `sha`. Git Data API
+takový parametr nemá, takže se dělá ze dvou kusů:
+
+1. **sha souboru se porovná s tou, ze které jsme vyšli** (`ghShaSouboru`). Nesedí-li,
+   je to cizí zápis → konflikt. **Nikdy se nedotahuje čerstvá sha, aby zápis prošel.**
+2. **Posun větve jde bez `force`.** Když mezitím někdo commitoval, náš rodič je zastaralý,
+   posun není fast-forward a GitHub ho odmítne (422) → konflikt.
+
+Oboje vrací **týž tvar odpovědi `{__konflikt:true}`**, jaký vrací 409/422 z Contents API,
+takže smyčka „stáhni, sluč, zkus znovu" je na obě cesty jedna a o velkou cestu se nemusí
+starat.
+
+Dvě hraniční situace, na kterých se ta cesta jinak zasekne: **soubor ještě neexistuje**
+(sha je `null` na obou stranách, takže se neporovnává nic a strom se jen přidá nad
+`base_tree`) a **repozitář bez jediného commitu** — ten větev nemá, takže se commit
+skládá bez rodiče, strom bez `base_tree` a větev se `POST git/refs` **zakládá**, ne
+posouvá. Bez druhého případu skončí první uložení velkého projektu do čerstvého
+repozitáře na 404.
 
 A base64 u velkých souborů skládej **po blocích** (`TextEncoder` + `String.fromCharCode.apply`): `btoa(unescape(encodeURIComponent(text)))` nad několikamegabajtovým řetězcem vyrábí obří mezikopie.
 
@@ -564,7 +516,7 @@ Následující text je napsaný tak, aby se dal předat jako zadání modelu, kt
 
 Postav víceuživatelskou práci nad jedním souborem ve formátu `dkmdata` uloženým v repozitáři (GitHub nebo jiné úložiště s podmíněným zápisem). Aplikace běží **bez serveru**: veškerá logika je u klienta, úložiště je hloupé.
 
-**Autorita formátu** je `dkmdata-scheme.json` (JSON Schema 2020-12, samonosné). Části 1–3 tohoto dokumentu popisují formát slovně a referenční implementaci v `dkm/index.html`.
+**Autorita formátu** je `dkmdata-scheme.json` (JSON Schema 2020-12, samonosné) a slovně `dkm-formats-cs.md`; pošli si obojí s tímhle dokumentem. Části 2 a 3 popisují referenční implementaci v `dkm/index.html`.
 
 ### Co postavit
 
@@ -573,7 +525,8 @@ Postav víceuživatelskou práci nad jedním souborem ve formátu `dkmdata` ulo�
 3. **Hlídání cizích změn**: nejlevnější dotaz, jaký úložiště nabízí (poslední commit, ETag, `If-None-Match`), jen když je okno vidět, adaptivní tempo řádu desítek sekund při práci a jednotek minut v klidu.
 4. **Hlášení**: tři úrovně — mlčení (běžný průběh tichého sloučení), přechodná hláška (ruční sloučení), trvalý prvek (spor, oživení). Žádný dialog.
 5. **Úklid odkazů** po každém sloučení.
-6. **Záložní čtení** pro soubory nad limit úložiště a **pojistku, že se nic neukládá, dokud se soubor doopravdy nenačetl**.
+6. **Záložní čtení i zápis** pro soubory nad limit úložiště — a u obou **tutéž pojistku proti přepsání**: když obchozí cesta nemá parametr pro „píšu proti téhle verzi", nahraď ho porovnáním verze a podmíněným posunem (u GitHubu sha souboru + posun větve bez `force`). K tomu **pojistku, že se nic neukládá, dokud se soubor doopravdy nenačetl**.
+7. **Base64 po blocích** nad `TextEncoder`em / `TextDecoder`em, ne `btoa(unescape(encodeURIComponent(…)))`.
 
 ### Co dodržet
 
@@ -611,13 +564,15 @@ Chyby, které tenhle návrh vypadají jako zjednodušení, a přitom tiše nič�
 | po sloučení dát do základu sloučená data | další rozdíl se počítá proti něčemu, co v souboru nikdy nebylo |
 | uklidit odkazy před sloučením | uklízí se proti zastaralému seznamu záznamů |
 | naivní `atob(odpověď.content)` | soubor nad 1 MB vypadá jako poškozený, přitom je v pořádku |
+| obchozí zápis bez porovnání verze | obejde se tím ochrana, kterou běžná cesta dělá sama — a je to vidět až na ztrátě dat |
 | ukládat bez potvrzeného načtení | jedno neúspěšné načtení + automatické ukládání = přepsaná data |
 
 ---
 
 ## Související dokumenty
 
-- `dkm/dkmdata-scheme.json`, `dkm/dkmpkg-scheme.json` — závazný popis formátů
-- `dkm/docs-cs.md` kap. 34 (technické pozadí: úložiště v prohlížeči, GitHub API), kap. 37 (formáty a schémata)
+- `dkm/dkm-formats-cs.md` (anglicky `dkm-formats-en.md`) — závazný popis obou formátů
+- `dkm/dkmdata-scheme.json`, `dkm/dkmpkg-scheme.json` — strojová schémata
+- `dkm/docs-cs.md` kap. 34 (technické pozadí: úložiště v prohlížeči, GitHub API) — uživatelská příručka, formáty nepopisuje
 - `dkm/CLAUDE.md` — sekce „Dva lidé na jednom souboru: sloučení místo přepsání" a „Sloučení běží samo; ptát se je výjimka"
 - `dkm/dkm-sync-en.md` — anglická verze tohoto dokumentu

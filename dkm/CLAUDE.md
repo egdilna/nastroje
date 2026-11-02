@@ -860,6 +860,21 @@ v paletě) stáhne a sloučí, ale **neukládá** — co jde ven, si má uživat
 stojí vedle Načíst a Uložit, ne mezi exporty. Když se `sha` nezměnila, `slucSVzdalenym`
 rovnou skončí hláškou „nic nového"; bez toho by opakovaný stisk pokaždé hlásil sloučení.
 
+**Zápis nad 1 MB jde přes Git Data API** (`ghUlozitVelke`: blob → `git/trees` s `base_tree`
+→ `git/commits` → `PATCH git/refs/heads/{větev}`), Contents `PUT` zůstává malým uložením;
+hranice je `GH_MEZ_VELKEHO`. Větev se zjistí z repozitáře (`ghVychoziVetev`, pamatuje se per
+repozitář) — cesta k projektu ji nenese. **Ochranu proti přepsání musí ta cesta udělat sama**,
+protože Git Data API nemá kam poslat `sha`: porovná se sha souboru (`ghShaSouboru`) s tou, ze
+které jsme vyšli, a větev se posune **bez `force`**, takže cizí commit mezitím skončí na 422.
+Obojí vrací `{__konflikt:true}`, tedy týž tvar jako 409/422 z Contents API — smyčka
+„stáhni, sluč, zkus znovu" je proto na obě cesty jedna a o velkou cestu neví.
+**Prázdný repozitář větev nemá**: commit se pak skládá bez rodiče, strom bez `base_tree`
+a větev se `POST git/refs` zakládá. Bez toho skončí první uložení velkého projektu do
+čerstvého repozitáře na 404 (ověřeno scénářem G v `velke/t1.mjs`).
+Base64 se dělá **po blocích** (`bytyDoBase64` / `base64DoBytu` nad `TextEncoder`em
+a `TextDecoder`em); `btoa(unescape(encodeURIComponent(…)))` nad megabajty vyrábí obří
+mezikopie, a totéž platí pro `decodeURIComponent(escape(atob(…)))` při čtení.
+
 `zkontrolujVzdalene` se ptá jen na **poslední commit** (ne na obsah) a jen když je okno vidět.
 Tempo je adaptivní: `GH_KONTROLA_CILA_MS` (20 s) při práci, `GH_KONTROLA_KLID_MS` (120 s)
 v klidu; přepíná to `ghPosledniCinnost`. Ani to rychlé tempo není drahé — 180 dotazů za hodinu
@@ -1641,9 +1656,12 @@ atributu).
 **Když měníš tvar dat, uprav obě schémata i kapitolu 37.** Kanonickým zdrojem pravdy
 je `mergeEmpty` — co projde jím, to je platný `.dkmdata`.
 
-Zkrácený, samonosný popis formátu pro předání dál (a popis synchronizace k němu) je
-v `dkm/dkm-sync-cs.md` / `dkm/dkm-sync-en.md`. Při změně tvaru dat projdi i je —
-mají vlastní tabulku tvarů hodnot podle typu atributu.
+**Slovní popis formátů je v `dkm/dkm-formats-cs.md` a `dkm/dkm-formats-en.md`**, ne
+v příručce. Příručka je pro uživatele a pro ty, kdo si navrhují model; kapitola 37 v ní
+zůstala jako rozcestník (co ty dva soubory jsou, že v nich nejsou tajemství, kam jít dál).
+Programátorský popis včetně toho, co schéma neuhlídá, patří do `dkm-formats-*`. Při změně
+tvaru dat uprav **obě schémata, oba formátové dokumenty i rozcestník v kap. 37** —
+a `dkm-sync-*`, pokud se změna dotkne slučování.
 
 Dvě věci na nich nerozbíjej:
 - **Jsou samonosná.** Neodkazují na sebe navzájem ani na síť, aby se dalo jedno

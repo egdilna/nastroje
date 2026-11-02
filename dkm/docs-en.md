@@ -3526,7 +3526,7 @@ save and load — through a file, the clipboard or GitHub.
 ### 34.1 Data structure
 
 The project is one JSON document. Here is its outline; the normative description of
-both formats, machine-readable schemas included, is in chapter 37:
+both formats, machine-readable schemas included, is in `dkm/dkm-formats-en.md` (see ch. 37):
 
 ```
 {
@@ -3576,7 +3576,11 @@ both formats, machine-readable schemas included, is in chapter 37:
 
 ### 34.3 GitHub API
 
-DKM uses Contents API for reading + Git Data API (blobs) for writing large files. The token is stored in `localStorage['dkm-github-token']` (per origin).
+Ordinary reads and writes go through the **Contents API**. The 1 MB limit is worked around
+on both sides with the **Git Data API**: content the Contents API will not return is fetched
+from the blob by SHA, and a file over 1 MB is saved as a commit assembled from a blob, a tree
+and a branch update. The branch is the repository's default branch. The token is stored in
+`localStorage['dkm-github-token']` (per origin) and never reaches the project data.
 
 ### 34.4 Rendering
 
@@ -3807,200 +3811,35 @@ in EA itself. If it insists on something, say so — it can be tuned.
 
 ## 37. The `.dkmdata` and `.dkmpkg` file formats
 
-This chapter is for anyone who wants to work with DKM data from the outside: with
-their own script, another tool, or through an AI. It describes both file formats
-normatively — what is in them, what has to be in them, and what a reader may expect.
-
-Alongside it there is **`dkm/dkm-sync-en.md`** (in Czech `dkm/dkm-sync-cs.md`): a condensed,
-self-contained description of the format plus a detailed account of how several people work
-over a single file — the three-way merge, the optimistic write, pseudocode, and a brief for
-an AI that is to build the same thing in another application. That is the document to hand
-over whole.
-
-### 37.1 Two formats and the difference between them
+DKM works with two files. Both are plain JSON in UTF‑8, with no compression and no wrapper —
+so they can be opened in a text editor and read.
 
 | | `.dkmdata` | `.dkmpkg` |
 |---|---|---|
-| What it holds | **the whole project** — model, all entities, saved views and settings | **a slice** — selected entities plus only the part of the model they need |
+| What it holds | the **whole project** — model, all entities, saved views and settings | a **slice** — selected entities and only the part of the model they need |
 | What it is for | saving and backing up a project, moving it between devices, GitHub | moving data between two projects |
-| How it is produced | Save (Ctrl+S), clipboard, GitHub | Settings → Packages, or a bulk action on a selection (ch. 28) |
-| Marker | none — recognised by extension and content | mandatory key `"format": "dkmpkg"` |
-| How it is read | replaces the whole project | goes through the import wizard, which maps the model onto the target project |
+| How it is produced | Save (Ctrl+S), the clipboard, GitHub | Settings → Packages, or a bulk action over a selection (ch. 28) |
+| How it is loaded | replaces the whole project | goes through the import wizard, which maps the model onto the target project |
 
-Both are plain UTF‑8 JSON, uncompressed and unwrapped. `.dkmdata` is literally
-`JSON.stringify` of the application's internal state — nothing is added or removed.
+**No secrets are stored in these files.** The GitHub token, the AI key and the comment
+author's name are not in them and never will be — only the browser holds those (ch. 34.2).
+`ghPath` carries just the path in the form `owner/repo/path/file.dkmdata`, not access to it.
+A file can therefore be passed on or committed without taking credentials with it — but it
+does contain all of the project's data, so whatever sensitivity applies to the data applies
+to the file.
 
-### 37.2 Machine-readable schemas
+**The normative description of the formats lives outside this manual**, because it is
+material for programmers:
 
-Two JSON Schema documents (draft 2020-12) sit next to the application:
-
-- **<https://nastroje.egdilna.cz/dkm/dkmdata-scheme.json>** — the whole project
-- **<https://nastroje.egdilna.cz/dkm/dkmpkg-scheme.json>** — the portable package
-
-In the source they are `dkm/dkmdata-scheme.json` and `dkm/dkmpkg-scheme.json`.
-
-Both schemas are **self-contained**: they reference neither each other nor anything on
-the network, so one file can be copied whole and validated offline — or pasted into a
-conversation with an AI. The shared definitions (entity, attribute definition, entity
-type, aspect, relation type, select list, relation, comment, object, custom attribute,
-attribute value) are deliberately identical in both files. Every property carries a
-description that states not just its shape but its meaning.
-
-Checking in Python:
-
-```python
-import json
-from jsonschema import Draft202012Validator
-
-schema = json.load(open('dkmdata-scheme.json'))
-data   = json.load(open('project.dkmdata'))
-
-v = Draft202012Validator(schema, format_checker=Draft202012Validator.FORMAT_CHECKER)
-for e in sorted(v.iter_errors(data), key=lambda e: list(e.path)):
-    print('/' + '/'.join(map(str, e.path)), '→', e.message)
-```
-
-`format_checker` has to be passed explicitly — without it most validators merely record
-the `format` keyword and never check the timestamps. In JavaScript the same needs
-`ajv-formats` alongside `ajv`.
-
-### 37.3 What the schema cannot check: references inside the file
-
-JSON Schema can check shape, not that a reference leads anywhere. This is on the reader
-and on whoever produces the file:
-
-| Reference | Must point to |
-|---|---|
-| `entities[].typeId` | `entityTypes[].id`, or `null` |
-| `entities[].aspects[]` | `aspects[].id` |
-| a key in `entities[].attributes` | the `id` of an attribute definition on the entity's type or on one of its aspects |
-| `entities[].relations[].relationTypeId` | `relationTypes[].id` |
-| `entities[].relations[].targetId` | `entities[].id` |
-| the value of a relation attribute | `entities[].id` (an array of ids when `multi`) |
-| `…attributes[].listId` | `selectLists[].id` |
-| `…attributes[].tagSetId` | `tagSets[].id` |
-| `…attributes[].targetType` | `entityTypes[].id`, or `any` |
-| `…attributes[].filtrCile[].scopeId` | `entityTypes[].id` or `aspects[].id` (per `scope`); `null` for `scope: "system"` |
-| `…attributes[].filtrCile[].attrId` | `id` of an attribute definition **on that** type or aspect; the key `name` for `scope: "system"` |
-| `…attributes[].filtrCile[].value` with `op: "targetIs"` | `entities[].id` |
-| `relationTypes[].fromTypes[]`, `toTypes[]` | `entityTypes[].id` |
-| `settings.tabs[].typeIds[]`, `aspectId`, `tagSetId`, `viewId`, `entityId`, `typeId` | `entityTypes[].id`, `aspects[].id`, `tagSets[].id`, `savedViews[].id`, `entities[].id` — depending on the tab kind |
-| `settings.tabs[].modulId` | `settings.modules[].id`. An invalid reference is **dropped** by the reader and the tab becomes shared — it must never disappear |
-
-Identifiers are unique within the file. DKM builds them as `prefix_<time><random>`
-(`e_lz3k9a1b2c`), but the format does not require that shape — the string only has to be
-unique and stable.
-
-A dangling reference will not break the application: a relation to a missing target is
-simply not shown. The data is damaged all the same, and the loss spreads with the next
-export.
-
-**An empty list means "anything", not "nothing".** This holds for `fromTypes` and
-`toTypes` on a relation type: a non-empty list restricts, while an empty list — and a
-missing key — leaves the relation unrestricted. Read it the other way round and you
-forbid everything. The restriction is also read according to `scope` only: `from` looks
-at `fromTypes`, `to` at `toTypes`, `specific` at both, `universal` at neither.
-
-**The target restriction (`filtrCile`) is deliberately stricter in the schema than in the
-reader.** The field may only carry operators that are false for a **missing** value, so the
-schema spells them out as an enum. The negative ones (`notEquals`, `notContains`, `empty`,
-`isFalse`, `notIn`, `hasNotTag`, `hasNoTags`, `hasNoTarget`) are absent on purpose: an entity
-that lacks the attribute entirely would pass them, so instead of narrowing, the restriction
-would let through everything else as well. In a saved view
-(`savedViews[].filter.attrFilters`) the same operators remain **allowed** — there you filter
-a finished list, not an offer. `mergeEmpty` does not drop a different operator; a file with
-one loads fine and merely behaves badly, which is why the schema catches it.
-
-`filtrCile` is optional and only meaningful on an attribute of type `relation`. An empty
-array and a missing key both mean "no restriction" — just like empty `fromTypes` on a
-relation type. A value that stops meeting the restriction is **not deleted** from the
-entity; it stays and the application merely marks it.
-
-### 37.4 Attribute values by type
-
-An entity's values live in `attributes` under the **identifier** of the attribute
-definition, not under its name. The shape of the value follows that definition's type:
-
-| Attribute type | Value shape | Note |
-|---|---|---|
-| `text`, `url` | string | |
-| `textarea` | string | rendered as Markdown with CriticMarkup |
-| `date` | string `YYYY-MM-DD` | not a full ISO timestamp — it is the value of an HTML date field |
-| `number` | number | a real number, not a string of digits; with `autoInc: true` DKM assigns it from `posledni` (7.1b), but in the data it is still an ordinary number |
-| `range` | number | a slider (7.1c); the range and the step live in the definition (`min`, `max`, `krok`), the unit is a display label only. A value outside the range is valid — DKM does not rewrite it |
-| `checklist` | array of `{text, hotovo}` objects | the rows belong to the **entity**, not to the attribute definition (7.1d); the order in the array is the order on screen; `hotovo` may be missing and means a row that is not done |
-| `yesno` | `true` / `false` | |
-| `select` | string | must be one of the values of the linked select list |
-| `tags` | array of strings | each is one tag from the linked set (`tagSetId`); DKM stores them alphabetically |
-| `relation` | entity identifier | an array of identifiers when `multi: true` |
-
-**An empty value is not stored.** DKM deletes the key from `attributes` outright, so
-neither `null` nor `""` appears in freshly written data and a missing key is the normal
-state. The schema tolerates both so that data from elsewhere still passes. The exception
-is an entity's custom attributes (`customAttributes`), where the `value` key cannot be
-deleted — there, empty is an empty string.
-
-Relations in `relations` are recorded **on the source entity only**. The reverse
-direction (the "Links here" section) is derived by DKM and is not duplicated in the
-data. Record it on both sides and every relation appears twice.
-
-### 37.5 Identity when importing a package
-
-An entity is recognised by its `id`, not by its name. A package preserves identifiers,
-so importing the same data twice is recognised as a conflict with existing entities and
-offers overwrite or merge — it does not create a second set of records. Anyone producing
-a package outside DKM must therefore keep identifiers **stable across releases**;
-otherwise the data is duplicated on every import. Matching by name can be enabled only
-in the wizard's detailed mode (ch. 28.3) and is a fallback for data that shares no
-history of identifiers.
-
-The model in a package is narrowed to what the selected entities need. That has two
-consequences:
-
-- **Relations pointing outside the package are dropped on export**, so that no reference
-  to a missing entity is left in the file. Extending the selection to neighbours or to
-  the whole connected component prevents this (ch. 28.1).
-- **`fromTypes` and `toTypes` on the carried relation types may reference types that are
-  not in the package.** The restriction then does not fit the target project and the
-  wizard creates the relation type without it.
-
-### 37.6 Canonical shape and older spellings
-
-Select lists went through a clean-up and the reader still tolerates the older shape.
-Whoever produces a file should write only the canonical column:
-
-| Canonical | Deprecated | What DKM does with it |
-|---|---|---|
-| `selectLists[].values` | `selectLists[].options` | moves it into `values` on load and drops the old key |
-| `…attributes[].listId` | `…attributes[].selectListId` | moves it into `listId` on load and drops the old key |
-| a list in `selectLists` | values inline in `…attributes[].options` | read only as a safety net |
-| author name in the browser | `settings.userName` | takes it over locally and removes it from the data |
-| `settings.tabs` | `settings.visibleTypeTabs`, `visibleAspectTabs`, `savedViews[].pinned` | composes the bar from them and drops the deprecated keys |
-
-`settings.userName` was removed so that several people can work on one project — the
-comment author's name belongs to a particular browser, not to shared data.
-
-### 37.7 What survives loading and what does not
-
-- **An unknown key at the top level of `.dkmdata` is dropped on load.** The reader takes
-  only the keys it knows, so custom metadata alongside `entities` will not survive the
-  first save. The schema flags it as an error (`additionalProperties: false`).
-- **An unknown key inside an entity is kept.** Entities pass through load and save
-  untouched, so a custom flag on a record survives. The schema therefore allows it.
-- **Missing collections are filled in as empty arrays.** The minimal valid file is
-  `{"entities": []}`; a missing `version` means 1.
-
-### 37.8 What is never in these files
-
-**No secrets are stored in project data.** The GitHub token, the AI key and the comment
-author's name are not in the file and never will be — the browser alone holds them
-(ch. 34.2). `ghPath` carries only a path of the form `owner/repo/path/file.dkmdata`, not
-access to it. A `.dkmdata` file can therefore be passed on or committed without taking
-credentials with it — it does contain all of the project's data, though, so whatever
-sensitivity applies to that data applies to the file.
-
-
----
+- **`dkm/dkm-formats-en.md`** (in Czech `dkm-formats-cs.md`) — what is in the files, what has
+  to be in them, the shape of a value by attribute type, references inside the file, identity
+  on import, and what a reader may expect.
+- **<https://nastroje.egdilna.cz/dkm/dkmdata-scheme.json>** and
+  **<https://nastroje.egdilna.cz/dkm/dkmpkg-scheme.json>** — the machine-readable schemas
+  (JSON Schema 2020-12). Both are self-contained, so either can be copied whole and validated
+  offline — or pasted into a conversation with an AI.
+- **`dkm/dkm-sync-en.md`** (in Czech `dkm-sync-cs.md`) — how several people work over a single
+  file in a repository at the same time.
 
 ## 38. The screen identifier in the footer
 
