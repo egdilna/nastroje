@@ -637,6 +637,7 @@ function vyberStranky(nadpis,tlacitko,hotovo,volby={}){
     polozky.push({u,text:u.title||"(bez názvu)",kde,hledat:bezDiakritiky([u.title,u.id,kde,...(u.aliases||[])].join(" "))});
     if(volby.aliasy) (u.aliases||[]).forEach(a=>polozky.push({u,alias:a,text:a,kde,hledat:bezDiakritiky([a,u.title,kde].join(" "))}));
     if(volby.aliasy&&druhZdroje(u)==="mistni") (castiMulti(E.soubory.get(u.file)?.text)||[]).forEach(a=>polozky.push({u,alias:a,text:a,kde,pod:true,hledat:bezDiakritiky([a,u.title,kde].join(" "))}));
+    if(volby.aliasy&&druhZdroje(u)==="mistni") (castiClanku(E.soubory.get(u.file)?.text)||[]).forEach(a=>polozky.push({u,alias:a,text:a,kde,pod:true,clanek:true,hledat:bezDiakritiky([a,u.title,kde,"článek"].join(" "))}));
   });
   polozky.sort((a,b)=>podleAbecedy(a.text,b.text));
   const zvolit=x=>{ dl.close(); hotovo(x.u,x.alias||null,x.pod?x.u.title+"/"+x.alias:null); };
@@ -647,7 +648,7 @@ function vyberStranky(nadpis,tlacitko,hotovo,volby={}){
     const vyber=polozky.filter(x=>slova.every(w=>x.hledat.includes(w))).map((x,i)=>[poradi(x),i,x]).sort((a,b)=>a[0]-b[0]||a[1]-b[1]).map(z=>z[2]);
     ul.innerHTML="";
     vyber.slice(0,150).forEach(x=>ul.append(el("li",{},el("a",{href:"#"+encodeURIComponent(x.u.id),onclick:e=>{ e.preventDefault(); zvolit(x); }},
-      x.alias?[x.alias,el("small",{},(x.pod?" · podstránka v ":" → ")+(ikonaUzlu(x.u)?ikonaUzlu(x.u)+" ":"")+x.u.title+(x.pod?"":" · alias"))]:[(ikonaUzlu(x.u)?ikonaUzlu(x.u)+" ":"")+x.text,el("small",{}," · "+x.kde)]))));
+      x.alias?[x.alias,el("small",{},(x.clanek?" · článek v ":x.pod?" · podstránka v ":" → ")+(ikonaUzlu(x.u)?ikonaUzlu(x.u)+" ":"")+x.u.title+(x.pod?"":" · alias"))]:[(ikonaUzlu(x.u)?ikonaUzlu(x.u)+" ":"")+x.text,el("small",{}," · "+x.kde)]))));
     pocet.textContent=vyber.length?`${vyber.length} ${vyber.length===1?"položka":vyber.length<5?"položky":"položek"}${vyber.length>150?", zobrazeno prvních 150":""}`:"Nic neodpovídá. Zkuste jiné slovo.";
   };
   filtr.addEventListener("input",kresli);
@@ -1259,24 +1260,30 @@ async function kreslitZarazeni(ed,cesta){
 /* Multisection (md2web): soubor začíná řádkem „multisection“, každý ## je podstránka.
    Editor značku multisection:true v contents.json udržuje sám — podle ní prohlížeč načte
    podstránky hned při startu (strom, wikiodkazy). */
-function castiMulti(text){
+/* Nadpisy ## za klíčovým řádkem (multisection / articles); null, když soubor takový není */
+function castiSouboru(text,klicove){
   const radky=String(text||"").split("\n"); let i=0;
   while(i<radky.length&&!radky[i].trim()) i++;
   if(/^#(?!#)\s+/.test(radky[i]||"")){ i++; while(i<radky.length&&!radky[i].trim()) i++; }
-  if((radky[i]||"").trim().toLowerCase()!=="multisection") return null;
+  if((radky[i]||"").trim().toLowerCase()!==klicove) return null;
   let vKodu=false; const casti=[];
   for(const l of radky.slice(i+1)){ if(/^```/.test(l.trim())) vKodu=!vKodu; const h=!vKodu&&l.match(/^##(?!#)\s+(.+?)\s*#*\s*$/); if(h) casti.push(h[1].trim()); }
   return casti;
 }
+const castiMulti=text=>castiSouboru(text,"multisection");
+const castiClanku=text=>castiSouboru(text,"articles");
 function obnovitZnackyMulti(jenUzel){
   for(const u of (jenUzel?[jenUzel]:stranky())){
     if(druhZdroje(u)!=="mistni") continue;
     const sb=E.soubory.get(u.file); if(!sb||sb.bin||sb.stav==="chyba"||sb.stav==="nacitam") continue;
     const je=!!castiMulti(sb.text);
     if(je&&!u.multisection) u.multisection=true; else if(!je&&u.multisection) delete u.multisection;
+    // articles:true — prohlížeč sekci článků načte při startu, aby fungovaly wikiodkazy na články
+    const cl=!!castiClanku(sb.text);
+    if(cl&&!u.articles) u.articles=true; else if(!cl&&u.articles) delete u.articles;
   }
 }
-const podstrankyMulti=()=>stranky().flatMap(u=>druhZdroje(u)==="mistni"?(castiMulti(E.soubory.get(u.file)?.text)||[]):[]);
+const podstrankyMulti=()=>stranky().flatMap(u=>druhZdroje(u)==="mistni"?[...(castiMulti(E.soubory.get(u.file)?.text)||[]),...(castiClanku(E.soubory.get(u.file)?.text)||[])]:[]);
 
 /* =============================================================
    SPRÁVA WEBU — chybějící stránky, štítky hromadně, koncepty, prázdné a chybějící soubory
@@ -1288,7 +1295,8 @@ function cestaVuci(odSouboru,rel){
 function najitStrankuEd(cil){
   cil=String(cil).trim(); const sl=slug(cil);
   if(cil.includes("/")&&!stranky().some(u=>u.id===cil)){ const i=cil.indexOf("/"), rod=najitStrankuEd(cil.slice(0,i));
-    if(rod&&druhZdroje(rod)==="mistni"&&(castiMulti(E.soubory.get(rod.file)?.text)||[]).some(c=>slug(c)===slug(cil.slice(i+1)))) return rod; }
+    const t=rod&&druhZdroje(rod)==="mistni"?E.soubory.get(rod.file)?.text:null;
+    if(t&&[...(castiMulti(t)||[]),...(castiClanku(t)||[])].some(c=>slug(c)===slug(cil.slice(i+1)))) return rod; }
   return stranky().find(u=>u.id===cil)||stranky().find(u=>u.id===sl)||stranky().find(u=>slug(u.title||"")===sl||(u.aliases||[]).some(a=>slug(a)===sl))||null;
 }
 /* Odkazy bez cíle: [[…]], ![[…]], {{…}} a [text](soubor.md) v textech místních stránek (mimo bloky kódu) */

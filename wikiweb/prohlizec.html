@@ -657,6 +657,16 @@ function vypisStitku(stitek){
     .sort((a,b)=>a.title.localeCompare(b.title,W.cfg.language||"cs",{sensitivity:"base",numeric:true}));
   return st.length?vypisHtml(st):`<p class="tichy">${esc(T.stitekZadny)}</p>`;
 }
+/* Články sekcí článků pro wikiodkazy a vkládání: klíč „sekce/slug-článku“.
+   Sekce označené articles:true (značku zapisuje editor) se načtou při startu, ostatní při prvním zobrazení. */
+function registrovatClanky(u,cl){ cl.clanky.forEach(c=>W.clanky.set(u.id+"/"+c.slug,{u,c})); }
+function najitClanek(cil){
+  cil=String(cil).trim(); if(W.clanky.has(cil)) return W.clanky.get(cil);
+  const i=cil.indexOf("/");
+  if(i>0){ const rod=najitStranku(cil.slice(0,i)); if(rod) return W.clanky.get(rod.id+"/"+slug(cil.slice(i+1)))||null; }
+  const s=slug(cil); for(const x of W.clanky.values()) if(x.c.slug===s) return x;
+  return null;
+}
 function najitStranku(cil){
   cil=String(cil).trim(); if(W.stranky.has(cil)) return W.stranky.get(cil);
   // „Stránka/Podstránka“ — jednoznačný odkaz na podstránku multisection
@@ -691,6 +701,16 @@ async function vlozitStranky(text,hloubka=0,cesta=[]){
     const u=najitStranku(m[1]), popis=esc(radek.trim());
     const chyba=duvod=>`<p><span class="chybi" title="${escAttr(duvod)}">${popis}</span></p>`;
     if(!u&&jeKoncept(m[1])) continue;
+    const cl=!u&&najitClanek(m[1]);
+    if(cl){   // článek ze sekce článků: perex + text
+      const klic=cl.u.id+"/"+cl.c.slug;
+      if(cesta.includes(klic)||hloubka>=3){ vystup.push(chyba(T.vlozeniCyklus)); continue; }
+      let t=(cl.c.perex?cl.c.perex+"\n\n":"")+cl.c.telo;
+      if(m[2]){ const sekce=vyriznoutSekci(t,m[2]); if(sekce==null){ vystup.push(chyba(T.vlozeniSekce)); continue; } t=sekce; }
+      t=absolutniCesty(t,zaklad(cl.u.adresa));
+      vystup.push("",(await vlozitStranky(t,hloubka+1,[...cesta,klic])).trim(),"");
+      continue;
+    }
     if(!u||!u.adresa){ vystup.push(chyba(T.chybiOdkaz)); continue; }
     if(cesta.includes(u.id)||hloubka>=3){ vystup.push(chyba(T.vlozeniCyklus)); continue; }
     let vlozeny;
@@ -869,7 +889,7 @@ function pripravitStrom(uzly,rodic,hloubka){
   }).filter(Boolean);
 }
 async function nactiWeb(data){
-  W.stranky.clear(); W.poradi=[]; W.texty.clear(); W.index=null; W.zpetne=null; W.stitkyIndex=null; W.koncepty=new Set();
+  W.stranky.clear(); W.clanky=new Map(); W.poradi=[]; W.texty.clear(); W.index=null; W.zpetne=null; W.stitkyIndex=null; W.koncepty=new Set();
   const cfg=data?data.cfg:JSON.parse(await nactiText(new URL("wiki.json",W.zaklad).href));
   const obsah=data?data.obsah:JSON.parse(await nactiText(new URL("contents.json",W.zaklad).href));
   W.cfg=cfg||{};
@@ -890,8 +910,8 @@ async function nactiWeb(data){
   prepocitatPoradi();
   /* Stránky označené multisection (značku zapisuje editor) se načtou hned, aby jejich podstránky
      byly ve stromu a fungovaly na ně wikiodkazy odkudkoli. */
-  await Promise.all([...W.stranky.values()].filter(u=>u.multisection&&u.adresa).map(async u=>{
-    try{ const m=rozpoznatMulti(await nactiText(u.adresa)); if(m) rozbalitMulti(u,m); }catch{}
+  await Promise.all([...W.stranky.values()].filter(u=>(u.multisection||u.articles)&&u.adresa).map(async u=>{
+    try{ const t=await nactiText(u.adresa); const m=rozpoznatMulti(t); if(m) rozbalitMulti(u,m); const cl=rozpoznatClanky(t); if(cl) registrovatClanky(u,cl); }catch{}
   }));
   const sbSoubor=W.cfg.sidebar_file||"sidebar.md";
   try{ W.sidebarMD=await vlozitStranky(await nactiText(adresaSouboru(sbSoubor))); }catch{ W.sidebarMD=""; }
@@ -1146,7 +1166,7 @@ async function vykreslitStranku(u,r){
     }
   }
   const clanky=rozpoznatClanky(text);
-  if(clanky) return vykreslitClanky(u,clanky,r);
+  if(clanky){ registrovatClanky(u,clanky); return vykreslitClanky(u,clanky,r); }
   const multi=rozpoznatMulti(text);
   if(multi){
     if(rozbalitMulti(u,multi)){ const nav=$("#strom"); if(nav) nav.dataset.klic=""; }
@@ -1223,6 +1243,7 @@ function vykreslitClanky(u,sekce,r){
       +`<div class="obsah">${telo}</div>`;
     aktivovatOdkazy(art);
     panelProStranku(u,telo,[],[]);
+    if(u.typ?.backlinks&&$("#zpetne")){ $("#zpetne").hidden=false; zpetneOdkazy(u,u.id+"/"+c.slug); }
     stitkyPanel(vsechnyStitky.map(t=>stitekHtml(t)));
     nastavitTitulek(c.titul,u.title); return;
   }
@@ -1334,16 +1355,18 @@ function provestFunkci(f,u){
 }
 /* Zpětné odkazy: projde texty všech stránek (mezipaměť jako u hledání) a najde
    [[…]], ![[…]], [Název] z md2web, [text](soubor.md) a #id odkazy na tuto stránku. */
-async function zpetneOdkazy(u){
+async function zpetneOdkazy(u,klic){
   const ul=$("#zpetne-ul"); ul.innerHTML=`<li class="tichy">${esc(T.hledamZpetne)}</li>`;
   if(!W.zpetne){
     const mapa=new Map();
+    // nejdřív zaregistrovat všechny články, aby odkazy na ně šlo rozpoznat
+    await Promise.all([...W.stranky.values()].filter(x=>x.adresa&&!x.virtualni).map(async x=>{ try{ const cl=rozpoznatClanky(await nactiText(x.adresa)); if(cl) registrovatClanky(x,cl); }catch{} }));
     await Promise.all([...W.stranky.values()].map(async zdroj=>{
       if(!zdroj.adresa||zdroj.virtualni) return;
       let text=""; try{ text=await nactiText(zdroj.adresa); }catch{ return; }
       const zakl=zaklad(zdroj.adresa), cile=new Set();
       text=text.replace(/```[\s\S]*?```/g,"");
-      for(const m of text.matchAll(/!?\[\[([^\]|#]+)|\{\{([^}|#]+)/g)){ const c=najitStranku(m[1]||m[2]); if(c) cile.add(c.id); }
+      for(const m of text.matchAll(/!?\[\[([^\]|#]+)|\{\{([^}|#]+)/g)){ const c=najitStranku(m[1]||m[2]); if(c) cile.add(c.id); else{ const cl=najitClanek(m[1]||m[2]); if(cl) cile.add(cl.u.id+"/"+cl.c.slug); } }
       for(const m of text.matchAll(/\[([^\]\[]+)\](?!\()/g)){ const c=najitStranku(m[1]); if(c) cile.add(c.id); }
       for(const m of text.matchAll(/\]\(([^)\s]+)/g)){
         const url=m[1];
@@ -1356,7 +1379,7 @@ async function zpetneOdkazy(u){
     W.zpetne=mapa;
   }
   if(W.aktualni!==u) return;
-  const zdroje=(W.zpetne.get(u.id)||[]).filter(x=>!x.hidden).sort((a,b)=>a.title.localeCompare(b.title,W.cfg.language||"cs"));
+  const zdroje=(W.zpetne.get(klic||u.id)||[]).filter(x=>!x.hidden).sort((a,b)=>a.title.localeCompare(b.title,W.cfg.language||"cs"));
   ul.innerHTML=zdroje.length?zdroje.map(x=>`<li><a href="#${escAttr(x.id)}">${esc((x.emoji?x.emoji+" ":"")+x.title)}</a></li>`).join(""):`<li class="tichy">${esc(T.zadneZpetne)}</li>`;
 }
 
@@ -1371,7 +1394,7 @@ async function indexStitku(){
   for(const u of st) for(const t of (u.tags||[]).filter(verejnyStitek)) pridat(t,{druh:"stranka",u});
   await Promise.all(st.filter(u=>u.adresa).map(async u=>{
     let text=""; try{ text=await nactiText(u.adresa); }catch{ return; }
-    const cl=rozpoznatClanky(text); if(!cl) return;
+    const cl=rozpoznatClanky(text); if(!cl) return; registrovatClanky(u,cl);
     cl.clanky.forEach(c=>c.stitky.filter(verejnyStitek).forEach(t=>pridat(t,{druh:"clanek",u,c})));
   }));
   W.stitkyIndex=mapa; return mapa;
@@ -1416,6 +1439,8 @@ function najitCil(cil,soubor){
   if(!cil) return null;
   const u=najitStranku(cil);
   if(u) return "#"+u.id;
+  const cl=najitClanek(cil);
+  if(cl) return "#"+cl.u.id+"/"+cl.c.slug;
   const s=slug(cil);
   const h=document.getElementById(s);
   if(h&&$("#stranka").contains(h)&&W.aktualni) return "#"+W.aktualni.id+":"+s;
@@ -1512,6 +1537,7 @@ async function pripravitIndex(){
     }
     const cl=rozpoznatClanky(text);
     const zaznamy=[{u,titul:u.title,text:naText((u.perex||"")+" "+aliasy(u).join(" ")+" "+(u.tags||[]).filter(verejnyStitek).join(" ")+" "+(cl?"":text)),h:"#"+u.id}];
+    if(cl) registrovatClanky(u,cl);
     if(cl) cl.clanky.forEach(c=>zaznamy.push({u,titul:c.titul,text:naText(c.perex+" "+c.stitky.join(" ")+" "+c.telo),h:"#"+u.id+"/"+c.slug,clanek:true}));
     return zaznamy;
   })).then(x=>x.flat());
