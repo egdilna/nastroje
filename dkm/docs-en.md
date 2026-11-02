@@ -3874,6 +3874,9 @@ and on whoever produces the file:
 | `…attributes[].listId` | `selectLists[].id` |
 | `…attributes[].tagSetId` | `tagSets[].id` |
 | `…attributes[].targetType` | `entityTypes[].id`, or `any` |
+| `…attributes[].filtrCile[].scopeId` | `entityTypes[].id` or `aspects[].id` (per `scope`); `null` for `scope: "system"` |
+| `…attributes[].filtrCile[].attrId` | `id` of an attribute definition **on that** type or aspect; the key `name` for `scope: "system"` |
+| `…attributes[].filtrCile[].value` with `op: "targetIs"` | `entities[].id` |
 | `relationTypes[].fromTypes[]`, `toTypes[]` | `entityTypes[].id` |
 | `settings.tabs[].typeIds[]`, `aspectId`, `tagSetId`, `viewId`, `entityId`, `typeId` | `entityTypes[].id`, `aspects[].id`, `tagSets[].id`, `savedViews[].id`, `entities[].id` — depending on the tab kind |
 | `settings.tabs[].modulId` | `settings.modules[].id`. An invalid reference is **dropped** by the reader and the tab becomes shared — it must never disappear |
@@ -3891,6 +3894,21 @@ export.
 missing key — leaves the relation unrestricted. Read it the other way round and you
 forbid everything. The restriction is also read according to `scope` only: `from` looks
 at `fromTypes`, `to` at `toTypes`, `specific` at both, `universal` at neither.
+
+**The target restriction (`filtrCile`) is deliberately stricter in the schema than in the
+reader.** The field may only carry operators that are false for a **missing** value, so the
+schema spells them out as an enum. The negative ones (`notEquals`, `notContains`, `empty`,
+`isFalse`, `notIn`, `hasNotTag`, `hasNoTags`, `hasNoTarget`) are absent on purpose: an entity
+that lacks the attribute entirely would pass them, so instead of narrowing, the restriction
+would let through everything else as well. In a saved view
+(`savedViews[].filter.attrFilters`) the same operators remain **allowed** — there you filter
+a finished list, not an offer. `mergeEmpty` does not drop a different operator; a file with
+one loads fine and merely behaves badly, which is why the schema catches it.
+
+`filtrCile` is optional and only meaningful on an attribute of type `relation`. An empty
+array and a missing key both mean "no restriction" — just like empty `fromTypes` on a
+relation type. A value that stops meeting the restriction is **not deleted** from the
+entity; it stays and the application merely marks it.
 
 ### 37.4 Attribute values by type
 
