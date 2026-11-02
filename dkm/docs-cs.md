@@ -599,8 +599,42 @@ Zvláštní typ atributu — hodnota je ID cílové entity. Můžeš nastavit:
 
 - **Typ cíle** — jen entity tohoto typu jsou nabízené
 - **Vícenásobný** — pole ID místo jednoho
+- **Omezení cíle** — podmínky, které cílová entita musí splnit
 
 Tento atribut se **automaticky započítává do „Odkazuje sem"** u cílové entity, i když neexistuje formální vazba.
+
+#### Omezení cíle podmínkami
+
+Typ cíle zúží nabídku na jeden typ entity. **Omezení cíle** jde o krok dál: nabídne se jen
+entita, která splní **všechny** zadané podmínky. Zadávají se stejně jako pravidla
+pokročilého filtru a vyhodnocuje je tentýž kód, takže se není co nového učit:
+
+| Chceš | Zapíšeš |
+|---|---|
+| úkol ve stavu Aktivní | `Úkol / Stav` **je** `Aktivní` |
+| poznámka s „test" v názvu | `Název` **obsahuje** `test` |
+| položka z Číselníku agend | `Položka / v číselníku` **odkazuje na** → Číselník agend |
+
+Pod podmínkami je vidět, **kolik entit jim vyhovuje** — překlep nebo prázdný číselník se
+tak pozná hned v nastavení, ne až v editoru entity.
+
+Tři věci, které stojí za zapamatování:
+
+- **Nabízejí se jen operátory, které u nevyplněné hodnoty neplatí.** Záporné podmínky
+  („nemá stav Uzavřeno", „je prázdné") v nabídce schválně nejsou: entita, která ten
+  atribut vůbec nemá, by jimi prošla, takže by filtr místo omezení otevřel vrata.
+  V jednom testu takové pravidlo samo o sobě propustilo devět entit z deseti.
+- **Podmínky se spojují logickým A.** Žádné „nebo" tu není, stejně jako v pokročilém filtru.
+- **Dřív uložená hodnota se nikdy nemaže.** Když omezení zúžíš, hodnota, která už
+  nevyhovuje, zůstane v entitě a jen se označí `⚠` — stejně jako tag mimo soustavu.
+  Filtr řídí **nabídku**, ne data.
+
+Omezení platí tam, kde se cíl vybírá z nabídky. Zápis jinudy (import z tabulky, import
+balíčku, hromadná akce, sloučení z GitHubu) data **nezahazuje** — sloučení z GitHubu navíc
+není uživatelská akce a blokovat se nesmí vůbec.
+
+Do exportu datového modelu (SQL, OWL, XSD…) se omezení cíle **nepropíše** — je to pravidlo
+aplikace, ne schématu. Vyexportovaná databáze tedy hlídá jen typ cíle.
 
 ### 7.5 Atribut typu tagy
 

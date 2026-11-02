@@ -526,6 +526,41 @@ kvůli tomu, co uvidí člověk, má jít přes něj, ne přes `e.attributes[id]
   „správně mě to upozorní, že se to vyplní jen u těch co to mají žadatel. Aaaaale ono nic."
   Hláška, která zní jako „někdy to vyjde" tam, kde to nevyjde nikdy, je horší než žádná.
 
+## Filtr cíle vazebního atributu (`a.filtrCile`)
+Druhá vrstva omezení cíle vedle `targetType`: pole pravidel **v témže tvaru**, jaký má
+pravidlový filtr, vyhodnocené **týmž `evalRule`**. Druhý jazyk ani druhý vyhodnocovač se
+nikam nepíše. Jediná spára do nabídky je `buildEntitySelector({pravidla})`; filtr se tam
+pouští **jako poslední** síto, protože je nejdražší a ostatní před ním většinu entit odeberou.
+
+- **Nabízejí se jen operátory, které jsou u chybějící hodnoty nepravdivé**
+  (`OP_PROJDE_PRAZDNO`, `operatoryProCil`). Pravidlo **není** „jen kladné": `notEmpty` je
+  bezpečný (prázdno není vyplněné), `empty` ne. Bez toho filtr místo omezení otevře vrata —
+  „nemá Stav Uzavřeno" samo o sobě propustilo **devět entit z deseti**, protože poznámky
+  ani číselníky atribut Stav nemají. Hranici hlídá `filtrcil/t1` nad **všemi** typy
+  atributů; kdo přidá operátor, ať ho tím testem protáhne.
+- **Nabídka polí je `cileProFiltrCile(targetType)`** — název entity, atributy cílového typu
+  a atributy aspektů (ty visí na čemkoli). **Ne** systémová pole kolem zpětných odkazů:
+  `getRelsTo` prochází celý projekt a nabídka se přefiltrovává po každém písmenu. **Ne**
+  složené atributy: hodnotu nemají uloženou, takže by se pravidlo nikdy netrefilo (týž
+  důvod, proč je nenabízí import z tabulky).
+- **Editor pravidla je jeden** (`renderRuleRow(rule,idx,volby)`): bez `volby` se chová jako
+  dřív (pokročilý filtr), s nimi bere jinou nabídku, jiné operátory a **překresluje sám
+  sebe**, ne přes `render()` — celé Nastavení by jinak přeskočilo odrolování i ohnisko.
+- **Hodnota, která filtru nevyhovuje, se nikdy nemaže** (`znackaMimoFiltr`), jen se označí
+  ⚠ — týž vzor jako tag mimo soustavu a jako rozsah posuvníku. Filtr řídí nabídku, ne data.
+  Zápis jinudy (import z tabulky, balíček, hromadná akce, sloučení z GitHubu) proto nic
+  nezahazuje a sloučení se neblokuje vůbec.
+- **Balíček pravidlo přemapuje, nebo zahodí** (krok 4b v `applyImport`, vedle `targetType`).
+  Pravidlo nese `scopeId` i `attrId`, obojí dostane při zakládání nová id — táž past jako
+  u `nazevZe`. Co se přeložit nedá, se zahodí a **spočítá** (`log.filtryCile`,
+  `pkgRsltFiltryCile`); cizí identifikátor by filtroval naslepo, atribut bez filtru se
+  chová jako dřív. **Do náhledu jde věta, ne číslo**: jestli se pravidlo přeloží, se pozná
+  až z map id, které staví teprve `applyImport`, a chybné číslo v náhledu je horší než žádné.
+- `filtrCile` je v **obou schématech** a kvůli němu musel do `dkmpkg-scheme.json` přibýt
+  i `filtrPravidlo` — sdílené definice musí zůstat totožné.
+- **Spojka je jen A** (`cilVyhovuje` = `every`), stejně jako v pokročilém filtru. OR by
+  znamenal sáhnout na tvar pravidel, který sdílí uložené pohledy.
+
 ## Samočíslující číslo není další typ atributu
 `a.autoInc` + `a.posledni` na definici atributu typu `number` — **ne nová položka
 `ATYPES`**. Hodnota je dál obyčejné číslo, takže filtry, `opsForType`, řazení, tabulkový
