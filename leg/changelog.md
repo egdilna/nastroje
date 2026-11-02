@@ -2,6 +2,12 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.18.0] — 2026-11-02
+
+### Přidáno
+- Na stránce předpisu sekce Kopírovat: citace, plný název, informace o předpisu v Markdownu (odkaz na předpis v aplikaci s plným názvem a pod ním popis předpisu), odkaz do aplikace a do e-Sbírky — každý jako adresa i jako Markdown odkaz s plným názvem, a odkaz ELI.
+- Kopírování odkazu ELI i u ustanovení (`https://www.e-sbirka.cz/eli/cz/sb/{rok}/{číslo}/{znění}/dokument/{ustanovení}`); u předpisu stálý ELI aktu bez data.
+
 ## [1.17.0] — 2026-11-01
 
 ### Změněno
