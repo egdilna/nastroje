@@ -608,8 +608,43 @@ Special attribute type — value is target entity's ID. You can configure:
 
 - **Target type** — only entities of this type are offered
 - **Multi-value** — array of IDs instead of one
+- **Target restriction** — conditions the target entity has to meet
 
 This attribute is **automatically counted in "Linked from"** at the target entity, even without a formal relation.
+
+#### Restricting the target by conditions
+
+The target type narrows the offer to one entity type. **Target restriction** goes one step
+further: only an entity that meets **all** the given conditions is offered. They are written
+exactly like advanced-filter rules and evaluated by the same code, so there is nothing new
+to learn:
+
+| What you want | What you write |
+|---|---|
+| a task in the Active state | `Task / State` **is** `Active` |
+| a note with "test" in its name | `Name` **contains** `test` |
+| an item from the Agendas list | `Item / in list` **points to** → Agendas list |
+
+Below the conditions you see **how many entities match** — a typo or an empty list shows up
+right in the settings, not later in the entity editor.
+
+Three things worth remembering:
+
+- **Only operators that are false for a missing value are offered.** Negative conditions
+  ("does not have the state Closed", "is empty") are deliberately absent: an entity that
+  lacks the attribute entirely would pass them, so instead of restricting, the filter would
+  open the gates. In one test such a rule on its own let through nine entities out of ten.
+- **Conditions are combined with AND.** There is no "or" here, just like in the advanced filter.
+- **A previously saved value is never deleted.** When you narrow the restriction, a value
+  that no longer matches stays on the entity and is merely marked `⚠` — just like a tag
+  outside its set. The filter governs the **offer**, not the data.
+
+The restriction applies where the target is picked from the offer. Writing from elsewhere
+(table import, package import, bulk action, merge from GitHub) **does not discard data** —
+and a merge from GitHub is not a user action, so it is never blocked.
+
+The restriction is **not** carried into the data-model export (SQL, OWL, XSD…) — it is an
+application rule, not a schema one. An exported database therefore enforces the target type only.
 
 ### 7.5 Attribute of type tags
 
