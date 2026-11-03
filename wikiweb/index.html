@@ -560,16 +560,18 @@ function kreslitStrom(){
     }
     const d=druhZdroje(u), deti=(u.children||[]).length;
     const rozbaleno=deti&&jeRozbaleny(u,hloubka,cesta), idPod="pod-"+u._k;
-    const prepinac=deti?el("button",{type:"button",class:"rozbal","aria-expanded":rozbaleno?"true":"false","aria-controls":idPod,
+    const prepinac=deti?el("button",{type:"button",class:"rozbal",tabindex:"-1","aria-expanded":rozbaleno?"true":"false","aria-controls":idPod,
       "aria-label":(rozbaleno?"Sbalit: ":"Rozbalit: ")+(u.title||"")+`, ${deti} ${deti===1?"podstránka":deti<5?"podstránky":"podstránek"}`,
       onclick:e=>{ const b=e.currentTarget, otevrit=b.getAttribute("aria-expanded")!=="true";
         E.rozbaleni.set(u._k,otevrit); b.setAttribute("aria-expanded",otevrit); document.getElementById(idPod).hidden=!otevrit;
         const pc=b.parentNode.querySelector(".pocet"); if(pc) pc.hidden=otevrit;
+        b.parentNode.querySelector("a.u")?.setAttribute("aria-expanded",otevrit);
         b.setAttribute("aria-label",(otevrit?"Sbalit: ":"Rozbalit: ")+b.getAttribute("aria-label").replace(/^(Sbalit|Rozbalit): /,"")); }}):el("span",{class:"rozbal-misto","aria-hidden":"true"});
     let pod=null;
     if(deti){ pod=kresli(u.children,u,hloubka+1); pod.id=idPod; pod.hidden=!rozbaleno; }
     return el("li",{},el("div",{class:"uzel"},prepinac,
       el("a",{class:"u"+(u.hidden?" skryta":"")+(u.draft?" je-koncept":""),href:"#"+encodeURIComponent(u.id||"stranka-"+u._k),"data-k":u._k,"aria-current":E.vybrano?.uzel===u?"page":false,
+        ...(deti?{"aria-expanded":rozbaleno?"true":"false"}:{}),
         onclick:e=>{ e.preventDefault(); vybrat({druh:"stranka",uzel:u}); }},
         el("span",{class:"em","aria-hidden":"true"},ikonaUzlu(u)||"·"),
         el("span",{},u.title||"(bez názvu)"),
@@ -596,6 +598,7 @@ function kreslitStrom(){
     const m=najitMisto(E.hoist);
     box.append(kresli([E.hoist],m?.rodic||null,0));
   }else box.append(E.strom.length?kresli(E.strom):el("p",{class:"tichy",style:"padding:0 8px"},"Zatím žádné stránky. Přidejte první tlačítkem + Stránka."));
+  rovingStromu();
   for(const [sel,druh] of [["#u-nastaveni","nastaveni"],["#u-sidebar","sidebar"],["#u-sprava","sprava"]]){
     if(E.vybrano?.druh===druh&&!(druh==="sprava"&&E.vybrano.nastroj==="nezarazene")) $(sel).setAttribute("aria-current","page"); else $(sel).removeAttribute("aria-current");
   }
@@ -2223,11 +2226,46 @@ $("#s-hoist").addEventListener("click",()=>{
   if(!u||u.ref){ stav("Nejdřív vyberte stránku, na kterou se má strom zúžit","chyba"); return; }
   nastavitHoist(u);
 });
+/* Ovládání stromu klávesnicí jako strom v aplikacích. Položky zůstávají odkazy; strom je jedna
+   zastávka tabulátoru (roving tabindex). Šipky nahoru/dolů = předchozí/další viditelná stránka,
+   vpravo = rozbalit, na rozbalené první podstránka, vlevo = sbalit, na sbalené nebo bez
+   podstránek rodič. Home/End = první/poslední. Enter otevře stránku. Alt+šipky stránku přesouvají. */
+const odkazyStromu=()=>[...$("#strom").querySelectorAll("a.u")].filter(a=>!a.closest("ul[hidden]"));
+function rovingStromu(cil){
+  const vse=[...$("#strom").querySelectorAll("a.u")], vid=odkazyStromu();
+  const akt=cil||vid.find(a=>a.getAttribute("aria-current")==="page")||vid[0];
+  vse.forEach(a=>a.tabIndex=a===akt?0:-1);
+}
+function fokusStromu(a){ if(!a) return; rovingStromu(a); a.focus(); }
 $("#strom").addEventListener("keydown",e=>{
-  if(!e.altKey) return;
-  const m={ArrowUp:"nahoru",ArrowDown:"dolu",ArrowLeft:"ven",ArrowRight:"dovnitr"}[e.key];
-  if(m){ e.preventDefault(); posun(m); }
+  if(e.altKey){
+    const m={ArrowUp:"nahoru",ArrowDown:"dolu",ArrowLeft:"ven",ArrowRight:"dovnitr"}[e.key];
+    if(m){ e.preventDefault(); posun(m); }
+    return;
+  }
+  if(e.ctrlKey||e.metaKey||e.shiftKey) return;
+  const a=e.target.closest?.("a.u"); if(!a) return;
+  const vid=odkazyStromu(), i=vid.indexOf(a);
+  const tlacitko=a.parentNode.querySelector("button.rozbal"), rozbaleno=tlacitko?.getAttribute("aria-expanded")==="true";
+  const rodic=()=>a.closest("li")?.parentNode.closest("li")?.querySelector(":scope > .uzel a.u");
+  let cil=null;
+  if(e.key==="ArrowDown") cil=vid[i+1];
+  else if(e.key==="ArrowUp") cil=vid[i-1];
+  else if(e.key==="Home") cil=vid[0];
+  else if(e.key==="End") cil=vid[vid.length-1];
+  else if(e.key==="ArrowRight"){
+    if(tlacitko&&!rozbaleno){ tlacitko.click(); cil=a; }
+    else if(tlacitko) cil=odkazyStromu()[i+1];
+  }
+  else if(e.key==="ArrowLeft"){
+    if(tlacitko&&rozbaleno){ tlacitko.click(); cil=a; }
+    else cil=rodic();
+  }
+  else return;
+  e.preventDefault();
+  fokusStromu(cil||a);
 });
+$("#strom").addEventListener("focusin",e=>{ const a=e.target.closest?.("a.u"); if(a) rovingStromu(a); });
 document.addEventListener("keydown",e=>{
   if((e.ctrlKey||e.metaKey)&&!e.altKey&&e.key.toLowerCase()==="s"){ e.preventDefault(); ulozitVse(); }
 });
