@@ -1014,6 +1014,7 @@ async function kreslitObsah(box,u){
     lista.hidden=true; t.readOnly=true; t.value=s.text; t.setAttribute("aria-label","Obsah stránky (jen ke čtení — spravuje jiná aplikace)");
     info.append(el("div",{class:"upozorneni info"},"🔒 Obsah spravuje jiná aplikace, tady je jen ke čtení. Úpravy dělejte v ní; WikiWeb soubor nezapíše."));
     box.insertBefore(info,lista);
+    box.append(panelOdkazu(u,s));
     return;
   }
   if(s.stav==="novy"&&!s.sha) info.append(el("p",{class:"tichy"},"Soubor zatím v repozitáři není, vznikne při uložení."));
@@ -1029,6 +1030,7 @@ async function kreslitObsah(box,u){
     if(strukt){
       lista.hidden=true; t.hidden=true;
       box.append(druhStr==="clanky"?editorClanku(s,u):editorPodstranek(s,u));
+      box.append(panelOdkazu(u,s,()=>vybrat({druh:"stranka",uzel:u})));
       return;
     }
   }
@@ -1037,7 +1039,11 @@ async function kreslitObsah(box,u){
     if(c) multiInfo.append(el("div",{class:"upozorneni info"},`Soubor je rozdělený na podstránky (multisection z md2web): každý nadpis ## je samostatná stránka webu s adresou #${u.id}/…`,
       c.length?el("ul",{style:"margin:6px 0 0"},c.map(x=>el("li",{},x))):el("p",{style:"margin:4px 0 0"},"Zatím žádný nadpis ##."))); };
   box.append(multiInfo); ukazMulti();
-  t.addEventListener("input",()=>{ s.text=t.value; s.vytvorit=true; obnovitZnackyMulti(u); ukazMulti(); obnovitStav(); planNahled(); });
+  const panel=panelOdkazu(u,s,()=>{ t.value=s.text; obnovitZnackyMulti(u); ukazMulti(); panel.obnovit(); });
+  box.append(panel);
+  let casPanelu=0;
+  t.addEventListener("input",()=>{ s.text=t.value; s.vytvorit=true; obnovitZnackyMulti(u); ukazMulti(); obnovitStav(); planNahled();
+    clearTimeout(casPanelu); casPanelu=setTimeout(()=>{ if(!panel.contains(document.activeElement)) panel.obnovit(); },700); });
   klavesyEditoru(t,u);
 }
 /* =============================================================
@@ -1455,6 +1461,77 @@ function najitStrankuEd(cil){
     if(t&&[...(castiMulti(t)||[]),...(castiClanku(t)||[])].some(c=>slug(c)===slug(cil.slice(i+1)))) return rod; }
   return stranky().find(u=>u.id===cil)||stranky().find(u=>u.id===sl)||stranky().find(u=>slug(u.title||"")===sl||(u.aliases||[]).some(a=>slug(a)===sl))||null;
 }
+/* Cíl wikiodkazu nebo vložení: stránka, nebo stránka, v níž je podstránka multisection / článek tohoto názvu */
+function najitCilEd(cil){
+  const u=najitStrankuEd(cil); if(u) return {u};
+  const sl=slug(String(cil).trim());
+  for(const x of stranky()){ if(druhZdroje(x)!=="mistni") continue;
+    const t=E.soubory.get(x.file)?.text, c=[...(castiMulti(t)||[]),...(castiClanku(t)||[])].find(n=>slug(n)===sl);
+    if(c) return {u:x,cast:c}; }
+  return null;
+}
+const JE_VYPIS_STITKU=c=>/^(?:štítek|stitek|tag)\s*:/i.test(c);
+/* Všechny wikiodkazy, vložení a odkazy na .md v textu (mimo bloky kódu), každý cíl jednou */
+function odkazyVTextu(text,soubor){
+  const t=String(text||"").replace(/```[\s\S]*?```/g,""), mapa=new Map(), mistni=new Map(stranky().filter(u=>druhZdroje(u)==="mistni").map(u=>[u.file,u]));
+  for(const m of t.matchAll(/(!?\[\[|\{\{)([^\]|#}]+)/g)){
+    const c=m[2].trim(); if(!c||JE_VYPIS_STITKU(c)) continue;
+    const druh=m[1]==="[["?"odkaz":"vlozeni", k=druh+":"+slug(c);
+    if(!mapa.has(k)) mapa.set(k,{druh,cil:c,nalez:najitCilEd(c),pocet:0}); mapa.get(k).pocet++;
+  }
+  for(const m of t.matchAll(/\]\(([^)\s#]+\.md)(?:#[^)]*)?\)/gi)){
+    if(/^[a-z]+:/i.test(m[1])) continue; const c=soubor?cestaVuci(soubor,m[1]):m[1], k="soubor:"+c;
+    if(!mapa.has(k)){ const u=mistni.get(c); mapa.set(k,{druh:"soubor",cil:m[1],nalez:u?{u}:null,pocet:0}); } mapa.get(k).pocet++;
+  }
+  return [...mapa.values()];
+}
+/* Přesměruje [[stary…]], ![[stary…]] a {{stary…}} na nový cíl; text za | a # zůstává. Bloky kódu se nemění. */
+function presmerovatVTextu(text,stary,novy){
+  const sl=slug(stary); let n=0;
+  const nt=String(text).split(/(```[\s\S]*?```)/).map((cast,i)=>i%2?cast:cast.replace(/(!?\[\[|\{\{)([^\]|#}]+)/g,(cely,pred,cil)=>{
+    if(slug(cil.trim())!==sl) return cely; n++; return pred+novy; })).join("");
+  return {text:nt,pocet:n};
+}
+/* Tlačítko Přesměrovat → pole pro správný název a Použít. naPouzit(novy) vrátí text chyby, nebo nic. */
+function ovladaniPresmerovani(stary,naPouzit){
+  const obal=el("span",{class:"radek",style:"gap:6px;flex-wrap:wrap"});
+  const tl=el("button",{class:"btn mini",type:"button","aria-expanded":"false"},"Přesměrovat…");
+  const pole=el("input",{type:"text",value:"",placeholder:"Název existující stránky","aria-label":`Nový cíl místo „${stary}“`,hidden:true,style:"min-width:14em"});
+  const pouzit=el("button",{class:"btn mini",type:"button",hidden:true},"Použít");
+  const chyba=el("span",{class:"tichy",role:"alert"});
+  tl.addEventListener("click",()=>{ const o=pole.hidden; pole.hidden=pouzit.hidden=!o; tl.setAttribute("aria-expanded",o); chyba.textContent=""; if(o) pole.focus(); });
+  const proved=()=>{ const n=pole.value.trim(); if(!n) return;
+    if(!najitCilEd(n)){ chyba.textContent=`Stránka „${n}“ neexistuje.`; pole.focus(); return; }
+    const c=naPouzit(n); if(c){ chyba.textContent=c; pole.focus(); } };
+  pouzit.addEventListener("click",proved);
+  pole.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); proved(); } if(e.key==="Escape"){ e.preventDefault(); tl.click(); tl.focus(); } });
+  obal.append(tl,pole,pouzit,chyba); return obal;
+}
+/* Panel pod textem stránky: odkazy a vložení s cílem (odkazy na stránky) a bez cíle (Založit / Přesměrovat) */
+function panelOdkazu(u,s,poZmene){
+  const box=el("section",{class:"karta","aria-labelledby":"h-odkazy-"+u._k,style:"margin-top:14px"});
+  const kreslit=()=>{
+    box.innerHTML="";
+    const vse=odkazyVTextu(s.text,u.file), ok=vse.filter(x=>x.nalez), spatne=vse.filter(x=>!x.nalez);
+    const druhText=x=>x.druh==="vlozeni"?"vložení":x.druh==="soubor"?"odkaz na soubor":"wikiodkaz";
+    box.append(el("h3",{id:"h-odkazy-"+u._k},`Odkazy a vložení na stránce (${vse.length})`));
+    if(!vse.length){ box.append(el("p",{class:"tichy",style:"margin:0"},"Stránka neobsahuje žádné wikiodkazy ani vložení.")); return; }
+    if(spatne.length){
+      box.append(el("h4",{style:"margin:6px 0"},`❗ Bez cíle (${spatne.length})`),el("ul",{class:"sprava-seznam"},spatne.map(x=>el("li",{},
+        el("div",{class:"radek",style:"flex-wrap:wrap;gap:8px"},el("b",{},x.cil),el("small",{class:"tichy"},druhText(x)+(x.pocet>1?` · ${x.pocet}×`:"")),
+          x.druh!=="soubor"&&!u.managed?[
+            el("button",{class:"btn mini",type:"button",onclick:()=>zalozitStrankuSNazvem(x.cil)},"Založit stránku"),
+            ovladaniPresmerovani(x.cil,novy=>{ const r=presmerovatVTextu(s.text,x.cil,novy); if(!r.pocet) return "V textu se nic nenašlo.";
+              s.text=r.text; s.vytvorit=true; obnovitStav(); planNahled(); poZmene?.();
+              stav(`„${x.cil}“ přesměrováno na „${novy}“ (${r.pocet}×) — uloží se tlačítkem Uložit vše`,"zmeny"); })]:null)))));
+    }
+    if(ok.length) box.append(el("h4",{style:"margin:10px 0 6px"},`S cílem (${ok.length})`),el("ul",{class:"vyber"},ok.map(x=>el("li",{},
+      el("a",{href:"#"+encodeURIComponent(x.nalez.u.id),onclick:e=>{ e.preventDefault(); vybrat({druh:"stranka",uzel:x.nalez.u}); }},
+        (ikonaUzlu(x.nalez.u)?ikonaUzlu(x.nalez.u)+" ":"")+x.cil,
+        el("small",{}," · "+druhText(x)+(x.nalez.cast||slug(x.cil)!==slug(x.nalez.u.title||"")?" → "+x.nalez.u.title+(x.nalez.cast?" / "+x.nalez.cast:""):"")+(x.pocet>1?` · ${x.pocet}×`:"")))))));
+  };
+  kreslit(); box.obnovit=kreslit; return box;
+}
 /* Odkazy bez cíle: [[…]], ![[…]], {{…}} a [text](soubor.md) v textech místních stránek (mimo bloky kódu) */
 function chybejiciCile(){
   const mistni=new Set(stranky().filter(u=>druhZdroje(u)==="mistni").map(u=>u.file));
@@ -1505,6 +1582,7 @@ async function kreslitSpravu(ed,nastroj){
   if(E.vybrano?.druh!=="sprava"||(E.vybrano.nastroj||"chybejici")!==nastroj) return;
   kreslitZalozky(poctySpravy());
   cekat.remove();
+  if(E.hlaseniSpravy){ stav(E.hlaseniSpravy,"zmeny"); E.hlaseniSpravy=null; }
   const nadpis=t=>el("h3",{},t);
   if(nastroj==="chybejici"){
     const seznam=chybejiciCile();
@@ -1512,7 +1590,16 @@ async function kreslitSpravu(ed,nastroj){
     if(!seznam.length){ k.append(el("p",{},"Všechny odkazy mají cíl.")); return; }
     k.append(el("ul",{class:"sprava-seznam"},seznam.map(x=>el("li",{},
       el("div",{class:"radek"},el("b",{},x.druh==="soubor"?"📄 "+x.nazev:x.nazev),
-        el("button",{class:"btn mini",type:"button",onclick:()=>zalozitStrankuSNazvem(x.druh==="soubor"?titulZTextu("",x.nazev):x.nazev,x.druh==="soubor"?x.nazev:null)},"Založit stránku")),
+        el("button",{class:"btn mini",type:"button",onclick:()=>zalozitStrankuSNazvem(x.druh==="soubor"?titulZTextu("",x.nazev):x.nazev,x.druh==="soubor"?x.nazev:null)},"Založit stránku"),
+        x.druh==="soubor"?null:ovladaniPresmerovani(x.nazev,novy=>{
+          const cizi=spravovaneSoubory(); let pocet=0, vynechano=0;
+          for(const u of x.zdroje){ if(cizi.has(u.file)){ vynechano++; continue; }
+            const sb=E.soubory.get(u.file); if(!sb||sb.stav==="chyba") continue;
+            const r=presmerovatVTextu(sb.text,x.nazev,novy); if(r.pocet){ sb.text=r.text; sb.vytvorit=true; pocet+=r.pocet; } }
+          if(!pocet) return vynechano?"Odkazy jsou jen v souborech spravovaných jinou aplikací.":"V textech se nic nenašlo.";
+          obnovitStav(); planNahled(); vybrat({druh:"sprava",nastroj:"chybejici"});
+          E.hlaseniSpravy=(`„${x.nazev}“ přesměrováno na „${novy}“ (${pocet}×${vynechano?`, ${vynechano} spravovaných souborů vynecháno`:""}) — uloží se tlačítkem Uložit vše`);
+        })),
       el("div",{class:"tichy"},"Odkazuje sem: ",...[...x.zdroje].flatMap((u,i)=>[i?", ":"",odkazNaStranku(u)]))))));
   }
   else if(nastroj==="stitky") kreslitSpravuStitku(k);
