@@ -3661,15 +3661,15 @@ skutečně vyleze z exportu dat — jedno se dá použít k validaci druhého.
 Když atribut přejmenuješ, klíč se změní. Právě proto se u modelu, který už někam odešel,
 vyplatí klíče zafixovat.
 
-### 36.5 Co z modelu vyvézt
+### 36.5 Co z modelu exportovat
 
 Export nemusí nést celý model. V přehledu (kap. 36.2) má **každý typ entity, aspekt, typ
 vazby i jednotlivý atribut svoje zaškrtávátko** a ven jde jen zaškrtnuté. Dokud nic
-neodškrtneš, vyváží se celý model — jako dřív.
+neodškrtneš, exportuje se celý model — jako dřív.
 
 - U typu a aspektu stojí zaškrtávátko v jeho řádku, atributy mají svoje po rozkliknutí.
-  Odškrtnutý typ svoje atributy **zašedí** — nevyvezou se tak jako tak, ale jejich volba
-  zůstane pro chvíli, kdy typ zapneš zpátky.
+  Odškrtnutý typ svoje atributy **zašedí** — do exportu se stejně nedostanou, ale jejich
+  volba zůstane pro chvíli, kdy typ zapneš zpátky.
 - Nad každou skupinou je **vše / nic**.
 - **Číselníky a soustavy tagů se nevybírají** — jdou s tím, co je používá. Když odškrtneš
   poslední atribut, který číselník používal, vypadne z exportu i ten číselník.
@@ -3680,8 +3680,8 @@ neodškrtneš, vyváží se celý model — jako dřív.
 
 Co ořez znamená pro výstup:
 
-- **Typ vazby, kterému na jednom konci nezůstal žádný typ, se nevyveze** — nemá co spojovat
-  a napíše se to do varování.
+- **Typ vazby, kterému na jednom konci nezůstal žádný typ, v exportu nebude** — nemá co
+  spojovat a napíše se to do varování.
 - **Vazební atribut, který mířil na vynechaný typ**, zůstane, ale v exportu vede na
   cokoli; i to stojí ve varováních. Zahodit atribut, který jsi zaškrtnul, by bylo horší.
 - **Odkaz do prázdna nikdy nezůstane.** Schéma, DDL ani ontologie se nesmí odkazovat na
