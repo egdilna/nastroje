@@ -3634,6 +3634,9 @@ Horní část karty je čitelný výpis modelu:
 Varování nic neblokují — export proběhne. Jsou to místa, kde model něco nedopověděl a
 generátor musel něco domyslet.
 
+Každý typ, aspekt, typ vazby i jednotlivý atribut má v přehledu **zaškrtávátko** — tím se
+vybírá, co půjde do exportu. Podrobně v kap. 36.5.
+
 ### 36.3 Základní IRI
 
 RDF výstupy (OWL, SKOS, SHACL) potřebují jmenný prostor. Pole **Základní IRI** se ukládá
@@ -3658,9 +3661,36 @@ skutečně vyleze z exportu dat — jedno se dá použít k validaci druhého.
 Když atribut přejmenuješ, klíč se změní. Právě proto se u modelu, který už někam odešel,
 vyplatí klíče zafixovat.
 
-### 36.5 Formáty
+### 36.5 Co z modelu vyvézt
 
-Přepínačem si vybereš formát, hned pod ním vidíš náhled výstupu.
+Export nemusí nést celý model. V přehledu (kap. 36.2) má **každý typ entity, aspekt, typ
+vazby i jednotlivý atribut svoje zaškrtávátko** a ven jde jen zaškrtnuté. Dokud nic
+neodškrtneš, vyváží se celý model — jako dřív.
+
+- U typu a aspektu stojí zaškrtávátko v jeho řádku, atributy mají svoje po rozkliknutí.
+  Odškrtnutý typ svoje atributy **zašedí** — nevyvezou se tak jako tak, ale jejich volba
+  zůstane pro chvíli, kdy typ zapneš zpátky.
+- Nad každou skupinou je **vše / nic**.
+- **Číselníky a soustavy tagů se nevybírají** — jdou s tím, co je používá. Když odškrtneš
+  poslední atribut, který číselník používal, vypadne z exportu i ten číselník.
+- Řádek **Do exportu jde —** nad soubory hlásí, kolik z čeho zbylo („Typy entit 1/2"),
+  a vedle je tlačítko **Vybrat celý model**, které výběr zruší.
+- Výběr platí **pro jedno sezení**: po obnovení stránky je zase celý model. Do dat projektu
+  se neukládá — je to věc toho, kdo zrovna exportuje, ne vlastnost modelu.
+
+Co ořez znamená pro výstup:
+
+- **Typ vazby, kterému na jednom konci nezůstal žádný typ, se nevyveze** — nemá co spojovat
+  a napíše se to do varování.
+- **Vazební atribut, který mířil na vynechaný typ**, zůstane, ale v exportu vede na
+  cokoli; i to stojí ve varováních. Zahodit atribut, který jsi zaškrtnul, by bylo horší.
+- **Odkaz do prázdna nikdy nezůstane.** Schéma, DDL ani ontologie se nesmí odkazovat na
+  typ, který v exportu není — ořez proto dopadne na všechny osm výstupů naráz.
+
+### 36.6 Formáty
+
+Přepínačem si vybereš formát, hned pod ním vidíš náhled výstupu. **Zaškrtávátko vedle
+názvu** rozhoduje, jestli ten soubor půjde do ZIPu; tlačítko s názvem jen přepíná náhled.
 
 | Soubor | Formát | K čemu |
 |---|---|---|
@@ -3673,16 +3703,17 @@ Přepínačem si vybereš formát, hned pod ním vidíš náhled výstupu.
 | `shapes.ttl` | SHACL | Tvary odpovídající třídám z OWL — validace RDF dat proti modelu |
 | `model.xmi` | XMI (UML) | UML model pro Enterprise Architect a další CASE nástroje: třídy, atributy, asociace, výčty |
 
-### 36.6 Stažení
+### 36.7 Stažení
 
 - **📋 Kopírovat** — aktuálně zobrazený formát do schránky
 - **📥 Stáhnout soubor** — jen ten jeden soubor
-- **📦 Stáhnout vše (ZIP)** — všech sedm souborů plus `README.md` s přehledem, datem
-  vygenerování, základním IRI a případnými varováními
+- **📦 Stáhnout ZIP (n)** — zaškrtnuté soubory (číslo v tlačítku říká kolik) plus
+  `README.md` s přehledem, datem vygenerování, základním IRI a případnými varováními.
+  V tabulce v `README.md` jsou jen soubory, které v ZIPu opravdu jsou.
 
 Náhled v okně je u velkých modelů zkrácený, ale kopírování i stažení berou celý obsah.
 
-### 36.7 Jak se model překládá
+### 36.8 Jak se model překládá
 
 Datový model DKM má pár věcí, které v cílových formátech přímý protějšek nemají. Stojí za
 to vědět, jak se to řeší:
@@ -3717,7 +3748,7 @@ to vědět, jak se to řeší:
 - **Konce asociací mají vždy vypsanou násobnost.** Bez ní UML rozumí `1..1`, což by
   znamenalo, že každá entita tu vazbu mít musí — a to model neříká.
 
-### 36.8 Jak jsou výstupy ověřené
+### 36.9 Jak jsou výstupy ověřené
 
 Každý formát prochází skutečným nástrojem svého světa, ne jen kontrolou „vypadá to rozumně":
 
