@@ -311,6 +311,49 @@ Všechno stojí na jednom mezistupni: **`buildModelIR()`**. Generátory čtou **
 `state.data` — když přidáváš formát, přidej ho do `MODEL_FORMATS` a ber IR. Když do modelu
 přibude pojem, přidej ho do IR a promítni do všech generátorů, ne jen do toho svého.
 
+### Výběr, co z modelu jde ven
+Ven šel dřív vždycky celý model; kdo chtěl část, prořezával výstup ručně (hlášeno od
+uživatele). Nově je výběr **jedna spára v IR**: `buildModelIR(vyber)` dostane množinu
+`vynechane` s klíči `ty:` / `asp:` / `rt:` / `at:` — **táž adresace jako u exportu dat**.
+Generátorů se to nedotklo ani jedním řádkem, a to je na tom to podstatné.
+
+- **Prázdná množina znamená celý model**, takže bez výběru vyjde přesně to, co vycházelo
+  dřív. Starší volání `buildModelIR()` jsou tím pádem v pořádku.
+- **Klíče se přidělují před filtrem.** Kdyby se vynechaný atribut vůbec nepojmenoval,
+  přepadla by přípona `_2` na jeho jmenovce a navazující import by se rozešel — týž důvod
+  jako u `cfg.vynechane` v exportu dat.
+- **Varování si atribut nese s sebou** (`__varovani`) a do `ir.warnings` se přelijí teprve
+  po filtru. Hlásit chybějící číselník u atributu, který se nevyváží, je šum.
+- **Číselníky a soustavy tagů jsou závislost, ne volba** — zúží se na to, co zaškrtnuté
+  atributy používají (stejné pravidlo jako `zavislostiModelu` u přenosu modelu). Proto
+  u nich nejsou zaškrtávátka. Bez výběru se nefiltrují, aby se nezměnilo staré chování
+  (a nezmizelo varování o nepoužitém číselníku).
+- **Odkaz do prázdna nikdy nesmí zůstat.** Typ vazby, kterému na jednom konci nezůstal
+  žádný typ, se zahodí (`modelWarnRelMimo`); vazební atribut mířící na vynechaný typ
+  **zůstane**, ale `targetType` se uvolní na „cokoli" (`modelWarnCilMimo`). Zahodit
+  atribut, který uživatel zaškrtnul, by bylo horší — a nechat v něm cizí identifikátor
+  taky (týž kompromis jako v `balicekModelu`).
+- **Výběr žije v paměti stránky** (`vyberExportuModelu`), ne v datech projektu ani
+  v prohlížeči: je to volba toho, kdo zrovna exportuje. Do dat patří dál jen `baseIri`.
+- **Přehled se nikdy nepřekresluje podle výběru.** Vynechaná položka v něm musí zůstat
+  vidět, jinak by ji nešlo zaškrtnout zpátky (táž past jako u vynechaných polí v exportu
+  dat). Překresluje se jen tělo `#mdl-export` (`prekresliExportModelu`) a tlačítka vše/nic
+  si zaškrtávátka **dorovnají v DOM**.
+- **Zaškrtávátko v `<summary>` musí na kliknutí zastavit probublání**, jinak se u toho
+  rozbalí `<details>`. Ověřeno testem, ne odhadem.
+- **Soubory do ZIPu se zaškrtávají vedle názvu formátu** (`formatyDoZipu`,
+  `modelZipSoubory(ir,formaty)`); `README.md` jde do ZIPu vždycky a v tabulce uvádí **jen
+  to, co v ZIPu je**. Změna zaškrtávátka formátu tělo **nepřekresluje** — přepíše jen počet
+  v nadpisu a tlačítko na ZIP, jinak by umřelo ohnisko na zaškrtávátku.
+- Po „Vybrat celý model" jde ohnisko na `#mdl-zip`: tlačítko resetu se tím samo zakáže,
+  takže na něj fokus poslat nejde.
+
+Ověřeno nad třemi variantami modelu (celý / bez typu / bez aspektu): 55 scénářů nad
+rozhraním a **67 kontrol výstupů** — JSON Schema metaschématem i instancí, XSD kompilací
+a dokumentem, OpenAPI i SQL rozřešením odkazů, OWL a SHACL parserem a vzájemnou kontrolou
+(`sh:path`, `sh:targetClass`, `sh:in` musí existovat v ontologii), XMI rozřešením `idref`.
+Hlavní riziko ořezu je **viselý odkaz**, a přesně na to ty kontroly jsou.
+
 **Klíče se počítají přes `jsonSlug` + `jsonKey`**, tedy stejně jako u exportu dat. Tím
 vygenerované OpenAPI a JSON Schema sedí na to, co vyleze z exportu dat — to je smysl celé
 věci, neobcházej to vlastním sluggerem.

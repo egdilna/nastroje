@@ -3692,6 +3692,9 @@ The upper part of the tab is a readable listing of the model:
 Warnings block nothing — the export runs anyway. They mark the spots where the model left
 something unsaid and the generator had to fill in the blank.
 
+Every type, aspect, relation type and individual attribute has a **checkbox** in the
+overview — that is how you pick what goes into the export. See ch. 36.5.
+
 ### 36.3 Base IRI
 
 The RDF outputs (OWL, SKOS, SHACL) need a namespace. The **Base IRI** field is stored
@@ -3717,9 +3720,42 @@ actually comes out of the data export — one can be used to validate the other.
 Rename an attribute and its key changes. That is exactly why it pays to pin the keys of a
 model you have already sent somewhere.
 
-### 36.5 Formats
+### 36.5 What to export from the model
 
-Pick a format with the switcher; the preview right below shows the output.
+The export does not have to carry the whole model. In the overview (ch. 36.2) **every
+entity type, aspect, relation type and individual attribute has its own checkbox** and
+only what is ticked goes out. Until you untick something, the whole model is exported —
+just as before.
+
+- For a type and an aspect the checkbox sits in its line; attributes have their own once
+  you expand it. An unticked type **greys out** its attributes — they would not be
+  exported anyway, but their own choice is kept for the moment you tick the type back on.
+- Every group has an **all / none** pair above it.
+- **Value lists and tag sets are not picked** — they follow whatever uses them. Untick the
+  last attribute that used a list and the list drops out of the export as well.
+- The line **The export will carry —** above the files reports what is left of each
+  ("Entity types 1/2"), and next to it sits a **Select the whole model** button that
+  clears the selection.
+- The selection lasts **for one session**: after a page refresh the whole model is back. It
+  is not stored in the project data — it belongs to whoever is exporting right now, not to
+  the model.
+
+What the trimming means for the output:
+
+- **A relation type left with no entity type on one of its ends is not exported** — it has
+  nothing to connect, and that goes into the warnings.
+- **A relation attribute that pointed at an excluded type** stays, but in the export it
+  leads to anything; that is in the warnings too. Throwing away an attribute you ticked
+  would be worse.
+- **A reference into nothing never survives.** Neither a schema, nor the DDL, nor the
+  ontology may point at a type that is not in the export — so the trimming lands on all
+  eight outputs at once.
+
+### 36.6 Formats
+
+Pick a format with the switcher; the preview right below shows the output. The **checkbox
+next to the name** decides whether that file goes into the ZIP; the button with the name
+only switches the preview.
 
 | File | Format | What for |
 |---|---|---|
@@ -3732,17 +3768,18 @@ Pick a format with the switcher; the preview right below shows the output.
 | `shapes.ttl` | SHACL | Shapes matching the classes from the OWL output — validate RDF data against the model |
 | `model.xmi` | XMI (UML) | A UML model for Enterprise Architect and other CASE tools: classes, attributes, associations, enumerations |
 
-### 36.6 Downloading
+### 36.7 Downloading
 
 - **📋 Copy** — the currently shown format to the clipboard
 - **📥 Download file** — just that one file
-- **📦 Download all (ZIP)** — all seven files plus a `README.md` with the overview, the
-  generation date, the base IRI and any warnings
+- **📦 Download ZIP (n)** — the ticked files (the number in the button says how many) plus
+  a `README.md` with the overview, the generation date, the base IRI and any warnings. The
+  table in `README.md` lists only the files the ZIP actually holds.
 
 The on-screen preview is truncated for large models, but copying and downloading always
 take the full content.
 
-### 36.7 How the model is translated
+### 36.8 How the model is translated
 
 A few things in the DKM data model have no direct counterpart in the target formats. It is
 worth knowing how they are handled:
@@ -3785,7 +3822,7 @@ worth knowing how they are handled:
 - **Association ends always spell out their multiplicity.** Without it UML reads `1..1`,
   which would mean every entity must have that relation — and the model does not say that.
 
-### 36.8 How the outputs are verified
+### 36.9 How the outputs are verified
 
 Every format goes through a real tool from its own world, not just a "looks reasonable" check:
 
