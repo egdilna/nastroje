@@ -323,7 +323,7 @@ Generátorů se to nedotklo ani jedním řádkem, a to je na tom to podstatné.
   přepadla by přípona `_2` na jeho jmenovce a navazující import by se rozešel — týž důvod
   jako u `cfg.vynechane` v exportu dat.
 - **Varování si atribut nese s sebou** (`__varovani`) a do `ir.warnings` se přelijí teprve
-  po filtru. Hlásit chybějící číselník u atributu, který se nevyváží, je šum.
+  po filtru. Hlásit chybějící číselník u atributu, který v exportu nebude, je šum.
 - **Číselníky a soustavy tagů jsou závislost, ne volba** — zúží se na to, co zaškrtnuté
   atributy používají (stejné pravidlo jako `zavislostiModelu` u přenosu modelu). Proto
   u nich nejsou zaškrtávátka. Bez výběru se nefiltrují, aby se nezměnilo staré chování
