@@ -1005,6 +1005,85 @@ Hlídá to `pim/testy/prilohy-ze-cteni.mjs` (24 kontrol: obě cesty proti tému�
 očekávání, naplánovaný autosave v režimu čtení i jeho nepřítomnost v editaci, úklid
 dočasného pole, vrácení fokusu, kanárek na druhou entitu).
 
+### Balíčky s přílohami: jedna cesta pro tři výstupy
+
+`attachments/<att.id>/<sanitizeFilename(name)>` je **jediný tvar cesty k příloze**
+a vzniká v `cestaPrilohy()`. Jde tudy sync na GitHub (`attachmentGhPath()` si před
+to jen předřadí adresář repozitáře), ZIP záloha, ZIP k offline prohlížeči
+i balíček pro přenos entit. Druhou kopii toho pravidla nepiš: kdyby se rozešla
+o jediný znak v `sanitizeFilename()`, odkaz v prohlížeči míří vedle a vypadá to
+jako rozbitá příloha.
+
+| Funkce | Co dělá |
+|---|---|
+| `cestaPrilohy(att)` | cesta v balíčku — **jediné místo**, kde ten tvar vzniká |
+| `ziskejBajtyPrilohy(att, opts)` | bajty bez ohledu na úložiště: `embedded` → base64, IndexedDB, jinak stáhne z GitHubu a uloží do cache. Vrací `{ data }`, nebo `{ chyba }` |
+| `posbirejPrilohySeznam(polozky, opts)` | sebere dvojice `{att, entita}`, hlásí průběh, vrací `{ polozky, chybejici, bajtu }` |
+| `posbirejPrilohy(entity, opts)` | totéž nad entitami; táž příloha se zabalí jednou (klíč `att.id`) |
+| `popisChybejicichPriloh(chybejici)` | věta pro uživatele; prázdná = vše se povedlo |
+
+**Nikdy tiše nepřeskakuj přílohu.** `exportToZip()` to dělal: sahal jen do
+IndexedDB a `continue`-m zahodil staré `embedded` přílohy i ty, co jsou jen na
+GitHubu. ZIP záloha pak mohla mít nula příloh a nikdo se to nedozvěděl.
+
+#### Offline prohlížeč
+
+`downloadStaticViewer({ sPrilohami: true })` → `stahniProhlizecSPrilohami()`.
+Čtyři věci, které nejsou libovolné:
+
+1. **Na `file://` jsou `fetch` i XHR zakázané** (změřeno: *URL scheme "file" is not
+   supported*, resp. CORS), ale relativní `href`, `<img src>` i `<audio src>`
+   fungují. Prohlížeč proto na přílohy **odkazuje**, nestahuje je do blob URL.
+   Kdo tam blob URL vrátí, rozbije celý balíček.
+2. **Cestu píše generátor do dat** (`att.cesta` v `sanitizeDbForStaticViewer`), ne
+   prohlížeč. Jinak by prohlížeč potřeboval vlastní kopii `sanitizeFilename()`.
+3. **Generuje se nadvakrát.** První průchod jen posbírá kandidáty (`opts.sebrane`),
+   po sebrání bajtů se složí finální HTML s `opts.povoleneCesty` — odkaz tak
+   vznikne **jen na soubor, který v ZIPu opravdu je**.
+4. **Soubory zabezpečených entit se nebalí.** Šifrují se jen atributy, soubor by
+   odešel čitelný. V záloze celé báze naopak jsou — ta je pro vlastníka.
+
+Příloha bez `cesta` se v prohlížeči hlásí jako „soubor není součástí tohoto
+exportu". Dřív tam bylo tlačítko Stáhnout, které vždycky zahlásilo chybu: sanitizer
+zahazuje `storage`, takže `getAttachmentBlobUrl()` neměl z čeho vyjít. Pole
+`attachmentsBase` v datech bylo roky mrtvé.
+
+**Při tom se opravil pád prohlížeče:** `VIEWER_EXTRA_JS` definovalo
+`isSecuredUnlocked()` nad `_unlockedSecured`, které v prohlížeči **neexistuje**.
+`getEntityBadgePrefix()` se na odemčení ptá hned při prvním vykreslení, takže
+prohlížeč s jedinou entitou aspektu Secured skončil na „Chyba načtení dat". Teď
+vrací `false` — v prohlížeči nemůže být odemčené nic.
+
+#### Přenos entit mezi PIMy
+
+`downloadZipExport(scope, options)` je ZIP varianta `downloadJsonExport()`:
+`pim-export.json` je **tentýž payload** plus `attachments/…`. Zabalená příloha nese
+`_zipPath` — stejnou značku jako ZIP záloha, takže oba importy mluví stejně.
+
+Import (`performImport(payload, strategy, scope, { soubory })`, nově `async`) drží
+tři pravidla:
+
+1. **Identita je `att.id`.** Opakovaný import téhož balíčku proto nic nezdvojí.
+   Tentýž soubor nahraný nezávisle ve dvou PIMech zůstane jako dvě přílohy —
+   jsou to dvě různé přílohy, obsahová deduplikace by vyžadovala adresování
+   obsahem a rozbila by pravidlo „smažu entitu → smažu její blob".
+2. **Bloby se obnovují až s konečnými id.** Strategie „nové ID" přečísluje
+   `att.id`, zatímco `_zipPath` ukazuje do balíčku pod původní cestou. Kdyby se
+   obnovovalo dřív, blob by ležel pod id, které v bázi nikdo nemá.
+3. **Chybějící soubor se neschovává.** Příloha dostane `storage: 'missing'`
+   („Soubor chybí (nebyl v balíčku)"), ale **jen když ji nemáme ani lokálně** —
+   jinak by přepis existující entity zahodil soubor, který tu je v pořádku. Dřív
+   se dával stav `'pending'`, kterému nerozuměl nikdo: v UI se ukázalo doslova
+   „pending", Stáhnout zahlásilo chybu a sync si toho nevšiml.
+
+Při strategii „přepsat" se mažou bloby příloh, na které po přepisu nikdo
+neukazuje — jinak by v IndexedDB zůstali sirotci.
+
+Hlídá to `pim/testy/prilohy-balicky.mjs` (39 kontrol). Prohlížeč se v ní ověřuje
+**na rozbaleném archivu z disku**: otevře se `file://`, zkontroluje se, že odkazy
+jsou relativní, že se obrázek opravdu načetl (`naturalWidth`) a že nikde není blob
+URL. Nad řetězcem by to vypadalo hotově, i kdyby to příjemci nešlo otevřít.
+
 ## Šifrované atributy (aspekt Secured)
 `deriveKey` = **PBKDF2, `SECURED_ITERATIONS = 100000`, SHA-256**, s náhodnou solí;
 `encryptPayload`/`decryptPayload`, stav odemčení drží `isSecuredUnlocked` /

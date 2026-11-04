@@ -558,6 +558,51 @@ command or editing.
 Removing an attachment is still only possible while editing; in read mode you can
 download it, an image gets a preview and audio gets a player.
 
+### Attachments in packages: offline viewer and transfer between PIMs
+
+Attachment files can leave in three packages and **all three use the same internal
+path** `attachments/<id>/<file name>`. The `<id>` is the attachment's identifier, so
+two attachments with the same name never overwrite each other — and it is the very
+same path the attachments have in the GitHub repository.
+
+| Package | Where | What is inside |
+|---|---|---|
+| **Offline viewer with attachments** | Stáhnout statický prohlížeč → „Soubory příloh" | the viewer HTML, `attachments/…`, ČTI-MĚ |
+| **Transfer between PIMs** | Export dat → JSON → „I soubory příloh" | `pim-export.json`, `attachments/…`, ČTI-MĚ |
+| **Full backup** | Nastavení → Data → Stáhnout ZIP | `pim.json`, `attachments/…`, README |
+
+**Unpack the whole archive into one folder.** The viewer looks for the files next to
+itself; move the HTML elsewhere and leave `attachments/` behind and the attachments
+stop opening. It also works the other way round with no unpacking at all: upload the
+viewer into the root of your GitHub repository, where the attachments already live,
+and the links line up by themselves.
+
+In the viewer an attachment is a **direct link to the file**: both the name and the
+Download button point at the file in the archive, an image gets a preview and audio
+gets a player. When the viewer is downloaded **without** attachments, it says "soubor
+není součástí tohoto exportu" instead of offering a button that would only fail.
+
+**Files of secured entities are not packaged into the viewer.** Only attributes are
+encrypted; the file itself is not, so the recipient would get it in the clear. How
+many files that was is reported after the download. The full backup does include
+them — that one is for you, not for someone else.
+
+**Attachments that live only on GitHub** and have not been opened in this browser yet
+are downloaded while the package is assembled (it takes a while; progress shows in the
+status line). Whatever cannot be fetched is listed — no attachment disappears quietly.
+
+**Importing a package into another PIM** accepts both a ZIP and a plain JSON. From a
+ZIP the files are restored into the target PIM and the preview says how many the
+package holds. **Importing the same package again duplicates nothing** — attachments
+and entities are matched by their identifier. With the "Vytvořit nové ID" strategy the
+copied entity gets new attachment identifiers too and the files are restored under
+them.
+
+When the package carries no files (plain JSON, or a file could not be packaged), the
+attachment gets the state **"Soubor chybí (nebyl v balíčku)"** — its details stay, but
+nothing pretends the file is available. If the same file is already in the target PIM
+under the same identifier, it is left alone.
+
 ## 📁 Project filter
 
 The **Tasks**, **Calendar**, **Tags**, **Flags**, **Links** and **Comments** views have
