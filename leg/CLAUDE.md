@@ -151,6 +151,12 @@ zobrazuje se seřazené.
   složeného ustanovení (`data-odkaz-id`, u EU `data-celexid`/`data-id_celex`), do hloubky 1.
   Komentáře jako nativní `comments[]`. Štítky, skupiny a účinnost se nepřenášejí.
 
+## Kopírování
+`formatyKopirovani()` (ustanovení) a `formatyKopirovaniPredpisu()` (sekce Kopírovat na stránce
+předpisu: citace, plný název, informace o předpisu v Markdownu = odkaz s plným názvem + popis,
+odkazy do aplikace a e-Sbírky jako adresa i Markdown). `adresaEli()` — ELI e-Sbírky
+`https://www.e-sbirka.cz/eli/cz/sb/{rok}/{číslo}`, u ustanovení `/{znění}/dokument/{klíč}`.
+
 ## Markdown
 Vlastní renderer `markdownDom(text, urovenNadpisu)` (nadpisy, odstavce s `br`, vnořené
 seznamy, citace, blok kódu, tučně, kurzíva, přeškrtnutí, kód, odkazy). Staví DOM přes `el()`,
