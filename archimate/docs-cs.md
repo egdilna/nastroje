@@ -2,14 +2,14 @@
 
 Webový editor pro tvorbu a správu architektonických modelů podle standardu ArchiMate 3.2 s rozšířeními pro správu architektonických rozhodnutí (ADR), poznámek a úkolů.
 
-## Online verze a stažení
+## Online verze a odkazy
 
-- **Online verze:** https://egdilna.github.io/nastroje/archimate
-- **GitHub:** https://github.com/michalradacz/archimate-editor
+- **Nástroj:** https://nastroje.egdilna.cz/archimate
+- **Stránka o nástroji:** https://nastroje.egdilna.cz/#archimate
+- **Zdrojový kód:** https://github.com/egdilna/nastroje
 
-Na GitHubu najdete:
-- Editor ke stažení jako jeden HTML soubor
-- DokuWiki plugin pro integraci s wiki systémem
+V repozitáři najdete:
+- Editor jako jediný HTML soubor (`archimate/index.html`) — lze ho stáhnout a používat i offline
 - Dokumentaci aplikace v češtině i angličtině
 - JSON Schema pro validaci AJX formátu (`ajx-schema.json`)
 
@@ -30,9 +30,9 @@ Na GitHubu najdete:
 11. [Generátor textu](#generátor-textu)
 12. [Import a export](#import-a-export)
 13. [Slučování modelů](#slučování-modelů)
-14. [Hromadné operace s příznaky](#hromadné-operace-s-příznaky)
-15. [GitHub integrace](#github-integrace)
-16. [DokuWiki plugin](#dokuwiki-plugin)
+14. [Správa příznaků](#správa-příznaků)
+15. [Log změn](#log-změn)
+16. [GitHub integrace](#github-integrace)
 17. [Tipy a triky](#tipy-a-triky)
 18. [Klávesové zkratky](#klávesové-zkratky)
 19. [Referenční příručka ArchiMate](#referenční-příručka-archimate)
@@ -61,10 +61,12 @@ Pokročilý editor architektury v jazyce ArchiMate, který může ale sloužit i
 - **ADR (Architecture Decision Records)** - správa architektonických rozhodnutí
 - **Generátor textu** - tvorba dokumentace z modelu pomocí šablon
 - **Diagramy** - vizuální editor s drag & drop a export do SVG/PNG
-- **Hromadné operace** - práce s příznaky (tagy)
+- **Hromadné operace** - práce s příznaky (tagy) i hromadné úpravy prvků a vazeb přímo v tabulce
+- **Export do Markdownu a Wordu** - úkoly, ADR a diagramy jako `.md` nebo `.docx`
+- **Import CSV/TSV** - hromadné zavedení prvků z tabulky s mapováním sloupců
+- **Log změn** - přehled všech změn provedených v aktuální session
 - **Přístupnost** - plně přístupné rozhraní pro odečítače obrazovky
 - **Integrace s GitHub a GIT**: Možnost načíst a ukládat modely a projekty v GIT repozitáři, přístup je zajištěn přes API klíč, takže to bude fungovat i u privátních repos.
-- **DokuWiki integrace** - plugin pro spolupráci v týmu
 
 
 
@@ -124,10 +126,14 @@ V záhlaví najdete:
 - **Verze modelu** - zobrazuje aktuální verzi
 - **Statistiky** - počet prvků, vazeb, diagramů a vrstev
 - **Přepínač jazyka** - CZ/EN
+- **Rychlé akce** - 📄 **Nový** (Alt+N), 📂 **Otevřít** (Alt+O) a 💾 **Uložit** (Alt+S, případně Ctrl+S)
+
+Tlačítko **Uložit** se rozhoduje samo: je-li vyplněná cesta do GitHubu a uložený token,
+uloží model do GitHubu, jinak stáhne soubor AJX.
 
 ### Záložky
 
-Editor je rozdělen do devíti hlavních záložek:
+Editor je rozdělen do deseti hlavních záložek:
 
 1. **Model** - metadata a nastavení modelu
 2. **Prvky** - správa architektonických prvků
@@ -136,7 +142,7 @@ Editor je rozdělen do devíti hlavních záložek:
 5. **Úkoly** - evidence a sledování úkolů
 6. **Poznámky** - textové poznámky s Markdown
 7. **ADR** - architektonická rozhodnutí
-8. **Nástroje** - generátor textu a hromadné operace
+8. **Nástroje** - log změn, správa příznaků a generátor textu
 9. **Export/Import** - výměna dat s jinými systémy
 10. **Reference** - přehled ArchiMate specifikace
 
@@ -192,11 +198,32 @@ ID prvku se generuje automaticky z typu a názvu:
 
 ### Operace s prvky
 
-| Ikona | Akce | Popis |
-|-------|------|-------|
-| ✏️ | Editace | Otevře prvek k úpravě |
-| 📋 | Duplikování | Vytvoří kopii s novým ID |
-| 🗑️ | Smazání | Smaže prvek i jeho vazby |
+| Akce | Popis |
+|------|-------|
+| **Upravit** | Otevře prvek k úpravě ve formuláři pod tabulkou |
+| 📋 | Duplikuje prvek (kopie s novým ID) |
+| **Smazat** | Smaže prvek i jeho vazby |
+
+Název prvku v tabulce je odkaz na jeho vazby — kliknutím se přepnete na záložku Vazby
+s filtrem na daný prvek. Sloupec **Diagramy** ukazuje, na kterých diagramech prvek je.
+
+U názvu prvku jsou také malá tlačítka **Z:** a **Do:** s počtem vazeb, které směřují
+z prvku a do prvku. Kliknutím se otevře popup se seznamem těchto vazeb, takže není nutné
+přepínat se do záložky Vazby a filtrovat.
+
+### Hromadné operace s prvky
+
+Zaškrtnutím prvků v prvním sloupci (nebo přepínačem v záhlaví tabulky) se nad tabulkou
+objeví panel hromadných akcí:
+
+| Akce | Popis |
+|------|-------|
+| Změnit typ | Přepíše typ u všech vybraných prvků |
+| Změnit stereotyp | Nastaví stejný stereotyp |
+| Změnit určuje | Nastaví stejnou hodnotu pole Určuje |
+| Změnit popis | Nastaví stejný popis |
+| Přidat příznaky | Přidá vybraným prvkům příznaky (oddělené čárkou) |
+| Smazat vybrané | Smaže vybrané prvky i jejich vazby |
 
 ### Filtrování prvků
 
@@ -253,6 +280,19 @@ Po výběru zdroje, cíle a typu vazby se zobrazí náhled ve formě věty:
 
 V tabulce prvků můžete kliknout na číslo vazeb a přejít na filtrovaný seznam vazeb pro daný prvek.
 
+### Hromadné operace s vazbami
+
+Stejně jako u prvků lze vazby zaškrtat a upravit hromadně:
+
+| Akce | Popis |
+|------|-------|
+| Změnit typ vazby | Přepíše typ u všech vybraných vazeb |
+| Změnit zdroj / Změnit cíl | Přesměruje vybrané vazby na jiný prvek |
+| Změnit název | Nastaví stejný název |
+| Změnit popis | Nastaví stejný popis |
+| Přidat příznaky | Přidá vybraným vazbám příznaky |
+| Smazat vybrané | Smaže vybrané vazby |
+
 ---
 
 ## Diagramy
@@ -265,27 +305,42 @@ Diagramy (pohledy) umožňují organizovat prvky do logických skupin a vizualiz
 2. Volitelně přidejte **popis**
 3. Klikněte **Vytvořit diagram**
 
+### Seznam diagramů
+
+- Název diagramu je odkaz, kterým se otevře editor diagramu
+- Tlačítka **↑** a **↓** mění pořadí diagramů v modelu
+- **✏️ Vizuálně** otevře vizuální editor, **Upravit** katalogový editor
+- Zaškrtnutím diagramů a tlačítky **📝 Export MD**, **📋 Kopírovat MD**
+  a **📄 Export DOCX** vyexportujete vybrané diagramy do jednoho dokumentu
+  (**☑️ Vybrat vše** zaškrtne všechny)
+
 ### Editor diagramu
 
-Po kliknutí na **Otevřít** se zobrazí editor s třemi podzáložkami:
+Editor má čtyři podzáložky:
 
-#### Prvky diagramu
+#### Nastavení
 
-- Přidávání prvků pomocí kaskádového výběru (vrstva → typ → prvek)
-- Seznam prvků v diagramu s možností odebrání
-- Prvky lze přidávat i odebírat
+- **Název diagramu** a **popis**
+- **Rozložení prvků** - Po vrstvách (layered) nebo Mřížka (grid); použije se při
+  automatickém rozvržení náhledu
 
-#### Vazby diagramu
+#### Prvky
 
-- Automaticky zobrazuje vazby mezi prvky v diagramu
-- Pouze pro čtení - vazby se spravují v záložce Vazby
+- Přidávání prvků pomocí kaskádového výběru (vrstva → typ → prvek) s filtrem v seznamu prvků
+- Tabulka prvků na diagramu s možností odebrání
+
+#### Vazby
+
+- Tabulka ukazuje vazby, jejichž zdroj i cíl jsou na diagramu
+- Další vazbu lze přidat vyhledáním ve zdroji, cíli, názvu nebo popisu
 
 #### Náhled
 
 Vizuální náhled diagramu:
-- Prvky jsou zobrazeny jako obdélníky s barvou podle vrstvy
+- Prvky jsou zobrazeny jako tvary podle notace ArchiMate s barvou podle vrstvy
 - Vazby jsou zobrazeny jako čáry s odpovídajícími značkami
 - Automatické rozložení podle vrstev (layered) nebo mřížky (grid)
+- Tlačítko **Překreslit** náhled přepočítá
 
 ### Vizuální editor diagramů
 
@@ -337,6 +392,11 @@ V náhledu diagramu jsou k dispozici tlačítka pro export:
 |----------|-------|
 | **Stáhnout SVG** | Export diagramu jako vektorový SVG soubor |
 | **Stáhnout PNG** | Export diagramu jako rastrový PNG obrázek (2x rozlišení) |
+| **📄 Export DOCX** | Diagram i se seznamem prvků a vazeb jako dokument Wordu |
+| **📝 Export MD** | Totéž jako soubor Markdown |
+| **📋 Kopírovat MD** | Markdown podoba diagramu do schránky |
+
+Několik diagramů najednou se exportuje ze seznamu diagramů (viz výše).
 
 ---
 
@@ -346,26 +406,43 @@ V náhledu diagramu jsou k dispozici tlačítka pro export:
 
 ### Vytvoření úkolu
 
-1. Zadejte **název** úkolu
-2. Vyberte **prioritu** (Nízká, Střední, Vysoká, Kritická)
-3. Zadejte **řešitele** a **zadavatele**
-4. Nastavte **termín**
-5. Přidejte **popis** (podporuje Markdown)
-6. Volitelně propojte s **prvky** nebo **vazbami** modelu
+1. Tlačítkem **+ Nový úkol** otevřete editor
+2. **Číslo** se vyplní automaticky, lze ho přepsat
+3. Zadejte **název** úkolu
+4. Vyberte **stav** a **prioritu** (Nízká, Střední, Vysoká, Kritická)
+5. Zadejte **řešitele** a **zadavatele**
+6. Nastavte **termín**
+7. Volitelně přidejte **příznaky** (oddělené čárkou)
+8. Přidejte **popis** a **aktuální stav / poznámky k řešení** (podporují Markdown)
+9. Volitelně propojte s **prvky** nebo **vazbami** modelu
 
 ### Stavy úkolu
 
 | Stav | Ikona | Popis |
 |------|-------|-------|
 | Nový | ⚪ | Nově vytvořený úkol |
-| Otevřený | 🔵 | Úkol je v řešení |
-| Pozastavený | ⏸️ | Úkol je pozastaven |
-| Dokončený | 🟢 | Úkol je dokončen |
-| Zrušený | 🔴 | Úkol byl zrušen |
+| Probíhá | 🔵 | Úkol je v řešení |
+| Blokováno | 🔴 | Úkol nejde řešit dál |
+| Ke kontrole | 🟡 | Úkol čeká na ověření |
+| Hotovo | 🟢 | Úkol je dokončen |
+| Zrušeno | ⚫ | Úkol byl zrušen |
+
+Priority mají vlastní ikony: 🟢 Nízká, 🟡 Střední, 🟠 Vysoká, 🔴 Kritická.
+
+### Filtrování úkolů
+
+Nad tabulkou jsou filtry podle **stavu**, **priority** a **řešitele** a fulltextové
+hledání (název, řešitel, zadavatel, popis, aktuální stav, příznaky).
 
 ### Aktuální stav
 
 Ke každému úkolu můžete přidávat poznámky o aktuálním stavu (podporuje Markdown).
+
+### Náhled a export úkolů
+
+Kliknutím na název úkolu se otevře náhled; z náhledu i z editoru lze úkol uložit
+jako **📄 Markdown** nebo **📝 DOCX** a **📋 zkopírovat Markdown** do schránky.
+Tlačítko **📦 Exportovat všechny úkoly** uloží všechny úkoly do jednoho souboru Markdown.
 
 ---
 
@@ -375,17 +452,25 @@ Poznámky slouží k zaznamenání informací souvisejících s architekturou.
 
 ### Vytvoření poznámky
 
-1. Zadejte **název** poznámky
-2. Zadejte **autora**
-3. Napište **obsah** (podporuje Markdown)
-4. Volitelně přidejte **příznaky** a propojte s prvky/vazbami
+1. Tlačítkem **+ Nová poznámka** otevřete editor
+2. Zadejte **název** poznámky
+3. Zadejte **autora**
+4. Napište **obsah** (podporuje Markdown)
+5. Volitelně přidejte **příznaky** (oddělené čárkou) a propojte s prvky/vazbami
+
+Nad tabulkou poznámek je fulltextové hledání (název, autor, obsah, příznaky).
+
+### Náhled poznámky
+
+Kliknutím na název se otevře náhled s vykresleným Markdownem, odkazy na propojené
+položky, tlačítkem **📋 Kopírovat** (obsah do schránky) a **📜 Historie verzí**.
 
 ### Verzování
 
 Poznámky mají automatické verzování:
 - Každá změna vytvoří novou verzi
-- Historie verzí je dostupná v detailu poznámky
-- Lze zobrazit a obnovit předchozí verze
+- Historie verzí je dostupná v náhledu poznámky
+- Starší verzi lze zobrazit a tlačítkem **Obnovit tuto verzi** vrátit zpět
 
 ---
 
@@ -395,20 +480,29 @@ ADR (Architecture Decision Records) dokumentují důležitá architektonická ro
 
 ### Struktura ADR
 
-- **Číslo** - automaticky generované pořadové číslo
-- **Název** - stručný popis rozhodnutí
-- **Stav** - aktuální stav rozhodnutí
-- **Autor** a **Schvalovatel**
+Editor ADR je rozdělen do oddílů:
+
+- **Základní informace** - číslo (generuje se automaticky), název, stav, autor,
+  schvalovatel, rozhodovatelé, tagy
 - **Kontext** - situace vedoucí k rozhodnutí
 - **Rozhodnutí** - co bylo rozhodnuto
 - **Důsledky** - dopady rozhodnutí
+- **Zvažované alternativy** - seznam variant, vybraná varianta a odůvodnění výběru
+- **Implementace** - stav implementace (Nezahájeno / Probíhá / Dokončeno),
+  datum zahájení, cílové datum a poznámky
+- **Související ADR** - Nahrazuje, Nahrazeno, Souvisí s
+- **Odkazy** - externí odkazy s popisem
+- **Propojené položky** - prvky a vazby modelu
+- **Historie stavů** - automatický záznam změn stavu
 
 ### Stavy ADR
 
 | Stav | Ikona | Popis |
 |------|-------|-------|
-| Návrh | ⚪ | Rozhodnutí v návrhu |
-| Diskutováno | 💬 | V diskusi |
+| Rozpracováno | ⚪ | Rozhodnutí se připravuje |
+| Navrženo | 🔵 | Návrh předložen |
+| Projednáváno | 💬 | V diskusi |
+| Vráceno | 🔙 | Vráceno k dopracování |
 | Schváleno | 🟢 | Schválené rozhodnutí |
 | Zamítnuto | 🔴 | Zamítnuté rozhodnutí |
 | Aktualizováno | 🔄 | Rozhodnutí bylo aktualizováno |
@@ -417,6 +511,9 @@ ADR (Architecture Decision Records) dokumentují důležitá architektonická ro
 | Zastaralé | 🟠 | Rozhodnutí je zastaralé |
 | Nahrazeno | ⚫ | Nahrazeno jiným ADR |
 | Uzavřeno | 🔒 | Uzavřené rozhodnutí |
+
+Nad tabulkou ADR je filtr podle stavu a fulltextové hledání (název, autor, kontext,
+rozhodnutí, tagy).
 
 ### Alternativy a výběr
 
@@ -431,8 +528,11 @@ Každá změna stavu se automaticky zaznamenává včetně data a autora.
 ### Export ADR
 
 - **📄 Uložit jako Markdown** - stáhne jednotlivé ADR
+- **📝 Uložit jako DOCX** - stáhne ADR jako dokument Wordu
 - **📋 Kopírovat Markdown** - zkopíruje do schránky
 - **📦 Exportovat všechny ADR** - stáhne všechna ADR jako jeden soubor
+
+Tlačítka jsou v editoru ADR i v náhledu, který se otevře kliknutím na název.
 
 ---
 
@@ -497,7 +597,18 @@ Zadejte šablonu s placeholdery ve složených závorkách:
 | **Export AJX** | Stažení modelu ve formátu AJX (JSON) |
 | **Kopírovat AJX** | Zkopíruje AJX data do schránky |
 | **Export XML** | ArchiMate Open Exchange formát (včetně vizuálních dat) |
-| **Export CSV** | Prvky a vazby jako CSV soubory |
+| **Export CSV** | Prvky a vazby v jednom CSV souboru (dva bloky: Elements, Relationships) |
+
+### Export podle příznaku
+
+Z vybraného příznaku lze vyexportovat jen jeho část modelu:
+
+1. V sekci **Export podle příznaku** vyberte příznak (pod seznamem se ukáže, kolik
+   prvků a vazeb mu odpovídá)
+2. Klikněte na **Export AJX** nebo **Export XML**
+
+Do výstupu se dostanou prvky s daným příznakem, vazby s daným příznakem a navíc vazby,
+jejichž zdroj i cíl ve výběru jsou.
 
 ### XML export s vizuálními daty
 
@@ -524,6 +635,24 @@ Při importu XML se načítají také vizuální data diagramů, pokud jsou v so
 3. **Ze schránky** - tlačítko "Vložit ze schránky"
 4. **Drag & Drop** - přetažením souboru na stránku
 
+Import nahrazuje celý obsah editoru. Tlačítko **Smazat vše** vyprázdní model i uložená
+data v prohlížeči.
+
+### Import prvků z CSV/TSV
+
+Podzáložka **Import CSV** zavede prvky z tabulky:
+
+1. Vyberte soubor CSV/TSV, nebo data vložte ručně či tlačítkem **📋 Vložit ze schránky**
+   (oddělovač se rozpozná sám)
+2. V **Mapování sloupců** přiřaďte sloupce k polím ID, Název, Typ, Dokumentace,
+   Stereotyp, Příznaky a Určuje — nepřiřazené sloupce se neimportují
+3. Vyberte chování **při kolizi ID** (přeskočit / přepsat stávající)
+4. Zkontrolujte náhled a klikněte na **Importovat prvky**
+
+Zápis typu prvku je tolerantní (`business actor`, `BusinessActor`, `Business Actor`),
+vrstva se k typu doplní automaticky. Řádky s neznámým typem se vypíšou jako
+nenaimportované.
+
 ---
 
 ## Slučování modelů
@@ -548,26 +677,53 @@ Při volbě "Ručně vybrat":
 
 ### Označení importovaných položek
 
-Importované položky dostanou automaticky příznak `Import z: [název zdrojového modelu]`.
+Importované položky dostanou automaticky příznak `Importováno z [název zdrojového modelu]`.
 
 ---
 
-## Hromadné operace s příznaky
+## Správa příznaků
 
-### Dostupné operace
+Příznaky (tagy) se spravují na záložce **Nástroje**.
+
+### Správa jednoho příznaku
+
+V sekci **Správa příznaků** vyberte příznak ze seznamu (sbírá se z celého modelu) a:
 
 | Operace | Popis |
 |---------|-------|
-| Přidat příznak | Přidá tag ke všem vybraným položkám |
-| Odebrat příznak | Odebere tag ze vybraných položek |
-| Nahradit příznak | Nahradí jeden tag jiným |
-| Sjednotit zápis | Přepíše varianty lišící se jen velikostí písmen na nejčastější zápis (Nástroje → Správa příznaků) |
+| Odstranit z prvků / z vazeb / Smazat odevšud | Odebere příznak z dané části modelu |
+| Nahradit v prvcích / ve vazbách / všude | Přepíše příznak na nový zápis z pole **Nahradit příznakem** |
+| Sjednotit zápis | Přepíše varianty lišící se jen velikostí písmen na nejčastější zápis (v prvcích, vazbách, úkolech, poznámkách i ADR) |
 
-### Výběr položek
+Výsledek operace se vypíše pod formulářem (kolik prvků a vazeb se změnilo).
 
-- Zaškrtněte položky pro operaci
-- **Vybrat vše** / **Odebrat vše**
-- **Vybrat aktuálně filtrované** - vybere položky odpovídající aktivním filtrům
+### Hromadná správa příznaků
+
+Tlačítkem **Otevřít hromadnou správu** se otevře okno pro přidání nebo odebrání
+jednoho příznaku u vybraných položek:
+
+1. Vyberte **zdroj** (prvky nebo vazby) a **akci** (přidat / odebrat příznak)
+2. Zadejte příznak — seznam pak ukáže jen položky, u kterých má akce smysl
+3. Zaškrtněte položky: **☑ Vybrat vše**, **☐ Odebrat vše**, nebo
+   **🔍 Vybrat filtrované** (položky odpovídající aktivním filtrům v tabulkách)
+4. Klikněte na **Provést akci**
+
+Příznaky lze přidávat i přímo v tabulkách prvků a vazeb hromadnou akcí
+**Přidat příznaky**.
+
+---
+
+## Log změn
+
+Editor si v průběhu práce zapisuje všechny významné změny (vytvoření, úpravy a mazání
+prvků, vazeb, diagramů, úkolů, poznámek i ADR, import, sloučení, hromadné operace).
+
+Na záložce **Nástroje** otevře tlačítko **📋 Zobrazit log změn** okno se seznamem
+změn od začátku práce v prohlížeči; obsah lze zkopírovat do schránky a použít třeba
+jako podklad pro commit nebo rekapitulaci porady.
+
+Log se váže na aktuální session v prohlížeči — zavřením a znovuotevřením editoru začíná
+znovu.
 
 ---
 
@@ -605,42 +761,22 @@ Cesta k souboru se kóduje do URL parametru `?gh=...`, takže můžete sdílet p
 
 ---
 
-## DokuWiki plugin
-
-Editor lze integrovat s DokuWiki pomocí přiloženého pluginu.
-
-### Instalace
-
-1. Rozbalte `archimateeditor.zip` do `lib/plugins/`
-2. Plugin se automaticky aktivuje
-
-### Použití
-
-Vložte do wiki stránky:
-```
-<archimate instance="nazev-instance">
-</archimate>
-```
-
-### Funkce
-
-- Editor se otevírá v popup okně
-- Tlačítko **Uložit do Wiki** ukládá přímo do wiki stránky
-- Data se přenášejí pomocí postMessage API
-- Podpora více instancí na jedné stránce
-
----
-
 ## Tipy a triky
 
 ### Automatické ukládání
 
 Model se automaticky ukládá do prohlížeče po každé změně.
 
+### Více modelů najednou
+
+Titulek okna prohlížeče obsahuje název otevřeného modelu (`Název modelu - ArchiMate
+Editor`), takže se v několika otevřených záložkách s různými modely dá vyznat.
+
 ### Našeptávání
 
 - **Stereotypy** - nabízí dříve použité stereotypy
-- **Příznaky** - nabízí existující tagy z celého modelu (včetně ADR, poznámek a úkolů)
+- **Příznaky** - nabízí existující tagy z prvků a vazeb; filtry nabízejí tagy z celého
+  modelu včetně ADR, poznámek a úkolů
 - **Názvy vazeb** - nabízí dříve použité názvy
 
 ### Propojování položek
@@ -672,10 +808,22 @@ Pravidelně exportujte model do AJX souboru. Data v prohlížeči mohou být sma
 
 | Zkratka | Akce |
 |---------|------|
+| Ctrl+S / Cmd+S | Uložení modelu (do GitHubu, jinak do souboru) |
+| Alt+N | Nový model |
+| Alt+O | Otevřít soubor |
+| Alt+S | Uložit model |
+| Alt+E | Záložka Prvky |
+| Alt+R | Záložka Vazby |
+| Alt+D | Záložka Diagramy |
+| Alt+M | Záložka Poznámky |
+| Alt+T | Záložka Nástroje |
+| Alt+U | Uložit vazbu (ve formuláři vazby) |
 | Tab | Přechod mezi poli formuláře |
 | Enter | Potvrzení formuláře |
-| Escape | Zavření modálního okna |
-| Ctrl+S | Uložení do Wiki (v DokuWiki režimu) |
+
+Zkratky s Alt jsou `accesskey` — podle prohlížeče se mačkají jako Alt, Alt+Shift
+(Firefox) nebo Ctrl+Option (Safari). Modální okna se zavírají tlačítkem **×**,
+tlačítkem **Zavřít** nebo kliknutím mimo okno.
 
 ---
 
@@ -716,8 +864,9 @@ Pravidelně exportujte model do AJX souboru. Data v prohlížeči mohou být sma
 
 Editor je open-source nástroj dostupný na GitHubu.
 
-- **Online verze:** https://egdilna.github.io/nastroje/archimate
-- **GitHub repozitář:** https://github.com/egdilna/nastroje
+- **Nástroj:** https://nastroje.egdilna.cz/archimate
+- **Stránka o nástroji:** https://nastroje.egdilna.cz/#archimate
+- **Zdrojový kód:** https://github.com/egdilna/nastroje
 - **Hlášení chyb:** https://github.com/egdilna/nastroje/issues
 
 ### Systémové požadavky
@@ -734,5 +883,5 @@ Editor je open-source nástroj dostupný na GitHubu.
 
 ---
 
-*Verze dokumentace: 3.0*
+*Verze dokumentace: 3.1 (1. 11. 2026)*
 *ArchiMate® je registrovaná ochranná známka The Open Group.*

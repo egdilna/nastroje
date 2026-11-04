@@ -74,12 +74,12 @@ Pokročilý editor architektury v jazyce ArchiMate, který může ale sloužit i
 - **Hromadné operace** - práce s příznaky (tagy)
 - **Přístupnost** - plně přístupné rozhraní pro odečítače obrazovky
 - **Integrace s GitHub a GIT**: Možnost načíst a ukládat modely a projekty v GIT repozitáři, přístup je zajištěn přes API klíč, takže to bude fungovat i u privátních repos.
-- **DokuWiki integrace** - plugin pro spolupráci v týmu
 
 ### Dokumentace a odkazy na repo
 
-* [Kompletní uživatelská příručka Archimate editoru](https://nastroje.egdilna.cz/archimate/docs-cs
-* Nástroj má vlastní repozitář na GitHubu na adrese https://github.com/michalradacz/archimate-editor
+* [Kompletní uživatelská příručka Archimate editoru](https://nastroje.egdilna.cz/#uzivatelska-prirucka-k-archimate-editoru)
+* Stránka o nástroji: https://nastroje.egdilna.cz/#archimate
+* Zdrojový kód je ve společném repozitáři nástrojů: https://github.com/egdilna/nastroje
 
 ### Změny a novinky
 

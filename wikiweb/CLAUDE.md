@@ -1,0 +1,145 @@
+# WikiWeb — pokyny a architektura
+
+Nástroj na weby a wiki z Markdownu uložené v repozitáři na GitHubu. Dvě části:
+
+| Soubor | Co to je |
+|---|---|
+| `index.html` | **Aplikace** (nastroje.egdilna.cz/wikiweb). Připojí se k repozitáři, web zobrazí a v režimu Úpravy ho edituje a ukládá. |
+| `prohlizec.html` | **Prohlížeč** pro návštěvníky. Kopíruje se do složky webu jako `index.html` (ručně, nebo tlačítkem v Nastavení webu) a na GitHub Pages z něj web běží. |
+
+Aplikace prohlížeč nepřepisuje: zobrazení i náhled dělá přes `<iframe src="prohlizec.html?nahled=1">`, takže web vypadá v aplikaci přesně jako na Pages.
+
+## Web = složka v repozitáři
+
+```
+wiki.json        nastavení webu
+contents.json    strom stránek
+sidebar.md       text v postranním panelu (název jde změnit v sidebar_file)
+index.html       kopie prohlizec.html
+…/*.md           stránky — libovolné podsložky, výchozí pro nové stránky v folders.pages
+…/obrázky        nahrané obrázky — výchozí složka folders.media
+```
+
+### wiki.json
+
+Klíče sdílené s md2web (`website.json`) mají stejný význam: `title`, `tagline`, `language`, `color` (název palety md2web), `copyright {name,url,year}`, `menu_links`, `footer_links`.
+
+```json
+{
+  "title": "Kancelářská příručka",
+  "tagline": "Postupy, projekty a šablony",
+  "language": "cs",
+  "color": "indigo",
+  "home": "uvod",
+  "menu_links":   [{ "label": "Postupy", "page": "postupy" }, { "label": "GitHub", "url": "https://…" }],
+  "footer_links": [{ "label": "Kontakty", "page": "kontakty" }],
+  "copyright": { "name": "Kancelář", "url": "", "year": 2026 },
+  "sidebar": ["hledani", "sidebar", "sekce", "obsah", "stitky", "kalendar", "odkazy", "komentare"],
+  "folders": { "pages": "stranky", "media": "obrazky" },
+  "sidebar_file": "sidebar.md",
+  "pager": true,
+  "expand_sections": true,
+  "edit_link": false,
+  "page_types": {
+    "postup":  { "label": "Postup", "emoji": "🧭", "layout": "stranka", "show_label": true,
+                 "template": "## Kroky\n\n1. ", "toc": true, "pager": true },
+    "stranka": { "emoji": "📃" }
+  },
+  "github": { "repo": "vlastnik/repo", "branch": "main", "folder": "web" }
+}
+```
+
+Odkaz v menu má buď `page` (id stránky), nebo `url`.
+
+`page_types` — vlastní typy stránek a úpravy vestavěných. Vestavěné typy (`stranka` 📄, `uvod` 🏠, `rozcestnik` 🗂️, `clanky` ✍️, `novinky` 📣) jsou zároveň vzhledy; vlastní typ si v `layout` vybere jeden z nich. `emoji` je výchozí ikona stránek typu (stránka bez vlastního `emoji` ji převezme, prázdný řetězec = bez ikony), `template` je text nové stránky (`{dnes}` = dnešní datum), `show_label` ukáže název typu u nadpisu, `toc: false` skryje obsah stránky v panelu, `pager: false` vypne předchozí/další. U vestavěných typů se ukládají jen změny proti výchozímu stavu. V aplikaci: Nastavení webu → Typy stránek. `github` zapisuje aplikace při každém uložení (kvůli odkazu Upravit v patičce) — **token do souboru nikdy nepatří**.
+
+### contents.json
+
+```json
+{ "pages": [
+  { "id": "postupy", "title": "Postupy", "emoji": "🧭", "type": "rozcestnik", "perex": "…",
+    "children": [
+      { "id": "zakazka", "title": "Přijetí zakázky", "emoji": "📝",
+        "file": "stranky/postupy/zakazka.md", "tags": ["zakázky"] },
+      { "id": "cizi", "title": "Článek odjinud", "repo": "michalradacz/testweb",
+        "file": "obsah/testovaci-clanek.md" }
+    ] }
+] }
+```
+
+- `file` — cesta ve složce webu, nebo adresa `https://…` (odkaz `github.com/…/blob/…` se převede na raw), nebo zkratka `gh:vlastnik/repo[@vetev]/cesta.md`.
+- `repo` — `vlastnik/repo` nebo `vlastnik/repo@vetev`; pak se `file` čte z `raw.githubusercontent.com`. V aplikaci se zadává jedním polem `vlastnik/repo/cesta.md`.
+- Bez `file` je stránka čistý rozcestník podstránek.
+- `{ "ref": "id" }` je **odkaz** na stránku, která má domovské místo jinde ve stromu. Ukáže se v menu i ve výpisech na svém místě (volitelně s vlastním `title` a `emoji`, i `hidden`), drobečková navigace, předchozí/další a adresa se řídí domovem. Odkaz nemá podstránky. Na neexistující id se nezobrazí. Aplikace při změně id stránky odkazy přepíše a při smazání stránky smaže i odkazy na ni.
+- `type`: id typu z `page_types` nebo vestavěného (`stranka` je výchozí, stránka bez `file` s podstránkami je `rozcestnik`). Typ mění vzhled a výchozí ikonu; obsah je vždy Markdown.
+- `aliases: ["telefony", "Recepce"]` — další názvy stránky. Wikiodkazy `[[…]]`, md2web `[Název]`, vkládání `{{…}}`, adresa `#alias`, hledání, zpětné odkazy i Správa webu je znají stejně jako název (porovnává se slug). Když alias koliduje s jinou stránkou, vyhraje ta dřív ve stromu; editor na to u pole Aliasy upozorní.
+- `hidden: true` — stránka není v sekcích webu, odkazem je dostupná.
+- `hide_children: true` — sekce v postranním panelu neukazuje podstránky (jen jejich počet), ve výpisu sekce zůstanou. Když je otevřená některá z nich, zvýrazní se sekce (`aria-current="true"`). V editoru jsou podstránky takové sekce sbalené.
+- `sort_children: true` — podstránky se řadí podle abecedy (v panelu, výpisech i předchozí/další); pořadí v souboru zůstává.
+- **Postranní panel jen pro aktuální sekci** (výchozí; `sidebar_scope: "vse"` vrátí celý strom): blok Sekce webu ukáže kořen sekce, pod kterou stránka patří (nadpis bloku je odkaz na ni), a její podstránky; tlačítko Všechny sekce webu / Jen aktuální sekce přepíná. Stránka bez podstránek na hlavní úrovni (a stránky štítků) ukazují celý strom. Kreslí `vykreslitStrom()` při každé změně sekce.
+- **Jen tato část** (hoist, `E.hoist`): tlačítko v liště pod stromem zúží strom na vybranou stránku a její podstránky; nad stromem je cesta k ní jako odkazy (Celý obsah › předci) a tlačítko se změní na Celý obsah. Nová stránka bez výběru uvnitř části se založí do ní.
+- Strom v editoru se sbaluje tlačítkem u sekce (`aria-expanded`) a Rozbalit vše / Sbalit vše; výchozí je rozbalená hlavní úroveň (kromě `hide_children`), cesta k vybrané stránce je rozbalená vždy.
+- **Klávesnice ve stromu** (`rovingStromu()`): položky zůstávají odkazy, strom je jedna zastávka tabulátoru. Šipky nahoru/dolů předchozí/další viditelná stránka, vpravo rozbalí (na rozbalené jde na první podstránku), vlevo sbalí (na sbalené nebo bez podstránek jde na rodiče), Home/End, Enter otevře. Odkaz s podstránkami nese `aria-expanded`. Alt+šipky stránku přesouvají.
+- Přesun stránky do jiné sekce: v editoru výběr **Umístění** ve vlastnostech stránky (i odkazu) — stránka i s podstránkami jde na konec vybrané sekce.
+- `managed: true` — **spravováno jinou aplikací** (jen u souboru ve složce webu). Obsah je v editoru jen ke čtení bez lišty, cesta se nemění a `seznamZmen()` takový soubor nikdy nezapíše ani nesmaže (pojistka i proti historii, hromadnému přejmenování štítků a odebrání stránky). Vlastnosti stránky v contents.json se upravovat dají. Ve stromu nápis „needitovatelné“.
+- `draft: true` — **koncept**. Na webu se stránka i s podstránkami vůbec nenabízí: není v menu, výpisech, hledání, štítcích ani zpětných odkazech, přímá adresa hlásí, že stránka neexistuje, odkaz na ni je prostý text a vložení `![[…]]` nic nevloží. V aplikaci (`?nahled`) a s parametrem `?koncepty=1` je vidět se značkou Koncept. Soubor zůstává v repozitáři veřejně čitelný — koncept není tajný, jen neodkazovaný. `new_as_draft: true` ve wiki.json zakládá nové stránky jako koncepty.
+- **Data vytvoření a úprav se do contents.json záměrně nedávají** — obsah chodí z různých zdrojů a nedaly by se udržet. Datum mají jen články a novinky přímo v Markdownu.
+
+### Markdown
+
+Parser je převzatý z md2web (stejná syntaxe i HTML výstup) a doplněný:
+
+- emoji na začátku odstavce dělá barevné upozornění (třídy `ep-*` jako md2web),
+- CriticMarkup `{++ ++} {-- --} {~~ ~> ~~} {== ==} {>> <<}`,
+- **vkládání stránek** (`vlozitStranky()`, běží nad surovým textem před parserem): řádek `{{Název nebo id}}` vloží celý obsah jiné stránky bez jejího úvodního H1, `{{Název#Nadpis}}` jen sekci pod nadpisem (bez nadpisu samotného, do dalšího nadpisu stejné nebo vyšší úrovně). Příkaz musí stát na samostatném řádku a mimo blok kódu. Starší zápis `![[…]]` funguje dál. Vkládá se do hloubky 3, cyklus a neexistující cíl se vyznačí (`.chybi`). Relativní cesty ve vloženém textu se přepíšou na absolutní vůči vložené stránce. Funguje i v `sidebar.md`, v článcích a v hledání. V editoru tlačítko Vložit stránku,
+- interní odkazy: `[[Název]]`, `[[Název|text]]`, md2web `[Název]` a `[text](jina-stranka.md)`; neexistující cíl se vyznačí,
+- relativní cesty obrázků a odkazů se řeší vůči umístění `.md` souboru (funguje i u cizího repozitáře),
+- úkoly `- [ ]` / `- [x]`, jazyk u bloku kódu se nezobrazuje,
+- úvodní `# Nadpis` v souboru se vynechá (H1 stránky je její název z contents.json), další H1 se sníží na H2,
+- **novinky**: řádek `2026-10-30: Titulek` (také `30.10.2026:` a `10/30/2026:`), pod ním text do dalšího data nebo nadpisu; v panelu se ukáže kalendář,
+- **štítky** stránek (`tags`) a článků (`Tagy:`) jsou jeden jmenný prostor bez ohledu na velikost písmen. Stránka `#/stitek/x` vypíše stránky i články ze všech sekcí; filtr `#sekce?tag=x` zůstává uvnitř sekce článků (jako md2web) a nabízí odkaz na štítek na celém webu. Blok `stitky` v panelu ukazuje štítky toho, co čtete (stránky, článku, sekce článků), volitelný blok `vsestitky` je mrak celého webu s počty. Index buduje `indexStitku()`,
+- **interní štítky**: štítek začínající tečkou (`.navody-it`) se na webu nikde neukazuje (u stránky, článku, v panelu, v mraku, na stránce štítku ani v hledání), `verejnyStitek()`. V editoru je vidět s čárkovaným okrajem.
+- **výpis štítku**: řádek `{{štítek:název}}` (také `{{stitek:…}}`, `{{tag:…}}`) vypíše stránky s tímto štítkem — jen stránky, ne články — podle abecedy, s ikonou a perexem (`vypisStitku()`, zpracovává se ve `vlozitStranky()`). Funguje i pro interní štítky. V editoru tlačítko Výpis štítku; Správa webu ho nebere jako chybějící stránku.
+- **multisection** (md2web): soubor začíná řádkem `multisection` (smí mu předcházet `# Název`), každý `## nadpis` je samostatná podstránka s adresou `#stranka/podstranka` (kotva `#stranka/podstranka:nadpis`). Text před prvním `##` je úvod stránky, pod ním výpis podstránek. Podstránky jsou virtuální uzly (`rozpoznatMulti()`, `rozbalitMulti()`): jsou ve stromu panelu, v předchozí/další, mají drobečky, obsah stránky, funkce a zpětné odkazy, hledání je najde a vedou na ně wikiodkazy `[[Název podstránky]]`, md2web `[Název]`, vkládání `{{…}}` i staré adresy `#slug`. Aby to fungovalo odkudkoli hned, editor u takové stránky sám udržuje `multisection: true` v contents.json a prohlížeč tyto soubory načte při startu. Editor ukazuje seznam podstránek pod textem, nabízí je ve výběru wikiodkazu a Správa webu je nehlásí jako chybějící.
+- **sekce článků**: soubor začíná řádkem `articles` (smí mu předcházet `# Název`), každý článek je `## Nadpis`, pod ním `Datum:` a `Tagy:`, první odstavec je perex. Navíc (md2web ho nezná a ukázal by ho jako text) řádek `Stav: koncept` / `Status: draft` — takový článek se na webu nezobrazí. Přesně formát md2web; víc sekcí článků = víc takových souborů, každá má vlastní štítky.
+
+## Adresy v prohlížeči
+
+`#id` stránka · `#id/clanek` článek · `#id?tag=x` články se štítkem · `#id:kotva` nadpis na stránce · `#/stitek/x` stránky se štítkem z contents.json. Hash bez známého id zkusí slug názvu stránky (kompatibilita s odkazy md2web).
+
+Parametry: `?repo=vlastnik/repo&slozka=web&vetev=main` načte web z raw.githubusercontent.com (jen veřejné repozitáře); `?nahled=1` čeká na data od aplikace přes `postMessage` (`wikiweb-nahled`, odpovídá `wikiweb-nahled-pripraven` a `wikiweb-stranka`).
+
+## Aplikace
+
+- Parametry `?repo=vlastnik/repo&slozka=web&vetev=main` (přijme i `owner`+`repo`, `path`, `branch` jako editor md2web). Token je jen v `localStorage` (`wikiweb-token-v1`).
+- Režimy **Prohlížet** (prohlížeč přes celou plochu; přepínač Zobrazit koncepty — vypnutý ukáže web jako návštěvník, posílá se ve zprávě `wikiweb-nahled` jako `koncepty`) a **Upravovat** (strom | editor | volitelně náhled). Při přepnutí se otevře stránka, která byla zrovna vidět; proklik v náhledu přepne i editor.
+- S tokenem se po načtení dotáhnou všechny místní stránky přes API — prohlížení pak funguje i u soukromého repozitáře.
+- Obsah z cizího repozitáře nebo URL se v aplikaci jen čte.
+- **Wikiodkazy na články**: `[[Sekce/Název článku|text]]`, `[[Název článku]]` (když se tak nejmenuje stránka) a vkládání `{{Sekce/Název článku}}` (perex + text) vedou na `#sekce/slug-clanku`. Prohlížeč drží `W.clanky` (`registrovatClanky()`, `najitClanek()`); sekce článků se značkou `articles: true` (udržuje ji editor) načte při startu. Zpětné odkazy se ukazují i u článku, výběr stránky nabízí „· článek v …“, Správa webu je nehlásí jako chybějící.
+- **Strukturované editory** (místo textového pole u souboru, který není `managed`): soubor s `articles` má **editor článků** (seznam článků jako odkazy, + Nový článek nahoru, ↑ ↓, Smazat; formulář s názvem, datem a tlačítkem Dnes, konceptem, štítky zaškrtávátky ze štítků sekce + nový, perexem a textem s lištou), soubor s `multisection` **editor podstránek** (úvod, seznam podstránek, název a text). Přepínač Editor / Markdown nad nimi. Soubor se rozloží `rozlozitSoubor()` a při každé změně složí `slozitClanky()` / `slozitPodstranky()`; pouhé otevření text nemění. Společná kostra `editorSeznamu()`.
+- **Odkazy a vložení na stránce** (`panelOdkazu()`, pod textem každé stránky i pod strukturovaným editorem): `odkazyVTextu()` najde `[[…]]`, `![[…]]`, `{{…}}` a odkazy na `.md`, cíl hledá `najitCilEd()` (stránka, podstránka multisection, článek). Seznam S cílem jsou odkazy na cílové stránky, seznam Bez cíle má tlačítka Založit stránku a **Přesměrovat…** (pole s názvem existující stránky a Použít, `ovladaniPresmerovani()`). Přesměrování (`presmerovatVTextu()`) přepíše cíl a nechá text za `|` a `#`, bloky kódu nemění. Totéž Přesměrovat je u každého cíle v Chybějících stránkách Správy webu (přepíše všechny zdrojové stránky kromě `managed`). Panel se po psaní obnoví se zpožděním.
+- **Podstránka multisection jednoznačně**: `[[Stránka/Podstránka|text]]` i `{{Stránka/Podstránka}}` — prohlížeč (`najitStranku()`) i editor (`najitStrankuEd()`) zápis se lomítkem chápou; výběr stránky podstránky takto vkládá.
+- **Výběr stránky** (`vyberStranky()`, společný pro wikiodkaz, vložení `{{…}}`, odkaz do sekce a cíl odkazu): hledání bez ohledu na diakritiku v názvu, aliasech, id i umístění; výsledky podle abecedy, napřed ty, které hledaným začínají. U wikiodkazu a vložení je každý alias samostatná položka („alias → stránka“) a vloží se `[[alias]]`. Enter vybere první, šipky chodí po seznamu (položky jsou odkazy). Tlačítko [[Stránka]] s vybraným textem vloží `[[Název|text]]`; napsání `[[` v textu otevře výběr samo a doplní `Název]]`, napsání `{{` otevře výběr pro vložení a doplní `Název}}`.
+- Výběry stránek (umístění, zařazení, úvodní stránka, rychlé menu) jsou podle abecedy; u umístění se řadí sourozenci, hierarchie zůstává.
+- **Správa webu** (`kreslitSpravu()`, položka 🧰 nad stromem; nejdřív dotáhne texty všech místních stránek): *Chybějící stránky* — `[[…]]`, `![[…]]`, `{{…}}` a relativní odkazy na `.md` bez cíle, s odkazy na stránky, odkud vedou, a tlačítkem Založit stránku; *Štítky* — tabulka s počty stránek a článků, přejmenování (na existující název = sloučení) a smazání napříč `tags` stránek i řádky `Tagy:` v článcích (`prepsatStitek()`), kliknutím na štítek hromadné přiřazení stránkám zaškrtávátky; *Najít a nahradit* (`kreslitNahrazeni()`) — hledá ve všech místních `.md` stránkách a v `sidebar_file`, kromě `managed`, cizích zdrojů a nenačtených souborů (`souboryKNahrazeni()`); volby velikost písmen, celá slova, regulární výraz (`$1` v náhradě); výsledky po souborech s odkazem na stránku, zaškrtávátkem a ukázkami změn, tlačítko Nahradit ve vybraných mění jen texty v paměti; *Koncepty*, *Prázdné stránky*, *Chybějící soubory*. Záložky nesou počty (`poctySpravy()`, nenulové u problémů zvýrazněné), spočítají se po dotažení textů. Vše se zapíše až tlačítkem Uložit vše.
+- **Automatická aktualizace prohlížeče** (`zjistitNovyProhlizec()`): po načtení webu porovná `index.html` ve složce s `prohlizec.html`. Když je ve složce WikiWeb prohlížeč ve starší verzi, přibalí novou verzi k nejbližšímu uložení (ve stejném commitu, s kontrolou SHA). Cizí `index.html` (bez `generator` WikiWeb) se nepřepisuje a bez `index.html` ve složce se nic nepřidává. Tlačítko v Nastavení webu zůstává pro první instalaci.
+- **Nezařazené soubory** (`najitNezarazene()`): po načtení a po každém uložení projde `git/trees/{větev}?recursive=1` a najde `.md` ve složce webu a podsložkách, které nejsou v `contents.json` (ani jako `sidebar_file`, ani ve skryté složce). Soubor (nebo celou jeho složku) jde **ignorovat** — zapíše se do `contents.json` → `ignore` (položka končící `/` je složka; starší `ignore_files` ve wiki.json se při načtení přesune) a k zařazení se už nenabízí; seznam ignorovaných s tlačítkem Přestat ignorovat je dole v nástroji. Seznam je nástroj *Nezařazené soubory* ve Správě webu; odkaz „📥 Nezařazené soubory (N)“ vedle Správy webu i záložka jsou vidět, jen když nějaké nezařazené soubory jsou (`obnovitNezarazene()`); soubor jde zařadit jako stránku (název z prvního `# nadpisu` nebo z názvu souboru, umístění, typ, ikona, koncept; **Spravováno jinou aplikací** je zaškrtnuté předem) nebo smazat. Soubor se nepřesouvá. Vzor je přihrádka k zařazení v `sanony`.
+
+### Ukládání — pravidla z kořenového CLAUDE.md
+
+- čtení přes `ghObsahSouboru()` se záložním `git/blobs/{sha}`,
+- jeden malý soubor = Contents API `PUT`, víc souborů nebo soubor nad 1 MB = jeden commit přes Git Data API (`ghCommit()`: blob → strom s `base_tree` → commit → `PATCH` větve); mazání souborů je položka stromu se `sha: null`,
+- pojistka `E.nacteno`: dokud nejsou načtené `wiki.json` a `contents.json` (nebo potvrzeně chybí), neuloží se nic a důvod je ve stavovém řádku. Stránka, kterou se nepodařilo načíst, je jen ke čtení, dokud uživatel přepsání výslovně nepotvrdí,
+- před uložením se porovná SHA každého měněného souboru s repozitářem; když se mezitím změnil, `volbaKonfliktu()` ukáže dialog se seznamem těchto souborů (u textových tlačítko Zkopírovat mou verzi) a volbami **Přepsat mými změnami** (SHA se převezme z repozitáře a uloží se vše), **Uložit ostatní, tyto načíst z repozitáře** (`nacistZRepozitare()` je načte znovu a vyřadí z uložení, ostatní se uloží) a **Zrušit**. Novější prohlížeč `index.html` se při konfliktu jen vynechá,
+- Historie souboru vypíše `commits?path=…` a starší verzi načte do editoru (zapíše se až při uložení),
+- base64 po blocích (`bytyDoBase64`).
+
+## Kontrola před dodáním
+
+```bash
+for f in index.html prohlizec.html; do
+  awk '/^<script>/{f=1;next}/^<\/script>/{f=0}f' $f > /tmp/k.js && node --check /tmp/k.js
+done
+```
+
+Žádné `console.` v kódu. Texty, komentáře i názvy česky.

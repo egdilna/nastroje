@@ -2,6 +2,34 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.18.0] — 2026-11-02
+
+### Přidáno
+- Na stránce předpisu sekce Kopírovat: citace, plný název, informace o předpisu v Markdownu (odkaz na předpis v aplikaci s plným názvem a pod ním popis předpisu), odkaz do aplikace a do e-Sbírky — každý jako adresa i jako Markdown odkaz s plným názvem, a odkaz ELI.
+- Kopírování odkazu ELI i u ustanovení (`https://www.e-sbirka.cz/eli/cz/sb/{rok}/{číslo}/{znění}/dokument/{ustanovení}`); u předpisu stálý ELI aktu bez data.
+
+## [1.17.0] — 2026-11-01
+
+### Změněno
+- Po otevření detailu ustanovení jde fokus rovnou na text ustanovení (ne na nadpis stránky) a čtečka přečte citaci a celé ustanovení jako souvislou větu. Při překreslení po uložení (vyznačení, komentář, štítky) zůstává fokus tam, kde byl.
+
+## [1.16.0] — 2026-10-31
+
+### Přidáno
+- Pořadí předpisů v knihovně: nová stránka „Pořadí předpisů“ (z přehledu odkazem „Změnit pořadí předpisů“, jen v režimu úprav). U každého předpisu tlačítka Nahoru, Dolů, Na začátek a Na konec; fokus zůstává na přesunutém předpisu a ohlásí se jeho nové místo. Tlačítko „Seřadit podle roku a čísla“ vrátí výchozí řazení. Pořadí platí všude — v přehledu, v oblastech, v seznamech vyznačených ustanovení, komentářů a štítků, v hledání i v exportech. Nově přidaný předpis se zařadí na konec.
+- Přepínač znění na stránce ustanovení (když je staženo víc znění předpisu) — totéž ustanovení jde zobrazit v jiném znění bez návratu na předpis.
+
+## [1.15.1] — 2026-10-31
+
+### Opraveno
+- Čtečka obrazovky u ustanovení s vyznačením, komentáři či štítky četla nejdřív velmi dlouhý název odkazu a samotný text ustanovení zanikal. Odkaz na ustanovení má teď krátký přístupný název (označení, případně citace) a informace o vyznačení, komentářích a štítcích se čtou až za textem ustanovení, jednou větou v závorce; viditelné značky ★ 💬 🏷 jsou tamtéž.
+- Po uložení vyznačení celého paragrafu či článku se mylně hlásilo, že se text ustanovení od vyznačení změnil. Úprava textu do souvislé věty je nově při opakování stabilní (odstavce se znovu neslepí) a porovnání nezávisí na mezerách a zalomení řádků.
+
+## [1.15.0] — 2026-10-30
+
+### Přidáno
+- Přepínač „Úpravy“ v záhlaví stránky. Ve výchozím stavu je aplikace jen ke čtení: text předpisů, vyznačení, komentáře, štítky, poznámky, hledání a exporty jsou vidět, ale formuláře a tlačítka, která něco mění, ne — správa předpisu, oblastí, skupin a štítků, vyznačování, psaní a úpravy komentářů, štítky ustanovení, poznámka k předpisu, přidání předpisu, kontrola aktualizací, import dat a hromadné úpravy. Po zapnutí se vše ukáže; volbu si prohlížeč pamatuje.
+
 ## [1.14.1] — 2026-10-29
 
 ### Změněno

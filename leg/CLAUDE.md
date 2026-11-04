@@ -80,6 +80,23 @@ Pohled se dá odvodit (`predpis`+`ust` → detail ustanovení). Odkazy jsou bě�
 klik se zachytí a vykreslí bez načtení stránky (`pushState`/`popstate`); kotvy `#u-…`
 v rámci stránky nechává prohlížeči.
 
+## Režim úprav
+Přepínač `#prepinac-uprav` v záhlaví (`aria-pressed`, stav `upravy` v
+`localStorage["legprohlizec-upravy"]`, výchozí vypnuto = jen čtení). **Každý nový prvek, který
+mění data, musí být jen v režimu úprav** — `jenUpravy(x)` vrací `x` nebo `null`, případně
+`if (!upravy) return out;` před sekcí správy. Ke čtení zůstává: text, vyznačení (skupiny,
+poznámka), komentáře, štítky, poznámky, hledání, filtry, volba komentářů v čtecím pohledu,
+exporty a export balíčku. Hromadné úpravy (`hromadnaUprava`, `zaskrtavatkoPolozky`) jsou
+navíc až uvnitř režimu úprav. Menu skrývá „Přidat předpis“, Přenos dat skrývá import.
+
+## Pořadí předpisů
+`W.poradi` (pole id) je jediné pořadí předpisů pro celou aplikaci; `srovnatPoradi()` (volá ho
+`seraditSlovniky()`) odstraní neexistující a chybějící připojí na konec — bez uloženého pořadí
+se začne podle roku a čísla. **Kdekoli se vypisují předpisy, řaď přes `predpisyVPoradi()`,
+`seraditIds(ids)` nebo `seraditPodlePredpisu()`**, ne přes `Object.keys(W.predpisy)`. Úprava na
+stránce `pohled=poradi` (jen v režimu úprav). `o.predpisy` v oblasti zůstává v pořadí přidání,
+zobrazuje se seřazené.
+
 ## Štítky a hromadné úpravy
 - Oblasti, skupiny vyznačení, skupiny komentářů i štítky se drží seřazené (`seraditSlovniky()`
   při načtení a na začátku `vykreslit()`, české řazení bez ohledu na velikost písmen).
@@ -134,6 +151,12 @@ v rámci stránky nechává prohlížeči.
   složeného ustanovení (`data-odkaz-id`, u EU `data-celexid`/`data-id_celex`), do hloubky 1.
   Komentáře jako nativní `comments[]`. Štítky, skupiny a účinnost se nepřenášejí.
 
+## Kopírování
+`formatyKopirovani()` (ustanovení) a `formatyKopirovaniPredpisu()` (sekce Kopírovat na stránce
+předpisu: citace, plný název, informace o předpisu v Markdownu = odkaz s plným názvem + popis,
+odkazy do aplikace a e-Sbírky jako adresa i Markdown). `adresaEli()` — ELI e-Sbírky
+`https://www.e-sbirka.cz/eli/cz/sb/{rok}/{číslo}`, u ustanovení `/{znění}/dokument/{klíč}`.
+
 ## Markdown
 Vlastní renderer `markdownDom(text, urovenNadpisu)` (nadpisy, odstavce s `br`, vnořené
 seznamy, citace, blok kódu, tučně, kurzíva, přeškrtnutí, kód, odkazy). Staví DOM přes `el()`,
@@ -151,8 +174,10 @@ aplikace zeptá; seznam se maže při každém vykreslení.
   seznamu), `Tabulka`, `Block_Citace` (blockquote), `Virtual_PPC` (poznámky pod čarou),
   `Prefix`/`Postfix`, ostatní obecně.
 - HTML textu jde vždy přes whitelist `prevestHtml()`; první `<var>` je označení ustanovení
-  a stává se odkazem na detail ustanovení (`oznaceni()`). Přístupný název začíná viditelným
-  textem a přidá citaci a stav vyznačení. Vyznačení je i viditelná značka ★ (✎ s poznámkou).
+  a stává se odkazem na detail ustanovení (`oznaceni()`). Přístupný název je **krátký** — viditelný
+  text, případně citace. Vyznačení, komentáře a štítky přidává `znackyUstanoveni()` až **za text**
+  ustanovení (značky ★ ✎ 💬 🏷 skryté čtečce + jedna věta v `vh`); dlouhý název před textem
+  čtečka uživateli „sežrala“ text.
 - Odkazy `prevestOdkaz()`: týž předpis → kotva, jiný předpis v knihovně → detail ustanovení,
   mimo knihovnu → stránka předpisu s nabídkou zařazení (nic se nestahuje automaticky),
   EU a ostatní → externě do nové karty se skrytým upozorněním.
@@ -163,7 +188,7 @@ nestrukturních předků s textem (návětí) a množinu klíčů k vykreslení 
 ustanovení + `Pokracovani_Text` předků). `slozenyText()` z toho skládá text pro kopírování
 a snímky (`text` u vyznačení, `textUst` u komentářů a štítků) — **vždy přes `slozenaVeta()` /
 `vetaZTextu()`**: souvislá věta bez označení „(2)“, „d)“, „1.“ a bez nadpisů struktury (požadavek
-uživatele). `vetaZTextu()` se volá i při zobrazení a exportu uložených textů (staré snímky). Detail ustanovení vykresluje
+uživatele). `vetaZTextu()` se volá i při zobrazení a exportu uložených textů (staré snímky), proto musí být idempotentní. Detail ustanovení vykresluje
 složené ustanovení přes filtr s podbarvením. Kopírování ani exporty neuvádějí „ve znění…“.
 
 ## Části stránky předpisu
@@ -205,7 +230,9 @@ s pozdějším datem (`rozdelZneni`). Aktuální znění se počítá z data př
 - Formuláře místo modálních dialogů, popisky přes `label`, nápovědy přes `aria-describedby`.
 - `#oznameni` (`aria-live`) jen pro krátká potvrzení akcí (`oznam()`); průběh stahování je
   běžný text na stránce.
-- Po přechodu se fokus přesune na H1 (nebo na cíl kotvy).
+- Po přechodu se fokus přesune na H1 (nebo na cíl kotvy). Pohled může určit vlastní cíl prvkem
+  `[data-uvodni-fokus]` s `tabindex="-1"`; jeho `data-precist` se po přechodu ohlásí přes `oznam()`.
+  Detail ustanovení tak fokusuje `#text-ustanoveni` a přečte citaci se složenou větou.
 - Ladění jen do `#ladeni-seznam` na stránce (`log()`), nikdy do konzole.
 - Nic se nepředvyplňuje.
 

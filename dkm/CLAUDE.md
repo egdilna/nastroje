@@ -311,6 +311,49 @@ Všechno stojí na jednom mezistupni: **`buildModelIR()`**. Generátory čtou **
 `state.data` — když přidáváš formát, přidej ho do `MODEL_FORMATS` a ber IR. Když do modelu
 přibude pojem, přidej ho do IR a promítni do všech generátorů, ne jen do toho svého.
 
+### Výběr, co z modelu jde ven
+Ven šel dřív vždycky celý model; kdo chtěl část, prořezával výstup ručně (hlášeno od
+uživatele). Nově je výběr **jedna spára v IR**: `buildModelIR(vyber)` dostane množinu
+`vynechane` s klíči `ty:` / `asp:` / `rt:` / `at:` — **táž adresace jako u exportu dat**.
+Generátorů se to nedotklo ani jedním řádkem, a to je na tom to podstatné.
+
+- **Prázdná množina znamená celý model**, takže bez výběru vyjde přesně to, co vycházelo
+  dřív. Starší volání `buildModelIR()` jsou tím pádem v pořádku.
+- **Klíče se přidělují před filtrem.** Kdyby se vynechaný atribut vůbec nepojmenoval,
+  přepadla by přípona `_2` na jeho jmenovce a navazující import by se rozešel — týž důvod
+  jako u `cfg.vynechane` v exportu dat.
+- **Varování si atribut nese s sebou** (`__varovani`) a do `ir.warnings` se přelijí teprve
+  po filtru. Hlásit chybějící číselník u atributu, který v exportu nebude, je šum.
+- **Číselníky a soustavy tagů jsou závislost, ne volba** — zúží se na to, co zaškrtnuté
+  atributy používají (stejné pravidlo jako `zavislostiModelu` u přenosu modelu). Proto
+  u nich nejsou zaškrtávátka. Bez výběru se nefiltrují, aby se nezměnilo staré chování
+  (a nezmizelo varování o nepoužitém číselníku).
+- **Odkaz do prázdna nikdy nesmí zůstat.** Typ vazby, kterému na jednom konci nezůstal
+  žádný typ, se zahodí (`modelWarnRelMimo`); vazební atribut mířící na vynechaný typ
+  **zůstane**, ale `targetType` se uvolní na „cokoli" (`modelWarnCilMimo`). Zahodit
+  atribut, který uživatel zaškrtnul, by bylo horší — a nechat v něm cizí identifikátor
+  taky (týž kompromis jako v `balicekModelu`).
+- **Výběr žije v paměti stránky** (`vyberExportuModelu`), ne v datech projektu ani
+  v prohlížeči: je to volba toho, kdo zrovna exportuje. Do dat patří dál jen `baseIri`.
+- **Přehled se nikdy nepřekresluje podle výběru.** Vynechaná položka v něm musí zůstat
+  vidět, jinak by ji nešlo zaškrtnout zpátky (táž past jako u vynechaných polí v exportu
+  dat). Překresluje se jen tělo `#mdl-export` (`prekresliExportModelu`) a tlačítka vše/nic
+  si zaškrtávátka **dorovnají v DOM**.
+- **Zaškrtávátko v `<summary>` musí na kliknutí zastavit probublání**, jinak se u toho
+  rozbalí `<details>`. Ověřeno testem, ne odhadem.
+- **Soubory do ZIPu se zaškrtávají vedle názvu formátu** (`formatyDoZipu`,
+  `modelZipSoubory(ir,formaty)`); `README.md` jde do ZIPu vždycky a v tabulce uvádí **jen
+  to, co v ZIPu je**. Změna zaškrtávátka formátu tělo **nepřekresluje** — přepíše jen počet
+  v nadpisu a tlačítko na ZIP, jinak by umřelo ohnisko na zaškrtávátku.
+- Po „Vybrat celý model" jde ohnisko na `#mdl-zip`: tlačítko resetu se tím samo zakáže,
+  takže na něj fokus poslat nejde.
+
+Ověřeno nad třemi variantami modelu (celý / bez typu / bez aspektu): 55 scénářů nad
+rozhraním a **67 kontrol výstupů** — JSON Schema metaschématem i instancí, XSD kompilací
+a dokumentem, OpenAPI i SQL rozřešením odkazů, OWL a SHACL parserem a vzájemnou kontrolou
+(`sh:path`, `sh:targetClass`, `sh:in` musí existovat v ontologii), XMI rozřešením `idref`.
+Hlavní riziko ořezu je **viselý odkaz**, a přesně na to ty kontroly jsou.
+
 **Klíče se počítají přes `jsonSlug` + `jsonKey`**, tedy stejně jako u exportu dat. Tím
 vygenerované OpenAPI a JSON Schema sedí na to, co vyleze z exportu dat — to je smysl celé
 věci, neobcházej to vlastním sluggerem.
@@ -458,6 +501,11 @@ popisku zmizela, nadpis ji nechce. Prohlížeč má vlastní kopii (`skupinaOdka
 Strukturální pohled (`out-gl`) nadpisy **nemá** a mít nemá: je to strom libovolné hloubky,
 úroveň nadpisu by v něm nic neznamenala.
 
+**Titulek okna nese `getTitleWithType(e)`, ne `getTitle(e)`** — tedy totéž co nadpis
+detailu. Dvě stejně pojmenované entity různých typů se jinak v liště prohlížeče, v přepínači
+oken ani v historii nerozeznaly. Prohlížeč má vlastní kopii (jeden řádek v detailu šablony)
+— měň obě.
+
 **Počty patří do názvu karty** (`3→ 4←`, `2`). Schované sekce jinak není poznat, že vůbec
 něco obsahují. Značka je jen pro oči (`aria-hidden`), odečítači se počty řeknou slovy
 v `aria-label`.
@@ -520,6 +568,41 @@ kvůli tomu, co uvidí člověk, má jít přes něj, ne přes `e.attributes[id]
   co entita **mít může a nemusí** — aspekt nebo vlastní atribut. Uživatel na tom ztroskotal:
   „správně mě to upozorní, že se to vyplní jen u těch co to mají žadatel. Aaaaale ono nic."
   Hláška, která zní jako „někdy to vyjde" tam, kde to nevyjde nikdy, je horší než žádná.
+
+## Filtr cíle vazebního atributu (`a.filtrCile`)
+Druhá vrstva omezení cíle vedle `targetType`: pole pravidel **v témže tvaru**, jaký má
+pravidlový filtr, vyhodnocené **týmž `evalRule`**. Druhý jazyk ani druhý vyhodnocovač se
+nikam nepíše. Jediná spára do nabídky je `buildEntitySelector({pravidla})`; filtr se tam
+pouští **jako poslední** síto, protože je nejdražší a ostatní před ním většinu entit odeberou.
+
+- **Nabízejí se jen operátory, které jsou u chybějící hodnoty nepravdivé**
+  (`OP_PROJDE_PRAZDNO`, `operatoryProCil`). Pravidlo **není** „jen kladné": `notEmpty` je
+  bezpečný (prázdno není vyplněné), `empty` ne. Bez toho filtr místo omezení otevře vrata —
+  „nemá Stav Uzavřeno" samo o sobě propustilo **devět entit z deseti**, protože poznámky
+  ani číselníky atribut Stav nemají. Hranici hlídá `filtrcil/t1` nad **všemi** typy
+  atributů; kdo přidá operátor, ať ho tím testem protáhne.
+- **Nabídka polí je `cileProFiltrCile(targetType)`** — název entity, atributy cílového typu
+  a atributy aspektů (ty visí na čemkoli). **Ne** systémová pole kolem zpětných odkazů:
+  `getRelsTo` prochází celý projekt a nabídka se přefiltrovává po každém písmenu. **Ne**
+  složené atributy: hodnotu nemají uloženou, takže by se pravidlo nikdy netrefilo (týž
+  důvod, proč je nenabízí import z tabulky).
+- **Editor pravidla je jeden** (`renderRuleRow(rule,idx,volby)`): bez `volby` se chová jako
+  dřív (pokročilý filtr), s nimi bere jinou nabídku, jiné operátory a **překresluje sám
+  sebe**, ne přes `render()` — celé Nastavení by jinak přeskočilo odrolování i ohnisko.
+- **Hodnota, která filtru nevyhovuje, se nikdy nemaže** (`znackaMimoFiltr`), jen se označí
+  ⚠ — týž vzor jako tag mimo soustavu a jako rozsah posuvníku. Filtr řídí nabídku, ne data.
+  Zápis jinudy (import z tabulky, balíček, hromadná akce, sloučení z GitHubu) proto nic
+  nezahazuje a sloučení se neblokuje vůbec.
+- **Balíček pravidlo přemapuje, nebo zahodí** (krok 4b v `applyImport`, vedle `targetType`).
+  Pravidlo nese `scopeId` i `attrId`, obojí dostane při zakládání nová id — táž past jako
+  u `nazevZe`. Co se přeložit nedá, se zahodí a **spočítá** (`log.filtryCile`,
+  `pkgRsltFiltryCile`); cizí identifikátor by filtroval naslepo, atribut bez filtru se
+  chová jako dřív. **Do náhledu jde věta, ne číslo**: jestli se pravidlo přeloží, se pozná
+  až z map id, které staví teprve `applyImport`, a chybné číslo v náhledu je horší než žádné.
+- `filtrCile` je v **obou schématech** a kvůli němu musel do `dkmpkg-scheme.json` přibýt
+  i `filtrPravidlo` — sdílené definice musí zůstat totožné.
+- **Spojka je jen A** (`cilVyhovuje` = `every`), stejně jako v pokročilém filtru. OR by
+  znamenal sáhnout na tvar pravidel, který sdílí uložené pohledy.
 
 ## Samočíslující číslo není další typ atributu
 `a.autoInc` + `a.posledni` na definici atributu typu `number` — **ne nová položka
@@ -783,6 +866,11 @@ při načtení z adresy nikdy neuplatnilo.
 Zastaralý cíl z předchozího projektu se ignoruje a otevře se výchozí záložka.
 
 ## Dva lidé na jednom souboru: sloučení místo přepsání
+**Celý mechanismus je rozepsaný v `dkm/dkm-sync-cs.md` a `dkm/dkm-sync-en.md`** — formát
+`dkmdata`, pravidla sloučení po úrovních, pseudokód, osm invariantů, šestnáct testovacích
+scénářů a zadání pro AI, která má totéž postavit nad `dkmdata` jinde. Když měníš slučování,
+uprav **oba** dokumenty; zdejší sekce zůstává krátkým výtahem.
+
 `saveToGitHub` posílá **`state.ghSha`, tedy verzi, ze které jsme vyšli** — ne tu nejčerstvější.
 Právě tím GitHub pozná cizí zápis a odmítne ho (409, u chybějící sha 422). Dřív se sha načítala
 těsně před zápisem, takže se ta ochrana zahazovala a poslední uložení tiše přepsalo cizí práci.
@@ -814,6 +902,21 @@ co se mezitím sloučilo. Kdo sáhne na zakládání kopie v `renderEdit`, ať z
 v paletě) stáhne a sloučí, ale **neukládá** — co jde ven, si má uživatel říct sám. Proto
 stojí vedle Načíst a Uložit, ne mezi exporty. Když se `sha` nezměnila, `slucSVzdalenym`
 rovnou skončí hláškou „nic nového"; bez toho by opakovaný stisk pokaždé hlásil sloučení.
+
+**Zápis nad 1 MB jde přes Git Data API** (`ghUlozitVelke`: blob → `git/trees` s `base_tree`
+→ `git/commits` → `PATCH git/refs/heads/{větev}`), Contents `PUT` zůstává malým uložením;
+hranice je `GH_MEZ_VELKEHO`. Větev se zjistí z repozitáře (`ghVychoziVetev`, pamatuje se per
+repozitář) — cesta k projektu ji nenese. **Ochranu proti přepsání musí ta cesta udělat sama**,
+protože Git Data API nemá kam poslat `sha`: porovná se sha souboru (`ghShaSouboru`) s tou, ze
+které jsme vyšli, a větev se posune **bez `force`**, takže cizí commit mezitím skončí na 422.
+Obojí vrací `{__konflikt:true}`, tedy týž tvar jako 409/422 z Contents API — smyčka
+„stáhni, sluč, zkus znovu" je proto na obě cesty jedna a o velkou cestu neví.
+**Prázdný repozitář větev nemá**: commit se pak skládá bez rodiče, strom bez `base_tree`
+a větev se `POST git/refs` zakládá. Bez toho skončí první uložení velkého projektu do
+čerstvého repozitáře na 404 (ověřeno scénářem G v `velke/t1.mjs`).
+Base64 se dělá **po blocích** (`bytyDoBase64` / `base64DoBytu` nad `TextEncoder`em
+a `TextDecoder`em); `btoa(unescape(encodeURIComponent(…)))` nad megabajty vyrábí obří
+mezikopie, a totéž platí pro `decodeURIComponent(escape(atob(…)))` při čtení.
 
 `zkontrolujVzdalene` se ptá jen na **poslední commit** (ne na obsah) a jen když je okno vidět.
 Tempo je adaptivní: `GH_KONTROLA_CILA_MS` (20 s) při práci, `GH_KONTROLA_KLID_MS` (120 s)
@@ -1595,6 +1698,13 @@ atributu).
 
 **Když měníš tvar dat, uprav obě schémata i kapitolu 37.** Kanonickým zdrojem pravdy
 je `mergeEmpty` — co projde jím, to je platný `.dkmdata`.
+
+**Slovní popis formátů je v `dkm/dkm-formats-cs.md` a `dkm/dkm-formats-en.md`**, ne
+v příručce. Příručka je pro uživatele a pro ty, kdo si navrhují model; kapitola 37 v ní
+zůstala jako rozcestník (co ty dva soubory jsou, že v nich nejsou tajemství, kam jít dál).
+Programátorský popis včetně toho, co schéma neuhlídá, patří do `dkm-formats-*`. Při změně
+tvaru dat uprav **obě schémata, oba formátové dokumenty i rozcestník v kap. 37** —
+a `dkm-sync-*`, pokud se změna dotkne slučování.
 
 Dvě věci na nich nerozbíjej:
 - **Jsou samonosná.** Neodkazují na sebe navzájem ani na síť, aby se dalo jedno
