@@ -550,6 +550,49 @@ se celá sekce nevykresluje. Pro první přílohu použijte příkaz z palety ne
 Odebrat přílohu jde dál jen v editaci; v režimu čtení se dá stáhnout, u obrázku je
 náhled a u zvuku přehrávač.
 
+### Přílohy v balíčcích: offline prohlížeč a přenos mezi PIMy
+
+Soubory příloh se dají poslat ven ve třech balíčcích a **všechny tři mají stejnou
+vnitřní cestu** `attachments/<id>/<název souboru>`. To `<id>` je identifikátor
+přílohy, takže se dvě přílohy se stejným jménem nikdy nepřepíšou — a je to tatáž
+cesta, jakou přílohy mají v repozitáři na GitHubu.
+
+| Balíček | Kde se dělá | Co je uvnitř |
+|---|---|---|
+| **Offline prohlížeč s přílohami** | Stáhnout statický prohlížeč → „Soubory příloh" | HTML prohlížeče, `attachments/…`, ČTI-MĚ |
+| **Přenos entit mezi PIMy** | Export dat → JSON → „I soubory příloh" | `pim-export.json`, `attachments/…`, ČTI-MĚ |
+| **Záloha celé báze** | Nastavení → Data → Stáhnout ZIP | `pim.json`, `attachments/…`, README |
+
+**Archiv rozbalte celý do jedné složky.** Prohlížeč hledá soubory vedle sebe;
+když se HTML přesune jinam a složka `attachments/` zůstane, přílohy přestanou jít
+otevřít. Fungují ale obráceně i bez rozbalování: když prohlížeč nahrajete do
+kořene svého GitHub repozitáře, kde přílohy už leží, odkazy sednou samy.
+
+V prohlížeči je u přílohy **přímý odkaz na soubor**: název i tlačítko Stáhnout
+vedou na soubor v archivu, obrázek se zobrazí jako náhled a zvuk má přehrávač.
+Když prohlížeč stáhnete **bez** příloh, je u přílohy napsané „soubor není součástí
+tohoto exportu" — místo tlačítka, které by jen zahlásilo chybu.
+
+**Soubory zabezpečených entit se do prohlížeče nebalí.** Šifrují se jen atributy,
+samotný soubor zašifrovaný není a příjemce by ho dostal čitelný. Kolik souborů to
+bylo, se po stažení napíše. V záloze celé báze tyhle soubory naopak jsou — ta je
+pro vás, ne pro cizího.
+
+**Přílohy, které jsou jen na GitHubu** a v tomhle prohlížeči jste je ještě neotevřel,
+se při skládání balíčku stáhnou (chvíli to trvá, průběh je vidět ve stavovém řádku).
+Co se stáhnout nepodaří, se vypíše — žádná příloha nezmizí potichu.
+
+**Import balíčku do druhého PIM** pozná ZIP i prostý JSON. U ZIPu se soubory obnoví
+do cílového PIM a náhled před importem řekne, kolik jich v balíčku je. **Opakovaný
+import téhož balíčku nic nezdvojí** — přílohy i entity se poznávají podle svého
+identifikátoru. Při strategii „Vytvořit nové ID" dostane kopie entity i nové
+identifikátory příloh a soubory se obnoví pod nimi.
+
+Když balíček soubory nenese (prostý JSON, nebo se soubor nepodařilo zabalit),
+dostane příloha stav **„Soubor chybí (nebyl v balíčku)"** — její údaje zůstanou,
+ale nepředstírá se, že soubor je k dispozici. Pokud tentýž soubor v cílovém PIM
+pod stejným identifikátorem už je, nechá se být.
+
 ## 📁 Filtr podle projektu
 
 Pohledy **Úkoly**, **Kalendář**, **Tagy**, **Příznaky**, **Vazby** a **Komentáře** mají
