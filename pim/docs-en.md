@@ -958,6 +958,8 @@ Two tidy-up filters — they find what does not belong anywhere.
 
 Filters combine with **AND** logic.
 
+All active filters are shown even when the section is collapsed — in the "Filters" header and right next to the result count (e.g. *Nalezeno 12 entit. Filtr: Projekt: Web · Tag: klient*).
+
 **Saved views** keep the complete filter — aspect, tags (including "doesn't have tag"), task status, priority, deadline and advanced attribute filters. The filter survives toggling selection mode. Tag comparison is case-insensitive.
 
 Above the results there is a **Search text** field that filters them as you type — the same as in the All view and with the same reach (title, body, attributes, tags). It does not change the view's saved filter, it only narrows it temporarily; the text is remembered for the session, so it is still there when you come back to the view.
