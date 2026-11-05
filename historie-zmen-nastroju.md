@@ -50,26 +50,6 @@ multisection
 
 | Datum | Typ | Popis |
 | --- | --- | --- |
-| 4. 11. 2026 | Funkce | Přílohy v balíčcích: offline prohlížeč i přenos entit mezi PIMy se stáhnou jako ZIP se soubory příloh (attachments/<id>/<název>); opakovaný import nic nezdvojí. Opraveno tiché vynechávání příloh v ZIP záloze a pád prohlížeče na zabezpečené entitě. |
-| 30. 10. 2026 | Vylepšení | Přílohu jde přidat rovnou z režimu čtení — tlačítko v sekci Přílohy a příkaz v paletě; z pohledu čtení se rovnou uloží a naplánuje nahrání na GitHub. |
-| 29. 10. 2026 | Vylepšení | Plán: v tabulce WBS přibylo tlačítko příznaku před názvem úkolu a select stavu; příznak v úkolu plánu vidí i pohled Příznaky. |
-| 27. 10. 2026 | Oprava | Wiki odkaz ve výstupu je tučný název a za ním aspekty kurzívou v závorce — stejně v Markdownu, formátované kopii, tisku i Wordu. |
-| 27. 10. 2026 | Oprava | Zvuky přepnuty na plnou hlasitost; export a kopie už neobsahují interní odkazy. |
-| 27. 10. 2026 | Vylepšení | Začátek a konec nahrávání na GitHub znějí odlišně; průběh nahrávání se odečítačem nepředčítá. |
-| 27. 10. 2026 | Vylepšení | Úspěšné uložení na GitHub dostalo vlastní zvuk, odlišený od začátku nahrávání. |
-| 27. 10. 2026 | Vylepšení | Změna provedená během nahrávání se neztratí; Alt+M (i Alt+Shift+M) spustí sloučení s GitHubem. |
-| 27. 10. 2026 | Funkce | Dva lidé na jednom souboru: cizí změny se slučují místo přepsání, střety jdou do pruhu. Autosave zkrácen z 15 na 4 sekundy. |
-| 26. 10. 2026 | Funkce | Include srovnává úrovně nadpisů podle místa vložení — na obrazovce i při rozbalení do Markdownu. |
-| 26. 10. 2026 | Vylepšení | Dialog Vybrat entitu hledá i podle organizace osoby a stavu úkolu, ne jen podle názvu. |
-| 16. 10. 2026 | Vylepšení | Rychlé zakládání: z řádku se odřízne značka seznamu a Enter odesílá i na softwarové klávesnici telefonu. |
-| 16. 10. 2026 | Funkce | Víc řádků v názvu = víc položek, ve všech pěti formulářích rychlého zakládání. |
-| 16. 10. 2026 | Vylepšení | Tabulka entit: tlačítko ↗ otevřít v novém panelu hned za názvem entity. |
-| 16. 10. 2026 | Vylepšení | Panel úkolu nad atributy se stavem, termínem (i prázdným) a přeplánováním slovy. |
-| 13. 10. 2026 | Funkce | Rychlá úprava aspektů klávesou K a filtr „jen bez v hlavičce sloupce tagové matice. |
-| 11. 10. 2026 | Funkce | Rychlá úprava tagů entity: klávesa L, tlačítko v liště a seznam se zaškrtávátky místo textového pole. |
-| 8. 10. 2026 | Vylepšení | Datum z názvu se doplní na všech cestách, kudy entita vzniká. |
-| 8. 10. 2026 | Funkce | Termín a čas z názvu funguje i u + Nová entita; parser rozumí „do pátku, „za týden i názvům měsíců. |
-| 8. 10. 2026 | Oprava | Samostatné okno entity si bere data od okna, které ho otevřelo, místo stahování z GitHubu. |
 | 2. 9. 2026 | Funkce | Úplný export do schématického JSON. Po průvodci exportem se vytvoří datový json a json schéma soubor a vše se podá jako kompletně zdokumentovaný ZIP valíček i s detailním popisem v readme.md. Export je kompatibilní se standardy JSX a JSONscheme a validní i pro otevřená a dynamická data a splňuje i požadavky na popis dat pro import. |
 | 3. 7. 2026 | Funkce | Konečně máme pokročilé a dynamické filtry. Nově jsou v pohledech možnosti přidávat a měnit pokročilé filtry, které jsou chytré jak podle typu atributu, tak i podle jejich kombinací (to si musíte vyzkoušet). A navíc se dá vymazlený filtr uložit jako nový pohled, což přináší ohromné možnosti filtrace a hledání přes celý projekt. |
 | 3. 7. 2026 | Funkce | Další dnešní novinka a to je export a tisk entity jako dokumentu. Můźete si vybrat, co chcete, aby tam bylo a nebylo a export je buď do Markdown, do HTML a nebo do DOCX. |
@@ -116,6 +96,26 @@ multisection
 
 | Datum | Typ | Popis |
 | --- | --- | --- |
+| 4. 11. 2026 | Funkce | Přílohy v balíčcích: offline prohlížeč i přenos entit mezi PIMy se stáhnou jako ZIP se soubory příloh (attachments/<id>/<název>); opakovaný import nic nezdvojí. Opraveno tiché vynechávání příloh v ZIP záloze a pád prohlížeče na zabezpečené entitě. |
+| 30. 10. 2026 | Vylepšení | Přílohu jde přidat rovnou z režimu čtení — tlačítko v sekci Přílohy a příkaz v paletě; z pohledu čtení se rovnou uloží a naplánuje nahrání na GitHub. |
+| 29. 10. 2026 | Vylepšení | Plán: v tabulce WBS přibylo tlačítko příznaku před názvem úkolu a select stavu; příznak v úkolu plánu vidí i pohled Příznaky. |
+| 27. 10. 2026 | Oprava | Wiki odkaz ve výstupu je tučný název a za ním aspekty kurzívou v závorce — stejně v Markdownu, formátované kopii, tisku i Wordu. |
+| 27. 10. 2026 | Oprava | Zvuky přepnuty na plnou hlasitost; export a kopie už neobsahují interní odkazy. |
+| 27. 10. 2026 | Vylepšení | Začátek a konec nahrávání na GitHub znějí odlišně; průběh nahrávání se odečítačem nepředčítá. |
+| 27. 10. 2026 | Vylepšení | Úspěšné uložení na GitHub dostalo vlastní zvuk, odlišený od začátku nahrávání. |
+| 27. 10. 2026 | Vylepšení | Změna provedená během nahrávání se neztratí; Alt+M (i Alt+Shift+M) spustí sloučení s GitHubem. |
+| 27. 10. 2026 | Funkce | Dva lidé na jednom souboru: cizí změny se slučují místo přepsání, střety jdou do pruhu. Autosave zkrácen z 15 na 4 sekundy. |
+| 26. 10. 2026 | Funkce | Include srovnává úrovně nadpisů podle místa vložení — na obrazovce i při rozbalení do Markdownu. |
+| 26. 10. 2026 | Vylepšení | Dialog Vybrat entitu hledá i podle organizace osoby a stavu úkolu, ne jen podle názvu. |
+| 16. 10. 2026 | Vylepšení | Rychlé zakládání: z řádku se odřízne značka seznamu a Enter odesílá i na softwarové klávesnici telefonu. |
+| 16. 10. 2026 | Funkce | Víc řádků v názvu = víc položek, ve všech pěti formulářích rychlého zakládání. |
+| 16. 10. 2026 | Vylepšení | Tabulka entit: tlačítko ↗ otevřít v novém panelu hned za názvem entity. |
+| 16. 10. 2026 | Vylepšení | Panel úkolu nad atributy se stavem, termínem (i prázdným) a přeplánováním slovy. |
+| 13. 10. 2026 | Funkce | Rychlá úprava aspektů klávesou K a filtr „jen bez v hlavičce sloupce tagové matice. |
+| 11. 10. 2026 | Funkce | Rychlá úprava tagů entity: klávesa L, tlačítko v liště a seznam se zaškrtávátky místo textového pole. |
+| 8. 10. 2026 | Vylepšení | Datum z názvu se doplní na všech cestách, kudy entita vzniká. |
+| 8. 10. 2026 | Funkce | Termín a čas z názvu funguje i u + Nová entita; parser rozumí „do pátku, „za týden i názvům měsíců. |
+| 8. 10. 2026 | Oprava | Samostatné okno entity si bere data od okna, které ho otevřelo, místo stahování z GitHubu. |
 | 7. 8. 2026 | Vylepšení | Přidáno víc než 20 klávesových zkratek pro funkce v editoru textu. Od prostého formátování až po ovládání critic revizí apod. Sem to nebudu celé vypisovat, podívejte se do aktualizované nápovědy v aplikaci. |
 | 3. 8. 2026 | Vylepšení | I v detailu pokud je někde vazba na prvek, lze jej nyní otevŕít jedním kliknutím v novém panelu, takže neztratíte kontext. A taky přidána maličkost při editaci, u vazeb je nyní možno rovnou rychle vazbu editovat, což šlo před tím jen z přehledu Nástroje / Vazby / Všechny vazby / Upravit vazbu. |
 | 28. 7. 2026 | Oprava | Oprava korektoru češtiny, kdy při určitém výskytu některých písmen s diakritikou na konci slova chybně označoval za chybu a nabízel to samé slovo jako opravu. |
