@@ -168,6 +168,12 @@ ok(soucet, /Projekt A/.test(vysledek) && /Schuzka A/.test(vysledek) && /Ukol A2 
   've Vše zůstane projekt A i jeho potomci včetně vnuka', vysledek.slice(0, 300));
 ok(soucet, !/Ukol B1/.test(vysledek) && !/Volna entita/.test(vysledek),
   'a nic mimo projekt A', vysledek.slice(0, 300));
+const popisFiltru = await stranka.evaluate(() => ({
+  radek: (document.querySelector('#all-results .aktivni-filtry') || {}).textContent || '',
+  souhrn: (document.getElementById('filters-summary') || {}).textContent || ''
+}));
+ok(soucet, /Projekt: Projekt A/.test(popisFiltru.radek) && /Projekt: Projekt A/.test(popisFiltru.souhrn),
+  'vybraný projekt je vidět hned vedle počtu nalezených i u sbalených Filtrů', popisFiltru);
 
 nadpis('Posledních 100 změněných respektuje filtr pohledu Vše');
 const posledni = await stranka.evaluate(async () => {
