@@ -2,6 +2,11 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.18.1] — 2026-11-07
+
+### Opraveno
+- Odkaz ELI podle pravidel e-Sbírky: doména `e-sbirka.gov.cz` a vždy s datem zobrazeného znění, i u celého předpisu (`https://e-sbirka.gov.cz/eli/cz/sb/{rok}/{číslo}/{znění}[/dokument/{ustanovení}]`).
+
 ## [1.18.0] — 2026-11-02
 
 ### Přidáno
