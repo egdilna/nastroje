@@ -144,6 +144,9 @@ zobrazuje se seřazené.
   `michalradacz/mojedata/vsechnosablona.dkmdata`** včetně id atributů (`DKM_AT`) a číselníků —
   neměnit id, jinak se v cílových projektech nespáruje. Navíc jen `a_leg_pp_odkaz`.
   Ustanovení předpisu má pevná id `t_leg_ustanoveni` / `a_leg_ust_*`, vazba `rt_leg_odkazuje`.
+  Atribut `a_leg_ust_ustanoveni` (typ DKM `ustanoveni`) skládá `dkmHodnotaUstanoveni()` v tvaru
+  z `dkm/dkm-formats-cs.md` (zadání `predpis/par/odst/pism/bod`, článek jako `par: "čl. X"`, + `citace,
+  druh, nazev, zneni, klic, eli, text, cely, nacteno`); u ustanovení mimo paragraf/článek se vynechá.
 - Stálá id entit: `leg<rok><číslo>`, ustanovení `…_<par|cl|odst|pism|bod|priloha>_…`,
   EU `legeu<rok><číslo>`. Název ustanovení: „Popisný název (Označení druh-ve-2.-pádě číslo/rok)“,
   genitiv z `druhPredpisu(P, true)`; **ústavní zákon je v DKM typu „Zákon“** (`DKM_DRUH`); u předpisů mimo knihovnu se druh a název dohledají v e-Sbírce.
