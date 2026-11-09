@@ -115,6 +115,7 @@ Attribute data types:
 - **relation** — link to another entity (optionally restricted to a specific type, single or multi-value)
 - **tags** — a set of labels from one **tag set**; the value is several tags at once (see 7.5)
 - **composed** — has no value of its own, it is built from a template out of the other attributes (see 7.6)
+- **legal provision** — a reference to a provision of a Czech act with its text loaded from e-Sbírka (see 7.6a)
 
 For each attribute you can set:
 
