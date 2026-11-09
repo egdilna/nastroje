@@ -2,6 +2,11 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.19.0] — 2026-11-09
+
+### Přidáno
+- Export do DKM (.dkmpkg): typ Ustanovení předpisu má nový atribut **Ustanovení** typu `ustanoveni`. Hodnota má tvar podle formátu DKM — zadání (`predpis` číslo/rok, `par` nebo „čl. X“, `odst`, `pism`, `bod`) a výsledek (`citace`, `druh` ve 2. pádě, `nazev`, `zneni`, `klic`, `eli`, `text`, `cely`, `nacteno`), takže DKM text nemusí znovu načítat a může ho později obnovit z e-Sbírky.
+
 ## [1.18.1] — 2026-11-07
 
 ### Opraveno

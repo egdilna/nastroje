@@ -142,7 +142,7 @@ mark{background:var(--zvyrazneni);color:inherit}
    čtení metodou GET kvůli CORS). Úložiště: složka v GitHub repozitáři.
    Podrobnosti k architektuře jsou v leg/CLAUDE.md.
    ===================================================================== */
-const APP_VERZE = "1.18.1";
+const APP_VERZE = "1.19.0";
 
 /* ==================== POMOCNÉ ==================== */
 const $ = (s, r) => (r || document).querySelector(s);
@@ -2694,7 +2694,8 @@ const DKM_USTANOVENI = {id: "t_leg_ustanoveni", name: "Ustanovení předpisu", i
   {id: "a_leg_ust_text", name: "Text ustanovení", type: "textarea", copyable: true},
   {id: "a_leg_ust_poznamka", name: "Poznámka", type: "textarea", hideEmpty: true},
   {id: "a_leg_ust_odkaz", name: "Odkaz do LEG prohlížeče", type: "url", copyable: true},
-  {id: "a_leg_ust_esbirka", name: "Odkaz e-Sbírka", type: "url"}]};
+  {id: "a_leg_ust_esbirka", name: "Odkaz e-Sbírka", type: "url"},
+  {id: "a_leg_ust_ustanoveni", name: "Ustanovení", type: "ustanoveni"}]};
 const DKM_VAZBA = {id: "rt_leg_odkazuje", name: "odkazuje na", inverseName: "je odkazováno z", scope: "specific",
   fromTypes: ["t_leg_ustanoveni"], toTypes: ["t_leg_ustanoveni", DKM_TYP_PP]};
 /* Ústavní zákon je v DKM typu Zákon (pravidlo uživatele). */
@@ -2708,6 +2709,25 @@ function dkmIdUstanoveni(id, klic){
 function oznaceniZKlice(klic){
   const t = {par: x => "§ " + x, cl: x => "čl. " + x, odst: x => "odst. " + x, pism: x => "písm. " + x + ")", bod: x => "bod " + x, priloha: x => "příloha č. " + x};
   return String(klic).split("/").map(x => { const m = /^(par|cl|odst|pism|bod|priloha)_(.+)$/.exec(x); return m ? t[m[1]](m[2]) : null; }).filter(Boolean).join(" ");
+}
+/* Hodnota atributu typu ustanoveni v DKM (viz dkm/dkm-formats-cs.md): zadání
+   {predpis: "číslo/rok", par (u článku "čl. X"), odst, pism, bod} + výsledek načtení
+   {citace, druh (2. pád), nazev, zneni, klic, eli, text, cely, nacteno}. */
+function dkmHodnotaUstanoveni(idp, klic, citace, druh, nazev, zneni, text){
+  const [rok, cislo] = idp.split("/");
+  const v = {predpis: cislo + "/" + rok, par: "", odst: "", pism: "", bod: ""};
+  for (const x of String(klic).split("/")){
+    const m = /^(par|cl|odst|pism|bod)_(.+)$/.exec(x);
+    if (!m) continue;
+    if (m[1] === "par") v.par = m[2];
+    else if (m[1] === "cl") v.par = "čl. " + m[2];
+    else v[m[1]] = m[2];
+  }
+  if (!v.par) return null;
+  const posl = String(klic).split("/").pop();
+  return Object.assign(v, bezPrazdnych({citace, druh, nazev, zneni: zneni && zneni !== "0000-00-00" ? zneni : "", klic,
+    eli: zneni && zneni !== "0000-00-00" ? "https://e-sbirka.gov.cz/eli/cz/sb/" + rok + "/" + cislo + "/" + zneni + "/dokument/" + klic : ""}),
+    {text: text || "", cely: /^(par|cl)_/.test(posl), nacteno: new Date().toISOString()});
 }
 const bezPrazdnych = o => { const r = {}; for (const [k, v] of Object.entries(o)) if (v !== "" && v !== null && v !== undefined) r[k] = v; return r; };
 /* Text pro atribut Markdown: bez odsazení (odsazení by Markdown vzal jako kód), řádky jako odstavce */
@@ -2799,7 +2819,9 @@ async function dkmBalik(titul, polozky, prubeh){
     const e = {id: eid, name: pol.nazev ? pol.nazev + " (" + citace + ")" : citace, typeId: DKM_USTANOVENI.id, attributes: bezPrazdnych({
       a_leg_ust_popis: pol.nazev, a_leg_ust_oznaceni: oznaceni, a_leg_ust_citace: citace, a_leg_ust_predpis: pid,
       a_leg_ust_text: dkmText(text), a_leg_ust_poznamka: pol.poznamka,
-      a_leg_ust_odkaz: adresaAbsolutni({pohled: "ust", predpis: idp, ust: klic}), a_leg_ust_esbirka: adresaESbirky(idp, null, klic)}),
+      a_leg_ust_odkaz: adresaAbsolutni({pohled: "ust", predpis: idp, ust: klic}), a_leg_ust_esbirka: adresaESbirky(idp, null, klic),
+      a_leg_ust_ustanoveni: dkmHodnotaUstanoveni(idp, klic, oznaceni, druhPredpisu(i, true), i.nazev,
+        f && W.predpisy[idp] ? aktualniDatum(W.predpisy[idp]) : "", vetaZTextu(text))}),
       createdAt: (v && v.vytvoreno) || ted, updatedAt: (v && v.upraveno) || ted};
     entity.set(eid, e);
     if (!hlavni || !f) return eid;
