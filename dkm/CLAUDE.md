@@ -697,7 +697,9 @@ k němu nenese nic. Čte se **vždycky** přes `checklistRadky()`, která cizí 
 Hodnota je objekt — zadání `{predpis:'číslo/rok',par,odst,pism,bod}` + výsledek načtení
 (`citace, druh, nazev, zneni, klic, eli, text, cely, nacteno`). **Text se ukládá do dat**;
 API se volá jen z editoru (sám po 0,9 s a tlačítkem), tlačítkem v detailu a z Nastavení → EG
-(`rsEg`, cache podle zadání). Změna zadání starý výsledek zahodí (`ustanoveniZadani`).
+(`rsEg`, cache podle zadání). **Hodnota bez textu se dotáhne sama** při zobrazení v detailu
+(`_ustDotazeno`, jednou za načtení stránky) i při otevření editoru — jinak uložení před
+doběhnutím načtení nechalo citaci bez druhu předpisu („§ 20 13/1997 Sb.“), hlášeno od uživatele. Změna zadání starý výsledek zahodí (`ustanoveniZadani`).
 - Zdroj je SPARQL otevřených dat jako v `leg` (jen GET, bez klíče, viz `leg/CLAUDE.md`).
   Platné znění = poslední `má-znění` s datem ≤ dnes (data nesou i budoucí). Paragraf se hledá
   `REGEX(STR(?f),"/par_X(/|$)")` a pak se vezme ten, před kterým jsou jen části/hlavy/díly
