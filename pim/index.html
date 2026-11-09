@@ -14378,7 +14378,8 @@ function renderSettings(main) {
       if (!AI.isConfigured()) { alertMsg('Nejprve zadejte klíč.'); return; }
       toast('Ověřuji…', 30000);
       try {
-        await AI.ask('Odpověz jediným slovem: ok');
+        await AI._posli([{ parts: [{ text: 'Odpověz jediným slovem: ok' }] }], false, null,
+          AI.getProvider() === 'claude' ? { _effort: 'low' } : undefined);
         toast('✓ Spojení funguje.', 4000);
       } catch (err) {
         alertMsg((err && err.message) || 'Ověření se nezdařilo.');
@@ -23522,7 +23523,8 @@ const AI_DEFAULT_MODEL = 'gemini-3.7-flash';
 const AI_ENDPOINT_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/';
 const AI_PROVIDER_STORAGE = 'pim_ai_provider';
 const AI_CLAUDE_ENDPOINT = 'https://api.anthropic.com/v1/messages';
-const AI_CLAUDE_MAX_TOKENS = 8192;
+const AI_CLAUDE_MAX_TOKENS = 32000;
+const AI_CLAUDE_TIMEOUT_MS = 5 * 60 * 1000;
 // Poskytovatelé. Gemini drží původní klíče v localStorage, takže stávající nastavení platí dál.
 const AI_POSKYTOVATELE = {
   gemini: {
@@ -23598,8 +23600,9 @@ const AI = {
 
   // ---- Claude (Anthropic Messages API) ----
   // contents jsou ve tvaru Gemini: [{ role?: 'user'|'model', parts: [{ text }] }].
-  // generationConfig.responseSchema (strukturovaný výstup) se řeší vynuceným nástrojem,
-  // jehož vstup je přesně podle schématu; vrací se jako JSON text, jako u Gemini.
+  // Vždy se streamuje: modely řady 5.x přemýšlejí (thinking nejde vypnout) a dlouhá odpověď
+  // bez streamu může narazit na časový limit. Strukturovaný výstup (responseSchema) jde přes
+  // output_config.format (json_schema) — vynucený nástroj (tool_choice) modely 5.5 odmítají.
   async _posliClaude(key, contents, stream, onDelta, generationConfig) {
     const messages = [];
     (contents || []).forEach(c => {
@@ -23611,52 +23614,52 @@ const AI = {
       else messages.push({ role: role, content: text });
     });
     if (!messages.length || messages[0].role !== 'user') messages.unshift({ role: 'user', content: '…' });
+    // Poslední zpráva musí být od uživatele (předvyplnění odpovědi nové modely odmítají).
+    if (messages[messages.length - 1].role !== 'user') messages.pop();
     const telo = {
       model: this.getModel() || AI_POSKYTOVATELE.claude.vychoziModel,
       max_tokens: AI_CLAUDE_MAX_TOKENS,
+      stream: true,
       messages: messages
     };
+    const output = {};
     const schema = generationConfig && generationConfig.responseSchema;
-    if (schema) {
-      telo.tools = [{ name: 'odpoved', description: 'Vrať navržené hodnoty polí.', input_schema: aiSchemaProClaude(schema) }];
-      telo.tool_choice = { type: 'tool', name: 'odpoved' };
-      stream = false;
-    }
-    if (stream) telo.stream = true;
-    let res;
+    if (schema) output.format = { type: 'json_schema', schema: aiSchemaProClaude(schema) };
+    if (generationConfig && generationConfig._effort) output.effort = generationConfig._effort;
+    if (Object.keys(output).length) telo.output_config = output;
+
+    const ovladac = (typeof AbortController === 'function') ? new AbortController() : null;
+    const casovac = ovladac ? setTimeout(() => ovladac.abort(), AI_CLAUDE_TIMEOUT_MS) : null;
     try {
-      res = await fetch(AI_CLAUDE_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': key,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
-        },
-        body: JSON.stringify(telo)
-      });
+      let res;
+      try {
+        res = await fetch(AI_CLAUDE_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': key,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true'
+          },
+          body: JSON.stringify(telo),
+          signal: ovladac ? ovladac.signal : undefined
+        });
+      } catch (e) {
+        if (typeof debug === 'function') debug('AI fetch selhal: ' + (e && e.message));
+        if (e && e.name === 'AbortError') throw new Error('Služba neodpověděla včas. Zkuste to znovu nebo zvolte rychlejší model.');
+        throw new Error('Službu se nepodařilo kontaktovat. Zkontrolujte připojení k internetu.');
+      }
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw this._chybaClaude(res.status, (data && data.error && data.error.message) || ('HTTP ' + res.status));
+      }
+      return await this._ctiStreamClaude(res, stream ? onDelta : null);
     } catch (e) {
-      if (typeof debug === 'function') debug('AI fetch selhal: ' + (e && e.message));
-      throw new Error('Službu se nepodařilo kontaktovat. Zkontrolujte připojení k internetu.');
+      if (e && e.name === 'AbortError') throw new Error('Služba neodpověděla včas. Zkuste to znovu nebo zvolte rychlejší model.');
+      throw e;
+    } finally {
+      if (casovac) clearTimeout(casovac);
     }
-    if (!res.ok) {
-      const data = await res.json().catch(() => null);
-      throw this._chybaClaude(res.status, (data && data.error && data.error.message) || ('HTTP ' + res.status));
-    }
-    if (stream) return await this._ctiStreamClaude(res, onDelta);
-    const data = await res.json().catch(() => null);
-    const bloky = (data && data.content) || [];
-    if (schema) {
-      const nastroj = bloky.find(b => b && b.type === 'tool_use');
-      if (nastroj && nastroj.input) return JSON.stringify(nastroj.input);
-    }
-    const out = bloky.map(b => (b && b.type === 'text' && b.text) ? b.text : '').join('').trim();
-    if (!out) {
-      if (typeof debug === 'function') debug('AI vrátila prázdnou odpověď: ' + JSON.stringify(data || {}).slice(0, 500));
-      if (data && data.stop_reason === 'refusal') throw new Error('Služba odmítla text zpracovat.');
-      throw new Error('Odpověď dorazila prázdná. Zkuste dotaz přeformulovat.');
-    }
-    return out;
   },
 
   _chybaClaude(status, detail) {
@@ -23677,7 +23680,7 @@ const AI = {
     }
     const reader = res.body.getReader();
     const dekoder = new TextDecoder();
-    let zbytek = '', cely = '', chyba = null;
+    let zbytek = '', cely = '', chyba = null, duvod = '';
     const zpracuj = (blok) => {
       blok.split('\n').forEach(radek => {
         if (radek.indexOf('data:') !== 0) return;
@@ -23688,6 +23691,8 @@ const AI = {
         if (data.type === 'content_block_delta' && data.delta && data.delta.type === 'text_delta' && data.delta.text) {
           cely += data.delta.text;
           if (typeof onDelta === 'function') onDelta(data.delta.text, cely);
+        } else if (data.type === 'message_delta' && data.delta && data.delta.stop_reason) {
+          duvod = data.delta.stop_reason;
         } else if (data.type === 'error') {
           chyba = (data.error && data.error.message) || 'chyba ve streamu';
         }
@@ -23706,7 +23711,9 @@ const AI = {
       if (typeof debug === 'function') debug('AI chyba ve streamu: ' + chyba);
       if (!cely.trim()) throw new Error(/overload/i.test(chyba) ? 'Služba je přetížená. Zkuste to za chvíli.' : 'Služba odpověděla chybou. Podrobnosti jsou v ladicí konzoli.');
     }
+    if (duvod && duvod !== 'end_turn' && typeof debug === 'function') debug('AI stop_reason: ' + duvod);
     cely = cely.trim();
+    if (!cely && duvod === 'refusal') throw new Error('Služba odmítla text zpracovat.');
     if (!cely) throw new Error('Odpověď dorazila prázdná. Zkuste dotaz přeformulovat.');
     return cely;
   },
@@ -24182,7 +24189,10 @@ function aiSchemaProClaude(sch) {
     Object.keys(sch.properties).forEach(k => { out.properties[k] = aiSchemaProClaude(sch.properties[k]); });
   }
   if (sch.items) out.items = aiSchemaProClaude(sch.items);
-  if (out.type === 'object' && !out.properties) out.properties = {};
+  if (out.type === 'object') {
+    if (!out.properties) out.properties = {};
+    out.additionalProperties = false;   // povinné pro strukturovaný výstup
+  }
   return out;
 }
 

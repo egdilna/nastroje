@@ -1183,9 +1183,11 @@ názvy poskytovatelů a modelů jsou vidět **jen v selectech sekce Umělá inte
 i model se ukládají pro každého zvlášť (Gemini na původních `pim_ai_key` / `pim_ai_model`,
 Claude na `pim_ai_claude_key` / `pim_ai_claude_model`). Zbytek aplikace volá jen
 `AI.ask` / `askChat` / `navrhniAtributy`; pro Claude převádí `_posliClaude()` zprávy ve tvaru
-Gemini na Messages API (`model` → `assistant`, slučuje sousední stejné role), streamuje
-přes `stream: true` a strukturovaný výstup dělá **vynuceným nástrojem** (`tool_choice`)
-se schématem z `aiSchemaProClaude()`. Volání z prohlížeče vyžaduje hlavičku
+Gemini na Messages API (`model` → `assistant`, slučuje sousední stejné role) a **streamuje vždy**
+(modely 5.x přemýšlejí a bez streamu hrozí časový limit; pojistka `AI_CLAUDE_TIMEOUT_MS`).
+Strukturovaný výstup jde přes `output_config.format` (`json_schema`, schéma z `aiSchemaProClaude()`
+s `additionalProperties: false`) — **vynucený nástroj (`tool_choice` `tool`/`any`) modely 5.5
+odmítají chybou 400**, nepoužívat. Ověření spojení posílá `output_config.effort: low`. Volání z prohlížeče vyžaduje hlavičku
 `anthropic-dangerous-direct-browser-access: true`.
 
 Vstup vždycky prochází `aiOcistiVstup()` (vyřízne bloky `~~~private`) a `aiEntitaPovolena()`
