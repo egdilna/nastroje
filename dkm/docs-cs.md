@@ -115,6 +115,7 @@ Datové typy atributů:
 - **relation** — odkaz na jinou entitu (volitelně omezený na konkrétní typ, jednonásobný nebo vícenásobný)
 - **tagy** — sada značek z jedné **soustavy tagů**; hodnotou je několik tagů najednou (viz kap. 7.5)
 - **složený** — nemá vlastní hodnotu, skládá se ze šablony z hodnot ostatních atributů (viz kap. 7.6)
+- **ustanovení** — odkaz na ustanovení právního předpisu s textem načteným z e-Sbírky (viz kap. 7.6a)
 
 U každého atributu si můžeš nastavit:
 
