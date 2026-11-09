@@ -125,7 +125,7 @@ target by conditions) and four display switches (`hidden`, `copyable`, `highligh
 `hideEmpty`).
 
 Attribute types: `text`, `textarea`, `date`, `url`, `select`, `yesno`, `relation`, `number`,
-`range`, `checklist`, `tags`, `composed`.
+`range`, `checklist`, `tags`, `composed`, `ustanoveni`.
 
 **Relation scope** (`relationTypes[].scope`) is `universal`, `from`, `to` or `specific`.
 Empty `fromTypes` / `toTypes` means **"anything"**, not "nothing" — see § 7.
@@ -185,6 +185,7 @@ definition, not under its name. The shape of the value follows that definition's
 | `number` | number | a real number, not a string of digits; with `autoInc: true` DKM assigns it from `posledni` (7.1b), but in the data it is still an ordinary number |
 | `range` | number | a slider (7.1c); the range and the step live in the definition (`min`, `max`, `krok`), the unit is a display label only. A value outside the range is valid — DKM does not rewrite it |
 | `checklist` | array of `{text, hotovo}` objects | the rows belong to the **entity**, not to the attribute definition (7.1d); the order in the array is the order on screen; `hotovo` may be missing and means a row that is not done |
+| `ustanoveni` | object `{predpis, par, odst, pism, bod, …}` | input (`predpis` = “number/year”) and the result loaded from e-Sbírka: `citace`, `druh` (genitive), `nazev`, `zneni` (effective date), `klic` (fragment path after `/dokument/`), `eli`, `text`, `cely` (whole section), `nacteno`; the text is stored in the data, the app does not call the API when displaying |
 | `yesno` | `true` / `false` | |
 | `select` | string | must be one of the values of the linked select list |
 | `tags` | array of strings | each is one tag from the linked set (`tagSetId`); DKM stores them alphabetically |

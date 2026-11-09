@@ -860,6 +860,20 @@ Co se pak děje:
 Samotný název zůstává obyčejné pole v datech — hledání, řazení, odkazy, exporty
 i offline prohlížeč o skládání nevědí a pracují s ním jako s jakýmkoli jiným názvem.
 
+### 7.6a Atribut typu Ustanovení
+Odkaz na ustanovení právního předpisu ze Sbírky zákonů. V editoru se vyplní předpis
+(číslo/rok, např. `128/2000`), paragraf (`84`, `84a`, nebo článek `čl. 1`) a podle potřeby
+odstavec, písmeno a bod. Po chvilce (nebo tlačítkem **Načíst z e-Sbírky**) se z otevřených
+dat e-Sbírky načte text platného znění a **uloží se do projektu** — při zobrazení se už
+nikam neposílá dotaz.
+
+- Zobrazí se jako „§ 84 odst. 2 písm. a) zákona č. 128/2000 Sb.: text“, citace je odkaz ELI
+  na e-Sbírku. U písmene či bodu se text složí do věty s návětím nadřazeného odstavce
+  (a se společnou částí za výčtem). Celý paragraf je schovaný v rozbalovacím bloku.
+- V detailu entity je tlačítko **Znovu načíst z e-Sbírky** (třeba po novele).
+- **Nastavení → EG** znovu načte všechna ustanovení v projektu (zamčené entity přeskočí).
+- Ve filtru se hledá v citaci i textu; v exportech a v offline prohlížeči jde citace s textem.
+
 ### 7.7 Jak se atribut chová v zobrazení
 
 Čtyři zaškrtávátka u každého atributu typu i aspektu. **Do dat nesahají** — mění jen to, co
