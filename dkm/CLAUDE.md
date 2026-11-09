@@ -17,7 +17,7 @@ a při změně chování ji aktualizuj.
   entitě přidat nezávisle na typu (`getAllAttrDefsForEntity` skládá obojí).
 - **Vazba** má rozsah (`RSCOPES = ['universal','from','to','specific']`), platnost kontroluje
   `isRelApplicable(rt, fromId, toId)`.
-- Typy atributů: `ATYPES = ['text','textarea','date','url','select','yesno','relation','number','range','checklist','tags','composed']`;
+- Typy atributů: `ATYPES = ['text','textarea','date','url','select','yesno','relation','number','range','checklist','tags','composed','ustanoveni']`;
   kompatibilitu při konverzích řídí `ATTR_TYPE_COMPAT` (`attrTypesCompatible`).
 - **Tag** je značka ze **soustavy tagů** (`state.data.tagSets`), na kterou se atribut typu
   `tags` váže přes `tagSetId` — obdoba číselníku u `select`, jen hodnotou je pole tagů.
@@ -692,6 +692,22 @@ k němu nenese nic. Čte se **vždycky** přes `checklistRadky()`, která cizí 
   zároveň na „pole řetězců“ i na „řádky checklistu“ a `oneOf` by ho zamítlo.
 - Filtry mají dva vlastní operátory (`allDone`, `anyOpen`) a jsou v seznamu bez hodnoty
   v `opNeedsValue`. `_asStr` umí pole objektů s `text`, aby fungovalo `contains`.
+
+## Ustanovení (`type:'ustanoveni'`, e-Sbírka)
+Hodnota je objekt — zadání `{predpis:'číslo/rok',par,odst,pism,bod}` + výsledek načtení
+(`citace, druh, nazev, zneni, klic, eli, text, cely, nacteno`). **Text se ukládá do dat**;
+API se volá jen z editoru (sám po 0,9 s a tlačítkem), tlačítkem v detailu a z Nastavení → EG
+(`rsEg`, cache podle zadání). Změna zadání starý výsledek zahodí (`ustanoveniZadani`).
+- Zdroj je SPARQL otevřených dat jako v `leg` (jen GET, bez klíče, viz `leg/CLAUDE.md`).
+  Platné znění = poslední `má-znění` s datem ≤ dnes (data nesou i budoucí). Paragraf se hledá
+  `REGEX(STR(?f),"/par_X(/|$)")` a pak se vezme ten, před kterým jsou jen části/hlavy/díly
+  (ne stejně číslovaný v novelizačním článku).
+- Skládání věty `slozUstanoveni`: návětí předků + text cíle + `Pokracovani_Text` předků;
+  neoznačené pokračování se připojí k větě. Pozor: e-Sbírka věší společnou část za výčtem
+  bodů **pod poslední bod**. Ověřováno naživo (128/2000 § 84, 500/2004 § 64 a § 100, 1/1993 čl. 1).
+- Jednotné podoby: `ustanoveniText` (filtry přes `_asStr`, kopie, tabulky), `ustanoveniMd`,
+  `ustanoveniHtml`. Offline prohlížeč typ nezná — `ustanoveniProProhlizec` ve `viewerData`
+  ho převede na `textarea` s Markdownem (šablona prohlížeče se neměnila).
 
 ## Skládaný název entity: kopie, ne nový druh názvu
 `e.nazevZe` = id složeného atributu, ze kterého se skládá název. Záměrně **nejmenší možný

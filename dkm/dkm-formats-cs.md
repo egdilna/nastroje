@@ -123,7 +123,7 @@ typu další pole: `listId` (číselník), `tagSetId` (soustava tagů), `targetT
 a čtyři přepínače zobrazení (`hidden`, `copyable`, `highlight`, `hideEmpty`).
 
 Typy atributů: `text`, `textarea`, `date`, `url`, `select`, `yesno`, `relation`, `number`,
-`range`, `checklist`, `tags`, `composed`.
+`range`, `checklist`, `tags`, `composed`, `ustanoveni`.
 
 **Rozsah vazby** (`relationTypes[].scope`) je `universal`, `from`, `to` nebo `specific`.
 Prázdné `fromTypes` / `toTypes` znamená **„cokoli"**, ne „nic" — viz § 7.
@@ -181,6 +181,7 @@ jejím názvem. Tvar hodnoty se řídí typem té definice:
 | `number` | číslo | opravdu číslo, ne řetězec s číslicemi; u `autoInc: true` ho přiděluje DKM z `posledni` (příručka, kap. 7.1b), ale v datech je to pořád obyčejné číslo |
 | `range` | číslo | posuvník (příručka, kap. 7.1c); rozsah a krok drží definice (`min`, `max`, `krok`), jednotka je jen popisek pro zobrazení. Hodnota mimo rozsah je platná — DKM ji nepřepisuje |
 | `checklist` | pole objektů `{text, hotovo}` | řádky patří **entitě**, ne definici atributu (příručka, kap. 7.1d); pořadí v poli je pořadí na obrazovce; `hotovo` smí chybět a znamená nehotový řádek |
+| `ustanoveni` | objekt `{predpis, par, odst, pism, bod, …}` | zadání (`predpis` = „číslo/rok“) a výsledek načtení z e-Sbírky: `citace`, `druh` (2. pád), `nazev`, `zneni` (datum účinnosti), `klic` (cesta fragmentu za `/dokument/`), `eli`, `text`, `cely` (celý paragraf), `nacteno`; text je v datech, aplikace se při zobrazení na API neptá |
 | `yesno` | `true` / `false` | |
 | `select` | řetězec | musí být jednou z hodnot navázaného číselníku |
 | `tags` | pole řetězců | každý je jeden tag z navázané soustavy (`tagSetId`); DKM je ukládá abecedně |
