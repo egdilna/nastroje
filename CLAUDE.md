@@ -1,7 +1,8 @@
 # Nástroje — pokyny pro práci v repozitáři
 
-Repozitář je sbírka samostatných webových nástrojů; každý má vlastní složku a některé
-i svůj `CLAUDE.md` s podrobnostmi k architektuře (například `mros/CLAUDE.md`).
+Repozitář je sbírka samostatných webových nástrojů; každý má vlastní složku a v ní svůj `CLAUDE.md` s podrobnostmi k architektuře (například `mros/CLAUDE.md`).
+
+Pracuj výhradně ve složce kterou uživatel explicitně zadá, do ostatních nechoď, nečti je a nepracuj s nimi. Pokud uživatel bude chtít inspiraci v jiném nástroji, explicitně ti to řekne a pak smíš v dané konverzaci používat i tu složku, ale vždy se co nejvíc omezuj pro ostatní složky.
 
 ## Nasazování
 
