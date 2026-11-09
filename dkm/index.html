@@ -882,6 +882,8 @@ aiErrQuota:'Vyčerpaný limit poskytovatele:',
 aiErrNetwork:'Službu se nepodařilo oslovit. Zkontroluj připojení.',
 aiErrBlocked:'Poskytovatel odpověď zablokoval ({reason}).',
 aiErrNoAnswer:'Model nevrátil žádný text.',
+aiErrCredit:'Na účtu API nejsou kredity (Billing v konzoli API):',
+aiErrTimeout:'Služba neodpověděla včas.',
 bulkExportDoc:'Export / tisk výběru',
 bulkExpTitle:'Export výběru — {n}',
 bulkExpIntro:'Do jednoho dokumentu se vyexportuje {n} v pořadí, v jakém jsou v seznamu. Níž vyber, co má být u každé z nich.',
@@ -1927,6 +1929,8 @@ aiErrQuota:'Provider quota exhausted:',
 aiErrNetwork:'Could not reach the service. Check your connection.',
 aiErrBlocked:'The provider blocked the answer ({reason}).',
 aiErrNoAnswer:'The model returned no text.',
+aiErrCredit:'The API account has no credits (Billing in the API console):',
+aiErrTimeout:'The service did not respond in time.',
 bulkExportDoc:'Export / print selection',
 bulkExpTitle:'Export selection — {n}',
 bulkExpIntro:'{n} will be exported into a single document, in the order they appear in the list. Choose below what each of them should contain.',
@@ -14400,8 +14404,94 @@ throw new Error(t('aiErrNoAnswer')+' ('+fr+')');
 return txt;
 });
 }
+},
+/* Anthropic Messages API. Volání z prohlížeče povoluje hlavička
+   anthropic-dangerous-direct-browser-access. Odpověď se vždy streamuje: modely 5.x
+   přemýšlejí (vypnout to nejde) a dlouhá odpověď bez streamu může narazit na limit. */
+claude:{
+label:'Anthropic Claude',
+defaultModel:'claude-sonnet-5-5',
+docs:'https://platform.claude.com/settings/keys',
+listModels(key){
+return fetch('https://api.anthropic.com/v1/models?limit=1000',{headers:aiClaudeHlavicky(key)})
+.then(aiClaudeJsonOrThrow)
+.then(j=>(j.data||[]).map(m=>String(m.id||'')).filter(Boolean).sort());
+},
+send(key,model,systemText,history){
+const messages=[];
+history.forEach(h=>{
+const role=h.role==='assistant'?'assistant':'user';
+const text=String(h.text||'');
+if(!text.trim())return;
+const last=messages[messages.length-1];
+if(last&&last.role===role)last.content+='\n\n'+text; /* role se musí střídat */
+else messages.push({role,content:text});
+});
+while(messages.length&&messages[0].role!=='user')messages.shift();
+while(messages.length&&messages[messages.length-1].role!=='user')messages.pop(); /* předvyplnění nové modely odmítají */
+if(!messages.length)return Promise.reject(new Error(t('aiErrNoAnswer')));
+const body={model,max_tokens:32000,stream:true,messages};
+if(systemText)body.system=systemText;
+const ctl=typeof AbortController==='function'?new AbortController():null;
+const timer=ctl?setTimeout(()=>ctl.abort(),5*60*1000):null;
+const hdr=aiClaudeHlavicky(key);hdr['Content-Type']='application/json';
+return fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:hdr,body:JSON.stringify(body),signal:ctl?ctl.signal:undefined})
+.then(res=>res.ok?aiClaudeCtiStream(res):aiClaudeJsonOrThrow(res))
+.catch(err=>{if(err&&err.name==='AbortError')throw new Error(t('aiErrTimeout'));if(err instanceof TypeError)throw new Error(t('aiErrNetwork')+' ('+err.message+')');throw err})
+.finally(()=>{if(timer)clearTimeout(timer)});
+}
 }
 };
+
+/* Klíč vložený ze schránky nese občas neviditelné znaky (mezera nulové šířky, konec řádku);
+   v HTTP hlavičce je prohlížeč odmítne ještě před odesláním a vypadá to jako výpadek sítě. */
+function aiCistyKlic(k){return String(k||'').replace(/[^\x21-\x7E]/g,'')}
+function aiClaudeHlavicky(key){
+return {'x-api-key':aiCistyKlic(key),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'};
+}
+function aiClaudeJsonOrThrow(res){
+return res.json().catch(()=>null).then(j=>{
+if(res.ok)return j;
+const msg=(j&&j.error&&j.error.message?j.error.message:'')+' (HTTP '+res.status+')';
+if(res.status===401||res.status===403)throw new Error(t('aiErrKey')+' '+msg);
+if(res.status===400&&/credit|billing|balance/i.test(msg))throw new Error(t('aiErrCredit')+' '+msg);
+if(res.status===404)throw new Error(t('aiErrModel')+' '+msg);
+if(res.status===429)throw new Error(t('aiErrQuota')+' '+msg);
+throw new Error(msg);
+});
+}
+/* Server-sent events: skládá text z text_delta, thinking bloky přeskakuje. */
+function aiClaudeCtiStream(res){
+if(!res.body||!res.body.getReader)return res.text().then(()=>{throw new Error(t('aiErrNoAnswer'))});
+const reader=res.body.getReader();const dec=new TextDecoder();
+let zbytek='',cely='',chyba='',duvod='';
+function zpracuj(blok){
+blok.split('\n').forEach(radek=>{
+if(radek.indexOf('data:')!==0)return;
+let d=null;try{d=JSON.parse(radek.slice(5).trim())}catch(e){return}
+if(d.type==='content_block_delta'&&d.delta&&d.delta.type==='text_delta')cely+=d.delta.text||'';
+else if(d.type==='message_delta'&&d.delta&&d.delta.stop_reason)duvod=d.delta.stop_reason;
+else if(d.type==='error')chyba=(d.error&&d.error.message)||'error';
+});
+}
+function krok(){
+return reader.read().then(({done,value})=>{
+if(done){
+if(zbytek)zpracuj(zbytek);
+const txt=cely.trim();
+if(!txt){
+if(chyba)throw new Error(chyba);
+throw new Error(t('aiErrNoAnswer')+(duvod?' ('+duvod+')':''));
+}
+return txt;
+}
+zbytek+=dec.decode(value,{stream:true}).replace(/\r\n/g,'\n');
+const bloky=zbytek.split('\n\n');zbytek=bloky.pop();bloky.forEach(zpracuj);
+return krok();
+});
+}
+return krok();
+}
 
 /* Odpověď API na chybu nese JSON s popisem — ten je pro uživatele užitečnější než holý stav. */
 function aiJsonOrThrow(res){
@@ -14417,10 +14507,14 @@ throw new Error(msg);
 
 function aiProviderId(){const v=localStorage.getItem(SK_AIPROVIDER)||'gemini';return AI_PROVIDERS[v]?v:'gemini'}
 function aiProvider(){return AI_PROVIDERS[aiProviderId()]}
-function aiKey(){return localStorage.getItem(SK_AIKEY)||''}
-function aiSetKey(v){if(v)localStorage.setItem(SK_AIKEY,v);else localStorage.removeItem(SK_AIKEY)}
-function aiModel(){return localStorage.getItem(SK_AIMODEL)||aiProvider().defaultModel}
-function aiSetModel(v){if(v)localStorage.setItem(SK_AIMODEL,v);else localStorage.removeItem(SK_AIMODEL)}
+/* Klíč i model se pamatují pro každého poskytovatele zvlášť; Gemini zůstává na původních
+   klíčích (dkm-ai-key, dkm-ai-model), takže dřívější nastavení platí dál. */
+function aiUlozisteKlice(){return aiProviderId()==='gemini'?SK_AIKEY:SK_AIKEY+'-'+aiProviderId()}
+function aiUlozisteModelu(){return aiProviderId()==='gemini'?SK_AIMODEL:SK_AIMODEL+'-'+aiProviderId()}
+function aiKey(){return aiCistyKlic(localStorage.getItem(aiUlozisteKlice())||'')}
+function aiSetKey(v){v=aiCistyKlic(v);if(v)localStorage.setItem(aiUlozisteKlice(),v);else localStorage.removeItem(aiUlozisteKlice())}
+function aiModel(){return localStorage.getItem(aiUlozisteModelu())||aiProvider().defaultModel}
+function aiSetModel(v){if(v)localStorage.setItem(aiUlozisteModelu(),v);else localStorage.removeItem(aiUlozisteModelu())}
 function aiConfigured(){return !!aiKey()}
 
 /* Jediné místo, kudy chodí požadavky — hlídá klíč a drží klíč mimo log. */
