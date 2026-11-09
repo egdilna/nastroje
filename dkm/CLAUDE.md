@@ -17,7 +17,7 @@ a při změně chování ji aktualizuj.
   entitě přidat nezávisle na typu (`getAllAttrDefsForEntity` skládá obojí).
 - **Vazba** má rozsah (`RSCOPES = ['universal','from','to','specific']`), platnost kontroluje
   `isRelApplicable(rt, fromId, toId)`.
-- Typy atributů: `ATYPES = ['text','textarea','date','url','select','yesno','relation','number','range','checklist','tags','composed','ustanoveni']`;
+- Typy atributů: `ATYPES = ['text','textarea','date','url','select','yesno','relation','number','range','checklist','tags','composed','ustanoveni','rpp']`;
   kompatibilitu při konverzích řídí `ATTR_TYPE_COMPAT` (`attrTypesCompatible`).
 - **Tag** je značka ze **soustavy tagů** (`state.data.tagSets`), na kterou se atribut typu
   `tags` váže přes `tagSetId` — obdoba číselníku u `select`, jen hodnotou je pole tagů.
@@ -710,6 +710,16 @@ doběhnutím načtení nechalo citaci bez druhu předpisu („§ 20 13/1997 Sb.�
 - Jednotné podoby: `ustanoveniText` (filtry přes `_asStr`, kopie, tabulky), `ustanoveniMd`,
   `ustanoveniHtml`. Offline prohlížeč typ nezná — `ustanoveniProProhlizec` ve `viewerData`
   ho převede na `textarea` s Markdownem (šablona prohlížeče se neměnila).
+
+## Odkaz do RPP (`type:'rpp'`)
+Hodnota `{druh,id,nazev}`, druhy v `RPP_DRUHY` (`agenda, ovm, kategorie, isvs, udaj, cinnost`);
+název píše uživatel ručně. Odkaz `https://nastroje.egdilna.cz/rpp/?detail=<id>` skládá
+`rppUrl` vždy s **plným identifikátorem** (`agenda/A1381`, `orgán-veřejné-moci/…`,
+`kategorie-ovm/…`, `isvs/…`, `objekt-subjekt/…`) — krátké kódy sdílí v prohlížeči RPP jednu
+tabulku a údaje krátký tvar nemají. Výjimka: činnost zadaná jen kódem (`CR12074`) jde holá,
+plný tvar potřebuje i agendu (`A1086/CR12074` → `činnost/A1086/CR12074`). Text odkazu
+`rppText` („Detail agendy A1381 Název“). Napojení na výstupy je totéž co u Ustanovení
+(prohlížeč dostane Markdown přes `ustanoveniProProhlizec`).
 
 ## Skládaný název entity: kopie, ne nový druh názvu
 `e.nazevZe` = id složeného atributu, ze kterého se skládá název. Záměrně **nejmenší možný
