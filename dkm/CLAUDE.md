@@ -711,7 +711,7 @@ doběhnutím načtení nechalo citaci bez druhu předpisu („§ 20 13/1997 Sb.�
   `ustanoveniHtml`. Offline prohlížeč typ nezná — `ustanoveniProProhlizec` ve `viewerData`
   ho převede na `textarea` s Markdownem (šablona prohlížeče se neměnila).
 
-## Odkaz do RPP (`type:'rpp'`)
+## RPP (`type:'rpp'`)
 Hodnota `{druh,id,nazev}`, druhy v `RPP_DRUHY` (`agenda, ovm, kategorie, isvs, udaj, cinnost`);
 název píše uživatel ručně. Odkaz `https://nastroje.egdilna.cz/rpp/?detail=<id>` skládá
 `rppUrl` vždy s **plným identifikátorem** (`agenda/A1381`, `orgán-veřejné-moci/…`,
