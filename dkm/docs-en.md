@@ -116,7 +116,7 @@ Attribute data types:
 - **tags** — a set of labels from one **tag set**; the value is several tags at once (see 7.5)
 - **composed** — has no value of its own, it is built from a template out of the other attributes (see 7.6)
 - **legal provision** — a reference to a provision of a Czech act with its text loaded from e-Sbírka (see 7.6a)
-- **RPP link** — a link to the detail of an agenda, OVM, OVM category, ISVS, data item or activity in the RPP viewer (see 7.6b)
+- **RPP** — a link to the detail of an agenda, OVM, OVM category, ISVS, data item or activity in the RPP viewer (see 7.6b)
 
 For each attribute you can set:
 
@@ -897,7 +897,7 @@ query is sent when it is displayed.
 - **Settings → EG** reloads every provision in the project (locked entities are skipped).
 - Filters search the citation and text; exports and the offline viewer get citation and text.
 
-### 7.6b RPP link attribute
+### 7.6b RPP attribute
 A link into the Czech Register of Rights and Obligations (RPP). In the editor you choose the
 record kind (Agenda, OVM, OVM category, ISVS, Data item, Activity), enter the identifier (e.g.
 `A1381`, company ID, `KO441`, ISVS number, `3-2`, `CR12074` or `A1086/CR12074`) and type the
