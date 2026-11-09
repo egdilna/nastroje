@@ -14378,9 +14378,13 @@ function renderSettings(main) {
       if (!AI.isConfigured()) { alertMsg('Nejprve zadejte klíč.'); return; }
       toast('Ověřuji…', 30000);
       try {
-        await AI._posli([{ parts: [{ text: 'Odpověz jediným slovem: ok' }] }], false, null,
-          AI.getProvider() === 'claude' ? { _effort: 'low' } : undefined);
-        toast('✓ Spojení funguje.', 4000);
+        if (AI.getProvider() === 'claude') {
+          const model = await AI.overClaude();
+          toast('✓ Spojení funguje, klíč i model ' + model + ' jsou v pořádku.', 6000);
+        } else {
+          await AI.ask('Odpověz jediným slovem: ok');
+          toast('✓ Spojení funguje.', 4000);
+        }
       } catch (err) {
         alertMsg((err && err.message) || 'Ověření se nezdařilo.');
       }
@@ -23643,6 +23647,7 @@ const AI = {
 
     const ovladac = (typeof AbortController === 'function') ? new AbortController() : null;
     const casovac = ovladac ? setTimeout(() => ovladac.abort(), AI_CLAUDE_TIMEOUT_MS) : null;
+    if (typeof debug === 'function') debug('AI dotaz: model ' + telo.model + ', zpráv ' + messages.length);
     try {
       let res;
       try {
@@ -23662,11 +23667,14 @@ const AI = {
         if (e && e.name === 'AbortError') throw new Error('Služba neodpověděla včas. Zkuste to znovu nebo zvolte rychlejší model.');
         throw new Error('Službu se nepodařilo kontaktovat. Zkontrolujte připojení k internetu.');
       }
+      if (typeof debug === 'function') debug('AI odpověď: HTTP ' + res.status + ' (model ' + telo.model + ')');
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         throw this._chybaClaude(res.status, (data && data.error && data.error.message) || ('HTTP ' + res.status));
       }
-      return await this._ctiStreamClaude(res, stream ? onDelta : null);
+      const vysledek = await this._ctiStreamClaude(res, stream ? onDelta : null);
+      if (typeof debug === 'function') debug('AI hotovo: ' + vysledek.length + ' znaků');
+      return vysledek;
     } catch (e) {
       if (e && e.name === 'AbortError') throw new Error('Služba neodpověděla včas. Zkuste to znovu nebo zvolte rychlejší model.');
       throw e;
@@ -23675,8 +23683,49 @@ const AI = {
     }
   },
 
+  // Ověření klíče a modelu bez generování textu (nestojí tokeny, odpoví hned).
+  async overClaude() {
+    const key = this.getKey();
+    const vadaKlice = aiKontrolaKliceClaude(key);
+    if (vadaKlice) throw new Error(vadaKlice);
+    const model = this.getModel() || AI_POSKYTOVATELE.claude.vychoziModel;
+    const ovladac = (typeof AbortController === 'function') ? new AbortController() : null;
+    const casovac = ovladac ? setTimeout(() => ovladac.abort(), 20000) : null;
+    if (typeof debug === 'function') debug('AI ověření: GET models/' + model + ', klíč ' + key.length + ' znaků');
+    let res;
+    try {
+      res = await fetch('https://api.anthropic.com/v1/models/' + encodeURIComponent(model), {
+        method: 'GET',
+        headers: {
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        signal: ovladac ? ovladac.signal : undefined
+      });
+    } catch (e) {
+      if (typeof debug === 'function') debug('AI ověření selhalo: ' + (e && e.name) + ' ' + (e && e.message));
+      if (e && e.name === 'AbortError') throw new Error('Služba neodpověděla do 20 s. Zkontrolujte připojení, případně rozšíření prohlížeče blokující požadavky.');
+      throw new Error('Službu se nepodařilo kontaktovat (' + ((e && e.message) || 'chyba sítě') + ').');
+    } finally {
+      if (casovac) clearTimeout(casovac);
+    }
+    if (typeof debug === 'function') debug('AI ověření: HTTP ' + res.status);
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      throw this._chybaClaude(res.status, (data && data.error && data.error.message) || ('HTTP ' + res.status));
+    }
+    return model;
+  },
+
   _chybaClaude(status, detail) {
-    if (typeof debug === 'function') debug('AI chyba: ' + detail);
+    const e = this._chybaClaudeText(status, detail);
+    e.message += ' [HTTP ' + status + ': ' + detail + ']';
+    return e;
+  },
+
+  _chybaClaudeText(status, detail) {
+    if (typeof debug === 'function') debug('AI chyba: HTTP ' + status + ' ' + detail);
     if (status === 401) return new Error('Server klíč odmítl (neplatný nebo zrušený klíč). Klíč musí být celý — v přehledu klíčů je zkrácený a celý se ukáže jen jednou při vytvoření; v takovém případě vytvořte nový klíč.');
     if (status === 403) return new Error('Klíč nemá k této službě nebo modelu přístup.');
     if (status === 400 && /credit|billing|balance/i.test(detail)) return new Error('Na účtu nejsou předplacené kredity pro API. Předplatné Claude.ai se do API nepočítá — kredity se dobíjejí v konzoli API (Billing).');
