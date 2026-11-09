@@ -871,7 +871,8 @@ nikam neposílá dotaz.
 - Zobrazí se jako „§ 84 odst. 2 písm. a) zákona č. 128/2000 Sb.: text“, citace je odkaz ELI
   na e-Sbírku. U písmene či bodu se text složí do věty s návětím nadřazeného odstavce
   (a se společnou částí za výčtem). Celý paragraf je schovaný v rozbalovacím bloku.
-- V detailu entity je tlačítko **Znovu načíst z e-Sbírky** (třeba po novele).
+- V detailu entity je tlačítko **Znovu načíst z e-Sbírky** (třeba po novele). Ustanovení
+  uložené ještě bez textu se při otevření detailu nebo editoru načte samo.
 - **Nastavení → EG** znovu načte všechna ustanovení v projektu (zamčené entity přeskočí).
 - Ve filtru se hledá v citaci i textu; v exportech a v offline prohlížeči jde citace s textem.
 

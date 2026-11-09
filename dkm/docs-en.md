@@ -891,7 +891,8 @@ query is sent when it is displayed.
   link to e-Sbírka. For a letter or point the text is composed into a sentence with the
   lead-in of the parent subsection (and the common closing part). A whole section is hidden
   in a collapsible block.
-- The entity detail has a **Reload from e-Sbírka** button (e.g. after an amendment).
+- The entity detail has a **Reload from e-Sbírka** button (e.g. after an amendment). A provision
+  saved without its text is loaded automatically when the detail or the editor is opened.
 - **Settings → EG** reloads every provision in the project (locked entities are skipped).
 - Filters search the citation and text; exports and the offline viewer get citation and text.
 
