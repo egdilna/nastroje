@@ -1177,6 +1177,17 @@ název poskytovatele nesmí být vidět nikde v GUI, v nápovědě ani v dokumen
 u modulu a v konstantě s modelem. Platí to i pro chybové hlášky: uživateli jde česká věta,
 syrová odpověď služby jde do `debug()`.
 
+**Výjimka: výběr poskytovatele v Nastavení.** Uživatel si vybírá mezi Gemini a Claude
+(`AI_POSKYTOVATELE`, volba v `localStorage["pim_ai_provider"]`, prázdno = Gemini), takže
+názvy poskytovatelů a modelů jsou vidět **jen v selectech sekce Umělá inteligence**. Klíč
+i model se ukládají pro každého zvlášť (Gemini na původních `pim_ai_key` / `pim_ai_model`,
+Claude na `pim_ai_claude_key` / `pim_ai_claude_model`). Zbytek aplikace volá jen
+`AI.ask` / `askChat` / `navrhniAtributy`; pro Claude převádí `_posliClaude()` zprávy ve tvaru
+Gemini na Messages API (`model` → `assistant`, slučuje sousední stejné role), streamuje
+přes `stream: true` a strukturovaný výstup dělá **vynuceným nástrojem** (`tool_choice`)
+se schématem z `aiSchemaProClaude()`. Volání z prohlížeče vyžaduje hlavičku
+`anthropic-dangerous-direct-browser-access: true`.
+
 Vstup vždycky prochází `aiOcistiVstup()` (vyřízne bloky `~~~private`) a `aiEntitaPovolena()`
 (zabezpečené entity se neodesílají ani odemčené). Okno před odesláním ukazuje přesný text.
 Klíč žije v `localStorage` mimo `db`, takže se nedostane do exportu ani do synchronizace —

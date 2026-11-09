@@ -13971,10 +13971,15 @@ function renderSettings(main) {
 
     '<section aria-labelledby="ai-h"><h3 id="ai-h">Umělá inteligence</h3>' +
     '<p>Umožní posílat označený text nebo obsah entity jazykovému modelu s vlastním zadáním. Klíč se ukládá pouze ve vašem prohlížeči (localStorage) — nikdy se nedostane do exportu, do synchronizace na GitHub ani do statického prohlížeče.</p>' +
+    '<label for="ai-provider">Poskytovatel</label>' +
+    '<select id="ai-provider">' + Object.keys(AI_POSKYTOVATELE).map(k => '<option value="' + k + '"' + (AI.getProvider() === k ? ' selected' : '') + '>' + escapeHtml(AI_POSKYTOVATELE[k].nazev) + '</option>').join('') + '</select>' +
     '<label for="ai-key">API klíč</label>' +
     '<input type="password" id="ai-key" autocomplete="off" placeholder="vložte klíč">' +
-    '<label for="ai-model">Model (nepovinné)</label>' +
-    '<input type="text" id="ai-model" placeholder="ponechte prázdné pro výchozí">' +
+    '<label for="ai-model-sel">Model</label>' +
+    '<select id="ai-model-sel"></select>' +
+    '<div id="ai-model-vlastni-wrap" hidden><label for="ai-model">Vlastní název modelu</label>' +
+    '<input type="text" id="ai-model" placeholder="přesný identifikátor modelu"></div>' +
+    '<p class="meta">Klíč i model se pamatují pro každého poskytovatele zvlášť; používá se ten, který je zvolený.</p>' +
     '<p class="meta">Zabezpečené entity a soukromé bloky <code>~~~private</code> se neodesílají nikdy. Před každým odesláním okno ukáže, co přesně se pošle.</p>' +
 
     '<div class="btn-group" style="margin-top:0.5em;">' +
@@ -14333,18 +14338,43 @@ function renderSettings(main) {
   // Umělá inteligence
   const aiKeyInp = document.getElementById('ai-key');
   const aiModelInp = document.getElementById('ai-model');
+  const aiProvSel = document.getElementById('ai-provider');
+  const aiModelSel = document.getElementById('ai-model-sel');
+  const aiVlastniWrap = document.getElementById('ai-model-vlastni-wrap');
   if (aiKeyInp) {
-    aiKeyInp.value = AI.getKey();
-    aiModelInp.value = AI.getModel();
+    // Naplní pole klíče a modelu hodnotami uloženými pro daného poskytovatele.
+    const aiNaplnPole = (prov) => {
+      const def = AI_POSKYTOVATELE[prov];
+      const ulozeny = AI.getModel(prov);
+      aiKeyInp.value = AI.getKey(prov);
+      aiModelSel.innerHTML = '<option value="">Výchozí (' + escapeHtml(def.vychoziModel) + ')</option>' +
+        def.modely.map(m => '<option value="' + escapeHtml(m.id) + '">' + escapeHtml(m.nazev) + '</option>').join('') +
+        '<option value="__vlastni">Jiný (zadat ručně)…</option>';
+      const znamy = !ulozeny || def.modely.some(m => m.id === ulozeny);
+      aiModelSel.value = znamy ? ulozeny : '__vlastni';
+      aiModelInp.value = znamy ? '' : ulozeny;
+      aiVlastniWrap.hidden = znamy;
+    };
+    const aiZvolenyModel = () => aiModelSel.value === '__vlastni' ? aiModelInp.value.trim() : aiModelSel.value;
+    const aiUlozPole = () => {
+      const prov = aiProvSel.value;
+      AI.setProvider(prov);
+      AI.setKey(aiKeyInp.value.trim(), prov);
+      AI.setModel(aiZvolenyModel(), prov);
+    };
+    aiNaplnPole(aiProvSel.value);
+    aiProvSel.onchange = () => aiNaplnPole(aiProvSel.value);
+    aiModelSel.onchange = () => {
+      aiVlastniWrap.hidden = aiModelSel.value !== '__vlastni';
+      if (!aiVlastniWrap.hidden) aiModelInp.focus();
+    };
     document.getElementById('ai-save-btn').onclick = () => {
-      AI.setKey(aiKeyInp.value.trim());
-      AI.setModel(aiModelInp.value.trim());
+      aiUlozPole();
       toast('Nastavení umělé inteligence uloženo.');
       render();
     };
     document.getElementById('ai-test').onclick = async () => {
-      AI.setKey(aiKeyInp.value.trim());
-      AI.setModel(aiModelInp.value.trim());
+      aiUlozPole();
       if (!AI.isConfigured()) { alertMsg('Nejprve zadejte klíč.'); return; }
       toast('Ověřuji…', 30000);
       try {
@@ -14355,9 +14385,9 @@ function renderSettings(main) {
       }
     };
     document.getElementById('ai-clear').onclick = () => {
-      confirmDialog('Odstranit uložený klíč k umělé inteligenci?', () => {
-        AI.setKey(''); AI.setModel('');
-        aiKeyInp.value = ''; aiModelInp.value = '';
+      confirmDialog('Odstranit uložený klíč a model zvoleného poskytovatele?', () => {
+        AI.setKey('', aiProvSel.value); AI.setModel('', aiProvSel.value);
+        aiNaplnPole(aiProvSel.value);
         toast('Klíč odstraněn.');
         render();
       });
@@ -23478,6 +23508,10 @@ function scrollToNextOpenSpellError(sp) {
 // inteligenci"; název poskytovatele se nikde v GUI neobjevuje. Technicky jde
 // o Google Gemini API (generativelanguage.googleapis.com), které povoluje CORS,
 // takže se volá přímo z prohlížeče a není potřeba proxy (na rozdíl od Toggl).
+// Druhý poskytovatel je Anthropic Claude (Messages API, api.anthropic.com); přímé
+// volání z prohlížeče povoluje hlavička anthropic-dangerous-direct-browser-access.
+// Zbytek aplikace volá jen AI.ask / askChat / navrhniAtributy a o poskytovateli neví —
+// formát zpráv (Gemini „contents") se pro Claude převádí v _posliClaude.
 //
 // Klíč leží jen v localStorage tohoto prohlížeče. Nesmí se dostat do exportu,
 // do synchronizace na GitHub ani do statického prohlížeče — proto je celý modul
@@ -23486,18 +23520,44 @@ const AI_KEY_STORAGE = 'pim_ai_key';
 const AI_MODEL_STORAGE = 'pim_ai_model';
 const AI_DEFAULT_MODEL = 'gemini-3.7-flash';
 const AI_ENDPOINT_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/';
+const AI_PROVIDER_STORAGE = 'pim_ai_provider';
+const AI_CLAUDE_ENDPOINT = 'https://api.anthropic.com/v1/messages';
+const AI_CLAUDE_MAX_TOKENS = 8192;
+// Poskytovatelé. Gemini drží původní klíče v localStorage, takže stávající nastavení platí dál.
+const AI_POSKYTOVATELE = {
+  gemini: {
+    nazev: 'Google Gemini', klicUloziste: AI_KEY_STORAGE, modelUloziste: AI_MODEL_STORAGE,
+    vychoziModel: AI_DEFAULT_MODEL, modely: []
+  },
+  claude: {
+    nazev: 'Anthropic Claude', klicUloziste: 'pim_ai_claude_key', modelUloziste: 'pim_ai_claude_model',
+    vychoziModel: 'claude-sonnet-5-5',
+    modely: [
+      { id: 'claude-opus-5-5', nazev: 'Claude Opus 5.5 (nejschopnější)' },
+      { id: 'claude-sonnet-5-5', nazev: 'Claude Sonnet 5.5 (vyvážený)' },
+      { id: 'claude-haiku-5-5', nazev: 'Claude Haiku 5.5 (nejrychlejší, nejlevnější)' },
+      { id: 'claude-fable-5-1', nazev: 'Claude Fable 5.1' }
+    ]
+  }
+};
+
+function aiCtiUloziste(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+function aiPisUloziste(k, v) {
+  try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); }
+  catch (e) { /* localStorage nedostupný */ }
+}
 
 const AI = {
-  getKey() { try { return localStorage.getItem(AI_KEY_STORAGE) || ''; } catch (e) { return ''; } },
-  setKey(k) {
-    try { if (k) localStorage.setItem(AI_KEY_STORAGE, k); else localStorage.removeItem(AI_KEY_STORAGE); }
-    catch (e) { /* localStorage nedostupný */ }
+  getProvider() {
+    const p = aiCtiUloziste(AI_PROVIDER_STORAGE);
+    return AI_POSKYTOVATELE[p] ? p : 'gemini';
   },
-  getModel() { try { return localStorage.getItem(AI_MODEL_STORAGE) || ''; } catch (e) { return ''; } },
-  setModel(m) {
-    try { if (m) localStorage.setItem(AI_MODEL_STORAGE, m); else localStorage.removeItem(AI_MODEL_STORAGE); }
-    catch (e) { /* localStorage nedostupný */ }
-  },
+  setProvider(p) { aiPisUloziste(AI_PROVIDER_STORAGE, (p && p !== 'gemini' && AI_POSKYTOVATELE[p]) ? p : ''); },
+  _def(prov) { return AI_POSKYTOVATELE[prov || this.getProvider()] || AI_POSKYTOVATELE.gemini; },
+  getKey(prov) { return aiCtiUloziste(this._def(prov).klicUloziste); },
+  setKey(k, prov) { aiPisUloziste(this._def(prov).klicUloziste, k); },
+  getModel(prov) { return aiCtiUloziste(this._def(prov).modelUloziste); },
+  setModel(m, prov) { aiPisUloziste(this._def(prov).modelUloziste, m); },
   isConfigured() { return !!this.getKey(); },
 
   // Společné odeslání. Chyby hlásí česky a bez značky poskytovatele; syrový text jde do
@@ -23505,6 +23565,7 @@ const AI = {
   async _posli(contents, stream, onDelta, generationConfig) {
     const key = this.getKey();
     if (!key) throw new Error('Chybí klíč k umělé inteligenci. Zadejte ho v Nastavení.');
+    if (this.getProvider() === 'claude') return await this._posliClaude(key, contents, stream, onDelta, generationConfig);
     const model = this.getModel() || AI_DEFAULT_MODEL;
     const url = AI_ENDPOINT_BASE + encodeURIComponent(model) +
       (stream ? ':streamGenerateContent?alt=sse' : ':generateContent');
@@ -23526,6 +23587,121 @@ const AI = {
       throw this._chyba(res.status, (data && data.error && data.error.message) || ('HTTP ' + res.status));
     }
     return stream ? await this._ctiStream(res, onDelta) : await this._ctiCele(res);
+  },
+
+  // ---- Claude (Anthropic Messages API) ----
+  // contents jsou ve tvaru Gemini: [{ role?: 'user'|'model', parts: [{ text }] }].
+  // generationConfig.responseSchema (strukturovaný výstup) se řeší vynuceným nástrojem,
+  // jehož vstup je přesně podle schématu; vrací se jako JSON text, jako u Gemini.
+  async _posliClaude(key, contents, stream, onDelta, generationConfig) {
+    const messages = [];
+    (contents || []).forEach(c => {
+      const role = c.role === 'model' ? 'assistant' : 'user';
+      const text = (c.parts || []).map(p => (p && p.text) ? p.text : '').join('');
+      if (!text) return;   // API nepřijímá prázdné zprávy
+      const posledni = messages[messages.length - 1];
+      if (posledni && posledni.role === role) posledni.content += '\n\n' + text;  // role se musí střídat
+      else messages.push({ role: role, content: text });
+    });
+    if (!messages.length || messages[0].role !== 'user') messages.unshift({ role: 'user', content: '…' });
+    const telo = {
+      model: this.getModel() || AI_POSKYTOVATELE.claude.vychoziModel,
+      max_tokens: AI_CLAUDE_MAX_TOKENS,
+      messages: messages
+    };
+    const schema = generationConfig && generationConfig.responseSchema;
+    if (schema) {
+      telo.tools = [{ name: 'odpoved', description: 'Vrať navržené hodnoty polí.', input_schema: aiSchemaProClaude(schema) }];
+      telo.tool_choice = { type: 'tool', name: 'odpoved' };
+      stream = false;
+    }
+    if (stream) telo.stream = true;
+    let res;
+    try {
+      res = await fetch(AI_CLAUDE_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify(telo)
+      });
+    } catch (e) {
+      if (typeof debug === 'function') debug('AI fetch selhal: ' + (e && e.message));
+      throw new Error('Službu se nepodařilo kontaktovat. Zkontrolujte připojení k internetu.');
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      throw this._chybaClaude(res.status, (data && data.error && data.error.message) || ('HTTP ' + res.status));
+    }
+    if (stream) return await this._ctiStreamClaude(res, onDelta);
+    const data = await res.json().catch(() => null);
+    const bloky = (data && data.content) || [];
+    if (schema) {
+      const nastroj = bloky.find(b => b && b.type === 'tool_use');
+      if (nastroj && nastroj.input) return JSON.stringify(nastroj.input);
+    }
+    const out = bloky.map(b => (b && b.type === 'text' && b.text) ? b.text : '').join('').trim();
+    if (!out) {
+      if (typeof debug === 'function') debug('AI vrátila prázdnou odpověď: ' + JSON.stringify(data || {}).slice(0, 500));
+      if (data && data.stop_reason === 'refusal') throw new Error('Služba odmítla text zpracovat.');
+      throw new Error('Odpověď dorazila prázdná. Zkuste dotaz přeformulovat.');
+    }
+    return out;
+  },
+
+  _chybaClaude(status, detail) {
+    if (typeof debug === 'function') debug('AI chyba: ' + detail);
+    if (status === 401) return new Error('Klíč není platný. Zkontrolujte ho v Nastavení.');
+    if (status === 403) return new Error('Klíč nemá k této službě přístup.');
+    if (status === 404 || (status === 400 && /model/i.test(detail))) return new Error('Zvolený model není dostupný. Zkuste ho změnit v Nastavení.');
+    if (status === 429) return new Error('Vyčerpaný limit dotazů. Zkuste to za chvíli.');
+    if (status === 529 || status === 503) return new Error('Služba je přetížená. Zkuste to za chvíli.');
+    return new Error('Služba odpověděla chybou (' + status + '). Podrobnosti jsou v ladicí konzoli.');
+  },
+
+  async _ctiStreamClaude(res, onDelta) {
+    if (!res.body || !res.body.getReader) {
+      const data = await res.text().catch(() => '');
+      if (typeof debug === 'function') debug('AI: prohlížeč neumí stream: ' + data.slice(0, 200));
+      throw new Error('Prohlížeč neumí číst průběžnou odpověď.');
+    }
+    const reader = res.body.getReader();
+    const dekoder = new TextDecoder();
+    let zbytek = '', cely = '', chyba = null;
+    const zpracuj = (blok) => {
+      blok.split('\n').forEach(radek => {
+        if (radek.indexOf('data:') !== 0) return;
+        const telo = radek.slice(5).trim();
+        if (!telo) return;
+        let data = null;
+        try { data = JSON.parse(telo); } catch (e) { return; }
+        if (data.type === 'content_block_delta' && data.delta && data.delta.type === 'text_delta' && data.delta.text) {
+          cely += data.delta.text;
+          if (typeof onDelta === 'function') onDelta(data.delta.text, cely);
+        } else if (data.type === 'error') {
+          chyba = (data.error && data.error.message) || 'chyba ve streamu';
+        }
+      });
+    };
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      zbytek += dekoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
+      const bloky = zbytek.split('\n\n');
+      zbytek = bloky.pop();
+      bloky.forEach(zpracuj);
+    }
+    if (zbytek) zpracuj(zbytek);
+    if (chyba) {
+      if (typeof debug === 'function') debug('AI chyba ve streamu: ' + chyba);
+      if (!cely.trim()) throw new Error(/overload/i.test(chyba) ? 'Služba je přetížená. Zkuste to za chvíli.' : 'Služba odpověděla chybou. Podrobnosti jsou v ladicí konzoli.');
+    }
+    cely = cely.trim();
+    if (!cely) throw new Error('Odpověď dorazila prázdná. Zkuste dotaz přeformulovat.');
+    return cely;
   },
 
   _chyba(status, detail) {
@@ -23985,6 +24161,22 @@ function aiSchemaPole(pole) {
     return { type: 'STRING', enum: pole.moznosti.slice() };
   }
   return { type: 'STRING' };
+}
+
+// Schéma ve tvaru Gemini (typy velkými písmeny) → JSON Schema pro Claude.
+function aiSchemaProClaude(sch) {
+  if (!sch || typeof sch !== 'object') return { type: 'object', properties: {} };
+  const out = {};
+  if (sch.type) out.type = String(sch.type).toLowerCase();
+  if (sch.enum) out.enum = sch.enum.slice();
+  if (sch.description) out.description = sch.description;
+  if (sch.properties) {
+    out.properties = {};
+    Object.keys(sch.properties).forEach(k => { out.properties[k] = aiSchemaProClaude(sch.properties[k]); });
+  }
+  if (sch.items) out.items = aiSchemaProClaude(sch.items);
+  if (out.type === 'object' && !out.properties) out.properties = {};
+  return out;
 }
 
 // Co se u pole připomene modelu, aby vrátil použitelný tvar.
