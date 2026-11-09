@@ -23550,6 +23550,16 @@ function aiOcistiKlic(k) {
   return String(k || '').replace(/[^\x21-\x7E]/g, '').replace(/^["'`]+|["'`]+$/g, '');
 }
 
+// Rozpozná klíč, který API zaručeně odmítne, dřív než se odešle — s konkrétní radou.
+// Klíč pro Messages API má tvar sk-ant-api03-… (cca 108 znaků).
+function aiKontrolaKliceClaude(k) {
+  if (/^sk-ant-admin/.test(k)) return 'Toto je administrátorský klíč (sk-ant-admin…). K dotazům je potřeba běžný API klíč (sk-ant-api…).';
+  if (/^sk-ant-oat/.test(k)) return 'Toto je přihlašovací token, ne API klíč. Vytvořte API klíč (sk-ant-api…) v konzoli API, sekce API Keys.';
+  if (!/^sk-ant-api\d+-/.test(k)) return 'Klíč nemá očekávaný tvar (začíná sk-ant-api…). Zkontrolujte, že jste zkopírovali API klíč.';
+  if (k.length < 80 || /\.\.\.|\*/.test(k)) return 'Klíč je zkrácený (' + k.length + ' znaků). V přehledu klíčů je jen jeho začátek a konec; celý se zobrazí jen jednou při vytvoření. Vytvořte nový klíč a zkopírujte ho celý.';
+  return '';
+}
+
 function aiCtiUloziste(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
 function aiPisUloziste(k, v) {
   try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); }
@@ -23575,6 +23585,7 @@ const AI = {
     const key = this.getKey();
     if (!key) throw new Error('Chybí klíč k umělé inteligenci. Zadejte ho v Nastavení.');
     if (this.getProvider() === 'claude') return await this._posliClaude(key, contents, stream, onDelta, generationConfig);
+    if (/^sk-ant-/.test(key)) throw new Error('Vložený klíč patří ke Claude, ale v Nastavení je zvolený jiný poskytovatel. Přepněte poskytovatele na Claude a klíč uložte znovu.');
     const model = this.getModel() || AI_DEFAULT_MODEL;
     const url = AI_ENDPOINT_BASE + encodeURIComponent(model) +
       (stream ? ':streamGenerateContent?alt=sse' : ':generateContent');
@@ -23604,6 +23615,8 @@ const AI = {
   // bez streamu může narazit na časový limit. Strukturovaný výstup (responseSchema) jde přes
   // output_config.format (json_schema) — vynucený nástroj (tool_choice) modely 5.5 odmítají.
   async _posliClaude(key, contents, stream, onDelta, generationConfig) {
+    const vadaKlice = aiKontrolaKliceClaude(key);
+    if (vadaKlice) throw new Error(vadaKlice);
     const messages = [];
     (contents || []).forEach(c => {
       const role = c.role === 'model' ? 'assistant' : 'user';
@@ -23664,8 +23677,9 @@ const AI = {
 
   _chybaClaude(status, detail) {
     if (typeof debug === 'function') debug('AI chyba: ' + detail);
-    if (status === 401) return new Error('Klíč není platný. Zkontrolujte ho v Nastavení.');
-    if (status === 403) return new Error('Klíč nemá k této službě přístup.');
+    if (status === 401) return new Error('Server klíč odmítl (neplatný nebo zrušený klíč). Klíč musí být celý — v přehledu klíčů je zkrácený a celý se ukáže jen jednou při vytvoření; v takovém případě vytvořte nový klíč.');
+    if (status === 403) return new Error('Klíč nemá k této službě nebo modelu přístup.');
+    if (status === 400 && /credit|billing|balance/i.test(detail)) return new Error('Na účtu nejsou předplacené kredity pro API. Předplatné Claude.ai se do API nepočítá — kredity se dobíjejí v konzoli API (Billing).');
     if (status === 404 || (status === 400 && /model/i.test(detail))) return new Error('Zvolený model není dostupný. Zkuste ho změnit v Nastavení.');
     if (status === 429) return new Error('Vyčerpaný limit dotazů. Zkuste to za chvíli.');
     if (status === 529 || status === 503) return new Error('Služba je přetížená. Zkuste to za chvíli.');
