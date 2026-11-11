@@ -14378,8 +14378,13 @@ function renderSettings(main) {
       if (!AI.isConfigured()) { alertMsg('Nejprve zadejte klíč.'); return; }
       toast('Ověřuji…', 30000);
       try {
-        await AI.ask('Odpověz jediným slovem: ok');
-        toast('✓ Spojení funguje.', 4000);
+        if (AI.getProvider() === 'claude') {
+          const model = await AI.overClaude();
+          toast('✓ Spojení funguje, klíč i model ' + model + ' jsou v pořádku.', 6000);
+        } else {
+          await AI.ask('Odpověz jediným slovem: ok');
+          toast('✓ Spojení funguje.', 4000);
+        }
       } catch (err) {
         alertMsg((err && err.message) || 'Ověření se nezdařilo.');
       }
@@ -23522,7 +23527,8 @@ const AI_DEFAULT_MODEL = 'gemini-3.7-flash';
 const AI_ENDPOINT_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/';
 const AI_PROVIDER_STORAGE = 'pim_ai_provider';
 const AI_CLAUDE_ENDPOINT = 'https://api.anthropic.com/v1/messages';
-const AI_CLAUDE_MAX_TOKENS = 8192;
+const AI_CLAUDE_MAX_TOKENS = 32000;
+const AI_CLAUDE_TIMEOUT_MS = 5 * 60 * 1000;
 // Poskytovatelé. Gemini drží původní klíče v localStorage, takže stávající nastavení platí dál.
 const AI_POSKYTOVATELE = {
   gemini: {
@@ -23541,6 +23547,23 @@ const AI_POSKYTOVATELE = {
   }
 };
 
+// Klíč vložený ze schránky často nese neviditelné znaky (mezera nulové šířky, nezlomitelná
+// mezera, konec řádku) nebo uvozovky. Takový znak v HTTP hlavičce prohlížeč odmítne ještě
+// před odesláním a vypadá to jako nedostupná služba. Klíče obou služeb jsou čisté ASCII.
+function aiOcistiKlic(k) {
+  return String(k || '').replace(/[^\x21-\x7E]/g, '').replace(/^["'`]+|["'`]+$/g, '');
+}
+
+// Rozpozná klíč, který API zaručeně odmítne, dřív než se odešle — s konkrétní radou.
+function aiKontrolaKliceClaude(k) {
+  if (/^sk-ant-admin/.test(k)) return 'Toto je administrátorský klíč (sk-ant-admin…). K dotazům je potřeba běžný API klíč (sk-ant-api…).';
+  if (/^sk-ant-oat/.test(k)) return 'Toto je přihlašovací token, ne API klíč. Vytvořte API klíč (sk-ant-api…) v konzoli API, sekce API Keys.';
+  // Tvar klíče se dál nekontroluje — Anthropic vydává i jiné předpony (např. sk-ant-usr-…)
+  // a o platnosti rozhodne server; jeho odpověď se ukáže v hlášce.
+  if (k.length < 30 || /\.\.\.|\*/.test(k)) return 'Klíč je zkrácený (' + k.length + ' znaků). V přehledu klíčů je jen jeho začátek a konec; celý se zobrazí jen jednou při vytvoření. Vytvořte nový klíč a zkopírujte ho celý.';
+  return '';
+}
+
 function aiCtiUloziste(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
 function aiPisUloziste(k, v) {
   try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); }
@@ -23554,8 +23577,8 @@ const AI = {
   },
   setProvider(p) { aiPisUloziste(AI_PROVIDER_STORAGE, (p && p !== 'gemini' && AI_POSKYTOVATELE[p]) ? p : ''); },
   _def(prov) { return AI_POSKYTOVATELE[prov || this.getProvider()] || AI_POSKYTOVATELE.gemini; },
-  getKey(prov) { return aiCtiUloziste(this._def(prov).klicUloziste); },
-  setKey(k, prov) { aiPisUloziste(this._def(prov).klicUloziste, k); },
+  getKey(prov) { return aiOcistiKlic(aiCtiUloziste(this._def(prov).klicUloziste)); },
+  setKey(k, prov) { aiPisUloziste(this._def(prov).klicUloziste, aiOcistiKlic(k)); },
   getModel(prov) { return aiCtiUloziste(this._def(prov).modelUloziste); },
   setModel(m, prov) { aiPisUloziste(this._def(prov).modelUloziste, m); },
   isConfigured() { return !!this.getKey(); },
@@ -23566,6 +23589,7 @@ const AI = {
     const key = this.getKey();
     if (!key) throw new Error('Chybí klíč k umělé inteligenci. Zadejte ho v Nastavení.');
     if (this.getProvider() === 'claude') return await this._posliClaude(key, contents, stream, onDelta, generationConfig);
+    if (/^sk-ant-/.test(key)) throw new Error('Vložený klíč patří ke Claude, ale v Nastavení je zvolený jiný poskytovatel. Přepněte poskytovatele na Claude a klíč uložte znovu.');
     const model = this.getModel() || AI_DEFAULT_MODEL;
     const url = AI_ENDPOINT_BASE + encodeURIComponent(model) +
       (stream ? ':streamGenerateContent?alt=sse' : ':generateContent');
@@ -23591,9 +23615,12 @@ const AI = {
 
   // ---- Claude (Anthropic Messages API) ----
   // contents jsou ve tvaru Gemini: [{ role?: 'user'|'model', parts: [{ text }] }].
-  // generationConfig.responseSchema (strukturovaný výstup) se řeší vynuceným nástrojem,
-  // jehož vstup je přesně podle schématu; vrací se jako JSON text, jako u Gemini.
+  // Vždy se streamuje: modely řady 5.x přemýšlejí (thinking nejde vypnout) a dlouhá odpověď
+  // bez streamu může narazit na časový limit. Strukturovaný výstup (responseSchema) jde přes
+  // output_config.format (json_schema) — vynucený nástroj (tool_choice) modely 5.5 odmítají.
   async _posliClaude(key, contents, stream, onDelta, generationConfig) {
+    const vadaKlice = aiKontrolaKliceClaude(key);
+    if (vadaKlice) throw new Error(vadaKlice);
     const messages = [];
     (contents || []).forEach(c => {
       const role = c.role === 'model' ? 'assistant' : 'user';
@@ -23604,58 +23631,104 @@ const AI = {
       else messages.push({ role: role, content: text });
     });
     if (!messages.length || messages[0].role !== 'user') messages.unshift({ role: 'user', content: '…' });
+    // Poslední zpráva musí být od uživatele (předvyplnění odpovědi nové modely odmítají).
+    if (messages[messages.length - 1].role !== 'user') messages.pop();
     const telo = {
       model: this.getModel() || AI_POSKYTOVATELE.claude.vychoziModel,
       max_tokens: AI_CLAUDE_MAX_TOKENS,
+      stream: true,
       messages: messages
     };
+    const output = {};
     const schema = generationConfig && generationConfig.responseSchema;
-    if (schema) {
-      telo.tools = [{ name: 'odpoved', description: 'Vrať navržené hodnoty polí.', input_schema: aiSchemaProClaude(schema) }];
-      telo.tool_choice = { type: 'tool', name: 'odpoved' };
-      stream = false;
+    if (schema) output.format = { type: 'json_schema', schema: aiSchemaProClaude(schema) };
+    if (generationConfig && generationConfig._effort) output.effort = generationConfig._effort;
+    if (Object.keys(output).length) telo.output_config = output;
+
+    const ovladac = (typeof AbortController === 'function') ? new AbortController() : null;
+    const casovac = ovladac ? setTimeout(() => ovladac.abort(), AI_CLAUDE_TIMEOUT_MS) : null;
+    if (typeof debug === 'function') debug('AI dotaz: model ' + telo.model + ', zpráv ' + messages.length);
+    try {
+      let res;
+      try {
+        res = await fetch(AI_CLAUDE_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': key,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true'
+          },
+          body: JSON.stringify(telo),
+          signal: ovladac ? ovladac.signal : undefined
+        });
+      } catch (e) {
+        if (typeof debug === 'function') debug('AI fetch selhal: ' + (e && e.message));
+        if (e && e.name === 'AbortError') throw new Error('Služba neodpověděla včas. Zkuste to znovu nebo zvolte rychlejší model.');
+        throw new Error('Službu se nepodařilo kontaktovat. Zkontrolujte připojení k internetu.');
+      }
+      if (typeof debug === 'function') debug('AI odpověď: HTTP ' + res.status + ' (model ' + telo.model + ')');
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw this._chybaClaude(res.status, (data && data.error && data.error.message) || ('HTTP ' + res.status));
+      }
+      const vysledek = await this._ctiStreamClaude(res, stream ? onDelta : null);
+      if (typeof debug === 'function') debug('AI hotovo: ' + vysledek.length + ' znaků');
+      return vysledek;
+    } catch (e) {
+      if (e && e.name === 'AbortError') throw new Error('Služba neodpověděla včas. Zkuste to znovu nebo zvolte rychlejší model.');
+      throw e;
+    } finally {
+      if (casovac) clearTimeout(casovac);
     }
-    if (stream) telo.stream = true;
+  },
+
+  // Ověření klíče a modelu bez generování textu (nestojí tokeny, odpoví hned).
+  async overClaude() {
+    const key = this.getKey();
+    const vadaKlice = aiKontrolaKliceClaude(key);
+    if (vadaKlice) throw new Error(vadaKlice);
+    const model = this.getModel() || AI_POSKYTOVATELE.claude.vychoziModel;
+    const ovladac = (typeof AbortController === 'function') ? new AbortController() : null;
+    const casovac = ovladac ? setTimeout(() => ovladac.abort(), 20000) : null;
+    if (typeof debug === 'function') debug('AI ověření: GET models/' + model + ', klíč ' + key.length + ' znaků');
     let res;
     try {
-      res = await fetch(AI_CLAUDE_ENDPOINT, {
-        method: 'POST',
+      res = await fetch('https://api.anthropic.com/v1/models/' + encodeURIComponent(model), {
+        method: 'GET',
         headers: {
-          'Content-Type': 'application/json',
           'x-api-key': key,
           'anthropic-version': '2023-06-01',
           'anthropic-dangerous-direct-browser-access': 'true'
         },
-        body: JSON.stringify(telo)
+        signal: ovladac ? ovladac.signal : undefined
       });
     } catch (e) {
-      if (typeof debug === 'function') debug('AI fetch selhal: ' + (e && e.message));
-      throw new Error('Službu se nepodařilo kontaktovat. Zkontrolujte připojení k internetu.');
+      if (typeof debug === 'function') debug('AI ověření selhalo: ' + (e && e.name) + ' ' + (e && e.message));
+      if (e && e.name === 'AbortError') throw new Error('Služba neodpověděla do 20 s. Zkontrolujte připojení, případně rozšíření prohlížeče blokující požadavky.');
+      throw new Error('Službu se nepodařilo kontaktovat (' + ((e && e.message) || 'chyba sítě') + ').');
+    } finally {
+      if (casovac) clearTimeout(casovac);
     }
+    if (typeof debug === 'function') debug('AI ověření: HTTP ' + res.status);
     if (!res.ok) {
       const data = await res.json().catch(() => null);
       throw this._chybaClaude(res.status, (data && data.error && data.error.message) || ('HTTP ' + res.status));
     }
-    if (stream) return await this._ctiStreamClaude(res, onDelta);
-    const data = await res.json().catch(() => null);
-    const bloky = (data && data.content) || [];
-    if (schema) {
-      const nastroj = bloky.find(b => b && b.type === 'tool_use');
-      if (nastroj && nastroj.input) return JSON.stringify(nastroj.input);
-    }
-    const out = bloky.map(b => (b && b.type === 'text' && b.text) ? b.text : '').join('').trim();
-    if (!out) {
-      if (typeof debug === 'function') debug('AI vrátila prázdnou odpověď: ' + JSON.stringify(data || {}).slice(0, 500));
-      if (data && data.stop_reason === 'refusal') throw new Error('Služba odmítla text zpracovat.');
-      throw new Error('Odpověď dorazila prázdná. Zkuste dotaz přeformulovat.');
-    }
-    return out;
+    return model;
   },
 
   _chybaClaude(status, detail) {
-    if (typeof debug === 'function') debug('AI chyba: ' + detail);
-    if (status === 401) return new Error('Klíč není platný. Zkontrolujte ho v Nastavení.');
-    if (status === 403) return new Error('Klíč nemá k této službě přístup.');
+    const e = this._chybaClaudeText(status, detail);
+    e.message += ' [HTTP ' + status + ': ' + detail + ']';
+    return e;
+  },
+
+  _chybaClaudeText(status, detail) {
+    if (typeof debug === 'function') debug('AI chyba: HTTP ' + status + ' ' + detail);
+    if (status === 401) return new Error('Server klíč odmítl (neplatný nebo zrušený klíč). Klíč musí být celý — v přehledu klíčů je zkrácený a celý se ukáže jen jednou při vytvoření; v takovém případě vytvořte nový klíč.');
+    if (status === 403) return new Error('Klíč nemá k této službě nebo modelu přístup.');
+    if (status === 400 && /credit|billing|balance/i.test(detail)) return new Error('Na účtu nejsou předplacené kredity pro API. Předplatné Claude.ai se do API nepočítá — kredity se dobíjejí v konzoli API (Billing).');
     if (status === 404 || (status === 400 && /model/i.test(detail))) return new Error('Zvolený model není dostupný. Zkuste ho změnit v Nastavení.');
     if (status === 429) return new Error('Vyčerpaný limit dotazů. Zkuste to za chvíli.');
     if (status === 529 || status === 503) return new Error('Služba je přetížená. Zkuste to za chvíli.');
@@ -23670,7 +23743,7 @@ const AI = {
     }
     const reader = res.body.getReader();
     const dekoder = new TextDecoder();
-    let zbytek = '', cely = '', chyba = null;
+    let zbytek = '', cely = '', chyba = null, duvod = '';
     const zpracuj = (blok) => {
       blok.split('\n').forEach(radek => {
         if (radek.indexOf('data:') !== 0) return;
@@ -23681,6 +23754,8 @@ const AI = {
         if (data.type === 'content_block_delta' && data.delta && data.delta.type === 'text_delta' && data.delta.text) {
           cely += data.delta.text;
           if (typeof onDelta === 'function') onDelta(data.delta.text, cely);
+        } else if (data.type === 'message_delta' && data.delta && data.delta.stop_reason) {
+          duvod = data.delta.stop_reason;
         } else if (data.type === 'error') {
           chyba = (data.error && data.error.message) || 'chyba ve streamu';
         }
@@ -23699,7 +23774,9 @@ const AI = {
       if (typeof debug === 'function') debug('AI chyba ve streamu: ' + chyba);
       if (!cely.trim()) throw new Error(/overload/i.test(chyba) ? 'Služba je přetížená. Zkuste to za chvíli.' : 'Služba odpověděla chybou. Podrobnosti jsou v ladicí konzoli.');
     }
+    if (duvod && duvod !== 'end_turn' && typeof debug === 'function') debug('AI stop_reason: ' + duvod);
     cely = cely.trim();
+    if (!cely && duvod === 'refusal') throw new Error('Služba odmítla text zpracovat.');
     if (!cely) throw new Error('Odpověď dorazila prázdná. Zkuste dotaz přeformulovat.');
     return cely;
   },
@@ -24175,7 +24252,10 @@ function aiSchemaProClaude(sch) {
     Object.keys(sch.properties).forEach(k => { out.properties[k] = aiSchemaProClaude(sch.properties[k]); });
   }
   if (sch.items) out.items = aiSchemaProClaude(sch.items);
-  if (out.type === 'object' && !out.properties) out.properties = {};
+  if (out.type === 'object') {
+    if (!out.properties) out.properties = {};
+    out.additionalProperties = false;   // povinné pro strukturovaný výstup
+  }
   return out;
 }
 

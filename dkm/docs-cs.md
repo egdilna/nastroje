@@ -116,6 +116,7 @@ Datové typy atributů:
 - **tagy** — sada značek z jedné **soustavy tagů**; hodnotou je několik tagů najednou (viz kap. 7.5)
 - **složený** — nemá vlastní hodnotu, skládá se ze šablony z hodnot ostatních atributů (viz kap. 7.6)
 - **ustanovení** — odkaz na ustanovení právního předpisu s textem načteným z e-Sbírky (viz kap. 7.6a)
+- **RPP** — odkaz na detail agendy, OVM, kategorie OVM, ISVS, údaje nebo činnosti v prohlížeči RPP (viz kap. 7.6b)
 
 U každého atributu si můžeš nastavit:
 
@@ -875,6 +876,13 @@ nikam neposílá dotaz.
   uložené ještě bez textu se při otevření detailu nebo editoru načte samo.
 - **Nastavení → EG** znovu načte všechna ustanovení v projektu (zamčené entity přeskočí).
 - Ve filtru se hledá v citaci i textu; v exportech a v offline prohlížeči jde citace s textem.
+
+### 7.6b Atribut typu RPP
+Odkaz do Registru práv a povinností. V editoru se vybere druh záznamu (Agenda, OVM, Kategorie
+OVM, ISVS, Údaj, Činnost), zadá identifikátor (např. `A1381`, IČO, `KO441`, číslo ISVS, `3-2`,
+`CR12074` nebo `A1086/CR12074`) a ručně název. Zobrazí se jako odkaz „Detail agendy A1381
+Provoz na pozemních komunikacích“ na detail záznamu v prohlížeči RPP
+(`https://nastroje.egdilna.cz/rpp/?detail=…`). Náhled odkazu je vidět už v editoru.
 
 ### 7.7 Jak se atribut chová v zobrazení
 
