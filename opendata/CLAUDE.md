@@ -29,6 +29,25 @@ Sesterský nástroj `../rpp` je jeho specializovaná varianta pro Registr práv 
 - **Podzáznamy** (pole objektů) se v tabulce ukazují jako badge a v detailu jako vnořená tabulka;
   chybí-li ve schématu, sloupce se dopočítají z dat.
 
+## Hledání v NKOD (sekce `// ===== NKOD =====`)
+- Dotazy jdou přímo na SPARQL `https://data.gov.cz/sparql` (GET, CORS `*`). Soubor
+  `datové-sady.csv` (celý NKOD) má přes 300 MB — nestahovat.
+- **Jména poskytovatelů a počty sad jsou dva dotazy** (`nkodNactiPoskytovatele`); spojené v jednom
+  (join na `foaf:name` + COUNT) trvají přes 20 s a padají na timeout. Ze stejného důvodu se
+  neřadí podle jména poskytovatele. Seznam se drží v `localStorage` (`opendata-nkod-poskytovatele`, den).
+- Hledání textu: `CONTAINS(LCASE(?t), …)` pro každé slovo (stejně rychlé jako `bif:contains`, které
+  navíc odmítá zástupné znaky kratší než 4 znaky). Shoda se jménem poskytovatele se počítá
+  v aplikaci bez diakritiky a do dotazu jde jako `?p IN (…)`, nejvýš 40 poskytovatelů.
+- Řazení přes `MIN(STR(?t))` — `ORDER BY` nad `SAMPLE(?t)` Virtuoso neřadí.
+- Formát se pozná z `dcat:mediaType` nebo `dct:format` (konec IRI `/csv`, `/json`). Schéma
+  z `dct:conformsTo` se předá jen když končí `.json` (JSON Schema/CSVW, ne např. json-stat.org).
+- Stav hledání je v `#k=` (`nkodStav`), seznamy (výsledky, série, poskytovatel) jsou odkazy `<a href="#k=…">`.
+- Načtená sada z NKOD je v `nkodSada` a jde do `#d=` jako `n`/`t`; ruční změna URL ji zruší.
+- Schéma je nepovinné; **CSVW** (`isCsvw`, `parseCsvw`) se zpracuje až po načtení dat, protože
+  sloupce se párují s hlavičkou CSV přes `titles`, pak `name`.
+- V testovacím sandboxu Chromium přes proxy nedostane `Access-Control-Allow-Origin` od některých
+  serverů (např. datanzis.uzis.gov.cz), i když ho server posílá — ověř curlem s hlavičkou `Origin`.
+
 ## Formáty dat
 `fetchData()` sám rozpozná JSON vs. CSV — podle `Content-Type`, přípony v URL a nakonec podle
 obsahu; při nesprávně označeném CSV je fallback z JSON parsování.

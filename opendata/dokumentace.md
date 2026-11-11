@@ -35,16 +35,37 @@ Nástroj je navržen s ohledem na přístupnost — semantické HTML, ARIA atrib
 
 ## Začínáme
 
+### Hledání v Národním katalogu otevřených dat (NKOD)
+
+Nad formulářem je rozbalovací panel **Najít datovou sadu v NKOD**. Datovou sadu v něm najdete a otevřete bez ručního vyhledávání adres na data.gov.cz.
+
+- **Hledat v názvu nebo podle poskytovatele** — všechna zadaná slova musí být v názvu sady (velikost písmen nerozhoduje, diakritika ano). Když slova odpovídají jménu poskytovatele (např. „ministerstvo dopravy“, tady na diakritice nezáleží), najdou se i všechny jeho sady. Volba **hledat i v popisu** prohledá i popis sady.
+- **Poskytovatel** — seznam všech poskytovatelů v NKOD s počtem jejich sad. Výběrem se rovnou vypíšou sady daného poskytovatele.
+- **Téma** — tematické kategorie EU (Doprava, Zdraví, Vláda a veřejný sektor…).
+- **Formát** — ve výchozím stavu jen sady s distribucí v CSV nebo JSON, které tento nástroj umí otevřít; jde zvolit jen CSV, jen JSON nebo jakýkoli formát.
+- **Jen se schématem** — jen sady, u jejichž distribuce poskytovatel uvádí schéma.
+- **Řazení** — podle názvu A–Z nebo Z–A (řadí se podle kódu znaků, názvy začínající na Č, Š, Ž… jsou proto až za Z).
+
+Výběr poskytovatele, tématu, formátu a řazení hledá hned, text se hledá tlačítkem **Hledat** nebo klávesou Enter. Výsledky jsou po 25 na stránku; u každé sady je poskytovatel, témata, štítky formátů a štítek *schéma*.
+
+Kliknutím na název sady se pod výsledky zobrazí její **detail**: popis, poskytovatel (odkaz vypíše všechny jeho sady), témata, klíčová slova, odkaz na záznam v NKOD a na dokumentaci, případně série, do které sada patří, nebo sady v sérii. Tabulka **Distribuce** ukazuje formát, odkaz na data, schéma a velikost. U distribuce v CSV nebo JSON je tlačítko **Otevřít v prohlížeči** — vyplní adresu dat i schématu a data rovnou načte.
+
+Stav hledání i otevřený detail se ukládá do adresy stránky (`#k=…`), odkaz jde tedy poslat dál. Seznam poskytovatelů se pamatuje v prohlížeči jeden den.
+
+Některé servery poskytovatelů nedovolují stahování z cizí stránky (CORS); nástroj pak zkusí veřejné CORS proxy a když ani to nepomůže, ohlásí chybu.
+
 ### Zadání zdrojů dat
 
 V horní části aplikace je formulář **Načtení datové sady** se dvěma poli:
 
 | Pole | Popis |
 |------|-------|
-| URL schématu (JSON Schema) | Adresa JSON Schema popisujícího strukturu dat |
+| URL schématu (JSON Schema nebo CSVW, nepovinné) | Adresa JSON Schema nebo popisu CSVW (`…-metadata.json`) popisujícího strukturu dat |
 | URL datové sady (JSON nebo CSV) | Adresa datového souboru s vlastními záznamy |
 
-Po vyplnění obou polí stiskněte tlačítko **Načíst** nebo klávesu **Enter** v některém z polí. Aplikace stáhne oba soubory, projde schéma, sestaví sloupce a zobrazí data v tabulce. Stavová hlášení o průběhu načítání se zobrazují pod formulářem.
+Schéma je nepovinné — bez něj (nebo když se ho nepodaří načíst či mu nástroj nerozumí) se sloupce odvodí z dat a stavový řádek to oznámí. U **CSVW** se z `tableSchema.columns` berou názvy (`titles`), popisy (`dc:description`) a typy (`datatype`) sloupců; sloupce se s CSV párují podle hlavičky.
+
+Po vyplnění polí stiskněte tlačítko **Načíst** nebo klávesu **Enter** v některém z polí. Aplikace stáhne oba soubory, projde schéma, sestaví sloupce a zobrazí data v tabulce. Stavová hlášení o průběhu načítání se zobrazují pod formulářem.
 
 ### Automatická detekce formátu dat
 
@@ -257,7 +278,7 @@ Odkaz ke sdílení má tvar:
 https://egdilna.github.io/nastroje/opendata#d=<base64url>
 ```
 
-kde `<base64url>` je base64-url kódovaný JSON `{"s": "schemaUrl", "d": "dataUrl"}`. Pro zpětnou kompatibilitu je podporován i starší formát `#schema=...&data=...`.
+kde `<base64url>` je base64-url kódovaný JSON `{"s": "schemaUrl", "d": "dataUrl"}`; u sady otevřené z NKOD navíc `"n"` (IRI datové sady) a `"t"` (její název). Hledání v NKOD má vlastní fragment `#k=<base64url>` se stavem hledání (`q` text, `p` poskytovatel, `t` téma, `f` formát, `s` jen se schématem, `popis`, `o` řazení, `str` stránka, `d` otevřená sada). Pro zpětnou kompatibilitu je podporován i starší formát `#schema=...&data=...`.
 
 ### Podporované jazykové kódy
 
