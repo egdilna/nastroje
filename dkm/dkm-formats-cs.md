@@ -114,7 +114,7 @@ ukládání v souboru nejsou (§ 11).
 | `tagSets` | soustava tagů | `id`, `name`, `tags[]`, `uzavrena` |
 | `savedViews` | uložený pohled (filtr + zobrazení) | `id`, `name`, `filter`, `attrFilters[]` |
 | `jsonExports` | profil exportu do JSON/XML | `id`, `name`, `keyOverrides`, `vynechane` |
-| `settings` | `tabs[]` (lišta záložek) a `modules[]` (složky záložek) | |
+| `settings` | `tabs[]` (lišta záložek), `modules[]` (složky záložek), volitelně `legUrl` | `legUrl` = adresa knihovny v Legislativním prohlížeči (Nastavení → EG); u ustanovení se z ní skládá odkaz `…&pohled=ust&predpis=rok/číslo&ust=klic` |
 
 Definice atributu (`attributes[]` u typu i u aspektu) nese `id`, `name`, `type` a podle
 typu další pole: `listId` (číselník), `tagSetId` (soustava tagů), `targetType` a `multi`
