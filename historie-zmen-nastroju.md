@@ -50,6 +50,7 @@ multisection
 
 | Datum | Typ | Popis |
 | --- | --- | --- |
+| 9. 11. 2026 | Funkce | Nové funkce pro český EG. Dva nové atributy a to Ustanovení (zadá se ustanovení a načte se jeho text do aplikace a vypíšou se odkazy) a RPP (zadá se typ a identifikátor objektu a načtou se o něm informace a odkaz na jeho detail v prohlížeči RPP). |
 | 2. 9. 2026 | Funkce | Úplný export do schématického JSON. Po průvodci exportem se vytvoří datový json a json schéma soubor a vše se podá jako kompletně zdokumentovaný ZIP valíček i s detailním popisem v readme.md. Export je kompatibilní se standardy JSX a JSONscheme a validní i pro otevřená a dynamická data a splňuje i požadavky na popis dat pro import. |
 | 3. 7. 2026 | Funkce | Konečně máme pokročilé a dynamické filtry. Nově jsou v pohledech možnosti přidávat a měnit pokročilé filtry, které jsou chytré jak podle typu atributu, tak i podle jejich kombinací (to si musíte vyzkoušet). A navíc se dá vymazlený filtr uložit jako nový pohled, což přináší ohromné možnosti filtrace a hledání přes celý projekt. |
 | 3. 7. 2026 | Funkce | Další dnešní novinka a to je export a tisk entity jako dokumentu. Můźete si vybrat, co chcete, aby tam bylo a nebylo a export je buď do Markdown, do HTML a nebo do DOCX. |
