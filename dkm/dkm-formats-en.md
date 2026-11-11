@@ -115,7 +115,7 @@ autosave switch are not in the file (§ 11).
 | `tagSets` | tag set | `id`, `name`, `tags[]`, `uzavrena` (closed) |
 | `savedViews` | saved view (filter + display) | `id`, `name`, `filter`, `attrFilters[]` |
 | `jsonExports` | JSON/XML export profile | `id`, `name`, `keyOverrides`, `vynechane` |
-| `settings` | `tabs[]` (the tab bar) and `modules[]` (folders of tabs) | |
+| `settings` | `tabs[]` (the tab bar), `modules[]` (folders of tabs), optionally `legUrl` | `legUrl` = library address in the Legislation browser (Settings → EG); each provision links to `…&pohled=ust&predpis=year/number&ust=klic` |
 
 An attribute definition (`attributes[]` on a type or an aspect) carries `id`, `name`, `type`
 and, depending on the type, more: `listId` (select list), `tagSetId` (tag set), `targetType`

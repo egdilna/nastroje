@@ -700,6 +700,10 @@ API se volá jen z editoru (sám po 0,9 s a tlačítkem), tlačítkem v detailu 
 (`rsEg`, cache podle zadání). **Hodnota bez textu se dotáhne sama** při zobrazení v detailu
 (`_ustDotazeno`, jednou za načtení stránky) i při otevření editoru — jinak uložení před
 doběhnutím načtení nechalo citaci bez druhu předpisu („§ 20 13/1997 Sb.“), hlášeno od uživatele. Změna zadání starý výsledek zahodí (`ustanoveniZadani`).
+- Odkaz do Legislativního prohlížeče: adresa knihovny v `settings.legUrl` (Nastavení → EG,
+  `rsEg`), `ustanoveniLegUrl` k ní doplní `pohled=ust&predpis=rok/číslo&ust=klic` (ostatní
+  parametry pohledu zahodí, `repo` nechá). V `renderUstanoveni` stojí před citací s odkazem ELI;
+  bez adresy nebo bez `klic` (nenačteno) se nezobrazí.
 - Zdroj je SPARQL otevřených dat jako v `leg` (jen GET, bez klíče, viz `leg/CLAUDE.md`).
   Platné znění = poslední `má-znění` s datem ≤ dnes (data nesou i budoucí). Paragraf se hledá
   `REGEX(STR(?f),"/par_X(/|$)")` a pak se vezme ten, před kterým jsou jen části/hlavy/díly
