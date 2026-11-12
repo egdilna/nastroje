@@ -50,7 +50,7 @@ Výběr poskytovatele, tématu, formátu a řazení hledá hned, text se hledá 
 
 Kliknutím na název sady se pod výsledky zobrazí její **detail**: popis, poskytovatel (odkaz vypíše všechny jeho sady), témata, klíčová slova, odkaz na záznam v NKOD a na dokumentaci, případně série, do které sada patří, nebo sady v sérii. Tabulka **Distribuce** ukazuje formát, odkaz na data, schéma a velikost. U distribuce v CSV nebo JSON je tlačítko **Otevřít v prohlížeči** — vyplní adresu dat i schématu a data rovnou načte.
 
-Stav hledání i otevřený detail se ukládá do adresy stránky (`#k=…`), odkaz jde tedy poslat dál. Seznam poskytovatelů se pamatuje v prohlížeči jeden den.
+Stav hledání i otevřený detail se ukládá do adresy stránky (`#k=…`), odkaz jde tedy poslat dál. Seznam poskytovatelů se načte hned po otevření stránky a pamatuje se v prohlížeči jeden den. Když se ho nepodaří načíst, objeví se pod výběrem tlačítko **Načíst poskytovatele znovu**.
 
 Některé servery poskytovatelů nedovolují stahování z cizí stránky (CORS); nástroj pak zkusí veřejné CORS proxy a když ani to nepomůže, ohlásí chybu.
 

@@ -399,6 +399,7 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
                     <div class="form-field">
                         <label for="nkod-posk">Poskytovatel</label>
                         <select id="nkod-posk"><option value="">Všichni poskytovatelé</option></select>
+                        <button type="button" class="secondary" id="nkod-posk-znovu" hidden>Načíst poskytovatele znovu</button>
                     </div>
                 </div>
                 <div class="form-row">
@@ -556,6 +557,7 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
     const elNkodPopis = $('nkod-popis'), elNkodSchema = $('nkod-schema'), elNkodHledat = $('nkod-hledat');
     const elNkodStav = $('nkod-stav'), elNkodVysl = $('nkod-vysledky'), elNkodStr = $('nkod-strankovani');
     const elNkodPred = $('nkod-pred'), elNkodDalsi = $('nkod-dalsi'), elNkodStrana = $('nkod-strana'), elNkodDetail = $('nkod-detail');
+    const elNkodPoskZnovu = $('nkod-posk-znovu');
 
     // ===== Helpers =====
     function setStatus(msg, type) { elStatus.textContent = msg; elStatus.className = type || 'info'; }
@@ -1592,12 +1594,14 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
         if (nkodPoskytovatele) return nkodPoskytovatele;
         try {
             const c = JSON.parse(localStorage.getItem(NKOD_CACHE) || 'null');
-            if (c && Array.isArray(c.seznam) && Date.now() - c.cas < 864e5) nkodPoskytovatele = c.seznam;
+            if (c && Array.isArray(c.seznam) && c.seznam.length > 50 && Date.now() - c.cas < 864e5) nkodPoskytovatele = c.seznam;
         } catch (e) {}
         if (!nkodPoskytovatele) {
             const [jmena, pocty] = await Promise.all([
                 nkodSparql('SELECT ?p (SAMPLE(?jm) AS ?nazev) WHERE { { SELECT DISTINCT ?p WHERE { ?d a dcat:Dataset ; dct:publisher ?p } } ?p foaf:name ?jm } GROUP BY ?p'),
                 nkodSparql('SELECT ?p (COUNT(DISTINCT ?d) AS ?n) WHERE { ?d a dcat:Dataset ; dct:publisher ?p } GROUP BY ?p')]);
+            // Prázdná odpověď (NKOD přetížený) se nesmí uložit — seznam by byl den prázdný.
+            if (!pocty.length) throw new Error('NKOD vrátil prázdný seznam');
             const m = new Map(jmena.map(x => [x.p, x.nazev]));
             nkodPoskytovatele = pocty.map(x => ({ iri: x.p, nazev: m.get(x.p) || x.p.split('/').pop(), n: +x.n }))
                 .sort((a, b) => a.nazev.localeCompare(b.nazev, 'cs'));
@@ -1616,17 +1620,35 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
         return nkodPoskytovatele.filter(p => { const j = bezDiakritiky(p.nazev); return slova.every(w => j.includes(w)); }).slice(0, 40).map(p => p.iri);
     }
 
-    async function nkodPripravFiltry() {
+    let nkodNacitamPosk = null; // probíhající načítání seznamu poskytovatelů (Promise)
+    async function nkodPripravFiltry(znovu) {
         if (elNkodTema.options.length === 1) {
             Object.entries(NKOD_TEMATA).sort((a, b) => a[1].localeCompare(b[1], 'cs'))
                 .forEach(([k, v]) => elNkodTema.add(new Option(v, NKOD_TEMA_PFX + k)));
         }
         elNkodTema.value = nkodStav.t;
+        if (znovu) {
+            nkodPoskytovatele = null;
+            try { localStorage.removeItem(NKOD_CACHE); } catch (e) {}
+            while (elNkodPosk.options.length > 1) elNkodPosk.remove(1);
+        }
         if (elNkodPosk.options.length === 1) {
-            try {
-                const s = await nkodNactiPoskytovatele();
-                if (elNkodPosk.options.length === 1) s.forEach(x => elNkodPosk.add(new Option(x.nazev + ' (' + x.n + ')', x.iri)));
-            } catch (e) { nkodHlaska('Seznam poskytovatelů se nepodařilo načíst: ' + e.message, true); }
+            // Souběžná volání (otevření panelu, obnova z odkazu, fokus) čekají na jedno načítání.
+            if (!nkodNacitamPosk) nkodNacitamPosk = (async () => {
+                elNkodPosk.options[0].text = 'Načítám poskytovatele…';
+                try {
+                    const s = await nkodNactiPoskytovatele();
+                    if (elNkodPosk.options.length === 1) s.forEach(x => elNkodPosk.add(new Option(x.nazev + ' (' + x.n + ')', x.iri)));
+                    elNkodPoskZnovu.hidden = true;
+                } catch (e) {
+                    nkodHlaska('Seznam poskytovatelů se nepodařilo načíst: ' + e.message + '. Zkuste „Načíst poskytovatele znovu“.', true);
+                    elNkodPoskZnovu.hidden = false;
+                } finally {
+                    elNkodPosk.options[0].text = 'Všichni poskytovatelé';
+                    nkodNacitamPosk = null;
+                }
+            })();
+            await nkodNacitamPosk;
         }
         elNkodPosk.value = nkodStav.p;
     }
@@ -1925,6 +1947,9 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && elDetailView.classList.contains('visible')) hideDetail(); });
 
     elNkodPanel.addEventListener('toggle', () => { if (elNkodPanel.open) nkodPripravFiltry(); });
+    // Pojistka, kdyby se událost toggle nespustila: seznam se dotáhne i při práci s výběrem.
+    ['focus', 'mousedown'].forEach(ev => [elNkodPosk, elNkodTema].forEach(x => x.addEventListener(ev, () => nkodPripravFiltry())));
+    elNkodPoskZnovu.addEventListener('click', () => { nkodHlaska(''); nkodPripravFiltry(true); });
     elNkodForm.addEventListener('submit', e => { e.preventDefault(); nkodZFormulare(); elNkodDetail.innerHTML = ''; nkodHledej(); });
     // Výběr poskytovatele, tématu, formátu a řazení hledá hned.
     [elNkodPosk, elNkodTema, elNkodFormat, elNkodRazeni, elNkodPopis, elNkodSchema].forEach(x => x.addEventListener('change', () => { nkodZFormulare(); elNkodDetail.innerHTML = ''; nkodHledej(); }));
@@ -1932,6 +1957,7 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
     elNkodDalsi.addEventListener('click', () => { nkodStav.str++; nkodStav.d = ''; elNkodDetail.innerHTML = ''; nkodHledej(); });
 
     // ===== Init =====
+    nkodPripravFiltry(); // témata hned, poskytovatelé na pozadí (z paměti prohlížeče nebo z NKOD)
     if (loadHash()) loadData();
 })();
 </script>
