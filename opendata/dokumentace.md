@@ -49,11 +49,11 @@ Nad formulářem je rozbalovací panel **Najít datovou sadu v NKOD**. Datovou s
 
 Výběr poskytovatele, tématu, formátu a řazení hledá hned, text se hledá tlačítkem **Hledat** nebo klávesou Enter. Hledání stáhne všechny nalezené sady najednou (i celý katalog, asi 31 000 sad, za několik sekund); řazení, počet na stránku a přechod mezi stránkami pak pracují nad nimi bez dalšího dotazu. Výsledky se stránkují podle volby „Sad na stránku“; u každé sady je poskytovatel, témata, štítky formátů a štítek *schéma*.
 
-Kliknutím na název sady se pod výsledky zobrazí její **detail**: popis, poskytovatel (odkaz vypíše všechny jeho sady), témata, klíčová slova, odkaz na záznam v NKOD a na dokumentaci, případně série, do které sada patří, nebo sady v sérii. Tabulka **Distribuce** ukazuje formát, odkaz na data, schéma a velikost. U distribuce v CSV nebo JSON je tlačítko **Otevřít v prohlížeči** — vyplní adresu dat i schématu a data rovnou načte.
+Kliknutím na název sady se pod výsledky zobrazí její **detail**: popis, poskytovatel (odkaz vypíše všechny jeho sady), témata, klíčová slova, odkaz na záznam v NKOD a na dokumentaci, případně série, do které sada patří, nebo sady v sérii. Tabulka **Distribuce** ukazuje formát, odkaz na data, schéma, velikost a **dostupnost** — výsledek poslední automatické kontroly, kterou NKOD u každé adresy dat provádí (např. „Nedostupná: soubor na serveru poskytovatele neexistuje (HTTP 404)“, nebo že server nepovoluje CORS). U distribuce v CSV nebo JSON je tlačítko **Otevřít v prohlížeči** — vyplní adresu dat i schématu a data rovnou načte.
 
 Stav hledání i otevřený detail se ukládá do adresy stránky (`#k=…`), odkaz jde tedy poslat dál. Seznam poskytovatelů se načte hned po otevření stránky a pamatuje se v prohlížeči jeden den. Když se ho nepodaří načíst, objeví se pod výběrem tlačítko **Načíst poskytovatele znovu**.
 
-Některé servery poskytovatelů nedovolují stahování z cizí stránky (CORS); nástroj pak zkusí veřejné CORS proxy a když ani to nepomůže, ohlásí chybu.
+Některé servery poskytovatelů nedovolují stahování z cizí stránky (CORS); nástroj pak zkusí veřejné CORS proxy a když ani to nepomůže, ohlásí chybu. Protože prohlížeč u odmítnutého požadavku skutečný stav (např. 404) nepozná, nástroj se po neúspěchu zeptá NKOD na výsledek jeho kontroly dostupnosti a připíše ho k chybě — tak je vidět, jestli soubor u poskytovatele vůbec existuje. Takovou chybu (chybějící soubor, rozbitý odkaz v katalogu) musí opravit poskytovatel.
 
 ### Zadání zdrojů dat
 
