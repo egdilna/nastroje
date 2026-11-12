@@ -2,6 +2,11 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.19.1] — 2026-11-12
+
+### Změněno
+- Seznam předpisů v přehledu (a v oblasti) má jen jednu úroveň: údaje o vyznačení, komentářích, štítcích, skupinách a oblastech jsou odstavce uvnitř položky předpisu, ne vnořený seznam.
+
 ## [1.19.0] — 2026-11-09
 
 ### Přidáno
