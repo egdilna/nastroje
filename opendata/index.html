@@ -423,6 +423,17 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
                             <option value="za">Název Z–A</option>
                         </select>
                     </div>
+                    <div class="form-field">
+                        <label for="nkod-pocet">Sad na stránku</label>
+                        <select id="nkod-pocet">
+                            <option value="25" selected>25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                            <option value="200">200</option>
+                            <option value="500">500</option>
+                            <option value="1000">1000</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="nkod-volby">
                     <label><input type="checkbox" id="nkod-popis"> hledat i v popisu</label>
@@ -553,7 +564,7 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
     const elDetailTitle = $('detail-title'), elDetailContent = $('detail-content');
     const elTableArea = $('table-area'), elPagArea = $('pagination-area');
     const elNkodPanel = $('nkod-panel'), elNkodForm = $('nkod-form'), elNkodQ = $('nkod-q'), elNkodPosk = $('nkod-posk');
-    const elNkodTema = $('nkod-tema'), elNkodFormat = $('nkod-format'), elNkodRazeni = $('nkod-razeni');
+    const elNkodTema = $('nkod-tema'), elNkodFormat = $('nkod-format'), elNkodRazeni = $('nkod-razeni'), elNkodPocet = $('nkod-pocet');
     const elNkodPopis = $('nkod-popis'), elNkodSchema = $('nkod-schema'), elNkodHledat = $('nkod-hledat');
     const elNkodStav = $('nkod-stav'), elNkodVysl = $('nkod-vysledky'), elNkodStr = $('nkod-strankovani');
     const elNkodPred = $('nkod-pred'), elNkodDalsi = $('nkod-dalsi'), elNkodStrana = $('nkod-strana'), elNkodDetail = $('nkod-detail');
@@ -1563,13 +1574,13 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
     // zvlášť — spojené v jednom dotazu trvají přes 20 s) a uloží se v prohlížeči na den.
     const NKOD_SPARQL = 'https://data.gov.cz/sparql';
     const NKOD_PFX = 'PREFIX dcat:<http://www.w3.org/ns/dcat#> PREFIX dct:<http://purl.org/dc/terms/> PREFIX foaf:<http://xmlns.com/foaf/0.1/> ';
-    const NKOD_NA_STRANU = 25;
+    const NKOD_POCTY = [25, 50, 100, 200, 500, 1000]; // volby „Sad na stránku“
     const NKOD_TEMA_PFX = 'http://publications.europa.eu/resource/authority/data-theme/';
     const NKOD_TEMATA = { AGRI: 'Zemědělství, rybolov, lesnictví a výživa', ECON: 'Hospodářství a finance', EDUC: 'Vzdělávání, kultura a sport',
         ENER: 'Energie', ENVI: 'Životní prostředí', GOVE: 'Vláda a veřejný sektor', HEAL: 'Zdraví', INTR: 'Mezinárodní otázky',
         JUST: 'Spravedlnost, právní systém a veřejná bezpečnost', REGI: 'Regiony a města', SOCI: 'Populace a společnost',
         TECH: 'Věda a technika', TRAN: 'Doprava', OP_DATPRO: 'Předběžné údaje' };
-    const NKOD_VYCHOZI = { q: '', p: '', t: '', f: 'otevritelne', s: false, popis: false, o: 'az', str: 1, d: '' };
+    const NKOD_VYCHOZI = { q: '', p: '', t: '', f: 'otevritelne', s: false, popis: false, o: 'az', n: 25, str: 1, d: '' };
     const NKOD_CACHE = 'opendata-nkod-poskytovatele';
     let nkodStav = Object.assign({}, NKOD_VYCHOZI);
     let nkodPoskytovatele = null; // [{iri, nazev, n}] abecedně
@@ -1654,13 +1665,13 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
     }
 
     function nkodDoFormulare() {
-        elNkodQ.value = nkodStav.q; elNkodFormat.value = nkodStav.f; elNkodRazeni.value = nkodStav.o;
+        elNkodQ.value = nkodStav.q; elNkodFormat.value = nkodStav.f; elNkodRazeni.value = nkodStav.o; elNkodPocet.value = String(nkodStav.n);
         elNkodSchema.checked = !!nkodStav.s; elNkodPopis.checked = !!nkodStav.popis;
         elNkodTema.value = nkodStav.t; elNkodPosk.value = nkodStav.p;
     }
     function nkodZFormulare() {
         nkodStav = Object.assign({}, NKOD_VYCHOZI, { q: elNkodQ.value.trim(), p: elNkodPosk.value, t: elNkodTema.value, f: elNkodFormat.value,
-            s: elNkodSchema.checked, popis: elNkodPopis.checked, o: elNkodRazeni.value });
+            s: elNkodSchema.checked, popis: elNkodPopis.checked, o: elNkodRazeni.value, n: +elNkodPocet.value || 25 });
     }
     function nkodUlozStav() { history.replaceState(null, '', location.pathname + location.search + nkodOdkaz(nkodStav)); }
 
@@ -1699,10 +1710,20 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
     }
 
     // Témata, formáty a schéma k sadám na stránce výsledků — jeden dotaz pro celou stránku.
+    // Po dávkách 40 sad (dlouhé VALUES se do adresy GET nevejde), nejvýš 5 dotazů souběžně.
     async function nkodInfoSad(iris) {
-        const r = await nkodSparql('SELECT ?d ?tema ?mt ?fmt ?sch WHERE { VALUES ?d { ' + iris.map(nkodIri).join(' ') + ' } ' +
+        const davky = [];
+        for (let i = 0; i < iris.length; i += 40) davky.push(iris.slice(i, i + 40));
+        const r = [];
+        for (let i = 0; i < davky.length; i += 5) (await Promise.all(davky.slice(i, i + 5).map(nkodInfoDavka))).forEach(x => r.push(...x));
+        return nkodInfoZRadku(r);
+    }
+    function nkodInfoDavka(iris) {
+        return nkodSparql('SELECT ?d ?tema ?mt ?fmt ?sch WHERE { VALUES ?d { ' + iris.map(nkodIri).join(' ') + ' } ' +
             "OPTIONAL { ?d dcat:theme ?tema . FILTER(STRSTARTS(STR(?tema), '" + NKOD_TEMA_PFX + "')) } " +
             'OPTIONAL { ?d dcat:distribution ?x . OPTIONAL { ?x dcat:mediaType ?mt } OPTIONAL { ?x dct:format ?fmt } OPTIONAL { ?x dct:conformsTo ?sch } } }');
+    }
+    function nkodInfoZRadku(r) {
         const m = new Map();
         for (const x of r) {
             if (!m.has(x.d)) m.set(x.d, { temata: new Set(), formaty: new Set(), schema: false });
@@ -1717,6 +1738,13 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
 
     function nkodStitek(text, ok) { const s = document.createElement('span'); s.className = 'nkod-stitek' + (ok ? ' ok' : ''); s.textContent = text; return s; }
 
+    // Hledání stáhne všechny nalezené sady najednou (celý katalog ~31 000 sad, komprimovaně
+    // jednotky MB, kolem 3 s); řazení a stránkování se pak dělá v prohlížeči nad nimi.
+    const nkodRazeni = new Intl.Collator('cs', { sensitivity: 'base', numeric: true });
+    const NKOD_DS = 'https://data.gov.cz/zdroj/datové-sady/';
+    let nkodVse = [];        // [{d, nazev, posk}] seřazené podle nkodSerazeno
+    let nkodSerazeno = '';
+
     async function nkodHledej() {
         const id = ++nkodDotazId;
         nkodUlozStav();
@@ -1724,45 +1752,60 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
         elNkodHledat.disabled = true;
         try {
             if (nkodStav.q) { try { await nkodNactiPoskytovatele(); } catch (e) {} }
-            const w = nkodPodminky(nkodStav);
-            const smer = nkodStav.o === 'za' ? 'DESC(?nazev)' : 'ASC(?nazev)';
-            const [pocet, radky] = await Promise.all([
-                nkodSparql('SELECT (COUNT(DISTINCT ?d) AS ?n) WHERE { ' + w + ' }'),
-                nkodSparql('SELECT ?d (MIN(STR(?t)) AS ?nazev) (SAMPLE(?p) AS ?posk) WHERE { ' + w + ' } GROUP BY ?d ORDER BY ' + smer +
-                    ' LIMIT ' + NKOD_NA_STRANU + ' OFFSET ' + (nkodStav.str - 1) * NKOD_NA_STRANU)]);
+            const radky = await nkodSparql("SELECT (STRAFTER(STR(?d), 'datové-sady/') AS ?id) (MIN(STR(?t)) AS ?nazev) (SAMPLE(STR(?p)) AS ?posk) WHERE { " +
+                nkodPodminky(nkodStav) + ' } GROUP BY ?d LIMIT 100000');
             if (id !== nkodDotazId) return;
-            nkodCelkem = +((pocet[0] && pocet[0].n) || 0);
-            const info = radky.length ? await nkodInfoSad(radky.map(r => r.d)) : new Map();
-            if (id !== nkodDotazId) return;
-            elNkodVysl.innerHTML = '';
-            for (const r of radky) {
-                const li = document.createElement('li');
-                const a = document.createElement('a');
-                a.href = nkodOdkaz(Object.assign({}, nkodStav, { d: r.d }));
-                a.textContent = r.nazev;
-                a.dataset.iri = r.d;
-                if (nkodStav.d === r.d) a.setAttribute('aria-current', 'true');
-                a.addEventListener('click', e => { e.preventDefault(); nkodDetail(r.d, true); });
-                li.appendChild(a);
-                const i = info.get(r.d) || { temata: new Set(), formaty: new Set(), schema: false };
-                const sp = document.createElement('span'); sp.className = 'nkod-info';
-                sp.appendChild(document.createTextNode([nkodJmenoPoskytovatele(r.posk), [...i.temata].join(', ')].filter(Boolean).join(' · ') + ' '));
-                [...i.formaty].sort().forEach(f => sp.appendChild(nkodStitek(f, f === 'CSV' || f === 'JSON')));
-                if (i.schema) sp.appendChild(nkodStitek('schéma', true));
-                li.appendChild(sp);
-                elNkodVysl.appendChild(li);
-            }
-            const stran = Math.max(1, Math.ceil(nkodCelkem / NKOD_NA_STRANU));
-            nkodHlaska(nkodCelkem ? `Nalezeno ${nkodCelkem.toLocaleString('cs')} datových sad.` + (stran > 1 ? ` Strana ${nkodStav.str} z ${stran}.` : '') : 'Nic nenalezeno. Zkuste jiná slova nebo uvolněte filtry.');
-            elNkodStr.hidden = stran <= 1;
-            elNkodStrana.textContent = `Strana ${nkodStav.str} z ${stran}`;
-            elNkodPred.disabled = nkodStav.str <= 1;
-            elNkodDalsi.disabled = nkodStav.str >= stran;
+            nkodVse = radky.map(r => ({ d: NKOD_DS + r.id, nazev: r.nazev, posk: r.posk }));
+            nkodSerazeno = '';
+            await nkodVykresliStranu(id);
         } catch (e) {
             if (id === nkodDotazId) nkodHlaska('Hledání v NKOD selhalo: ' + e.message, true);
         } finally {
             if (id === nkodDotazId) elNkodHledat.disabled = false;
         }
+    }
+
+    // Vykreslí aktuální stránku z nkodVse (řazení, počet na stránku, stránka z nkodStav).
+    async function nkodVykresliStranu(id) {
+        if (id === undefined) id = ++nkodDotazId;
+        nkodUlozStav();
+        if (nkodSerazeno !== nkodStav.o) {
+            nkodVse.sort((a, b) => nkodRazeni.compare(a.nazev, b.nazev) || a.d.localeCompare(b.d));
+            if (nkodStav.o === 'za') nkodVse.reverse();
+            nkodSerazeno = nkodStav.o;
+        }
+        nkodCelkem = nkodVse.length;
+        const stran = Math.max(1, Math.ceil(nkodCelkem / nkodStav.n));
+        nkodStav.str = Math.min(Math.max(1, nkodStav.str), stran);
+        const radky = nkodVse.slice((nkodStav.str - 1) * nkodStav.n, nkodStav.str * nkodStav.n);
+        const souhrn = nkodCelkem ? `Nalezeno ${nkodCelkem.toLocaleString('cs')} datových sad.` + (stran > 1 ? ` Strana ${nkodStav.str} z ${stran}.` : '') : 'Nic nenalezeno. Zkuste jiná slova nebo uvolněte filtry.';
+        if (radky.length) nkodHlaska(souhrn + ' Doplňuji formáty a témata…');
+        let info = new Map();
+        try { info = radky.length ? await nkodInfoSad(radky.map(r => r.d)) : new Map(); } catch (e) {}
+        if (id !== nkodDotazId) return;
+        elNkodVysl.innerHTML = '';
+        for (const r of radky) {
+            const li = document.createElement('li');
+            const a = document.createElement('a');
+            a.href = nkodOdkaz(Object.assign({}, nkodStav, { d: r.d }));
+            a.textContent = r.nazev;
+            a.dataset.iri = r.d;
+            if (nkodStav.d === r.d) a.setAttribute('aria-current', 'true');
+            a.addEventListener('click', e => { e.preventDefault(); nkodDetail(r.d, true); });
+            li.appendChild(a);
+            const i = info.get(r.d) || { temata: new Set(), formaty: new Set(), schema: false };
+            const sp = document.createElement('span'); sp.className = 'nkod-info';
+            sp.appendChild(document.createTextNode([nkodJmenoPoskytovatele(r.posk), [...i.temata].join(', ')].filter(Boolean).join(' · ') + ' '));
+            [...i.formaty].sort().forEach(f => sp.appendChild(nkodStitek(f, f === 'CSV' || f === 'JSON')));
+            if (i.schema) sp.appendChild(nkodStitek('schéma', true));
+            li.appendChild(sp);
+            elNkodVysl.appendChild(li);
+        }
+        nkodHlaska(souhrn);
+        elNkodStr.hidden = stran <= 1;
+        elNkodStrana.textContent = `Strana ${nkodStav.str} z ${stran}`;
+        elNkodPred.disabled = nkodStav.str <= 1;
+        elNkodDalsi.disabled = nkodStav.str >= stran;
     }
 
     function nkodVyber(radky, vlastnost) {
@@ -1784,7 +1827,8 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
                 nkodSparql('SELECT ?x (SAMPLE(?nz) AS ?nazev) (SAMPLE(?dl) AS ?down) (SAMPLE(?ac) AS ?acc) (SAMPLE(?m) AS ?mt) (SAMPLE(?f) AS ?fmt) (SAMPLE(?s) AS ?schema) (SAMPLE(?b) AS ?velikost) (SAMPLE(?sv) AS ?sluzba) WHERE { ' +
                     I + " dcat:distribution ?x . OPTIONAL { ?x dct:title ?nz . FILTER(LANG(?nz) = 'cs' || LANG(?nz) = '') } OPTIONAL { ?x dcat:downloadURL ?dl } OPTIONAL { ?x dcat:accessURL ?ac } " +
                     'OPTIONAL { ?x dcat:mediaType ?m } OPTIONAL { ?x dct:format ?f } OPTIONAL { ?x dct:conformsTo ?s } OPTIONAL { ?x dcat:byteSize ?b } OPTIONAL { ?x dcat:accessService ?sv } } GROUP BY ?x'),
-                nkodSparql('SELECT ?c (SAMPLE(?t) AS ?nazev) WHERE { ?c dcat:inSeries ' + I + " ; dct:title ?t . FILTER(LANG(?t) = 'cs') } GROUP BY ?c ORDER BY ?nazev LIMIT 200")]);
+                nkodSparql('SELECT ?c (MIN(STR(?t)) AS ?nazev) WHERE { ?c dcat:inSeries ' + I + " ; dct:title ?t . FILTER(LANG(?t) = 'cs') } GROUP BY ?c LIMIT 5000")
+                    .then(r => r.sort((a, b) => nkodRazeni.compare(a.nazev, b.nazev)))]);
             if (nkodStav.d !== iri) return;
             await nkodNactiPoskytovatele().catch(() => {});
             nkodVykresliDetail(iri, vl, dist, clenove);
@@ -1823,7 +1867,7 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
         elNkodDetail.appendChild(odk);
 
         if (clenove.length) {
-            elNkodDetail.appendChild(el('h4', `Datové sady v sérii (${clenove.length}${clenove.length === 200 ? '+' : ''})`));
+            elNkodDetail.appendChild(el('h4', `Datové sady v sérii (${clenove.length.toLocaleString('cs')})`));
             const ul = el('ul');
             clenove.forEach(c => { const li = el('li'); li.appendChild(odkazNkod(Object.assign({}, nkodStav, { d: c.c }), c.nazev)); ul.appendChild(li); });
             elNkodDetail.appendChild(ul);
@@ -1878,6 +1922,7 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
     function nkodObnovStav(st) {
         nkodStav = Object.assign({}, NKOD_VYCHOZI, st || {});
         nkodStav.str = Math.max(1, parseInt(nkodStav.str) || 1);
+        if (NKOD_POCTY.indexOf(+nkodStav.n) < 0) nkodStav.n = 25; else nkodStav.n = +nkodStav.n;
         elNkodPanel.open = true;
         nkodDoFormulare();
         nkodPripravFiltry().then(() => { nkodDoFormulare(); });
@@ -1952,9 +1997,14 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
     elNkodPoskZnovu.addEventListener('click', () => { nkodHlaska(''); nkodPripravFiltry(true); });
     elNkodForm.addEventListener('submit', e => { e.preventDefault(); nkodZFormulare(); elNkodDetail.innerHTML = ''; nkodHledej(); });
     // Výběr poskytovatele, tématu, formátu a řazení hledá hned.
-    [elNkodPosk, elNkodTema, elNkodFormat, elNkodRazeni, elNkodPopis, elNkodSchema].forEach(x => x.addEventListener('change', () => { nkodZFormulare(); elNkodDetail.innerHTML = ''; nkodHledej(); }));
-    elNkodPred.addEventListener('click', () => { if (nkodStav.str > 1) { nkodStav.str--; nkodStav.d = ''; elNkodDetail.innerHTML = ''; nkodHledej(); } });
-    elNkodDalsi.addEventListener('click', () => { nkodStav.str++; nkodStav.d = ''; elNkodDetail.innerHTML = ''; nkodHledej(); });
+    [elNkodPosk, elNkodTema, elNkodFormat, elNkodPopis, elNkodSchema].forEach(x => x.addEventListener('change', () => { nkodZFormulare(); elNkodDetail.innerHTML = ''; nkodHledej(); }));
+    // Řazení, počet na stránku a stránkování pracují nad už staženými výsledky.
+    [elNkodRazeni, elNkodPocet].forEach(x => x.addEventListener('change', () => {
+        nkodStav.o = elNkodRazeni.value; nkodStav.n = +elNkodPocet.value || 25; nkodStav.str = 1; nkodStav.d = ''; elNkodDetail.innerHTML = '';
+        nkodVykresliStranu();
+    }));
+    elNkodPred.addEventListener('click', () => { if (nkodStav.str > 1) { nkodStav.str--; nkodStav.d = ''; elNkodDetail.innerHTML = ''; nkodVykresliStranu(); } });
+    elNkodDalsi.addEventListener('click', () => { nkodStav.str++; nkodStav.d = ''; elNkodDetail.innerHTML = ''; nkodVykresliStranu(); });
 
     // ===== Init =====
     nkodPripravFiltry(); // témata hned, poskytovatelé na pozadí (z paměti prohlížeče nebo z NKOD)
