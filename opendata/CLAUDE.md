@@ -38,7 +38,12 @@ Sesterský nástroj `../rpp` je jeho specializovaná varianta pro Registr práv 
 - Hledání textu: `CONTAINS(LCASE(?t), …)` pro každé slovo (stejně rychlé jako `bif:contains`, které
   navíc odmítá zástupné znaky kratší než 4 znaky). Shoda se jménem poskytovatele se počítá
   v aplikaci bez diakritiky a do dotazu jde jako `?p IN (…)`, nejvýš 40 poskytovatelů.
-- Řazení přes `MIN(STR(?t))` — `ORDER BY` nad `SAMPLE(?t)` Virtuoso neřadí.
+- **Hledání stáhne všechny nalezené sady** jedním dotazem (`LIMIT 100000`, celý katalog ~31 000 sad
+  za ~3 s, odpověď je gzip) do `nkodVse`; řazení (`Intl.Collator('cs')`, česky a bez ohledu na
+  velikost písmen) a stránkování dělá `nkodVykresliStranu` v prohlížeči. Řazení v SPARQL nepoužívat —
+  Virtuoso českou collation nemá a `OFFSET` nad 10 000 řádků odmítá.
+- Počet na stránku `nkodStav.n` (25–1000). Informace o sadách (`nkodInfoSad`) jdou po dávkách 40 IRI,
+  nejvýš 5 dotazů souběžně — `VALUES` s tisícem IRI se do adresy GET nevejde.
 - Formát se pozná z `dcat:mediaType` nebo `dct:format` (konec IRI `/csv`, `/json`). Schéma
   z `dct:conformsTo` se předá jen když končí `.json` (JSON Schema/CSVW, ne např. json-stat.org).
 - Stav hledání je v `#k=` (`nkodStav`), seznamy (výsledky, série, poskytovatel) jsou odkazy `<a href="#k=…">`.

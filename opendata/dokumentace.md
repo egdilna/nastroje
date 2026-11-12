@@ -44,9 +44,10 @@ Nad formulářem je rozbalovací panel **Najít datovou sadu v NKOD**. Datovou s
 - **Téma** — tematické kategorie EU (Doprava, Zdraví, Vláda a veřejný sektor…).
 - **Formát** — ve výchozím stavu jen sady s distribucí v CSV nebo JSON, které tento nástroj umí otevřít; jde zvolit jen CSV, jen JSON nebo jakýkoli formát.
 - **Jen se schématem** — jen sady, u jejichž distribuce poskytovatel uvádí schéma.
-- **Řazení** — podle názvu A–Z nebo Z–A (řadí se podle kódu znaků, názvy začínající na Č, Š, Ž… jsou proto až za Z).
+- **Řazení** — podle názvu A–Z nebo Z–A, česky (Č za C, Ch za H, Ř za R…) a bez ohledu na velikost písmen.
+- **Sad na stránku** — 25, 50, 100, 200, 500 nebo 1000.
 
-Výběr poskytovatele, tématu, formátu a řazení hledá hned, text se hledá tlačítkem **Hledat** nebo klávesou Enter. Výsledky jsou po 25 na stránku; u každé sady je poskytovatel, témata, štítky formátů a štítek *schéma*.
+Výběr poskytovatele, tématu, formátu a řazení hledá hned, text se hledá tlačítkem **Hledat** nebo klávesou Enter. Hledání stáhne všechny nalezené sady najednou (i celý katalog, asi 31 000 sad, za několik sekund); řazení, počet na stránku a přechod mezi stránkami pak pracují nad nimi bez dalšího dotazu. Výsledky se stránkují podle volby „Sad na stránku“; u každé sady je poskytovatel, témata, štítky formátů a štítek *schéma*.
 
 Kliknutím na název sady se pod výsledky zobrazí její **detail**: popis, poskytovatel (odkaz vypíše všechny jeho sady), témata, klíčová slova, odkaz na záznam v NKOD a na dokumentaci, případně série, do které sada patří, nebo sady v sérii. Tabulka **Distribuce** ukazuje formát, odkaz na data, schéma a velikost. U distribuce v CSV nebo JSON je tlačítko **Otevřít v prohlížeči** — vyplní adresu dat i schématu a data rovnou načte.
 
@@ -278,7 +279,7 @@ Odkaz ke sdílení má tvar:
 https://egdilna.github.io/nastroje/opendata#d=<base64url>
 ```
 
-kde `<base64url>` je base64-url kódovaný JSON `{"s": "schemaUrl", "d": "dataUrl"}`; u sady otevřené z NKOD navíc `"n"` (IRI datové sady) a `"t"` (její název). Hledání v NKOD má vlastní fragment `#k=<base64url>` se stavem hledání (`q` text, `p` poskytovatel, `t` téma, `f` formát, `s` jen se schématem, `popis`, `o` řazení, `str` stránka, `d` otevřená sada). Pro zpětnou kompatibilitu je podporován i starší formát `#schema=...&data=...`.
+kde `<base64url>` je base64-url kódovaný JSON `{"s": "schemaUrl", "d": "dataUrl"}`; u sady otevřené z NKOD navíc `"n"` (IRI datové sady) a `"t"` (její název). Hledání v NKOD má vlastní fragment `#k=<base64url>` se stavem hledání (`q` text, `p` poskytovatel, `t` téma, `f` formát, `s` jen se schématem, `popis`, `o` řazení, `n` sad na stránku, `str` stránka, `d` otevřená sada). Pro zpětnou kompatibilitu je podporován i starší formát `#schema=...&data=...`.
 
 ### Podporované jazykové kódy
 
