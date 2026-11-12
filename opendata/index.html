@@ -122,6 +122,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .nkod-info { display: block; font-size: 0.85rem; color: #555; }
 .nkod-stitek { display: inline-block; font-size: 0.75rem; padding: 0 6px; border: 1px solid #999; border-radius: 3px; margin-right: 4px; color: #333; background: #f5f5f5; }
 .nkod-stitek.ok { border-color: #34a853; background: #e6f4ea; color: #1e4620; }
+.nkod-stitek.chyba { border-color: #d93025; background: #fce8e6; color: #8c1d18; }
 .nkod-strankovani { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
 #nkod-detail { margin-top: 16px; padding: 12px 16px; border: 1px solid #4a90d9; border-radius: 6px; background: #f8fbff; }
 #nkod-detail:empty { display: none; }
@@ -793,14 +794,17 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             return { text: await r.text(), contentType: (r.headers.get('content-type') || '').toLowerCase() };
         };
-        let res = null;
+        let res = null, duvod = '';
         try { res = await tryFetch(url); }
         catch(e) {
+            // „HTTP 404“ apod. přečteme jen když server poslal CORS hlavičku; jinak prohlížeč vrátí jen obecnou
+            // síťovou chybu a skutečný stav (404, CORS, nedostupný server) z ní poznat nejde.
+            duvod = /^HTTP \d+/.test(e.message) ? `server odpověděl chybou ${e.message}` : 'server neodpověděl, nebo nepovolil čtení z jiného webu (CORS)';
             for (const proxy of ['https://corsproxy.io/?','https://api.allorigins.win/raw?url=']) {
                 try { res = await tryFetch(proxy + encodeURIComponent(url)); break; } catch(e2) {}
             }
         }
-        if (!res) throw new Error(`Nepodařilo se načíst ${label}`);
+        if (!res) throw new Error(`Nepodařilo se načíst ${label} — ${duvod}.`);
 
         // Strip UTF-8 BOM
         let text = res.text;
@@ -1599,6 +1603,42 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
     const nkodOdkaz = st => '#k=' + b64UrlEncode(JSON.stringify(st));
     const nkodStranka = iri => 'https://data.gov.cz/datová-sada?iri=' + encodeURIComponent(iri);
 
+    // Kontrola dostupnosti z NKOD: data.gov.cz pravidelně zkouší stáhnout každou downloadURL a výsledek
+    // (dqv:value 1/0, u chyby skos:note např. „Request failed '404' : 'Not Found'“) publikuje v SPARQL.
+    // Prohlížeč sám stav 404 často nepřečte (chybová stránka nemívá CORS hlavičku), NKOD ano.
+    const NKOD_METR = 'https://data.gov.cz/zdroj/datová-kvalita/metriky/metrikaDostupnosti';
+    async function nkodDostupnost(urls) {
+        const mapa = new Map();
+        urls = [...new Set(urls.filter(u => /^https?:\/\//i.test(u)))];
+        for (let i = 0; i < urls.length; i += 40) {
+            const radky = await nkodSparql('SELECT ?u ?metr ?v ?note ?cas WHERE { VALUES ?u { ' + urls.slice(i, i + 40).map(nkodIri).join(' ') + ' } ' +
+                '?m <http://schema.org/object> ?u ; <http://www.w3.org/ns/dqv#isMeasurementOf> ?metr ; <http://www.w3.org/ns/dqv#value> ?v . ' +
+                'FILTER(?metr IN (' + nkodIri(NKOD_METR + 'DownloadURL') + ', ' + nkodIri(NKOD_METR + 'CORSDownloadURL') + ')) ' +
+                'OPTIONAL { ?m <http://www.w3.org/2004/02/skos/core#note> ?note } OPTIONAL { ?m <http://purl.org/linked-data/sdmx/2009/dimension#refPeriod> ?cas } }');
+            for (const r of radky) {
+                const o = mapa.get(r.u) || {};
+                const k = r.metr.endsWith('CORSDownloadURL') ? 'cors' : 'stazeni';
+                const cas = (r.cas || '').split('/').pop();
+                if (!o[k] || cas > o[k].cas) o[k] = { ok: r.v === '1' || r.v === 'true', pozn: r.note || '', cas };
+                mapa.set(r.u, o);
+            }
+        }
+        return mapa;
+    }
+    // Lidsky čitelný výsledek kontroly; null = NKOD o adrese nic neví.
+    function nkodDostupnostText(o) {
+        if (!o || !o.stazeni) return null;
+        const kdy = o.stazeni.cas ? ' (kontrola NKOD ' + new Date(o.stazeni.cas).toLocaleString('cs', { dateStyle: 'short', timeStyle: 'short' }) + ')' : '';
+        if (!o.stazeni.ok) {
+            const kod = (o.stazeni.pozn.match(/'(\d{3})'/) || [])[1];
+            const proc = kod === '404' || kod === '410' ? 'soubor na serveru poskytovatele neexistuje (HTTP ' + kod + ')'
+                : kod ? 'server poskytovatele vrací chybu HTTP ' + kod : 'soubor se nepodařilo stáhnout' + (o.stazeni.pozn ? ' (' + o.stazeni.pozn + ')' : '');
+            return { ok: false, text: 'Nedostupná: ' + proc + kdy };
+        }
+        if (o.cors && !o.cors.ok) return { ok: false, text: 'Soubor existuje, ale server nepovoluje čtení z jiného webu (CORS)' + kdy };
+        return { ok: true, text: 'Dostupná' + kdy };
+    }
+
     function nkodHlaska(text, chyba) { elNkodStav.textContent = text; elNkodStav.className = chyba ? 'error' : ''; }
 
     async function nkodNactiPoskytovatele() {
@@ -1876,7 +1916,7 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
         elNkodDetail.appendChild(el('h4', 'Distribuce'));
         if (!dist.length) { elNkodDetail.appendChild(el('p', clenove.length ? 'Série sama data nemá — otevřete některou z jejích datových sad.' : 'Datová sada nemá žádnou distribuci.')); return; }
         const t = el('table'), th = el('thead'), hr = el('tr');
-        ['Formát', 'Data', 'Schéma', 'Velikost', ''].forEach(h => { const x = el('th', h); x.scope = 'col'; hr.appendChild(x); });
+        ['Formát', 'Data', 'Schéma', 'Velikost', 'Dostupnost', ''].forEach(h => { const x = el('th', h); x.scope = 'col'; hr.appendChild(x); });
         th.appendChild(hr); t.appendChild(th);
         const tb = el('tbody');
         dist.sort((a, b) => { const o = x => ({ CSV: 0, JSON: 0 })[nkodFormat(x.mt, x.fmt, x.down)] ?? 1; return o(a) - o(b); });
@@ -1892,6 +1932,9 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
             if (d.schema) tdS.appendChild(odkaz(d.schema, d.schema)); else tdS.textContent = '—';
             tr.appendChild(tdS);
             tr.appendChild(el('td', d.velikost ? (+d.velikost / 1048576).toLocaleString('cs', { maximumFractionDigits: 1 }) + ' MB' : ''));
+            const tdDost = el('td', url ? '…' : '');
+            if (url) { tdDost.dataset.url = url; tdDost.setAttribute('aria-live', 'polite'); }
+            tr.appendChild(tdDost);
             const tdA = el('td');
             if (url && (fmt === 'CSV' || fmt === 'JSON')) {
                 const b = el('button', 'Otevřít v prohlížeči', 'secondary');
@@ -1907,6 +1950,16 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
         }
         t.appendChild(tb);
         elNkodDetail.appendChild(t);
+        // Dostupnost se doplní dodatečně, detail kvůli ní nečeká.
+        const bunky = [...tb.querySelectorAll('td[data-url]')];
+        nkodDostupnost(bunky.map(b => b.dataset.url)).then(mapa => {
+            for (const b of bunky) {
+                const v = nkodDostupnostText(mapa.get(b.dataset.url));
+                b.textContent = '';
+                if (v) b.appendChild(nkodStitek(v.text, v.ok)); else b.textContent = 'neověřeno';
+                if (v && !v.ok) b.querySelector('.nkod-stitek').classList.add('chyba');
+            }
+        }).catch(() => bunky.forEach(b => { b.textContent = 'neověřeno'; }));
     }
 
     function nkodOtevri(iri, nazev, dataUrl, schemaUrl, velikost) {
@@ -1972,6 +2025,14 @@ dl.detail-list dd.empty { color: #999; font-style: italic; }
             setStatus(`Úspěšně načteno ${allRecords.length} záznamů.` + (schemaVarovani ? ' ' + schemaVarovani : ''), 'success');
         } catch (e) {
             setStatus('Chyba: ' + e.message, 'error');
+            // Skutečnou příčinu (404, CORS) prohlížeč často nepozná — zeptáme se kontroly dostupnosti v NKOD.
+            if (/^Nepodařilo se načíst data/.test(e.message)) {
+                const zprava = elStatus.textContent;
+                try {
+                    const v = nkodDostupnostText((await nkodDostupnost([dataUrl])).get(dataUrl));
+                    if (v && elStatus.textContent === zprava) setStatus(zprava + ' NKOD k této adrese uvádí: ' + v.text + '.' + (v.ok ? '' : ' Chyba je na straně poskytovatele dat, nástroj ji neopraví.'), 'error');
+                } catch (e2) {}
+            }
         } finally {
             elBtnLoad.disabled = false; elBtnLoad.textContent = 'Načíst';
         }

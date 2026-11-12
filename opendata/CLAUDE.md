@@ -50,6 +50,11 @@ Sesterský nástroj `../rpp` je jeho specializovaná varianta pro Registr práv 
 - Načtená sada z NKOD je v `nkodSada` a jde do `#d=` jako `n`/`t`; ruční změna URL ji zruší.
 - Schéma je nepovinné; **CSVW** (`isCsvw`, `parseCsvw`) se zpracuje až po načtení dat, protože
   sloupce se párují s hlavičkou CSV přes `titles`, pak `name`.
+- **Dostupnost distribucí** (`nkodDostupnost`, `nkodDostupnostText`): NKOD sám pravidelně zkouší každou
+  `downloadURL` a publikuje to v SPARQL jako `dqv:QualityMeasurement` (`schema:object` = URL, metriky
+  `metrikaDostupnostiDownloadURL` a `…CORSDownloadURL`, `dqv:value` 1/0, `skos:note` např. „Request failed '404'“).
+  Ukazuje se ve sloupci Dostupnost v detailu a připisuje k chybě načtení dat — prohlížeč sám 404 bez CORS
+  hlavičky nepřečte (vidí jen obecnou síťovou chybu) a proxy `corsproxy.io`/`allorigins` dnes nespolehlivě odpovídají (403/408).
 - V testovacím sandboxu Chromium přes proxy nedostane `Access-Control-Allow-Origin` od některých
   serverů (např. datanzis.uzis.gov.cz), i když ho server posílá — ověř curlem s hlavičkou `Origin`.
 
