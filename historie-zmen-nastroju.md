@@ -1,7 +1,10 @@
 multisection
 
-
 ## Novinky k našim nástrojům
+
+13.11.2026: Máme pro vás bombu. U [[opendata]] prohlížeče jsme dodělali kompletní hledání a filtrování a načítání datových sad z Národního katalogu dat (NKD). Takže teď už nemusíte někde na webu NKD hledat schémata a sady a ručně to kopírovat do prohlížeč.
+
+
 
 2.9.2026: Skvělé zprávy pro všechny datysty. Nástroj [DKM manažer](#dkm) pro modelování datových modelů i správu ostrých dat nyní umí validní export dat do json včetně schémat a JSX popisů. Je to kompatibilní s požadavky správy dat pro import. Výsledkem je, že můžete data z DKM exportovat buď jako popis dat, nebo jako datové balíčky v ZIP se schématem a popisem v readme. Na tohle jsme se těšili a je to tady.
 
