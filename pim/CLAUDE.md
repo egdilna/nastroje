@@ -1329,3 +1329,13 @@ zkontroluj i filtrování podle tagů a že se ven nedostalo nic citlivého) →
 GitHub uložení i autosave →
 přirozené datum v textu → kontrola pravopisu (a chování při nedostupné službě) →
 klávesová navigace v tabulce entit → reload a ověření všech `localStorage` klíčů.
+
+## Tracker: změna hodnoty v detailu se ukládá tlačítkem
+
+V režimu čtení mění tlačítka −10/−1/+1/+10 (násobky `tracker_step`, u kroku ≠ 1 i ±3)
+jen **rozpracovanou hodnotu** v `state._trackerRozpracovano` (id → číslo), ne `db`.
+Do dat ji zapíše až „💾 Uložit hodnotu" — jedním záznamem historie (s volitelnou
+poznámkou) a jedním `save()`. Dřív by každé kliknutí znamenalo uložení a nahrání na GitHub.
+Překresluje se jen sekce trackeru a fokus se vrací na stisknuté tlačítko. Vstup do
+editace rozpracovanou hodnotu zahodí (edit mód má vlastní průběh přes tlačítko Hotovo).
+Jen v aplikaci, šablona prohlížeče tracker nemá. Hlídá to `pim/testy/tracker-ulozeni.mjs`.
