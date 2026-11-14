@@ -1262,6 +1262,10 @@ Bulk toolbar shows count selected + action dropdown:
 - **🔒 Lock / Unlock** — closes the selected against changes (see 4.5)
 - **🏷 Assign type**
 - **◎ Add aspect / Remove aspect**
+- **✎ Set attribute / Clear attribute** — for a Tags attribute you choose what to do with
+  the tags: **replace** the current ones, **add** to them, or **remove** the chosen tags
+  wherever they are (tags outside the set carried by the selection are offered too).
+  Entities that would not change count as skipped and keep their modified date
 - **↔ Add relation** — bulk-adds relation to all
 - **⇢ Merge entities** — merges selected into one target (see 13.1)
 - **🎨 PlantUML diagram** — generates PlantUML from selected (see chapter 24)
