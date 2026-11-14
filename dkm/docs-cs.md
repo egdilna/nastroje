@@ -1239,6 +1239,10 @@ Toolbar hromadných akcí ukazuje počet vybraných + dropdown akcí:
 - **🔒 Zamknout / Odemknout** — uzavře vybrané proti úpravám (viz 4.5)
 - **🏷 Přiřadit typ**
 - **◎ Přidat aspekt / Odebrat aspekt**
+- **✎ Nastavit atribut / Vyprázdnit atribut** — u atributu typu Tagy se vybírá, co s tagy
+  udělat: **nahradit** stávající, **přidat** ke stávajícím, nebo vybrané tagy **odebrat**
+  všude, kde jsou (nabízí i tagy mimo soustavu, které výběr nese). Entity, kterým se nic
+  nezmění, se počítají jako přeskočené a nemění se jim datum úpravy
 - **↔ Přidat vazbu** — hromadně přidá vazbu ke všem
 - **⇢ Sloučit entity** — sloučí vybrané do jedné cílové (viz 13.1)
 - **🎨 PlantUML diagram** — vygeneruje PlantUML z vybraných (viz kap. 25)
