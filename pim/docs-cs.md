@@ -71,7 +71,7 @@ Aspekt je „role" entity. Můžete jich přiřadit libovolný počet:
 | **Událost** | Začátek, konec, místo, program — **plus sekce „Úkoly schůzky"** |
 | **Projekt** | Dashboard se sekcemi pro úkoly, cíle, dokumenty atd. |
 | **Plán** | WBS tabulka úkolů s termíny, předchůdci, stavy, propojením s entitami |
-| **Tracker** | Hodnota, jednotka, cíl, historie změn |
+| **Tracker** | Hodnota, jednotka, cíl, historie změn. V detailu se hodnota mění tlačítky −10, −1, +1, +10 (násobky kroku) a zapíše se až tlačítkem „💾 Uložit hodnotu" — volitelně s poznámkou; „Zahodit" změnu zruší |
 | **Diagram** | PlantUML zdroj + náhled, kopírovací akce |
 | **Strukturovaný dokument** | Outline editor s vlastními styly, číslováním (arabsky/písmena/římsky, víceúrovňové), nadpisy H1–H6, sbalitelnými sekcemi a Markdown bloky; export do MD i DOCX (revize z CriticMarkup) |
 | **Prezentace / Slide** | Slide-by-slide režim s timer (T/R klávesy, MM:SS / H:MM:SS) |

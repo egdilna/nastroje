@@ -1038,6 +1038,9 @@ body.theme-dark .tracker-unit { color: #aaa; }
 .tracker-buttons button { padding: 0.35em 0.7em; font-size: 1em; }
 .tracker-btn-minus { border-color: #c94; }
 .tracker-btn-plus { font-weight: 600; }
+.tracker-neulozeno { display: flex; flex-wrap: wrap; gap: 0.4em; align-items: center; margin: 0.3em 0 0.6em; padding: 0.4em 0.6em; background: #fff6e0; border-left: 3px solid #c94; border-radius: 4px; }
+body.theme-dark .tracker-neulozeno { background: #3a3020; }
+.tracker-neulozeno input { flex: 1 1 12em; min-width: 8em; }
 .tracker-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.4em 1em; margin: 0.6em 0; padding: 0.4em 0; border-top: 1px solid #ddd; border-bottom: 1px solid #ddd; font-size: 0.95em; }
 body.theme-dark .tracker-stats { border-color: #444; }
 .tracker-graph { margin: 0.5em 0; }
@@ -47370,15 +47373,44 @@ function renderTopicsView(main) {
   attachEntityRowHandlers(main);
 }
 
+// Rozpracovaná (neuložená) hodnota trackeru v režimu čtení: id entity → číslo.
+// Do dat se nezapisuje, dokud uživatel nezmáčkne „Uložit hodnotu" — jinak by
+// každé kliknutí na +/- znamenalo uložení a nahrání na GitHub.
+function trackerRozpracovano(entity) {
+  const m = state._trackerRozpracovano;
+  if (!m || !entity || !Object.prototype.hasOwnProperty.call(m, entity.id)) return null;
+  return m[entity.id];
+}
+function trackerNastavRozpracovano(entity, hodnota) {
+  if (!state._trackerRozpracovano) state._trackerRozpracovano = {};
+  if (hodnota === null || hodnota === trackerGetValue(entity)) delete state._trackerRozpracovano[entity.id];
+  else state._trackerRozpracovano[entity.id] = hodnota;
+}
+// Tlačítka změny o krok: ±10 kroků, (±3 kroky u kroku ≠ 1), ±1 krok.
+function trackerTlacitkaZmenyHtml(step) {
+  const btn = (nasobek) => {
+    const d = nasobek * step;
+    const abs = trackerFmt(Math.abs(d));
+    const plus = d > 0;
+    return '<button type="button" class="' + (plus ? 'tracker-btn-plus' : 'tracker-btn-minus') + (nasobek === 1 ? ' primary' : '') +
+      '" data-tracker-delta="' + d + '" title="' + (plus ? 'Přidat ' : 'Odebrat ') + abs + '" aria-label="' + (plus ? 'Přidat ' : 'Odebrat ') + abs + '">' +
+      (plus ? '+' : '−') + ' ' + abs + '</button>';
+  };
+  const nasobky = step !== 1 ? [-10, -3, -1, 1, 3, 10] : [-10, -1, 1, 10];
+  return nasobky.map(btn).join('');
+}
+
 function renderTrackerSection(entity, mode) {
   mode = mode || 'read';
-  const value = trackerGetValue(entity);
+  const ulozena = trackerGetValue(entity);
+  const rozpracovano = mode === 'read' ? trackerRozpracovano(entity) : null;
+  const value = rozpracovano !== null ? rozpracovano : ulozena;
   const unit = trackerGetUnit(entity);
   const step = trackerGetStep(entity);
   const target = trackerGetTarget(entity);
   const stats = trackerStats(entity);
   const hist = trackerGetHistory(entity);
-  let h = '<section aria-labelledby="tracker-h" class="tracker-section"><h3 id="tracker-h">📊 Tracker</h3>';
+  let h = '<section aria-labelledby="tracker-h" class="tracker-section" data-tracker-id="' + escapeHtml(entity.id) + '"><h3 id="tracker-h">📊 Tracker</h3>';
   // Velký display hodnoty
   h += '<div class="tracker-display">' +
     '<span class="tracker-value">' + escapeHtml(trackerFmt(value)) + '</span>' +
@@ -47386,7 +47418,7 @@ function renderTrackerSection(entity, mode) {
   '</div>';
   // Cíl + progress
   if (target !== null) {
-    const pct = Math.max(0, Math.min(100, stats.pctOfTarget || 0));
+    const pct = Math.max(0, Math.min(100, target !== 0 ? Math.round((value / target) * 100) : 0));
     h += '<div class="tracker-target meta">Cíl: ' + escapeHtml(trackerFmt(target)) + (unit ? ' ' + escapeHtml(unit) : '') + ' (' + pct + ' %)</div>' +
       '<div class="progress-bar"><div class="progress-bar-fill" style="width:' + pct + '%"></div>' +
       '<div class="progress-bar-label">' + pct + '%</div></div>';
@@ -47394,20 +47426,29 @@ function renderTrackerSection(entity, mode) {
   // Tlačítka — jen v edit modu
   if (mode === 'edit') {
     h += '<div class="tracker-buttons" role="group" aria-label="Změna hodnoty trackeru">';
-    if (step !== 1) {
-      h += '<button type="button" class="tracker-btn-minus" data-tracker-delta="' + (-3 * step) + '" title="Odebrat ' + (3 * step) + '">−' + trackerFmt(3 * step) + '</button>';
-    }
-    h += '<button type="button" class="tracker-btn-minus" data-tracker-delta="' + (-step) + '" title="Odebrat ' + step + '">− ' + trackerFmt(step) + '</button>';
-    h += '<button type="button" class="tracker-btn-plus primary" data-tracker-delta="' + step + '" title="Přidat ' + step + '">+ ' + trackerFmt(step) + '</button>';
-    if (step !== 1) {
-      h += '<button type="button" class="tracker-btn-plus" data-tracker-delta="' + (3 * step) + '" title="Přidat ' + (3 * step) + '">+' + trackerFmt(3 * step) + '</button>';
-    }
+    h += trackerTlacitkaZmenyHtml(step);
     h += '<button type="button" class="tracker-btn-set" id="tracker-set-btn" title="Nastavit konkrétní hodnotu…">✎ Nastavit…</button>';
     h += '<button type="button" class="tracker-btn-reset" id="tracker-reset-btn" title="Vrátit na počáteční hodnotu (' + trackerFmt(stats.initial) + ')">⟲ Reset</button>';
     h += '</div>';
     h += '<p class="meta">Tlačítka mění hodnotu lokálně. Změna se zapíše do historie a uloží až po stisku „Hotovo" v hlavičce.</p>';
   } else {
-    h += '<p class="meta">Pro úpravu hodnoty přepněte do <strong>edit modu</strong> (klávesa <kbd>e</kbd>).</p>';
+    h += '<div class="tracker-buttons" role="group" aria-label="Změna hodnoty trackeru">';
+    h += trackerTlacitkaZmenyHtml(step);
+    h += '<button type="button" class="tracker-btn-set" id="tracker-set-btn" title="Nastavit konkrétní hodnotu…">✎ Nastavit…</button>';
+    h += '</div>';
+    if (rozpracovano !== null) {
+      const zmena = rozpracovano - ulozena;
+      h += '<div class="tracker-neulozeno" role="group" aria-label="Neuložená změna hodnoty">' +
+        '<span><strong>Neuloženo:</strong> ' + escapeHtml(trackerFmtDelta(zmena)) + (unit ? ' ' + escapeHtml(unit) : '') +
+        ' <span class="meta">(uloženo ' + escapeHtml(trackerFmt(ulozena)) + ')</span></span>' +
+        '<label class="sr-only" for="tracker-poznamka">Poznámka ke změně</label>' +
+        '<input type="text" id="tracker-poznamka" placeholder="Poznámka ke změně (volitelná)">' +
+        '<button type="button" class="primary" id="tracker-ulozit-btn">💾 Uložit hodnotu</button>' +
+        '<button type="button" id="tracker-zahodit-btn">Zahodit</button>' +
+      '</div>';
+    } else {
+      h += '<p class="meta">Tlačítka mění hodnotu jen na obrazovce; do dat se zapíše až tlačítkem „Uložit hodnotu".</p>';
+    }
   }
   // Statistiky
   h += '<div class="tracker-stats">';
@@ -47459,9 +47500,90 @@ function attachTrackerHandlers(entity) {
   if (inEdit && state._trackerEditOriginalEntityId !== entity.id) {
     state._trackerEditOriginalEntityId = entity.id;
     state._trackerEditOriginalValue = trackerGetValue(entity);
+    // Rozpracovaná hodnota z režimu čtení se do editace nepřenáší.
+    trackerNastavRozpracovano(entity, null);
   }
-  // +/- tlačítka
-  document.querySelectorAll('button[data-tracker-delta]').forEach(btn => {
+  // Režim čtení: změny jen v paměti, do dat až tlačítkem „Uložit hodnotu".
+  if (!inEdit) {
+    const prekresli = (fokusSelektor) => {
+      const sec = document.querySelector('section.tracker-section[data-tracker-id="' + CSS.escape(entity.id) + '"]');
+      if (!sec) { render(); return; }
+      const tmp = document.createElement('div');
+      tmp.innerHTML = renderTrackerSection(entity, 'read');
+      const nova = tmp.firstElementChild;
+      const otevrenaHistorie = sec.querySelector('details.tracker-history');
+      if (otevrenaHistorie && otevrenaHistorie.open) {
+        const d = nova.querySelector('details.tracker-history');
+        if (d) d.open = true;
+      }
+      sec.replaceWith(nova);
+      attachTrackerHandlers(entity);
+      if (fokusSelektor) {
+        const el = nova.querySelector(fokusSelektor);
+        if (el) el.focus();
+      }
+    };
+    const aktualni = () => {
+      const r = trackerRozpracovano(entity);
+      return r !== null ? r : trackerGetValue(entity);
+    };
+    document.querySelectorAll('section.tracker-section button[data-tracker-delta]').forEach(btn => {
+      btn.onclick = () => {
+        const delta = Number(btn.dataset.trackerDelta);
+        if (!isFinite(delta) || delta === 0) return;
+        // Zaokrouhlení proti chybám plovoucí čárky (0,1 + 0,2)
+        const nova = parseFloat((aktualni() + delta).toFixed(10));
+        trackerNastavRozpracovano(entity, nova);
+        prekresli('button[data-tracker-delta="' + btn.dataset.trackerDelta + '"]');
+      };
+    });
+    const setBtnR = document.getElementById('tracker-set-btn');
+    if (setBtnR) {
+      setBtnR.onclick = async () => {
+        const raw = await promptDialog('Nastavit hodnotu na:', String(aktualni()));
+        if (raw === null) return;
+        const newV = Number(String(raw).replace(',', '.'));
+        if (!isFinite(newV)) { toast('Neplatné číslo.'); return; }
+        trackerNastavRozpracovano(entity, newV);
+        prekresli('#tracker-set-btn');
+      };
+    }
+    const ulozitBtn = document.getElementById('tracker-ulozit-btn');
+    if (ulozitBtn) {
+      ulozitBtn.onclick = () => {
+        const newV = trackerRozpracovano(entity);
+        if (newV === null) return;
+        const oldV = trackerGetValue(entity);
+        const pozn = document.getElementById('tracker-poznamka');
+        const delta = parseFloat((newV - oldV).toFixed(10));
+        const poznamka = (pozn && pozn.value.trim()) || (delta > 0 ? '+' + trackerFmt(delta) : '−' + trackerFmt(-delta));
+        if (!entity.attributes) entity.attributes = {};
+        entity.attributes.tracker_value = newV;
+        trackerRecordChange(entity, oldV, newV, poznamka);
+        trackerNastavRozpracovano(entity, null);
+        entity.updated_at = nowIso();
+        save();
+        playSound('save');
+        toast('Hodnota uložena: ' + trackerFmt(newV) + (trackerGetUnit(entity) ? ' ' + trackerGetUnit(entity) : '') + '.');
+        prekresli('button[data-tracker-delta]');
+      };
+    }
+    const poznamkaInput = document.getElementById('tracker-poznamka');
+    if (poznamkaInput) {
+      poznamkaInput.onkeydown = (ev) => {
+        if (ev.key === 'Enter') { ev.preventDefault(); if (ulozitBtn) ulozitBtn.click(); }
+      };
+    }
+    const zahoditBtn = document.getElementById('tracker-zahodit-btn');
+    if (zahoditBtn) {
+      zahoditBtn.onclick = () => {
+        trackerNastavRozpracovano(entity, null);
+        prekresli('button[data-tracker-delta]');
+      };
+    }
+  }
+  // +/- tlačítka (edit mód)
+  if (inEdit) document.querySelectorAll('button[data-tracker-delta]').forEach(btn => {
     btn.onclick = () => {
       const delta = Number(btn.dataset.trackerDelta);
       if (!isFinite(delta) || delta === 0) return;
@@ -47493,7 +47615,7 @@ function attachTrackerHandlers(entity) {
     };
   });
   // Set… tlačítko – dialog na nastavení konkrétní hodnoty
-  const setBtn = document.getElementById('tracker-set-btn');
+  const setBtn = inEdit ? document.getElementById('tracker-set-btn') : null;
   if (setBtn) {
     setBtn.onclick = async () => {
       const oldV = trackerGetValue(entity);

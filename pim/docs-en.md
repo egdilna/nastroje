@@ -72,7 +72,7 @@ An aspect is a "role" of an entity. You can assign any number:
 | **Event** | Start, end, location, agenda — **plus a "Meeting tasks" section** |
 | **Project** | Dashboard with sections for tasks, goals, documents, etc. |
 | **Plan** | WBS task table with deadlines, predecessors, statuses, entity linking |
-| **Tracker** | Value, unit, target, change history |
+| **Tracker** | Value, unit, target, change history. In the detail view the value is changed with −10, −1, +1, +10 buttons (multiples of the step) and is written only by „💾 Uložit hodnotu" (Save value), optionally with a note; „Zahodit" (Discard) cancels it |
 | **Diagram** | PlantUML source + preview, copy actions |
 | **Structured document** | Outline editor with custom styles, numbering (arabic/letters/roman, multi-level), H1–H6 headings, collapsible sections and Markdown blocks; export to MD and DOCX (tracked changes from CriticMarkup) |
 | **Presentation / Slide** | Slide-by-slide mode with timer (T/R keys, MM:SS / H:MM:SS) |
