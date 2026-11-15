@@ -2,6 +2,15 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.20.0] — 2026-11-15
+
+### Přidáno
+- Kopírování ustanovení: odkaz do aplikace v Markdownu jen s citací.
+- U vyznačeného ustanovení s popisným názvem odkaz do aplikace v Markdownu ve tvaru „[Název (citace)](adresa)“ a, má-li vyznačení poznámku, i varianta s poznámkou v závorce za odkazem.
+
+### Změněno
+- „Markdown s odkazem“ přejmenováno na „Odkaz do aplikace v Markdownu s textem ustanovení“.
+
 ## [1.19.1] — 2026-11-12
 
 ### Změněno
