@@ -76,6 +76,7 @@ multisection
 
 | Datum | Typ | Popis |
 | --- | --- | --- |
+| 13. 11. 2026 | Funkce | Teď umí prohlížeč nejen prohlížec data dle ručně vložených URL adres, ale hlavně hledat a rovnou načíst data z Národního katalogu dat. |
 | 19. 4. 2026 | Funkce | Po načtení lze vytvořit statický URL odkaz, kterým se rovnou načtou data připravené datové sady. Tímhle se z toho stává opravdu univerzální prohlížeč, kterým lze rovnou přes odkaz zobrazit jakoukoliv datovou sadu otevřených dat. |
 | 18. 4. 2026 | Vylepšení | Nyní načítá datové sady ve formátech JSON, JSONLD, JSONTABLE a CSV, TSV. |
 
