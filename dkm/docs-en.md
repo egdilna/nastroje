@@ -1748,6 +1748,25 @@ Then **Save** (Ctrl+S) saves directly to GitHub.
 
 Saving comes with **sound feedback** — a short rising tone on success, a darker falling one on failure (missing path, missing token, a GitHub rejection or a network error). It can be switched off in Settings → General.
 
+#### GitLab (gitlab.com or a self-hosted server)
+
+DKM does the same with **GitLab** — on gitlab.com or on your own instance. It is recognised by
+the shape of the path, which contains the `/-/` separator (the same one GitLab uses in its URLs):
+
+```
+gitlab.com/group/subgroup/project/-/path/file.dkmdata
+git.company.com/team/project/-/data/project.dkmdata
+group/project/-/file.dkmdata              (no server = gitlab.com)
+```
+
+A file URL copied from the browser (`https://server/group/project/-/blob/branch/file.dkmdata`)
+works too — the branch is taken from it. Otherwise the project's default branch is used.
+
+The token (personal access token with the **api** scope) is entered in **Settings → GitHub / GitLab**,
+one per server; it is stored only in the browser. Saving, autosave, merging when two people
+work at once and the `?id=` link all work the same as with GitHub. A self-hosted server must
+allow cross-origin requests (CORS) — GitLab does that for its API by default.
+
 #### Two people on one project
 
 DKM expects more than one person to work on the same file. **The file is not overwritten
@@ -2919,9 +2938,9 @@ itself.
 the enabled types, the enabled aspects, pinned views and Archive with "hide when empty".
 Nothing is lost and nothing asks.
 
-### 29.9 GitHub
+### 29.9 GitHub / GitLab
 
-Personal access token for GitHub API. Stored in the browser's localStorage (per origin).
+Personal access token for the GitHub API and GitLab tokens (one per server). Stored in the browser's localStorage (per origin).
 
 ### 29.10 AI
 
@@ -3600,6 +3619,7 @@ both formats, machine-readable schemas included, is in `dkm/dkm-formats-en.md` (
 | `dkm-autosave`, `dkm-debug`, `dkm-sound`, `dkm-wiki-suggest`, `dkm-gh-autosave` | switches in Settings → General |
 | `dkm-ai-provider`, `dkm-ai-key`, `dkm-ai-model` | AI connection (see ch. 35) |
 | `dkm-github-token` | GitHub PAT (per origin) |
+| `dkm-gitlab-tokens` | GitLab tokens, a server → token map (per origin) |
 | `dkm-handoff-…` | short-lived data handoff to a standalone window; an unconsumed one is cleaned up after 10 minutes |
 | `dkm-viewer-lang`, `dkm-viewer-theme` | choices in a generated static viewer |
 
@@ -3610,6 +3630,11 @@ on both sides with the **Git Data API**: content the Contents API will not retur
 from the blob by SHA, and a file over 1 MB is saved as a commit assembled from a blob, a tree
 and a branch update. The branch is the repository's default branch. The token is stored in
 `localStorage['dkm-github-token']` (per origin) and never reaches the project data.
+
+**GitLab** (a path with `/-/`) uses API v4: reads via `repository/files` (no 1 MB limit,
+`…/raw` as a fallback), writes always as one commit via `repository/commits`. Overwrite
+protection is `last_commit_id` — the commit we started from; if the file has changed in the
+meantime, GitLab rejects the write and DKM merges. Tokens live in `localStorage['dkm-gitlab-tokens']`.
 
 ### 34.4 Rendering
 

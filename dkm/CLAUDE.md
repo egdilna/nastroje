@@ -45,6 +45,7 @@ rozbije parsování).
 | `dkm-gh-autosave` (`SK_GHAUTO`) | předvolba „po načtení zapnout AutoSave na GitHub“ — per prohlížeč, **ne** v datech projektu |
 | `dkm-theme` (`SK_THEME`) | grafický motiv (`light`/`dark`/`paper`/`matrix`) — per prohlížeč |
 | `dkm-github-token` | GitHub PAT — **nikdy nelogovat, needovat do dat ani do URL** |
+| `dkm-gitlab-tokens` (`SK_GLTOKENS`) | GitLab tokeny, mapa server → token — stejná pravidla jako GitHub token |
 | `dkm-username` (`SK_USERNAME`) | jméno autora komentářů — per prohlížeč, **ne** v datech projektu (`userName()` / `setUserName()`, migrace ze starých dat v `mergeEmpty`) |
 | `dkm-handoff-…` (`SK_HANDOFF_PREFIX`) | předání entity do samostatného okna |
 
@@ -954,6 +955,27 @@ mezikopie, a totéž platí pro `decodeURIComponent(escape(atob(…)))` při čt
 Tempo je adaptivní: `GH_KONTROLA_CILA_MS` (20 s) při práci, `GH_KONTROLA_KLID_MS` (120 s)
 v klidu; přepíná to `ghPosledniCinnost`. Ani to rychlé tempo není drahé — 180 dotazů za hodinu
 proti limitu 5000.
+
+## GitLab vedle GitHubu
+O poskytovateli rozhoduje **tvar cesty** v `state.data.ghPath`: obsahuje-li `/-/`, je to GitLab
+(`server/skupina/…/projekt/-/cesta`, server lze vynechat = gitlab.com, z vložené adresy
+`…/-/blob/větev/…` se vezme i větev). `parseGhPath` je rozcestník a GitLab vrací objekt
+s `druh:'gitlab'`. Názvy `ghPath`, `ghSha`, `saveToGitHub` zůstaly — přejmenovávat je by
+rozbilo data i půl souboru; uvnitř se větví na nízké úrovni:
+`ghNactiSoubor` / `ghShaSouboru` / `ghPosledniCommitZeSite` / `doPut` v `saveToGitHub` →
+`glNactiSoubor` / `glShaSouboru` / `glPosledniCommit` / `glUlozit`. Smyčka „konflikt →
+sloučit → znovu", autosave, kontrola cizích commitů i `?id=` se tím o GitLab starat nemusí.
+
+- **Zápis jde vždy přes Commits API** (`repository/commits`), malý i velký jednou cestou;
+  čtení přes `repository/files` (bez meze 1 MB), záložně `…/raw`.
+- **Ochranu proti přepsání nese `last_commit_id`** — u GitLabu drží `state.ghSha` právě ten,
+  ne sha blobu. GitLab na nesedící commit i na „soubor už existuje" odpoví 400; podle textu
+  se to nerozlišuje, `glUlozit` při 400 porovná skutečný `last_commit_id` a vrátí
+  `{__konflikt:true}`. **Nikdy si ho nedotahuj čerstvý jen proto, aby zápis prošel.**
+- **Token je per server** (`glToken(host)`), kontrola „je nastaveno" jde vždy přes
+  `repoToken(parsed)` / `repoPripraveno(cesta)`, ne přes `ghToken()`.
+- Ověřeno simulovaným GitLabem v Playwrightu (založení souboru, načtení, cizí commit →
+  400 → sloučení → nové uložení). Proti živé instanci ověřené není.
 
 ## Sloučení běží samo; ptát se je výjimka
 Cizí commit se **slučuje automaticky** (`automatickeSlouceni` → `slucSVzdalenym(parsed,{tiche:true})`).

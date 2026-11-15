@@ -1722,6 +1722,25 @@ Pak **Uložit** (Ctrl+S) uloží přímo do GitHubu (`Uložit lokálně` zůstá
 Uložení doprovází **zvuková odezva** — po úspěchu krátký stoupavý tón, po neúspěchu temnější klesavý (chybějící cesta, chybějící token, zamítnutí GitHubu i síťová chyba). Dá se vypnout v Nastavení → Obecné.
 
 
+#### GitLab (gitlab.com i vlastní server)
+
+Totéž umí DKM s **GitLabem** — na gitlab.com i na vlastní instanci. Pozná se podle tvaru cesty,
+ve které je oddělovač `/-/` (stejný, jaký používá GitLab ve svých adresách):
+
+```
+gitlab.com/skupina/podskupina/projekt/-/cesta/soubor.dkmdata
+git.firma.cz/tym/projekt/-/data/projekt.dkmdata
+skupina/projekt/-/soubor.dkmdata          (bez serveru = gitlab.com)
+```
+
+Vložit jde i adresa souboru zkopírovaná z prohlížeče (`https://server/skupina/projekt/-/blob/větev/soubor.dkmdata`)
+— z ní se vezme i větev. Jinak se ukládá do výchozí větve projektu.
+
+Token (personal access token s rozsahem **api**) se zadává v **Nastavení → GitHub / GitLab**
+zvlášť pro každý server; uložený je jen v prohlížeči. Ukládání, automatické ukládání,
+slučování při souběhu dvou lidí i odkaz `?id=` fungují stejně jako u GitHubu. Vlastní server
+musí povolovat požadavky z jiné domény (CORS) — GitLab to pro své API ve výchozím nastavení dělá.
+
 #### Dva lidé na jednom projektu
 
 DKM počítá s tím, že na témž souboru dělá víc lidí. **Nepřepisuje se celý soubor** —
@@ -2864,9 +2883,9 @@ soustavy tagů nebo entity **rovnou v aplikaci** záložky uklidí samo.
 zapnuté typy, zapnuté aspekty, připnuté pohledy a Archiv se „skrýt, když je prázdná". Nic se
 neztratí a nic se neptá.
 
-### 29.9 GitHub
+### 29.9 GitHub / GitLab
 
-Personal access token pro GitHub API. Uložený v localStorage prohlížeče (per-origin).
+Personal access token pro GitHub API a tokeny pro GitLab (jeden na server). Uložené v localStorage prohlížeče (per-origin).
 
 ### 29.10 AI
 
@@ -3538,6 +3557,7 @@ včetně strojových schémat je v `dkm/dkm-formats-cs.md` (viz kap. 37):
 | `dkm-autosave`, `dkm-debug`, `dkm-sound`, `dkm-wiki-suggest`, `dkm-gh-autosave` | přepínače v Nastavení → Obecné |
 | `dkm-ai-provider`, `dkm-ai-key`, `dkm-ai-model` | napojení na AI (viz kap. 35) |
 | `dkm-github-token` | GitHub PAT (per origin) |
+| `dkm-gitlab-tokens` | GitLab tokeny, mapa server → token (per origin) |
 | `dkm-handoff-…` | krátkodobé předání dat do samostatného okna; nespotřebované se uklidí po 10 minutách |
 | `dkm-viewer-lang`, `dkm-viewer-theme` | volby ve vygenerovaném statickém prohlížeči |
 
@@ -3548,6 +3568,11 @@ Běžné čtení i zápis jde přes **Contents API**. Mez 1 MB se obchází na o
 nad 1 MB se ukládá jako commit složený z blobu, stromu a posunu větve. Větev je výchozí
 větev repozitáře. Token je uložený v `localStorage['dkm-github-token']` (per origin)
 a do dat projektu se nikdy nedostane.
+
+**GitLab** (cesta s `/-/`) jde přes API v4: čtení `repository/files` (obsah bez meze 1 MB,
+záložně `…/raw`), zápis vždy jedním commitem přes `repository/commits`. Ochranu proti
+přepsání nese `last_commit_id` — commit, ze kterého jsme vyšli; když se soubor mezitím
+změnil, GitLab zápis odmítne a DKM sloučí. Tokeny jsou v `localStorage['dkm-gitlab-tokens']`.
 
 ### 34.4 Rendering
 
