@@ -155,7 +155,8 @@ zobrazuje se seřazené.
   Komentáře jako nativní `comments[]`. Štítky, skupiny a účinnost se nepřenášejí.
 
 ## Kopírování
-`formatyKopirovani()` (ustanovení) a `formatyKopirovaniPredpisu()` (sekce Kopírovat na stránce
+`formatyKopirovani()` (ustanovení: mimo jiné odkaz do aplikace v Markdownu s citací, s textem ustanovení,
+u vyznačení s popisným názvem „[Název (citace)](adresa)“ a s poznámkou vyznačení v závorce za odkazem) a `formatyKopirovaniPredpisu()` (sekce Kopírovat na stránce
 předpisu: citace, plný název, informace o předpisu v Markdownu = odkaz s plným názvem + popis,
 odkazy do aplikace a e-Sbírky jako adresa i Markdown). `adresaEli()` — ELI e-Sbírky
 `https://e-sbirka.gov.cz/eli/cz/sb/{rok}/{číslo}/{znění}[/dokument/{klíč}]`; datum znění je povinné
