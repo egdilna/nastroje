@@ -65,6 +65,7 @@ upravte v `lib.mjs`.
 | `ukol-panel.mjs` | Panel úkolu v detailu: stav a termín nad atributy (ne mezi tlačítky), přeplánování slovy, termín i prázdný. |
 | `ukoly-termin.mjs` | Tlačítko ⏰ Termín v Úkolech: společný dialog, zadání slovy, mazání termínu. |
 | `staticky-prohlizec.mjs` | Vygenerovaný offline prohlížeč se načte a ukazuje totéž. |
+| `gitlab.mjs` | GitLab jako úložiště báze i cíl `glpath`/`glpngpath` proti simulovanému GitLab API (Playwright `route`): rozklad cest, nastavení, nahrání, načtení, sloučení při cizím zápisu (`last_commit_id`), kontrola cizích commitů, raw pro velký soubor, přílohy, pojistka, `?id=` s tokenem i přes dialog, tokeny per server a že `ghpath` dál jde na GitHub. |
 
 ## Psaní nové sady
 

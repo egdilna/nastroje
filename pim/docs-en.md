@@ -1285,7 +1285,7 @@ For entities with the **Project** aspect, the dialog also offers a **Tasks by ca
 
 ### Link to a specific entity
 
-In the entity detail there is a **🔗 Copy link** button that copies a link pointing directly to this entity to the clipboard (it carries both the database and the specific entity via the `?id=…&e=…` parameters). Opening the link loads the database from GitHub and jumps straight to that entity. The address bar also keeps this link up to date as you open entities, so it can be copied straight from there.
+In the entity detail there is a **🔗 Copy link** button that copies a link pointing directly to this entity to the clipboard (it carries both the database and the specific entity via the `?id=…&e=…` parameters). Opening the link loads the database from GitHub or GitLab (wherever it lives) and jumps straight to that entity. The address bar also keeps this link up to date as you open entities, so it can be copied straight from there.
 
 ## Archived items in the detail view
 
@@ -1360,15 +1360,26 @@ Secured entities never make it into the background material (the app says so whe
 
 The model has a default; the **Model** field in settings can override it when needed. The **Verify connection** button tests the setup. The feature lives in the application only — the generated offline viewer does not contain it, and the key never reaches an export, the GitHub sync or the static viewer.
 
-## Data sync with GitHub
+## Data sync with GitHub or GitLab
 
-In Settings, set a GitHub Personal Access Token (fine-grained) and the target repository. The **☁ Sync** button (`Alt+Shift+S`) saves the current state (JSON) as a commit via the Contents API. For large files (>900 KB) the Git Blob API is used.
+In Settings → **Repository sync**, choose the service — **GitHub** or **GitLab** (gitlab.com as well as a self-hosted server) — and the target repository. The **☁ Sync** button (`Alt+Shift+S`) saves the current state (JSON) as a commit. Everything else works the same on both services: autosave, merging with other people's work (`Alt+Shift+M`), the guard against overwriting data that was never loaded, attachments, hard reload, the `?id=` link and the entity link.
+
+- **GitHub:** Personal Access Token (fine-grained, “Contents – read & write”), owner, repository, branch, file path.
+- **GitLab:** server (`gitlab.com`, `git.company.com`, `http://…` for an unencrypted server), **group** (may contain subgroups, e.g. `company/team`), **project**, branch (empty = the project's default branch) and path. The token (Personal Access Token with the `api` scope, at least Developer role) belongs **to a specific server** — every GitLab server has its own.
+
+The **Fill in from a file address** field parses an address copied from the browser (`https://github.com/…/blob/main/pim.json` as well as `https://gitlab.com/…/-/blob/main/pim.json`) and fills in everything else.
+
+The **GitLab tokens** section holds tokens for every server you work with (including the `glpath`/`glpngpath` attributes, which may point somewhere other than the database). Tokens are stored in the browser only (localStorage), never in the data, an export or the address. A hard reload keeps them.
+
+A **`?id=` link** to a database on GitLab contains `server/group/project/-/path/file.json`. When the browser has no token for that server (or a wrong one), PIM offers a dialog to enter it — just like for a private GitHub repository.
+
+A self-hosted GitLab server must allow browser access (CORS) from the address PIM is opened from; otherwise PIM reports “the server is unreachable (network or CORS)”.
 
 There's also a **static viewer** — generates a standalone HTML file with your entities in read-only mode, suitable for sharing.
 
-### Saving individual files to a repository — `ghpath` and `ghpngpath`
+### Saving individual files to a repository — `ghpath`, `ghpngpath`, `glpath`, `glpngpath`
 
-Besides syncing the whole database, PIM can save **a specific file to a specific location** in any repository. Two custom entity attributes do this:
+Besides syncing the whole database, PIM can save **a specific file to a specific location** in any repository on GitHub or GitLab. Custom entity attributes do this — two for GitHub, two for GitLab:
 
 | Attribute | What it saves | Where the button is |
 |---|---|---|
@@ -1379,7 +1390,19 @@ The value is a path of the form `owner/repo/path/file.ext` — the first two seg
 
 Files are written to the `main` branch and an **existing file is overwritten** (PIM looks up its SHA itself); if the file does not exist yet, it is created. The same GitHub token as for sync is used.
 
-The two attributes are independent: an entity can have just one of them, or both — each button then saves a different file to a different location.
+On **GitLab** the attributes are `glpath` (entity body, **☁ Save to GitLab** button) and `glpngpath` (diagram PNG, **☁ Save PNG to GitLab**). The value has the form:
+
+```
+[server/]group/…/project/-/path/file.ext
+```
+
+- `/-/` separates the project from the path (as in GitLab web addresses) — the group may have any number of subgroups.
+- The server can be omitted, meaning `gitlab.com`: `egdilna/web/-/content/page.md`.
+- A file address from the browser can be pasted as is, e.g. `https://git.company.com/team/docs/-/blob/dev/guide.md` — the branch is taken from it. Otherwise the project's default branch is used.
+
+The token is picked by server from the **GitLab tokens** section, and **it does not matter where the database itself lives** — the database can be on GitHub while the entity body is saved to GitLab (even to a different server than the database). An existing file is overwritten, a missing one is created.
+
+The attributes are independent: an entity can have any of them or all at once — each button saves a different file to a different location.
 
 ### Wiki links in exports: bold title, aspects in italics
 

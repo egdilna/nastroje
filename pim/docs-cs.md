@@ -1268,7 +1268,7 @@ U entit s aspektem **Projekt** nabízí dialog navíc volbu **Úkoly po kategori
 
 ### Odkaz na konkrétní entitu
 
-V detailu entity je tlačítko **🔗 Kopírovat odkaz**, které do schránky uloží odkaz vedoucí přímo na tuto entitu (drží databázi i konkrétní entitu přes parametry `?id=…&e=…`). Po otevření odkazu se načte databáze z GitHubu a skočí se rovnou na danou entitu. Adresní řádek navíc tento odkaz průběžně udržuje aktuální podle otevřené entity, takže jde zkopírovat i přímo odtud.
+V detailu entity je tlačítko **🔗 Kopírovat odkaz**, které do schránky uloží odkaz vedoucí přímo na tuto entitu (drží databázi i konkrétní entitu přes parametry `?id=…&e=…`). Po otevření odkazu se načte databáze z GitHubu nebo GitLabu (podle toho, kde leží) a skočí se rovnou na danou entitu. Adresní řádek navíc tento odkaz průběžně udržuje aktuální podle otevřené entity, takže jde zkopírovat i přímo odtud.
 
 ## Archivované položky v detailu
 
@@ -1350,15 +1350,26 @@ z importu JSON i ZIP — se proto po načtení srovnají. Text s windowsovými k
 (`\r\n`) by se jinak nezpracoval vůbec: nadpisy, seznamy ani tabulky by se nevykreslily
 a editace sekcí by v takovém obsahu nenašla ani jednu sekci.
 
-## Datová synchronizace s GitHubem
+## Datová synchronizace s GitHubem nebo GitLabem
 
-V Nastavení nastavte GitHub Personal Access Token (fine-grained) a cílový repozitář. Tlačítko **☁ Sync** (`Alt+Shift+S`) uloží aktuální stav (JSON) jako commit přes Contents API. Pro velké soubory (>900 KB) se použije Git Blob API.
+V Nastavení → **Synchronizace s repozitářem** zvolte službu — **GitHub**, nebo **GitLab** (gitlab.com i vlastní server) — a cílový repozitář. Tlačítko **☁ Sync** (`Alt+Shift+S`) uloží aktuální stav (JSON) jako commit. Všechno ostatní funguje na obou službách stejně: autosave, slučování s prací ostatních (`Alt+Shift+M`), pojistka proti přepsání nenačtených dat, přílohy, tvrdé načtení, odkaz `?id=` i odkaz na entitu.
+
+- **GitHub:** Personal Access Token (fine-grained, oprávnění „Contents – read & write"), vlastník, repozitář, větev, cesta k souboru.
+- **GitLab:** server (`gitlab.com`, `git.firma.cz`, u nešifrovaného serveru `http://…`), **skupina** (smí mít podskupiny, např. `firma/tym`), **projekt**, větev (prázdná = výchozí větev projektu) a cesta. Token (Personal Access Token s rozsahem `api`, role aspoň Developer) patří **ke konkrétnímu serveru** — každý GitLab server má vlastní.
+
+Pole **Vyplnit z adresy souboru** rozloží adresu zkopírovanou z prohlížeče (`https://github.com/…/blob/main/pim.json` i `https://gitlab.com/…/-/blob/main/pim.json`) a vyplní všechno ostatní.
+
+Sekce **GitLab tokeny** drží tokeny pro všechny servery, se kterými pracujete (i pro atributy `glpath`/`glpngpath`, které mohou mířit jinam než báze). Tokeny se ukládají jen v prohlížeči (localStorage), nikdy do dat, exportu ani adresy. Tvrdé načtení je nemaže.
+
+**Odkaz `?id=`** na bázi na GitLabu má uvnitř tvar `server/skupina/projekt/-/cesta/soubor.json`. Když pro ten server v prohlížeči není token (nebo je špatný), PIM nabídne dialog na jeho zadání — stejně jako u soukromého repozitáře na GitHubu.
+
+Vlastní GitLab server musí povolovat přístup z prohlížeče (CORS) pro adresu, odkud PIM otevíráte; jinak se hlásí „server je nedostupný (síť, nebo CORS)".
 
 Také je k dispozici **statický prohlížeč** — generuje samostatný HTML soubor s vašimi entitami v read-only režimu, vhodný pro sdílení.
 
-### Ukládání jednotlivých souborů do repozitáře — `ghpath` a `ghpngpath`
+### Ukládání jednotlivých souborů do repozitáře — `ghpath`, `ghpngpath`, `glpath`, `glpngpath`
 
-Kromě synchronizace celé databáze umí PIM uložit **konkrétní soubor na konkrétní místo** v libovolném repozitáři. Slouží k tomu dva vlastní atributy entity:
+Kromě synchronizace celé databáze umí PIM uložit **konkrétní soubor na konkrétní místo** v libovolném repozitáři na GitHubu nebo GitLabu. Slouží k tomu vlastní atributy entity — dva pro GitHub, dva pro GitLab:
 
 | Atribut | Co uloží | Kde je tlačítko |
 |---|---|---|
@@ -1369,7 +1380,19 @@ Hodnotou je cesta ve tvaru `owner/repo/cesta/soubor.ext` — první dva segmenty
 
 Ukládá se do větve `main` a **existující soubor se přepíše** (PIM si sám dohledá jeho SHA); pokud soubor ještě neexistuje, vytvoří se. Používá se stejný GitHub token jako pro synchronizaci.
 
-Oba atributy jsou nezávislé: entita může mít jen jeden z nich, nebo oba — pak se každým tlačítkem uloží jiný soubor na jiné místo.
+Na **GitLab** to dělají atributy `glpath` (tělo entity, tlačítko **☁ Uložit na GitLab**) a `glpngpath` (PNG diagramu, **☁ Uložit PNG na GitLab**). Hodnota má tvar:
+
+```
+[server/]skupina/…/projekt/-/cesta/soubor.ext
+```
+
+- `/-/` odděluje projekt od cesty (stejně jako ve webových adresách GitLabu) — skupina může mít libovolně podskupin.
+- Server lze vynechat, pak je to `gitlab.com`: `egdilna/web/-/obsah/stranka.md`.
+- Jde vložit rovnou adresa souboru z prohlížeče, např. `https://git.firma.cz/tym/dokumentace/-/blob/vyvoj/navod.md` — z ní se vezme i větev. Jinak se zapisuje do výchozí větve projektu.
+
+Token se bere podle serveru ze sekce **GitLab tokeny** a **nezáleží na tom, kde leží samotná báze** — báze může být na GitHubu a tělo entity se přitom ukládá na GitLab (i na jiný server, než kde je báze). Existující soubor se přepíše, chybějící vznikne.
+
+Atributy jsou nezávislé: entita může mít kterýkoli z nich i všechny najednou — každým tlačítkem se uloží jiný soubor na jiné místo.
 
 ### Wiki odkazy v exportu: tučný název, aspekty kurzívou
 

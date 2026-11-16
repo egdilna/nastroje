@@ -391,6 +391,60 @@ pro znaky a uživatel by jím omylem spouštěl sloučení.
 Hlídá to `pim/testy/slouceni.mjs` (pravidla na čisté `slucDb()`, celé kolečko přes
 podvrženou `GH._api`, kanárci na obsah entit).
 
+## GitLab vedle GitHubu
+
+Úložiště báze může být GitHub, nebo GitLab (gitlab.com i vlastní server). O poskytovateli
+rozhoduje `state.settings.github.provider` (`'github'` | `'gitlab'`, chybí = GitHub).
+**Názvy `settings.github`, `db.ghMeta`, `GH`, `att.ghPath`, stav přílohy `'github'` zůstaly** —
+přejmenování by rozbilo uložená nastavení i data. U GitLabu znamená `host` server
+(`gitlab.com`, `git.firma.cz:8443`, u http se drží `http://`), `owner` jmenný prostor
+(smí mít víc úrovní), `repo` projekt a prázdný `branch` výchozí větev projektu.
+
+Vrstva je v bloku `GITLAB VEDLE GITHUBU` těsně před `const GH = {`. **Větví se na nízké
+úrovni**, volající kód o poskytovateli neví:
+
+| GitHub | GitLab |
+|---|---|
+| `GH._getRemoteFile` (Contents API) | `glMetaSouboru` (`repository/files`) |
+| `GH._fetchContent` (+ blob API nad 1 MB) | `glBajtySouboru` (obsah, záložně `…/raw`) |
+| `PUT contents` v `upload()` | `glZapisSoubor` (Commits API s `last_commit_id`) |
+| `_putBinaryFile` / `_deleteFile` | `glPrepisSoubor` / `glSmazSoubor` |
+| `ghPosledniCommitSha` | `glPosledniCommitSha` |
+
+Smyčka „konflikt → sloučit → znovu", autosave, `ghDataNactena()`, kontrola cizích
+commitů, přílohy i tvrdé načtení jsou společné.
+
+- **`sha` u GitLabu = `last_commit_id` souboru.** Tutéž hodnotu GitLab chce zpátky při
+  zápisu jako ochranu proti přepsání a tutéž vrací seznam commitů nad cestou, takže
+  `db.ghMeta.sha`, `_ghZnamyCommit` i porovnání v `slucSVzdalenym` fungují beze změny.
+  GitLab na nesedící commit i na „soubor už existuje" odpoví 400; `glZapisSoubor` porovná
+  skutečný stav a cizí zápis vrátí jako **409**, tedy stejně jako GitHub. **Nikdy si
+  `last_commit_id` nedotahuj čerstvý jen proto, aby zápis prošel.**
+- **Zápis vždy přes Commits API** — malý i velký jednou cestou, mez 1 MB tu není.
+- **Token:** `GH.getToken()` vrací token nastaveného úložiště (u GitLabu token jeho
+  serveru), `GH._ghToken()` vždy GitHub token — ten používá `GH._api` a `ghpath`.
+  Tokeny GitLabu: `glToken(host)` / `glSetToken(host, v)`, klíč `GL_TOKENS_KEY`. Tvrdé
+  načtení maže `pim_*` klíče **kromě obou tokenů**.
+- **Cesta textem** (`ghCestaRepa`) jde do `?id=` i `db.ghMeta.path`: GitHub
+  `owner/repo/cesta`, GitLab `server/skupina/…/projekt/-/[blob/větev/]cesta`. `/-/` je
+  rozlišovací znak (`jeGitlabCesta`); rozklad dělá `parseGlPath` (tentýž tvar jako v DKM),
+  nastavení z ní `ghNastavZCesty`. `?id=` se dekóduje jako UTF-8 — kódovalo se tak vždy,
+  dekódovalo dřív jako Latin-1 a cesty s diakritikou se rozbily.
+- **Odkaz do webu repozitáře** (příloha, export, tabulka příloh) jen přes
+  `ghWebUrlSouboru(cesta)`, ne skládáním `https://github.com/…`.
+- **Hlášky** používají `ghJmeno()` (`'GitHub'` | `'GitLab'`). Čeština skloňuje oba názvy
+  stejně (GitHubu/GitLabu, GitHubem/GitLabem), takže se jen dosadí. Výjimka: hlášky
+  `ghpath` a chyby `GH._api` jsou vždy GitHub — volají GitHub bez ohledu na úložiště.
+- **`glpath` / `glpngpath`** jdou přes tutéž `pushToGhPath` jako `ghpath`/`ghpngpath`;
+  o službě rozhoduje předpona názvu atributu. Token se bere podle serveru z cesty,
+  **nezávisle na úložišti báze**. Větev z adresy `…/-/blob/větev/…`, jinak výchozí.
+- Nastavení: `napojNastaveniUloziste()` (přepínání formuláře, „Vyplnit z adresy",
+  sekce GitLab tokeny). Onboarding při `?id=` bez tokenu (`openGithubTokenOnboarding`)
+  se přizpůsobí GitLabu a chybu ukazuje v dialogu (`downloadAndLoad(false, true)`).
+
+Ověřeno simulovaným GitLab API v Playwrightu (`pim/testy/gitlab.mjs`); proti živé instanci
+ověřené není. Vlastní server musí povolovat CORS z adresy, odkud se PIM otevírá.
+
 ## Zvuky: krátké a tiché, protože zní pořád
 
 Ukládání se po zkrácení autosave děje každé čtyři sekundy a sloučení přitéká samo, takže
@@ -1219,8 +1273,10 @@ Během psaní se do bubliny sype **prostý text**; Markdown se vykreslí až po 
 neblikaly rozepsané značky.
 
 ## Integrace
-- **GitHub** (`GH_API`, token v `localStorage["pim_gh_token"]`, modul od ř. 23696) včetně
+- **GitHub** (`GH_API`, token v `localStorage["pim_gh_token"]`, `GITHUB MODUL`) včetně
   **autosave na GitHub** (`scheduleAutosaveGh`, `toggleAutosaveGh`, `updateAutosaveButton`).
+- **GitLab** jako rovnocenná alternativa úložiště i cíl `glpath`/`glpngpath` — tokeny per
+  server v `localStorage["pim_gl_tokens"]`, viz „GitLab vedle GitHubu".
 - **Toggl Track** — `pim_toggl_token`, `pim_toggl_workspace`, `pim_toggl_proxy`
   (proxy kvůli CORS). Token ani proxy URL nikam neloguj.
 - **SheetJS** se načítá **líně** z CDN (`SHEETJS_CDN`) pro XLSX; jinak nástroj běží bez sítě.
@@ -1266,7 +1322,7 @@ TEMPLATES (6745) / ATTACHMENTS (6780) / ROUTING (6893) / RENDER ROUTER (6992) /
 HISTORIE NAVIGACE (7007) / PANELY (7157) / KLÁVESOVÁ NAVIGACE (7378) /
 VIEW: NÁSTĚNKA (7915) / PŘIPOMENUTÍ (7441) / ÚKOLY (9227) / HLEDÁNÍ (9718) / VAZBY (9740) /
 TAGY (9939) / PŘÍZNAKY (10820) / VLASTNÍ POHLEDY (11476) / ŠABLONY (11562) /
-NASTAVENÍ (11622) / DETAIL (12311) / GITHUB MODUL (23832)`.
+NASTAVENÍ (11622) / DETAIL (12311) / GITHUB MODUL (23832) / GITLAB VEDLE GITHUBU (před `const GH`)`.
 Čísla jsou orientační a s každou změnou se posouvají — ber je jako vodítko, ne jako adresu.
 Nová obrazovka = nový `VIEW:` blok + zapojení do routeru (`ROUTING`, `RENDER ROUTER`) a panelů.
 
@@ -1279,7 +1335,7 @@ a čitelnostní pojistky — neruš je, případně zpřístupni v nastavení.
 - Vše česky, texty natvrdo (nemá i18n vrstvu jako DKM).
 - `escapeHtml(s)` všude, kde jde uživatelský text do HTML; renderuje se hodně přes řetězce.
 - Hlášky: `statusMsg` / `toast` / `alertMsg`, ladění `debug(msg)`.
-- Vanilla JS, `'use strict'`, žádný build krok. Jediná stálá externí závislost je GitHub API
+- Vanilla JS, `'use strict'`, žádný build krok. Jediná stálá externí závislost je GitHub / GitLab API
   (+ volitelně Toggl, LINDAT a SheetJS).
 
 ## Přístupnost: název první
@@ -1326,7 +1382,7 @@ příloha pod i nad 256 kB (ověř IndexedDB) → šifrovaný atribut: zamknout,
 (nesmí obsahovat plaintext) → uložení a načtení souboru → **offline prohlížeč** (vygeneruj
 a otevři — hlavní test toho, že šablona odpovídá aplikaci a že escapování v ní sedí;
 zkontroluj i filtrování podle tagů a že se ven nedostalo nic citlivého) →
-GitHub uložení i autosave →
+GitHub uložení i autosave → totéž na GitLabu (`node pim/testy/gitlab.mjs`) →
 přirozené datum v textu → kontrola pravopisu (a chování při nedostupné službě) →
 klávesová navigace v tabulce entit → reload a ověření všech `localStorage` klíčů.
 
