@@ -33112,7 +33112,15 @@ function buildJsonExport(scope, options) {
     const usedAspects = new Set();
     entities.forEach(e => (e.aspects || []).forEach(a => usedAspects.add(a)));
     result.db.customAspects = (db.customAspects || []).filter(ca => usedAspects.has(ca.key));
-    result.db.tags = [...tags];
+    // Ostatní tagy: zapnuto (výchozí) = entity si nesou všechny své tagy a seznam
+    // tagů je všechny obsahuje; vypnuto = jen zaškrtnuté (entity se ořežou níž).
+    if (options.sOstatnimiTagy === false) {
+      result.db.tags = [...tags];
+    } else {
+      const usedTags = new Set(tags);
+      entities.forEach(e => (e.tags || []).forEach(t => usedTags.add(t)));
+      result.db.tags = [...usedTags];
+    }
     result.exportTags = tags;
   } else if (scope === 'view') {
     entities = getCurrentScopeEntities();
@@ -33139,6 +33147,28 @@ function buildJsonExport(scope, options) {
   } else {
     result.db.entities = entities.map(sanitizeEntityForExport);
   }
+  // Volby obsahu. Pracuje se nad kopiemi ze `sanitizeEntityForExport`, do `db` se nesahá.
+  // Výchozí (volba chybí) = vše jako dřív.
+  if (options.sKomentari === false || options.sSledovanimCasu === false ||
+      (scope === 'tags' && options.sOstatnimiTagy === false)) {
+    const ponechatTagy = new Set(options.tags || []);
+    result.db.entities.forEach(e => {
+      if (options.sKomentari === false) e.comments = [];
+      if (options.sSledovanimCasu === false) {
+        // Sledování času = interní pole tt_* a aspekt TimeTracking, který jiná pole nemá.
+        if (e.attributes) Object.keys(e.attributes).forEach(k => { if (k.startsWith('tt_')) delete e.attributes[k]; });
+        if (Array.isArray(e.aspects)) e.aspects = e.aspects.filter(a => a !== 'TimeTracking');
+      }
+      if (scope === 'tags' && options.sOstatnimiTagy === false && Array.isArray(e.tags)) {
+        e.tags = e.tags.filter(t => ponechatTagy.has(t));
+      }
+    });
+  }
+  result.options = {
+    sKomentari: options.sKomentari !== false,
+    sSledovanimCasu: options.sSledovanimCasu !== false
+  };
+  if (scope === 'tags') result.options.sOstatnimiTagy = options.sOstatnimiTagy !== false;
   return result;
 }
 
@@ -33756,6 +33786,8 @@ function openExportDialog(opts) {
       '<div id="exp-files-row" style="margin-top:0.4em;">' +
         '<label><input type="checkbox" id="exp-with-files"> <strong>I soubory příloh</strong> – stáhne se ZIP místo JSONu</label>' +
         '<p class="meta">Do balíčku půjde JSON i soubory. Při importu do druhého PIM se přílohy obnoví; opakovaný import téhož balíčku nic nezdvojí, protože se přílohy poznávají podle id.</p>' +
+        '<label><input type="checkbox" id="exp-with-comments" checked> Exportovat i s komentáři</label><br>' +
+        '<label><input type="checkbox" id="exp-with-timetracking" checked> Exportovat sledování času</label>' +
       '</div>' +
     '</fieldset>' +
 
@@ -33798,6 +33830,8 @@ function openExportDialog(opts) {
         '<button type="button" id="exp-tags-none">Zrušit výběr</button>' +
         '<span class="meta" id="exp-tags-count"></span>' +
       '</div>' +
+      '<p class="meta" id="exp-other-tags-row"><label><input type="checkbox" id="exp-other-tags" checked> Exportovat i ostatní tagy</label> ' +
+        '<span>– vypnuto: entity si ponesou jen zaškrtnuté tagy, ostatní se z nich v exportu odeberou.</span></p>' +
       '<div class="checkbox-list" style="max-height:200px;overflow:auto;border:1px solid #ccc;padding:0.3em;">' +
         allTags.map(t => {
           const n = db.entities.filter(e => !e.archived && (e.tags || []).includes(t)).length;
@@ -33807,7 +33841,8 @@ function openExportDialog(opts) {
     '</fieldset>';
     function updateTagCount() {
       const sel = [...document.querySelectorAll('input[name="exp-tag"]:checked')].map(c => c.value);
-      const n = sel.length === 0 ? 0 : db.entities.filter(e => !e.archived && (e.tags || []).some(t => sel.includes(t))).length;
+      // Stejné pravidlo jako export: entita musí mít VŠECHNY zaškrtnuté tagy.
+      const n = sel.length === 0 ? 0 : db.entities.filter(e => !e.archived && sel.every(t => (e.tags || []).includes(t))).length;
       document.getElementById('exp-tags-count').textContent = ' Vyhovuje ' + n + ' entit.';
     }
     document.querySelectorAll('input[name="exp-tag"]').forEach(cb => cb.onchange = updateTagCount);
@@ -33940,17 +33975,23 @@ function openExportDialog(opts) {
     if (fmt === 'json') {
       const sSoubory = !!(document.getElementById('exp-with-files') || {}).checked;
       const vystup = sSoubory ? downloadZipExport : downloadJsonExport;
+      // Volby obsahu platí pro všechny rozsahy, JSON i ZIP.
+      const zaskrtnuto = (id) => { const el = document.getElementById(id); return el ? el.checked : true; };
+      const obsah = {
+        sKomentari: zaskrtnuto('exp-with-comments'),
+        sSledovanimCasu: zaskrtnuto('exp-with-timetracking')
+      };
       if (scope === 'selected') {
         const ids = [...vybraneId];
         if (ids.length === 0) { alertMsg('Vyber alespoň jednu entitu.'); return; }
         const includeRelated = document.getElementById('exp-include-related').checked;
-        vystup('selected', { entityIds: ids, includeRelated });
+        vystup('selected', Object.assign({ entityIds: ids, includeRelated }, obsah));
       } else if (scope === 'tags') {
         const tags = [...document.querySelectorAll('input[name="exp-tag"]:checked')].map(c => c.value);
         if (tags.length === 0) { alertMsg('Vyber alespoň jeden tag.'); return; }
-        vystup('tags', { tags });
+        vystup('tags', Object.assign({ tags, sOstatnimiTagy: zaskrtnuto('exp-other-tags') }, obsah));
       } else {
-        vystup(scope);
+        vystup(scope, obsah);
       }
       d.close();
       return;
