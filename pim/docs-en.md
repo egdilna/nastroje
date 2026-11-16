@@ -1107,7 +1107,7 @@ so you can carry on with the keyboard. A rescheduled row moves according to its 
 | `r` | Add a link to an existing entity |
 | `Shift+R` | Create a new related entity (you can check the source entity's projects right away) |
 | `c` | Add a comment |
-| `d` | (read, if it has headings) Toggle section-edit mode |
+| `d` | (read, if it has headings) Toggle section-edit mode; each panel remembers it, so it stays on when you switch back |
 | `a` | (read) Toggle annotation mode |
 | `o` | Open the single filled **URL** attribute (same as clicking the link) |
 | `x` / `Alt+Shift+X` | (read) Open Export / print |
