@@ -610,6 +610,22 @@ and entities are matched by their identifier. With the "Vytvořit nové ID" stra
 copied entity gets new attachment identifiers too and the files are restored under
 them.
 
+**Aspect and attribute definitions travel with the entities.** The package carries the
+definitions of the custom aspects the exported entities use, and the import **always** takes
+them — **including the “Jen entity” (entities only) option**. Attribute values therefore show
+under their fields in the target PIM, not as the entity's own attributes:
+
+- an aspect the target PIM does not have is added in full,
+- an aspect it already has is **extended** with missing fields and missing select options —
+  local labels and types are not overwritten; a field with a different type is only reported,
+- a built-in aspect you have switched off in Settings is switched back on,
+- the **“Vše”** (everything) option additionally brings the other custom aspects from the
+  package, saved views and templates.
+
+The message after the import says what happened to the definitions. With the “Vytvořit nové
+ID” strategy, references (links and relation attributes) are rewritten to the new copies
+**only in the imported entities** — your existing entities keep pointing where they did.
+
 When the package carries no files (plain JSON, or a file could not be packaged), the
 attachment gets the state **"Soubor chybí (nebyl v balíčku)"** — its details stay, but
 nothing pretends the file is available. If the same file is already in the target PIM

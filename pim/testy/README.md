@@ -66,6 +66,7 @@ upravte v `lib.mjs`.
 | `ukoly-termin.mjs` | Tlačítko ⏰ Termín v Úkolech: společný dialog, zadání slovy, mazání termínu. |
 | `staticky-prohlizec.mjs` | Vygenerovaný offline prohlížeč se načte a ukazuje totéž. |
 | `export-volby.mjs` | Volby JSON exportu / balíčku: bez komentářů, bez sledování času, u exportu podle tagů bez ostatních tagů; výchozí stav beze změny, do `db` se nesahá, ořezaný balíček jde naimportovat. |
+| `import-definice.mjs` | Import balíčku převezme definice aspektů i u „Jen entity“ (přidá / doplní pole a volby / zapne vypnutý vestavěný), hodnoty nejsou vlastní atributy; nové ID přepisuje odkazy jen v importovaných entitách. |
 | `gitlab.mjs` | GitLab jako úložiště báze i cíl `glpath`/`glpngpath` proti simulovanému GitLab API (Playwright `route`): rozklad cest, nastavení, nahrání, načtení, sloučení při cizím zápisu (`last_commit_id`), kontrola cizích commitů, raw pro velký soubor, přílohy, pojistka, `?id=` s tokenem i přes dialog, tokeny per server a že `ghpath` dál jde na GitHub. |
 
 ## Psaní nové sady
