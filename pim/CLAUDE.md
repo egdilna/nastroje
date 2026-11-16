@@ -68,9 +68,14 @@ Dvě pravidla, která se nesmí porušit:
 2. **Vykresluje se nejvýš `PALETA_MAX_VYSLEDKU` položek.** Entit můžou být tisíce
    a `paletaSestavEntity()` je proto normalizuje jednou při otevření, ne při každém stisku.
 
-Hledání je bez diakritiky a velikosti písmen (`paletaNorm`), víc slov je AND. Předpony
+Hledání je bez diakritiky a velikosti písmen (`paletaNorm`), víc slov je AND. Víc slov
+přesně za sebou (fráze na začátku slova) dostane bonus +300 — jinak „export dat" našlo
+dřív „Data (import / export)" jen kvůli pořadí deklarace. Předpony
 `>` (příkazy), `@` (entity), `#` (tagy) zúží rozsah. Při shodném skóre rozhoduje `_poradi`,
 tedy pořadí deklarace — labely začínají emoji, takže abecední řazení dává nesmysly.
+
+Export a import dat mají vlastní příkazy (`data-export` → `openExportDialog()`,
+`data-import` → `openImportDialog()`), vedle přechodu na obrazovku Data (`data-io`).
 
 Prázdná paleta schválně nevypisuje celý katalog, jen `zakladni: true` pohledy, kontextové
 akce a posledních `PALETA_NEDAVNYCH` změněných entit.

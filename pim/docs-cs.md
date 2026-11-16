@@ -1022,7 +1022,7 @@ písmen nezáleží — `ukoly` najde *Úkoly*. Víc slov se chová jako AND (`z
 - **Seznam** (v pohledu Vše a uložených pohledech) — režim výběru, uložení filtru jako pohled,
   počet zobrazených řádků, řazení podle času změny / vzniku / názvu.
 - **Nástroje** — diagnostika aspektů, osiřelé atributy, migrace, statický prohlížeč.
-- **Data a GitHub** — import/export, uložit, načíst, autosave.
+- **Data a GitHub/GitLab** — **📤 Export dat…** a **📥 Import dat…** (otevřou rovnou dialog, bez cesty přes obrazovku Data), obrazovka Data, uložit, načíst, sloučit, autosave.
 - **Nastavení** — motiv, styl navigace, otevřít nastavení.
 - **Nápověda** — klávesové zkratky.
 - **Tagy** — skok na entity daného tagu: otevře pohled **Vše** s filtrem na ten tag a ostatní

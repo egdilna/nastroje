@@ -1039,7 +1039,7 @@ A leading character narrows the search:
 - **Seznam (List)** (in the All view and saved views) — selection mode, save filter as a view,
   number of rendered rows, sort by change time / creation time / title.
 - **Nástroje (Tools)** — aspect diagnostics, orphan attributes, migrations, static viewer.
-- **Data a GitHub** — import/export, save, load, autosave.
+- **Data a GitHub/GitLab** — **📤 Export dat…** (export data) and **📥 Import dat…** (import data) open the dialog directly, without going through the Data screen; plus the Data screen, save, load, merge, autosave.
 - **Nastavení (Settings)** — theme, navigation style, open settings.
 - **Nápověda (Help)** — keyboard shortcuts.
 - **Tags** — jump to the entities of a tag: opens the **All** view filtered by it and clears the

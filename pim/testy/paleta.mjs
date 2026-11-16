@@ -168,5 +168,28 @@ await p.keyboard.press('Escape');
 await p.waitForTimeout(300);
 ok(await p.evaluate(() => document.activeElement && document.activeElement.id === 'btn-palette'), 'po zavření se fokus vrátí na tlačítko');
 
+// --- Export a Import dat přímo z palety ---
+for (const [dotaz, popisek, dialog] of [['export dat', 'Export dat', 'export-dialog'], ['import dat', 'Import dat', 'import-dialog']]) {
+  await p.evaluate(() => { state.view = 'dashboard'; render(); });
+  await p.waitForTimeout(200);
+  await p.keyboard.press('F1');
+  await p.waitForTimeout(300);
+  await p.fill('#pal-input', '>' + dotaz);
+  await p.waitForTimeout(300);
+  const prvni = (await polozky())[0] || '';
+  ok(prvni.includes(popisek), '„' + dotaz + '" najde příkaz ' + popisek + ' jako první (' + prvni + ')');
+  await p.keyboard.press('Enter');
+  await p.waitForTimeout(500);
+  ok(await p.evaluate((id) => { const d = document.getElementById(id); return !!(d && d.open); }, dialog),
+    popisek + ' otevře rovnou svůj dialog');
+  ok(await p.evaluate(() => state.view === 'dashboard'), popisek + ': zůstane se na místě, bez přechodu na obrazovku Data');
+  await p.evaluate((id) => document.getElementById(id).close(), dialog);
+  await p.waitForTimeout(200);
+}
+const najde = async (dotaz) => { await p.keyboard.press('F1'); await p.waitForTimeout(250); await p.fill('#pal-input', '>' + dotaz); await p.waitForTimeout(250);
+  const r = await polozky(); await p.keyboard.press('Escape'); await p.waitForTimeout(250); return r; };
+ok((await najde('balicek')).some(x => x.includes('Export dat')) && (await najde('importovat zip')).some(x => x.includes('Import dat')),
+  'najdou se i podle klíčových slov (balíček, importovat zip)');
+
 console.log(chyby.length ? chyby.join('\n') : 'ŽÁDNÉ CHYBY');
 await b.close();
