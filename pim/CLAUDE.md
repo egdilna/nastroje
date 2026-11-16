@@ -1133,6 +1133,16 @@ tři pravidla:
 Při strategii „přepsat" se mažou bloby příloh, na které po přepisu nikdo
 neukazuje — jinak by v IndexedDB zůstali sirotci.
 
+**Volby obsahu** (`openExportDialog`, jen formát JSON): `exp-with-comments`,
+`exp-with-timetracking` a u rozsahu `tags` `exp-other-tags` → `options.sKomentari`,
+`sSledovanimCasu`, `sOstatnimiTagy` v `buildJsonExport()`. Výchozí = zapnuto = export
+jako dřív (chybějící volba se bere jako `true`). Ořezává se **až kopie ze
+`sanitizeEntityForExport`**, do `db` se nesahá. Sledování času = pole `tt_*` + aspekt
+`TimeTracking` (jiná pole nemá). Bez ostatních tagů se ořeže `e.tags` i `db.tags`
+balíčku; se zapnutými obsahuje `db.tags` všechny použité tagy. Payload nese `options`.
+Počet „Vyhovuje N entit" počítá totéž pravidlo jako export (**všechny** zaškrtnuté tagy;
+dřív stačil jeden a číslo nesedělo). Hlídá to `pim/testy/export-volby.mjs` (kanárek na `db`).
+
 Hlídá to `pim/testy/prilohy-balicky.mjs` (39 kontrol). Prohlížeč se v ní ověřuje
 **na rozbaleném archivu z disku**: otevře se `file://`, zkontroluje se, že odkazy
 jsou relativní, že se obrázek opravdu načetl (`naturalWidth`) a že nikde není blob

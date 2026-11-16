@@ -571,6 +571,18 @@ same path the attachments have in the GitHub repository.
 | **Transfer between PIMs** | Export dat → JSON → „I soubory příloh" | `pim-export.json`, `attachments/…`, ČTI-MĚ |
 | **Full backup** | Nastavení → Data → Stáhnout ZIP | `pim.json`, `attachments/…`, README |
 
+**What goes into the JSON export and the transfer package.** For the JSON format the
+Export dialog has two checkboxes, both on by default:
+
+- **Exportovat i s komentáři** (export with comments) — off: entities leave without comments.
+- **Exportovat sledování času** (export time tracking) — off: time-tracking entries and the
+  Time tracking aspect are removed; other aspects and attributes stay.
+
+When exporting **by tags**, **Exportovat i ostatní tagy** (export other tags too, on by
+default) appears. Turn it off and entities carry **only the ticked tags** — the others are
+stripped in the export and are left out of the package's tag list too. Useful when internal
+tags should not leave. The options only change the export; your data stays as it is.
+
 **Unpack the whole archive into one folder.** The viewer looks for the files next to
 itself; move the HTML elsewhere and leave `attachments/` behind and the attachments
 stop opening. It also works the other way round with no unpacking at all: upload the

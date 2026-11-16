@@ -563,6 +563,18 @@ cesta, jakou přílohy mají v repozitáři na GitHubu.
 | **Přenos entit mezi PIMy** | Export dat → JSON → „I soubory příloh" | `pim-export.json`, `attachments/…`, ČTI-MĚ |
 | **Záloha celé báze** | Nastavení → Data → Stáhnout ZIP | `pim.json`, `attachments/…`, README |
 
+**Co jde do JSON exportu a balíčku pro přenos.** V dialogu Export dat jsou u formátu JSON
+dvě zaškrtávátka, obě výchozí zapnutá:
+
+- **Exportovat i s komentáři** — vypnuto: entity odejdou bez komentářů.
+- **Exportovat sledování času** — vypnuto: odeberou se záznamy sledování času
+  i aspekt Sledování času; ostatní aspekty a atributy zůstanou.
+
+U exportu **podle tagů** přibude **Exportovat i ostatní tagy** (výchozí zapnuto). Když
+ho vypnete, entity si ponesou **jen zaškrtnuté tagy** — ostatní se z nich v exportu
+odeberou a nebudou ani v seznamu tagů balíčku. Hodí se, když interní tagy nemají odejít
+ven. Volby mění jen export; vaše data zůstávají beze změny.
+
 **Archiv rozbalte celý do jedné složky.** Prohlížeč hledá soubory vedle sebe;
 když se HTML přesune jinam a složka `attachments/` zůstane, přílohy přestanou jít
 otevřít. Fungují ale obráceně i bez rozbalování: když prohlížeč nahrajete do
