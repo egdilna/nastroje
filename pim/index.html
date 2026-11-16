@@ -33327,6 +33327,80 @@ async function obnovPrilohyZBalicku(attachments, soubory) {
   return log;
 }
 
+// === DEFINICE ASPEKTŮ PŘI IMPORTU ===
+// Hodnoty atributů entity mají smysl jen s definicí aspektu (popisek, typ pole,
+// volby výběru). Bez ní se po importu ukazovaly jako „vlastní atributy" entity.
+// Export proto nese definice vlastních aspektů, které exportované entity
+// používají (`buildJsonExport`), a import si je bere **vždycky** — i u „Jen
+// entity"; volba „Vše" k tomu přidá ostatní vlastní aspekty z balíčku.
+//
+// Pravidla:
+//  - chybějící aspekt se přidá celý,
+//  - existující se **doplní** o chybějící pole a u výběrů o chybějící volby;
+//    co už tu je, se nepřepisuje (popisek, typ — místní úpravy mají přednost),
+//    nesoulad typu se jen nahlásí,
+//  - vestavěný aspekt, který má cílový PIM vypnutý, se zapne — jinak by editor
+//    jeho pole neznal a hodnoty by se tvářily jako vlastní atributy,
+//  - aspekt bez definice (starý balíček) se nahlásí, nic se nevymýšlí.
+function importujDefiniceAspektu(payload, vse) {
+  const zprava = { pridano: [], doplnenoPoli: 0, doplnenoVoleb: 0, spory: [], zapnuto: [], chybi: [] };
+  const pouzite = new Set();
+  (payload.db.entities || []).forEach(e => (e.aspects || []).forEach(a => pouzite.add(a)));
+  const definice = Array.isArray(payload.db.customAspects) ? payload.db.customAspects : [];
+  if (!db.customAspects) db.customAspects = [];
+  definice.forEach(ca => {
+    if (!ca || !ca.key) return;
+    if (!vse && !pouzite.has(ca.key)) return;
+    if (ASPECTS[ca.key]) return;            // vestavěný má přednost i u zdroje
+    const mam = db.customAspects.find(x => x.key === ca.key);
+    if (!mam) {
+      db.customAspects.push(JSON.parse(JSON.stringify(ca)));
+      zprava.pridano.push(ca.label || ca.key);
+      return;
+    }
+    if (!Array.isArray(mam.fields)) mam.fields = [];
+    (ca.fields || []).forEach(f => {
+      if (!f || !f.key) return;
+      const m = mam.fields.find(x => x.key === f.key);
+      if (!m) {
+        mam.fields.push(JSON.parse(JSON.stringify(f)));
+        zprava.doplnenoPoli++;
+        return;
+      }
+      if ((m.type || 'text') !== (f.type || 'text')) {
+        zprava.spory.push((mam.label || mam.key) + ' › ' + (m.label || m.key) + ' (zde ' + (m.type || 'text') + ', v balíčku ' + (f.type || 'text') + ')');
+        return;
+      }
+      if (Array.isArray(f.options)) {
+        if (!Array.isArray(m.options)) m.options = [];
+        f.options.forEach(o => { if (!m.options.includes(o)) { m.options.push(o); zprava.doplnenoVoleb++; } });
+      }
+    });
+  });
+  const vypnute = getDisabledAspectKeys();
+  pouzite.forEach(k => {
+    if (ASPECTS[k] && vypnute.includes(k)) {
+      vypnute.splice(vypnute.indexOf(k), 1);
+      zprava.zapnuto.push(aspectLabel(k));
+    }
+  });
+  if (zprava.zapnuto.length) saveSettingsLocal();
+  pouzite.forEach(k => { if (!getAspect(k)) zprava.chybi.push(k); });
+  return zprava;
+}
+// Věta pro uživatele; prázdná = nic se nedělo.
+function popisImportuDefinic(z) {
+  if (!z) return '';
+  const casti = [];
+  if (z.pridano.length) casti.push('přidány aspekty: ' + z.pridano.join(', '));
+  if (z.doplnenoPoli) casti.push('doplněno polí aspektů: ' + z.doplnenoPoli);
+  if (z.doplnenoVoleb) casti.push('doplněno voleb výběru: ' + z.doplnenoVoleb);
+  if (z.zapnuto.length) casti.push('zapnuty vypnuté aspekty: ' + z.zapnuto.join(', '));
+  if (z.spory.length) casti.push('pole s jiným typem (ponechán místní): ' + z.spory.join('; '));
+  if (z.chybi.length) casti.push('aspekty bez definice v balíčku: ' + z.chybi.join(', '));
+  return casti.join('; ');
+}
+
 // Provede merge importovaných dat do db
 // strategy: 'skip' (zachovat stávající) | 'overwrite' (přepsat) | 'new-id' (vytvořit nové ID)
 // scope: 'entities' (jen entity) | 'all' (entity + tagy + views + šablony + aspekty)
@@ -33337,14 +33411,8 @@ async function performImport(payload, strategy, scope, opts) {
   if (payload && payload.db) normalizujKonceRadkuVDb(payload.db.entities || []);
   const idRemap = {}; // pro 'new-id' strategii
 
-  // 1. Vlastní aspekty (jen 'all' scope)
-  if (scope === 'all' && Array.isArray(payload.db.customAspects)) {
-    if (!db.customAspects) db.customAspects = [];
-    payload.db.customAspects.forEach(ca => {
-      const exists = db.customAspects.find(x => x.key === ca.key);
-      if (!exists) db.customAspects.push(JSON.parse(JSON.stringify(ca)));
-    });
-  }
+  // 1. Definice aspektů — VŽDY (u „Jen entity" ty, které entity používají).
+  log.definice = importujDefiniceAspektu(payload, scope === 'all');
   // 2. Tagy (vždy)
   (payload.db.tags || []).forEach(t => {
     if (!db.tags) db.tags = [];
@@ -33370,6 +33438,7 @@ async function performImport(payload, strategy, scope, opts) {
   const soubory = (opts && opts.soubory) || null;
   log.prilohObnoveno = 0; log.prilohChybi = 0;
   const kObnoveni = [];   // pole příloh s už konečnými id
+  const importovane = []; // entity, které z balíčku opravdu přišly (jen u nich se přepisují id odkazů)
   for (const incoming of payload.db.entities) {
     const existing = db.entities.find(e => e.id === incoming.id);
     if (!existing) {
@@ -33377,6 +33446,7 @@ async function performImport(payload, strategy, scope, opts) {
       const cloned = JSON.parse(JSON.stringify(incoming));
       if (Array.isArray(cloned.attachments)) kObnoveni.push(cloned.attachments);
       db.entities.push(cloned);
+      importovane.push(cloned);
       log.added++;
     } else {
       // Konflikt
@@ -33391,6 +33461,7 @@ async function performImport(payload, strategy, scope, opts) {
         Object.assign(existing, JSON.parse(JSON.stringify(incoming)));
         existing.updated_at = nowIso();
         if (Array.isArray(existing.attachments)) kObnoveni.push(existing.attachments);
+        importovane.push(existing);
         log.overwritten++;
       } else if (strategy === 'new-id') {
         const cloned = JSON.parse(JSON.stringify(incoming));
@@ -33405,6 +33476,7 @@ async function performImport(payload, strategy, scope, opts) {
           kObnoveni.push(cloned.attachments);
         }
         db.entities.push(cloned);
+        importovane.push(cloned);
         log.renamed++;
       }
     }
@@ -33415,12 +33487,19 @@ async function performImport(payload, strategy, scope, opts) {
     log.prilohChybi += r.chybi;
   }
 
-  // Pokud byly entity přejmenovány na nové ID, opravit vazby v importovaných entitách
+  // Pokud byly entity přejmenovány na nové ID, opravit odkazy **jen v importovaných
+  // entitách**. Dřív se přepisovaly vazby všech entit, takže místní entita, která
+  // ukazovala na svou (stávající) verzi, se tiše přesměrovala na importovanou kopii.
+  // Kromě vazeb se přepisují i hodnoty atributů typu relace — i to jsou id entit.
   if (Object.keys(idRemap).length > 0) {
-    db.entities.forEach(e => {
-      // Jen přepíšeme vazby na entity, které byly importovány s novým ID
-      (e.links || []).forEach(l => {
-        if (idRemap[l.to]) l.to = idRemap[l.to];
+    const prevod = (id) => (typeof id === 'string' && idRemap[id]) ? idRemap[id] : id;
+    importovane.forEach(e => {
+      (e.links || []).forEach(l => { l.to = prevod(l.to); });
+      if (!e.attributes) return;
+      collectAllFields(e).forEach(({ field }) => {
+        if (!field || field.type !== 'relation' || !(field.key in e.attributes)) return;
+        const v = e.attributes[field.key];
+        e.attributes[field.key] = Array.isArray(v) ? v.map(prevod) : prevod(v);
       });
     });
   }
@@ -34119,8 +34198,9 @@ function openImportDialog() {
             '<label><input type="radio" name="imp-strategy" value="new-id"> <strong>Vytvořit nové ID</strong> – obě verze zůstanou (přidá " (importováno)" k názvu)</label>' +
           '</fieldset>' +
           '<fieldset><legend>Co importovat</legend>' +
-            '<label><input type="radio" name="imp-scope" value="entities" checked> Jen entity</label><br>' +
-            '<label><input type="radio" name="imp-scope" value="all"> Vše (entity + tagy + pohledy + šablony + vlastní aspekty)</label>' +
+            '<label><input type="radio" name="imp-scope" value="entities" checked> Jen entity – s definicemi aspektů a atributů, které používají</label><br>' +
+            '<label><input type="radio" name="imp-scope" value="all"> Vše – entity, tagy, pohledy, šablony a všechny vlastní aspekty z balíčku</label>' +
+            '<p class="meta">Definice aspektů, které importované entity používají, se převezmou vždy: chybějící se přidají, existující se doplní o chybějící pole a volby (místní úpravy se nepřepisují).</p>' +
           '</fieldset>';
         goBtn.disabled = false;
       } catch (e) {
@@ -34142,6 +34222,8 @@ function openImportDialog() {
       ', přeskočeno ' + log.skipped + ', přejmenováno ' + log.renamed;
     if (log.prilohObnoveno) msg += ', příloh obnoveno ' + log.prilohObnoveno;
     if (log.prilohChybi) msg += ', bez souboru ' + log.prilohChybi;
+    const definice = popisImportuDefinic(log.definice);
+    if (definice) msg += '. Definice: ' + definice;
     toast(msg);
     alertMsg(msg);
     render();

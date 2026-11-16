@@ -600,6 +600,20 @@ import téhož balíčku nic nezdvojí** — přílohy i entity se poznávají p
 identifikátoru. Při strategii „Vytvořit nové ID" dostane kopie entity i nové
 identifikátory příloh a soubory se obnoví pod nimi.
 
+**Definice aspektů a atributů jdou s entitami.** Balíček nese definice vlastních aspektů,
+které exportované entity používají, a import si je bere **vždycky — i u volby „Jen entity“**.
+Hodnoty atributů se tak v cílovém PIM ukážou pod svými poli, ne jako vlastní atributy entity:
+
+- aspekt, který cílový PIM nemá, se přidá celý,
+- aspekt, který už má, se **doplní** o chybějící pole a u výběrů o chybějící volby —
+  místní popisky a typy se nepřepisují; pole s jiným typem se jen nahlásí,
+- vestavěný aspekt, který máte v Nastavení vypnutý, se zapne,
+- volba **„Vše“** k tomu přidá i ostatní vlastní aspekty z balíčku, uložené pohledy a šablony.
+
+Co se s definicemi stalo, řekne hlášení po importu. U strategie „Vytvořit nové ID“ se
+odkazy (vazby i atributy typu relace) přepíšou na nové kopie **jen v importovaných
+entitách** — vaše stávající entity dál ukazují tam, kam ukazovaly.
+
 Když balíček soubory nenese (prostý JSON, nebo se soubor nepodařilo zabalit),
 dostane příloha stav **„Soubor chybí (nebyl v balíčku)"** — její údaje zůstanou,
 ale nepředstírá se, že soubor je k dispozici. Pokud tentýž soubor v cílovém PIM

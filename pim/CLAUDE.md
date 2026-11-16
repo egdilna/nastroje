@@ -1130,6 +1130,17 @@ tři pravidla:
    se dával stav `'pending'`, kterému nerozuměl nikdo: v UI se ukázalo doslova
    „pending", Stáhnout zahlásilo chybu a sync si toho nevšiml.
 
+4. **Definice aspektů jdou s entitami vždycky** (`importujDefiniceAspektu`, i u
+   „Jen entity“; „Vše“ přidá i nepoužité). Chybějící aspekt se přidá, existující se
+   **doplní** o chybějící pole a volby výběru, místní popisky/typy se nepřepisují
+   (nesoulad typu jde do hlášení), vypnutý vestavěný aspekt se zapne. Dřív „Jen
+   entity“ definice zahodil a hodnoty se tvářily jako vlastní atributy entity. Hlášení
+   skládá `popisImportuDefinic(log.definice)`.
+5. **Nové ID přepisuje odkazy jen v importovaných entitách** (`importovane`), a to
+   vazby i atributy typu relace (`collectAllFields`). Dřív se přepisovaly vazby
+   **všech** entit, takže místní entita se tiše přesměrovala na importovanou kopii,
+   a relace v atributech zůstávaly na starých id.
+
 Při strategii „přepsat" se mažou bloby příloh, na které po přepisu nikdo
 neukazuje — jinak by v IndexedDB zůstali sirotci.
 
