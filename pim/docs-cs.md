@@ -1091,7 +1091,7 @@ Totéž je v paletě příkazů jako **🔔 Připomenutí**.
 | `r` | Přidat vazbu na existující entitu |
 | `Shift+R` | Vytvořit novou související entitu (lze rovnou zaškrtnout projekty zdrojové entity) |
 | `c` | Přidat komentář |
-| `d` | (read, pokud má nadpisy) Přepnout režim editace sekcí |
+| `d` | (read, pokud má nadpisy) Přepnout režim editace sekcí; režim si pamatuje panel, takže po návratu na něj zůstane zapnutý |
 | `a` | (read) Přepnout anotační režim |
 | `o` | Otevřít jediný vyplněný atribut typu **URL** (jako kliknutí na odkaz) |
 | `x` / `Alt+Shift+X` | (read) Otevřít Export / tisk |
