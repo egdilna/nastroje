@@ -161,6 +161,8 @@ předpisu: citace, plný název, informace o předpisu v Markdownu = odkaz s pln
 odkazy do aplikace a e-Sbírky jako adresa i Markdown). `adresaEli()` — ELI e-Sbírky
 `https://e-sbirka.gov.cz/eli/cz/sb/{rok}/{číslo}/{znění}[/dokument/{klíč}]`; datum znění je povinné
 (ELI bez data e-Sbírka nemá, `0000-00-00` = vyhlášené znění).
+`formatyKopirovaniOblasti()` — sekce Kopírovat na stránce oblasti: odkaz, Markdown odkaz, odkaz s poznámkou
+(`o.popis`) a přehled předpisů (`# [Oblast](…)`, pak `- [Plný název](…)` a na dalším řádku odsazený `P.popis`).
 
 ## Markdown
 Vlastní renderer `markdownDom(text, urovenNadpisu)` (nadpisy, odstavce s `br`, vnořené
