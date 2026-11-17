@@ -175,6 +175,8 @@ Diagram nebo celou složku (včetně vnořených podsložek a jejich diagramů) 
 
 Balíček nese kompletní obsah včetně historie verzí a nastavení; sdílené prvky se balí s sebou. Při importu se automaticky přegenerují všechny identifikátory (zabránění kolizí) a hierarchie složek se zachová. Pokud v cílovém projektu už existuje sdílený prvek se stejným aliasem, zvítězí ten cílový (předpokládá se přizpůsobená verze).
 
+S balíčkem se přibalí všechny sdílené prvky, na které diagram odkazuje — komponenty, rozhraní, vazby (i s jejich konci), případy užití, úlohy a milníky Ganttu, uzly, třídy, účastníci i aktéři, a to i z uložených verzí. Starší balíčky (vytvořené před opravou z listopadu 2026) definice sdílených komponent, rozhraní a vazeb neobsahovaly; když se takový balíček importuje do projektu, kde tyto sdílené prvky nejsou, převedou se na lokální prvky s názvem podle aliasu a stavový řádek na to upozorní. Typ vazby se odvodí z aliasu, popisek vazby se obnovit nedá. Do původního projektu se i starý balíček naimportuje bez ztrát.
+
 ---
 
 ## Sdílené prvky projektu

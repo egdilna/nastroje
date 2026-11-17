@@ -1217,6 +1217,7 @@ const I18N = {
       diagramTypeNotImportable: (what) => 'Typ diagramu „' + what + '" editor zatím neumí naimportovat. Diagram je možné vytvořit ručně a zdroj použít jako předlohu.',
       fileNotValidPupe: 'Soubor neobsahuje platný balíček .pupe.',
       pupeNotJson: (msg) => 'Soubor .pupe není platný JSON: ' + msg,
+      pupeOrphans: (n) => 'Balíček neobsahoval definici ' + n + ' ' + czCount(n,'sdíleného prvku','sdílených prvků','sdílených prvků') + ' — převedeno na lokální prvky s názvem podle aliasu, zkontrolujte názvy a popisky vazeb.',
       diagramTypeUnknown: 'Nepodařilo se rozpoznat typ diagramu v souboru.',
       // Diagram CRUD
       diagramCreated: 'Diagram vytvořen.',
@@ -1820,6 +1821,7 @@ const I18N = {
       diagramTypeNotImportable: (what) => 'The editor cannot import the diagram type “' + what + '” yet. You can create the diagram manually and use the source as a template.',
       fileNotValidPupe: 'The file is not a valid .pupe bundle.',
       pupeNotJson: (msg) => '.pupe file is not valid JSON: ' + msg,
+      pupeOrphans: (n) => 'The bundle lacked the definition of ' + n + ' shared element' + (n===1?'':'s') + ' — converted to local elements named after the alias; check names and relationship labels.',
       diagramTypeUnknown: 'Could not detect the diagram type in the file.',
       diagramCreated: 'Diagram created.',
       diagramDeleted: 'Diagram deleted.',
@@ -16037,15 +16039,74 @@ function collectFolderSubtree(folderId){
 
 // Exportuje jeden diagram jako .pupe.
 // Sebere aliasy sdílených prvků, na které se odkazují diagramy v poli `diagrams`.
+// Prochází CELÝ diagram rekurzivně (model všech typů i snímky verzí) — dřív se
+// sbíraly jen tabulky classes/participants/actors/nodes, takže komponenty,
+// rozhraní, vazby, případy užití a Gantt přišly v .pupe bez definice a po
+// importu byly bez názvu. Navíc přidá i aliasy, na které odkazují sdílené
+// vazby (sourceAlias/targetAlias), aby balíček byl uzavřený.
 function collectSharedRefsUsed(diagrams){
   const aliases = new Set();
-  diagrams.forEach(d => {
-    const m = d.model || {};
-    ['classes','participants','actors','nodes'].forEach(table => {
-      (m[table] || []).forEach(e => { if(e.sharedRef) aliases.add(e.sharedRef); });
+  const walk = (v) => {
+    if(!v || typeof v !== 'object') return;
+    if(Array.isArray(v)){ v.forEach(walk); return; }
+    if(typeof v.sharedRef === 'string' && v.sharedRef) aliases.add(v.sharedRef);
+    Object.keys(v).forEach(k => { if(v[k] && typeof v[k] === 'object') walk(v[k]); });
+  };
+  diagrams.forEach(d => { walk(d.model); walk(d.versions); });
+  const all = (state.project && state.project.sharedElements) || [];
+  const queue = Array.from(aliases);
+  while(queue.length){
+    const sh = all.find(s => s.alias === queue.pop());
+    if(!sh) continue;
+    [sh.sourceAlias, sh.targetAlias].forEach(a => {
+      if(a && !aliases.has(a)){ aliases.add(a); queue.push(a); }
     });
-  });
+  }
   return aliases;
+}
+
+// Typy vazeb komponentového diagramu — pro odhad typu z aliasu sdílené vazby
+// (rel_<zdroj>_<typ>_<cíl>) u poškozených balíčků bez definice.
+const PUPE_REL_TYPES = ['provide','use','dependency','realization','inheritance','composition','aggregation','line','association'];
+
+// Po importu: prvek s odkazem na sdílenou definici, která v projektu není
+// (starší .pupe ji neobsahovaly), převede na lokální, aby neměl prázdný název.
+// Název se odvodí z aliasu — lepší než nic; uživatel ho může přepsat.
+function pupeLocalizeOrphans(diagram){
+  let count = 0;
+  const fixModel = (m, type) => {
+    if(!m || typeof m !== 'object') return;
+    Object.keys(m).forEach(table => {
+      if(!Array.isArray(m[table])) return;
+      m[table].forEach(e => {
+        if(!e || typeof e !== 'object' || !e.sharedRef || findShared(e.sharedRef)) return;
+        const alias = e.sharedRef;
+        delete e.sharedRef;
+        count++;
+        if(table === 'relationships'){
+          if(!e.type){
+            const t = PUPE_REL_TYPES.find(x => new RegExp('^rel_.+_' + x + '_.+$').test(alias));
+            e.type = t || 'association';
+          }
+          return;
+        }
+        if(table === 'tasks' || table === 'milestones'){ if(!e.label) e.label = alias; }
+        else if(!e.name) e.name = alias;
+        if(!e.alias) e.alias = alias;
+        if(table === 'components' && !e.stereotype) e.stereotype = 'component';
+        if(table === 'classes' && !e.stereotype) e.stereotype = 'class';
+        if(table === 'participants' && !e.type) e.type = 'participant';
+        if(table === 'actors' && !e.type) e.type = 'human';
+        if(table === 'nodes' && !e.nodeType) e.nodeType = 'node';
+        if(table === 'tasks' && e.duration === undefined) e.duration = 1;
+      });
+    });
+  };
+  // Hlášení počítá jen aktuální model; snímky verzí opravujeme potichu.
+  fixModel(diagram.model, diagram.type);
+  const inModel = count;
+  (diagram.versions || []).forEach(v => { if(v && v.snapshot) fixModel(v.snapshot.model, diagram.type); });
+  return inModel;
 }
 
 function exportDiagramPupe(d){
@@ -16166,6 +16227,11 @@ function loadPupeText(text, fileName){
     // uživatel nastavený podle sebe; v diagramech se použije ten cílový.
   });
 
+  // Odkazy na sdílené definice, které nedorazily ani nejsou v projektu
+  // (poškozené starší .pupe), převedeme na lokální prvky s názvem z aliasu.
+  let orphanCount = 0;
+  newDiagrams.forEach(nd => { orphanCount += pupeLocalizeOrphans(nd); });
+
   // Ošetření kolize názvů složek na kořeni (informativní, ne blokující):
   // necháme názvy tak jak jsou; uživatel je může přejmenovat.
   state.project.folders = (state.project.folders || []).concat(newFolders);
@@ -16182,7 +16248,8 @@ function loadPupeText(text, fileName){
   const kindLabel = pkg.kind === 'folder' ? 'Složka' : 'Diagram';
   const folderInfo = newFolders.length ? (' a ' + newFolders.length + ' ' + czCount(newFolders.length,'složka','složky','složek')) : '';
   const sharedInfo = addedShared ? (' a ' + addedShared + ' ' + czCount(addedShared,'sdílený prvek','sdílené prvky','sdílených prvků')) : '';
-  status(kindLabel + ' importován: ' + migratedCount + ' ' + czCount(migratedCount,'diagram','diagramy','diagramů') + folderInfo + sharedInfo + '.', 'success');
+  const orphanInfo = orphanCount ? (' ' + L.status.pupeOrphans(orphanCount)) : '';
+  status(kindLabel + ' importován: ' + migratedCount + ' ' + czCount(migratedCount,'diagram','diagramy','diagramů') + folderInfo + sharedInfo + '.' + orphanInfo, orphanCount ? 'error' : 'success');
 }
 
 function downloadPumlAction(){

@@ -55,6 +55,10 @@ Prvek může být **sdílený mezi diagramy** téhož typu (`findShared`, `promo
 `unshareElement`, `renameSharedAlias`, `uniqueSharedAlias`, `findSharedUsages`,
 `sharedConfig`, `SHARED_KINDS`). `effective(elem)` vrací výslednou podobu prvku
 (lokální hodnoty přebíjejí sdílené). Přejmenování aliasu musí projít všechna použití.
+Export `.pupe` sbírá odkazy přes `collectSharedRefsUsed` — rekurzivně celý model i verze,
+plus konce sdílených vazeb. Nikdy tam nevracej výčet tabulek (dřív chyběly komponenty,
+rozhraní, vazby… a importované prvky byly bez názvu). Import volá `pupeLocalizeOrphans`,
+který odkaz bez definice převede na lokální prvek s názvem z aliasu.
 
 ## Příznaky „hotovo“ a „skryto“
 Dvě nezávislé vrstvy nad modelem:
