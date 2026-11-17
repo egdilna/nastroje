@@ -159,6 +159,8 @@ input[type=file]{display:none}
 #palList li[aria-selected="true"] mark{background:#f0a500;color:#1a1a1a}
 #palEmpty{padding:1em;color:#666;font-style:italic}
 hr{border:none;border-top:1px solid #ddd;margin:1em 0}
+#sharedElementsList .shared-usages{margin:.1em 0 .5em 2.2em;padding:0;font-size:.92em}
+#sharedElementsList .shared-usages li{margin:.1em 0}
 </style>
 </head>
 <body>
@@ -1217,6 +1219,9 @@ const I18N = {
       diagramTypeNotImportable: (what) => 'Typ diagramu „' + what + '" editor zatím neumí naimportovat. Diagram je možné vytvořit ručně a zdroj použít jako předlohu.',
       fileNotValidPupe: 'Soubor neobsahuje platný balíček .pupe.',
       pupeNotJson: (msg) => 'Soubor .pupe není platný JSON: ' + msg,
+      sharedAliasEmpty: 'Alias sdíleného prvku nesmí být prázdný — platí dál ten předchozí.',
+      sharedAliasTaken: (a) => 'Alias „' + a + '" už má jiný sdílený prvek — změna se neprovedla.',
+      sharedUsedIn: 'Použito v diagramech',
       pupeOrphans: (n) => 'Balíček neobsahoval definici ' + n + ' ' + czCount(n,'sdíleného prvku','sdílených prvků','sdílených prvků') + ' — převedeno na lokální prvky s názvem podle aliasu, zkontrolujte názvy a popisky vazeb.',
       diagramTypeUnknown: 'Nepodařilo se rozpoznat typ diagramu v souboru.',
       // Diagram CRUD
@@ -1821,6 +1826,9 @@ const I18N = {
       diagramTypeNotImportable: (what) => 'The editor cannot import the diagram type “' + what + '” yet. You can create the diagram manually and use the source as a template.',
       fileNotValidPupe: 'The file is not a valid .pupe bundle.',
       pupeNotJson: (msg) => '.pupe file is not valid JSON: ' + msg,
+      sharedAliasEmpty: 'A shared element alias cannot be empty — the previous one still applies.',
+      sharedAliasTaken: (a) => 'Alias “' + a + '” already belongs to another shared element — not changed.',
+      sharedUsedIn: 'Used in diagrams',
       pupeOrphans: (n) => 'The bundle lacked the definition of ' + n + ' shared element' + (n===1?'':'s') + ' — converted to local elements named after the alias; check names and relationship labels.',
       diagramTypeUnknown: 'Could not detect the diagram type in the file.',
       diagramCreated: 'Diagram created.',
@@ -2902,18 +2910,44 @@ function uniqueSharedAlias(base){
   return a + i;
 }
 
-// Přejmenování aliasu sdíleného prvku: projdeme všechny diagramy a v jejich
-// modelech přepíšeme sharedRef ze staré hodnoty na novou.
+// Přejmenování aliasu (identifikátoru) sdíleného prvku. Přepíše VŠECHNY odkazy:
+// sharedRef v modelech všech diagramů i v uložených verzích (rekurzivně, ať
+// nezáleží na typu diagramu a tabulce), konce sdílených vazeb
+// (sourceAlias/targetAlias) a lokální kopii aliasu u odkazujících prvků.
 function renameSharedAlias(oldAlias, newAlias){
-  if(!state.project || oldAlias === newAlias) return;
-  (state.project.diagrams || []).forEach(d => {
-    const m = d.model || {};
-    ['classes','participants','actors','useCases','tasks','milestones','components','interfaces','nodes','relationships'].forEach(table => {
-      (m[table] || []).forEach(e => {
-        if(e.sharedRef === oldAlias) e.sharedRef = newAlias;
-      });
-    });
+  if(!state.project || !oldAlias || !newAlias || oldAlias === newAlias) return;
+  const walk = (v) => {
+    if(!v || typeof v !== 'object') return;
+    if(Array.isArray(v)){ v.forEach(walk); return; }
+    if(v.sharedRef === oldAlias){
+      v.sharedRef = newAlias;
+      if(v.alias === oldAlias) v.alias = newAlias;
+    }
+    Object.keys(v).forEach(k => { if(v[k] && typeof v[k] === 'object') walk(v[k]); });
+  };
+  (state.project.diagrams || []).forEach(d => { walk(d.model); walk(d.versions); });
+  (state.project.sharedElements || []).forEach(sh => {
+    if(sh.sourceAlias === oldAlias) sh.sourceAlias = newAlias;
+    if(sh.targetAlias === oldAlias) sh.targetAlias = newAlias;
   });
+}
+
+// Úprava aliasu z formuláře detailu. U sdíleného prvku je alias jeho
+// identifikátor, proto: prázdný alias se nepřijme (pole se dá vymazat
+// a psát znovu — přejmenování proběhne z naposledy platného aliasu, ne
+// z prázdného), kolize s jiným sdíleným prvkem se odmítne a každá přijatá
+// změna se promítne do všech diagramů. Vrací false, když se nic nezměnilo.
+function applyAliasEdit(target, raw, shared){
+  const ne = sanitizeAliasInput(raw);
+  if(!shared){ target.alias = ne; return true; }
+  const committed = target.alias;
+  if(!ne){ status(L.status.sharedAliasEmpty, 'error'); return false; }
+  if(ne === committed) return true;
+  const other = findShared(ne);
+  if(other && other !== target){ status(L.status.sharedAliasTaken(ne), 'error'); return false; }
+  target.alias = ne;
+  renameSharedAlias(committed, ne);
+  return true;
 }
 
 // Povýší prvek na sdílený: vytvoří záznam v sharedElements a v prvku ponechá
@@ -8772,6 +8806,28 @@ function renderSharedElementsList(){
         }
       },
       [actionBtn('×', 'Smazat sdílený prvek ' + (s.name||s.alias), ()=>deleteSharedElementAction(s.alias))]));
+    // Odkazy na diagramy, kde se prvek vyskytuje (jeden odkaz na diagram;
+    // otevře diagram s vybraným prvkem).
+    if(usages.length){
+      const byDiagram = [];
+      usages.forEach(u => { if(!byDiagram.find(x => x.diagramId === u.diagramId)) byDiagram.push(u); });
+      const sub = el('ul', {class:'shared-usages', 'aria-label': L.status.sharedUsedIn + ': ' + (s.name || s.alias)});
+      byDiagram.forEach(u => {
+        const a = el('a', {href: '#diagram-' + u.diagramId}, u.diagramName || u.diagramId);
+        if(state.activeView === 'diagram' && state.selectedDiagramId === u.diagramId) a.setAttribute('aria-current', 'page');
+        a.addEventListener('click', e => {
+          e.preventDefault();
+          state.selectedDiagramId = u.diagramId;
+          const dg = getDiagram(u.diagramId);
+          const idx = dg ? (dg.model[u.table]||[]).findIndex(x => x.id === u.elementId) : -1;
+          state.selectedPath = idx >= 0 ? [u.table, idx] : null;
+          switchView('diagram');
+          renderApp();
+        });
+        sub.appendChild(el('li', null, a));
+      });
+      li.appendChild(sub);
+    }
     ul.appendChild(li);
   });
   root.appendChild(ul);
@@ -11125,10 +11181,7 @@ function renderClassForm(d, c, root, shared){
   root.appendChild(field(L.field.name, inputText(c.name||'', v=>{c.name=v;state.project.modified=nowIso();softTouch(d);}, 'cfName')));
   root.appendChild(field(L.field.alias,
     inputText(c.alias||'', v=>{
-      const old = c.alias;
-      const ne = sanitizeAliasInput(v);
-      c.alias = ne;
-      if(shared && old && ne && old !== ne) renameSharedAlias(old, ne);
+      if(!applyAliasEdit(c, v, shared)) return;
       state.project.modified = nowIso();
       softTouch(d);
     }, 'cfAlias'),
@@ -11357,10 +11410,7 @@ function renderSequenceDetail(d, root){
     root.appendChild(field(L.field.displayName, inputText(editTarget.name||'', v=>{editTarget.name=v;state.project.modified=nowIso();softTouch(d);})));
     root.appendChild(field(L.field.aliasShortNoDiacrit,
       inputText(editTarget.alias||'', v=>{
-        const old = editTarget.alias;
-        const ne = sanitizeAliasInput(v);
-        editTarget.alias = ne;
-        if(shared && old && ne && old !== ne) renameSharedAlias(old, ne);
+        if(!applyAliasEdit(editTarget, v, shared)) return;
         state.project.modified = nowIso();
         softTouch(d);
       })));
@@ -11572,10 +11622,7 @@ function renderUseCaseDetail(d, root){
     root.appendChild(field(L.field.name, inputText(editTarget.name||'', v=>{editTarget.name=v;state.project.modified=nowIso();softTouch(d);})));
     root.appendChild(field(L.field.alias,
       inputText(editTarget.alias||'', v=>{
-        const old = editTarget.alias;
-        const ne = sanitizeAliasInput(v);
-        editTarget.alias = ne;
-        if(shared && old && ne && old !== ne) renameSharedAlias(old, ne);
+        if(!applyAliasEdit(editTarget, v, shared)) return;
         state.project.modified = nowIso();
         softTouch(d);
       }),
@@ -11611,10 +11658,7 @@ function renderUseCaseDetail(d, root){
     root.appendChild(field(L.field.name, inputText(editTarget.name||'', v=>{editTarget.name=v;state.project.modified=nowIso();softTouch(d);})));
     root.appendChild(field(L.field.alias,
       inputText(editTarget.alias||'', v=>{
-        const old = editTarget.alias;
-        const ne = sanitizeAliasInput(v);
-        editTarget.alias = ne;
-        if(shared && old && ne && old !== ne) renameSharedAlias(old, ne);
+        if(!applyAliasEdit(editTarget, v, shared)) return;
         state.project.modified = nowIso();
         softTouch(d);
       }),
@@ -11939,10 +11983,7 @@ function renderComponentDetail(d, root){
       inputText(editTarget.name||'', v=>{editTarget.name=v;state.project.modified=nowIso();softTouch(d);}, 'coName')));
     root.appendChild(field(L.field.alias,
       inputText(editTarget.alias||'', v=>{
-        const old = editTarget.alias;
-        const ne = sanitizeAliasInput(v);
-        editTarget.alias = ne;
-        if(shared && old && ne && old !== ne) renameSharedAlias(old, ne);
+        if(!applyAliasEdit(editTarget, v, shared)) return;
         state.project.modified = nowIso();
         softTouch(d);
       }, 'coAlias'),
@@ -11994,10 +12035,7 @@ function renderComponentDetail(d, root){
       inputText(editTarget.name||'', v=>{editTarget.name=v;state.project.modified=nowIso();softTouch(d);}, 'ifName')));
     root.appendChild(field(L.field.alias,
       inputText(editTarget.alias||'', v=>{
-        const old = editTarget.alias;
-        const ne = sanitizeAliasInput(v);
-        editTarget.alias = ne;
-        if(shared && old && ne && old !== ne) renameSharedAlias(old, ne);
+        if(!applyAliasEdit(editTarget, v, shared)) return;
         state.project.modified = nowIso();
         softTouch(d);
       }, 'ifAlias'),
@@ -12163,10 +12201,7 @@ function renderDeploymentDetail(d, root){
     }, 'dnName')));
     root.appendChild(field(L.field.alias,
       inputText(editTarget.alias||'', v=>{
-        const old = editTarget.alias;
-        const ne = sanitizeAliasInput(v);
-        editTarget.alias = ne;
-        if(shared && old && ne && old !== ne) renameSharedAlias(old, ne);
+        if(!applyAliasEdit(editTarget, v, shared)) return;
         state.project.modified = nowIso();
         softTouch(d);
       }, 'dnAlias'),
@@ -12513,10 +12548,7 @@ function renderGanttDetail(d, root){
       inputText(editTarget.label||'', v=>{editTarget.label=v;state.project.modified=nowIso();softTouch(d);}, 'gtLabel')));
     root.appendChild(field(L.field.alias,
       inputText(editTarget.alias||'', v=>{
-        const old = editTarget.alias;
-        const ne = sanitizeAliasInput(v);
-        editTarget.alias = ne;
-        if(shared && old && ne && old !== ne) renameSharedAlias(old, ne);
+        if(!applyAliasEdit(editTarget, v, shared)) return;
         state.project.modified = nowIso();
         softTouch(d);
       }, 'gtAlias'),
@@ -12604,10 +12636,7 @@ function renderGanttDetail(d, root){
       inputText(editTarget.label||'', v=>{editTarget.label=v;state.project.modified=nowIso();softTouch(d);}, 'gmLabel')));
     root.appendChild(field(L.field.alias,
       inputText(editTarget.alias||'', v=>{
-        const old = editTarget.alias;
-        const ne = sanitizeAliasInput(v);
-        editTarget.alias = ne;
-        if(shared && old && ne && old !== ne) renameSharedAlias(old, ne);
+        if(!applyAliasEdit(editTarget, v, shared)) return;
         state.project.modified = nowIso();
         softTouch(d);
       }, 'gmAlias')));

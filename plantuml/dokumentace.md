@@ -200,6 +200,10 @@ Změna aliasu sdíleného prvku se automaticky přepíše ve všech diagramech, 
 
 ---
 
+**Přejmenování aliasu sdíleného prvku** se automaticky promítne všude: do všech diagramů, jejich uložených verzí i do sdílených vazeb, které na prvek vedou. Pole aliasu lze vymazat a napsat znovu — dokud je prázdné, platí předchozí alias. Alias, který už má jiný sdílený prvek, se nepřijme.
+
+V seznamu **Sdílené prvky projektu** je pod každým prvkem seznam odkazů na diagramy, kde se vyskytuje; odkaz otevře diagram s vybraným prvkem.
+
 ## Typy diagramů
 
 | Typ | ID | Popis |
