@@ -2,6 +2,11 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.21.1] — 2026-11-17
+
+### Změněno
+- Přehled předpisů oblasti v Markdownu: místo odrážek s odsazeným popisem je každý předpis samostatný odstavec „[Plný název](odkaz): popis“.
+
 ## [1.21.0] — 2026-11-17
 
 ### Přidáno
