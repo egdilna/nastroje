@@ -2,6 +2,11 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.23.0] — 2026-11-17
+
+### Přidáno
+- Seznamy předpisů (přehled, oblast, štítek) a výsledky hledání ukazují hned pod názvem předpisu tučně jeho popis; podrobnosti (počty, štítky, skupiny, oblasti) následují až pod ním.
+
 ## [1.22.0] — 2026-11-17
 
 ### Přidáno
