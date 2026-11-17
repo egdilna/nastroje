@@ -97,6 +97,10 @@ se začne podle roku a čísla. **Kdekoli se vypisují předpisy, řaď přes `p
 stránce `pohled=poradi` (jen v režimu úprav). `o.predpisy` v oblasti zůstává v pořadí přidání,
 zobrazuje se seřazené.
 
+## Popis předpisu v seznamech
+`popisPredpisuEl(id)` — `P.popis` tučně hned pod názvem předpisu (přehled a oblast přes `souhrnPredpisu()`,
+stránka štítku, výsledky hledání pod H2 předpisu). Nový seznam předpisů ho má mít také.
+
 ## Štítky a hromadné úpravy
 - Oblasti, skupiny vyznačení, skupiny komentářů i štítky se drží seřazené (`seraditSlovniky()`
   při načtení a na začátku `vykreslit()`, české řazení bez ohledu na velikost písmen).
