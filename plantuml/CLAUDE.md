@@ -59,6 +59,9 @@ Export `.pupe` sbírá odkazy přes `collectSharedRefsUsed` — rekurzivně cel�
 plus konce sdílených vazeb. Nikdy tam nevracej výčet tabulek (dřív chyběly komponenty,
 rozhraní, vazby… a importované prvky byly bez názvu). Import volá `pupeLocalizeOrphans`,
 který odkaz bez definice převede na lokální prvek s názvem z aliasu.
+Alias sdíleného prvku je jeho identifikátor: formuláře ho mění jen přes `applyAliasEdit`
+(prázdný a kolizní alias odmítne, přejmenuje z naposledy platného) a `renameSharedAlias`
+přepisuje rekurzivně modely i verze všech diagramů a `sourceAlias`/`targetAlias` sdílených vazeb.
 
 ## Příznaky „hotovo“ a „skryto“
 Dvě nezávislé vrstvy nad modelem:
