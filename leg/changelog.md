@@ -2,6 +2,11 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.21.2] — 2026-11-17
+
+### Změněno
+- Kopírování oblasti: text odkazu v Markdownu (i v nadpisu přehledu) začíná „Oblast právních předpisů …“.
+
 ## [1.21.1] — 2026-11-17
 
 ### Změněno
