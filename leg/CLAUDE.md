@@ -163,6 +163,8 @@ odkazy do aplikace a e-Sbírky jako adresa i Markdown). `adresaEli()` — ELI e-
 (ELI bez data e-Sbírka nemá, `0000-00-00` = vyhlášené znění).
 `formatyKopirovaniOblasti()` — sekce Kopírovat na stránce oblasti: odkaz, Markdown odkaz, odkaz s poznámkou
 (`o.popis`) a přehled předpisů (`# [Oblast právních předpisů Název](…)`, pak každý předpis jako odstavec `[Plný název](…): P.popis`).
+Skupiny vyznačení a komentářů mají stejnou sekci (`formatyKopirovaniOdkazu()` + `sekceKopirovat()`) s předponou
+„Skupina vyznačených ustanovení …“ / „Komentáře ustanovení …“.
 
 ## Markdown
 Vlastní renderer `markdownDom(text, urovenNadpisu)` (nadpisy, odstavce s `br`, vnořené

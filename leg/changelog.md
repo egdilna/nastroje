@@ -2,6 +2,14 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.22.0] — 2026-11-17
+
+### Přidáno
+- Stránka skupiny vyznačení a skupiny komentářů má sekci Kopírovat: odkaz do aplikace, odkaz v Markdownu a odkaz v Markdownu s poznámkou ke skupině. Text odkazu začíná „Skupina vyznačených ustanovení …“, resp. „Komentáře ustanovení …“.
+
+### Změněno
+- Markdown export skupiny komentářů: odkaz na skupinu má text „Komentáře ustanovení …“.
+
 ## [1.21.2] — 2026-11-17
 
 ### Změněno
