@@ -2,6 +2,11 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.21.0] — 2026-11-17
+
+### Přidáno
+- Stránka oblasti má sekci Kopírovat: odkaz do aplikace, odkaz v Markdownu, odkaz v Markdownu s poznámkou k oblasti a přehled předpisů oblasti v Markdownu (nadpis s odkazem na oblast, pak u každého předpisu odkaz s plným názvem a pod ním jeho popis).
+
 ## [1.20.0] — 2026-11-15
 
 ### Přidáno
