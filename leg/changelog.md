@@ -2,6 +2,11 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.24.2] — 2026-11-19
+
+### Opraveno
+- Odkaz na poznámku pod čarou a jiné horní či dolní indexy v kopírovaném textu, uložených snímcích a exportech: „2016/679²⁾“ místo slepeného „2016/6792)“. Snímky uložené dřív zůstávají, jak byly.
+
 ## [1.24.1] — 2026-11-19
 
 ### Opraveno
