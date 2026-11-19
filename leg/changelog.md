@@ -2,6 +2,18 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.24.0] — 2026-11-19
+
+### Přidáno
+- Export do Wordu (.docx) a Excelu (.xlsx) v každém panelu Export (skupiny vyznačení a komentářů, štítky, vyznačená ustanovení, komentáře, části předpisu). Word má opravdové nadpisy, seznamy a klikatelné odkazy; Excel ukotvené a filtrovatelné záhlaví a klikatelné adresy.
+- Export celé oblasti: Markdown, Word a Excel se třemi listy (Předpisy, Vyznačená ustanovení, Komentáře) a balíček do DKM.
+- Export štítku obsahuje i předpisy se štítkem (v Excelu na vlastním listu).
+- V sekcích Kopírovat jde víceřádkový Markdown (například informace o předpisu, přehled předpisů oblasti, odkaz s textem ustanovení) uložit i jako soubor Markdown a Word.
+
+### Změněno
+- Nové sloupce tabulek: předpis, ustanovení, celá citace, popisný název, poznámka, text, skupiny, štítky, oblasti, počet komentářů, název předpisu, znění, data, Odkaz (adresa do aplikace) a Odkaz do e-Sbírky.
+- Stažení souboru TSV nahradil Excel; kopírování TSV do schránky zůstává.
+
 ## [1.23.0] — 2026-11-17
 
 ### Přidáno

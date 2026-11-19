@@ -142,7 +142,7 @@ mark{background:var(--zvyrazneni);color:inherit}
    čtení metodou GET kvůli CORS). Úložiště: složka v GitHub repozitáři.
    Podrobnosti k architektuře jsou v leg/CLAUDE.md.
    ===================================================================== */
-const APP_VERZE = "1.23.0";
+const APP_VERZE = "1.24.0";
 
 /* ==================== POMOCNÉ ==================== */
 const $ = (s, r) => (r || document).querySelector(s);
@@ -189,6 +189,7 @@ function datumCz(iso){
   return m ? (+m[3]) + ". " + (+m[2]) + ". " + m[1] : iso;
 }
 function casCz(iso){
+  if (!iso) return "";
   try { return new Date(iso).toLocaleString("cs-CZ", {day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit"}); }
   catch (e){ return iso; }
 }
@@ -1579,9 +1580,18 @@ function formatyKopirovaniOdkazu(predpona, nazev, popis, par, druhPoznamky){
   if (popis && popis.trim()) vysledek.push(["Odkaz do aplikace v Markdownu s poznámkou " + druhPoznamky, mdOdkaz + "\n\n" + popis.trim()]);
   return {vysledek, mdOdkaz};
 }
-function sekceKopirovat(formaty){
-  return [el("h2", null, "Kopírovat"), el("ul", {class: "seznam"}, formaty.map(([popis, text]) =>
-    el("li", null, el("button", {type: "button", class: "druhe", onclick: () => kopirovat(text, popis)}, "Kopírovat: " + popis))))];
+/* Položka sekce Kopírovat. Víceřádkový Markdown jde navíc uložit jako soubor Markdown a Word. */
+function polozkaKopirovani(popis, text, titul){
+  const li = el("li", null, el("button", {type: "button", class: "druhe", onclick: () => kopirovat(text, popis)}, "Kopírovat: " + popis));
+  if (/Markdown/.test(popis) && text.indexOf("\n") >= 0){
+    const zaklad = nazevSouboru(titul + " " + popis) + "-" + dnesIso();
+    li.append(" ", el("button", {type: "button", class: "druhe", "aria-label": "Stáhnout jako Markdown: " + popis, onclick: () => stahnoutSoubor(zaklad + ".md", text, "text/markdown")}, "Stáhnout Markdown"),
+      " ", el("button", {type: "button", class: "druhe", "aria-label": "Stáhnout jako Word: " + popis, onclick: () => stahnoutWord(zaklad, titul, text)}, "Stáhnout Word"));
+  }
+  return li;
+}
+function sekceKopirovat(formaty, titul){
+  return [el("h2", null, "Kopírovat"), el("ul", {class: "seznam"}, formaty.map(([popis, text]) => polozkaKopirovani(popis, text, titul || "")))];
 }
 /* Oblast: navíc přehled předpisů — nadpis s odkazem na oblast, pak každý předpis jako odstavec „[Plný název](odkaz): popis“. */
 function formatyKopirovaniOblasti(o){
@@ -1934,7 +1944,7 @@ POHLED_FUNKCE.oblast = async p => {
     })));
   } else out.push(zprava("Oblast je zatím prázdná."));
   if (upravy) out.push(el("p", null, el("a", {href: adresa({pohled: "pridat", oblast: o.id})}, "Přidat předpis do oblasti")));
-  out.push(...sekceKopirovat(formatyKopirovaniOblasti(o)));
+  out.push(...sekceKopirovat(formatyKopirovaniOblasti(o), o.nazev));
   const vsechnyVyz = W.vyznaceni.filter(v => o.predpisy.indexOf(v.predpis) >= 0);
   out.push(el("h2", null, "Vyznačená ustanovení v oblasti"));
   out.push(el("p", null, vsechnyVyz.length
@@ -1945,6 +1955,12 @@ POHLED_FUNKCE.oblast = async p => {
     ? el("a", {href: adresa({pohled: "komentare", oblast: o.id})}, "Zobrazit " + pocetKomentaru(komO))
     : "K předpisům této oblasti zatím nemáte žádné komentáře."));
   out.push(el("p", null, el("a", {href: adresa({pohled: "hledat", rozsah: "oblast:" + o.id})}, "Hledat v předpisech oblasti")));
+  if (o.predpisy.length){
+    const komSez = () => W.komentare.filter(k => o.predpisy.indexOf(k.predpis) >= 0);
+    out.push(exportniPanel("Oblast " + o.nazev, () => oblastJakoMarkdown(o, vsechnyVyz, komSez()),
+      () => [predpisyList(o.predpisy, "Předpisy"), vyznaceniList(vsechnyVyz), komentareList(komSez())], null,
+      () => vsechnyVyz.concat(komSez())));
+  }
   if (!upravy) return out;
   out.push(el("h2", null, "Správa oblasti"));
   out.push(formularOblasti(o));
@@ -2125,8 +2141,7 @@ POHLED_FUNKCE.predpis = async p => {
     el("li", null, el("a", {href: adresa({pohled: "hledat", rozsah: "predpis:" + id})}, "Hledat v předpisu")),
     el("li", null, el("a", {href: adresaESbirky(id, datum), target: "_blank", rel: "noopener noreferrer"}, "Otevřít v e-Sbírce", vh(" (otevře se v nové kartě)")))));
   out.push(info);
-  out.push(el("h2", null, "Kopírovat"), el("ul", {class: "seznam"}, formatyKopirovaniPredpisu(P, id, datum).map(([popis, text]) =>
-    el("li", null, el("button", {type: "button", class: "druhe", onclick: () => kopirovat(text, popis)}, "Kopírovat: " + popis)))));
+  out.push(...sekceKopirovat(formatyKopirovaniPredpisu(P, id, datum), kratkyNazev(P, id)));
   if (P.poznamka) out.push(el("h2", null, "Poznámka k předpisu"), await poznamkaDom(id, 3),
     jenUpravy(el("p", null, el("a", {href: adresa({pohled: "poznamka", predpis: id})}, "Upravit poznámku k předpisu"))));
 
@@ -2375,12 +2390,12 @@ function castPredpisu(id, cast){
     const sez = vyznaceniPredpisu(id);
     out.push(el("h2", {id: "cast-predpisu", tabindex: "-1"}, "Vyznačená ustanovení v předpisu"));
     out.push(...seznamVyznaceni(sez, false, 3));
-    if (sez.length) out.push(exportniPanel("Vyznačená ustanovení " + kratkyNazev(P, id), () => vyznaceniJakoMarkdown("Vyznačená ustanovení — " + kratkyNazev(P, id), "", sez), () => vyznaceniJakoTsv(sez), 3, () => sez));
+    if (sez.length) out.push(exportniPanel("Vyznačená ustanovení " + kratkyNazev(P, id), () => vyznaceniJakoMarkdown("Vyznačená ustanovení — " + kratkyNazev(P, id), "", sez), () => vyznaceniList(sez), 3, () => sez));
   } else if (cast === "komentare"){
     const sez = komentarePredpisu(id);
     out.push(el("h2", {id: "cast-predpisu", tabindex: "-1"}, "Komentáře v předpisu"));
     out.push(...seznamKomentaru(sez, false, 3));
-    if (sez.length) out.push(exportniPanel("Komentáře " + kratkyNazev(P, id), () => komentareJakoMarkdown("Komentáře — " + kratkyNazev(P, id), "", sez), () => komentareJakoTsv(sez), 3, () => sez));
+    if (sez.length) out.push(exportniPanel("Komentáře " + kratkyNazev(P, id), () => komentareJakoMarkdown("Komentáře — " + kratkyNazev(P, id), "", sez), () => komentareList(sez), 3, () => sez));
   } else {
     const sez = W.stitkyUstanoveni.filter(z => z.predpis === id).sort((a, b) => String(a.klic).localeCompare(String(b.klic), "cs", {numeric: true}));
     out.push(el("h2", {id: "cast-predpisu", tabindex: "-1"}, "Ustanovení se štítky"));
@@ -2399,7 +2414,7 @@ function castPredpisu(id, cast){
           z.textUst ? el("details", null, el("summary", null, "Text ustanovení"), el("blockquote", {class: "poznamka"}, vetaZTextu(z.textUst))) : null);
       })));
       out.push(hromadnaUprava("ust", zaskrt, 3));
-      out.push(exportniPanel("Ustanovení se štítky " + kratkyNazev(P, id), () => ustanoveniJakoMarkdown("Ustanovení se štítky — " + kratkyNazev(P, id), "", sez), () => ustanoveniJakoTsv(sez), 3, () => sez));
+      out.push(exportniPanel("Ustanovení se štítky " + kratkyNazev(P, id), () => ustanoveniJakoMarkdown("Ustanovení se štítky — " + kratkyNazev(P, id), "", sez), () => ustanoveniList(sez), 3, () => sez));
     }
   }
   return out;
@@ -2554,8 +2569,8 @@ POHLED_FUNKCE.komentare = async p => {
   const out = [nadpis(titul)];
   if (skupina) out.push(el("p", {class: "tichy"}, "Skupina komentářů."), ...poznamkaSkupiny(skupina.popis, "Poznámka ke skupině"));
   out.push(...seznamKomentaru(seznam, !p.predpis));
-  if (seznam.length) out.push(exportniPanel(titul, () => komentareJakoMarkdown(titul, skupina ? skupina.popis : "", seznam, [skupina ? "Komentáře ustanovení " + skupina.nazev : "Odkaz na komentáře", adresaAbsolutni(skupina ? {pohled: "komentare", skupinakom: skupina.id} : p.oblast ? {pohled: "komentare", oblast: p.oblast} : p.predpis ? {pohled: "komentare", predpis: p.predpis} : {pohled: "komentare"})]), () => komentareJakoTsv(seznam), null, () => seznam));
-  if (skupina) out.push(...sekceKopirovat(formatyKopirovaniOdkazu("Komentáře ustanovení", skupina.nazev, skupina.popis, {pohled: "komentare", skupinakom: skupina.id}, "ke skupině").vysledek));
+  if (seznam.length) out.push(exportniPanel(titul, () => komentareJakoMarkdown(titul, skupina ? skupina.popis : "", seznam, [skupina ? "Komentáře ustanovení " + skupina.nazev : "Odkaz na komentáře", adresaAbsolutni(skupina ? {pohled: "komentare", skupinakom: skupina.id} : p.oblast ? {pohled: "komentare", oblast: p.oblast} : p.predpis ? {pohled: "komentare", predpis: p.predpis} : {pohled: "komentare"})]), () => komentareList(seznam), null, () => seznam));
+  if (skupina) out.push(...sekceKopirovat(formatyKopirovaniOdkazu("Komentáře ustanovení", skupina.nazev, skupina.popis, {pohled: "komentare", skupinakom: skupina.id}, "ke skupině").vysledek, skupina.nazev));
   if (!upravy) return out;
   if (skupina){
     out.push(el("h2", null, "Správa skupiny"), formularSkupinyKomentaru(skupina),
@@ -2620,7 +2635,7 @@ function poznamkaSkupiny(text, titulek){
 /* ---------- Export Markdown / TSV ---------- */
 function nazevSouboru(t){ return normText(String(t || ""), true).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "export"; }
 function stahnoutSoubor(nazev, text, typ){
-  const url = URL.createObjectURL(new Blob([text], {type: typ + ";charset=utf-8"}));
+  const url = URL.createObjectURL(new Blob([text], {type: typeof text === "string" ? typ + ";charset=utf-8" : typ}));
   const a = el("a", {href: url, download: nazev, class: "vh"}, nazev);
   document.body.append(a);
   a.click();
@@ -2628,15 +2643,231 @@ function stahnoutSoubor(nazev, text, typ){
   setTimeout(() => URL.revokeObjectURL(url), 10000);
   oznam("Soubor " + nazev + " se stahuje");
 }
-function exportniPanel(titul, md, tsv, uroven, dkm){
+/* ---------- Soubory Excel (.xlsx) a Word (.docx) ---------- */
+/* Oba formáty jsou ZIP s XML soubory; skládáme je přímo v prohlížeči bez cizí knihovny.
+   ZIP bez komprese (metoda 0), CRC32 počítáme sami. */
+const CRC_TABULKA = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++){ let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(b){ let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = CRC_TABULKA[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function zipSoubor(soubory){
+  const enc = new TextEncoder(), casti = [], adresar = [];
+  let posun = 0;
+  const d = new Date(), dosCas = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1),
+    dosDatum = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  for (const [nazev, obsah] of soubory){
+    const jm = enc.encode(nazev), data = typeof obsah === "string" ? enc.encode(obsah) : obsah, crc = crc32(data);
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
+    h.setUint16(10, dosCas, true); h.setUint16(12, dosDatum, true); h.setUint32(14, crc, true);
+    h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, jm.length, true); h.setUint16(28, 0, true);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, 0, true);
+    c.setUint16(12, dosCas, true); c.setUint16(14, dosDatum, true); c.setUint32(16, crc, true); c.setUint32(20, data.length, true); c.setUint32(24, data.length, true);
+    c.setUint16(28, jm.length, true); c.setUint32(42, posun, true);
+    casti.push(new Uint8Array(h.buffer), jm, data);
+    adresar.push(new Uint8Array(c.buffer), jm);
+    posun += 30 + jm.length + data.length;
+  }
+  const velAdr = adresar.reduce((s, x) => s + x.length, 0);
+  const k = new DataView(new ArrayBuffer(22));
+  k.setUint32(0, 0x06054b50, true); k.setUint16(8, soubory.length, true); k.setUint16(10, soubory.length, true);
+  k.setUint32(12, velAdr, true); k.setUint32(16, posun, true);
+  const vse = casti.concat(adresar, [new Uint8Array(k.buffer)]);
+  const out = new Uint8Array(vse.reduce((s, x) => s + x.length, 0));
+  let p = 0; for (const x of vse){ out.set(x, p); p += x.length; }
+  return out;
+}
+/* Text do XML: escapování a vynechání znaků, které XML nepovoluje. */
+const xmlText = s => String(s === null || s === undefined ? "" : s).replace(/[^\x09\x0A\x0D\x20-퟿-�\uD800-􏰀-\uDFFF]/g, "")
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const XML_HLAVA = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+function xmlVlastnosti(titul){
+  const ted = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+  return XML_HLAVA + '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
+    + "<dc:title>" + xmlText(titul) + "</dc:title><dc:creator>Legislativní prohlížeč</dc:creator><dc:language>cs-CZ</dc:language>"
+    + '<dcterms:created xsi:type="dcterms:W3CDTF">' + ted + '</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">' + ted + "</dcterms:modified></cp:coreProperties>";
+}
+const REL_VLASTNOSTI = '<Relationship Id="rIdVl" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>';
+
+/* Excel: listy = [{nazev, radky}], první řádek je záhlaví (tučně, ukotvené, s filtrem).
+   Čísla zůstávají čísly, adresy http(s) jsou i klikatelné odkazy. */
+function sloupecXlsx(i){ let s = ""; i++; while (i){ const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; }
+function nazevListu(n, pouzite){
+  let z = String(n || "List").replace(/[\[\]:*?\/\\]/g, " ").trim().slice(0, 31) || "List", x = z, i = 2;
+  while (pouzite.has(x.toLowerCase())) x = z.slice(0, 28) + " " + i++;
+  pouzite.add(x.toLowerCase());
+  return x;
+}
+function xlsxSoubor(titul, listy){
+  const pouzite = new Set();
+  const soubory = [], typyListu = [], relsSesit = [], listyXml = [], jmena = [];
+  listy.forEach((l, li) => {
+    const jm = nazevListu(l.nazev, pouzite), radky = l.radky, nS = radky[0].length, nR = radky.length;
+    jmena.push(jm);
+    const sirky = radky[0].map((_, j) => Math.max(8, Math.min(60, Math.max(...radky.map(r => {
+      const t = String(r[j] === null || r[j] === undefined ? "" : r[j]);
+      return Math.max(...t.split("\n").map(x => x.length)) + (r === radky[0] ? 4 : 2);
+    })))));
+    const odkazy = [];
+    const bunky = radky.map((r, ri) => '<row r="' + (ri + 1) + '">' + r.map((h, j) => {
+      const ref = sloupecXlsx(j) + (ri + 1), styl = ri === 0 ? 1 : 2;
+      if (typeof h === "number" && isFinite(h)) return '<c r="' + ref + '" s="' + styl + '"><v>' + h + "</v></c>";
+      let t = String(h === null || h === undefined ? "" : h);
+      if (!t) return '<c r="' + ref + '" s="' + styl + '"/>';
+      if (t.length > 32000) t = t.slice(0, 32000) + "…";
+      if (ri > 0 && /^https?:\/\/\S+$/.test(t) && t.length < 2000){ odkazy.push([ref, t]); return '<c r="' + ref + '" s="3" t="inlineStr"><is><t xml:space="preserve">' + xmlText(t) + "</t></is></c>"; }
+      return '<c r="' + ref + '" s="' + styl + '" t="inlineStr"><is><t xml:space="preserve">' + xmlText(t) + "</t></is></c>";
+    }).join("") + "</row>").join("");
+    const rozsah = "A1:" + sloupecXlsx(nS - 1) + nR;
+    let xml = XML_HLAVA + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+      + '<sheetViews><sheetView workbookViewId="0"' + (li === 0 ? ' tabSelected="1"' : "") + '><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews>'
+      + '<sheetFormatPr defaultRowHeight="15"/><cols>' + sirky.map((w, j) => '<col min="' + (j + 1) + '" max="' + (j + 1) + '" width="' + w + '" customWidth="1"/>').join("") + "</cols>"
+      + "<sheetData>" + bunky + "</sheetData>"
+      + (nR > 1 ? '<autoFilter ref="' + rozsah + '"/>' : "");
+    if (odkazy.length) xml += "<hyperlinks>" + odkazy.map(([ref], i) => '<hyperlink ref="' + ref + '" r:id="rIdO' + (i + 1) + '"/>').join("") + "</hyperlinks>";
+    xml += '<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/></worksheet>';
+    soubory.push(["xl/worksheets/sheet" + (li + 1) + ".xml", xml]);
+    if (odkazy.length) soubory.push(["xl/worksheets/_rels/sheet" + (li + 1) + ".xml.rels", XML_HLAVA + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      + odkazy.map(([, url], i) => '<Relationship Id="rIdO' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="' + xmlText(url) + '" TargetMode="External"/>').join("") + "</Relationships>"]);
+    typyListu.push('<Override PartName="/xl/worksheets/sheet' + (li + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>');
+    relsSesit.push('<Relationship Id="rId' + (li + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (li + 1) + '.xml"/>');
+    listyXml.push({jm, rozsah: nR > 1 ? rozsah : null});
+  });
+  const nazvyVzorce = listyXml.map((x, i) => x.rozsah ? '<definedName name="_xlnm._FilterDatabase" localSheetId="' + i + '" hidden="1">\'' + xmlText(x.jm.replace(/'/g, "''")) + "'!" + x.rozsah.replace(/([A-Z]+)(\d+)/g, "$$$1$$$2") + "</definedName>" : "").join("");
+  soubory.unshift(
+    ["[Content_Types].xml", XML_HLAVA + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>'
+      + '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+      + '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' + typyListu.join("") + "</Types>"],
+    ["_rels/.rels", XML_HLAVA + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' + REL_VLASTNOSTI + "</Relationships>"],
+    ["docProps/core.xml", xmlVlastnosti(titul)],
+    ["xl/workbook.xml", XML_HLAVA + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView/></bookViews><sheets>'
+      + listyXml.map((x, i) => '<sheet name="' + xmlText(x.jm) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>').join("") + "</sheets>"
+      + (nazvyVzorce ? "<definedNames>" + nazvyVzorce + "</definedNames>" : "") + "</workbook>"],
+    ["xl/_rels/workbook.xml.rels", XML_HLAVA + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' + relsSesit.join("")
+      + '<Relationship Id="rIdS" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'],
+    ["xl/styles.xml", XML_HLAVA + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+      + '<fonts count="3"><font><sz val="11"/><name val="Calibri"/><family val="2"/></font><font><b/><sz val="11"/><name val="Calibri"/><family val="2"/></font><font><u/><sz val="11"/><color rgb="FF0563C1"/><name val="Calibri"/><family val="2"/></font></fonts>'
+      + '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFDDEBF7"/><bgColor indexed="64"/></patternFill></fill></fills>'
+      + '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+      + '<cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+      + '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>'
+      + '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>'
+      + '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="top"/></xf></cellXfs>'
+      + '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>']);
+  return zipSoubor(soubory);
+}
+
+/* Word: Markdown se nejdřív převede stejným rendererem jako na stránce (markdownDom)
+   a z DOM se poskládá WordprocessingML — nadpisy jsou opravdové styly Nadpis 1–6,
+   seznamy opravdové číslování, odkazy klikatelné. */
+function docxZMarkdownu(titul, md){
+  const odkazy = [], cisla = [];
+  const dom = markdownDom(md, 1);
+  const beh = (t, f) => {
+    const pr = (f.b ? "<w:b/>" : "") + (f.i ? "<w:i/>" : "") + (f.s ? "<w:strike/>" : "") + (f.kod ? '<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:cs="Consolas"/>' : "") + (f.odkaz ? '<w:rStyle w:val="Hypertextovodkaz"/>' : "");
+    return "<w:r>" + (pr ? "<w:rPr>" + pr + "</w:rPr>" : "") + '<w:t xml:space="preserve">' + xmlText(t) + "</w:t></w:r>";
+  };
+  const radkove = (uzel, f) => {
+    let x = "";
+    for (const n of uzel.childNodes){
+      if (n.nodeType === 3){ if (n.nodeValue) x += beh(n.nodeValue, f); continue; }
+      if (n.nodeType !== 1) continue;
+      const t = n.tagName.toLowerCase();
+      if (n.classList.contains("vh") || t === "ul" || t === "ol") continue;
+      if (t === "br"){ x += "<w:r><w:br/></w:r>"; continue; }
+      if (t === "strong" || t === "b") x += radkove(n, Object.assign({}, f, {b: true}));
+      else if (t === "em" || t === "i") x += radkove(n, Object.assign({}, f, {i: true}));
+      else if (t === "del" || t === "s") x += radkove(n, Object.assign({}, f, {s: true}));
+      else if (t === "code") x += radkove(n, Object.assign({}, f, {kod: true}));
+      else if (t === "a"){
+        let url = n.getAttribute("href") || "";
+        try { url = new URL(url, location.href).href; } catch (e){}
+        if (!/^(https?:|mailto:)/i.test(url)){ x += radkove(n, f); continue; }
+        odkazy.push(url);
+        x += '<w:hyperlink r:id="rIdH' + odkazy.length + '" w:history="1">' + radkove(n, Object.assign({}, f, {odkaz: true})) + "</w:hyperlink>";
+      } else x += radkove(n, f);
+    }
+    return x;
+  };
+  const odstavec = (styl, obsah, navic) => "<w:p>" + (styl || navic ? "<w:pPr>" + (styl ? '<w:pStyle w:val="' + styl + '"/>' : "") + (navic || "") + "</w:pPr>" : "") + obsah + "</w:p>";
+  const bloky = (uzel, ctx) => {
+    let x = "";
+    for (const n of uzel.childNodes){
+      if (n.nodeType === 3){ if (n.nodeValue.trim()) x += odstavec(ctx.citace ? "Citace" : null, beh(n.nodeValue, {})); continue; }
+      if (n.nodeType !== 1) continue;
+      const t = n.tagName.toLowerCase();
+      if (/^h[1-6]$/.test(t)) x += odstavec("Nadpis" + t[1], radkove(n, {}));
+      else if (t === "p") x += odstavec(ctx.citace ? "Citace" : null, radkove(n, {}));
+      else if (t === "blockquote") x += bloky(n, Object.assign({}, ctx, {citace: true}));
+      else if (t === "pre") x += n.textContent.split("\n").map(r => odstavec("Kod", beh(r, {kod: true}))).join("");
+      else if (t === "hr") x += odstavec(null, "", '<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="auto"/></w:pBdr>');
+      else if (t === "ul" || t === "ol"){
+        const uroven = Math.min(8, ctx.uroven || 0);
+        cisla.push({cislovany: t === "ol", start: parseInt(n.getAttribute("start") || "1", 10) || 1, uroven});
+        const numId = cisla.length;
+        for (const li of n.children){
+          x += odstavec("Odstavecseseznamem", radkove(li, {}), '<w:numPr><w:ilvl w:val="' + uroven + '"/><w:numId w:val="' + numId + '"/></w:numPr>');
+          for (const vn of li.children) if (/^(ul|ol)$/i.test(vn.tagName)) x += bloky({childNodes: [vn]}, Object.assign({}, ctx, {uroven: uroven + 1}));
+        }
+      } else x += bloky(n, ctx);
+    }
+    return x;
+  };
+  const telo = bloky(dom, {});
+  const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+  const dokument = XML_HLAVA + "<w:document " + NS + "><w:body>" + telo
+    + '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1417" w:right="1417" w:bottom="1417" w:left="1417" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>';
+  const nadpisy = [[1, 32], [2, 28], [3, 26], [4, 24], [5, 22], [6, 22]].map(([u, vel]) =>
+    '<w:style w:type="paragraph" w:styleId="Nadpis' + u + '"><w:name w:val="heading ' + u + '"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:uiPriority w:val="9"/><w:qFormat/>'
+    + '<w:pPr><w:keepNext/><w:spacing w:before="' + (u < 3 ? 360 : 240) + '" w:after="120"/><w:outlineLvl w:val="' + (u - 1) + '"/></w:pPr><w:rPr><w:b/><w:color w:val="1F3864"/><w:sz w:val="' + vel + '"/><w:szCs w:val="' + vel + '"/></w:rPr></w:style>').join("");
+  const styly = XML_HLAVA + '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+    + '<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Calibri" w:cs="Calibri"/><w:sz w:val="22"/><w:szCs w:val="22"/><w:lang w:val="cs-CZ" w:eastAsia="cs-CZ" w:bidi="ar-SA"/></w:rPr></w:rPrDefault>'
+    + '<w:pPrDefault><w:pPr><w:spacing w:after="120" w:line="264" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>'
+    + '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>' + nadpisy
+    + '<w:style w:type="paragraph" w:styleId="Citace"><w:name w:val="Quote"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:pBdr><w:left w:val="single" w:sz="18" w:space="8" w:color="A6A6A6"/></w:pBdr><w:ind w:left="567"/></w:pPr><w:rPr><w:color w:val="404040"/></w:rPr></w:style>'
+    + '<w:style w:type="paragraph" w:styleId="Odstavecseseznamem"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="60"/><w:contextualSpacing/></w:pPr></w:style>'
+    + '<w:style w:type="paragraph" w:styleId="Kod"><w:name w:val="Kód"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="0"/></w:pPr><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:cs="Consolas"/><w:sz w:val="20"/></w:rPr></w:style>'
+    + '<w:style w:type="character" w:styleId="Hypertextovodkaz"><w:name w:val="Hyperlink"/><w:rPr><w:color w:val="0563C1"/><w:u w:val="single"/></w:rPr></w:style></w:styles>';
+  const urovne = cis => Array.from({length: 9}, (_, l) => '<w:lvl w:ilvl="' + l + '"><w:start w:val="1"/><w:numFmt w:val="' + (cis ? "decimal" : "bullet") + '"/><w:lvlText w:val="'
+    + (cis ? "%" + (l + 1) + "." : ["•", "◦", "▪"][l % 3]) + '"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="' + (360 * (l + 2)) + '" w:hanging="360"/></w:pPr>'
+    + (cis ? "" : '<w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/></w:rPr>') + "</w:lvl>").join("");
+  const cislovani = XML_HLAVA + '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+    + '<w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="hybridMultilevel"/>' + urovne(false) + "</w:abstractNum>"
+    + '<w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="hybridMultilevel"/>' + urovne(true) + "</w:abstractNum>"
+    + cisla.map((c, i) => '<w:num w:numId="' + (i + 1) + '"><w:abstractNumId w:val="' + (c.cislovany ? 1 : 0) + '"/>'
+      + (c.cislovany ? '<w:lvlOverride w:ilvl="' + c.uroven + '"><w:startOverride w:val="' + c.start + '"/></w:lvlOverride>' : "") + "</w:num>").join("") + "</w:numbering>";
+  return zipSoubor([
+    ["[Content_Types].xml", XML_HLAVA + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>'
+      + '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
+      + '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>'],
+    ["_rels/.rels", XML_HLAVA + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' + REL_VLASTNOSTI + "</Relationships>"],
+    ["docProps/core.xml", xmlVlastnosti(titul)],
+    ["word/document.xml", dokument],
+    ["word/styles.xml", styly],
+    ["word/numbering.xml", cislovani],
+    ["word/_rels/document.xml.rels", XML_HLAVA + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdSt" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rIdCi" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>'
+      + odkazy.map((u, i) => '<Relationship Id="rIdH' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="' + xmlText(u) + '" TargetMode="External"/>').join("") + "</Relationships>"]
+  ]);
+}
+const TYP_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const TYP_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const stahnoutWord = (zaklad, titul, md) => stahnoutSoubor(zaklad + ".docx", docxZMarkdownu(titul, md), TYP_DOCX);
+const stahnoutExcel = (zaklad, titul, listy) => stahnoutSoubor(zaklad + ".xlsx", xlsxSoubor(titul, listy), TYP_XLSX);
+
+/* Panel Export: md() vrací Markdown (z něj i Word), data() jeden list {nazev, radky} nebo jejich pole (Excel).
+   TSV ke kopírování jen u jednoho listu. */
+function exportniPanel(titul, md, data, uroven, dkm){
   const zaklad = nazevSouboru(titul) + "-" + dnesIso();
+  const listy = () => [].concat(data());
+  const jedenList = listy().length === 1;
   return el("section", {class: "panel", "aria-label": "Export"}, el("h" + Math.min(6, uroven || 2), null, "Export"),
-    el("p", {class: "tichy"}, "Markdown je čitelný dokument s textem ustanovení a poznámkami. TSV jsou data po řádcích oddělená tabulátorem — vložíte je do tabulky (Excel, Numbers, Google Tabulky)."),
+    el("p", {class: "tichy"}, "Markdown a Word jsou čitelný dokument s textem ustanovení a poznámkami. Excel je tabulka s jedním řádkem na položku" + (jedenList ? "; TSV jsou tatáž data ke vložení do libovolné tabulky." : ", každý druh položek na vlastním listu.")),
     el("p", null,
       el("button", {type: "button", class: "druhe", onclick: () => kopirovat(md(), "Markdown")}, "Kopírovat jako Markdown"), " ",
       el("button", {type: "button", class: "druhe", onclick: () => stahnoutSoubor(zaklad + ".md", md(), "text/markdown")}, "Stáhnout soubor Markdown"), " ",
-      el("button", {type: "button", class: "druhe", onclick: () => kopirovat(tsv(), "data TSV")}, "Kopírovat jako TSV"), " ",
-      el("button", {type: "button", class: "druhe", onclick: () => stahnoutSoubor(zaklad + ".tsv", "﻿" + tsv(), "text/tab-separated-values")}, "Stáhnout soubor TSV")),
+      el("button", {type: "button", class: "druhe", onclick: () => stahnoutWord(zaklad, titul, md())}, "Stáhnout soubor Word"), " ",
+      el("button", {type: "button", class: "druhe", onclick: () => stahnoutExcel(zaklad, titul, listy())}, "Stáhnout soubor Excel"),
+      jedenList ? " " : null,
+      jedenList ? el("button", {type: "button", class: "druhe", onclick: () => kopirovat(tsvText(listy()[0].radky), "data TSV")}, "Kopírovat jako TSV") : null),
     dkm ? panelDkm(titul, zaklad, dkm) : null);
 }
 const tsvBunka = x => String(x === null || x === undefined ? "" : x).replace(/\t/g, " ").replace(/\r?\n\s*/g, " / ").trim();
@@ -2675,15 +2906,21 @@ function vyznaceniJakoMarkdown(titul, poznamka, seznam){
   }
   return r.join("\n");
 }
-function vyznaceniJakoTsv(seznam){
-  const radky = [["Předpis", "Název předpisu", "Ustanovení", "Citace", "Popisný název", "Znění", "Text ustanovení", "Poznámka", "Skupiny", "Štítky ustanovení", "Vyznačeno", "Upraveno", "Odkaz do aplikace", "Odkaz do e-Sbírky"]];
+/* Společné údaje pro řádky tabulek (Excel, TSV). */
+const citacePredpisuKratka = (P, id) => (P && P.citace) || citacePredpisuZId(id);
+const vyznaceniUst = (id, klic) => W.vyznaceni.find(y => y.predpis === id && y.klic === klic);
+const nazvyOblastiPredpisu = id => W.oblasti.filter(o => o.predpisy.indexOf(id) >= 0).map(o => o.nazev).sort(ceskeRazeni.compare).join(", ");
+const odkazUst = (id, klic) => adresaAbsolutni({pohled: "ust", predpis: id, ust: klic});
+function vyznaceniList(seznam){
+  const radky = [["Předpis", "Ustanovení", "Citace", "Popisný název", "Poznámka", "Text ustanovení", "Skupiny vyznačení", "Štítky ustanovení", "Štítky předpisu", "Oblasti", "Komentáře", "Název předpisu", "Znění", "Vyznačeno", "Upraveno", "Odkaz", "Odkaz do e-Sbírky"]];
   for (const [id, pol] of seraditPodlePredpisu(seznam)){
     const P = W.predpisy[id];
-    for (const v of pol) radky.push([(P && P.citace) || citacePredpisuZId(id), nazevPredpisu(P, id), v.citace, citaceUstanoveni(P, id, {c: v.citace}), v.nazev || "", datumCz(v.zneni),
-      vetaZTextu(v.text), v.poznamka, nazvySkupin(v), nazvyStitku(stitkyUst(id, v.klic)), casCz(v.vytvoreno), casCz(v.upraveno),
-      adresaAbsolutni({pohled: "ust", predpis: id, ust: v.klic}), adresaESbirky(id, v.zneni, v.klic)]);
+    for (const v of pol) radky.push([citacePredpisuKratka(P, id), v.citace, citaceUstanoveni(P, id, {c: v.citace}), v.nazev || "", v.poznamka || "",
+      vetaZTextu(v.text), nazvySkupin(v), nazvyStitku(stitkyUst(id, v.klic)), nazvyStitku(P && P.stitky), nazvyOblastiPredpisu(id),
+      komentareUstanoveni(id, v.klic).length, nazevPredpisu(P, id), datumCz(v.zneni), casCz(v.vytvoreno), casCz(v.upraveno),
+      odkazUst(id, v.klic), adresaESbirky(id, v.zneni, v.klic)]);
   }
-  return tsvText(radky);
+  return {nazev: "Vyznačená ustanovení", radky};
 }
 /* Markdown export komentářů — šablona podle požadavku uživatele: název, knihovna, čas a počet,
    poznámka skupiny, odkaz na zdroj exportu; pod předpisem odkaz na předpis, u ustanovení tučně
@@ -2712,14 +2949,27 @@ function komentareJakoMarkdown(titul, poznamka, seznam, odkaz){
   }
   return r.join("\n");
 }
-function komentareJakoTsv(seznam){
-  const radky = [["Předpis", "Název předpisu", "Ustanovení", "Citace", "Komentář", "Skupiny", "Štítky ustanovení", "Vytvořeno", "Upraveno", "Text ustanovení", "Odkaz do aplikace"]];
+function komentareList(seznam){
+  const radky = [["Předpis", "Ustanovení", "Citace", "Komentář", "Popisný název", "Skupiny komentářů", "Skupiny vyznačení", "Štítky ustanovení", "Oblasti", "Text ustanovení", "Název předpisu", "Vytvořeno", "Upraveno", "Odkaz", "Odkaz do e-Sbírky"]];
   for (const [id, pol] of seraditPodlePredpisu(seznam)){
     const P = W.predpisy[id];
-    for (const k of pol) radky.push([(P && P.citace) || citacePredpisuZId(id), nazevPredpisu(P, id), k.citace, citaceUstanoveni(P, id, {c: k.citace}),
-      k.text, nazvySkupinKom(k), nazvyStitku(stitkyUst(id, k.klic)), casCz(k.vytvoreno), casCz(k.upraveno), vetaZTextu(k.textUst), adresaAbsolutni({pohled: "ust", predpis: id, ust: k.klic})]);
+    for (const k of pol){
+      const v = vyznaceniUst(id, k.klic);
+      radky.push([citacePredpisuKratka(P, id), k.citace, citaceUstanoveni(P, id, {c: k.citace}), k.text, (v && v.nazev) || "", nazvySkupinKom(k), v ? nazvySkupin(v) : "",
+        nazvyStitku(stitkyUst(id, k.klic)), nazvyOblastiPredpisu(id), vetaZTextu(k.textUst), nazevPredpisu(P, id), casCz(k.vytvoreno), casCz(k.upraveno),
+        odkazUst(id, k.klic), adresaESbirky(id, k.zneni, k.klic)]);
+    }
   }
-  return tsvText(radky);
+  return {nazev: "Komentáře", radky};
+}
+function predpisyList(ids, nazev){
+  const radky = [["Předpis", "Název předpisu", "Druh", "Popis", "Štítky", "Oblasti", "Vyznačená ustanovení", "Komentáře", "Odkaz", "Odkaz do e-Sbírky"]];
+  for (const id of seraditIds(ids)){
+    const P = W.predpisy[id];
+    radky.push([citacePredpisuKratka(P, id), (P && P.nazev) || "", druhPredpisu(P), (P && P.popis) || "", nazvyStitku(P && P.stitky), nazvyOblastiPredpisu(id),
+      vyznaceniPredpisu(id).length, komentarePredpisu(id).length, adresaAbsolutni({pohled: "predpis", predpis: id}), adresaESbirky(id, P ? aktualniDatum(P) : null)]);
+  }
+  return {nazev: nazev || "Předpisy", radky};
 }
 
 /* ---------- Export do DKM (.dkmpkg) ---------- */
@@ -3365,8 +3615,9 @@ POHLED_FUNKCE.stitek = async p => {
       })));
     }
     out.push(hromadnaUprava("ust", zaskrt, 2));
-    out.push(exportniPanel("Štítek " + x.nazev, () => ustanoveniJakoMarkdown("Štítek: " + x.nazev, x.popis, ust), () => ustanoveniJakoTsv(ust), null, () => ust));
   } else out.push(zprava("Žádné ustanovení tento štítek nemá. Štítek ustanovení přidáte na jeho stránce nebo hromadně v přehledu vyznačených ustanovení či komentářů."));
+  if (predpisy.length || ust.length) out.push(exportniPanel("Štítek " + x.nazev, () => stitekJakoMarkdown(x, predpisy, ust),
+    () => [predpisyList(predpisy, "Předpisy se štítkem"), ustanoveniList(ust)].filter(l => l.radky.length > 1), null, ust.length ? () => ust : null));
   if (!upravy) return out;
   out.push(el("h2", null, "Správa štítku"), formularStitku(x),
     el("p", null, el("button", {type: "button", class: "druhe", onclick: () => {
@@ -3379,6 +3630,31 @@ POHLED_FUNKCE.stitek = async p => {
     }}, "Smazat štítek")));
   return out;
 };
+/* Seznam předpisů do Markdownu: odrážka „[Plný název](odkaz)“ a za dvojtečkou popis. */
+const predpisyJakoMarkdown = ids => seraditIds(ids).map(id => {
+  const P = W.predpisy[id], pp = P && P.popis ? P.popis.trim().replace(/\s*\n\s*/g, " ") : "";
+  return "- [" + mdText(nazevPredpisu(P, id)) + "](" + adresaAbsolutni({pohled: "predpis", predpis: id}) + ")" + (pp ? ": " + pp : "");
+});
+/* Tělo jiného exportu o úroveň níž: bez jeho hlavičky (vše před prvním „## “), nadpisy posunuté o #. */
+function mdVnorit(md){
+  const r = md.split("\n"), i = r.findIndex(x => x.startsWith("## "));
+  return i < 0 ? "" : r.slice(i).map(x => /^#{1,5} /.test(x) ? "#" + x : x).join("\n");
+}
+function stitekJakoMarkdown(x, predpisy, ust){
+  const r = hlavickaExportu("Štítek: " + x.nazev, x.popis, pocetSlov(predpisy.length, "předpis", "předpisy", "předpisů") + ", " + pocetSlov(ust.length, "ustanovení", "ustanovení", "ustanovení"));
+  if (predpisy.length) r.push("## Předpisy se štítkem", "", ...predpisyJakoMarkdown(predpisy), "");
+  if (ust.length) r.push("## Ustanovení se štítkem", "", mdVnorit(ustanoveniJakoMarkdown("", "", ust)));
+  return r.join("\n");
+}
+function oblastJakoMarkdown(o, vyz, kom){
+  const r = hlavickaExportu(o.nazev, o.popis, pocetSlov(o.predpisy.length, "předpis", "předpisy", "předpisů") + ", "
+    + pocetSlov(vyz.length, "vyznačené ustanovení", "vyznačená ustanovení", "vyznačených ustanovení") + ", " + pocetKomentaru(kom.length));
+  r.push("[Oblast " + mdText(o.nazev) + " v aplikaci](" + adresaAbsolutni({pohled: "oblast", oblast: o.id}) + ")", "");
+  r.push("## Předpisy v oblasti", "", ...(o.predpisy.length ? predpisyJakoMarkdown(o.predpisy) : ["Oblast je zatím prázdná."]), "");
+  if (vyz.length) r.push("## Vyznačená ustanovení", "", mdVnorit(vyznaceniJakoMarkdown("", "", vyz)), "");
+  if (kom.length) r.push("## Komentáře", "", mdVnorit(komentareJakoMarkdown("", "", kom)));
+  return r.join("\n");
+}
 function ustanoveniJakoMarkdown(titul, poznamka, seznam){
   const r = hlavickaExportu(titul, poznamka, pocetSlov(seznam.length, "ustanovení", "ustanovení", "ustanovení"));
   for (const [id, pol] of seraditPodlePredpisu(seznam)){
@@ -3394,14 +3670,18 @@ function ustanoveniJakoMarkdown(titul, poznamka, seznam){
   }
   return r.join("\n");
 }
-function ustanoveniJakoTsv(seznam){
-  const radky = [["Předpis", "Název předpisu", "Ustanovení", "Citace", "Štítky", "Text ustanovení", "Znění", "Odkaz do aplikace", "Odkaz do e-Sbírky"]];
+function ustanoveniList(seznam){
+  const radky = [["Předpis", "Ustanovení", "Citace", "Popisný název", "Štítky ustanovení", "Skupiny vyznačení", "Oblasti", "Komentáře", "Text ustanovení", "Název předpisu", "Znění", "Odkaz", "Odkaz do e-Sbírky"]];
   for (const [id, pol] of seraditPodlePredpisu(seznam)){
     const P = W.predpisy[id];
-    for (const z of pol) radky.push([(P && P.citace) || citacePredpisuZId(id), nazevPredpisu(P, id), z.citace, citaceUstanoveni(P, id, {c: z.citace}),
-      nazvyStitku(z.stitky), vetaZTextu(z.textUst), datumCz(z.zneni), adresaAbsolutni({pohled: "ust", predpis: id, ust: z.klic}), adresaESbirky(id, z.zneni, z.klic)]);
+    for (const z of pol){
+      const v = vyznaceniUst(id, z.klic);
+      radky.push([citacePredpisuKratka(P, id), z.citace, citaceUstanoveni(P, id, {c: z.citace}), (v && v.nazev) || "", nazvyStitku(z.stitky), v ? nazvySkupin(v) : "",
+        nazvyOblastiPredpisu(id), komentareUstanoveni(id, z.klic).length, vetaZTextu(z.textUst), nazevPredpisu(P, id), datumCz(z.zneni),
+        odkazUst(id, z.klic), adresaESbirky(id, z.zneni, z.klic)]);
+    }
   }
-  return tsvText(radky);
+  return {nazev: "Ustanovení se štítky", radky};
 }
 
 /* ---------- Ustanovení ---------- */
@@ -3477,8 +3757,7 @@ POHLED_FUNKCE.ust = async p => {
   out.push(sekceKomentaru(id, model, f));
 
   out.push(el("h2", null, "Kopírovat"));
-  out.push(el("ul", {class: "seznam"}, formatyKopirovani(P, id, model, f).map(([popis, text]) =>
-    el("li", null, el("button", {type: "button", class: "druhe", onclick: () => kopirovat(text, popis)}, "Kopírovat: " + popis)))));
+  out.push(el("ul", {class: "seznam"}, formatyKopirovani(P, id, model, f).map(([popis, text]) => polozkaKopirovani(popis, text, citaceUstanoveni(P, id, f)))));
   out.push(el("h2", null, "Odkazy"));
   out.push(el("ul", {class: "seznam"},
     el("li", null, el("a", {href: adresa({pohled: "ust", predpis: id, ust: f.k})}, "Trvalý odkaz na toto ustanovení v aplikaci")),
@@ -3570,7 +3849,7 @@ POHLED_FUNKCE.vyznacena = async p => {
   const out = [nadpis(titul)];
   out.push(...seznamVyznaceni(seznam, !p.predpis));
   const oblastExp = p.oblast ? W.oblasti.find(x => x.id === p.oblast) : null;
-  if (seznam.length) out.push(exportniPanel(titul, () => vyznaceniJakoMarkdown(titul, oblastExp ? oblastExp.popis : "", seznam), () => vyznaceniJakoTsv(seznam), null, () => seznam));
+  if (seznam.length) out.push(exportniPanel(titul, () => vyznaceniJakoMarkdown(titul, oblastExp ? oblastExp.popis : "", seznam), () => vyznaceniList(seznam), null, () => seznam));
   return out;
 };
 /* ---------- Skupina vyznačení ---------- */
@@ -3582,8 +3861,8 @@ POHLED_FUNKCE.skupina = async p => {
   out.push(...poznamkaSkupiny(s.popis, "Poznámka ke skupině"));
   const vyzSk = W.vyznaceni.filter(v => v.skupiny.indexOf(s.id) >= 0);
   out.push(...seznamVyznaceni(vyzSk, true));
-  if (vyzSk.length) out.push(exportniPanel(s.nazev, () => vyznaceniJakoMarkdown(s.nazev, s.popis, vyzSk), () => vyznaceniJakoTsv(vyzSk), null, () => vyzSk));
-  out.push(...sekceKopirovat(formatyKopirovaniOdkazu("Skupina vyznačených ustanovení", s.nazev, s.popis, {pohled: "skupina", skupina: s.id}, "ke skupině").vysledek));
+  if (vyzSk.length) out.push(exportniPanel(s.nazev, () => vyznaceniJakoMarkdown(s.nazev, s.popis, vyzSk), () => vyznaceniList(vyzSk), null, () => vyzSk));
+  out.push(...sekceKopirovat(formatyKopirovaniOdkazu("Skupina vyznačených ustanovení", s.nazev, s.popis, {pohled: "skupina", skupina: s.id}, "ke skupině").vysledek, s.nazev));
   if (!upravy) return out;
   out.push(el("h2", null, "Správa skupiny"));
   out.push(formularSkupiny(s));
