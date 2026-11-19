@@ -2,6 +2,14 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.25.0] — 2026-11-19
+
+### Změněno
+- Klíč ustanovení začíná paragrafem (článkem, přílohou): adresy do aplikace mají tvar `ust=par_2/pism_a` místo `ust=norma/cast_1/hlava_1/par_2/pism_a`, kotvy v textu `#u-par_2-pism_a`. Vyznačení, komentáře, štítky i odkazy tak přežijí přesun paragrafu do jiné části, hlavy nebo dílu.
+- Uložená data se starším tvarem klíče se při načtení převedou; starší adresy a kotvy s celou cestou dál fungují a adresa se přepíše na novou. Totéž při importu balíčku.
+- Odkaz ELI a hodnota pro DKM dál nesou celou cestu fragmentu, kterou e-Sbírka vyžaduje.
+- Kdyby se v jednom předpisu dva fragmenty potkaly na stejném klíči (opakované číslování článků v částech novely), klíč se prodlouží o nejbližší nadřazený prvek.
+
 ## [1.24.2] — 2026-11-19
 
 ### Opraveno

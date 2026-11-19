@@ -40,9 +40,16 @@ Historie změn: `changelog.md` (Keep a Changelog, sémantické verzování, `APP
   typů `Prefix_Number`, `Prefix_Type`, `Prefix_Date`, `Prefix_Title`.
 
 ## Klíč ustanovení
-Klíčem fragmentu je **cesta za `/dokument/`** (`norma/cast_1/hlava_3/par_39a/odst_1`).
-U strukturovaných ustanovení je stabilní napříč zněními, proto na ní stojí vyznačení,
-adresy i kotvy. Nečíslované fragmenty mají klíč typu `…/frag_1241153279`, ten stabilní není.
+V e-Sbírce je fragment určen **cestou za `/dokument/`** (`norma/cast_1/hlava_3/par_39a/odst_1`).
+Požadavek uživatele: **klíč v aplikaci začíná paragrafem** (článkem, přílohou) — `par_39a/odst_1`
+(`kratkyKlic()`), aby přesun paragrafu v osnově (část, hlava, díl) nerozbil adresy, vyznačení
+a komentáře. `sestavModel()` dává fragmentům kanonický klíč `f.k` (`kanonickeKlice()`: krátký,
+při kolizi v předpisu prodloužený o nadřazený segment) a celou cestu `f.kp`; klíče nad paragrafem
+zůstávají celé. **Celou cestu potřebuje ELI a DKM** (`adresaEli(…, f.kp)`, `dkmHodnotaUstanoveni(…, plny)`).
+Klíč z adresy nebo z dat vždy hledej přes `najitFragment(model, k)` (kanonický, celý i krátký tvar),
+ne `model.mapa.get`. Uložená data převádí `zkratitKlice()` (v `normalizovatWs()` a při importu),
+starší adresy přepíše detail ustanovení, starší kotvy `#u-norma-…-par_…` dohledá `vykreslit()`.
+Nečíslované fragmenty mají klíč typu `…/frag_1241153279`, ten stabilní není.
 **Paragraf s písmeny bez odstavců** (např. § 2 zákona 110/2019 Sb.): e-Sbírka vloží mezi paragraf
 a písmena nečíslovaný `Odstavec_Dc` s klíčem `frag_…`, bez citace a bez `<var>` (nese návětí).
 Písmena mají klíč `par_2/pism_a` a citaci „§ 2 písm. a)“. Takový odstavec se nikde nevypisuje jako
