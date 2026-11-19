@@ -142,7 +142,7 @@ mark{background:var(--zvyrazneni);color:inherit}
    čtení metodou GET kvůli CORS). Úložiště: složka v GitHub repozitáři.
    Podrobnosti k architektuře jsou v leg/CLAUDE.md.
    ===================================================================== */
-const APP_VERZE = "1.24.0";
+const APP_VERZE = "1.24.1";
 
 /* ==================== POMOCNÉ ==================== */
 const $ = (s, r) => (r || document).querySelector(s);
@@ -510,20 +510,26 @@ async function esbFragmenty(id, datum, prubeh){
   const z = zneniIri(id, datum), zaklad = z + "/dokument";
   const STRANKA = 2500;
   const vse = [], videno = new Set();
-  for (let offset = 0; ; offset += STRANKA){
+  /* Stránkuje se podle pořadí (?o >= poslední načtené), ne přes OFFSET — server e-Sbírky
+     odmítá řazený dotaz s OFFSET nad 10 000 řádků, takže velké předpisy by se nestáhly celé. */
+  let posledni = null;
+  for (;;){
     if (prubeh) prubeh("Stahuji text znění " + datumCz(datum) + " — " + vse.length + " částí textu…");
     const r = await sparql("SELECT ?f ?p ?c ?o ?typ ?t WHERE { <" + z + "> e:má-fragment-znění ?f . "
       + "?f e:pořadí-fragmentu-znění-právního-aktu ?o ; e:obsahuje-fragment ?x . "
+      + (posledni !== null ? "FILTER (STR(?o) >= " + JSON.stringify(posledni) + ") " : "")
       + "OPTIONAL { ?f e:má-předka ?p } OPTIONAL { ?f e:citace-označení-fragmentu-znění-právního-aktu ?c } "
-      + "OPTIONAL { ?x e:má-typ-fragmentu ?typ } OPTIONAL { ?x e:text-fragmentu ?t } } ORDER BY ?o ?f LIMIT " + STRANKA + " OFFSET " + offset);
+      + "OPTIONAL { ?x e:má-typ-fragmentu ?typ } OPTIONAL { ?x e:text-fragmentu ?t } } ORDER BY ?o ?f LIMIT " + STRANKA);
+    let nove = 0;
     for (const x of r){
+      posledni = x.o;
       if (videno.has(x.f)) continue;
-      videno.add(x.f);
+      videno.add(x.f); nove++;
       const klic = x.f === zaklad ? "" : x.f.startsWith(zaklad + "/") ? x.f.slice(zaklad.length + 1) : x.f;
       const rodic = !x.p ? null : x.p === zaklad ? "" : x.p.startsWith(zaklad + "/") ? x.p.slice(zaklad.length + 1) : null;
       vse.push({o: x.o, f: [klic, rodic, (x.typ || "").split("/").pop(), x.c || "", x.t || ""]});
     }
-    if (r.length < STRANKA) break;
+    if (r.length < STRANKA || !nove) break;
   }
   vse.sort((a, b) => a.o < b.o ? -1 : a.o > b.o ? 1 : 0);
   return vse.map(v => v.f);
@@ -1745,7 +1751,7 @@ async function vykreslit(volby){
   }
   if (cislo !== vykreslovani) return;
   vykreslitMenu();
-  main.replaceChildren(...[].concat(obsah));
+  main.replaceChildren(...[].concat(obsah).filter(x => x !== null && x !== undefined && x !== false));
   const h1 = main.querySelector("h1");
   document.title = (h1 ? h1.textContent + " — " : "") + "Legislativní prohlížeč";
   if (location.hash){
@@ -2348,7 +2354,9 @@ function najitUstanoveni(model, dotaz){
   const n = normCitace(dotaz);
   if (!n) return null;
   const s = n.startsWith("par") || n.startsWith("cl") || n.startsWith("cast") || n.startsWith("hlava") ? n : "par" + n;
-  return model.citovatelne.find(f => normCitace(f.c) === s) || model.citovatelne.find(f => normCitace(f.c).startsWith(s)) || null;
+  const najdi = s => model.citovatelne.find(f => normCitace(f.c) === s) || model.citovatelne.find(f => normCitace(f.c).startsWith(s)) || null;
+  /* Paragraf bez číslovaných odstavců (rovnou písmena): „§ 2 odst. 1 písm. a“ najde „§ 2 písm. a)“. */
+  return najdi(s) || (/odst1(?!\d)/.test(s) ? najdi(s.replace(/odst1(?!\d)/, "")) : null);
 }
 async function pohledMimoKnihovnu(id, ust){
   drobecky([["Přehled", {}], [id ? citacePredpisuZId(id) : "Předpis", null]]);
@@ -3690,7 +3698,17 @@ POHLED_FUNKCE.ust = async p => {
   if (!P) return pohledMimoKnihovnu(id, p.ust);
   const datum = p.zneni && P.zneni[p.zneni] ? p.zneni : aktualniDatum(P);
   const model = await nactiZneni(id, datum);
-  const f = model.mapa.get(p.ust);
+  let f = model.mapa.get(p.ust);
+  /* Nečíslovaný fragment (typicky jediný odstavec paragrafu, který má rovnou písmena) nemá citaci
+     ani stálý klíč — místo něj se ukáže nejbližší nadřazené ustanovení s citací (paragraf). */
+  if (f && !f.c){
+    let x = f;
+    while (x && !x.c && x.k !== "") x = model.mapa.get(x.p);
+    if (x && x.c){
+      f = x; p.ust = x.k;
+      try { history.replaceState(history.state, "", adresa({pohled: "ust", predpis: id, ust: x.k, zneni: p.zneni || null})); } catch (e){}
+    }
+  }
   drobecky([["Přehled", {}], [kratkyNazev(P, id), {pohled: "predpis", predpis: id, zneni: p.zneni || null}], [f ? (f.c || "Ustanovení") : "Ustanovení", null]]);
   if (!f){
     const v = W.vyznaceni.find(x => x.predpis === id && x.klic === p.ust);
@@ -3709,9 +3727,11 @@ POHLED_FUNKCE.ust = async p => {
   out.push(el("p", {class: "tichy"}, kratkyNazev(P, id) + (P.nazev ? ", " + P.nazev : "") + " — " + popisZneni(P, datum) + "."));
   out.push(prepinacZneniUst(P, id, p.ust, datum));
   const pr = predkove(model, f.k);
-  if (pr.length){
+  /* Nečíslovaný odstavec (paragraf s písmeny bez odstavců) nemá označení ani citaci — v umístění se nevypisuje. */
+  const prPopsane = pr.filter(x => oznaceniFragmentu(x) || x.c);
+  if (prPopsane.length){
     out.push(el("h2", null, "Umístění v předpisu"));
-    out.push(el("ol", {class: "seznam"}, pr.map(x => el("li", null,
+    out.push(el("ol", {class: "seznam"}, prPopsane.map(x => el("li", null,
       el("a", {href: adresa({pohled: "predpis", predpis: id, zneni: p.zneni || null}) + "#" + idFragmentu(x.k)},
         (oznaceniFragmentu(x) || x.c) + (STRUKTURA.has(x.typ) && titulekStruktury(model, x) ? " " + titulekStruktury(model, x) : ""))))));
   }
@@ -3998,7 +4018,7 @@ POHLED_FUNKCE.hledat = async p => {
           el("p", null, ukazka(t, nt, slova))))));
     }
   }
-  vysledky.append(el("p", {class: "tichy"}, celkem ? "Nalezeno " + pocetSlov(celkem, "výsledek", "výsledky", "výsledků") + (celkem >= MAX ? " (zobrazeno prvních " + MAX + ")" : "") + "." : "Nic nenalezeno."), ...casti);
+  vysledky.append(el("p", {class: "tichy"}, celkem ? "Nalezeno " + pocetSlov(celkem, "výsledek", "výsledky", "výsledků") + (celkem >= MAX ? " (zobrazeno prvních " + MAX + ")" : "") + "." : "Nic nenalezeno."), ...casti.filter(Boolean));
   return out;
 };
 /* Ukázka textu kolem prvního nálezu, s vyznačením všech hledaných slov. */

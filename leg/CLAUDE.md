@@ -20,6 +20,8 @@ Historie změn: `changelog.md` (Keep a Changelog, sémantické verzování, `APP
   typů fragmentů (`…/cis-esb-typ-fragmentu/položka/Prefix_Title`). Proto se typ fragmentu
   **nefiltruje v dotazu, ale až v aplikaci**. Když přidáváš dotaz, otestuj ho naživo.
   Občas server vrátí i 502 — `sparql()` to zkouší třikrát, 403 neopakuje.
+- Řazený dotaz s `OFFSET` nad 10 000 řádků server odmítá (Virtuoso SR353) — `esbFragmenty()` proto
+  stránkuje podle pořadí `FILTER (STR(?o) >= poslední)` a duplicity zahazuje.
 - Slovník: `PREFIX e: <https://slovník.gov.cz/datový/sbírka/pojem/>`.
 - Model dat (ověřeno 10/2026):
   - `eli/cz/sb/{rok}/{číslo}` — právní akt: `e:citace-právního-aktu`, `e:má-znění` (všechna),
@@ -41,6 +43,12 @@ Historie změn: `changelog.md` (Keep a Changelog, sémantické verzování, `APP
 Klíčem fragmentu je **cesta za `/dokument/`** (`norma/cast_1/hlava_3/par_39a/odst_1`).
 U strukturovaných ustanovení je stabilní napříč zněními, proto na ní stojí vyznačení,
 adresy i kotvy. Nečíslované fragmenty mají klíč typu `…/frag_1241153279`, ten stabilní není.
+**Paragraf s písmeny bez odstavců** (např. § 2 zákona 110/2019 Sb.): e-Sbírka vloží mezi paragraf
+a písmena nečíslovaný `Odstavec_Dc` s klíčem `frag_…`, bez citace a bez `<var>` (nese návětí).
+Písmena mají klíč `par_2/pism_a` a citaci „§ 2 písm. a)“. Takový odstavec se nikde nevypisuje jako
+samostatné ustanovení: v umístění se vynechá, adresa na něj otevře nejbližší nadřazené ustanovení
+s citací, `najitUstanoveni()` při neúspěchu zkusí citaci bez „odst. 1“. Prázdné části stránky
+(`null`) filtruje `vykreslit()` před `replaceChildren` — pro nativní `append` filtruj sám.
 
 ## Úložiště v GitHubu
 Složka workspace (z nastavení nebo z URL) obsahuje:
