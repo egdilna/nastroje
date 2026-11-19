@@ -120,9 +120,19 @@ stránka štítku, výsledky hledání pod H2 předpisu). Nový seznam předpis�
   a `hromadnaUprava()` jen přepínač.
 
 ## Export a přenos dat
-- `exportniPanel(titul, md, tsv)` — Markdown a TSV do schránky (`kopirovat`) i do souboru
-  (`stahnoutSoubor`, Blob s atributem `download`; globální obsluha kliknutí odkazy
-  s `download` nechává být). TSV: tabulátory a konce řádků v buňce se nahrazují, soubor má BOM.
+- `exportniPanel(titul, md, data, uroven, dkm)` — `md()` vrací Markdown (kopírování, soubor .md
+  i Word), `data()` jeden list `{nazev, radky}` nebo jejich pole (Excel; TSV do schránky jen u jednoho
+  listu). Listy staví `vyznaceniList`, `komentareList`, `ustanoveniList`, `predpisyList` — první řádek
+  záhlaví, poslední sloupce „Odkaz“ (adresa do aplikace) a „Odkaz do e-Sbírky“; počty jako čísla.
+  Soubory přes `stahnoutSoubor` (Blob s atributem `download`, text i `Uint8Array`).
+- Word a Excel bez knihovny: `zipSoubor()` (ZIP bez komprese, vlastní CRC32), `xlsxSoubor(titul, listy)`
+  (inline řetězce, ukotvené tučné záhlaví, automatický filtr, zalamování, odkazy http jako hyperlinky)
+  a `docxZMarkdownu(titul, md)` — Markdown jde přes `markdownDom()` a z DOM se skládá WordprocessingML
+  (styly heading 1–6, Quote, List Paragraph, číslování, hyperlinky; skryté `.vh` se vynechávají).
+- Oblast má vlastní export (`oblastJakoMarkdown`, listy Předpisy/Vyznačená/Komentáře), štítek
+  i s předpisy (`stitekJakoMarkdown`); vložené exporty skládá `mdVnorit()` (bez hlavičky, nadpisy o úroveň níž).
+- Sekce Kopírovat (`sekceKopirovat(formaty, titul)`, `polozkaKopirovani()`): víceřádkový Markdown má navíc
+  Stáhnout Markdown a Stáhnout Word.
 - Markdown komentářů (`komentareJakoMarkdown(titul, poznamka, seznam, odkaz)`) má šablonu
   danou uživatelem: H1, *Export z knihovny …*, *Exportováno … — N komentářů.*, poznámka skupiny,
   odkaz na skupinu; pod H2 předpisu odkaz na předpis; ustanovení tučně „citace: text“ (každý
