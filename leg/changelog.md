@@ -2,6 +2,13 @@
 
 Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/cs/1.1.0/), verze podle sémantického verzování.
 
+## [1.24.1] — 2026-11-19
+
+### Opraveno
+- Paragraf, který má rovnou písmena bez číslovaných odstavců: v umístění ustanovení už není prázdný odkaz na nečíslovaný odstavec; adresa takového odstavce otevře celý paragraf místo stránky bez citace; skok „§ 2 odst. 1 písm. a“ najde i „§ 2 písm. a)“.
+- Na stránkách se už nevypisuje „null“ (detail ustanovení, výsledky hledání a další místa, kde část stránky nebyla k zobrazení).
+- Velké předpisy (nad 10 000 částí textu, např. 89/2012 Sb.) se stahují celé — stránkování podle pořadí místo OFFSET, který server e-Sbírky nad 10 000 řádků odmítá.
+
 ## [1.24.0] — 2026-11-19
 
 ### Přidáno
