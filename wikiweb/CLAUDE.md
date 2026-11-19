@@ -103,6 +103,31 @@ Parser je převzatý z md2web (stejná syntaxe i HTML výstup) a doplněný:
 - **multisection** (md2web): soubor začíná řádkem `multisection` (smí mu předcházet `# Název`), každý `## nadpis` je samostatná podstránka s adresou `#stranka/podstranka` (kotva `#stranka/podstranka:nadpis`). Text před prvním `##` je úvod stránky, pod ním výpis podstránek. Podstránky jsou virtuální uzly (`rozpoznatMulti()`, `rozbalitMulti()`): jsou ve stromu panelu, v předchozí/další, mají drobečky, obsah stránky, funkce a zpětné odkazy, hledání je najde a vedou na ně wikiodkazy `[[Název podstránky]]`, md2web `[Název]`, vkládání `{{…}}` i staré adresy `#slug`. Aby to fungovalo odkudkoli hned, editor u takové stránky sám udržuje `multisection: true` v contents.json a prohlížeč tyto soubory načte při startu. Editor ukazuje seznam podstránek pod textem, nabízí je ve výběru wikiodkazu a Správa webu je nehlásí jako chybějící.
 - **sekce článků**: soubor začíná řádkem `articles` (smí mu předcházet `# Název`), každý článek je `## Nadpis`, pod ním `Datum:` a `Tagy:`, první odstavec je perex. Navíc (md2web ho nezná a ukázal by ho jako text) řádek `Stav: koncept` / `Status: draft` — takový článek se na webu nezobrazí. Přesně formát md2web; víc sekcí článků = víc takových souborů, každá má vlastní štítky.
 
+### Datové stránky (CSV, TSV, JSON)
+
+Stránka, jejíž `file` končí `.csv`, `.tsv`/`.tab`, `.json` nebo `.jsonl`/`.ndjson`, je **datová** (`druhDat()` v obou souborech). Data se **jen čtou**: soubor je v editoru vždy „spravovaný“ (`spravovaneSoubory()` ho zahrnuje), takže ho `seznamZmen()` nikdy nezapíše — ani když by se jeho text v paměti změnil. Načítání: UTF-8, a když neprojde, windows-1250 (`nactiData()` v prohlížeči, `ghNacistData()` v editoru přes blob i nad 1 MB). Do hledání na webu a do zpětných odkazů se data nedávají.
+
+**CSV/TSV** (`ziskatTabulku()`, `vykreslitTabulku()`, `vykreslitZaznam()`): oddělovač `, ; tab` se pozná z hlavičky (u `.tsv` vždy tabulátor), uvozovky podle RFC 4180. Tabulka s řazením (tlačítko v `th`, `aria-sort`), hledáním bez diakritiky, filtry (u textu zaškrtávátka s počty podle ostatních filtrů, u čísla a data rozsah od–do), přepínačem Tabulka/Karty a stránkováním po 100. Stav je v adrese `#id?hledat=…&razeni=-Sloupec&pohled=karty&f.Sloupec=hodnota&od.X=…&do.X=…` (prázdná hodnota filtru je `∅`), zapisuje se `history.replaceState`. Záznam má adresu `#id/klic` (klíč ze sloupce `key`, jinak slug názvu), drobečky, předchozí/další podle posledního výpisu (`W.dataSeznam`) a odkaz Zpět na výsledky. Nastavení `table` v contents.json:
+
+```json
+"table": { "title": "Název", "key": "IZO", "columns": { "Obory": "seznam", "Web": "url" },
+           "show": ["Název","Obec"], "filters": ["Kraj","Kapacita"], "card": ["Obec"],
+           "sort": "-Kapacita", "view": "karty", "record": "## ((Obec))\nKapacita ((Kapacita))" }
+```
+
+Typy sloupců: `text`, `cislo` (i desetinná čárka a mezery), `datum` (`2026-11-19`, `19. 11. 2026`), `url`, `email`, `markdown`, `seznam` (hodnoty oddělené `; , |`, filtr po hodnotách), `skryty`. Bez `columns` se typ odhadne. Bez `filters` se vyberou samy (textové sloupce s 2–15 hodnotami, ne adresy a e-maily, nejvýš 4); `filters: []` znamená žádné. Bez `show` jsou vidět všechny neskryté sloupce, sloupec s názvem je vždy první (`th scope="row"` s odkazem na záznam). `record` je Markdown se zápisem `((Sloupec))`; bez něj je detail seznam `<dl>`.
+
+**JSON** (`vykreslitJson()`): struktura jako dokument — jednoduché hodnoty v `<dl>`, vnořený objekt jako sekce s nadpisem o úroveň níž (H2…H6) a tlačítkem rozbalení v nadpisu (`aria-expanded`), pole jednoduchých hodnot jako odznáčky, pole objektů jako tabulka s řazením (když se hodí: ≤10 klíčů, převážně jednoduché hodnoty), jinak jako sekce položek s nadpisem z `nazev/name/title/…`. Hodnoty: ✓ ano / ✗ ne, `—` pro null, čísla a data česky, adresy a e-maily jako odkazy. Kotvy podle cesty `#id:j-adresa.obec`, `#id:j-zamestnanci.2` — `skocitNa()` přes `odkrytPredky()` rozbalí sbalené předky (platí pro obsah stránky v panelu, nálezy i sdílený odkaz). Hledání v datech vypíše nalezená místa jako odkazy s cestou; Rozbalit vše / Sbalit vše; přepínač Zdroj JSON s barevnou syntaxí a kopírováním. Pole nad 100 položek se zkrátí s tlačítkem Zobrazit všech. JSON Lines je pole řádků. Nastavení `json`:
+
+```json
+"json": { "path": "data.items", "labels": { "adresa.psc": "PSČ" }, "hide": ["_meta"],
+          "tables": ["kontakty"], "title": ["jmeno"], "open": 2, "schema": "schema.json" }
+```
+
+Cesty v `labels`/`hide`/`tables` jsou bez indexů pole. Ze schématu (JSON Schema, `$ref` na `$defs`, `allOf/anyOf/oneOf`) se berou `title` (popisek), `description`, `format` a pořadí klíčů; u `data.json` se `schema.json` vedle hledá samo (tvar datového exportu DKM).
+
+**Editor**: místo textu je karta Data — u CSV/TSV panel **Sloupce** (`panelSloupcu()`: název, klíč, výchozí řazení a zobrazení, tabulka sloupců s ukázkou, typem, V tabulce / Filtr / Na kartě, šablona záznamu s vkládáním sloupce), u JSON panel **Struktura** (`panelStruktury()`: od kterého místa, hloubka rozbalení, pole pro nadpisy, schéma, a tabulka cest s popiskem, Skrýt a Tabulka). Zapisuje se jen do contents.json (`zapsatNastaveniDat()`). Rozbor dat je v editoru kopie z prohlížeče (`rozebratCsvEd`, `odhadTypuEd`) — při změně pravidel uprav obojí.
+
 ## Adresy v prohlížeči
 
 `#id` stránka · `#id/clanek` článek · `#id?tag=x` články se štítkem · `#id:kotva` nadpis na stránce · `#/stitek/x` stránky se štítkem z contents.json. Hash bez známého id zkusí slug názvu stránky (kompatibilita s odkazy md2web).
