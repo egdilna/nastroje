@@ -1440,6 +1440,19 @@ function kontrolaVyplnění(f, v) {
       if (!/^[0-9a-fA-F-]{36}$/.test(z.okz || '')) chyby.push({ text: 'U zastoupeného subjektu chybí platný identifikátor oprávnění (OKZ).', href: '#obcan/profil' });
     }
   }
+  const kontrolaOsoby = (x, kde) => {
+    const a = x.adresa || {};
+    if (a.psč && !/^[0-9]{3} ?[0-9]{2}$/.test(a.psč.trim())) chyby.push({ text: kde + ': PSČ musí mít 5 číslic.', href: '#obcan/profil' });
+    if (a.čísloPopisné && !/^[0-9]{1,4}$/.test(a.čísloPopisné)) chyby.push({ text: kde + ': číslo popisné smí mít jen 1 až 4 číslice.', href: '#obcan/profil' });
+    if (a.čísloEvidenční && !/^[0-9]{1,4}$/.test(a.čísloEvidenční)) chyby.push({ text: kde + ': číslo evidenční smí mít jen 1 až 4 číslice.', href: '#obcan/profil' });
+    if (a.čísloOrientační && !/^[0-9]{1,3}[a-zA-Z]?$/.test(a.čísloOrientační)) chyby.push({ text: kde + ': číslo orientační má tvar 1 až 3 číslice a případně písmeno.', href: '#obcan/profil' });
+    if (x.email && !/^[^@\s]+@[^@\s]+$/.test(x.email)) chyby.push({ text: kde + ': neplatný e-mail.', href: '#obcan/profil' });
+    if (x.telefon && !/^\+?[0-9 ]{3,20}$/.test(x.telefon)) chyby.push({ text: kde + ': telefon smí obsahovat jen číslice, mezery a úvodní +.', href: '#obcan/profil' });
+    if (x.datováSchránka && !/^[a-z0-9]{7}$/.test(x.datováSchránka)) chyby.push({ text: kde + ': ID datové schránky musí mít 7 znaků (malá písmena a číslice).', href: '#obcan/profil' });
+  };
+  kontrolaOsoby(o, 'Profil přihlášené osoby');
+  if (role === 'pfo' && stav.klient.podnikání.datováSchránka && !/^[a-z0-9]{7}$/.test(stav.klient.podnikání.datováSchránka)) chyby.push({ text: 'ID datové schránky podnikatele musí mít 7 znaků.', href: '#obcan/profil' });
+  if (role.startsWith('z:')) { const z = stav.klient.zastoupení.find(x => x.uid === role.slice(2)); if (z) kontrolaOsoby(z, 'Zastoupený subjekt'); }
   const { prom } = sestavitProměnné(f, v.hodnoty);
   všechnaPole(f).forEach(p => {
     if (p.druh === 'informační_text' || p.druh === 'výpočet') return;
@@ -1498,10 +1511,14 @@ function názevElementu(text) {
 }
 
 /* Mapa cesta → pole, stejná pro export i zpětné načtení dat. */
+const VYHRAZENÉ_ELEMENTY = ['identifikátor', 'typ', 'popis', 'agenda_kód', 'agenda_název', 'služba_kód', 'služba_název', 'úkon_kód', 'verze', 'platnost_od', 'příjemce', 'žadatel', 'zástupce_žadatele', 'přílohy'];
+
 function mapaElementů(f) {
   const výsledek = [];
   const projít = (uzly, cesta) => {
     const použité = {};
+    // na první úrovni jsou názvy pevných bloků datového XML obsazené
+    if (!cesta.length) VYHRAZENÉ_ELEMENTY.forEach(n => { použité[n] = 1; });
     const unik = n => { if (!použité[n]) { použité[n] = 1; return n; } použité[n] += 1; return n + '_' + použité[n]; };
     uzly.forEach(u => {
       if (u.typ === 'oddíl') projít(u.děti, cesta.concat(unik(názevElementu(u.název))));
@@ -1570,57 +1587,67 @@ function přílohyMetadata(seznam) {
   return U('přílohy', seznam.map(p => U('příloha', [U('název', p.název, { 'xml:lang': 'cs' }), U('název_souboru', p.souborNázev), U('typ_média', typMédiaIANA(p.souborNázev, p.typ))])));
 }
 
-/* --- 1) datové XML (vnitřní struktura EasyForms, kořen detail_podání bez jmenného prostoru) */
+/* --- 1) datové XML (kořen detail_podání bez jmenného prostoru; odpovídá XSD EasyForms easyforms-detail-podani.xsd)
+   Pořadí: hlavička, příjemce, žadatel, zástupce_žadatele, pole formuláře, přílohy.
+   Pole formuláře jsou přímo pod kořenem, oddíly jako vnořené elementy. Prázdné hodnoty se nezapisují. */
 function vytvořitDatovéXML(f, v, přílohy) {
   const ú = stav.úřad;
   const k = stav.klient;
   const o = k.osoba;
-  const adresaEF = a => U('adresa', [neprázdné('obec', a.obec), neprázdné('část_obce', a.částObce), neprázdné('ulice', a.ulice), neprázdné('číslo_popisné', a.čísloPopisné), neprázdné('číslo_evidenční', a.čísloEvidenční), neprázdné('číslo_orientační', a.čísloOrientační), neprázdné('psč', a.psč)]);
-  const kontaktEF = (ds) => U('kontakt', [neprázdné('email', o.email), neprázdné('telefon', o.telefon), neprázdné('id_datové_schránky', ds)]);
+  const psč = t => String(t || '').replace(/\s+/g, '');
+  const adresaEF = a => {
+    const d = [neprázdné('obec', a.obec), neprázdné('část_obce', a.částObce), neprázdné('ulice', a.ulice), neprázdné('číslo_popisné', a.čísloPopisné), neprázdné('číslo_evidenční', a.čísloEvidenční), neprázdné('číslo_orientační', a.čísloOrientační), neprázdné('psč', psč(a.psč))].filter(Boolean);
+    return d.length ? U('adresa', d) : null;
+  };
+  const kontaktEF = (email, telefon, ds) => {
+    const d = [neprázdné('email', email), neprázdné('telefon', telefon), neprázdné('id_datové_schránky', ds)].filter(Boolean);
+    return d.length ? U('kontakt', d) : null;
+  };
+  const foEF = (x, email, telefon) => U('fyzická_osoba', [neprázdné('jméno', x.jméno), neprázdné('příjmení', x.příjmení), neprázdné('datum_narození', x.datumNarození), kontaktEF(email, telefon, x.datováSchránka), adresaEF(x.adresa)]);
   let žadatel;
   let zástupce = null;
   if (v.role === 'pfo') {
-    žadatel = U('žadatel', [U('fyzická_podnikající_osoba', [U('ičo', k.podnikání.ičo), U('název', [jménoOsoby(o), k.podnikání.dodatky].filter(Boolean).join(', '))]), kontaktEF(k.podnikání.datováSchránka || o.datováSchránka), adresaEF(o.adresa)]);
+    žadatel = U('žadatel', [U('fyzická_podnikající_osoba', [neprázdné('ičo', k.podnikání.ičo), neprázdné('název', [jménoOsoby(o), k.podnikání.dodatky].filter(Boolean).join(', ')), kontaktEF(o.email, o.telefon, k.podnikání.datováSchránka || o.datováSchránka), adresaEF(o.adresa)])]);
   } else if (v.role.startsWith('z:')) {
     const z = k.zastoupení.find(x => x.uid === v.role.slice(2));
-    if (z.typ === 'PO') žadatel = U('žadatel', [U('právnická_osoba', [U('ičo', z.ičo), U('název', z.název)]), U('kontakt', [neprázdné('id_datové_schránky', z.datováSchránka)]), adresaEF(z.adresa)]);
-    else žadatel = U('žadatel', [U('fyzická_osoba', [U('jméno', z.jméno), U('příjmení', z.příjmení), U('datum_narození', z.datumNarození)]), U('kontakt', [neprázdné('id_datové_schránky', z.datováSchránka)]), adresaEF(z.adresa)]);
-    zástupce = U('zástupce_žadatele', [U('kód_zastoupení', z.okz), U('fyzická_osoba', [U('jméno', o.jméno), U('příjmení', o.příjmení), U('datum_narození', o.datumNarození)]), kontaktEF(o.datováSchránka), adresaEF(o.adresa)]);
+    if (z.typ === 'PO') žadatel = U('žadatel', [U('právnická_osoba', [neprázdné('ičo', z.ičo), neprázdné('název', z.název), kontaktEF('', '', z.datováSchránka), adresaEF(z.adresa)])]);
+    else žadatel = U('žadatel', [foEF(z, '', '')]);
+    zástupce = U('zástupce_žadatele', [U('kód_zastoupení', z.okz), foEF(o, o.email, o.telefon)]);
   } else {
-    žadatel = U('žadatel', [U('fyzická_osoba', [U('jméno', o.jméno), U('příjmení', o.příjmení), U('datum_narození', o.datumNarození)]), kontaktEF(o.datováSchránka), adresaEF(o.adresa)]);
+    žadatel = U('žadatel', [foEF(o, o.email, o.telefon)]);
   }
   const { výpočty } = sestavitProměnné(f, v.hodnoty);
-  // předmět podání – oddíly jako vnořené elementy, prázdná pole se vynechávají
-  const strom = U('předmět_podání', []);
-  mapaElementů(f).forEach(({ cesta, pole }) => {
+  const pole = [];
+  mapaElementů(f).forEach(({ cesta, pole: p }) => {
     let prvky = [];
-    const h = v.hodnoty[pole.kód];
+    const h = v.hodnoty[p.kód];
     const posl = cesta[cesta.length - 1];
-    if (pole.druh === 'výpočet') { const r = výpočty[pole.kód]; const t = výsledekText(r); if (t !== '') prvky.push(U(posl, t)); }
-    else if (pole.druh === 'logická') prvky.push(U(posl, h ? 'true' : 'false'));
-    else if (pole.druh === 'číselník') {
-      const položky = položkyPole(pole);
+    if (p.druh === 'výpočet') { const t = výsledekText(výpočty[p.kód]); if (t !== '') prvky.push(U(posl, t)); }
+    else if (p.druh === 'logická') prvky.push(U(posl, h ? 'true' : 'false'));
+    else if (p.druh === 'číselník') {
+      const položky = položkyPole(p);
       const kódy = Array.isArray(h) ? h : (h ? [h] : []);
       prvky = kódy.map(kd => U(posl, kd, { text: (položky.find(x => x.kód === kd) || {}).název || '' }));
     } else if (h != null && String(h).trim() !== '') prvky.push(U(posl, String(h).trim()));
     if (!prvky.length) return;
-    let cíl = strom;
+    let cíl = pole;
     cesta.slice(0, -1).forEach(n => {
-      let d = cíl.c.find(x => x.n === n && Array.isArray(x.c));
-      if (!d) { d = U(n, []); cíl.c.push(d); }
-      cíl = d;
+      let d = cíl.find(x => x.n === n && Array.isArray(x.c));
+      if (!d) { d = U(n, []); cíl.push(d); }
+      cíl = d.c;
     });
-    cíl.c.push(...prvky);
+    cíl.push(...prvky);
   });
+  const ds = dsFormuláře(f);
+  const am = [neprázdné('kód_adresního_místa', ú.adresa.kódAdresníhoMísta), neprázdné('obec', ú.adresa.obec), neprázdné('okres', ú.adresa.okres)].filter(Boolean);
   const kořen = U('detail_podání', [
     U('identifikátor', f.id), U('agenda_kód', f.agendaKód), U('agenda_název', f.agendaNázev), U('služba_kód', f.službaKód), U('služba_název', f.službaNázev), U('úkon_kód', f.úkonKód), U('verze', String(f.verze)),
     neprázdné('popis', f.popis), neprázdné('platnost_od', f.účinnostOd),
-    U('příjemce', [U('název', ú.název), U('ičo', ú.ičo), U('id_datové_schránky', dsFormuláře(f).ds), neprázdné('odpovědný_útvar', f.odpovědnýÚtvar), neprázdné('bližší_specifikace_útvaru', f.upřesněníÚtvaru),
-      U('adresní_místo', [neprázdné('kód_adresního_místa', ú.adresa.kódAdresníhoMísta), neprázdné('obec', ú.adresa.obec), neprázdné('okres', ú.adresa.okres)])]),
-    žadatel, zástupce,
-    strom.c.length ? strom : null,
-    přílohy.length ? U('přílohy', přílohy.map(p => U('příloha', [U('název', p.název, { 'xml:lang': 'cs' }), U('název_souboru', p.souborNázev), U('typ_média', p.typ || MIME[přípona(p.souborNázev)] || 'application/octet-stream')]))) : null
-  ]);
+    U('příjemce', [neprázdné('obchodní_firma', ú.název), neprázdné('ičo', ú.ičo), neprázdné('datová_schránka', ds.ds), am.length ? U('sídlo', [U('adresní_místo', am)]) : null]),
+    žadatel, zástupce
+  ].concat(pole, [
+    U('přílohy', přílohy.map(p => U('příloha', [U('název', p.název, { 'xml:lang': 'cs' }), U('název_souboru', p.souborNázev), U('typ_média', p.typ || MIME[přípona(p.souborNázev)] || 'application/octet-stream')])))
+  ]));
   return xmlDokument(kořen);
 }
 
@@ -2048,8 +2075,9 @@ function načístDataXML(text) {
   const dok = new DOMParser().parseFromString(text, 'application/xml');
   if (dok.querySelector('parsererror')) { hlásit('Soubor XML nelze přečíst.'); oznámit('Soubor XML nelze přečíst.'); return; }
   const kořen = dok.documentElement;
-  const předmět = [...kořen.children].find(e => e.localName === 'předmět_podání');
-  if (kořen.localName !== 'detail_podání' || !předmět) { oznámit('Soubor neobsahuje data formuláře (detail_podání).'); return; }
+  if (kořen.localName !== 'detail_podání') { oznámit('Soubor neobsahuje data formuláře (detail_podání).'); return; }
+  // starší výstup FakeForms měl pole zabalená v předmět_podání
+  const předmět = [...kořen.children].find(e => e.localName === 'předmět_podání') || kořen;
   const id = [...kořen.children].find(e => e.localName === 'identifikátor');
   if (id && f.id && id.textContent !== f.id) hlásit('Načtená data patří k formuláři ' + id.textContent + ', ne ' + f.id + '. Načítám, co odpovídá.');
   let počet = 0;
