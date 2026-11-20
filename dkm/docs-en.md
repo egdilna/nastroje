@@ -1767,6 +1767,13 @@ one per server; it is stored only in the browser. Saving, autosave, merging when
 work at once and the `?id=` link all work the same as with GitHub. A self-hosted server must
 allow cross-origin requests (CORS) — GitLab does that for its API by default.
 
+If the server runs on an internal network, Chrome (version 142 and later) needs the **Local network
+access** permission for DKM and asks for it once. Whoever dismisses or denies the prompt gets a
+“server did not respond” message — even though a colleague on the same network has no trouble.
+Allow it via the icon left of the page address → Site settings → Local network access → Allow.
+If that does not help, open `https://server/api/v4/version` directly: a certificate error or a
+page that does not load means a network or certificate-trust problem, not a DKM one.
+
 #### Two people on one project
 
 DKM expects more than one person to work on the same file. **The file is not overwritten
