@@ -1129,7 +1129,7 @@ function stránkaČíselník(id) {
 
 function stránkaDatovka() {
   let html = '<h1>Datová schránka ' + esc(stav.úřad.datováSchránka || '(nevyplněno)') + ' – ' + esc(stav.úřad.název || 'úřad bez názvu') + '</h1>';
-  html += '<p>Doručené datové zprávy z odeslaných formulářů. U každé zprávy jsou uložená všechna XML; nahrané přílohy se do souboru úřadu neukládají.</p>';
+  html += '<p>Doručené datové zprávy z odeslaných formulářů. U každé zprávy je uložený celý obsah včetně příloh a PDF, takže jde kdykoli znovu stáhnout.</p>';
   const z = stav.datovka.slice().sort((a, b) => b.čas.localeCompare(a.čas));
   html += z.length ? '<ul class="seznam">' + z.map(m => '<li>' + odkaz('ovm/zprava/' + m.jid, m.věc + ' – ' + časČesky(m.čas)) + ' – ' + esc('ID zprávy ' + m.dmId + ', od ' + m.odesílatelText) + '</li>').join('') + '</ul>' : '<p>Schránka je prázdná.</p>';
   return html;
@@ -1143,7 +1143,7 @@ function stránkaZpráva(jid) {
     '<dt>Odesílatel</dt><dd>' + esc(m.odesílatelText) + '</dd>' + (m.zastoupenýText ? '<dt>Za koho</dt><dd>' + esc(m.zastoupenýText) + '</dd>' : '') +
     '<dt>Formulář</dt><dd>' + esc(m.formulářId + ', verze ' + m.verze) + '</dd><dt>JID dokumentu</dt><dd>' + esc(m.jid) + '</dd>' +
     '<dt>Soubory ve zprávě</dt><dd>' + esc(m.soubory.map(s => s.název + ' (' + velikostČesky(s.velikost) + ')').join(', ')) + '</dd></dl>';
-  html += '<p>' + tlačítko('Stáhnout zprávu znovu (ZIP, jen XML)', 'stahnout-zpravu', { jid }) + tlačítko('Odstranit zprávu ze schránky', 'smazat-zpravu', { jid }, { třída: 'nebezpecne' }) + '</p>';
+  html += '<p>' + tlačítko('Stáhnout zprávu znovu (ZIP)', 'stahnout-zpravu', { jid }) + tlačítko('Odstranit zprávu ze schránky', 'smazat-zpravu', { jid }, { třída: 'nebezpecne' }) + '</p>';
   html += '<h2>Obsah XML souborů</h2>';
   [['Datové XML', m.xml.data, SOUBOR_DATA], ['Metadatové XML formuláře', m.xml.metadata, SOUBOR_METADATA], ['Metadatové XML veřejnoprávního původce', m.xml.původce, SOUBOR_PŮVODCE], ['Obálka datové zprávy (smyšlená)', m.xml.obálka, 'obalka-datove-zpravy.xml']].forEach(([n, x, s]) => {
     html += '<details><summary>' + esc(n + ' – ' + s) + '</summary><pre>' + esc(x) + '</pre></details>';
@@ -1694,6 +1694,18 @@ function vytvořitZip(soubory) {
   return new Blob([...části, ...adresář, new Uint8Array(k.buffer)], { type: 'application/zip' });
 }
 
+/* base64 po blocích – bez obřích mezikopií u velkých příloh */
+function bytyDoBase64(b) {
+  let s = '';
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function base64DoBytů(t) {
+  const s = atob(t); const b = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
+  return b;
+}
+
 async function sha256Hex(data) {
   const b = data instanceof Uint8Array ? data : new TextEncoder().encode(data);
   const h = await crypto.subtle.digest('SHA-256', b);
@@ -1899,6 +1911,7 @@ async function odeslatPodání() {
     soubory.unshift({ název: 'obalka-datove-zpravy.xml', data: zpráva.xml.obálka });
     const zip = vytvořitZip(soubory);
     stav.datovka.push(zpráva);
+    zpráva.obsah = soubory.map(s => s.data instanceof Uint8Array ? { název: s.název, base64: bytyDoBase64(s.data) } : { název: s.název, text: s.data });
     relace.odeslané[jid] = { zip, pdf, názevPDF, název: 'datova-zprava-' + dmId + '.zip' };
     zapsat();
     stáhnout(zip, 'datova-zprava-' + dmId + '.zip');
@@ -1921,7 +1934,7 @@ function stránkaOdesláno(jid) {
     '<dl class="udaje"><dt>Čas</dt><dd>' + esc(časČesky(m.čas)) + '</dd><dt>ID datové zprávy</dt><dd>' + esc(m.dmId) + '</dd><dt>JID dokumentu</dt><dd>' + esc(m.jid) + '</dd>' +
     '<dt>Soubory</dt><dd>' + esc(m.soubory.map(s => s.název).join(', ')) + '</dd></dl><p>';
   if (o) html += tlačítko('Stáhnout datovou zprávu znovu (ZIP)', 'stahnout-odeslane', { jid }) + (o.pdf ? tlačítko('Stáhnout PDF', 'stahnout-pdf', { jid }) : '');
-  else html += tlačítko('Stáhnout zprávu (ZIP, jen XML)', 'stahnout-zpravu', { jid });
+  else html += tlačítko('Stáhnout datovou zprávu znovu (ZIP)', 'stahnout-zpravu', { jid }) + (m.obsah && m.obsah.some(x => /\.pdf$/.test(x.název) && !x.název.startsWith('přílohy/')) ? tlačítko('Stáhnout PDF', 'stahnout-pdf-ulozene', { jid }) : '');
   html += tlačítko('Stáhnout osvědčení o digitálním úkonu (XML)', 'stahnout-osvedceni', { jid }) + '</p>';
   html += '<p>ZIP se uložil automaticky při odeslání. Zprávu najdete i v režimu úřadu v části Datová schránka úřadu.</p>';
   html += '<p>' + odkaz('obcan', 'Zpět na formuláře') + '</p>';
@@ -2272,8 +2285,16 @@ const akce = {
   'stahnout-osvedceni': t => { const m = stav.datovka.find(x => x.jid === t.dataset.jid); stáhnout(m.osvědčení, 'osvedceni-' + m.dmId + '.xml', 'application/xml'); },
   'stahnout-zpravu': t => {
     const m = stav.datovka.find(x => x.jid === t.dataset.jid);
-    const zip = vytvořitZip([{ název: 'obalka-datove-zpravy.xml', data: m.xml.obálka }, { název: SOUBOR_DATA, data: m.xml.data }, { název: SOUBOR_METADATA, data: m.xml.metadata }, { název: SOUBOR_PŮVODCE, data: m.xml.původce }, { název: 'POZNAMKA.txt', data: 'Přílohy a PDF se do souboru úřadu neukládají, proto v tomto ZIPu nejsou.\n' }]);
+    const soubory = m.obsah
+      ? m.obsah.map(x => ({ název: x.název, data: x.base64 != null ? base64DoBytů(x.base64) : x.text }))
+      : [{ název: 'obalka-datove-zpravy.xml', data: m.xml.obálka }, { název: SOUBOR_DATA, data: m.xml.data }, { název: SOUBOR_METADATA, data: m.xml.metadata }, { název: SOUBOR_PŮVODCE, data: m.xml.původce }];
+    const zip = vytvořitZip(soubory);
     stáhnout(zip, 'datova-zprava-' + m.dmId + '.zip');
+  },
+  'stahnout-pdf-ulozene': t => {
+    const m = stav.datovka.find(x => x.jid === t.dataset.jid);
+    const pdf = m.obsah.find(x => /\.pdf$/.test(x.název) && !x.název.startsWith('přílohy/'));
+    stáhnout(new Blob([base64DoBytů(pdf.base64)], { type: 'application/pdf' }), pdf.název);
   },
   'smazat-zpravu': t => { stav.datovka = stav.datovka.filter(x => x.jid !== t.dataset.jid); zapsat(); oznámit('Zpráva odstraněna.'); location.hash = '#ovm/datovka'; }
 };

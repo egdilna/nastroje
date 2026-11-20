@@ -13,8 +13,8 @@ Mock zjednodušených formulářů DIA (EasyForms). Jeden soubor `index.html`, b
 
 ## Data
 
-- **Jeden JSON = jeden úřad** (`formát: "fakeforms-urad"`). Obsahuje nastavení úřadu, formuláře (každá verze je samostatný záznam se stejným `id`, jiným `uid` a `verze`), číselníky, profil klienta a doručené zprávy (`datovka`, jen XML, bez příloh).
-- **Ukládání:** průběžná kopie se ukládá do `localStorage` (`fakeforms-stav-v1`). Soubor přes File System Access API, jinak stažením. GitHub API se nepoužívá.
+- **Jeden JSON = jeden úřad** (`formát: "fakeforms-urad"`). Obsahuje nastavení úřadu, formuláře (každá verze je samostatný záznam se stejným `id`, jiným `uid` a `verze`), číselníky, profil klienta a doručené zprávy (`datovka`; v `obsah` je celý obsah ZIPu, binární soubory – přílohy a PDF – v base64 přes `bytyDoBase64`, takže zprávu jde kdykoli znovu stáhnout celou).
+- **Ukládání:** průběžná kopie se ukládá do `localStorage` (`fakeforms-stav-v1`). Soubor úřadu se ukládá prostým stažením (File System Access API se nepoužívá). Velké přílohy mohou přeplnit `localStorage`; chyba se pak ukáže v Hlášení aplikace a data zůstanou jen ve staženém JSON. GitHub API se nepoužívá.
 - **Kódy polí:** `parametr_1_N` z počítadla `dalšíKód`. Při přesunech se nemění, protože na ně odkazují výrazy.
 
 ## Výstup odeslání (ZIP)
