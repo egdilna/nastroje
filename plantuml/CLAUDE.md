@@ -138,36 +138,48 @@ F1 / Ctrl+Shift+P / tlačítko `#btnPalette`; Shift+F1 otevře `openPaletteHelp(
   kontext. Spuštění nejdřív zavře `#dlgPalette` a teprve pak volá `run` — dva
   modální `<dialog>` nad sebou nedávají smysl.
 
-## GitHub jako úložiště (sekce `=== GITHUB: … ===`)
-Projekt (`.pup`) i PNG diagramů se ukládají přes **GitHub Contents API**.
-- Token jen v `localStorage` (`GH_TOKEN_KEY`), posílá se výhradně na `api.github.com`.
-  Veřejný repozitář jde číst bez tokenu, zápis (a čtení soukromého) ho vyžaduje.
-- Cesta `owner/repo/cesta/soubor.pup` se drží na dvou místech: `project.ghPath` (cestuje
-  s projektem) a `localStorage` (`GH_PATH_KEY`). `ghCurrentPath()` je jediný správný
-  způsob, jak ji zjistit — projekt má přednost. `newProject` cestu **záměrně maže**,
-  aby uložení nepřepsalo existující soubor prázdným projektem.
-- Statická adresa `?gh=<base64 cesty>` (`ghEncodePath` / `ghDecodePath`, UTF-8 přes
-  `unescape(encodeURIComponent())`); `initGitHubFromUrl()` se volá na konci `init()`.
-- `ghPutFile` si vždy nejdřív načte SHA (`ghFetchMeta`), jinak GitHub přepis odmítne.
-  Soubory > 1 MB nemají `content` v odpovědi — `ghFetchText` pro ně sáhne na Blob API.
-  **Zápis tohle ošetřené nemá**: `ghPutFile` jede vždy přes Contents API, takže u projektu
-  nebo PNG nad 1 MB může uložení skončit chybou od GitHubu (data se neztratí, jen se
-  neuloží a hláška to řekne). Kdyby na to někdo narazil, řešením je commit z Git Data API
-  — vzor `ghUlozitVelke()` v `mros/index.html`, postup v kořenovém `CLAUDE.md`.
-- PNG jde do **stejné složky** jako projekt, název = `slugFileName(diagram.name)` — bez
-  diakritiky, mezery a speciální znaky nahrazené pomlčkou (kvůli čitelné adrese).
-  Stejný diagram dá vždy stejný název, takže se starší verze obrázku přepíše (záměr).
-  Pozor na rozdíl: soubory **stahované na disk** používají `safeBaseName`, který český
-  název zachová. Slug patří jen tam, kde název končí v URL.
-- Raw adresu obrázku staví `ghImageUrlFor` a zobrazuje `renderGhImagePanel` (karta Výstup).
-  Cesta se **musí** protáhnout `encodeURI` — názvy diagramů mají mezery i diakritiku.
-  Větev raw adresa potřebuje, ale z `ghPath` ji nezjistíš: `ghEnsureBranch` ji načte
-  z API (`default_branch`) do `ghBranchCache`, po uložení PNG se upřesní z `download_url`
-  v odpovědi; než odpověď dorazí, platí `main`.
-- `saveProjectAction()` je za tlačítkem „Uložit projekt" i za Alt+S: s nastavenou cestou
-  ukládá do repozitáře, bez ní stahuje `.pup`.
-- Hlášky jdou přes `ghStatus()` (dialog + globální status pruh) a mají vlastní slovník
-  `L.gh` — nový text patří do **obou** jazykových mutací.
+## GitHub a GitLab jako úložiště (sekce `=== GITHUB / GITLAB: … ===`)
+Projekt (`.pup`) i PNG diagramů se ukládají do repozitáře na GitHubu nebo GitLabu
+(gitlab.com i onprem). Vzor převzatý z DKM: **o poskytovateli rozhoduje tvar cesty** —
+obsahuje-li `/-/`, je to GitLab (`[http(s)://][server/]skupina/…/projekt/-/[blob|raw/větev/]cesta`,
+server vynechán = gitlab.com). `parseGhPath` je rozcestník a vrací `kind:'github'|'gitlab'`
+(GitLab: `schema, host, project, path, dir, branch`). Názvy `gh…` zůstaly; větví se na nízké
+úrovni: `ghFetchFile` / `ghCurrentRev` / `ghPutFile` / `ghEnsureBranch` / `ghImageUrlFor`.
+- **Tokeny jen v `localStorage`.** GitHub jeden (`GH_TOKEN_KEY`, jen na `api.github.com`),
+  GitLab jeden **na server** (`GL_TOKENS_KEY`, `glToken(host)` / `glSetToken`). Kontrola
+  „token je" jde vždy přes `repoToken(parsed)`, ne přes `ghGetToken()`.
+- Cesta se drží v `project.ghPath` i v `localStorage` (`GH_PATH_KEY`); `ghCurrentPath()` je
+  jediný správný způsob, jak ji zjistit. `newProject` cestu **záměrně maže**.
+- Statická adresa `?gh=<base64 cesty>` funguje pro oba poskytovatele; `initGitHubFromUrl()`
+  na konci `init()`. Načtení soukromého projektu bez tokenu (401/403/404) otevře nastavení
+  s vyplněným serverem a řekne, který token chybí.
+- **Čtení:** GitHub Contents API, nad 1 MB Git Blob API; GitLab `repository/files`,
+  záložně `…/raw`. **Zápis:** GitHub Contents API, nad `GH_LARGE_B64` Git Data API
+  (`ghPutLarge`: blob → strom s `base_tree` → commit → `PATCH refs` s `force:false`);
+  GitLab vždy Commits API (`glPutFile`, akce create/update + `last_commit_id`).
+- **Ochrana proti přepsání:** `ghLoadedRev = {path, rev}` (GitHub sha blobu, GitLab
+  `last_commit_id`) se nastaví po načtení i uložení a `loadProjectJsonText` ji zahodí.
+  `saveProjectToGitHub` posílá `{guard:true, expected}`; liší-li se revize v repozitáři
+  (nebo soubor existuje a nenačetli jsme ho), `ghPutFile` vyhodí `conflict:true` a uživatel
+  přepsání potvrzuje v `dlgConfirm`. **Revizi si nikdy nedotahuj čerstvou jen proto, aby
+  zápis prošel.** PNG se zapisuje bez ochrany (přepis je záměr).
+- **Base64** po blocích (`ghBytesToBase64`, `ghTextToBase64` přes `TextEncoder`),
+  dekódování `ghBase64ToText` přes `TextDecoder`.
+- **Vlastní GitLab server:** `glDiagnoseFetch` rozliší smíšený obsah a povolení Chrome
+  „Místní síť“ (`permissions.query({name:'local-network-access'})`, Chrome 142+); dialog má
+  rámeček `#glLnaBox` (jen pro jiný server než gitlab.com) s živým stavem a tlačítkem
+  „Vyzkoušet spojení“ (`glTestConnection`, dotaz na `/api/v4/version`; i 401 = spojení jde).
+- PNG jde do **stejné složky** jako projekt, název = `slugFileName(diagram.name)` (bez
+  diakritiky — kvůli čitelné adrese). Soubory **stahované na disk** používají `safeBaseName`.
+- Raw adresa obrázku: GitHub `raw.githubusercontent.com/owner/repo/větev/…`, GitLab
+  `server/projekt/-/raw/větev/…`; cesta **musí** projít `encodeURI`. Větev: GitLab z cesty,
+  jinak `default_branch` z API do `ghBranchCache` (u GitHubu se po zápisu upřesní
+  z `download_url`); než odpověď dorazí, platí `main`.
+- `saveProjectAction()` (tlačítko „Uložit projekt“, Alt+S): s cestou do repozitáře, bez ní `.pup`.
+- Hlášky přes `ghStatus()` (dialog + status pruh), slovník `L.gh` v **obou** jazycích; název
+  poskytovatele dosazuje `repoName(parsed)` (čeština: „z GitHubu“ / „z GitLabu“ = jméno + „u“).
+- Ověřeno simulovaným GitHubem i GitLabem v Playwrightu (založení, update, PNG, načtení,
+  velký soubor, cizí zápis → dotaz, `?gh=` bez tokenu). Proti živé onprem instanci ne.
 
 ## Konvence
 - `el(tag, props, …children)` staví DOM, `clear(node)` čistí — nepoužívej `innerHTML`

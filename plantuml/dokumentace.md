@@ -24,7 +24,7 @@ Nástroj je dostupný také jako samostatný soubor HTML ke stažení a provozov
 - **Skrytí prvků** — jednotlivé prvky lze skrýt z výsledného diagramu (výřez), model zůstává
 - **Označení „hotovo"** — checkbox u každého prvku ve stromu + filtr Vše / Hotové / Nehotové
 - **Paleta příkazů** — F1 nebo Ctrl+Shift+P otevře vyhledávání nad všemi funkcemi editoru včetně otevírání diagramů a vkládání prvků; hledá se bez ohledu na diakritiku
-- **GitHub jako úložiště** — projekt se ukládá i načítá přímo z repozitáře (Contents API), obrázky diagramů v PNG se ukládají do stejné složky; každý projekt má statickou adresu `?gh=…`, kterou se rovnou otevře
+- **GitHub a GitLab jako úložiště** — projekt se ukládá i načítá přímo z repozitáře na GitHubu nebo GitLabu (gitlab.com i vlastní server), obrázky diagramů v PNG se ukládají do stejné složky; každý projekt má statickou adresu `?gh=…`, kterou se rovnou otevře
 - **Export a import** — projekt `.pup`, přenosový balíček `.pupe` (diagram nebo složka), PlantUML zdroj `.puml`; import PUML s automatickou detekcí typu diagramu; načtení i uložení přes schránku (Ctrl+Shift+O/S)
 - **Textový popis a dokument** — automaticky generovaný čtivý popis diagramu; export do Markdown a Word (DOCX) i s obrázkem
 - **Validace** — průběžná kontrola modelu (chybějící texty, neplatné odkazy, duplicitní aliasy)
@@ -42,7 +42,7 @@ Aplikace je navržena s důrazem na přístupnost — semantické HTML, ARIA atr
 
 Projekt se ukládá jako jediný soubor s příponou `.pup` (PlantUML Project) — obsahuje všechny diagramy, složky, verze, sdílené prvky a nastavení v JSON formátu. Při načítání aplikace automaticky rozpozná, zda jde o projekt (`.pup`), přenosový balíček (`.pupe`) nebo PUML zdroj, takže pracuje i s přejmenovanými soubory nebo soubory bez přípony. Data se nikam neodesílají, vykreslování přes `plantuml.com` posílá pouze zakódovaný zdrojový kód aktuálního diagramu do URL.
 
-Stejný soubor `.pup` lze místo na disk ukládat do **GitHub repozitáře** — viz [GitHub jako úložiště](#github-jako-úložiště). Pak se komunikuje jen s `api.github.com` a token zůstává v tomto prohlížeči.
+Stejný soubor `.pup` lze místo na disk ukládat do **repozitáře na GitHubu nebo GitLabu** — viz [GitHub a GitLab jako úložiště](#github-a-gitlab-jako-úložiště). Pak se komunikuje jen s `api.github.com`, resp. se zadaným GitLab serverem, a tokeny zůstávají v tomto prohlížeči.
 
 ---
 
@@ -729,7 +729,7 @@ Paleta příkazů je jedno místo, odkud se dá spustit cokoliv, co editor umí 
 Stačí napsat část názvu příkazu:
 
 - **Nezáleží na diakritice ani velikosti písmen** — `nahled` najde „Náhled".
-- **Více slov platí zároveň** — `ulozit png` najde „Uložit PNG do GitHub".
+- **Více slov platí zároveň** — `ulozit png` najde „Uložit PNG do repozitáře".
 - **Fungují i písmena, která nejdou za sebou** — `ulpng` najde „Uložit PNG".
 - **Hledá se i v popisu, kategorii a klávesové zkratce** — `alt+e` najde „Stáhnout PNG".
 - **Česká synonyma klíčových slov PlantUML** — `účastník` najde „Vložit: participant", `fronta` najde „queue", `výčet` najde „Enum".
@@ -753,11 +753,11 @@ Vše jde i myší — kliknutím na položku. Paleta je postavená jako `combobo
 | Kategorie | Příkazy |
 |-----------|---------|
 | **Projekt** | Nový, načíst ze souboru i ze schránky, uložit, uložit jako `.pup`, vložit do schránky, přejmenovat, importovat `.puml` a `.pupe`, nastavení projektu |
-| **GitHub** | Nastavení, načíst, uložit, uložit PNG, kopírovat odkaz |
+| **GitHub / GitLab** | Nastavení, načíst, uložit, uložit PNG, kopírovat odkaz |
 | **Diagramy** | Nový diagram (i samostatný příkaz pro každý ze 14 typů), nová složka, **otevření kteréhokoliv diagramu podle názvu**, následující/předchozí diagram, přejmenování, export a smazání složky |
 | **Diagram** | Přejmenovat, přesunout, duplikovat, exportovat, smazat, nastavení, uložit verzi, **obnovit / zobrazit / smazat konkrétní verzi**, **nastavit stav ve workflow**, skrytí prvků a přepnutí jeho aplikace |
 | **Tvorba** | **Vložení každého prvku otevřeného diagramu** (čte se přímo z toolbaru, takže paleta zná přesně tytéž prvky), filtr hotové/nehotové, skok do stromu a na detail prvku |
-| **Výstup** | Náhled inline i v okně, promítání, PNG, PNG do GitHubu, `.puml`, kopírování zdroje, textový popis, dokument MD a DOCX, skok na zdroj a na popis |
+| **Výstup** | Náhled inline i v okně, promítání, PNG, PNG do repozitáře, `.puml`, kopírování zdroje, textový popis, dokument MD a DOCX, skok na zdroj a na popis |
 | **Zobrazení** | Karty Diagram / Tvorba / Výstup, pohled na projekt, jazyk rozhraní, filtr diagramů podle stavu, zavření ladicího výstupu |
 | **Sdílené prvky** | Skok na první použití, smazání z katalogu projektu |
 | **Nápověda** | Nápověda k aplikaci, nápověda k paletě |
@@ -766,13 +766,27 @@ Paleta nabízí **jen to, co jde právě teď spustit** — příkazy nad otevř
 
 ---
 
-## GitHub jako úložiště
+## GitHub a GitLab jako úložiště
 
-Projekt (soubor `.pup`) i vyrenderované obrázky diagramů se dají ukládat rovnou do GitHub repozitáře. Každé uložení je běžný commit, takže historie verzí vzniká sama a není potřeba nic přenášet ručně.
+Projekt (soubor `.pup`) i vyrenderované obrázky diagramů se dají ukládat rovnou do repozitáře na **GitHubu** nebo na **GitLabu** — na gitlab.com i na vlastním (onprem) serveru. Každé uložení je běžný commit, takže historie verzí vzniká sama a není potřeba nic přenášet ručně.
 
-Nastavení otevře tlačítko **GitHub** v hlavičce (Alt+G) — je dostupné v obou pohledech, tedy i při otevřeném diagramu.
+Nastavení otevře tlačítko **GitHub / GitLab** v hlavičce (Alt+G) — je dostupné v obou pohledech, tedy i při otevřeném diagramu.
 
-### Token
+### Cesta k souboru
+
+Cesta se zadává v jednom poli a **podle jejího tvaru se pozná poskytovatel**:
+
+| Poskytovatel | Tvar | Příklad |
+|--------------|------|---------|
+| GitHub | `owner/repo/cesta/projekt.pup` | `egdilna/diagramy/architektura/model.pup` |
+| GitLab (gitlab.com) | `skupina/projekt/-/cesta/projekt.pup` | `egdilna/diagramy/-/architektura/model.pup` |
+| GitLab (vlastní server) | `server/skupina/…/projekt/-/cesta/projekt.pup` | `git.firma.cz/archi/diagramy/-/model.pup` |
+
+Oddělovač `/-/` používá GitLab ve svých webových adresách, takže jde **vložit rovnou adresu souboru z prohlížeče**, i s `…/-/blob/větev/…` — pak se použije i ta větev, jinak výchozí větev projektu. Skupiny mohou být vnořené. U serveru na čistém http napište na začátek `http://` (stránka na https ale takový požadavek zablokuje). Pod polem se hned ukáže, jak editor cestu pochopil (poskytovatel, server, projekt, větev).
+
+Cesta se pamatuje v projektu (klíč `ghPath`) i v prohlížeči, takže ji stačí zadat jednou. **Nový projekt cestu záměrně zapomene**, aby uložení nepřepsalo existující soubor v repozitáři prázdným projektem.
+
+### Tokeny
 
 | Situace | Token |
 |---------|-------|
@@ -780,28 +794,31 @@ Nastavení otevře tlačítko **GitHub** v hlavičce (Alt+G) — je dostupné v 
 | Čtení soukromého repozitáře | potřeba |
 | Zápis (projekt i PNG) | vždy potřeba |
 
-Používá se GitHub **Personal Access Token** s oprávněním *Contents → Read and write*. Token se ukládá **jen do tohoto prohlížeče** (`localStorage`, klíč `plantuml.editor.github.token`) a odesílá se výhradně na `api.github.com`. Tlačítko „Uložit token" s prázdným polem token z prohlížeče odstraní.
+- **GitHub** — Personal Access Token s oprávněním *Contents → Read and write*. Ukládá se jen do tohoto prohlížeče (`localStorage`, klíč `plantuml.editor.github.token`) a odesílá se výhradně na `api.github.com`.
+- **GitLab** — Personal Access Token **pro každý server zvlášť** (`localStorage`, klíč `plantuml.editor.gitlab.tokens`, mapa server → token), odesílá se jen na ten server. Rozsah `api` (nebo `read_api` + `write_repository`), role v projektu aspoň Developer. Po zadání GitLab cesty se pole **Server GitLabu** vyplní samo a odkaz „Vytvořit token na serveru" vede na správný server.
 
-### Cesta k souboru
+Tlačítko **Uložit tokeny** uloží GitHub token i GitLab token pro vyplněný server; prázdné pole token odstraní. Na soukromý projekt vrací GitLab 404 stejně jako na neexistující soubor — když načtení bez tokenu selže, editor otevře nastavení a řekne, pro který server token chybí.
 
-Cesta se zadává v jednom poli ve tvaru `owner/repo/cesta/projekt.pup` — například `egdilna/diagramy/architektura/model.pup`. Pamatuje se v projektu (klíč `ghPath`) i v prohlížeči, takže ji stačí zadat jednou.
+### Vlastní GitLab server a Chrome „Místní síť"
 
-**Nový projekt cestu záměrně zapomene**, aby uložení nepřepsalo existující soubor v repozitáři prázdným projektem. Po vytvoření nového projektu ji tedy zadejte znovu.
+Chrome (od verze 142) chce pro požadavky z veřejné stránky do vnitřní sítě povolení **Místní síť** (Local network access). Kdo jeho jediný dotaz zavře, má spojení mrtvé a vypadá to jako nedostupný server, přestože kolegům na téže síti vše jde. Proto se u vlastního serveru (ne gitlab.com) v nastavení ukazuje **výrazný rámeček** s živým stavem povolení, postupem a tlačítkem **Vyzkoušet spojení** (skutečný dotaz na `/api/v4/version`, který dotaz Chrome vyvolá). Když požadavek selže, hláška rozliší zakázané povolení, http místo https a ostatní případy (síť, certifikát firemní CA) — pro ty radí otevřít adresu API přímo.
 
 ### Načtení a uložení
 
 | Tlačítko | Co dělá |
 |----------|---------|
-| Načíst z GitHub | Přečte soubor z repozitáře a otevře ho jako aktuální projekt |
-| Uložit do GitHub | Zapíše aktuální projekt do souboru (vytvoří ho, nebo přepíše) |
+| Načíst z repozitáře | Přečte soubor z repozitáře a otevře ho jako aktuální projekt |
+| Uložit do repozitáře | Zapíše aktuální projekt do souboru (vytvoří ho, nebo přepíše) |
 | Uložit PNG diagramu | Vykreslí aktuální diagram a uloží obrázek vedle souboru projektu |
 | Kopírovat odkaz | Zkopíruje statickou adresu, kterou se projekt rovnou otevře |
 
-Soubory větší než 1 MB se čtou přes Git Blob API, takže velké projekty fungují také.
+**Ochrana proti přepsání:** editor si pamatuje, v jaké verzi soubor načetl. Pokud ho mezitím v repozitáři uložil někdo jiný — nebo jste ho do editoru vůbec nenačetli a soubor už existuje — nic se nezapíše a editor se zeptá, zda soubor přepsat. Starší verze zůstává v historii repozitáře. Obrázky PNG se přepisují vždy (to je záměr).
+
+Velké projekty fungují v obou směrech: na GitHubu se soubory nad 1 MB čtou přes Git Blob API a zapisují přes Git Data API (blob → strom → commit → posun větve bez přepsání cizích commitů), na GitLabu jde zápis vždy přes Commits API a čtení přes Files API, záložně přes `/raw`.
 
 ### Ukládání obrázků (PNG)
 
-Tlačítko **Uložit PNG do GitHub** na kartě Výstup (Alt+P) — a stejné tlačítko v dialogu nastavení — vykreslí aktuální diagram přes `plantuml.com` a výsledné PNG uloží **do stejné složky jako soubor projektu**.
+Tlačítko **Uložit PNG do repozitáře** na kartě Výstup (Alt+P) — a stejné tlačítko v dialogu nastavení — vykreslí aktuální diagram přes `plantuml.com` a výsledné PNG uloží **do stejné složky jako soubor projektu**.
 
 Název souboru vzniká z názvu diagramu **bez diakritiky a bez mezer** — mezery a speciální znaky nahradí pomlčka, aby adresa zůstala čitelná a nemusela se procentně kódovat:
 
@@ -817,7 +834,7 @@ Stejný název znamená, že se **starší verze obrázku přepíše**. To je z�
 
 ### Adresa obrázku a Markdown
 
-Hned nad náhledem je na kartě Výstup adresa obrázku na `raw.githubusercontent.com` a tři tlačítka:
+Hned nad náhledem je na kartě Výstup adresa obrázku v repozitáři — na GitHubu `raw.githubusercontent.com/…`, na GitLabu `server/skupina/projekt/-/raw/větev/…` — a tři tlačítka:
 
 | Tlačítko | Co udělá |
 |----------|----------|
@@ -827,9 +844,10 @@ Hned nad náhledem je na kartě Výstup adresa obrázku na `raw.githubuserconten
 
 ```
 https://raw.githubusercontent.com/egdilna/diagramy/main/architektura/Prihlaseni-uzivatele.png
+https://git.firma.cz/archi/diagramy/-/raw/main/Prihlaseni-uzivatele.png
 ```
 
-Adresa se skládá z cesty v repozitáři a názvu diagramu, takže je vidět **ještě před prvním uložením** — je jasné, kam obrázek půjde. Název obrázku je bez diakritiky a mezer (viz výše); zbytek cesty, který jste zadali v nastavení, se pro jistotu procentně kóduje, aby odkaz v Markdownu držel celý. Větev se zjistí z repozitáře (`default_branch`); než odpoví, zobrazí se `main` a adresa se pak sama opraví. Po uložení se u tlačítek objeví potvrzení „✔ Uloženo v HH:MM" — po přejmenování diagramu zmizí, protože adresa už míří na jiný soubor.
+Adresa se skládá z cesty v repozitáři a názvu diagramu, takže je vidět **ještě před prvním uložením** — je jasné, kam obrázek půjde. Název obrázku je bez diakritiky a mezer (viz výše); zbytek cesty, který jste zadali v nastavení, se pro jistotu procentně kóduje, aby odkaz v Markdownu držel celý. Větev se zjistí z repozitáře (`default_branch`), u GitLabu ji může určit i cesta (`…/-/blob/větev/…`); než odpoví, zobrazí se `main` a adresa se pak sama opraví. Po uložení se u tlačítek objeví potvrzení „✔ Uloženo v HH:MM" — po přejmenování diagramu zmizí, protože adresa už míří na jiný soubor.
 
 U **soukromého repozitáře** raw adresa bez přihlášení nefunguje; pro veřejný repozitář je to trvalý odkaz, který po každém uložení ukazuje aktuální podobu diagramu.
 
@@ -841,11 +859,11 @@ Tlačítko **Kopírovat odkaz** dá adresu ve tvaru:
 https://egdilna.github.io/nastroje/plantuml/?gh=ZWdkaWxuYS9kaWFncmFteS9hcmNoaXRla3R1cmEvbW9kZWwucHVw
 ```
 
-Parametr `gh` je cesta k souboru zakódovaná v base64. Po otevření takové adresy se projekt načte rovnou z repozitáře — hodí se do záložek i pro sdílení s kolegy (kteří u soukromého repozitáře potřebují vlastní token). Stejná adresa se do řádku prohlížeče doplní i po každém načtení a uložení.
+Parametr `gh` je cesta k souboru zakódovaná v base64 — funguje pro GitHub i GitLab. Po otevření takové adresy se projekt načte rovnou z repozitáře; chybí-li token pro daný GitLab server, otevře se nastavení s vyplněným serverem — hodí se do záložek i pro sdílení s kolegy (kteří u soukromého repozitáře potřebují vlastní token). Stejná adresa se do řádku prohlížeče doplní i po každém načtení a uložení.
 
 ### Ukládání zkratkou Alt+S
 
-Když je nastavená cesta na GitHub, ukládá tlačítko **Uložit projekt** i zkratka **Alt+S** do repozitáře — ne na disk. Chybí-li token, aplikace to oznámí a otevře dialog nastavení. Bez nastavené cesty zůstává původní chování, tedy stažení souboru `.pup`.
+Když je nastavená cesta do repozitáře, ukládá tlačítko **Uložit projekt** i zkratka **Alt+S** do repozitáře — ne na disk. Chybí-li token, aplikace to oznámí a otevře dialog nastavení. Bez nastavené cesty zůstává původní chování, tedy stažení souboru `.pup`.
 
 ---
 
@@ -857,10 +875,10 @@ Když je nastavená cesta na GitHub, ukládá tlačítko **Uložit projekt** i z
 | Náhled (SVG) | Alt+V | Otevře SVG na plantuml.com v novém okně |
 | Stáhnout .puml | Alt+U | Uloží zdrojový kód jako `.puml` soubor |
 | Zkopírovat zdroj | Alt+C | Vloží PlantUML kód do schránky (fallback na výběr v textarea + Ctrl+C) |
-| Uložit projekt | Alt+S | Uloží projekt do GitHub repozitáře, nebo (bez nastavené cesty) stáhne `.pup` JSON |
-| Uložit PNG do GitHub | Alt+P | Uloží obrázek diagramu vedle souboru projektu v repozitáři |
+| Uložit projekt | Alt+S | Uloží projekt do repozitáře (GitHub / GitLab), nebo (bez nastavené cesty) stáhne `.pup` JSON |
+| Uložit PNG do repozitáře | Alt+P | Uloží obrázek diagramu vedle souboru projektu v repozitáři |
 | Kopírovat URL / Markdown obrázku | — | Raw adresa obrázku v repozitáři, samotná nebo jako `![název](adresa)` |
-| Načíst z GitHub / Uložit do GitHub | Alt+G | Dialog nastavení GitHub (token, cesta, odkaz) |
+| Načíst z repozitáře / Uložit do repozitáře | Alt+G | Dialog nastavení GitHub / GitLab (cesta, tokeny, odkaz) |
 | Vložit do schránky | Ctrl+Shift+S | Zkopíruje JSON projektu do schránky |
 | Načíst projekt | Alt+O | Otevře libovolný soubor s autodetekcí (.pup / .pupe / .puml) |
 | Načíst ze schránky | Ctrl+Shift+O | Načte projekt z obsahu schránky |
@@ -894,9 +912,9 @@ Akce v aktivitních diagramech podporují tři syntaktické varianty (moderní `
 | Alt+N | Nový projekt |
 | Alt+O | Načíst projekt |
 | F1 | **Paleta příkazů** (Shift+F1 = nápověda k ní) |
-| Alt+S | Uložit projekt (při nastaveném GitHubu do repozitáře) |
+| Alt+S | Uložit projekt (při nastavené cestě do repozitáře) |
 | Alt+M | Importovat .puml |
-| Alt+G | Nastavení GitHub |
+| Alt+G | Nastavení GitHub / GitLab |
 | Alt+H | Nápověda |
 | Alt+B | ← Zpět na projekt (v pohledu na diagram) |
 | Alt+D | Nový diagram |
@@ -918,7 +936,7 @@ Akce v aktivitních diagramech podporují tři syntaktické varianty (moderní `
 | Alt+V | Náhled (SVG) v okně |
 | Alt+I | Promítat / Překreslit promítání |
 | Alt+E | Stáhnout PNG |
-| Alt+P | Uložit PNG do GitHub |
+| Alt+P | Uložit PNG do repozitáře |
 | Alt+U | Stáhnout .puml |
 | Alt+C | Zkopírovat zdroj do schránky |
 | Alt+T | Vygenerovat textový popis |
