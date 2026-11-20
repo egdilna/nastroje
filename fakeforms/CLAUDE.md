@@ -19,7 +19,10 @@ Mock zjednodušených formulářů DIA (EasyForms). Jeden soubor `index.html`, b
 
 ## Výstup odeslání (ZIP)
 
-- `obalka-datove-zpravy.xml` – smyšlená obálka, není ISDS.
+- **Dvě cesty odeslání** (volba „Způsob odeslání“ ve formuláři, `cestaOdeslání(v)`):
+  - z datové schránky uživatele (podle role: osoba, podnikatel, zastoupený subjekt) – `způsob_provedení_úkonu` 1 Datová schránka;
+  - přes Portál veřejné správy – odesílá technická schránka Automat PVS `uur3q2i`, přikládá se průvodní dopis DIA (`pruvodni-dopis.pdf`, bez PDF knihovny `.txt`) a `způsob_provedení_úkonu` je 4. Použije se i tehdy, když uživatel platnou schránku nemá. Údaje DIA (IČO 17651921, DS yukd8p7) jsou z patičky vzorového průvodního dopisu.
+- `obalka-datove-zpravy.xml` – smyšlená obálka, není ISDS; obsahuje způsob odeslání a schránku odesílatele.
 - `podani-<id>.pdf` – volitelné. pdf-lib a font DejaVu z jsDelivr; tři XML jsou vložená jako přidružené soubory (AFRelationship Data). Nejde o validované PDF/A-3.
 - `data-dokumentu-formuláře-pro-elektronické-podání.xml` – kořen `detail_podání` bez jmenného prostoru. Struktura je odvozená z dokumentace DIA ke strojovému vytěžování dat, **přesné XSD EasyForms není veřejné**. Oddíly jsou vnořené elementy v `předmět_podání`, názvy elementů vznikají z popisků (`názevElementu`).
 - `metadata-dokumentu-formuláře-pro-elektronické-podání.xml` – OFN Dokumenty z formulářů ZoPDS 2024-10-04.
