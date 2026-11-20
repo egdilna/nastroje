@@ -9,7 +9,7 @@ Mock zjednodušených formulářů DIA (EasyForms). Jeden soubor `index.html`, b
   - stavy rozpracovaný → ke schválení → schválený / odmítnutý / zrušený, schvalování za DIA;
   - nové verze s účinností, kopie, sdílené číselníky.
 - **Režim občana** napodobuje Portál občana: profil místo NIA a ZR, zastupování místo ReZa, vyplnění, kontrolu a odeslání.
-- **Adresát:** směrování podání se neuplatňuje. Adresátem je vždy smyšlený úřad ze souboru a jeho datová schránka.
+- **Adresát:** automatické směrování podle místní příslušnosti se neuplatňuje. Úřad má seznam datových schránek (`úřad.datovéSchránky`, položky `{id, název, ds}`); formulář si v kroku 1 vybere jednu (`datováSchránkaId`, výchozí první, pomocná funkce `dsFormuláře(f)`). Starý soubor s jedinou `úřad.datováSchránka` se při načtení převede.
 
 ## Data
 
