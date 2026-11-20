@@ -1741,6 +1741,10 @@ zvlášť pro každý server; uložený je jen v prohlížeči. Ukládání, aut
 slučování při souběhu dvou lidí i odkaz `?id=` fungují stejně jako u GitHubu. Vlastní server
 musí povolovat požadavky z jiné domény (CORS) — GitLab to pro své API ve výchozím nastavení dělá.
 
+U vlastního serveru to DKM připomíná výrazným rámečkem v Nastavení → GitHub / GitLab i v dialogu
+s tokenem; ukazuje, jestli je povolení dané, a tlačítkem **Vyzkoušet spojení** se dá dotaz Chrome
+vyvolat a spojení ověřit.
+
 Běží-li server ve vnitřní síti, chce Chrome (od verze 142) pro DKM povolení **Místní síť**
 (Local network access) a jednou se na ně zeptá. Kdo dotaz zavře nebo odmítne, dostane
 hlášku, že server neodpověděl — přestože kolegovi na téže síti všechno funguje. Povoluje se
