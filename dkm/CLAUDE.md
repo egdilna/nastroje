@@ -974,6 +974,11 @@ sloučit → znovu", autosave, kontrola cizích commitů i `?id=` se tím o GitL
   `{__konflikt:true}`. **Nikdy si ho nedotahuj čerstvý jen proto, aby zápis prošel.**
 - **Token je per server** (`glToken(host)`), kontrola „je nastaveno" jde vždy přes
   `repoToken(parsed)` / `repoPripraveno(cesta)`, ne přes `ghToken()`.
+- **Selhaný `fetch` diagnostikuje `glDiagnozaFetch`**: smíšený obsah (http server z https
+  stránky) a povolení Chrome „Místní síť“ (`permissions.query({name:'local-network-access'})`,
+  Chrome 142+). Odmítnuté povolení vypadá přesně jako CORS a liší se stroj od stroje — jeden
+  kolega na téže síti jede, druhý ne (hlášeno od uživatele). Zbytek (firemní CA, DNS, VPN)
+  stránka nepozná, proto hláška radí otevřít `…/api/v4/version` přímo.
 - Ověřeno simulovaným GitLabem v Playwrightu (založení souboru, načtení, cizí commit →
   400 → sloučení → nové uložení). Proti živé instanci ověřené není.
 

@@ -1741,6 +1741,13 @@ zvlášť pro každý server; uložený je jen v prohlížeči. Ukládání, aut
 slučování při souběhu dvou lidí i odkaz `?id=` fungují stejně jako u GitHubu. Vlastní server
 musí povolovat požadavky z jiné domény (CORS) — GitLab to pro své API ve výchozím nastavení dělá.
 
+Běží-li server ve vnitřní síti, chce Chrome (od verze 142) pro DKM povolení **Místní síť**
+(Local network access) a jednou se na ně zeptá. Kdo dotaz zavře nebo odmítne, dostane
+hlášku, že server neodpověděl — přestože kolegovi na téže síti všechno funguje. Povoluje se
+ikonou vlevo od adresy stránky → Nastavení webu → Místní síť → Povolit. Když nepomůže ani to,
+otevři v prohlížeči přímo `https://server/api/v4/version`: chyba certifikátu nebo nedostupná
+stránka znamená problém v síti či v důvěře k certifikátu serveru, ne v DKM.
+
 #### Dva lidé na jednom projektu
 
 DKM počítá s tím, že na témž souboru dělá víc lidí. **Nepřepisuje se celý soubor** —
