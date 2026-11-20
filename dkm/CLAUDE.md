@@ -979,6 +979,10 @@ sloučit → znovu", autosave, kontrola cizích commitů i `?id=` se tím o GitL
   Chrome 142+). Odmítnuté povolení vypadá přesně jako CORS a liší se stroj od stroje — jeden
   kolega na téže síti jede, druhý ne (hlášeno od uživatele). Zbytek (firemní CA, DNS, VPN)
   stránka nepozná, proto hláška radí otevřít `…/api/v4/version` přímo.
+- **U vlastního serveru (ne gitlab.com) je výrazný rámeček** `glUpozorneniMistniSit` —
+  v Nastavení → GitHub / GitLab (řídí se polem Server) i v dialogu tokenu z odkazu `?id=`.
+  Ukazuje živý stav povolení, postup a tlačítko **Vyzkoušet spojení**: skutečný požadavek na
+  `/api/v4/version` vyvolá dotaz Chrome. Odpověď s HTTP stavem (i 401) = spojení funguje.
 - Ověřeno simulovaným GitLabem v Playwrightu (založení souboru, načtení, cizí commit →
   400 → sloučení → nové uložení). Proti živé instanci ověřené není.
 
