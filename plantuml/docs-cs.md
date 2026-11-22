@@ -1,5 +1,7 @@
 # PlantUML editor — Strukturovaný vícejazyčný editor UML diagramů s náhledem, verzemi a sdílenými prvky
 
+*English version: [docs-en](docs-en)*
+
 **Online verze nástroje:** [https://egdilna.github.io/nastroje/plantuml](https://egdilna.github.io/nastroje/plantuml)  
 **Stránka nástroje:** [https://egdilna.github.io/nastroje/#plantuml](https://egdilna.github.io/nastroje/#plantuml)
 
@@ -84,7 +86,7 @@ Modré záhlaví se dynamicky přizpůsobuje pohledu:
 | Importovat .puml | Alt+M | Naimportuje PlantUML soubor jako nový diagram |
 | Importovat .pupe | — | Naimportuje diagramy/složky z přenosového balíčku |
 | Nastavení projektu | — | Otevře dialog s názvem, tématem, hlavičkou, patičkou atd. |
-| Nápověda | Alt+H | Zobrazí integrovanou nápovědu |
+| Nápověda | Alt+H | Zobrazí integrovanou nápovědu; nahoře je odkaz na tuto úplnou příručku (v jazyce rozhraní: `docs-cs` / `docs-en`) |
 | Jazyk | — | Přepínač česky / anglicky |
 
 **V pohledu na diagram** — název diagramu v H1 a jen dvě tlačítka (návrat, uložit), plus stále „Vložit do schránky" a přepínač jazyka.
@@ -934,7 +936,7 @@ Akce v aktivitních diagramech podporují tři syntaktické varianty (moderní `
 | Alt+S | Uložit projekt (při nastavené cestě do repozitáře) |
 | Alt+M | Importovat .puml |
 | Alt+G | Nastavení GitHub / GitLab |
-| Alt+H | Nápověda |
+| Alt+H | Nápověda (s odkazem na úplnou příručku) |
 | Alt+B | ← Zpět na projekt (v pohledu na diagram) |
 | Alt+D | Nový diagram |
 | Alt+F | Nová složka |
