@@ -10,7 +10,7 @@ i angličtině (přístupná alternativa k obrázku).
 **Žádné externí knihovny** — vše je v souboru. Jediná síťová závislost je obrázkový server
 plantuml.com pro náhled.
 
-**Uživatelská dokumentace: `dokumentace.md` ve stejné složce (~46 kB).** Popisuje chování z pohledu uživatele — čti ji jako doplněk k tomuhle souboru a při změně chování ji aktualizuj spolu s kódem.
+**Uživatelská dokumentace: `docs-cs.md` a `docs-en.md` ve stejné složce** (na webu `…/plantuml/docs-cs` a `…/plantuml/docs-en`, z aplikace se otevírají z nápovědy). Popisují chování z pohledu uživatele — čti je jako doplněk k tomuhle souboru a při změně chování aktualizuj **obě** jazykové verze spolu s kódem.
 
 ## Podporované typy diagramů (`TYPES`, ř. 2045)
 `activity`, `class`, `sequence`, `usecase`, `state`, `component`, `deployment`, `network`
