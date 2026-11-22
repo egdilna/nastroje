@@ -118,6 +118,32 @@ Dnes takto fungují:
 v sekci `=== ŘEŠENÍ ABSOLUTNÍCH DAT V GANTTU ===` (ř. 6709). Popis termínů skládá
 `formatGanttTerm` s českým formátem data. Změny v modelu úkolů promítni do obou.
 
+## Náhled vedle a zvýraznění prvku (sekce `=== ŽIVÝ NÁHLED VEDLE ===`)
+Přepínač `#btnLivePreview` (Alt+L, `localStorage["plantuml.editor.livePreview"]`) rozdělí kartu
+Tvorba: `#editLayout` = `.edit-main` | `#liveSplitter` (role separator, šipky, `--live-left`) |
+`#livePane` (sticky, `#liveScroll` s inline SVG). Stav v objektu `live`.
+- **Kdy se kreslí:** `renderApp()` volá `liveAfterRenderApp()` (250 ms), `softTouch()` volá
+  `liveAfterSoftTouch()` (700 ms). `liveRender` stáhne SVG jen při změně zdroje; starší odpovědi
+  zahazuje podle `live.seq`. Kreslí se, jen když je režim zapnutý **nebo je otevřené promítání**.
+- **SVG z plantuml.com se vkládá inline** přes `liveParseSvg` — odstraní script, foreignObject,
+  on* atributy a javascript: odkazy. Rozměry řídí zoom (`dataset.natW/natH` z viewBoxu).
+- **Mapování obrázek ↔ model** (`liveBuildIndex`): `g.entity`/`g.cluster` mají
+  `data-qualified-name` (poslední článek = alias) a `data-source-line` (řádek zdroje → název
+  v uvozovkách), `g.link` má `data-entity-1/2` → vazba podle konců (`liveRelEnds`: source*Id /
+  target*Id, from/to, sdílené sourceAlias/targetAlias). Pseudostav `[*]` = `__start__`/`__end__`.
+  Aktivity: start/stop podle koleček shora/zdola (`liveTerminalCircles`). Ostatní typy záložně podle
+  textu (`liveTextTargets` + nejmenší obklopující tvar). Cesty prvků: `liveEnumerate` + `liveElemAtPath`
+  (vyhodnocuje stejně jako detail; nesedící kandidáty zahazuje) — nový typ diagramu s vlastní
+  podobou `selectedPath` tam doplň.
+- **Zvýraznění** `liveHighlight` kreslí vrstvu `.live-hl-layer` na konec SVG (entity obdélník,
+  vazby obtažené po čáře); posun k prvku jen při změně výběru (`live.lastHlKey`).
+- **Promítací okno** dostává totéž: `liveUpdateProjection` nahradí `#diagram` inline SVG,
+  `liveHighlightProjection` zvýrazní, klik vybere prvek v editoru; okno je same-origin, DOM se
+  ovládá přímo z hlavní stránky. Promítání se tedy překresluje samo.
+- Režim nesmí brát fokus ani nic ohlašovat odečítači (žádné aria-live na překreslení).
+- Ověřeno v Playwrightu proti živému plantuml.com: class, usecase, state, component, activity,
+  sequence, mindmap, gantt — zvýraznění všech prvků i výběr kliknutím; promítání.
+
 ## Paleta příkazů (sekce `=== PALETA PŘÍKAZŮ ===`)
 F1 / Ctrl+Shift+P / tlačítko `#btnPalette`; Shift+F1 otevře `openPaletteHelp()`.
 - Příkazy mají dva zdroje: `paletteStaticCommands()` (pevné akce) a
