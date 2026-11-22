@@ -2,6 +2,10 @@ multisection
 
 ## Novinky k našim nástrojům
 
+22.11.2026: Máme nový nástroj a to tzv. [[FakeForms - mock zjednodušených formulářů]]. To je mock pro tzv. EasyForms. Pokud netušíte, co to je, asi to nepotřebujete. Ale pokud ano, tak se mrkněte, je to skvělý pomocník.
+
+
+
 13.11.2026: Máme pro vás bombu. U [[opendata]] prohlížeče jsme dodělali kompletní hledání a filtrování a načítání datových sad z Národního katalogu dat (NKD). Takže teď už nemusíte někde na webu NKD hledat schémata a sady a ručně to kopírovat do prohlížeč.
 
 
