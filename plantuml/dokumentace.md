@@ -18,6 +18,7 @@ Nástroj je dostupný také jako samostatný soubor HTML ke stažení a provozov
 - **Sdílené prvky projektu** — třídy, aktéři, use cases, komponenty, rozhraní, účastníci, úlohy a milníky lze povýšit na společné pro celý projekt; jejich definice žije v projektu a změna se propaguje všude
 - **Dvě jazykové mutace** — čeština a angličtina, přepínatelné v hlavičce, volba se pamatuje v `localStorage`
 - **Náhled inline i v okně** — vykreslený PNG diagram přímo na kartě Výstup nebo v samostatném okně; promítací režim pro druhou obrazovku
+- **Náhled vedle** — při tvorbě rozdělená obrazovka s živým SVG náhledem, zoomem, zvýrazněním vybraného prvku a výběrem prvku kliknutím do obrázku (i v promítání)
 - **Kontextová hlavička** — v pohledu na projekt kompletní projektová lišta, v pohledu na diagram jen tlačítka pro návrat a uložení
 - **Verze diagramu** — manuální snapshoty s vlastními popisky; před obnovením se aktuální stav automaticky zálohuje
 - **Stav diagramu (workflow)** — 9 stavů (rozpracovaný, návrh, ke schválení, schválený, upravovaný, neschválený, aktualizovaný, hotový, zrušený)
@@ -620,6 +621,22 @@ Pokud přejmenujete alias sdíleného prvku, **automaticky se přepíše ve vše
 
 ## Náhled a promítání
 
+### Náhled vedle — živý náhled při tvorbě (Alt+L)
+
+Režim hlavně pro vidící uživatele. Na kartě **Tvorba** je vpravo nahoře přepínač **Náhled vedle** (Alt+L, nebo v paletě příkazů). Zapíná se vždy ručně a editor si pamatuje, jestli byl zapnutý. Kdo ho nepoužívá, nic se pro něj nemění.
+
+- **Rozdělení obrazovky:** vlevo strom a detail prvku jako dosud, vpravo vykreslený diagram, který zůstává vidět i při posouvání stránky. Šířku polovin mění **dělicí čára** — tažením myší, nebo klávesnicí (šipky vlevo/vpravo po 5 %, Home/End). Poměr se pamatuje. Na úzké obrazovce se náhled přesune pod editor.
+- **Překreslování:** samo po každé změně, s krátkou prodlevou — při psaní asi 0,7 s po posledním stisku, po přidání, smazání nebo přesunu prvku hned. Když se vygenerovaný zdroj nezměnil (například jen vyberete jiný prvek), nic se znovu nestahuje. Starý obrázek zůstává vidět, dokud nepřijde nový, takže nic neproblikává.
+- **Pozastavit / Pokračovat** zastaví automatické překreslování, **Překreslit** překreslí hned.
+- **Bez sítě:** zůstane poslední obrázek s upozorněním, že není aktuální, a tlačítkem **Zkusit znovu**. Chybu v diagramu PlantUML vykreslí přímo do obrázku a nad ním se objeví upozornění.
+- **SVG a zoom:** diagram je ve vektorech, takže je ostrý při jakémkoli zvětšení. Tlačítka −, +, 100 %, **Na šířku** a **Celý**; Ctrl+kolečko zvětšuje v místě kurzoru, tažením myší se obrázek posouvá. Když je náhled zaostřený: + a − zoom, 0 skutečná velikost, 1 na šířku, 2 celý. Režim „Na šířku" a „Celý" platí i po překreslení; ruční zvětšení se při překreslení drží i s pozicí, takže obraz neskáče. Zoom se pamatuje pro každý diagram zvlášť.
+- **Zvýraznění vybraného prvku:** prvek vybraný ve stromu je v obrázku orámovaný oranžově (vazba je obtažená po své čáře) a náhled se k němu sám posune, pokud není vidět.
+- **Klik do obrázku vybere prvek ve stromu** — detail se otevře vlevo, fokus zůstává na místě.
+
+Zvýraznění funguje u všech typů diagramů: u diagramů tříd, komponent, případů užití, stavů a nasazení přesně podle struktury obrázku (prvky, skupiny i vazby), u ostatních (aktivity, sekvence, myšlenkové mapy, Gantt…) podle textu prvku — prvky se stejným popiskem se zvýrazní všechny.
+
+Překreslování nikdy nebere fokus a odečítač ho neohlašuje; textový popis diagramu zůstává hlavní přístupnou cestou.
+
 ### Inline náhled (karta Výstup)
 
 Tlačítko **Načíst / aktualizovat náhled** zavolá server `plantuml.com`, stáhne PNG obrázek a vloží jej do stránky. Zobrazí se i **rozměry v pixelech**. Pokud server odmítne (typicky syntax chyba), zobrazí se diagnostický box s odkazy na SVG/PNG URL i zdroj.
@@ -635,10 +652,12 @@ Tlačítko **Promítat** otevře vykreslený SVG diagram v samostatném okně. H
 | Stav | Akce tlačítka |
 |------|--------------|
 | Okno není otevřené | „Promítat" — otevře nové okno |
-| Okno je otevřené | „Překreslit promítání" — aktualizuje obsah |
+| Okno je otevřené | „Překreslit promítání" — překreslí hned |
 | Uživatel zavře okno | Vrátí se na „Promítat" (kontrola každou sekundu) |
 
-V promítacím okně je tlačítko **Celá obrazovka** využívající Fullscreen API (alternativně F11). Promítací okno nemá vlastní ovládání obsahu — vše se řídí z hlavní aplikace.
+Promítací okno se **překresluje samo** po každé změně diagramu (stejně jako náhled vedle), včetně titulku, popisku a textového popisu. **Vybraný prvek ve stromu je v promítání zvýrazněný** a okno se k němu posune — hodí se při výkladu nad diagramem. Klik na prvek v promítacím okně ho vybere v editoru.
+
+V promítacím okně je tlačítko **Celá obrazovka** využívající Fullscreen API (alternativně F11) a ovládání zvětšení.
 
 ---
 
@@ -933,6 +952,7 @@ Akce v aktivitních diagramech podporují tři syntaktické varianty (moderní `
 
 | Zkratka | Akce |
 |---------|------|
+| Alt+L | Náhled vedle (živý náhled na kartě Tvorba) |
 | Alt+V | Náhled (SVG) v okně |
 | Alt+I | Promítat / Překreslit promítání |
 | Alt+E | Stáhnout PNG |
