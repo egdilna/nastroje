@@ -1905,3 +1905,19 @@ sloučení → export balíčku a jeho import průvodcem do jiného projektu (ov
 export MD, DOCX (otevři ve Wordu, zkontroluj revize a tabulky), XLSX, PlantUML →
 statický prohlížeč → GitHub uložení/načtení → dvě záložky současně (BroadcastChannel) →
 samostatné okno entity → přepnutí CS/EN.
+
+## Editor datového slovníku (`editordatovehoslovniku.html`)
+Samostatný jednosouborový editor nad týmž `.dkmdata`, zúžený na datový slovník:
+Objekt, Subjekt, Vlastnost (vazba „vlastnost prvku“), Číselník a Položka (vazba
+„položka číselníku“ + atribut „v číselníku“), obecné vazby a aspekty. Typy a vazby
+pozná **podle názvu**, atributy vykresluje z definic v souboru; všechno ostatní
+v projektu nechává beze změny. Má rychlý textový zápis, export slovníku jako text
+a kontrolu úplnosti.
+
+Práce s GitHubem / GitLabem je **převzatá z `index.html` beze změny chování**
+(`parseGhPath`, `ghNactiSoubor`, `ghUlozitVelke`, `glUlozit`, `slucProjekty`,
+`saveToGitHub`, AutoSave) a používá **tytéž klíče v localStorage**
+(`dkm-github-token`, `dkm-gitlab-tokens`, `dkm-username`, `dkm-gh-autosave`,
+`dkm-sound`) — na téže doméně tak sdílí tokeny a předvolby s DKM. Relace záložky
+je pod vlastním klíčem `dkm-slovnik-session`. Odkaz `?id=` má stejný formát jako
+v DKM. Při změně sloučení nebo ukládání v `index.html` uprav i tento soubor.

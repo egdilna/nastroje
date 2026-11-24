@@ -1,0 +1,1322 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Editor datového slovníku (DKM)</title>
+<style>
+:root{--fg:#1b1b1b;--bg:#fff;--mut:#555;--acc:#0b5cad;--line:#ccd;--warn:#9a3b00;--ok:#1d6b2a}
+@media (prefers-color-scheme:dark){:root{--fg:#eee;--bg:#161616;--mut:#aaa;--acc:#7cb6ff;--line:#444;--warn:#ffb070;--ok:#7fd88f}}
+*{box-sizing:border-box}
+body{font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--fg);background:var(--bg);margin:0;padding:1rem;max-width:72rem;margin-inline:auto}
+h1{font-size:1.6rem;margin:.2rem 0 .6rem}
+h2{font-size:1.3rem;margin:1.2rem 0 .5rem}
+h3{font-size:1.1rem;margin:1rem 0 .4rem}
+button,input,select,textarea{font:inherit;color:inherit}
+button{background:transparent;border:1px solid var(--line);border-radius:.35rem;padding:.25rem .6rem;cursor:pointer}
+button:hover,button:focus-visible{border-color:var(--acc)}
+button[aria-pressed="true"]{background:var(--acc);color:var(--bg);border-color:var(--acc)}
+button.link{border:none;padding:0;color:var(--acc);text-decoration:underline;text-align:left}
+input[type=text],input[type=date],select,textarea{background:var(--bg);border:1px solid var(--line);border-radius:.3rem;padding:.25rem .4rem;max-width:100%}
+input[type=text]{width:28rem}
+textarea{width:100%;min-height:5rem}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.bar{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:.4rem 0}
+.field{margin:.45rem 0}
+.field>label,.field>.lab{display:block;font-weight:600;font-size:.95rem}
+.mut{color:var(--mut)}
+.warn{color:var(--warn)}
+.ok{color:var(--ok)}
+ul.tree{padding-left:1.3rem}
+ul.tree li{margin:.15rem 0}
+.row{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+fieldset{border:1px solid var(--line);border-radius:.4rem;margin:.6rem 0;padding:.4rem .8rem}
+legend{font-weight:600}
+#status{min-height:1.5em;font-weight:600}
+pre.out{white-space:pre-wrap;border:1px solid var(--line);padding:.5rem;border-radius:.3rem}
+.items input.kod{width:9rem}
+.items input.nazev{width:24rem}
+details{margin-top:2rem}
+[hidden]{display:none!important}
+ul.navl{list-style:none;display:flex;flex-wrap:wrap;gap:.3rem 1rem;padding:0;margin:.5rem 0}
+ul.navl a[aria-current]{font-weight:700;text-decoration:none;border-bottom:3px solid var(--acc)}
+a{color:var(--acc)}
+</style>
+</head>
+<body>
+<header>
+<h1 id="h1">Žádný soubor není otevřen</h1>
+<div class="bar">
+  <label for="fileIn">Otevřít soubor dkmdata:</label>
+  <input type="file" id="fileIn">
+  <button type="button" id="btnSave" disabled>Uložit</button>
+  <button type="button" id="btnDownload" disabled>Stáhnout soubor</button>
+  <button type="button" id="btnUndo" disabled>Vrátit poslední změnu</button>
+  <button type="button" id="btnNew">Nový prázdný slovník</button>
+  <span><input type="checkbox" id="ghAutoCb" disabled> <label for="ghAutoCb" id="ghAutoLbl">AutoSave do repozitáře</label></span>
+</div>
+<p id="fileInfo" class="mut"></p>
+<p id="saveTarget" class="mut"></p>
+<div id="status" role="status" aria-live="polite"></div>
+<section id="slucBanner" hidden aria-labelledby="slucBannerH"><h2 id="slucBannerH" tabindex="-1"></h2><ul id="slucBannerList"></ul><button type="button" id="slucBannerX">Zavřít oznámení o sloučení</button></section>
+<section id="jinyBanner" hidden aria-labelledby="jinyBannerH"><h2 id="jinyBannerH">Na cestě v repozitáři je jiný projekt</h2><p>Nemá s vaším ani jednu společnou entitu. Sloučení by spojilo dva nesouvisející projekty.</p><div class="bar"><button type="button" id="jinyBannerSluc">Přesto sloučit</button><button type="button" id="jinyBannerX">Zavřít</button></div></section>
+<div id="restoreBox" hidden>
+  <p>Je k dispozici neuložená rozpracovaná verze <span id="restoreName"></span> z <span id="restoreTime"></span>.</p>
+  <div class="bar"><button type="button" id="btnRestore">Obnovit rozpracovanou verzi</button><button type="button" id="btnDropRestore">Zahodit ji</button></div>
+</div>
+<nav aria-label="Části aplikace" id="nav">
+  <ul class="navl">
+    <li><a href="#prvky" data-view="prvky">Objekty a subjekty</a></li>
+    <li><a href="#ciselniky" data-view="ciselniky">Číselníky</a></li>
+    <li><a href="#rychly" data-view="rychly">Rychlý zápis</a></li>
+    <li><a href="#text" data-view="text">Slovník jako text</a></li>
+    <li><a href="#kontrola" data-view="kontrola">Kontrola</a></li>
+    <li><a href="#repo" data-view="repo">GitHub / GitLab</a></li>
+  </ul>
+</nav>
+</header>
+<main id="main"></main>
+<details id="dbg"><summary>Ladicí výpis</summary><pre id="dbgOut" class="out"></pre></details>
+
+<script>
+'use strict';
+/* ====== Stav ====== */
+const S = { data:null, ghSha:null, baseline:null, repoHlaska:null, fileName:'', dirty:false, undo:[], view:'prvky', detailId:null, backView:'prvky', filter:'', cfilter:'', rychlyText:'', plan:null };
+const $ = (s, r=document) => r.querySelector(s);
+const coll = new Intl.Collator('cs', {sensitivity:'base', numeric:true});
+const LS_KEY = 'slovnikar.rozpracovano';
+
+function dbg(msg){ const o=$('#dbgOut'); const t=new Date().toLocaleTimeString('cs-CZ'); o.textContent += `[${t}] ${msg}\n`; }
+window.addEventListener('error', e => dbg('CHYBA: '+e.message+' ('+(e.lineno||'')+')'));
+function say(msg){ const s=$('#status'); s.textContent=''; setTimeout(()=>{ s.textContent=msg; },30); }
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function norm(s){ return String(s||'').trim().toLocaleLowerCase('cs'); }
+let idCnt=0;
+function uid(prefix){ idCnt=(idCnt+1)%1296; return prefix + Date.now().toString(36) + idCnt.toString(36).padStart(2,'0') + Math.random().toString(36).slice(2,6); }
+function now(){ return new Date().toISOString(); }
+
+/* ====== Model: rozpoznání typů podle názvu ====== */
+const M = {};
+function rebuildModel(){
+  const d=S.data;
+  const byName = n => d.entityTypes.find(t => norm(t.name)===norm(n));
+  M.T = { objekt:byName('Objekt'), subjekt:byName('Subjekt'), vlastnost:byName('Vlastnost'), ciselnik:byName('Číselník'), polozka:byName('Položka') || byName('Položka číselníku') };
+  const rel = n => d.relationTypes.find(r => norm(r.name)===norm(n));
+  M.R = { vlastnost:rel('vlastnost prvku'), polozka:rel('položka číselníku') };
+  M.typeById = Object.fromEntries(d.entityTypes.map(t=>[t.id,t]));
+  M.aspById = Object.fromEntries((d.aspects||[]).map(a=>[a.id,a]));
+  M.relById = Object.fromEntries(d.relationTypes.map(r=>[r.id,r]));
+  M.listById = Object.fromEntries((d.selectLists||[]).map(l=>[l.id,l]));
+  M.tagById = Object.fromEntries((d.tagSets||[]).map(l=>[l.id,l]));
+  reindex();
+}
+function reindex(){
+  const d=S.data;
+  M.E = new Map(d.entities.map(e=>[e.id,e]));
+  M.parents = new Map(); M.children = new Map(); M.items = new Map(); M.itemOf = new Map();
+  const rv=M.R.vlastnost?.id, rp=M.R.polozka?.id;
+  for (const e of d.entities){
+    for (const r of e.relations||[]){
+      if (rv && r.relationTypeId===rv){ push(M.parents,e.id,r.targetId); push(M.children,r.targetId,e.id); }
+      if (rp && r.relationTypeId===rp){ push(M.items,r.targetId,e.id); M.itemOf.set(e.id,r.targetId); }
+    }
+  }
+}
+function push(map,k,v){ if(!map.has(k)) map.set(k,[]); if(!map.get(k).includes(v)) map.get(k).push(v); }
+const isT = (e,k) => !!(e && M.T[k] && e.typeId===M.T[k].id);
+function kindOf(e){ for (const k of ['objekt','subjekt','vlastnost','ciselnik','polozka']) if (isT(e,k)) return k; return null; }
+function typeName(e){ return M.typeById[e.typeId]?.name || 'bez typu'; }
+function ents(k){ return M.T[k] ? S.data.entities.filter(e=>e.typeId===M.T[k].id) : []; }
+function sortByName(a){ return a.sort((x,y)=>coll.compare(x.name||'',y.name||'')); }
+function attrDef(type, name){ return (type?.attributes||[]).find(a=>norm(a.name)===norm(name)); }
+function popisOf(e){ const t=M.typeById[e.typeId]; const a=attrDef(t,'Popis')||attrDef(t,'Stručný popis'); const v=a? e.attributes?.[a.id] : ''; return typeof v==='string'? v : ''; }
+function kodOf(e){ const a=attrDef(M.T.polozka,'Kód'); return a ? (e.attributes?.[a.id] ?? '') : ''; }
+function label(e){ return e ? `${typeName(e)}: ${e.name||'(bez názvu)'}` : '(neexistující záznam)'; }
+
+/* ====== Změny, undo, autosave ====== */
+function snapshot(){ S.undo.push(JSON.stringify(S.data)); if (S.undo.length>25) S.undo.shift(); $('#btnUndo').disabled=false; }
+function touch(e){ if(e) e.updatedAt=now(); }
+function changed(msg){
+  S.dirty=true; reindex(); updateTitle(); saveSession();
+  try { localStorage.setItem(LS_KEY, JSON.stringify({name:S.fileName, time:now(), data:S.data})); } catch(err){ dbg('Záloha do prohlížeče selhala: '+err.message); }
+  if (msg) say(msg);
+  ghAutoNaplanuj();
+}
+function updateTitle(){
+  $('#h1').textContent = S.data ? (S.data.projectName || 'Datový slovník') + (S.dirty?' (neuloženo)':'') : 'Žádný soubor není otevřen';
+  const has=!!S.data; $('#btnSave').disabled=!has; $('#btnDownload').disabled=!has;
+  const repo=has && repoPripraveno(S.data.ghPath);
+  $('#btnSave').textContent = repo ? 'Uložit do repozitáře' : 'Uložit (stáhnout soubor)';
+  $('#saveTarget').textContent = !has ? '' : repo ? 'Cíl uložení: '+S.data.ghPath+' (Cmd+S)' : (S.data.ghPath ? 'Cesta v repozitáři je nastavena ('+S.data.ghPath+'), ale chybí token – ukládá se stažením souboru (Cmd+S).' : 'Ukládá se stažením souboru (Cmd+S). Repozitář nastavíte v části GitHub / GitLab.');
+  prekresliGhAuto();
+}
+
+/* ====== Operace nad entitami ====== */
+function newEntity(kind, name){
+  const t=M.T[kind]; if(!t) throw new Error('V souboru chybí typ entity pro: '+kind);
+  const e={ id:uid('e_'), name:name.trim(), typeId:t.id, inInbox:false, archived:false, aspects:[], attributes:{}, customAttributes:[], relations:[], createdAt:now(), updatedAt:now(), comments:[], objects:[] };
+  S.data.entities.push(e); M.E.set(e.id,e); return e;
+}
+function setAttrByName(e, name, val){
+  const t=M.typeById[e.typeId]; let a=attrDef(t,name);
+  if(!a){ for (const aid of e.aspects||[]){ a=attrDef(M.aspById[aid],name); if(a) break; } }
+  if(!a){ // atribut z aspektu, který záznam ještě nemá → aspekt přidat
+    const asp=(S.data.aspects||[]).find(x=>attrDef(x,name));
+    if(asp){ a=attrDef(asp,name); e.aspects=[...(e.aspects||[]),asp.id]; }
+  }
+  if(!a) return false;
+  setAttr(e,a,val); return true;
+}
+function setAttr(e,a,val){
+  if (val===undefined || val===null || val==='' || (Array.isArray(val)&&!val.length)) delete e.attributes[a.id];
+  else e.attributes[a.id]=val;
+}
+function addRel(from, rtId, toId){
+  if ((from.relations||[]).some(r=>r.relationTypeId===rtId && r.targetId===toId)) return false;
+  (from.relations ||= []).push({ id:uid('r_'), relationTypeId:rtId, targetId:toId }); touch(from); return true;
+}
+function delRel(from, relId){ from.relations=(from.relations||[]).filter(r=>r.id!==relId); touch(from); }
+function attachVlastnost(v, parent){ return addRel(v, M.R.vlastnost.id, parent.id); }
+function setPolozkaCiselnik(p, c){
+  p.relations=(p.relations||[]).filter(r=>r.relationTypeId!==M.R.polozka.id);
+  addRel(p, M.R.polozka.id, c.id);
+  const a=attrDef(M.T.polozka,'v číselníku'); if(a) p.attributes[a.id]= a.multi ? [c.id] : c.id;
+}
+function deleteEntity(id){
+  const d=S.data;
+  d.entities=d.entities.filter(e=>e.id!==id);
+  for (const e of d.entities){
+    const before=(e.relations||[]).length;
+    e.relations=(e.relations||[]).filter(r=>r.targetId!==id);
+    let ch = before!==e.relations.length;
+    for (const [k,v] of Object.entries(e.attributes||{})){
+      if (v===id){ delete e.attributes[k]; ch=true; }
+      else if (Array.isArray(v) && v.includes(id)){ e.attributes[k]=v.filter(x=>x!==id); if(!e.attributes[k].length) delete e.attributes[k]; ch=true; }
+    }
+    if (ch) touch(e);
+  }
+}
+function allowedRelTypes(src){
+  return S.data.relationTypes.filter(r=>{
+    if (r.id===M.R.polozka?.id) return false;
+    const f=r.fromTypes||[];
+    if ((r.scope==='from'||r.scope==='specific') && f.length && !f.includes(src.typeId)) return false;
+    return true;
+  });
+}
+function targetOk(r, tgt){
+  const t=r.toTypes||[];
+  if ((r.scope==='to'||r.scope==='specific') && t.length && !t.includes(tgt.typeId)) return false;
+  return true;
+}
+
+/* ====== Načtení / uložení ====== */
+function normalizeData(d){
+  if(!d || typeof d!=='object' || !Array.isArray(d.entities)) throw new Error('Soubor není platný DKM JSON.');
+  for (const k of ['entityTypes','aspects','relationTypes','selectLists','tagSets','savedViews','jsonExports']) if(!Array.isArray(d[k])) d[k]=[];
+  if (typeof d.ghPath!=='string') d.ghPath='';
+  if (!d.settings || typeof d.settings!=='object') d.settings={};
+  return d;
+}
+function emptyData(){ return {version:1,projectName:'',projectDescription:'',ghPath:'',settings:{tabs:[],modules:[]},entityTypes:[],aspects:[],relationTypes:[],selectLists:[],tagSets:[],savedViews:[],jsonExports:[],entities:[]}; }
+$('#fileIn').addEventListener('change', async ev=>{
+  const f=ev.target.files[0]; if(!f) return;
+  if (S.dirty && !confirm('Neuložené změny zmizí. Opravdu pokračovat?')) { ev.target.value=''; return; }
+  try { const txt=await f.text(); loadData(JSON.parse(txt), f.name); say('Soubor '+f.name+' načten.'); }
+  catch(err){ say('Soubor se nepodařilo načíst: '+err.message); dbg(err.stack||err.message); }
+  ev.target.value='';
+});
+/* Načtení projektu odkudkoli (soubor, repozitář, obnova). Jako v DKM: po načtení
+   je základem trojcestného sloučení právě načtená verze. `ghSha` nese jen načtení
+   z repozitáře; ze souboru je null (uložení do existujícího souboru pak skončí
+   konfliktem a sloučením, nikdy přepsáním). */
+function loadData(d, name, dirty=false, ghSha=null, view='prvky'){
+  normalizeData(d);
+  S.data=d; S.fileName=name||'slovnik.dkmdata'; S.dirty=dirty; S.undo=[]; S.ghSha=ghSha; $('#btnUndo').disabled=true;
+  snapshotBaseline();
+  rebuildModel(); updateTitle(); saveSession();
+  $('#restoreBox').hidden=true;
+  $('#fileInfo').textContent = `Soubor: ${S.fileName} · objektů ${ents('objekt').length}, subjektů ${ents('subjekt').length}, vlastností ${ents('vlastnost').length}, číselníků ${ents('ciselnik').length}, položek ${ents('polozka').length}`;
+  const miss=missingDefs(); if (miss.length) setTimeout(()=>say('Pozor: v souboru chybí definice: '+miss.join(', ')+'. Doplníte je v části Kontrola.'),1200);
+  show(view, false);
+  ghAutoPodleNastaveni();
+}
+function smartSave(){ if(!S.data) return; if(repoPripraveno(S.data.ghPath)) return saveToGitHub().catch(()=>{}); return downloadFile(); }
+$('#btnSave').addEventListener('click', smartSave);
+$('#btnDownload').addEventListener('click', ()=>downloadFile());
+document.addEventListener('keydown', e=>{ if ((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==='s'){ e.preventDefault(); smartSave(); } });
+function downloadFile(){
+  const txt=JSON.stringify(S.data,null,2)+'\n';
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([txt],{type:'application/json'}));
+  a.download=S.fileName || 'slovnik.dkmdata';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>{ try{URL.revokeObjectURL(a.href)}catch{} },5000);
+  /* Stažený soubor je jen kopie — když je projekt napojený na repozitář, zůstává
+     neuložený vůči repozitáři (jinak by se změny do repozitáře nikdy nedostaly). */
+  if (!repoPripraveno(S.data.ghPath)){ S.dirty=false; snapshotBaseline(); try{ localStorage.removeItem(LS_KEY); }catch{} saveSession(); }
+  updateTitle(); soundSaved();
+  say('Staženo do Stažených souborů jako '+a.download+'.');
+}
+$('#btnUndo').addEventListener('click', ()=>{
+  if(!S.undo.length) return;
+  S.data=JSON.parse(S.undo.pop()); rebuildModel(); changed('Poslední změna vrácena.');
+  $('#btnUndo').disabled=!S.undo.length;
+  if (S.detailId && !M.E.has(S.detailId)) show(S.backView); else rerender();
+});
+window.addEventListener('beforeunload', e=>{ if(S.dirty){ if(ghAutoStav.zap && repoPripraveno(S.data.ghPath)) ghAutoOdesli(); e.preventDefault(); e.returnValue=''; } });
+$('#btnNew').addEventListener('click', ()=>{
+  if (S.dirty && !confirm('Neuložené změny zmizí. Opravdu pokračovat?')) return;
+  const n=prompt('Název nového datového slovníku:'); if(!n||!n.trim()) return;
+  const d=emptyData(); d.projectName=n.trim();
+  S.data=d; rebuildModel(); addMissingDefs();
+  const fn=n.trim().toLocaleLowerCase('cs').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')+'.dkmdata';
+  loadData(d, fn, true); say('Založen nový slovník '+n.trim()+'. Cestu do repozitáře nastavíte v části GitHub / GitLab.');
+});
+
+/* Relace záložky: přežije obnovení stránky (F5) včetně `ghSha` a základu,
+   takže první uložení po obnovení nenarazí naslepo na cizí zápis. */
+const SK_SESSION='dkm-slovnik-session';
+function saveSession(){ if(!S.data) return; try{ sessionStorage.setItem(SK_SESSION, JSON.stringify({data:S.data, name:S.fileName, dirty:!!S.dirty, ghSha:S.ghSha||null, baseline:S.baseline||null})); }catch(err){ dbg('Uložení relace selhalo: '+err.message); } }
+function restoreSession(){
+  try{ const r=JSON.parse(sessionStorage.getItem(SK_SESSION)||'null'); if(!r||!r.data) return false;
+    loadData(r.data, r.name, !!r.dirty, r.ghSha||null);
+    if (r.baseline && Array.isArray(r.baseline.entities)) S.baseline=r.baseline;
+    saveSession(); dbg('Obnovena relace záložky.'); return true;
+  }catch(err){ dbg('Obnova relace: '+err.message); return false; }
+}
+function checkRestore(){
+  try{ const r=JSON.parse(localStorage.getItem(LS_KEY)||'null'); if(!r) return;
+    $('#restoreName').textContent=r.name; $('#restoreTime').textContent=new Date(r.time).toLocaleString('cs-CZ'); $('#restoreBox').hidden=false;
+    $('#btnRestore').onclick=()=>{ loadData(r.data, r.name, true); S.baseline=null; say('Rozpracovaná verze obnovena. Nezapomeňte uložit.'); };
+    $('#btnDropRestore').onclick=()=>{ localStorage.removeItem(LS_KEY); $('#restoreBox').hidden=true; say('Rozpracovaná verze zahozena.'); };
+  }catch(err){ dbg('Obnova: '+err.message); }
+}
+
+/* =====================================================================
+   GITHUB / GITLAB
+   Převzato z DKM (egdilna/nastroje/dkm/index.html) se stejným chováním
+   a se stejnými klíči v prohlížeči — na téže doméně proto editor sdílí
+   s DKM tokeny, jméno autora, předvolbu AutoSave i zvuk:
+     dkm-github-token, dkm-gitlab-tokens, dkm-username, dkm-gh-autosave, dkm-sound
+   Tokeny jen v localStorage — nikdy v datech, v adrese ani v ladicím výpisu.
+   Zápis je optimistický proti verzi, ze které jsme vyšli (sha / last_commit_id);
+   při konfliktu se trojcestně sloučí a zkusí znovu (nejvýš 3×). Viz dkm-sync-cs.md.
+   ===================================================================== */
+const SK_GHTOKEN='dkm-github-token', SK_GLTOKENS='dkm-gitlab-tokens', SK_USERNAME='dkm-username', SK_GHAUTO='dkm-gh-autosave', SK_SOUND='dkm-sound';
+const TX={
+ghErr404:'Soubor nenalezen (404). Buď je špatně cesta, nebo je repozitář soukromý a token na něj nestačí – GitHub obojí hlásí stejně.',
+ghErr401:'Přístup odepřen (401). Token chybí nebo není platný.',
+ghErr403:'Přístup odepřen (403). Token nemá dostatečná oprávnění.',
+ghErrGeneric:'Chyba GitHub: ',
+glErr404:'Soubor nebo projekt nenalezen (404). Buď je špatně cesta, nebo token na projekt nestačí – GitLab obojí hlásí stejně.',
+glErrGeneric:'Chyba GitLab: ',
+glErrFetchTip:' Zkus v tomto prohlížeči otevřít {url} — když se ukáže chyba certifikátu nebo stránka nenaběhne, je problém v síti nebo v důvěře k certifikátu serveru, ne v editoru.',
+glErrFetchMixed:'Stránka běží přes https, ale server {host} je zadán přes http — prohlížeč takový požadavek zablokuje. Zadej cestu s https://.',
+glErrFetchLna:'Chrome tomuto webu zakázal přístup do místní sítě, kde server {host} běží. Povol to: ikona vlevo od adresy stránky → Nastavení webu → Místní síť (Local network access) → Povolit, a stránku obnov.',
+glErrFetchLnaDotaz:'Server {host} neodpověděl. Běží-li ve vnitřní síti, Chrome se nejspíš ptal na přístup do místní sítě a dotaz byl zavřen nebo odmítnut. Povol ho: ikona vlevo od adresy stránky → Nastavení webu → Místní síť → Povolit, a stránku obnov.',
+glErrFetch:'Server {host} neodpověděl. Buď je nedostupný, nebo nepovoluje požadavky z jiné domény (CORS).',
+glLnaNadpis:'Vlastní GitLab server: povol v Chrome přístup do místní sítě',
+glLnaProc:'Chrome (od verze 142) se jednou zeptá, jestli tahle stránka smí do místní sítě. Bez povolení se k serveru nedostane a vypadá to, jako by server neodpovídal — přestože kolegům na téže síti vše jde. Když dotaz vyskočí, zvol Povolit.',
+glLnaKrok1:'Klikni na ikonu vlevo od adresy této stránky.',
+glLnaKrok2:'Otevři Nastavení webu a najdi Místní síť (Local network access).',
+glLnaKrok3:'Nastav Povolit a stránku obnov.',
+glLnaZkusit:'Vyzkoušet spojení',
+glLnaStavOk:'Přístup do místní sítě je povolený.',
+glLnaStavZakazano:'Přístup do místní sítě je ZAKÁZANÝ — spojení se serverem nepůjde. Povol ho podle postupu níž.',
+glLnaStavDotaz:'Přístup do místní sítě zatím není povolený. Chrome se zeptá při prvním spojení (třeba tlačítkem Vyzkoušet spojení) — zvol Povolit.',
+glLnaStavNevim:'Stav povolení tento prohlížeč neprozradí. Pokud se spojení nedaří, zkontroluj ho podle postupu níž.',
+glLnaZkousim:'Zkouším…', glLnaSpojeniOk:'Server {host} odpovídá.', glLnaBezTokenu:'(Token chybí nebo neplatí.)',
+ghErrInvalidPath:'Neplatná cesta. GitHub: owner/repo/cesta/soubor.dkmdata, GitLab: server/skupina/projekt/-/cesta/soubor.dkmdata',
+ghLoading:'Načítání z repozitáře…', ghLoaded:'Načteno z repozitáře', errLoadInvalid:'Soubor není platný DKM JSON.',
+glUrlTokenNestaci:'Token uložený pro {host} na tenhle soubor nestačí.',
+glUrlTokenChybi:'Tenhle projekt je na GitLabu ({host}) a v tomhle prohlížeči pro ten server není uložený žádný token.',
+ghUrlTokenNestaci:'Token uložený v tomhle prohlížeči na tenhle soubor nestačí.',
+ghUrlTokenChybi:'Tenhle projekt je na GitHubu a v tomhle prohlížeči není uložený žádný token.',
+ghNicNoveho:'Nic nového – máš aktuální verzi', ghSlucPrevzataVerze:'převzata verze od ostatních',
+ghAutoNoGh:'Automatické ukládání potřebuje nastavenou cestu (část GitHub / GitLab) a token.',
+ghSlucPrevzato:'{n} entit od druhého', ghSlucPridano:'{n} nových od druhého', ghSlucSmazano:'{n} smazaných',
+ghSlouceno:'Sloučeno se vzdálenou verzí', ghSlucKolize:'{n}× spor – ponechána tvoje verze', ghSlucOziveno:'{n} zůstalo (druhý je smazal, ty upravil)',
+ghErrNoPath:'Cesta chybí.', ghErrNoToken:'Token chybí.', ghSaving:'Ukládání do repozitáře…',
+ghCommitMsg:'Update from DKM editor datového slovníku', ghKonfliktVzdal:'Ukládání se opakovaně střetlo s cizím zápisem. Zkus to za chvíli znovu.',
+ghSaved:'Uloženo do repozitáře',
+ghAutoOn:'Automatické ukládání do repozitáře zapnuto.', ghAutoOff:'Automatické ukládání do repozitáře vypnuto.',
+ghAutoFailed:'Automatické ukládání selhalo, vypínám ho: {err}', ghAutoZPredvolby:'Automatické ukládání do repozitáře je zapnuté podle tvé předvolby.'
+};
+function t(k,p){ let s=TX[k]??k; if(p) for(const [a,b] of Object.entries(p)) s=s.split('{'+a+'}').join(b); return s; }
+const toast = (m)=>say(m);
+
+/* Zvuk – Web Audio, žádné soubory; předvolba sdílená s DKM. */
+let audioCtx=null;
+function soundEnabled(){ return localStorage.getItem(SK_SOUND)!=='false'; }
+function ensureAudio(){ if(audioCtx) return audioCtx; const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return null; try{ audioCtx=new AC(); }catch(e){ return null; } return audioCtx; }
+document.addEventListener('pointerdown',()=>{ const c=ensureAudio(); if(c&&c.state==='suspended') c.resume().catch(()=>{}); },{once:true});
+document.addEventListener('keydown',()=>{ const c=ensureAudio(); if(c&&c.state==='suspended') c.resume().catch(()=>{}); },{once:true});
+function playTones(tones){ if(!soundEnabled()) return; const ctx=ensureAudio(); if(!ctx) return; if(ctx.state==='suspended') ctx.resume().catch(()=>{});
+  try{ const t0=ctx.currentTime; tones.forEach(([freq,start,dur,gain,type])=>{ const osc=ctx.createOscillator(),g=ctx.createGain(); osc.type=type||'sine'; osc.frequency.value=freq; const s=t0+start,e=s+dur;
+    g.gain.setValueAtTime(0.0001,s); g.gain.exponentialRampToValueAtTime(gain,s+0.012); g.gain.exponentialRampToValueAtTime(0.0001,e); osc.connect(g); g.connect(ctx.destination); osc.start(s); osc.stop(e+0.02); }); }catch(e){} }
+function soundSaved(){ playTones([[880,0,0.12,0.16],[1318.5,0.10,0.20,0.14]]); }
+function soundFailed(){ playTones([[311.1,0,0.18,0.17,'triangle'],[233.1,0.16,0.34,0.17,'triangle']]); }
+
+function userName(){ return localStorage.getItem(SK_USERNAME)||''; }
+function setUserName(v){ v=(v||'').trim(); if(v) localStorage.setItem(SK_USERNAME,v); else localStorage.removeItem(SK_USERNAME); }
+function snapshotBaseline(){ try{ S.baseline=JSON.parse(JSON.stringify(S.data)); }catch(e){ dbg('Snímek základu selhal: '+e.message); } }
+function hasBaseline(){ return !!(S.baseline && Array.isArray(S.baseline.entities)); }
+
+function ghEncode(s){ return btoa(unescape(encodeURIComponent(s))); }
+function ghDecode(s){ return decodeURIComponent(escape(atob(s))); }
+function bytyDoBase64(b){ let s=''; for(let i=0;i<b.length;i+=8192) s+=String.fromCharCode.apply(null,b.subarray(i,i+8192)); return btoa(s); }
+function base64DoBytu(x){ const s=atob(String(x).replace(/\s+/g,'')), b=new Uint8Array(s.length); for(let i=0;i<s.length;i++) b[i]=s.charCodeAt(i); return b; }
+function ghB64ToText(b64){ return new TextDecoder().decode(base64DoBytu(b64)); }
+function parseGhPath(p){ if(!p) return null; if(jeGitlabCesta(p)) return parseGlPath(p); const parts=String(p).trim().split('/').filter(Boolean); if(parts.length<3) return null; return {owner:parts[0],repo:parts[1],path:parts.slice(2).join('/')}; }
+function ghToken(){ return localStorage.getItem(SK_GHTOKEN)||''; }
+function ghSetToken(v){ if(v) localStorage.setItem(SK_GHTOKEN,v); else localStorage.removeItem(SK_GHTOKEN); }
+function ghHeaders(){ const h={'Accept':'application/vnd.github.v3+json'}; const tk=ghToken(); if(tk) h['Authorization']='token '+tk; return h; }
+function ghErrFromStatus(status){ if(status===404) return t('ghErr404'); if(status===401) return t('ghErr401'); if(status===403) return t('ghErr403'); return t('ghErrGeneric')+'HTTP '+status; }
+/* Odkaz na tento editor (?id=) a na velké DKM ve stejné složce. */
+function ghShareUrl(ghPath){ return location.origin+location.pathname+'?id='+encodeURIComponent(ghEncode(ghPath)); }
+function dkmUrl(ghPath){ return new URL('index.html', location.href).href.replace(/[?#].*$/,'')+'?id='+encodeURIComponent(ghEncode(ghPath)); }
+
+const GL_VYCHOZI_SERVER='gitlab.com';
+function jeGitlabCesta(p){ return String(p||'').indexOf('/-/')>=0; }
+function glDekoduj(x){ try{ return decodeURIComponent(x); }catch(e){ return x; } }
+function parseGlPath(p){
+  let s=String(p||'').trim().replace(/[?#].*$/,''); let schema='https';
+  const m=s.match(/^(https?):\/\//i); if(m){ schema=m[1].toLowerCase(); s=s.slice(m[0].length); }
+  const i=s.indexOf('/-/'); if(i<0) return null;
+  const pred=s.slice(0,i).split('/').filter(Boolean);
+  let za=s.slice(i+3).split('/').filter(Boolean).map(glDekoduj);
+  let host=GL_VYCHOZI_SERVER;
+  if(pred.length&&(/[.:]/.test(pred[0])||pred[0]==='localhost')) host=pred.shift().toLowerCase();
+  if(pred.length<2) return null;
+  let vetev=''; if(za.length>2&&(za[0]==='blob'||za[0]==='raw')){ vetev=za[1]; za=za.slice(2); }
+  if(!za.length) return null;
+  return {druh:'gitlab',schema,host,projekt:pred.map(glDekoduj).join('/'),path:za.join('/'),vetev};
+}
+function glApi(parsed){ return parsed.schema+'://'+parsed.host+'/api/v4/projects/'+encodeURIComponent(parsed.projekt); }
+function glSoubor(parsed){ return glApi(parsed)+'/repository/files/'+encodeURIComponent(parsed.path); }
+function glTokeny(){ try{ const o=JSON.parse(localStorage.getItem(SK_GLTOKENS)||'{}'); return (o&&typeof o==='object'&&!Array.isArray(o))?o:{}; }catch(e){ return {}; } }
+function glToken(host){ return glTokeny()[String(host||'').trim().toLowerCase()]||''; }
+function glNormHost(h){ return String(h||'').trim().toLowerCase().replace(/^https?:\/\//,'').replace(/\/.*$/,''); }
+function glSetToken(host,v){ host=glNormHost(host); if(!host) return; const o=glTokeny(); if(v) o[host]=v; else delete o[host];
+  try{ if(Object.keys(o).length) localStorage.setItem(SK_GLTOKENS,JSON.stringify(o)); else localStorage.removeItem(SK_GLTOKENS); }catch(e){ dbg('Uložení GitLab tokenu selhalo.'); } }
+function glHeaders(parsed){ const h={'Accept':'application/json'}; const tk=glToken(parsed.host); if(tk) h['PRIVATE-TOKEN']=tk; return h; }
+function glErrFromStatus(status){ if(status===404) return t('glErr404'); if(status===401) return t('ghErr401'); if(status===403) return t('ghErr403'); return t('glErrGeneric')+'HTTP '+status; }
+function glFetch(parsed,url,volby){
+  volby=volby||{};
+  const h=Object.assign({},glHeaders(parsed),volby.body?{'Content-Type':'application/json'}:{});
+  return fetch(url,Object.assign({},volby,{headers:h})).then(res=>{
+    if(!res.ok) return res.json().catch(()=>({})).then(j=>{ let zpr=j&&(j.message||j.error); if(zpr&&typeof zpr!=='string') zpr=JSON.stringify(zpr);
+      const e=new Error(glErrFromStatus(res.status)+(zpr?' – '+zpr:'')); e.status=res.status; throw e; });
+    return res;
+  },()=>glDiagnozaFetch(parsed).then(zpr=>{ throw new Error(zpr); }));
+}
+function glDiagnozaFetch(parsed){
+  const host=parsed.host, url=parsed.schema+'://'+host+'/api/v4/version'; const tip=t('glErrFetchTip',{url});
+  if(parsed.schema==='http'&&location.protocol==='https:'&&!/^(localhost|127\.)/.test(host)) return Promise.resolve(t('glErrFetchMixed',{host}));
+  let dotaz=Promise.resolve(null);
+  try{ if(navigator.permissions&&navigator.permissions.query) dotaz=navigator.permissions.query({name:'local-network-access'}).then(p=>p&&p.state,()=>null); }catch(e){}
+  return dotaz.then(stav=>{ dbg('GitLab fetch selhal ('+host+'), local-network-access='+(stav||'n/a'));
+    if(stav==='denied') return t('glErrFetchLna',{host}); if(stav==='prompt'&&host!==GL_VYCHOZI_SERVER) return t('glErrFetchLnaDotaz',{host})+tip; return t('glErrFetch',{host})+tip; });
+}
+let glVetevPamet=null;
+function glVychoziVetev(parsed){
+  if(parsed.vetev) return Promise.resolve(parsed.vetev);
+  const klic=parsed.host+'/'+parsed.projekt;
+  if(glVetevPamet&&glVetevPamet.klic===klic) return Promise.resolve(glVetevPamet.vetev);
+  return glFetch(parsed,glApi(parsed)).then(r=>r.json()).then(j=>{ glVetevPamet={klic,vetev:(j&&j.default_branch)||'main'}; return glVetevPamet.vetev; });
+}
+function glNactiSoubor(parsed){
+  return glVychoziVetev(parsed).then(vetev=>glFetch(parsed,glSoubor(parsed)+'?ref='+encodeURIComponent(vetev)).then(r=>r.json()).then(meta=>{
+    const sha=meta.last_commit_id||null;
+    if(typeof meta.content==='string'&&(meta.content.length||!meta.size)) return {text:ghB64ToText(meta.content),sha};
+    return glFetch(parsed,glSoubor(parsed)+'/raw?ref='+encodeURIComponent(vetev)).then(r=>r.arrayBuffer()).then(b=>({text:new TextDecoder().decode(new Uint8Array(b)),sha}));
+  }));
+}
+function glShaSouboru(parsed){
+  return glVychoziVetev(parsed).then(vetev=>glFetch(parsed,glSoubor(parsed)+'?ref='+encodeURIComponent(vetev)).then(r=>r.json()).then(j=>(j&&j.last_commit_id)||null,err=>{ if(err&&err.status===404) return null; throw err; }));
+}
+function glUlozit(parsed,byty,zprava,ocekavana){
+  return glVychoziVetev(parsed).then(vetev=>{
+    const akce={action:ocekavana?'update':'create',file_path:parsed.path,content:bytyDoBase64(byty),encoding:'base64'};
+    if(ocekavana) akce.last_commit_id=ocekavana;
+    return glFetch(parsed,glApi(parsed)+'/repository/commits',{method:'POST',body:JSON.stringify({branch:vetev,commit_message:zprava,actions:[akce]})}).then(r=>r.json()).then(c=>{
+      const id=c&&c.id; return {content:{sha:id},commit:{sha:id}};
+    },err=>{
+      if(!err||!(err.status===400||err.status===409||err.status===422)) throw err;
+      return glShaSouboru(parsed).then(sha=>{ if((sha||null)!==(ocekavana||null)){ dbg('GitLab: cizí zápis, konflikt'); return {__konflikt:true}; } throw err; });
+    });
+  });
+}
+function glJeVlastniServer(host){ host=String(host||'').trim().toLowerCase(); return !!host&&host!==GL_VYCHOZI_SERVER; }
+function glStavMistniSite(){ try{ if(navigator.permissions&&navigator.permissions.query) return navigator.permissions.query({name:'local-network-access'}).then(p=>p&&p.state||null,()=>null); }catch(e){} return Promise.resolve(null); }
+function glPosledniCommit(parsed){
+  return glVychoziVetev(parsed).then(vetev=>fetch(glApi(parsed)+'/repository/commits?per_page=1&ref_name='+encodeURIComponent(vetev)+'&path='+encodeURIComponent(parsed.path),{headers:glHeaders(parsed)})).then(res=>res.ok?res.json():null)
+    .then(j=>(Array.isArray(j)&&j[0])?{sha:j[0].id,kdo:j[0].author_name||'',kdy:j[0].authored_date||''}:null);
+}
+function repoToken(parsed){ if(!parsed) return ''; return parsed.druh==='gitlab'?glToken(parsed.host):ghToken(); }
+function repoPripraveno(cesta){ const p=cesta?parseGhPath(cesta):null; return !!(p&&repoToken(p)); }
+
+function ghNactiSoubor(parsed){
+  if(parsed.druh==='gitlab') return glNactiSoubor(parsed);
+  const apiUrl='https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/contents/'+parsed.path;
+  return fetch(apiUrl,{headers:ghHeaders()}).then(res=>{ if(!res.ok) throw new Error(ghErrFromStatus(res.status)); return res.json(); }).then(meta=>{
+    if(meta.content&&meta.encoding==='base64') return {text:ghB64ToText(meta.content),sha:meta.sha};
+    const blobUrl='https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/git/blobs/'+meta.sha;
+    dbg('Velký soubor, stahuji blob.');
+    return fetch(blobUrl,{headers:ghHeaders()}).then(res=>{ if(!res.ok) throw new Error(ghErrFromStatus(res.status)); return res.json(); }).then(blob=>({text:ghB64ToText(blob.content),sha:meta.sha}));
+  });
+}
+const GH_MEZ_VELKEHO=1000000;
+let ghVetevPamet=null;
+function ghVychoziVetev(parsed){
+  const klic=parsed.owner+'/'+parsed.repo;
+  if(ghVetevPamet&&ghVetevPamet.klic===klic) return Promise.resolve(ghVetevPamet.vetev);
+  return fetch('https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo,{headers:ghHeaders()}).then(res=>{ if(!res.ok) throw new Error(ghErrFromStatus(res.status)); return res.json(); })
+    .then(j=>{ ghVetevPamet={klic,vetev:j.default_branch||'main'}; return ghVetevPamet.vetev; });
+}
+function ghShaSouboru(parsed){
+  if(parsed.druh==='gitlab') return glShaSouboru(parsed);
+  return fetch('https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/contents/'+parsed.path,{headers:ghHeaders()}).then(res=>{
+    if(res.status===404) return null; if(!res.ok) throw new Error(ghErrFromStatus(res.status)); return res.json().then(j=>(j&&j.sha)||null); });
+}
+function ghUlozitVelke(parsed,byty,zprava,ocekavanaSha){
+  const zaklad='https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/';
+  const posli=(cesta,volby)=>fetch(zaklad+cesta,Object.assign({headers:Object.assign({'Content-Type':'application/json'},ghHeaders())},volby||{})).then(res=>{
+    if(!res.ok) return res.json().catch(()=>({})).then(j=>{ const e=new Error(ghErrFromStatus(res.status)+(j.message?' – '+j.message:'')); e.status=res.status; throw e; });
+    return res.json(); });
+  return ghVychoziVetev(parsed).then(vetev=>ghShaSouboru(parsed).then(sha=>{
+    /* Ochrana proti přepsání: nikdy nedotahovat čerstvou sha, aby zápis prošel. */
+    if((sha||null)!==(ocekavanaSha||null)){ dbg('Velké uložení: cizí zápis, konflikt'); return {__konflikt:true}; }
+    return posli('git/ref/heads/'+encodeURIComponent(vetev)).then(ref=>ref.object.sha,err=>{ if(err&&err.status===404) return null; throw err; }).then(rodic=>
+      (rodic?posli('git/commits/'+rodic).then(c=>c.tree.sha):Promise.resolve(null)).then(rodicStrom=>
+        posli('git/blobs',{method:'POST',body:JSON.stringify({content:bytyDoBase64(byty),encoding:'base64'})}).then(blob=>{
+          const strom={tree:[{path:parsed.path,mode:'100644',type:'blob',sha:blob.sha}]}; if(rodicStrom) strom.base_tree=rodicStrom;
+          return posli('git/trees',{method:'POST',body:JSON.stringify(strom)}).then(strom=>
+            posli('git/commits',{method:'POST',body:JSON.stringify({message:zprava,tree:strom.sha,parents:rodic?[rodic]:[]})}).then(commit=>{
+              const hotovo=()=>({content:{sha:blob.sha},commit:{sha:commit.sha}});
+              if(!rodic) return posli('git/refs',{method:'POST',body:JSON.stringify({ref:'refs/heads/'+vetev,sha:commit.sha})}).then(hotovo);
+              return posli('git/refs/heads/'+encodeURIComponent(vetev),{method:'PATCH',body:JSON.stringify({sha:commit.sha,force:false})}).then(hotovo,err=>{
+                if(err&&(err.status===422||err.status===409)){ dbg('Velké uložení: větev se pohnula, konflikt'); return {__konflikt:true}; } throw err; });
+            }));
+        })));
+  }));
+}
+function ghPosledniCommitZeSite(parsed){
+  if(parsed.druh==='gitlab') return glPosledniCommit(parsed);
+  return fetch('https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/commits?per_page=1&path='+encodeURIComponent(parsed.path),{headers:ghHeaders()}).then(res=>res.ok?res.json():null)
+    .then(j=>(Array.isArray(j)&&j[0])?{sha:j[0].sha,kdo:(j[0].commit&&j[0].commit.author&&j[0].commit.author.name)||'',kdy:(j[0].commit&&j[0].commit.author&&j[0].commit.author.date)||''}:null);
+}
+
+function loadFromGitHub(ghPath,opts){
+  opts=opts||{};
+  const parsed=parseGhPath(ghPath);
+  if(!parsed){ toast(t('ghErrInvalidPath')); return Promise.reject(new Error('invalid path')); }
+  toast(t('ghLoading'));
+  dbg((parsed.druh==='gitlab'?'GitLab GET '+parsed.host+' '+parsed.projekt+' '+parsed.path:'GitHub GET '+parsed.owner+'/'+parsed.repo+'/'+parsed.path)+(repoToken(parsed)?' (s tokenem)':' (bez tokenu)'));
+  return ghNactiSoubor(parsed).then(({text,sha})=>{
+    const p=JSON.parse(text);
+    normalizeData(p); p.ghPath=ghPath;
+    loadData(p, parsed.path.split('/').pop(), false, sha);
+    toast('✓ '+t('ghLoaded')+(p.projectName?' – '+p.projectName:''));
+    soundSaved();
+    dbg('Načteno z repozitáře ('+text.length+' B)');
+  }).catch(err=>{
+    const msg=err.message||String(err); toast(msg); dbg('Načtení z repozitáře selhalo: '+msg); soundFailed();
+    /* Soukromé repo bez tokenu vrací 404 — rovnou nabídnout zadání tokenu. */
+    if(opts.zAdresy){ S.repoHlaska={path:ghPath, duvod:msg}; show('repo'); }
+    throw err;
+  });
+}
+
+/* ---------- Trojcestné sloučení (beze změny převzato z DKM) ---------- */
+const MODELOVE_KOLEKCE=['entityTypes','aspects','relationTypes','selectLists','tagSets','savedViews','jsonExports'];
+const SKALARY_ENTITY=['name','inInbox','archived','typeId','createdAt','locked','pinned'];
+function jeAutoInc(a){ return !!(a&&a.type==='number'&&a.autoInc); }
+function slKopie(x){ return x===undefined?undefined:JSON.parse(JSON.stringify(x)); }
+function slStejne(a,b){ return JSON.stringify(a===undefined?null:a)===JSON.stringify(b===undefined?null:b); }
+function slPodleId(pole){ const m=new Map(); (pole||[]).forEach(x=>{ if(x&&x.id!=null) m.set(x.id,x); }); return m; }
+function clenstvi(zaklad,moje,jejich){
+  const out=new Set(moje);
+  jejich.forEach(k=>{ if(!zaklad.has(k)) out.add(k); });
+  zaklad.forEach(k=>{ if(!jejich.has(k)&&moje.has(k)) out.delete(k); });
+  moje.forEach(k=>{ if(!zaklad.has(k)) out.add(k); });
+  return out;
+}
+function slucPodleId(zaklad,moje,jejich,slucPrvek,onOziveno){
+  const zB=slPodleId(zaklad),zM=slPodleId(moje),zJ=slPodleId(jejich); const zust=new Set();
+  new Set([].concat(Array.from(zB.keys()),Array.from(zM.keys()),Array.from(zJ.keys()))).forEach(id=>{
+    const jeB=zB.has(id),jeM=zM.has(id),jeJ=zJ.has(id);
+    if(!jeB){ if(jeM||jeJ) zust.add(id); return; }
+    if(jeM&&jeJ){ zust.add(id); return; }
+    if(!jeM&&!jeJ) return;
+    if(jeM&&!jeJ){ if(!slStejne(zB.get(id),zM.get(id))){ zust.add(id); if(onOziveno) onOziveno(zM.get(id),'moje'); } return; }
+    if(!slStejne(zB.get(id),zJ.get(id))){ zust.add(id); if(onOziveno) onOziveno(zJ.get(id),'jejich'); }
+  });
+  const vyres=id=>{ const b=zB.get(id),m=zM.get(id),j=zJ.get(id);
+    if(m&&j){ const zmenilJa=!slStejne(b,m),zmeniliOni=!slStejne(b,j); if(zmenilJa&&zmeniliOni) return slucPrvek?slucPrvek(b,m,j):slKopie(m); return slKopie(zmeniliOni?j:m); }
+    return slKopie(m||j); };
+  const out=[]; const hotovo=new Set();
+  (moje||[]).forEach(x=>{ if(!zust.has(x.id)||hotovo.has(x.id)) return; hotovo.add(x.id); out.push(vyres(x.id)); });
+  (jejich||[]).forEach(x=>{ if(!zust.has(x.id)||hotovo.has(x.id)) return; hotovo.add(x.id); out.push(vyres(x.id)); });
+  return out;
+}
+function klicVazby(r){ return JSON.stringify([String(r&&r.relationTypeId||''),String(r&&r.targetId||'')]); }
+function slucEntitu(zaklad,moje,jejich){
+  const b=zaklad||{},kolize=[]; const e=slKopie(moje);
+  const vezmi=(pole,hodB,hodM,hodJ,nastav)=>{ const zmenilJa=!slStejne(hodB,hodM),zmeniliOni=!slStejne(hodB,hodJ); if(!zmeniliOni) return; if(!zmenilJa){ nastav(slKopie(hodJ)); return; } if(!slStejne(hodM,hodJ)) kolize.push(pole); };
+  SKALARY_ENTITY.forEach(k=>vezmi(k,b[k],moje[k],jejich[k],v=>{ e[k]=v; }));
+  const klice=new Set([].concat(Object.keys(b.attributes||{}),Object.keys(moje.attributes||{}),Object.keys(jejich.attributes||{})));
+  e.attributes=Object.assign({},moje.attributes||{});
+  klice.forEach(k=>vezmi('attributes.'+k,(b.attributes||{})[k],(moje.attributes||{})[k],(jejich.attributes||{})[k],v=>{ if(v===undefined||v===null||v==='') delete e.attributes[k]; else e.attributes[k]=v; }));
+  e.aspects=Array.from(clenstvi(new Set(b.aspects||[]),new Set(moje.aspects||[]),new Set(jejich.aspects||[])));
+  const mapaVazeb=pole=>{ const m=new Map(); (pole||[]).forEach(r=>m.set(klicVazby(r),r)); return m; };
+  const vB=mapaVazeb(b.relations),vM=mapaVazeb(moje.relations),vJ=mapaVazeb(jejich.relations);
+  const vZust=clenstvi(new Set(vB.keys()),new Set(vM.keys()),new Set(vJ.keys()));
+  e.relations=[]; const videno=new Set();
+  [vM,vJ].forEach(m=>m.forEach((r,k)=>{ if(!vZust.has(k)||videno.has(k)) return; videno.add(k); e.relations.push(slKopie(r)); }));
+  e.customAttributes=slucPodleId(b.customAttributes,moje.customAttributes,jejich.customAttributes,(bb,mm)=>{ kolize.push('customAttributes'); return slKopie(mm); });
+  e.comments=slucPodleId(b.comments,moje.comments,jejich.comments,(bb,mm)=>{ kolize.push('comments'); return slKopie(mm); });
+  e.objects=slucPodleId(b.objects,moje.objects,jejich.objects,(bb,mm)=>{ kolize.push('objects'); return slKopie(mm); });
+  const tM=moje.updatedAt||'',tJ=jejich.updatedAt||''; e.updatedAt=tJ>tM?tJ:tM;
+  return {entita:e,kolize};
+}
+function uklidOdkazy(data){
+  const zive=new Set((data.entities||[]).map(e=>e.id)); let zahozeno=0; const typyAtributu=new Map();
+  (data.entityTypes||[]).forEach(ty=>(ty.attributes||[]).forEach(a=>typyAtributu.set(a.id,a.type)));
+  (data.aspects||[]).forEach(as=>(as.attributes||[]).forEach(a=>typyAtributu.set(a.id,a.type)));
+  (data.entities||[]).forEach(e=>{
+    const pred=(e.relations||[]).length; e.relations=(e.relations||[]).filter(r=>zive.has(r.targetId)); zahozeno+=pred-e.relations.length;
+    const orez=(drzak,klic,typ)=>{ if(typ!=='relation') return; const v=drzak[klic];
+      if(Array.isArray(v)){ const p=v.filter(x=>zive.has(x)); zahozeno+=v.length-p.length; drzak[klic]=p; }
+      else if(v&&!zive.has(v)){ zahozeno++; delete drzak[klic]; } };
+    Object.keys(e.attributes||{}).forEach(aid=>orez(e.attributes,aid,typyAtributu.get(aid)));
+    (e.customAttributes||[]).forEach(ca=>orez(ca,'value',ca.type));
+  });
+  return zahozeno;
+}
+function slucProjekty(zaklad,moje,jejich){
+  const zpr={prevzatoEntit:0,pridanoEntit:0,smazanoEntit:0,kolize:[],oziveno:[],zahozenychOdkazu:0,zmenenoModelu:0};
+  const out=slKopie(moje);
+  MODELOVE_KOLEKCE.forEach(k=>{ const pred=JSON.stringify(moje[k]||[]); out[k]=slucPodleId(zaklad[k],moje[k],jejich[k],(b,m)=>slKopie(m)); if(JSON.stringify(out[k])!==pred) zpr.zmenenoModelu++; });
+  ['entityTypes','aspects'].forEach(k=>{ const naSve=new Map();
+    [moje[k]||[],jejich[k]||[]].forEach(sez=>(sez||[]).forEach(o=>(o.attributes||[]).forEach(a=>{ if(!jeAutoInc(a)) return; const v=Number(a.posledni)||0; if(!naSve.has(a.id)||naSve.get(a.id)<v) naSve.set(a.id,v); })));
+    (out[k]||[]).forEach(o=>(o.attributes||[]).forEach(a=>{ if(!jeAutoInc(a)||!naSve.has(a.id)) return; if((Number(a.posledni)||0)<naSve.get(a.id)){ a.posledni=naSve.get(a.id); zpr.zmenenoModelu++; } }));
+  });
+  const zB=slPodleId(zaklad.entities),zM=slPodleId(moje.entities),zJ=slPodleId(jejich.entities);
+  out.entities=slucPodleId(zaklad.entities,moje.entities,jejich.entities,(b,m,j)=>{ const r=slucEntitu(b,m,j); if(r.kolize.length) zpr.kolize.push({id:m.id,nazev:m.name||m.id,pole:r.kolize}); return r.entita; },
+    (e,strana)=>{ zpr.oziveno.push({nazev:e.name||e.id,strana}); });
+  out.entities.forEach(e=>{ if(!zM.has(e.id)&&zJ.has(e.id)) zpr.pridanoEntit++; else if(zM.has(e.id)&&zJ.has(e.id)&&!slStejne(zJ.get(e.id),zM.get(e.id))) zpr.prevzatoEntit++; });
+  zB.forEach((e,id)=>{ if(zM.has(id)&&!zJ.has(id)&&slStejne(zB.get(id),zM.get(id))) zpr.smazanoEntit++; });
+  zpr.zahozenychOdkazu=uklidOdkazy(out);
+  return {data:out,zprava:zpr};
+}
+function prazdnaZprava(){ return {prevzatoEntit:0,pridanoEntit:0,smazanoEntit:0,kolize:[],oziveno:[],zahozenychOdkazu:0,zmenenoModelu:0}; }
+function jinyProjekt(a,b){ const ae=(a&&a.entities)||[],be=(b&&b.entities)||[]; if(!ae.length||!be.length) return false; const ids=new Set(ae.map(e=>e.id)); return !be.some(e=>ids.has(e.id)); }
+
+/* Stáhne vzdálenou verzi a sloučí ji do rozpracovaných dat (konflikt při
+   ukládání i ruční Sloučit). Po sloučení je základem *jejich* verze. */
+function slucSVzdalenym(parsed,volby){
+  const tiche=!!(volby&&volby.tiche);
+  return ghNactiSoubor(parsed).then(({text,sha})=>{
+    if(sha&&sha===S.ghSha&&hasBaseline()){ if(!tiche) toast(t('ghNicNoveho')); return prazdnaZprava(); }
+    const jejich=normalizeData(JSON.parse(text));
+    const zaklad=hasBaseline()?S.baseline:emptyData();
+    if(tiche&&jinyProjekt(zaklad,jejich)){ ukazJinyProjektBanner(parsed); return prazdnaZprava(); }
+    if(tiche&&!S.dirty){
+      jejich.ghPath=S.data.ghPath; S.data=jejich; S.baseline=JSON.parse(JSON.stringify(jejich)); S.ghSha=sha;
+      rebuildModel(); updateTitle(); saveSession(); dbg('Převzata verze od ostatních.'); rerender(); return prazdnaZprava();
+    }
+    const vysl=slucProjekty(zaklad,S.data,jejich);
+    vysl.data.ghPath=S.data.ghPath;
+    S.data=vysl.data; S.baseline=JSON.parse(JSON.stringify(jejich)); S.ghSha=sha;
+    rebuildModel(); updateTitle(); saveSession();
+    ohlasSlouceni(vysl.zprava,tiche);
+    if (S.view==='detail' && !M.E.has(S.detailId)) show(S.backView,false); else rerender();
+    return vysl.zprava;
+  });
+}
+function slucitZRepozitare(){
+  if(!S.data) return;
+  if(!repoPripraveno(S.data.ghPath)){ toast(t('ghAutoNoGh')); return; }
+  const parsed=parseGhPath(S.data.ghPath); if(!parsed){ toast(t('ghErrInvalidPath')); return; }
+  $('#jinyBanner').hidden=true;
+  slucSVzdalenym(parsed).then(()=>ghZapamatujCommit(),err=>toast(err.message||String(err)));
+}
+function ohlasSlouceni(z,tiche){
+  dbg('Sloučení: '+JSON.stringify(z));
+  const casti=[];
+  if(z.prevzatoEntit) casti.push(t('ghSlucPrevzato',{n:z.prevzatoEntit}));
+  if(z.pridanoEntit) casti.push(t('ghSlucPridano',{n:z.pridanoEntit}));
+  if(z.smazanoEntit) casti.push(t('ghSlucSmazano',{n:z.smazanoEntit}));
+  if(!tiche){ if(casti.length) toast(t('ghSlouceno')+': '+casti.join(', ')); else if(!z.kolize.length&&!z.oziveno.length) toast(t('ghSlouceno')); }
+  if(z.kolize.length||z.oziveno.length) ukazSlucBanner(z);
+}
+/* Spor a oživení: trvalé oznámení, které samo nezmizí (ne dialog). */
+function ukazSlucBanner(z){
+  const b=$('#slucBanner');
+  $('#slucBannerH').textContent = z.kolize.length ? t('ghSlucKolize',{n:z.kolize.length}) : t('ghSlucOziveno',{n:z.oziveno.length});
+  const ul=$('#slucBannerList'); ul.innerHTML='';
+  z.kolize.forEach(k=>{ const li=document.createElement('li'); li.textContent=k.nazev+' – '+k.pole.map(polePopis).join(', '); ul.appendChild(li); });
+  z.oziveno.forEach(o=>{ const li=document.createElement('li'); li.textContent=o.nazev+' – zůstalo (smazáno jen na jedné straně, druhá ho upravila)'; ul.appendChild(li); });
+  b.hidden=false;
+}
+function polePopis(p){ if(p.indexOf('attributes.')===0){ const id=p.slice(11); for(const ty of [...S.data.entityTypes,...S.data.aspects]) for(const a of ty.attributes||[]) if(a.id===id) return a.name; return id; } return ({name:'název',typeId:'typ',archived:'archivace'})[p]||p; }
+$('#slucBannerX').addEventListener('click',()=>{ $('#slucBanner').hidden=true; });
+let jinyParsed=null;
+function ukazJinyProjektBanner(parsed){ jinyParsed=parsed; $('#jinyBanner').hidden=false; }
+$('#jinyBannerX').addEventListener('click',()=>{ $('#jinyBanner').hidden=true; });
+$('#jinyBannerSluc').addEventListener('click',()=>{ $('#jinyBanner').hidden=true; if(jinyParsed) slucSVzdalenym(jinyParsed).catch(err=>toast(err.message||String(err))); });
+
+let ghPosledniCommit=null;
+function ghZapamatujCommit(){ const parsed=parseGhPath(S.data&&S.data.ghPath); if(!parsed) return; ghPosledniCommit=null; ghPosledniCommitZeSite(parsed).then(c=>{ if(c) ghPosledniCommit=c.sha; }).catch(()=>{}); }
+
+function saveToGitHub(tiche){
+  const ghPath=S.data.ghPath;
+  if(!ghPath){ toast(t('ghErrNoPath')); soundFailed(); return Promise.reject(new Error('no path')); }
+  const parsed=parseGhPath(ghPath);
+  if(!parsed){ toast(t('ghErrInvalidPath')); soundFailed(); return Promise.reject(new Error('invalid path')); }
+  if(!repoToken(parsed)){ toast(t('ghErrNoToken')); soundFailed(); return Promise.reject(new Error('no token')); }
+  if(!tiche) toast(t('ghSaving'));
+  dbg((parsed.druh==='gitlab'?'GitLab commit ':'GitHub PUT ')+ghPath+(tiche?' (auto)':''));
+  const doPut=sha=>{
+    const kdo=userName();
+    const zprava=t('ghCommitMsg')+(S.data.projectName?' – '+S.data.projectName:'')+(kdo?' ('+kdo+')':'');
+    const byty=new TextEncoder().encode(JSON.stringify(S.data,null,2));
+    if(parsed.druh==='gitlab') return glUlozit(parsed,byty,zprava,sha);
+    if(byty.length>GH_MEZ_VELKEHO){ dbg('Velký soubor ('+byty.length+' B), ukládám přes Git Data API'); return ghUlozitVelke(parsed,byty,zprava,sha); }
+    const apiUrl='https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/contents/'+parsed.path;
+    const body={message:zprava,content:bytyDoBase64(byty)}; if(sha) body.sha=sha;
+    return fetch(apiUrl,{method:'PUT',headers:Object.assign({'Content-Type':'application/json'},ghHeaders()),body:JSON.stringify(body)}).then(res=>{
+      if(res.status===409||res.status===422) return {__konflikt:true};
+      if(!res.ok) return res.json().catch(()=>({})).then(j=>{ throw new Error(ghErrFromStatus(res.status)+(j.message?' – '+j.message:'')); });
+      return res.json(); });
+  };
+  const pokus=n=>doPut(S.ghSha).then(res=>{
+    if(!res||!res.__konflikt) return res;
+    if(n>=3) throw new Error(t('ghKonfliktVzdal'));
+    dbg('Konflikt při ukládání, slučuji (pokus '+(n+1)+')');
+    return slucSVzdalenym(parsed).then(()=>pokus(n+1));
+  });
+  return pokus(0).then(result=>{
+    S.ghSha=result.content&&result.content.sha; S.dirty=false; snapshotBaseline(); saveSession(); updateTitle();
+    try{ localStorage.removeItem(LS_KEY); }catch{}
+    soundSaved();
+    if(!tiche) toast('✓ '+t('ghSaved'));
+    const mujCommit=result&&result.commit&&result.commit.sha; if(mujCommit) ghPosledniCommit=mujCommit; else ghZapamatujCommit();
+    return result;
+  }).catch(err=>{ const msg=err.message||String(err); if(!tiche) toast(msg); dbg('Uložení do repozitáře selhalo: '+msg); soundFailed(); throw err; });
+}
+
+/* ---------- AutoSave (stejná logika i předvolba jako v DKM) ---------- */
+const GHAUTO_PRODLEVA=2500;
+const ghAutoStav={zap:false,cas:null,bezi:false,znovu:false};
+function ghAutoVychozi(){ return localStorage.getItem(SK_GHAUTO)==='true'; }
+function setGhAutoVychozi(v){ localStorage.setItem(SK_GHAUTO,v?'true':'false'); }
+let ghAutoVychoziResen=false;
+function ghAutoLzeZapnout(){ return !!(S.data && repoPripraveno(S.data.ghPath)); }
+function ghAutoPodleNastaveni(){
+  if(ghAutoVychoziResen) return;
+  if(!ghAutoVychozi()){ ghAutoVychoziResen=true; return; }
+  if(!ghAutoLzeZapnout()) return;
+  ghAutoVychoziResen=true; ghAutoStav.zap=true; prekresliGhAuto();
+  setTimeout(()=>toast(t('ghAutoZPredvolby')),1600);
+  if(S.dirty) ghAutoNaplanuj();
+}
+function prekresliGhAuto(){
+  const c=$('#ghAutoCb'); if(!c) return;
+  const lze=ghAutoLzeZapnout(); c.checked=ghAutoStav.zap&&lze; c.disabled=!lze;
+  $('#ghAutoLbl').title = lze ? 'Automaticky ukládat do repozitáře po každé změně (2,5 s po poslední úpravě).' : t('ghAutoNoGh');
+}
+function ghAutoPrepni(zapnout){
+  if(zapnout&&!ghAutoLzeZapnout()){ toast(t('ghAutoNoGh')); prekresliGhAuto(); return; }
+  ghAutoVychoziResen=true; ghAutoStav.zap=!!zapnout;
+  if(!ghAutoStav.zap){ clearTimeout(ghAutoStav.cas); ghAutoStav.cas=null; }
+  toast(ghAutoStav.zap?t('ghAutoOn'):t('ghAutoOff')); prekresliGhAuto();
+  if(ghAutoStav.zap&&S.dirty) ghAutoNaplanuj();
+}
+$('#ghAutoCb').addEventListener('change',ev=>ghAutoPrepni(ev.target.checked));
+function ghAutoNaplanuj(){ if(!ghAutoStav.zap||!ghAutoLzeZapnout()) return; clearTimeout(ghAutoStav.cas); ghAutoStav.cas=setTimeout(ghAutoOdesli,GHAUTO_PRODLEVA); }
+function ghAutoOdesli(){
+  ghAutoStav.cas=null;
+  if(!ghAutoStav.zap||!ghAutoLzeZapnout()||!S.dirty) return;
+  if(ghAutoStav.bezi){ ghAutoStav.znovu=true; return; }
+  ghAutoStav.bezi=true;
+  saveToGitHub(true).then(()=>{ ghAutoStav.bezi=false; if(ghAutoStav.znovu){ ghAutoStav.znovu=false; ghAutoNaplanuj(); } },
+    err=>{ ghAutoStav.bezi=false; ghAutoStav.znovu=false; ghAutoStav.zap=false; prekresliGhAuto(); toast(t('ghAutoFailed',{err:err&&err.message?err.message:String(err)})); });
+}
+
+/* ---------- Otevření z adresy: ?id= (repozitář, jako DKM) má přednost před ?open= ---------- */
+function resolveOpenUrl(raw){ let u; try{ u=new URL(String(raw||'').trim(),location.href); }catch(e){ return null; }
+  if(u.protocol!=='https:'&&u.protocol!=='http:') return null; if(u.protocol==='http:'&&location.protocol==='https:') return null; return u; }
+function autoLoadFromUrlParams(){
+  let params; try{ params=new URLSearchParams(location.search); }catch(e){ return false; }
+  const id=params.get('id');
+  if(id){ try{ const p=ghDecode(id); dbg('Otevírám z adresy: '+p); loadFromGitHub(p,{zAdresy:true}).catch(()=>{}); return true; }catch(e){ dbg('Parametr id nejde dekódovat.'); } }
+  const raw=params.get('open');
+  if(raw){ const u=resolveOpenUrl(raw); if(!u){ say('Adresu z parametru open nelze otevřít.'); return false; }
+    fetch(u.href).then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
+      .then(txt=>{ loadData(JSON.parse(txt), decodeURIComponent(u.pathname.split('/').pop()||'slovnik.dkmdata')); say('Načteno z adresy.'); })
+      .catch(err=>say('Soubor z adresy se nepodařilo načíst (síť nebo CORS): '+err.message));
+    return true; }
+  return false;
+}
+
+
+/* ---------- Historie verzí (cesta zpět): každé uložení je commit ---------- */
+function historieCommitu(parsed){
+  if(parsed.druh==='gitlab') return glVychoziVetev(parsed).then(vetev=>glFetch(parsed,glApi(parsed)+'/repository/commits?per_page=30&ref_name='+encodeURIComponent(vetev)+'&path='+encodeURIComponent(parsed.path)).then(r=>r.json()))
+    .then(j=>(Array.isArray(j)?j:[]).map(c=>({sha:c.id,kdo:c.author_name||'',kdy:c.authored_date||c.created_at||'',zprava:c.title||c.message||''})));
+  return fetch('https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/commits?per_page=30&path='+encodeURIComponent(parsed.path),{headers:ghHeaders()}).then(res=>{ if(!res.ok) throw new Error(ghErrFromStatus(res.status)); return res.json(); })
+    .then(j=>(Array.isArray(j)?j:[]).map(c=>({sha:c.sha,kdo:(c.commit&&c.commit.author&&c.commit.author.name)||'',kdy:(c.commit&&c.commit.author&&c.commit.author.date)||'',zprava:(c.commit&&c.commit.message||'').split('\n')[0]})));
+}
+function nactiVerzi(parsed,ref){
+  if(parsed.druh==='gitlab') return glFetch(parsed,glSoubor(parsed)+'?ref='+encodeURIComponent(ref)).then(r=>r.json()).then(meta=>{
+    if(typeof meta.content==='string'&&(meta.content.length||!meta.size)) return ghB64ToText(meta.content);
+    return glFetch(parsed,glSoubor(parsed)+'/raw?ref='+encodeURIComponent(ref)).then(r=>r.arrayBuffer()).then(b=>new TextDecoder().decode(new Uint8Array(b))); });
+  return fetch('https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/contents/'+parsed.path+'?ref='+encodeURIComponent(ref),{headers:ghHeaders()}).then(res=>{ if(!res.ok) throw new Error(ghErrFromStatus(res.status)); return res.json(); }).then(meta=>{
+    if(meta.content&&meta.encoding==='base64') return ghB64ToText(meta.content);
+    return fetch('https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/git/blobs/'+meta.sha,{headers:ghHeaders()}).then(res=>{ if(!res.ok) throw new Error(ghErrFromStatus(res.status)); return res.json(); }).then(b=>ghB64ToText(b.content)); });
+}
+/* Starší verze se načte jako rozpracovaná práce nad aktuální verzí v repozitáři:
+   `ghSha` i základ zůstávají, takže uložení ji zapíše jako nový commit navrch
+   (nic se nepřepisuje naslepo a jde se zase vrátit). */
+function obnovVerzi(parsed,c){
+  if(!confirm('Načíst verzi z '+new Date(c.kdy).toLocaleString('cs-CZ')+' jako rozpracovanou? Neuložené změny zmizí. Do repozitáře se zapíše až uložením.')) return;
+  say('Načítám starší verzi…');
+  nactiVerzi(parsed,c.sha).then(text=>{
+    const d=normalizeData(JSON.parse(text)); d.ghPath=S.data.ghPath;
+    snapshot(); S.data=d; rebuildModel(); changed('Načtena verze z '+new Date(c.kdy).toLocaleString('cs-CZ')+'. Uložením ji zapíšete jako novou verzi.');
+    show('prvky');
+  }).catch(err=>{ say('Verzi se nepodařilo načíst: '+(err.message||err)); soundFailed(); });
+}
+
+/* ---------- Pohled: GitHub / GitLab ---------- */
+function renderRepo(m){
+  const d=S.data, pp=d?parseGhPath(d.ghPath):null, hl=S.repoHlaska; S.repoHlaska=null;
+  const stav = !d ? 'Není otevřen žádný slovník – můžete ho načíst z repozitáře níže.' :
+    (pp&&repoToken(pp)) ? '✓ Připraveno ('+(pp.druh==='gitlab'?'GitLab, '+pp.host:'GitHub')+')' : 'Nepřipojeno ('+(pp?t('ghErrNoToken'):t('ghErrNoPath'))+')';
+  const glHost0 = (hl && parseGhPath(hl.path)?.druh==='gitlab') ? parseGhPath(hl.path).host : (pp&&pp.druh==='gitlab') ? pp.host : GL_VYCHOZI_SERVER;
+  const cesta = hl ? hl.path : (d?.ghPath||'');
+  m.innerHTML=`<h2>GitHub / GitLab</h2>
+  <p>Načítání a ukládání slovníku přímo do repozitáře na GitHubu nebo GitLabu (gitlab.com i vlastní server) přes API – stejně jako ve velkém DKM. Tokeny, jméno autora i předvolba AutoSave se ukládají jen v tomto prohlížeči a jsou společné s DKM na téže adrese.</p>
+  ${hl?`<div class="warn" role="alert"><p><strong>Projekt se nepodařilo otevřít.</strong> ${esc(hl.duvod)}</p><p>Na soukromý repozitář vrací GitHub i GitLab 404 stejně jako na neexistující soubor. Zadejte token a zkuste načíst znovu.</p></div>`:''}
+  <p><strong>Stav:</strong> ${esc(stav)}</p>
+  <h3>Cesta k souboru</h3>
+  <p class="mut">GitHub: owner/repo/cesta/soubor.dkmdata · GitLab: server/skupina/projekt/-/cesta/soubor.dkmdata (server lze vynechat = gitlab.com; jde vložit i adresa souboru z prohlížeče, …/-/blob/větev/…)</p>
+  <div class="bar"><label for="rpPath">Cesta k souboru</label><input type="text" id="rpPath" value="${esc(cesta)}" autocomplete="off" spellcheck="false" style="width:40rem">
+    <button type="button" id="rpPathSave"${d?'':' disabled'}>Uložit cestu do slovníku</button></div>
+  <div class="bar"><button type="button" id="rpLoad">Načíst z repozitáře</button><button type="button" id="rpSave"${d?'':' disabled'}>Uložit do repozitáře</button><button type="button" id="rpMerge"${d?'':' disabled'}>Sloučit se vzdálenou verzí</button></div>
+  <p class="mut">Sloučit stáhne změny ostatních a přidá je k vaší rozpracované práci; nic neukládá. Při ukládání se konflikt s cizím zápisem sloučí sám.</p>
+  <h3>GitHub – Personal Access Token</h3>
+  <p class="mut">Uloženo pouze v tomto prohlížeči (localStorage). Nikdy v datovém souboru. <a href="https://github.com/settings/tokens?type=beta" target="_blank" rel="noopener noreferrer">Vytvořit token (Contents → Read and write)</a></p>
+  <div class="bar"><label for="rpGhTok">GitHub token</label><input type="password" id="rpGhTok" value="${esc(ghToken())}" autocomplete="off" spellcheck="false">
+    <button type="button" id="rpGhShow">Ukázat</button><button type="button" id="rpGhSave">Uložit token</button><button type="button" id="rpGhClear">Smazat token</button></div>
+  <h3>GitLab – Personal Access Token</h3>
+  <p class="mut">Token pro každý GitLab server zvlášť (gitlab.com i vlastní instance), rozsah api. Uloženo pouze v tomto prohlížeči.</p>
+  <div class="bar"><label for="rpGlHost">Server</label><input type="text" id="rpGlHost" value="${esc(glHost0)}" autocomplete="off" spellcheck="false" style="width:16rem">
+    <label for="rpGlTok">Token pro server</label><input type="password" id="rpGlTok" autocomplete="off" spellcheck="false">
+    <button type="button" id="rpGlSave">Uložit token</button></div>
+  <p><a id="rpGlCreate" target="_blank" rel="noopener noreferrer">Vytvořit token na tomto serveru (rozsah api)</a></p>
+  <div id="rpLna"></div>
+  <h4>Uložené GitLab tokeny</h4><ul id="rpGlList"></ul>
+  <h3>Další nastavení (společná s DKM)</h3>
+  <div class="bar"><label for="rpUser">Jméno autora (do zprávy commitu)</label><input type="text" id="rpUser" value="${esc(userName())}" autocomplete="off"><button type="button" id="rpUserSave">Uložit jméno</button></div>
+  <div class="field"><input type="checkbox" id="rpAutoPref"${ghAutoVychozi()?' checked':''}> <label for="rpAutoPref" style="display:inline">Po načtení slovníku z repozitáře zapnout AutoSave</label></div>
+  <div class="field"><input type="checkbox" id="rpSound"${soundEnabled()?' checked':''}> <label for="rpSound" style="display:inline">Zvuková odezva při uložení a chybě</label></div>
+  <h3>Historie verzí</h3>
+  <p class="mut">Každé uložení je commit. Starší verzi lze načíst a uložením ji vrátit jako novou verzi.</p>
+  <div class="bar"><button type="button" id="rpHist"${d&&repoPripraveno(d.ghPath)?'':' disabled'}>Načíst historii verzí</button></div>
+  <div id="rpHistOut"></div>
+  <h3>Odkazy</h3>
+  <div class="field"><label for="rpLink">Odkaz na tento slovník v editoru</label><input type="text" id="rpLink" readonly style="width:100%"></div>
+  <div class="bar"><button type="button" id="rpLinkCopy">Kopírovat odkaz</button><a id="rpDkm" target="_blank" rel="noopener">Otevřít ve velkém DKM</a></div>`;
+  const pathIn=$('#rpPath');
+  const refreshLink=()=>{ const p=pathIn.value.trim(); const ok=!!parseGhPath(p); $('#rpLink').value= ok?ghShareUrl(p):''; const a=$('#rpDkm'); a.hidden=!ok; if(ok) a.href=dkmUrl(p); };
+  pathIn.addEventListener('input',refreshLink); refreshLink();
+  $('#rpPathSave').onclick=()=>{ if(!S.data) return; const p=pathIn.value.trim(); if(p&&!parseGhPath(p)) return say(t('ghErrInvalidPath'));
+    if(p===S.data.ghPath) return say('Cesta se nezměnila.'); snapshot(); S.data.ghPath=p; changed('Cesta uložena do slovníku.'); renderRepo(m); $('#rpPath').focus(); };
+  $('#rpLoad').onclick=()=>{ const p=pathIn.value.trim()||S.data?.ghPath; if(!p) return say(t('ghErrNoPath')); if(!parseGhPath(p)) return say(t('ghErrInvalidPath'));
+    if(S.dirty&&!confirm('Neuložené změny zmizí. Opravdu pokračovat?')) return; loadFromGitHub(p).catch(()=>{}); };
+  $('#rpSave').onclick=()=>{ const p=pathIn.value.trim(); if(p&&!parseGhPath(p)) return say(t('ghErrInvalidPath'));
+    if(p!==S.data.ghPath){ snapshot(); S.data.ghPath=p; S.dirty=true; saveSession(); updateTitle(); }
+    saveToGitHub().then(()=>renderRepo(m),()=>{}); };
+  $('#rpMerge').onclick=slucitZRepozitare;
+  $('#rpHist').onclick=()=>{ const parsed=parseGhPath(S.data.ghPath); const out=$('#rpHistOut'); out.textContent='Načítám…';
+    historieCommitu(parsed).then(list=>{
+      if(!list.length){ out.innerHTML='<p>Žádné verze.</p>'; return; }
+      out.innerHTML='<h4 id="rpHistH" tabindex="-1">Verze souboru ('+list.length+')</h4><ol>'+list.map((c,i)=>`<li><a href="#verze-${esc(c.sha)}" data-ver="${i}"${c.sha===ghPosledniCommit?' aria-current="true"':''}>${esc(new Date(c.kdy).toLocaleString('cs-CZ'))} – ${esc(c.kdo)}: ${esc(c.zprava)}</a>${c.sha===ghPosledniCommit?' <span class="mut">(aktuální)</span>':''}</li>`).join('')+'</ol>';
+      out.querySelectorAll('[data-ver]').forEach(a=>a.addEventListener('click',ev=>{ ev.preventDefault(); obnovVerzi(parsed,list[+a.dataset.ver]); }));
+      $('#rpHistH').focus();
+    },err=>{ out.textContent='Historii se nepodařilo načíst: '+(err.message||err); }); };
+  $('#rpGhShow').onclick=ev=>{ const i=$('#rpGhTok'); const pw=i.type==='password'; i.type=pw?'text':'password'; ev.target.textContent=pw?'Skrýt':'Ukázat'; };
+  $('#rpGhSave').onclick=()=>{ ghSetToken($('#rpGhTok').value.trim()); say('Token uložen.'); updateTitle(); if(hl) loadFromGitHub(hl.path,{zAdresy:true}).catch(()=>{}); };
+  $('#rpGhClear').onclick=()=>{ ghSetToken(''); $('#rpGhTok').value=''; say('Token smazán.'); updateTitle(); };
+  const hostIn=$('#rpGlHost');
+  const fillGl=()=>{ $('#rpGlTok').value=glToken(glNormHost(hostIn.value)); $('#rpGlCreate').href='https://'+(glNormHost(hostIn.value)||GL_VYCHOZI_SERVER)+'/-/user_settings/personal_access_tokens'; renderLna(); };
+  const listGl=()=>{ const ul=$('#rpGlList'); ul.innerHTML=''; const ks=Object.keys(glTokeny()).sort();
+    if(!ks.length){ ul.innerHTML='<li class="mut">Žádné.</li>'; return; }
+    ks.forEach(h=>{ const li=document.createElement('li'); li.textContent=h+' '; const b=document.createElement('button'); b.type='button'; b.textContent='Smazat token pro '+h;
+      b.onclick=()=>{ glSetToken(h,''); if(glNormHost(hostIn.value)===h) $('#rpGlTok').value=''; say('Token smazán.'); listGl(); updateTitle(); hostIn.focus(); }; li.appendChild(b); ul.appendChild(li); }); };
+  const renderLna=()=>{ const box=$('#rpLna'); const host=glNormHost(hostIn.value);
+    if(!glJeVlastniServer(host)){ box.innerHTML=''; return; }
+    box.innerHTML=`<div role="note"><h4>⚠ ${esc(t('glLnaNadpis'))}</h4><p id="rpLnaStav" aria-live="polite"></p><p>${esc(t('glLnaProc'))}</p><ol><li>${esc(t('glLnaKrok1'))}</li><li>${esc(t('glLnaKrok2'))}</li><li>${esc(t('glLnaKrok3'))}</li></ol>
+      <div class="bar"><button type="button" id="rpLnaTest">${esc(t('glLnaZkusit'))}</button><span id="rpLnaVysl" aria-live="polite"></span></div></div>`;
+    glStavMistniSite().then(st=>{ const el=$('#rpLnaStav'); if(el) el.textContent= st==='granted'?'✓ '+t('glLnaStavOk'):st==='denied'?'✗ '+t('glLnaStavZakazano'):st==='prompt'?t('glLnaStavDotaz'):t('glLnaStavNevim'); });
+    $('#rpLnaTest').onclick=()=>{ const parsed={schema:'https',host}; const v=$('#rpLnaVysl'); v.textContent=t('glLnaZkousim');
+      glFetch(parsed,'https://'+host+'/api/v4/version').then(()=>{ v.textContent='✓ '+t('glLnaSpojeniOk',{host}); },err=>{ v.textContent=(err&&err.status)?'✓ '+t('glLnaSpojeniOk',{host})+(err.status===401?' '+t('glLnaBezTokenu'):''):'✗ '+err.message; }); };
+  };
+  hostIn.addEventListener('change',fillGl); hostIn.addEventListener('input',()=>{ $('#rpGlCreate').href='https://'+(glNormHost(hostIn.value)||GL_VYCHOZI_SERVER)+'/-/user_settings/personal_access_tokens'; });
+  fillGl(); listGl();
+  $('#rpGlSave').onclick=()=>{ const h=glNormHost(hostIn.value); if(!h){ hostIn.focus(); return; } glSetToken(h,$('#rpGlTok').value.trim()); say('Token pro '+h+' uložen.'); listGl(); updateTitle(); if(hl) loadFromGitHub(hl.path,{zAdresy:true}).catch(()=>{}); };
+  $('#rpUserSave').onclick=()=>{ setUserName($('#rpUser').value); say('Jméno uloženo.'); };
+  $('#rpAutoPref').onchange=ev=>{ setGhAutoVychozi(ev.target.checked); say(ev.target.checked?'AutoSave se zapne po načtení z repozitáře.':'AutoSave se po načtení nezapne.'); };
+  $('#rpSound').onchange=ev=>{ try{ localStorage.setItem(SK_SOUND,ev.target.checked?'true':'false'); }catch{} say(ev.target.checked?'Zvuk zapnut.':'Zvuk vypnut.'); };
+  $('#rpLinkCopy').onclick=async()=>{ const v=$('#rpLink').value; if(!v) return say(t('ghErrNoPath')); try{ await navigator.clipboard.writeText(v); }catch{ $('#rpLink').select(); document.execCommand('copy'); } say('Odkaz zkopírován.'); };
+  if(hl) setTimeout(()=>{ (parseGhPath(hl.path)?.druh==='gitlab'?$('#rpGlTok'):$('#rpGhTok')).focus(); },60);
+}
+
+/* ====== Chybějící definice ====== */
+function missingDefs(){
+  const m=[];
+  for (const [k,n] of [['objekt','Objekt'],['subjekt','Subjekt'],['vlastnost','Vlastnost'],['ciselnik','Číselník'],['polozka','Položka']]) if(!M.T[k]) m.push('typ '+n);
+  if(!M.R.vlastnost) m.push('vazba „vlastnost prvku“');
+  if(!M.R.polozka) m.push('vazba „položka číselníku“');
+  return m;
+}
+function addMissingDefs(){
+  const d=S.data;
+  const mk=(name,icon,attrs)=>{ const t={id:uid('ty_'),name,icon,attributes:attrs.map(([n,ty,extra])=>({id:uid('a_'),name:n,type:ty,...(extra||{})}))}; d.entityTypes.push(t); return t; };
+  if(!M.T.objekt) mk('Objekt','📦',[['Popis','text',{showInList:true}],['Definice','textarea']]);
+  if(!M.T.subjekt) mk('Subjekt','👤',[['Popis','text',{showInList:true}],['Definice','textarea'],['Fyzická osoba','yesno'],['Právnický subjekt','yesno']]);
+  if(!M.T.vlastnost) mk('Vlastnost','🔹',[['Popis','text',{showInList:true}],['Definice','textarea'],['Jedinečný','yesno']]);
+  rebuildModel();
+  if(!M.T.ciselnik) mk('Číselník','📚',[['Předepsaný','yesno'],['Popis','text',{showInList:true}]]);
+  rebuildModel();
+  if(!M.T.polozka) mk('Položka','▫️',[['Kód','text',{showInList:true}],['v číselníku','relation',{targetType:M.T.ciselnik.id}]]);
+  rebuildModel();
+  if(!M.R.vlastnost) d.relationTypes.push({id:uid('rt_'),name:'vlastnost prvku',inverseName:'má vlastnost',scope:'to',fromTypes:[],toTypes:[M.T.objekt.id,M.T.subjekt.id]});
+  if(!M.R.polozka) d.relationTypes.push({id:uid('rt_'),name:'položka číselníku',inverseName:'má položky',scope:'specific',fromTypes:[M.T.polozka.id],toTypes:[M.T.ciselnik.id]});
+  rebuildModel();
+}
+
+/* ====== Navigace mezi pohledy ====== */
+document.querySelectorAll('#nav [data-view]').forEach(b=>b.addEventListener('click',ev=>{ ev.preventDefault(); show(b.dataset.view); }));
+function show(view, focus=true){
+  S.view=view; if(view!=='detail') S.detailId=null;
+  document.querySelectorAll('#nav [data-view]').forEach(b=>{ if(b.dataset.view===view) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current'); });
+  rerender();
+  if (focus){ const h=$('#main h2'); if(h){ h.tabIndex=-1; h.focus(); } }
+}
+function rerender(){
+  const m=$('#main');
+  if(!S.data && S.view!=='repo'){ m.innerHTML='<h2>Otevřete datový slovník</h2><p>Otevřete soubor dkmdata z disku tlačítkem výše, načtěte ho z repozitáře v části GitHub / GitLab, nebo založte nový prázdný slovník.</p>'; return; }
+  const R={prvky:renderPrvky, ciselniky:renderCiselniky, rychly:renderRychly, text:renderText, kontrola:renderKontrola, detail:renderDetail, repo:renderRepo};
+  try { R[S.view](m); } catch(err){ m.innerHTML='<p class="warn">Chyba vykreslení – viz ladicí výpis.</p>'; dbg(err.stack||err.message); }
+}
+function openDetail(id){ if(S.view!=='detail') S.backView=S.view; S.detailId=id; S.view='detail'; rerender(); const h=$('#main h2'); if(h){h.tabIndex=-1;h.focus();} }
+function keepFocus(fn){ const id=document.activeElement?.id; fn(); if(id){ const el=document.getElementById(id); if(el) el.focus(); } }
+
+/* ====== Pohled: Objekty a subjekty ====== */
+function renderPrvky(m){
+  const f=norm(S.filter);
+  const prvky=sortByName([...ents('objekt'),...ents('subjekt')]);
+  const match = e => !f || norm(e.name).includes(f) || (M.children.get(e.id)||[]).some(id=>norm(M.E.get(id)?.name).includes(f));
+  const shown=prvky.filter(match);
+  m.innerHTML=`<h2>Objekty a subjekty (${shown.length}${f?' z '+prvky.length:''})</h2>
+  <form id="fNewPrvek" class="bar" aria-label="Nový objekt nebo subjekt">
+    <label for="npName">Nový prvek – název:</label><input type="text" id="npName" autocomplete="off">
+    <label for="npKind" class="vh">Typ</label><select id="npKind"><option value="objekt">Objekt</option><option value="subjekt">Subjekt</option></select>
+    <button type="submit">Přidat a otevřít</button>
+  </form>
+  <div class="bar"><label for="flt">Filtrovat podle názvu prvku nebo vlastnosti:</label><input type="text" id="flt" value="${esc(S.filter)}" autocomplete="off"></div>
+  ${shown.length?'':'<p class="mut">Žádné objekty ani subjekty.</p>'}
+  <ul class="tree">${shown.map(e=>{
+    const ch=sortByName((M.children.get(e.id)||[]).map(id=>M.E.get(id)).filter(Boolean));
+    return `<li><a href="#${e.id}" data-open="${e.id}">${esc(typeName(e))}: ${esc(e.name)}</a> <span class="mut">(${ch.length} vlastností)</span>${e.archived?' <span class="mut">archivováno</span>':''}
+      ${ch.length?`<ul>${ch.map(v=>`<li><a href="#${v.id}" data-open="${v.id}">${esc(v.name)}</a>${popisOf(v)?` <span class="mut">– ${esc(trunc(popisOf(v),90))}</span>`:''}</li>`).join('')}</ul>`:''}</li>`;}).join('')}</ul>`;
+  $('#flt').addEventListener('input', ev=>{ S.filter=ev.target.value; keepFocus(()=>renderPrvky(m)); const i=$('#flt'); i.setSelectionRange(i.value.length,i.value.length); });
+  $('#fNewPrvek').addEventListener('submit', ev=>{ ev.preventDefault(); const n=$('#npName').value.trim(); if(!n) return say('Zadejte název.');
+    const kind=$('#npKind').value; if(!M.T[kind]) return say('V souboru chybí typ '+kind+'.');
+    snapshot(); const e=newEntity(kind,n); changed('Přidán '+typeName(e)+' '+n+'.'); openDetail(e.id); });
+  bindOpen(m);
+}
+function trunc(s,n){ s=String(s); return s.length>n? s.slice(0,n-1)+'…' : s; }
+function bindOpen(root){ root.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',ev=>{ ev.preventDefault(); openDetail(b.dataset.open); })); }
+
+/* ====== Pohled: Číselníky ====== */
+function renderCiselniky(m){
+  const f=norm(S.cfilter);
+  const all=sortByName(ents('ciselnik')); const shown=all.filter(c=>!f||norm(c.name).includes(f));
+  m.innerHTML=`<h2>Číselníky (${shown.length}${f?' z '+all.length:''})</h2>
+  <form id="fNewC" class="bar" aria-label="Nový číselník"><label for="ncName">Nový číselník – název:</label><input type="text" id="ncName" autocomplete="off"><button type="submit">Přidat a otevřít</button></form>
+  <div class="bar"><label for="cflt">Filtrovat:</label><input type="text" id="cflt" value="${esc(S.cfilter)}" autocomplete="off"></div>
+  ${shown.length?'':'<p class="mut">Žádné číselníky.</p>'}
+  <ul class="tree">${shown.map(c=>{ const it=M.items.get(c.id)||[]; return `<li><a href="#${c.id}" data-open="${c.id}">${esc(c.name)}</a> <span class="mut">(${it.length} položek)</span></li>`; }).join('')}</ul>`;
+  $('#cflt').addEventListener('input', ev=>{ S.cfilter=ev.target.value; keepFocus(()=>renderCiselniky(m)); const i=$('#cflt'); i.setSelectionRange(i.value.length,i.value.length); });
+  $('#fNewC').addEventListener('submit', ev=>{ ev.preventDefault(); const n=$('#ncName').value.trim(); if(!n) return say('Zadejte název.');
+    if(!M.T.ciselnik) return say('V souboru chybí typ Číselník.');
+    snapshot(); const e=newEntity('ciselnik',n); changed('Přidán číselník '+n+'.'); openDetail(e.id); });
+  bindOpen(m);
+}
+
+/* ====== Detail entity ====== */
+function renderDetail(m){
+  const e=M.E.get(S.detailId); if(!e){ show(S.backView); return; }
+  const k=kindOf(e); const t=M.typeById[e.typeId];
+  const backLabel={prvky:'Objekty a subjekty',ciselniky:'Číselníky',kontrola:'Kontrola',rychly:'Rychlý zápis',text:'Slovník jako text'}[S.backView]||'seznam';
+  let h=`<div class="bar"><button type="button" id="btnBack">Zpět: ${esc(backLabel)}</button></div>
+  <h2>${esc(typeName(e))}: ${esc(e.name)}</h2>
+  <form id="fBase"><div class="field"><label for="dName">Název</label><input type="text" id="dName" value="${esc(e.name)}" autocomplete="off"></div>`;
+  if (k==='objekt'||k==='subjekt') h+=`<div class="field"><label for="dKind">Typ prvku</label><select id="dKind"><option value="objekt"${k==='objekt'?' selected':''}>Objekt</option><option value="subjekt"${k==='subjekt'?' selected':''}>Subjekt</option></select></div>`;
+  h+=attrFields(e, t.attributes||[], 'Vlastnosti záznamu');
+  for (const aid of e.aspects||[]){ const asp=M.aspById[aid]; if(asp) h+=attrFields(e, asp.attributes||[], 'Aspekt '+asp.name, aid); }
+  const freeAsp=(S.data.aspects||[]).filter(a=>!(e.aspects||[]).includes(a.id));
+  h+=`<div class="bar"><button type="submit">Uložit změny záznamu</button></div></form>`;
+  if (freeAsp.length) h+=`<form id="fAsp" class="bar"><label for="aspSel">Přidat aspekt:</label><select id="aspSel">${sortByName([...freeAsp]).map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select><button type="submit">Přidat aspekt</button></form>`;
+
+  if (k==='objekt'||k==='subjekt') h+=secVlastnosti(e);
+  if (k==='vlastnost') h+=secParents(e);
+  if (k==='ciselnik') h+=secPolozky(e);
+  if (k==='polozka') h+=secPolozkaCis(e);
+  h+=secVazby(e);
+  h+=`<h3>Smazání</h3><div class="bar"><button type="button" id="btnDel">Smazat ${esc(typeName(e).toLocaleLowerCase('cs'))} ${esc(e.name)}</button></div>`;
+  m.innerHTML=h;
+  bindDetail(m,e,k);
+}
+function attrFields(e, attrs, legend, aspId){
+  const rows=attrs.filter(a=>a.type!=='composed').map(a=>attrField(e,a)).join('');
+  const rm = aspId ? `<button type="button" data-rmasp="${aspId}">Odebrat aspekt</button>` : '';
+  if(!rows && !rm) return '';
+  return `<fieldset><legend>${esc(legend)}</legend>${rows||'<p class="mut">Aspekt nemá atributy.</p>'}${rm}</fieldset>`;
+}
+function attrField(e,a){
+  const id='at_'+a.id, v=e.attributes?.[a.id], L=esc(a.name);
+  switch(a.type){
+    case 'text': return `<div class="field"><label for="${id}">${L}</label><input type="text" id="${id}" data-attr="${a.id}" value="${esc(v??'')}" autocomplete="off"></div>`;
+    case 'textarea': return `<div class="field"><label for="${id}">${L}</label><textarea id="${id}" data-attr="${a.id}">${esc(v??'')}</textarea></div>`;
+    case 'yesno': return `<div class="field"><input type="checkbox" id="${id}" data-attr="${a.id}"${v===true?' checked':''}> <label for="${id}" style="display:inline">${L}</label></div>`;
+    case 'date': return `<div class="field"><label for="${id}">${L}</label><input type="date" id="${id}" data-attr="${a.id}" value="${esc(v??'')}"></div>`;
+    case 'number': return `<div class="field"><label for="${id}">${L}</label><input type="text" inputmode="decimal" id="${id}" data-attr="${a.id}" value="${esc(v??'')}"></div>`;
+    case 'select': { const vals=M.listById[a.listId]?.values||[]; const opts=[...vals]; if(v && !opts.includes(v)) opts.push(v);
+      return `<div class="field"><label for="${id}">${L}</label><select id="${id}" data-attr="${a.id}"><option value="">(nevyplněno)</option>${opts.map(o=>`<option${o===v?' selected':''}>${esc(o)}</option>`).join('')}</select></div>`; }
+    case 'tags': { const known=(M.tagById[a.tagSetId]?.tags||[]); const cur=Array.isArray(v)?v:[];
+      return `<div class="field"><label for="${id}">${L} <span class="mut">(odděleno čárkou)</span></label><input type="text" id="${id}" data-attr="${a.id}" data-kind="tags" value="${esc(cur.join(', '))}" autocomplete="off" list="dl_${a.id}"><datalist id="dl_${a.id}">${known.map(x=>`<option value="${esc(x)}">`).join('')}</datalist></div>`; }
+    case 'relation': { const cand=sortByName(S.data.entities.filter(x=>x.id!==e.id && (!a.targetType||a.targetType==='any'||x.typeId===a.targetType)));
+      const cur=a.multi ? (Array.isArray(v)?v:(v?[v]:[])) : [v];
+      return `<div class="field"><label for="${id}">${L}${a.multi?' <span class="mut">(více hodnot: Cmd/Ctrl + klik)</span>':''}</label><select id="${id}" data-attr="${a.id}" data-kind="relation"${a.multi?' multiple size="5"':''}>${a.multi?'':'<option value="">(nevyplněno)</option>'}${cand.map(x=>`<option value="${x.id}"${cur.includes(x.id)?' selected':''}>${esc(a.targetType&&a.targetType!=='any'?x.name:label(x))}</option>`).join('')}</select></div>`; }
+    case 'ustanoveni': { const u=(v&&typeof v==='object')?v:{}; const p=['predpis','par','odst','pism','bod'], n=['Předpis (číslo/rok)','§','Odstavec','Písmeno','Bod'];
+      return `<fieldset><legend>${L}</legend><div class="row">${p.map((k,i)=>`<label>${n[i]} <input type="text" style="width:${i?5:9}rem" data-attr="${a.id}" data-kind="ust" data-part="${k}" value="${esc(u[k]??'')}"></label>`).join('')}</div></fieldset>`; }
+    default: return `<div class="field"><span class="lab">${L}</span> <span class="mut">(typ ${esc(a.type)} – needitovatelné zde, zachová se beze změny)</span></div>`;
+  }
+}
+function readAttrs(root,e){
+  const ust={};
+  root.querySelectorAll('[data-attr]').forEach(el=>{
+    const aid=el.dataset.attr; const a={id:aid};
+    if (el.dataset.kind==='ust'){ (ust[aid] ||= {})[el.dataset.part]=el.value.trim(); return; }
+    if (el.type==='checkbox'){ if(el.checked) e.attributes[aid]=true; else if (e.attributes[aid]===true) e.attributes[aid]=false; return; }
+    if (el.dataset.kind==='tags'){ setAttr(e,a,el.value.split(',').map(s=>s.trim()).filter(Boolean)); return; }
+    if (el.dataset.kind==='relation' && el.multiple){ setAttr(e,a,[...el.selectedOptions].map(o=>o.value)); return; }
+    setAttr(e,a, el.tagName==='TEXTAREA'? el.value : el.value.trim());
+  });
+  for (const [aid,u] of Object.entries(ust)){ if (Object.values(u).some(Boolean)) e.attributes[aid]={predpis:'',par:'',odst:'',pism:'',bod:'',...u}; else delete e.attributes[aid]; }
+}
+function secVlastnosti(e){
+  const ch=sortByName((M.children.get(e.id)||[]).map(id=>M.E.get(id)).filter(Boolean));
+  const others=sortByName(ents('vlastnost').filter(v=>!ch.includes(v)));
+  const uniq=attrDef(M.T.vlastnost,'Jedinečný');
+  return `<h3>Vlastnosti (${ch.length})</h3>
+  ${ch.length?`<ul class="tree">${ch.map(v=>{ const n=(M.parents.get(v.id)||[]).length;
+    return `<li><a href="#${v.id}" data-open="${v.id}">${esc(v.name)}</a>${popisOf(v)?` – ${esc(trunc(popisOf(v),120))}`:''}${n>1?` <span class="mut">(sdílená, u ${n} prvků)</span>`:''}
+    <button type="button" data-detach="${v.id}">Odpojit ${esc(v.name)}</button></li>`;}).join('')}</ul>`:'<p class="mut">Zatím žádné vlastnosti.</p>'}
+  <form id="fAddV" aria-label="Přidat vlastnost"><fieldset><legend>Přidat novou vlastnost</legend>
+    <div class="field"><label for="nvName">Název vlastnosti</label><input type="text" id="nvName" autocomplete="off"></div>
+    <div class="field"><label for="nvPopis">Popis</label><input type="text" id="nvPopis" autocomplete="off"></div>
+    ${uniq?`<div class="field"><input type="checkbox" id="nvUniq"> <label for="nvUniq" style="display:inline">Jedinečný</label></div>`:''}
+    <button type="submit">Přidat vlastnost</button> <span class="mut">Enter v názvu nebo popisu také přidá; kurzor se vrátí do názvu.</span>
+  </fieldset></form>
+  ${others.length?`<form id="fAttV" class="bar"><label for="attV">Připojit existující vlastnost:</label><select id="attV">${others.map(v=>`<option value="${v.id}">${esc(v.name)}${(M.parents.get(v.id)||[]).length?' – u: '+esc((M.parents.get(v.id)||[]).map(p=>M.E.get(p)?.name).join(', ')):''}</option>`).join('')}</select><button type="submit">Připojit</button></form>`:''}`;
+}
+function secParents(v){
+  const ps=sortByName((M.parents.get(v.id)||[]).map(id=>M.E.get(id)).filter(Boolean));
+  const cand=sortByName([...ents('objekt'),...ents('subjekt')].filter(p=>!ps.includes(p)));
+  return `<h3>Patří k prvkům (${ps.length})</h3>
+  ${ps.length?`<ul class="tree">${ps.map(p=>`<li><a href="#${p.id}" data-open="${p.id}">${esc(label(p))}</a> <button type="button" data-unparent="${p.id}">Odpojit od ${esc(p.name)}</button></li>`).join('')}</ul>`:'<p class="warn">Vlastnost nepatří k žádnému objektu ani subjektu.</p>'}
+  ${cand.length?`<form id="fParent" class="bar"><label for="parSel">Přiřadit k prvku:</label><select id="parSel">${cand.map(p=>`<option value="${p.id}">${esc(label(p))}</option>`).join('')}</select><button type="submit">Přiřadit</button></form>`:''}`;
+}
+function secPolozky(c){
+  const it=(M.items.get(c.id)||[]).map(id=>M.E.get(id)).filter(Boolean);
+  it.sort((a,b)=>coll.compare(String(kodOf(a)),String(kodOf(b)))||coll.compare(a.name,b.name));
+  return `<h3>Položky (${it.length})</h3>
+  ${it.length?`<form id="fItems"><ul class="tree items">${it.map((p,i)=>`<li class="row">
+    <label for="ik_${i}" class="vh">Kód položky ${esc(p.name)}</label><input type="text" class="kod" id="ik_${i}" data-item="${p.id}" data-f="kod" value="${esc(kodOf(p))}" autocomplete="off" placeholder="kód">
+    <label for="in_${i}" class="vh">Název položky s kódem ${esc(kodOf(p))}</label><input type="text" class="nazev" id="in_${i}" data-item="${p.id}" data-f="name" value="${esc(p.name)}" autocomplete="off">
+    <a href="#${p.id}" data-open="${p.id}">Detail ${esc(p.name)}</a><button type="button" data-delitem="${p.id}">Smazat ${esc(p.name)}</button></li>`).join('')}</ul>
+    <button type="submit">Uložit změny položek</button></form>`:'<p class="mut">Zatím žádné položky.</p>'}
+  <form id="fAddItem" aria-label="Přidat položku"><fieldset><legend>Přidat položku</legend>
+    <div class="row"><label for="niKod">Kód</label><input type="text" id="niKod" class="kod" autocomplete="off"><label for="niName">Název</label><input type="text" id="niName" class="nazev" autocomplete="off"><button type="submit">Přidat položku</button></div>
+    <p class="mut">Enter přidá položku a vrátí kurzor do pole Kód.</p></fieldset></form>
+  <form id="fBulk"><fieldset><legend>Hromadné vložení položek</legend>
+    <label for="bulkTa">Každá položka na samostatném řádku ve tvaru „kód = název“, „kód;název“ nebo „kód⇥název“ (tabulátor). Řádek bez oddělovače je jen název. Existující kód se přepíše novým názvem.</label>
+    <textarea id="bulkTa"></textarea><button type="submit">Vložit položky</button></fieldset></form>`;
+}
+function secPolozkaCis(p){
+  const cid=M.itemOf.get(p.id); const c=cid&&M.E.get(cid);
+  const all=sortByName(ents('ciselnik'));
+  return `<h3>Číselník položky</h3>${c?`<p><a href="#${c.id}" data-open="${c.id}">${esc(c.name)}</a></p>`:'<p class="warn">Položka není v žádném číselníku.</p>'}
+  ${all.length?`<form id="fPC" class="bar"><label for="pcSel">Přesunout do číselníku:</label><select id="pcSel">${all.map(x=>`<option value="${x.id}"${x===c?' selected':''}>${esc(x.name)}</option>`).join('')}</select><button type="submit">Přesunout</button></form>`:''}`;
+}
+function secVazby(e){
+  const skip=new Set([M.R.vlastnost?.id, M.R.polozka?.id]);
+  const out=(e.relations||[]).filter(r=>!skip.has(r.relationTypeId));
+  const inc=[]; for (const x of S.data.entities) for (const r of x.relations||[]) if (r.targetId===e.id && !skip.has(r.relationTypeId)) inc.push([x,r]);
+  const rts=allowedRelTypes(e).filter(r=>!skip.has(r.id)).sort((a,b)=>coll.compare(a.name,b.name));
+  const tg=sortByName(S.data.entities.filter(x=>x.id!==e.id && kindOf(x) && kindOf(x)!=='polozka'));
+  const groups=['objekt','subjekt','vlastnost','ciselnik'].map(k=>[k,tg.filter(x=>kindOf(x)===k)]).filter(g=>g[1].length);
+  const gn={objekt:'Objekty',subjekt:'Subjekty',vlastnost:'Vlastnosti',ciselnik:'Číselníky'};
+  const rn=id=>M.relById[id]; const inv=r=>r?.inverseName||r?.name;
+  return `<h3>Vazby (${out.length+inc.length})</h3>
+  ${out.length||inc.length?`<ul class="tree">${out.map(r=>{ const t=M.E.get(r.targetId); return `<li>${esc(rn(r.relationTypeId)?.name||'?')} → ${t?`<a href="#${t.id}" data-open="${t.id}">${esc(label(t))}</a>`:'<span class="warn">neexistující záznam</span>'} <button type="button" data-delrel="${r.id}">Odebrat vazbu ${esc(rn(r.relationTypeId)?.name||'')} ${esc(t?.name||'')}</button></li>`; }).join('')}
+   ${inc.map(([x,r])=>`<li>${esc(inv(rn(r.relationTypeId))||'?')} ← <a href="#${x.id}" data-open="${x.id}">${esc(label(x))}</a> <button type="button" data-delinc="${x.id}|${r.id}">Odebrat vazbu od ${esc(x.name)}</button></li>`).join('')}</ul>`:'<p class="mut">Žádné další vazby.</p>'}
+  ${rts.length&&groups.length?`<form id="fRel"><fieldset><legend>Přidat vazbu z tohoto záznamu</legend>
+    <div class="field"><label for="relType">Typ vazby</label><select id="relType">${rts.map(r=>`<option value="${r.id}">${esc(r.name)}${r.inverseName&&r.inverseName!==r.name?' (opačně: '+esc(r.inverseName)+')':''}</option>`).join('')}</select></div>
+    <div class="field"><label for="relTgt">Cíl vazby</label><select id="relTgt">${groups.map(([k,a])=>`<optgroup label="${gn[k]}">${a.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</optgroup>`).join('')}</select></div>
+    <button type="submit">Přidat vazbu</button></fieldset></form>`:''}`;
+}
+function bindDetail(m,e,k){
+  bindOpen(m);
+  $('#btnBack').onclick=()=>show(S.backView);
+  $('#fBase').addEventListener('submit', ev=>{ ev.preventDefault();
+    const n=$('#dName').value.trim(); if(!n) return say('Název nesmí být prázdný.');
+    snapshot(); e.name=n; readAttrs($('#fBase'),e);
+    const nk=$('#dKind')?.value;
+    if (nk && nk!==k){ // převod objekt <-> subjekt: atributy převést podle názvu
+      const from=M.T[k], to=M.T[nk]; const na={};
+      for (const [aid,v] of Object.entries(e.attributes)){ const a=from.attributes.find(x=>x.id===aid); if(!a){ na[aid]=v; continue; } const b=attrDef(to,a.name); if(b && b.type===a.type) na[b.id]=v; }
+      e.attributes=na; e.typeId=to.id;
+    }
+    touch(e); changed('Záznam uložen.'); rerender(); $('#dName')?.focus(); });
+  m.querySelectorAll('[data-rmasp]').forEach(b=>b.onclick=()=>{ const aid=b.dataset.rmasp; const asp=M.aspById[aid];
+    if(!confirm('Odebrat aspekt '+asp.name+' včetně jeho hodnot?')) return;
+    snapshot(); e.aspects=e.aspects.filter(x=>x!==aid); for(const a of asp.attributes||[]) delete e.attributes[a.id]; touch(e); changed('Aspekt odebrán.'); rerender(); });
+  $('#fAsp')?.addEventListener('submit', ev=>{ ev.preventDefault(); snapshot(); e.aspects=[...(e.aspects||[]),$('#aspSel').value]; touch(e); changed('Aspekt přidán.'); rerender(); });
+  // vlastnosti
+  $('#fAddV')?.addEventListener('submit', ev=>{ ev.preventDefault();
+    const n=$('#nvName').value.trim(); if(!n){ $('#nvName').focus(); return say('Zadejte název vlastnosti.'); }
+    if ((M.children.get(e.id)||[]).some(id=>norm(M.E.get(id)?.name)===norm(n))){ $('#nvName').focus(); return say('Vlastnost '+n+' už u prvku existuje.'); }
+    snapshot(); const v=newEntity('vlastnost',n); const p=$('#nvPopis').value.trim(); if(p) setAttrByName(v,'Popis',p);
+    if ($('#nvUniq')?.checked) setAttrByName(v,'Jedinečný',true);
+    attachVlastnost(v,e); touch(e); changed('Přidána vlastnost '+n+'.'); rerender(); $('#nvName').focus(); });
+  $('#nvPopis')?.addEventListener('keydown', ev=>{ if(ev.key==='Enter'){ ev.preventDefault(); $('#fAddV').requestSubmit(); } });
+  $('#fAttV')?.addEventListener('submit', ev=>{ ev.preventDefault(); const v=M.E.get($('#attV').value); snapshot(); attachVlastnost(v,e); changed('Připojena vlastnost '+v.name+'.'); rerender(); $('#attV')?.focus(); });
+  m.querySelectorAll('[data-detach]').forEach(b=>b.onclick=()=>{ const v=M.E.get(b.dataset.detach);
+    snapshot(); v.relations=v.relations.filter(r=>!(r.relationTypeId===M.R.vlastnost.id && r.targetId===e.id)); touch(v);
+    let msg='Vlastnost '+v.name+' odpojena.';
+    if (!(v.relations.some(r=>r.relationTypeId===M.R.vlastnost.id)) && confirm('Vlastnost '+v.name+' teď nepatří k žádnému prvku. Smazat ji úplně?')){ deleteEntity(v.id); msg='Vlastnost '+v.name+' smazána.'; }
+    changed(msg); rerender(); $('#nvName')?.focus(); });
+  // parent
+  $('#fParent')?.addEventListener('submit', ev=>{ ev.preventDefault(); const p=M.E.get($('#parSel').value); snapshot(); attachVlastnost(e,p); changed('Přiřazeno k '+p.name+'.'); rerender(); $('#parSel')?.focus(); });
+  m.querySelectorAll('[data-unparent]').forEach(b=>b.onclick=()=>{ snapshot(); e.relations=e.relations.filter(r=>!(r.relationTypeId===M.R.vlastnost.id && r.targetId===b.dataset.unparent)); touch(e); changed('Odpojeno.'); rerender(); $('#parSel')?.focus(); });
+  // položky
+  $('#fItems')?.addEventListener('submit', ev=>{ ev.preventDefault(); snapshot(); let n=0;
+    m.querySelectorAll('#fItems [data-item]').forEach(inp=>{ const p=M.E.get(inp.dataset.item); const val=inp.value.trim();
+      if (inp.dataset.f==='name'){ if(val && val!==p.name){ p.name=val; touch(p); n++; } }
+      else if (val!==String(kodOf(p))){ setAttrByName(p,'Kód',val); touch(p); n++; } });
+    changed(n?'Uloženo změn: '+n+'.':'Beze změn.'); rerender(); });
+  $('#fAddItem')?.addEventListener('submit', ev=>{ ev.preventDefault(); const kod=$('#niKod').value.trim(), n=$('#niName').value.trim();
+    if(!n && !kod){ $('#niKod').focus(); return say('Zadejte kód nebo název.'); }
+    snapshot(); const r=upsertItem(e,kod,n||kod); changed(r.created?'Přidána položka '+(n||kod)+'.':'Položka s kódem '+kod+' aktualizována.'); rerender(); $('#niKod').focus(); });
+  $('#fBulk')?.addEventListener('submit', ev=>{ ev.preventDefault(); const lines=$('#bulkTa').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    if(!lines.length) return say('Nic k vložení.'); snapshot(); let c=0,u=0;
+    for (const l of lines){ const [kod,n]=splitItem(l); const r=upsertItem(e,kod,n); r.created?c++:u++; }
+    changed(`Vloženo: nových ${c}, aktualizovaných ${u}.`); rerender(); $('#bulkTa')?.focus(); });
+  m.querySelectorAll('[data-delitem]').forEach(b=>b.onclick=()=>{ const p=M.E.get(b.dataset.delitem); if(!confirm('Smazat položku '+p.name+'?')) return; snapshot(); deleteEntity(p.id); changed('Položka smazána.'); rerender(); $('#niKod')?.focus(); });
+  $('#fPC')?.addEventListener('submit', ev=>{ ev.preventDefault(); const c=M.E.get($('#pcSel').value); snapshot(); setPolozkaCiselnik(e,c); touch(e); changed('Položka je v číselníku '+c.name+'.'); rerender(); });
+  // vazby
+  $('#fRel')?.addEventListener('submit', ev=>{ ev.preventDefault(); const r=M.relById[$('#relType').value], t=M.E.get($('#relTgt').value);
+    if(!targetOk(r,t)) return say('Vazba „'+r.name+'“ nesmí vést na '+typeName(t)+'.');
+    snapshot(); if(!addRel(e,r.id,t.id)) return say('Taková vazba už existuje.'); changed('Přidána vazba '+r.name+' → '+t.name+'.'); rerender(); $('#relType')?.focus(); });
+  m.querySelectorAll('[data-delrel]').forEach(b=>b.onclick=()=>{ snapshot(); delRel(e,b.dataset.delrel); changed('Vazba odebrána.'); rerender(); $('#relType')?.focus(); });
+  m.querySelectorAll('[data-delinc]').forEach(b=>b.onclick=()=>{ const [xid,rid]=b.dataset.delinc.split('|'); snapshot(); delRel(M.E.get(xid),rid); changed('Vazba odebrána.'); rerender(); $('#relType')?.focus(); });
+  // smazání
+  $('#btnDel').onclick=()=>{
+    let extra=[];
+    if (k==='objekt'||k==='subjekt') extra=(M.children.get(e.id)||[]).filter(v=>(M.parents.get(v)||[]).length===1);
+    if (k==='ciselnik') extra=[...(M.items.get(e.id)||[])];
+    let msg='Opravdu smazat '+label(e)+'?';
+    if (extra.length) msg+= k==='ciselnik' ? `\nSmažou se i jeho položky (${extra.length}).` : `\nSmaže se i ${extra.length} vlastností, které patří jen k tomuto prvku.`;
+    if(!confirm(msg)) return;
+    snapshot(); for(const x of extra) deleteEntity(x); deleteEntity(e.id); changed('Smazáno: '+e.name+'.'); show(S.backView);
+  };
+}
+function splitItem(l){
+  let m=l.match(/^(.*?)\s*(?:=|;|\t)\s*(.*)$/);
+  if (m) return [m[1].trim(), m[2].trim()||m[1].trim()];
+  return ['', l.trim()];
+}
+function upsertItem(c, kod, name){
+  const its=(M.items.get(c.id)||[]).map(id=>M.E.get(id)).filter(Boolean);
+  let p = kod ? its.find(x=>String(kodOf(x))===kod) : its.find(x=>norm(x.name)===norm(name));
+  if (p){ if(name) p.name=name; if(kod) setAttrByName(p,'Kód',kod); touch(p); return {item:p,created:false}; }
+  p=newEntity('polozka',name); if(kod) setAttrByName(p,'Kód',kod); setPolozkaCiselnik(p,c); push(M.items,c.id,p.id); M.itemOf.set(p.id,c.id); return {item:p,created:true};
+}
+
+/* ====== Rychlý zápis ====== */
+const HELP=`Syntaxe (každý záznam na řádku):
+objekt Název: popis          – objekt (popis je nepovinný)
+subjekt Název: popis         – subjekt
+- Název vlastnosti: popis    – vlastnost posledního objektu/subjektu
+- Název [Jedinečný]          – v hranatých závorkách atributy: [Atribut] = ano, [Atribut=hodnota]
+                               (atribut z aspektu, např. [Data type=xs:string], aspekt sám přidá)
+číselník Název: popis        – číselník
+- kód = název položky        – položka posledního číselníku (lze i „- název“ bez kódu)
+vazba Žádost | má vazbu na | Žadatel   – vazba mezi záznamy podle názvů
+# komentář`;
+function renderRychly(m){
+  m.innerHTML=`<h2>Rychlý zápis</h2>
+  <p>Napište nebo vložte strukturu jako text. Existující záznamy se dohledají podle názvu a doplní, nové se založí. Nic se nemaže. Před provedením se zobrazí náhled.</p>
+  <details><summary>Nápověda k syntaxi</summary><pre class="out">${esc(HELP)}</pre></details>
+  <div class="field"><label for="rzTa">Text k zpracování</label><textarea id="rzTa" style="min-height:16rem">${esc(S.rychlyText)}</textarea></div>
+  <div class="bar"><button type="button" id="rzPrev">Zobrazit náhled</button><button type="button" id="rzClear">Vymazat text</button></div>
+  <div id="rzOut"></div>`;
+  $('#rzTa').addEventListener('input',ev=>S.rychlyText=ev.target.value);
+  $('#rzClear').onclick=()=>{ S.rychlyText=''; $('#rzTa').value=''; $('#rzOut').innerHTML=''; $('#rzTa').focus(); };
+  $('#rzPrev').onclick=()=>{
+    const plan=planRychly(S.rychlyText); S.plan=plan;
+    const ops=plan.ops, errs=plan.errors;
+    $('#rzOut').innerHTML=`<h3 id="rzH" tabindex="-1">Náhled: ${ops.length} operací, ${errs.length} chyb</h3>
+      ${errs.length?`<ul class="warn">${errs.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:''}
+      ${ops.length?`<ol>${ops.map(o=>`<li>${esc(o.text)}</li>`).join('')}</ol><button type="button" id="rzRun">Provést ${ops.length} operací</button>`:'<p>Nic k provedení.</p>'}`;
+    $('#rzH').focus();
+    $('#rzRun')?.addEventListener('click',()=>{ snapshot(); try{ const n=runRychly(S.plan); changed('Provedeno operací: '+n+'.'); S.rychlyText=''; renderRychly(m); $('#rzTa').focus(); }catch(err){ dbg(err.stack||err.message); say('Chyba při provádění: '+err.message); } });
+  };
+}
+function parseFlags(s){
+  const flags=[]; s=s.replace(/\[([^\]]+)\]/g,(_,x)=>{ const i=x.indexOf('='); flags.push(i<0?[x.trim(),true]:[x.slice(0,i).trim(),x.slice(i+1).trim()]); return ''; }).trim();
+  return [s,flags];
+}
+function splitNamePopis(s){ const i=s.indexOf(':'); return i<0? [s.trim(),''] : [s.slice(0,i).trim(), s.slice(i+1).trim()]; }
+function findByName(kind,name){ return ents(kind).find(e=>norm(e.name)===norm(name)); }
+function planRychly(text){
+  const ops=[], errors=[]; let cur=null; // {kind, ref:{name, kind}}
+  const pending=new Map(); // názvy, které se teprve založí: kind|name -> true
+  const exists=(kind,name)=>findByName(kind,name)||pending.get(kind+'|'+norm(name));
+  text.split(/\r?\n/).forEach((raw,i)=>{
+    const ln=i+1; let line=raw.trim(); if(!line||line.startsWith('#')) return;
+    let mm=line.match(/^(objekt|subjekt|číselník|ciselnik)\s+(.+)$/i);
+    if (mm){
+      const kind=mm[1].toLowerCase().startsWith('obj')?'objekt':mm[1].toLowerCase().startsWith('sub')?'subjekt':'ciselnik';
+      if(!M.T[kind]) return errors.push(`Řádek ${ln}: v souboru chybí typ ${kind}.`);
+      const [rest,flags]=parseFlags(mm[2]); const [name,popis]=splitNamePopis(rest); if(!name) return errors.push(`Řádek ${ln}: chybí název.`);
+      const ex=exists(kind,name);
+      ops.push({op:'ent',kind,name,popis,flags,text:`${ex?'Doplnit':'Založit'} ${M.T[kind].name.toLocaleLowerCase('cs')} „${name}“${popis?' s popisem':''}${flags.length?' a atributy '+flags.map(f=>f[0]).join(', '):''}`});
+      if(!ex) pending.set(kind+'|'+norm(name),true);
+      cur={kind,name}; return;
+    }
+    mm=line.match(/^vazba\s+(.+)$/i);
+    if (mm){ const p=mm[1].split('|').map(s=>s.trim()); if(p.length!==3) return errors.push(`Řádek ${ln}: vazba musí mít tvar „vazba Z | typ vazby | Do“.`);
+      const rt=S.data.relationTypes.find(r=>norm(r.name)===norm(p[1])); if(!rt) return errors.push(`Řádek ${ln}: neznámý typ vazby „${p[1]}“.`);
+      ops.push({op:'rel',from:p[0],rt:rt.id,to:p[2],ln,text:`Vazba ${p[0]} → ${rt.name} → ${p[2]}`}); return; }
+    mm=line.match(/^(?:-|vlastnost\s+|položka\s+|polozka\s+)\s*(.+)$/i);
+    if (mm){
+      if(!cur) return errors.push(`Řádek ${ln}: vlastnost nebo položka bez nadřazeného objektu, subjektu či číselníku.`);
+      if (cur.kind==='ciselnik'){ const [kod,name]=splitItem(mm[1]); ops.push({op:'item',c:cur.name,kod,name,text:`Položka ${kod?kod+' = ':''}${name} v číselníku „${cur.name}“`}); return; }
+      if(!M.T.vlastnost||!M.R.vlastnost) return errors.push(`Řádek ${ln}: v souboru chybí typ Vlastnost nebo vazba „vlastnost prvku“.`);
+      const [rest,flags]=parseFlags(mm[1]); const [name,popis]=splitNamePopis(rest); if(!name) return errors.push(`Řádek ${ln}: chybí název vlastnosti.`);
+      ops.push({op:'vl',parent:cur,name,popis,flags,text:`Vlastnost „${name}“ u ${cur.kind} „${cur.name}“${popis?' s popisem':''}${flags.length?' a atributy '+flags.map(f=>f[0]).join(', '):''}`}); return;
+    }
+    errors.push(`Řádek ${ln}: nerozpoznáno: ${line}`);
+  });
+  return {ops,errors};
+}
+function applyFlags(e,flags,errs){ for (const [n,v] of flags){ if(!setAttrByName(e,n,v)) errs.push(`${e.name}: atribut „${n}“ neexistuje.`); } }
+function resolveAny(name){
+  const n=norm(name); const c=S.data.entities.filter(e=>norm(e.name)===n && kindOf(e));
+  return c.find(e=>['objekt','subjekt'].includes(kindOf(e))) || c[0];
+}
+function runRychly(plan){
+  let n=0; const errs=[];
+  for (const o of plan.ops){
+    if (o.op==='ent'){ let e=findByName(o.kind,o.name); if(!e) e=newEntity(o.kind,o.name); if(o.popis) setAttrByName(e,'Popis',o.popis); applyFlags(e,o.flags,errs); touch(e); reindex(); n++; }
+    else if (o.op==='vl'){ const p=findByName(o.parent.kind,o.parent.name); if(!p){ errs.push('Nenalezen '+o.parent.name); continue; }
+      let v=(M.children.get(p.id)||[]).map(id=>M.E.get(id)).find(x=>x && norm(x.name)===norm(o.name));
+      if(!v){ v=newEntity('vlastnost',o.name); attachVlastnost(v,p); }
+      if(o.popis) setAttrByName(v,'Popis',o.popis); applyFlags(v,o.flags,errs); touch(v); reindex(); n++; }
+    else if (o.op==='item'){ const c=findByName('ciselnik',o.c); upsertItem(c,o.kod,o.name); reindex(); n++; }
+    else if (o.op==='rel'){ const a=resolveAny(o.from), b=resolveAny(o.to); const rt=M.relById[o.rt];
+      if(!a||!b){ errs.push(`Vazba: nenalezen záznam „${!a?o.from:o.to}“.`); continue; }
+      if(!allowedRelTypes(a).includes(rt) || !targetOk(rt,b)){ errs.push(`Vazba „${rt.name}“ není povolena mezi ${label(a)} a ${label(b)}.`); continue; }
+      addRel(a,rt.id,b.id); n++; }
+  }
+  if (errs.length){ dbg('Rychlý zápis – upozornění:\n'+errs.join('\n')); setTimeout(()=>say('Provedeno s upozorněními ('+errs.length+'), viz ladicí výpis.'),1500); }
+  return n;
+}
+
+/* ====== Slovník jako text ====== */
+function exportText(){
+  const L=[]; L.push('# '+(S.data.projectName||'Datový slovník'),'');
+  const fl=e=>{ const t=M.typeById[e.typeId]; const out=[]; for(const a of t.attributes||[]) if(a.type==='yesno' && e.attributes?.[a.id]===true) out.push('['+a.name+']'); return out.length?' '+out.join(' '):''; };
+  const one=s=>String(s||'').replace(/\s*\n\s*/g,' ');
+  for (const e of sortByName([...ents('objekt'),...ents('subjekt')])){
+    L.push(`${kindOf(e)} ${e.name}${fl(e)}${popisOf(e)?': '+one(popisOf(e)):''}`);
+    for (const v of sortByName((M.children.get(e.id)||[]).map(id=>M.E.get(id)).filter(Boolean))) L.push(`- ${v.name}${fl(v)}${popisOf(v)?': '+one(popisOf(v)):''}`);
+    L.push('');
+  }
+  for (const c of sortByName(ents('ciselnik'))){
+    L.push(`číselník ${c.name}${popisOf(c)?': '+one(popisOf(c)):''}`);
+    const it=(M.items.get(c.id)||[]).map(id=>M.E.get(id)).filter(Boolean).sort((a,b)=>coll.compare(String(kodOf(a)),String(kodOf(b))));
+    for (const p of it) L.push(`- ${kodOf(p)!==''?kodOf(p)+' = ':''}${p.name}`);
+    L.push('');
+  }
+  const skip=new Set([M.R.vlastnost?.id, M.R.polozka?.id]);
+  const rels=[]; for (const e of S.data.entities){ if(!kindOf(e)||kindOf(e)==='polozka') continue; for(const r of e.relations||[]){ if(skip.has(r.relationTypeId)) continue; const t=M.E.get(r.targetId); if(t&&kindOf(t)) rels.push(`vazba ${e.name} | ${M.relById[r.relationTypeId]?.name} | ${t.name}`); } }
+  rels.sort(coll.compare); if (rels.length) L.push('# Vazby',...rels);
+  return L.join('\n').trim()+'\n';
+}
+function renderText(m){
+  const t=exportText();
+  m.innerHTML=`<h2>Slovník jako text</h2>
+  <p>Celý datový slovník v syntaxi rychlého zápisu. Popisy jsou zkráceny na jeden řádek, z atributů jsou uvedeny jen zaškrtnuté.</p>
+  <div class="bar"><button type="button" id="txCopy">Zkopírovat do schránky</button><button type="button" id="txDl">Stáhnout jako .txt</button><button type="button" id="txToRz">Převzít do rychlého zápisu</button></div>
+  <label for="txTa">Text slovníku (jen pro čtení)</label><textarea id="txTa" readonly style="min-height:24rem">${esc(t)}</textarea>`;
+  $('#txCopy').onclick=async()=>{ try{ await navigator.clipboard.writeText(t); say('Zkopírováno.'); }catch{ $('#txTa').select(); document.execCommand('copy'); say('Zkopírováno.'); } };
+  $('#txDl').onclick=()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([t],{type:'text/plain'})); a.download=(S.fileName||'slovnik').replace(/\.dkmdata$/,'')+'.txt'; document.body.appendChild(a); a.click(); a.remove(); say('Staženo.'); };
+  $('#txToRz').onclick=()=>{ S.rychlyText=t; show('rychly'); say('Text převzat do rychlého zápisu. Úpravy názvů založí nové záznamy, nic se nemaže.'); };
+}
+
+/* ====== Kontrola ====== */
+function renderKontrola(m){
+  const miss=missingDefs();
+  const P=[];
+  const sec=(title,list)=>P.push([title,list]);
+  sec('Vlastnosti bez objektu či subjektu', sortByName(ents('vlastnost').filter(v=>!(M.parents.get(v.id)||[]).length)));
+  sec('Objekty a subjekty bez vlastností', sortByName([...ents('objekt'),...ents('subjekt')].filter(e=>!(M.children.get(e.id)||[]).length)));
+  sec('Číselníky bez položek', sortByName(ents('ciselnik').filter(c=>!(M.items.get(c.id)||[]).length)));
+  sec('Položky mimo číselník', sortByName(ents('polozka').filter(p=>!M.itemOf.has(p.id))));
+  sec('Vlastnosti bez popisu', sortByName(ents('vlastnost').filter(v=>!popisOf(v).trim())));
+  const dup=[]; for (const k of ['objekt','subjekt','ciselnik']){ const seen=new Map(); for(const e of ents(k)){ const n=norm(e.name); if(seen.has(n)) dup.push(e,seen.get(n)); else seen.set(n,e);} }
+  for (const [pid,ch] of M.children){ const seen=new Map(); for (const id of ch){ const v=M.E.get(id); if(!v) continue; const n=norm(v.name); if(seen.has(n)) dup.push(v,seen.get(n)); else seen.set(n,v);} }
+  sec('Duplicitní názvy (u stejného typu nebo u stejného prvku)', [...new Set(dup)]);
+  const kd=[]; for (const [cid,its] of M.items){ const seen=new Map(); for (const id of its){ const p=M.E.get(id); const k=String(kodOf(p)??''); if(!k) continue; if(seen.has(k)) kd.push(p,seen.get(k)); else seen.set(k,p);} }
+  sec('Duplicitní kódy položek v číselníku', [...new Set(kd)]);
+  const broken=[]; for (const e of S.data.entities) if ((e.relations||[]).some(r=>!M.E.has(r.targetId))) broken.push(e);
+  sec('Záznamy s vazbou na neexistující záznam', broken);
+  m.innerHTML=`<h2>Kontrola slovníku</h2>
+  ${miss.length?`<p class="warn">V souboru chybí definice: ${esc(miss.join(', '))}.</p><button type="button" id="kFix">Doplnit chybějící definice</button>`:'<p class="ok">Všechny potřebné typy a vazby datového slovníku jsou v souboru definovány.</p>'}
+  ${P.map(([t,l])=>`<h3>${esc(t)} (${l.length})</h3>${l.length?`<ul class="tree">${l.slice(0,300).map(e=>`<li><a href="#${e.id}" data-open="${e.id}">${esc(label(e))}</a>${kindOf(e)==='polozka'&&M.itemOf.get(e.id)?' <span class="mut">v '+esc(M.E.get(M.itemOf.get(e.id))?.name)+'</span>':''}${kindOf(e)==='vlastnost'&&(M.parents.get(e.id)||[]).length?' <span class="mut">u '+esc((M.parents.get(e.id)||[]).map(p=>M.E.get(p)?.name).join(', '))+'</span>':''}</li>`).join('')}</ul>${l.length>300?'<p class="mut">Zobrazeno prvních 300.</p>':''}`:'<p class="ok">V pořádku.</p>'}`).join('')}
+  ${broken.length?'<button type="button" id="kBroken">Odstranit vazby na neexistující záznamy</button>':''}`;
+  bindOpen(m);
+  $('#kFix')?.addEventListener('click',()=>{ snapshot(); addMissingDefs(); changed('Chybějící definice doplněny.'); rerender(); });
+  $('#kBroken')?.addEventListener('click',()=>{ snapshot(); let n=0; for(const e of S.data.entities){ const b=(e.relations||[]).length; e.relations=(e.relations||[]).filter(r=>M.E.has(r.targetId)); if(b!==e.relations.length){ n+=b-e.relations.length; touch(e);} } changed('Odstraněno vazeb: '+n+'.'); rerender(); });
+}
+/* ====== Start ====== */
+(function start(){
+  if (autoLoadFromUrlParams()) return;
+  if (restoreSession()) return;
+  checkRestore(); updateTitle(); show('prvky', false);
+})();
+dbg('Editor datového slovníku připraven.');
+</script>
+</body>
+</html>
