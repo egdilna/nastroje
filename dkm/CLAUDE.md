@@ -1914,6 +1914,12 @@ pozná **podle názvu**, atributy vykresluje z definic v souboru; všechno ostat
 v projektu nechává beze změny. Má rychlý textový zápis, export slovníku jako text
 a kontrolu úplnosti.
 
+**Datové slovníky** (typ „Datový slovník“) se spravují jako ve Správě dat SFDI:
+zařazení se zapisuje **souběžně** vazbou „Ve slovníku“ a atributem „Slovník“ v aspektu
+„Formální popis dat“ (aspekt se záznamu doplní). Vlastnosti se zařazují a vyřazují
+automaticky se svým objektem či subjektem. Chybí-li definice, editor je doplní podle
+SFDI (`addDictDefs`). Pracovní slovník (`S.workDict`) zařazuje nově zakládané záznamy.
+
 Práce s GitHubem / GitLabem je **převzatá z `index.html` beze změny chování**
 (`parseGhPath`, `ghNactiSoubor`, `ghUlozitVelke`, `glUlozit`, `slucProjekty`,
 `saveToGitHub`, AutoSave) a používá **tytéž klíče v localStorage**

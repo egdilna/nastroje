@@ -56,6 +56,10 @@ a{color:var(--acc)}
   <button type="button" id="btnNew">Nový prázdný slovník</button>
   <span><input type="checkbox" id="ghAutoCb" disabled> <label for="ghAutoCb" id="ghAutoLbl">AutoSave do repozitáře</label></span>
 </div>
+<div class="bar" id="workDictBox" hidden>
+  <label for="workDict">Pracovní slovník (nové záznamy se do něj zařadí):</label><select id="workDict"></select>
+  <span><input type="checkbox" id="onlyWork"> <label for="onlyWork">Zobrazovat jen záznamy pracovního slovníku</label></span>
+</div>
 <p id="fileInfo" class="mut"></p>
 <p id="saveTarget" class="mut"></p>
 <div id="status" role="status" aria-live="polite"></div>
@@ -69,6 +73,7 @@ a{color:var(--acc)}
   <ul class="navl">
     <li><a href="#prvky" data-view="prvky">Objekty a subjekty</a></li>
     <li><a href="#ciselniky" data-view="ciselniky">Číselníky</a></li>
+    <li><a href="#slovniky" data-view="slovniky">Datové slovníky</a></li>
     <li><a href="#rychly" data-view="rychly">Rychlý zápis</a></li>
     <li><a href="#text" data-view="text">Slovník jako text</a></li>
     <li><a href="#kontrola" data-view="kontrola">Kontrola</a></li>
@@ -82,7 +87,7 @@ a{color:var(--acc)}
 <script>
 'use strict';
 /* ====== Stav ====== */
-const S = { data:null, ghSha:null, baseline:null, repoHlaska:null, fileName:'', dirty:false, undo:[], view:'prvky', detailId:null, backView:'prvky', filter:'', cfilter:'', rychlyText:'', plan:null };
+const S = { workDict:'', onlyWork:false, data:null, ghSha:null, baseline:null, repoHlaska:null, fileName:'', dirty:false, undo:[], view:'prvky', detailId:null, backView:'prvky', filter:'', cfilter:'', rychlyText:'', plan:null };
 const $ = (s, r=document) => r.querySelector(s);
 const coll = new Intl.Collator('cs', {sensitivity:'base', numeric:true});
 const LS_KEY = 'slovnikar.rozpracovano';
@@ -101,31 +106,89 @@ const M = {};
 function rebuildModel(){
   const d=S.data;
   const byName = n => d.entityTypes.find(t => norm(t.name)===norm(n));
-  M.T = { objekt:byName('Objekt'), subjekt:byName('Subjekt'), vlastnost:byName('Vlastnost'), ciselnik:byName('Číselník'), polozka:byName('Položka') || byName('Položka číselníku') };
+  M.T = { objekt:byName('Objekt'), subjekt:byName('Subjekt'), vlastnost:byName('Vlastnost'), ciselnik:byName('Číselník'), polozka:byName('Položka') || byName('Položka číselníku'), slovnik:byName('Datový slovník') };
   const rel = n => d.relationTypes.find(r => norm(r.name)===norm(n));
-  M.R = { vlastnost:rel('vlastnost prvku'), polozka:rel('položka číselníku') };
+  M.R = { vlastnost:rel('vlastnost prvku'), polozka:rel('položka číselníku'), slovnik:rel('Ve slovníku') };
   M.typeById = Object.fromEntries(d.entityTypes.map(t=>[t.id,t]));
   M.aspById = Object.fromEntries((d.aspects||[]).map(a=>[a.id,a]));
   M.relById = Object.fromEntries(d.relationTypes.map(r=>[r.id,r]));
   M.listById = Object.fromEntries((d.selectLists||[]).map(l=>[l.id,l]));
   M.tagById = Object.fromEntries((d.tagSets||[]).map(l=>[l.id,l]));
+  /* Atribut „Slovník“ (vazba na Datový slovník) v aspektu, typicky „Formální popis dat“. */
+  M.slovAsp=null; M.slovAttr=null;
+  if (M.T.slovnik) for (const a of d.aspects||[]){ const x=(a.attributes||[]).find(x=>x.type==='relation' && x.targetType===M.T.slovnik.id && norm(x.name)==='slovník'); if(x){ M.slovAsp=a; M.slovAttr=x; break; } }
+  if (S.workDict && !d.entities.some(e=>e.id===S.workDict)) S.workDict='';
   reindex();
 }
 function reindex(){
   const d=S.data;
   M.E = new Map(d.entities.map(e=>[e.id,e]));
-  M.parents = new Map(); M.children = new Map(); M.items = new Map(); M.itemOf = new Map();
-  const rv=M.R.vlastnost?.id, rp=M.R.polozka?.id;
+  M.parents = new Map(); M.children = new Map(); M.items = new Map(); M.itemOf = new Map(); M.inDict = new Map(); M.dictsOf = new Map();
+  const rv=M.R.vlastnost?.id, rp=M.R.polozka?.id, rs=M.R.slovnik?.id;
   for (const e of d.entities){
     for (const r of e.relations||[]){
       if (rv && r.relationTypeId===rv){ push(M.parents,e.id,r.targetId); push(M.children,r.targetId,e.id); }
       if (rp && r.relationTypeId===rp){ push(M.items,r.targetId,e.id); M.itemOf.set(e.id,r.targetId); }
+      if (rs && r.relationTypeId===rs){ push(M.inDict,r.targetId,e.id); push(M.dictsOf,e.id,r.targetId); }
     }
+    /* Zařazení i jen atributem (bez vazby) se počítá taky — data z DKM mohou mít jen jedno. */
+    const v=M.slovAttr && e.attributes?.[M.slovAttr.id];
+    if (v) for (const id of (Array.isArray(v)?v:[v])) if (id!==e.id){ push(M.inDict,id,e.id); push(M.dictsOf,e.id,id); }
   }
+  updateWorkDictUi();
 }
 function push(map,k,v){ if(!map.has(k)) map.set(k,[]); if(!map.get(k).includes(v)) map.get(k).push(v); }
 const isT = (e,k) => !!(e && M.T[k] && e.typeId===M.T[k].id);
-function kindOf(e){ for (const k of ['objekt','subjekt','vlastnost','ciselnik','polozka']) if (isT(e,k)) return k; return null; }
+function kindOf(e){ for (const k of ['objekt','subjekt','vlastnost','ciselnik','polozka','slovnik']) if (isT(e,k)) return k; return null; }
+
+/* ====== Datové slovníky ======
+   Zařazení se zapisuje dvakrát souběžně, jako ve Správě dat SFDI:
+   vazba „Ve slovníku“ (z ní čte šablona detailu slovníku v DKM) a atribut
+   „Slovník“ v aspektu „Formální popis dat“ (aspekt se záznamu doplní).
+   Vlastnosti se zařazují automaticky se svým objektem či subjektem. */
+function dictable(e){ const k=kindOf(e); return !!e && k!=='polozka' && k!=='slovnik' && !!e.typeId; }
+function assignDict(e, dict, sVlastnostmi=true){
+  if(!M.R.slovnik || !dictable(e)) return 0;
+  let n=addRel(e, M.R.slovnik.id, dict.id) ? 1 : 0;
+  if (M.slovAttr){
+    if(!(e.aspects||[]).includes(M.slovAsp.id)) e.aspects=[...(e.aspects||[]), M.slovAsp.id];
+    const cur=e.attributes[M.slovAttr.id]; const arr=Array.isArray(cur)?cur:(cur?[cur]:[]);
+    if(!arr.includes(dict.id)){ e.attributes[M.slovAttr.id]= M.slovAttr.multi ? [...arr,dict.id] : dict.id; n=n||1; }
+  }
+  touch(e); push(M.inDict,dict.id,e.id); push(M.dictsOf,e.id,dict.id);
+  if (sVlastnostmi && ['objekt','subjekt'].includes(kindOf(e))) for (const vid of M.children.get(e.id)||[]){ const v=M.E.get(vid); if(v) n+=assignDict(v,dict,false); }
+  return n;
+}
+function unassignDict(e, dict, sVlastnostmi=true){
+  e.relations=(e.relations||[]).filter(r=>!(r.relationTypeId===M.R.slovnik?.id && r.targetId===dict.id));
+  if (M.slovAttr){ const cur=e.attributes[M.slovAttr.id];
+    if (Array.isArray(cur)){ const p=cur.filter(x=>x!==dict.id); if(p.length) e.attributes[M.slovAttr.id]=p; else delete e.attributes[M.slovAttr.id]; }
+    else if (cur===dict.id) delete e.attributes[M.slovAttr.id]; }
+  touch(e);
+  if (sVlastnostmi && ['objekt','subjekt'].includes(kindOf(e))){
+    for (const vid of M.children.get(e.id)||[]){ const v=M.E.get(vid); if(!v) continue;
+      /* vlastnost zůstane, pokud ve slovníku zůstává jiný její prvek */
+      const jinyRodic=(M.parents.get(vid)||[]).some(p=>p!==e.id && (M.dictsOf.get(p)||[]).includes(dict.id));
+      if(!jinyRodic) unassignDict(v,dict,false); }
+  }
+  reindex();
+}
+/* Nově založený záznam: zařadit do slovníků (rodiče, nebo pracovního). */
+function autoDict(e, rodic){
+  if(!M.R.slovnik) return;
+  const ids = rodic ? (M.dictsOf.get(rodic.id)||[]) : (S.workDict?[S.workDict]:[]);
+  for (const id of ids){ const d=M.E.get(id); if(d) assignDict(e,d,false); }
+}
+function workDict(){ return S.workDict ? M.E.get(S.workDict) : null; }
+function inWork(e){ if(!S.onlyWork || !workDict()) return true; return (M.dictsOf.get(e.id)||[]).includes(S.workDict); }
+function updateWorkDictUi(){
+  const sel=document.getElementById('workDict'); if(!sel) return;
+  const box=document.getElementById('workDictBox');
+  const ds=S.data&&M.T.slovnik ? sortByName(ents('slovnik')) : [];
+  box.hidden=!ds.length;
+  sel.innerHTML='<option value="">(žádný)</option>'+ds.map(d=>`<option value="${d.id}"${d.id===S.workDict?' selected':''}>${esc(d.name)}</option>`).join('');
+  document.getElementById('onlyWork').checked=!!S.onlyWork; document.getElementById('onlyWork').disabled=!S.workDict;
+}
 function typeName(e){ return M.typeById[e.typeId]?.name || 'bez typu'; }
 function ents(k){ return M.T[k] ? S.data.entities.filter(e=>e.typeId===M.T[k].id) : []; }
 function sortByName(a){ return a.sort((x,y)=>coll.compare(x.name||'',y.name||'')); }
@@ -233,7 +296,7 @@ $('#fileIn').addEventListener('change', async ev=>{
    konfliktem a sloučením, nikdy přepsáním). */
 function loadData(d, name, dirty=false, ghSha=null, view='prvky'){
   normalizeData(d);
-  S.data=d; S.fileName=name||'slovnik.dkmdata'; S.dirty=dirty; S.undo=[]; S.ghSha=ghSha; $('#btnUndo').disabled=true;
+  S.data=d; S.workDict=''; S.onlyWork=false; S.fileName=name||'slovnik.dkmdata'; S.dirty=dirty; S.undo=[]; S.ghSha=ghSha; $('#btnUndo').disabled=true;
   snapshotBaseline();
   rebuildModel(); updateTitle(); saveSession();
   $('#restoreBox').hidden=true;
@@ -277,11 +340,12 @@ $('#btnNew').addEventListener('click', ()=>{
 /* Relace záložky: přežije obnovení stránky (F5) včetně `ghSha` a základu,
    takže první uložení po obnovení nenarazí naslepo na cizí zápis. */
 const SK_SESSION='dkm-slovnik-session';
-function saveSession(){ if(!S.data) return; try{ sessionStorage.setItem(SK_SESSION, JSON.stringify({data:S.data, name:S.fileName, dirty:!!S.dirty, ghSha:S.ghSha||null, baseline:S.baseline||null})); }catch(err){ dbg('Uložení relace selhalo: '+err.message); } }
+function saveSession(){ if(!S.data) return; try{ sessionStorage.setItem(SK_SESSION, JSON.stringify({data:S.data, name:S.fileName, dirty:!!S.dirty, ghSha:S.ghSha||null, baseline:S.baseline||null, workDict:S.workDict||'', onlyWork:!!S.onlyWork})); }catch(err){ dbg('Uložení relace selhalo: '+err.message); } }
 function restoreSession(){
   try{ const r=JSON.parse(sessionStorage.getItem(SK_SESSION)||'null'); if(!r||!r.data) return false;
     loadData(r.data, r.name, !!r.dirty, r.ghSha||null);
     if (r.baseline && Array.isArray(r.baseline.entities)) S.baseline=r.baseline;
+    S.workDict=r.workDict||''; S.onlyWork=!!r.onlyWork; rebuildModel(); if(S.view!=='detail') rerender();
     saveSession(); dbg('Obnovena relace záložky.'); return true;
   }catch(err){ dbg('Obnova relace: '+err.message); return false; }
 }
@@ -911,7 +975,7 @@ function show(view, focus=true){
 function rerender(){
   const m=$('#main');
   if(!S.data && S.view!=='repo'){ m.innerHTML='<h2>Otevřete datový slovník</h2><p>Otevřete soubor dkmdata z disku tlačítkem výše, načtěte ho z repozitáře v části GitHub / GitLab, nebo založte nový prázdný slovník.</p>'; return; }
-  const R={prvky:renderPrvky, ciselniky:renderCiselniky, rychly:renderRychly, text:renderText, kontrola:renderKontrola, detail:renderDetail, repo:renderRepo};
+  const R={slovniky:renderSlovniky, prvky:renderPrvky, ciselniky:renderCiselniky, rychly:renderRychly, text:renderText, kontrola:renderKontrola, detail:renderDetail, repo:renderRepo};
   try { R[S.view](m); } catch(err){ m.innerHTML='<p class="warn">Chyba vykreslení – viz ladicí výpis.</p>'; dbg(err.stack||err.message); }
 }
 function openDetail(id){ if(S.view!=='detail') S.backView=S.view; S.detailId=id; S.view='detail'; rerender(); const h=$('#main h2'); if(h){h.tabIndex=-1;h.focus();} }
@@ -922,7 +986,7 @@ function renderPrvky(m){
   const f=norm(S.filter);
   const prvky=sortByName([...ents('objekt'),...ents('subjekt')]);
   const match = e => !f || norm(e.name).includes(f) || (M.children.get(e.id)||[]).some(id=>norm(M.E.get(id)?.name).includes(f));
-  const shown=prvky.filter(match);
+  const shown=prvky.filter(e=>match(e)&&inWork(e));
   m.innerHTML=`<h2>Objekty a subjekty (${shown.length}${f?' z '+prvky.length:''})</h2>
   <form id="fNewPrvek" class="bar" aria-label="Nový objekt nebo subjekt">
     <label for="npName">Nový prvek – název:</label><input type="text" id="npName" autocomplete="off">
@@ -938,7 +1002,7 @@ function renderPrvky(m){
   $('#flt').addEventListener('input', ev=>{ S.filter=ev.target.value; keepFocus(()=>renderPrvky(m)); const i=$('#flt'); i.setSelectionRange(i.value.length,i.value.length); });
   $('#fNewPrvek').addEventListener('submit', ev=>{ ev.preventDefault(); const n=$('#npName').value.trim(); if(!n) return say('Zadejte název.');
     const kind=$('#npKind').value; if(!M.T[kind]) return say('V souboru chybí typ '+kind+'.');
-    snapshot(); const e=newEntity(kind,n); changed('Přidán '+typeName(e)+' '+n+'.'); openDetail(e.id); });
+    snapshot(); const e=newEntity(kind,n); autoDict(e); changed('Přidán '+typeName(e)+' '+n+'.'); openDetail(e.id); });
   bindOpen(m);
 }
 function trunc(s,n){ s=String(s); return s.length>n? s.slice(0,n-1)+'…' : s; }
@@ -947,7 +1011,7 @@ function bindOpen(root){ root.querySelectorAll('[data-open]').forEach(b=>b.addEv
 /* ====== Pohled: Číselníky ====== */
 function renderCiselniky(m){
   const f=norm(S.cfilter);
-  const all=sortByName(ents('ciselnik')); const shown=all.filter(c=>!f||norm(c.name).includes(f));
+  const all=sortByName(ents('ciselnik')); const shown=all.filter(c=>(!f||norm(c.name).includes(f))&&inWork(c));
   m.innerHTML=`<h2>Číselníky (${shown.length}${f?' z '+all.length:''})</h2>
   <form id="fNewC" class="bar" aria-label="Nový číselník"><label for="ncName">Nový číselník – název:</label><input type="text" id="ncName" autocomplete="off"><button type="submit">Přidat a otevřít</button></form>
   <div class="bar"><label for="cflt">Filtrovat:</label><input type="text" id="cflt" value="${esc(S.cfilter)}" autocomplete="off"></div>
@@ -956,7 +1020,7 @@ function renderCiselniky(m){
   $('#cflt').addEventListener('input', ev=>{ S.cfilter=ev.target.value; keepFocus(()=>renderCiselniky(m)); const i=$('#cflt'); i.setSelectionRange(i.value.length,i.value.length); });
   $('#fNewC').addEventListener('submit', ev=>{ ev.preventDefault(); const n=$('#ncName').value.trim(); if(!n) return say('Zadejte název.');
     if(!M.T.ciselnik) return say('V souboru chybí typ Číselník.');
-    snapshot(); const e=newEntity('ciselnik',n); changed('Přidán číselník '+n+'.'); openDetail(e.id); });
+    snapshot(); const e=newEntity('ciselnik',n); autoDict(e); changed('Přidán číselník '+n+'.'); openDetail(e.id); });
   bindOpen(m);
 }
 
@@ -964,7 +1028,7 @@ function renderCiselniky(m){
 function renderDetail(m){
   const e=M.E.get(S.detailId); if(!e){ show(S.backView); return; }
   const k=kindOf(e); const t=M.typeById[e.typeId];
-  const backLabel={prvky:'Objekty a subjekty',ciselniky:'Číselníky',kontrola:'Kontrola',rychly:'Rychlý zápis',text:'Slovník jako text'}[S.backView]||'seznam';
+  const backLabel={prvky:'Objekty a subjekty',ciselniky:'Číselníky',slovniky:'Datové slovníky',kontrola:'Kontrola',rychly:'Rychlý zápis',text:'Slovník jako text'}[S.backView]||'seznam';
   let h=`<div class="bar"><button type="button" id="btnBack">Zpět: ${esc(backLabel)}</button></div>
   <h2>${esc(typeName(e))}: ${esc(e.name)}</h2>
   <form id="fBase"><div class="field"><label for="dName">Název</label><input type="text" id="dName" value="${esc(e.name)}" autocomplete="off"></div>`;
@@ -979,13 +1043,117 @@ function renderDetail(m){
   if (k==='vlastnost') h+=secParents(e);
   if (k==='ciselnik') h+=secPolozky(e);
   if (k==='polozka') h+=secPolozkaCis(e);
+  if (k==='slovnik') h+=secSlovnikObsah(e);
+  if (dictable(e) && M.R.slovnik && ents('slovnik').length) h+=secVeSlovnicich(e);
   h+=secVazby(e);
   h+=`<h3>Smazání</h3><div class="bar"><button type="button" id="btnDel">Smazat ${esc(typeName(e).toLocaleLowerCase('cs'))} ${esc(e.name)}</button></div>`;
   m.innerHTML=h;
   bindDetail(m,e,k);
 }
+
+function secVeSlovnicich(e){
+  const ds=sortByName(ents('slovnik')); const cur=M.dictsOf.get(e.id)||[];
+  const sv=['objekt','subjekt'].includes(kindOf(e));
+  return `<fieldset id="fsDicts"><legend>Ve slovnících</legend>
+    ${ds.map((d,i)=>`<div class="field"><input type="checkbox" id="dict_${i}" data-dict="${d.id}"${cur.includes(d.id)?' checked':''}> <label for="dict_${i}" style="display:inline">${esc(d.name)}</label></div>`).join('')}
+    ${sv?'<p class="mut">Zařazením nebo vyřazením prvku se stejně zařadí či vyřadí i jeho vlastnosti.</p>':''}</fieldset>`;
+}
+const DICT_GROUPS=[['objekt','Objekty'],['subjekt','Subjekty'],['vlastnost','Vlastnosti'],['ciselnik','Číselníky']];
+function secSlovnikObsah(d){
+  const all=(M.inDict.get(d.id)||[]).map(id=>M.E.get(id)).filter(Boolean);
+  const groups=DICT_GROUPS.map(([k,n])=>[n,sortByName(all.filter(x=>kindOf(x)===k))]);
+  const other=sortByName(all.filter(x=>!DICT_GROUPS.some(([k])=>kindOf(x)===k)));
+  if(other.length) groups.push(['Další záznamy',other]);
+  const cand=sortByName(S.data.entities.filter(x=>dictable(x) && !all.includes(x) && ['objekt','subjekt','ciselnik','vlastnost'].includes(kindOf(x)) || (dictable(x) && !all.includes(x) && norm(typeName(x))==='určená vazba')));
+  const cg=[...DICT_GROUPS,['urcena','Určené vazby']].map(([k,n])=>[n,cand.filter(x=>k==='urcena'?norm(typeName(x))==='určená vazba':kindOf(x)===k)]).filter(g=>g[1].length);
+  const jePrac=S.workDict===d.id;
+  return `<h3>Obsah slovníku (${all.length})</h3>
+  <div class="bar"><button type="button" id="btnWork">${jePrac?'Přestat používat jako pracovní slovník':'Nastavit jako pracovní slovník'}</button></div>
+  ${groups.map(([n,l])=>`<h4>${esc(n)} (${l.length})</h4>${l.length?`<ul class="tree">${l.map(x=>`<li><a href="#${x.id}" data-open="${x.id}">${esc(x.name)}</a>${kindOf(x)==='vlastnost'&&(M.parents.get(x.id)||[]).length?' <span class="mut">u '+esc((M.parents.get(x.id)||[]).map(p=>M.E.get(p)?.name).join(', '))+'</span>':''} <button type="button" data-undict="${x.id}">Vyřadit ${esc(x.name)}</button></li>`).join('')}</ul>`:'<p class="mut">Žádné.</p>'}`).join('')}
+  ${cg.length?`<form id="fDictAdd"><fieldset><legend>Zařadit do slovníku</legend>
+    <div class="field"><label for="dictAddSel">Záznam</label><select id="dictAddSel">${cg.map(([n,l])=>`<optgroup label="${esc(n)}">${l.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</optgroup>`).join('')}</select></div>
+    <button type="submit">Zařadit</button> <span class="mut">Objekt či subjekt se zařadí i s vlastnostmi.</span></fieldset></form>`:''}`;
+}
+function bindSlovniky(m,e,k){
+  m.querySelectorAll('#fsDicts [data-dict]').forEach(cb=>cb.addEventListener('change',()=>{
+    const d=M.E.get(cb.dataset.dict); snapshot();
+    if(cb.checked){ const n=assignDict(e,d); reindex(); changed('Zařazeno do slovníku '+d.name+(n>1?' (včetně vlastností: '+(n-1)+')':'')+'.'); }
+    else { unassignDict(e,d); changed('Vyřazeno ze slovníku '+d.name+'.'); }
+    keepFocus(()=>rerender());
+  }));
+  if (k!=='slovnik') return;
+  $('#btnWork').onclick=()=>{ S.workDict = S.workDict===e.id ? '' : e.id; if(!S.workDict) S.onlyWork=false; updateWorkDictUi(); saveSession(); say(S.workDict?'Pracovní slovník: '+e.name+'.':'Pracovní slovník zrušen.'); rerender(); $('#btnWork')?.focus(); };
+  m.querySelectorAll('[data-undict]').forEach(b=>b.onclick=()=>{ const x=M.E.get(b.dataset.undict); snapshot(); unassignDict(x,e); changed('Vyřazeno: '+x.name+'.'); rerender(); $('#dictAddSel')?.focus(); });
+  $('#fDictAdd')?.addEventListener('submit',ev=>{ ev.preventDefault(); const x=M.E.get($('#dictAddSel').value); snapshot(); const n=assignDict(x,e); reindex(); changed('Zařazeno: '+x.name+(n>1?' (včetně vlastností: '+(n-1)+')':'')+'.'); rerender(); $('#dictAddSel')?.focus(); });
+}
+/* Název slovníku drží DKM i v atributu „Název slovníku“ — udržet shodný. */
+function syncNazevSlovniku(e){ if(isT(e,'slovnik')) setAttrByName(e,'Název slovníku',e.name); }
+
+/* ====== Pohled: Datové slovníky ====== */
+function renderSlovniky(m){
+  if(!M.T.slovnik || !M.R.slovnik){
+    m.innerHTML=`<h2>Datové slovníky</h2><p class="warn">V souboru chybí definice datového slovníku (typ „Datový slovník“, vazba „Ve slovníku“${M.slovAttr?'':', aspekt „Formální popis dat“ s atributem Slovník'}).</p><button type="button" id="dsFix">Doplnit definice datového slovníku</button>`;
+    $('#dsFix').onclick=()=>{ snapshot(); addDictDefs(); changed('Definice datového slovníku doplněny.'); rerender(); $('#main h2')?.focus(); };
+    return;
+  }
+  const all=sortByName(ents('slovnik'));
+  m.innerHTML=`<h2>Datové slovníky (${all.length})</h2>
+  ${M.slovAttr?'':'<p class="warn">Chybí aspekt s atributem „Slovník“ – zařazení se zapíše jen vazbou „Ve slovníku“. Doplnit ho lze v části Kontrola.</p>'}
+  <form id="fNewD"><fieldset><legend>Nový datový slovník</legend>
+    <div class="field"><label for="ndName">Název slovníku</label><input type="text" id="ndName" autocomplete="off"></div>
+    <div class="field"><label for="ndPopis">Popis</label><input type="text" id="ndPopis" autocomplete="off"></div>
+    <div class="field"><input type="checkbox" id="ndWork" checked> <label for="ndWork" style="display:inline">Nastavit jako pracovní slovník</label></div>
+    <button type="submit">Přidat a otevřít</button></fieldset></form>
+  ${all.length?`<ul class="tree">${all.map(d=>{ const c=(M.inDict.get(d.id)||[]).map(id=>M.E.get(id)).filter(Boolean); const n=k=>c.filter(x=>kindOf(x)===k).length;
+    return `<li><a href="#${d.id}" data-open="${d.id}"${d.id===S.workDict?' aria-current="true"':''}>${esc(d.name)}</a> <span class="mut">(objektů ${n('objekt')}, subjektů ${n('subjekt')}, vlastností ${n('vlastnost')}, číselníků ${n('ciselnik')})${d.id===S.workDict?' – pracovní':''}</span></li>`; }).join('')}</ul>`:'<p class="mut">Zatím žádné datové slovníky.</p>'}`;
+  bindOpen(m);
+  $('#fNewD').addEventListener('submit',ev=>{ ev.preventDefault(); const n=$('#ndName').value.trim(); if(!n) return say('Zadejte název slovníku.');
+    if(findByName('slovnik',n)) return say('Slovník '+n+' už existuje.');
+    snapshot(); const d=newEntity('slovnik',n); syncNazevSlovniku(d); const p=$('#ndPopis').value.trim(); if(p) setAttrByName(d,'Popis',p);
+    setAttrByName(d,'Vytvořeno',now().slice(0,10));
+    if($('#ndWork').checked) S.workDict=d.id; changed('Přidán datový slovník '+n+'.'); openDetail(d.id); });
+}
+/* Definice podle Správy dat SFDI (typ, vazba, aspekt Formální popis dat). */
+function addDictDefs(){
+  const d=S.data; const typ=n=>d.entityTypes.find(t=>norm(t.name)===norm(n));
+  if(!M.T.slovnik){
+    const ag=typ('Agenda');
+    d.entityTypes.push({id:uid('ty_'),name:'Datový slovník',icon:'📖',attributes:[
+      {id:uid('a_'),name:'Název slovníku',type:'text'},{id:uid('a_'),name:'Popis',type:'textarea'},
+      {id:uid('a_'),name:'Vytvořeno',type:'date'},{id:uid('a_'),name:'Aktualizováno',type:'date'},
+      {id:uid('a_'),name:'Agenda',type:'relation',...(ag?{targetType:ag.id}:{}),multi:true}],
+      sablonaDetailu:"Podrobnosti o datovém slovníku\n\n```dkm:attributes\nstyle: list\nhideempty: yes\n```\n\n```dkm:relations\ntype: Ve slovníku\ndirection: in\ntarget: Subjekt\nstyle: table\ncolumns: link, popis, definice\ncollapse: Subjekty ve slovníku\n```\n\n```dkm:relations\ntype: Ve slovníku\ndirection: in\ntarget: Objekt\nstyle: table\ncolumns: link, popis, definice\ncollapse: Objekty ve slovníku\n```\n\n\n```dkm:relations\ntype: Ve slovníku\ndirection: in\ntarget: Číselník\nstyle: table\ncolumns: link, popis, definice\ncollapse: Číselníky ve slovníku\n```"});
+    rebuildModel();
+  }
+  if(!M.R.slovnik){ d.relationTypes.push({id:uid('rt_'),name:'Ve slovníku',inverseName:'Slovník obsahuje',scope:'to',fromTypes:[],toTypes:[M.T.slovnik.id]}); rebuildModel(); }
+  if(!M.slovAttr){
+    const slovAttr={id:uid('a_'),name:'Slovník',type:'relation',targetType:M.T.slovnik.id,multi:true};
+    let asp=(d.aspects||[]).find(a=>norm(a.name)==='formální popis dat');
+    if(asp){ asp.attributes=[...(asp.attributes||[]),slovAttr]; }
+    else {
+      let list=d.selectLists.find(l=>norm(l.name)==='stav zápisu');
+      if(!list){ list={id:uid('l_'),name:'Stav zápisu',values:['Pracovní položka','Rozpracováno pro zápis','Připraveno pro zápis','Zapsáno a aktuální','Potřebuje aktualizovat','Aktualizováno a nepublikováno','Publikováno','Neaktuální záznam','Zrušený záznam']}; d.selectLists.push(list); }
+      let ts=d.tagSets.find(l=>norm(l.name)==='typy v dk');
+      if(!ts){ ts={id:uid('ts_'),name:'Typy v DK',tags:['Datoý slovník: slovník','Datový slovník: Pojem','Datový slovník: Doplnění','Datový slovník: Alias','Datový slovník: Objekt','Datový slovník: Subjekt','Datový slovník: Obecné','Datový slovník: Vztah','Datový katalog: Katalog','Datový katalog: Skupina','Datový katalog: Podkatalog','Slovník','Tezaurus','Konceptuální model','Pojem','Koncept','Třída','Typ objektu práva','Vlastnost','Veřejný údaj','Neveřejný údaj','Typ subjektu práva']}; d.tagSets.push(ts); }
+      const kat=typ('Katalog');
+      d.aspects.push({id:uid('asp_'),name:'Formální popis dat',attributes:[
+        {id:uid('a_'),name:'Zahrnuto do DK?',type:'yesno',showInList:true,hideEmpty:true},
+        {id:uid('a_'),name:'URI',type:'text'}, slovAttr,
+        {id:uid('a_'),name:'Katalogy',type:'relation',copyable:true,hideEmpty:true,...(kat?{targetType:kat.id}:{}),multi:true},
+        {id:uid('a_'),name:'Stav zápisu v katalogu',type:'select',listId:list.id,showInList:true,highlight:true,hideEmpty:true},
+        {id:uid('a_'),name:'Poznámky k zápisu do DK a popisu',type:'textarea'},
+        {id:uid('a_'),name:'Typ v DK',type:'tags',showInList:true,highlight:true,hideEmpty:true,tagSetId:ts.id}]});
+    }
+    rebuildModel();
+  }
+}
+
 function attrFields(e, attrs, legend, aspId){
-  const rows=attrs.filter(a=>a.type!=='composed').map(a=>attrField(e,a)).join('');
+  const vC=attrDef(M.T.polozka,'v číselníku');
+  const rows=attrs.filter(a=>a.type!=='composed').map(a=>
+    (M.slovAttr && a.id===M.slovAttr.id) ? '<p class="mut">Slovník: spravuje se v sekci Ve slovnících níže.</p>' :
+    (vC && a.id===vC.id && isT(e,'polozka')) ? '<p class="mut">V číselníku: spravuje se v sekci Číselník položky níže.</p>' :
+    attrField(e,a)).join('');
   const rm = aspId ? `<button type="button" data-rmasp="${aspId}">Odebrat aspekt</button>` : '';
   if(!rows && !rm) return '';
   return `<fieldset><legend>${esc(legend)}</legend>${rows||'<p class="mut">Aspekt nemá atributy.</p>'}${rm}</fieldset>`;
@@ -1068,11 +1236,11 @@ function secPolozkaCis(p){
   ${all.length?`<form id="fPC" class="bar"><label for="pcSel">Přesunout do číselníku:</label><select id="pcSel">${all.map(x=>`<option value="${x.id}"${x===c?' selected':''}>${esc(x.name)}</option>`).join('')}</select><button type="submit">Přesunout</button></form>`:''}`;
 }
 function secVazby(e){
-  const skip=new Set([M.R.vlastnost?.id, M.R.polozka?.id]);
+  const skip=new Set([M.R.vlastnost?.id, M.R.polozka?.id, M.R.slovnik?.id]);
   const out=(e.relations||[]).filter(r=>!skip.has(r.relationTypeId));
   const inc=[]; for (const x of S.data.entities) for (const r of x.relations||[]) if (r.targetId===e.id && !skip.has(r.relationTypeId)) inc.push([x,r]);
   const rts=allowedRelTypes(e).filter(r=>!skip.has(r.id)).sort((a,b)=>coll.compare(a.name,b.name));
-  const tg=sortByName(S.data.entities.filter(x=>x.id!==e.id && kindOf(x) && kindOf(x)!=='polozka'));
+  const tg=sortByName(S.data.entities.filter(x=>x.id!==e.id && kindOf(x) && !['polozka','slovnik'].includes(kindOf(x))));
   const groups=['objekt','subjekt','vlastnost','ciselnik'].map(k=>[k,tg.filter(x=>kindOf(x)===k)]).filter(g=>g[1].length);
   const gn={objekt:'Objekty',subjekt:'Subjekty',vlastnost:'Vlastnosti',ciselnik:'Číselníky'};
   const rn=id=>M.relById[id]; const inv=r=>r?.inverseName||r?.name;
@@ -1086,10 +1254,11 @@ function secVazby(e){
 }
 function bindDetail(m,e,k){
   bindOpen(m);
+  bindSlovniky(m,e,k);
   $('#btnBack').onclick=()=>show(S.backView);
   $('#fBase').addEventListener('submit', ev=>{ ev.preventDefault();
     const n=$('#dName').value.trim(); if(!n) return say('Název nesmí být prázdný.');
-    snapshot(); e.name=n; readAttrs($('#fBase'),e);
+    snapshot(); e.name=n; readAttrs($('#fBase'),e); syncNazevSlovniku(e);
     const nk=$('#dKind')?.value;
     if (nk && nk!==k){ // převod objekt <-> subjekt: atributy převést podle názvu
       const from=M.T[k], to=M.T[nk]; const na={};
@@ -1107,9 +1276,9 @@ function bindDetail(m,e,k){
     if ((M.children.get(e.id)||[]).some(id=>norm(M.E.get(id)?.name)===norm(n))){ $('#nvName').focus(); return say('Vlastnost '+n+' už u prvku existuje.'); }
     snapshot(); const v=newEntity('vlastnost',n); const p=$('#nvPopis').value.trim(); if(p) setAttrByName(v,'Popis',p);
     if ($('#nvUniq')?.checked) setAttrByName(v,'Jedinečný',true);
-    attachVlastnost(v,e); touch(e); changed('Přidána vlastnost '+n+'.'); rerender(); $('#nvName').focus(); });
+    attachVlastnost(v,e); reindex(); autoDict(v,e); touch(e); changed('Přidána vlastnost '+n+'.'); rerender(); $('#nvName').focus(); });
   $('#nvPopis')?.addEventListener('keydown', ev=>{ if(ev.key==='Enter'){ ev.preventDefault(); $('#fAddV').requestSubmit(); } });
-  $('#fAttV')?.addEventListener('submit', ev=>{ ev.preventDefault(); const v=M.E.get($('#attV').value); snapshot(); attachVlastnost(v,e); changed('Připojena vlastnost '+v.name+'.'); rerender(); $('#attV')?.focus(); });
+  $('#fAttV')?.addEventListener('submit', ev=>{ ev.preventDefault(); const v=M.E.get($('#attV').value); snapshot(); attachVlastnost(v,e); reindex(); autoDict(v,e); changed('Připojena vlastnost '+v.name+'.'); rerender(); $('#attV')?.focus(); });
   m.querySelectorAll('[data-detach]').forEach(b=>b.onclick=()=>{ const v=M.E.get(b.dataset.detach);
     snapshot(); v.relations=v.relations.filter(r=>!(r.relationTypeId===M.R.vlastnost.id && r.targetId===e.id)); touch(v);
     let msg='Vlastnost '+v.name+' odpojena.';
@@ -1172,6 +1341,8 @@ subjekt Název: popis         – subjekt
 číselník Název: popis        – číselník
 - kód = název položky        – položka posledního číselníku (lze i „- název“ bez kódu)
 vazba Žádost | má vazbu na | Žadatel   – vazba mezi záznamy podle názvů
+slovník Název: popis         – datový slovník; vše pod ním se do něj zařadí
+slovník -                    – konec zařazování (výchozí je pracovní slovník)
 # komentář`;
 function renderRychly(m){
   m.innerHTML=`<h2>Rychlý zápis</h2>
@@ -1187,7 +1358,7 @@ function renderRychly(m){
     const ops=plan.ops, errs=plan.errors;
     $('#rzOut').innerHTML=`<h3 id="rzH" tabindex="-1">Náhled: ${ops.length} operací, ${errs.length} chyb</h3>
       ${errs.length?`<ul class="warn">${errs.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:''}
-      ${ops.length?`<ol>${ops.map(o=>`<li>${esc(o.text)}</li>`).join('')}</ol><button type="button" id="rzRun">Provést ${ops.length} operací</button>`:'<p>Nic k provedení.</p>'}`;
+      ${ops.length?`<ol>${ops.map(o=>`<li>${esc(o.text)}</li>`).join('')}</ol><button type="button" id="rzRun">Provést ${ops.filter(o=>o.op!=='info').length} operací</button>`:'<p>Nic k provedení.</p>'}`;
     $('#rzH').focus();
     $('#rzRun')?.addEventListener('click',()=>{ snapshot(); try{ const n=runRychly(S.plan); changed('Provedeno operací: '+n+'.'); S.rychlyText=''; renderRychly(m); $('#rzTa').focus(); }catch(err){ dbg(err.stack||err.message); say('Chyba při provádění: '+err.message); } });
   };
@@ -1202,15 +1373,27 @@ function planRychly(text){
   const ops=[], errors=[]; let cur=null; // {kind, ref:{name, kind}}
   const pending=new Map(); // názvy, které se teprve založí: kind|name -> true
   const exists=(kind,name)=>findByName(kind,name)||pending.get(kind+'|'+norm(name));
+  let dict = workDict() ? workDict().name : '';
+  if (dict) ops.push({op:'info',text:`Vše se zařadí do pracovního slovníku „${dict}“ (změníte řádkem „slovník …“ nebo „slovník -“).`});
   text.split(/\r?\n/).forEach((raw,i)=>{
     const ln=i+1; let line=raw.trim(); if(!line||line.startsWith('#')) return;
+    let sm=line.match(/^(?:slovník|slovnik)\s+(.+)$/i);
+    if (sm){
+      if (sm[1].trim()==='-'){ dict=''; ops.push({op:'info',text:'Konec zařazování do slovníku.'}); cur=null; return; }
+      if(!M.T.slovnik||!M.R.slovnik) return errors.push(`Řádek ${ln}: v souboru chybí definice datového slovníku (doplníte v části Datové slovníky).`);
+      const [name,popis]=splitNamePopis(sm[1]); if(!name) return errors.push(`Řádek ${ln}: chybí název slovníku.`);
+      const ex=exists('slovnik',name);
+      ops.push({op:'ent',kind:'slovnik',name,popis,flags:[],text:`${ex?'Doplnit':'Založit'} datový slovník „${name}“${popis?' s popisem':''}; další záznamy se do něj zařadí`});
+      if(!ex) pending.set('slovnik|'+norm(name),true);
+      dict=name; cur=null; return;
+    }
     let mm=line.match(/^(objekt|subjekt|číselník|ciselnik)\s+(.+)$/i);
     if (mm){
       const kind=mm[1].toLowerCase().startsWith('obj')?'objekt':mm[1].toLowerCase().startsWith('sub')?'subjekt':'ciselnik';
       if(!M.T[kind]) return errors.push(`Řádek ${ln}: v souboru chybí typ ${kind}.`);
       const [rest,flags]=parseFlags(mm[2]); const [name,popis]=splitNamePopis(rest); if(!name) return errors.push(`Řádek ${ln}: chybí název.`);
       const ex=exists(kind,name);
-      ops.push({op:'ent',kind,name,popis,flags,text:`${ex?'Doplnit':'Založit'} ${M.T[kind].name.toLocaleLowerCase('cs')} „${name}“${popis?' s popisem':''}${flags.length?' a atributy '+flags.map(f=>f[0]).join(', '):''}`});
+      ops.push({op:'ent',kind,name,popis,flags,dict,text:`${ex?'Doplnit':'Založit'} ${M.T[kind].name.toLocaleLowerCase('cs')} „${name}“${popis?' s popisem':''}${flags.length?' a atributy '+flags.map(f=>f[0]).join(', '):''}${dict?' → slovník „'+dict+'“':''}`});
       if(!ex) pending.set(kind+'|'+norm(name),true);
       cur={kind,name}; return;
     }
@@ -1224,7 +1407,7 @@ function planRychly(text){
       if (cur.kind==='ciselnik'){ const [kod,name]=splitItem(mm[1]); ops.push({op:'item',c:cur.name,kod,name,text:`Položka ${kod?kod+' = ':''}${name} v číselníku „${cur.name}“`}); return; }
       if(!M.T.vlastnost||!M.R.vlastnost) return errors.push(`Řádek ${ln}: v souboru chybí typ Vlastnost nebo vazba „vlastnost prvku“.`);
       const [rest,flags]=parseFlags(mm[1]); const [name,popis]=splitNamePopis(rest); if(!name) return errors.push(`Řádek ${ln}: chybí název vlastnosti.`);
-      ops.push({op:'vl',parent:cur,name,popis,flags,text:`Vlastnost „${name}“ u ${cur.kind} „${cur.name}“${popis?' s popisem':''}${flags.length?' a atributy '+flags.map(f=>f[0]).join(', '):''}`}); return;
+      ops.push({op:'vl',parent:cur,name,popis,flags,dict,text:`Vlastnost „${name}“ u ${cur.kind} „${cur.name}“${popis?' s popisem':''}${flags.length?' a atributy '+flags.map(f=>f[0]).join(', '):''}${dict?' → slovník „'+dict+'“':''}`}); return;
     }
     errors.push(`Řádek ${ln}: nerozpoznáno: ${line}`);
   });
@@ -1238,11 +1421,14 @@ function resolveAny(name){
 function runRychly(plan){
   let n=0; const errs=[];
   for (const o of plan.ops){
-    if (o.op==='ent'){ let e=findByName(o.kind,o.name); if(!e) e=newEntity(o.kind,o.name); if(o.popis) setAttrByName(e,'Popis',o.popis); applyFlags(e,o.flags,errs); touch(e); reindex(); n++; }
+    if (o.op==='info') continue;
+    if (o.op==='ent'){ let e=findByName(o.kind,o.name); if(!e) e=newEntity(o.kind,o.name); if(o.kind==='slovnik') syncNazevSlovniku(e); if(o.popis) setAttrByName(e,'Popis',o.popis); applyFlags(e,o.flags,errs); touch(e); reindex();
+      if(o.dict){ const d=findByName('slovnik',o.dict); if(d) assignDict(e,d); reindex(); } n++; }
     else if (o.op==='vl'){ const p=findByName(o.parent.kind,o.parent.name); if(!p){ errs.push('Nenalezen '+o.parent.name); continue; }
       let v=(M.children.get(p.id)||[]).map(id=>M.E.get(id)).find(x=>x && norm(x.name)===norm(o.name));
-      if(!v){ v=newEntity('vlastnost',o.name); attachVlastnost(v,p); }
-      if(o.popis) setAttrByName(v,'Popis',o.popis); applyFlags(v,o.flags,errs); touch(v); reindex(); n++; }
+      if(!v){ v=newEntity('vlastnost',o.name); attachVlastnost(v,p); reindex(); if(!o.dict) autoDict(v,p); }
+      if(o.popis) setAttrByName(v,'Popis',o.popis); applyFlags(v,o.flags,errs); touch(v); reindex();
+      if(o.dict){ const d=findByName('slovnik',o.dict); if(d) assignDict(v,d,false); reindex(); } n++; }
     else if (o.op==='item'){ const c=findByName('ciselnik',o.c); upsertItem(c,o.kod,o.name); reindex(); n++; }
     else if (o.op==='rel'){ const a=resolveAny(o.from), b=resolveAny(o.to); const rt=M.relById[o.rt];
       if(!a||!b){ errs.push(`Vazba: nenalezen záznam „${!a?o.from:o.to}“.`); continue; }
@@ -1258,19 +1444,31 @@ function exportText(){
   const L=[]; L.push('# '+(S.data.projectName||'Datový slovník'),'');
   const fl=e=>{ const t=M.typeById[e.typeId]; const out=[]; for(const a of t.attributes||[]) if(a.type==='yesno' && e.attributes?.[a.id]===true) out.push('['+a.name+']'); return out.length?' '+out.join(' '):''; };
   const one=s=>String(s||'').replace(/\s*\n\s*/g,' ');
-  for (const e of sortByName([...ents('objekt'),...ents('subjekt')])){
+  const blok=(prvky,cis,dictId)=>{
+  for (const e of sortByName(prvky)){
     L.push(`${kindOf(e)} ${e.name}${fl(e)}${popisOf(e)?': '+one(popisOf(e)):''}`);
-    for (const v of sortByName((M.children.get(e.id)||[]).map(id=>M.E.get(id)).filter(Boolean))) L.push(`- ${v.name}${fl(v)}${popisOf(v)?': '+one(popisOf(v)):''}`);
+    for (const v of sortByName((M.children.get(e.id)||[]).map(id=>M.E.get(id)).filter(Boolean)).filter(v=>!dictId||(M.dictsOf.get(v.id)||[]).includes(dictId))) L.push(`- ${v.name}${fl(v)}${popisOf(v)?': '+one(popisOf(v)):''}`);
     L.push('');
   }
-  for (const c of sortByName(ents('ciselnik'))){
+  for (const c of sortByName(cis)){
     L.push(`číselník ${c.name}${popisOf(c)?': '+one(popisOf(c)):''}`);
     const it=(M.items.get(c.id)||[]).map(id=>M.E.get(id)).filter(Boolean).sort((a,b)=>coll.compare(String(kodOf(a)),String(kodOf(b))));
     for (const p of it) L.push(`- ${kodOf(p)!==''?kodOf(p)+' = ':''}${p.name}`);
     L.push('');
   }
-  const skip=new Set([M.R.vlastnost?.id, M.R.polozka?.id]);
-  const rels=[]; for (const e of S.data.entities){ if(!kindOf(e)||kindOf(e)==='polozka') continue; for(const r of e.relations||[]){ if(skip.has(r.relationTypeId)) continue; const t=M.E.get(r.targetId); if(t&&kindOf(t)) rels.push(`vazba ${e.name} | ${M.relById[r.relationTypeId]?.name} | ${t.name}`); } }
+  };
+  const prvky=[...ents('objekt'),...ents('subjekt')], cis=ents('ciselnik');
+  const ds=M.T.slovnik?sortByName(ents('slovnik')):[];
+  for (const d of ds){
+    L.push(`slovník ${d.name}${popisOf(d)?': '+one(popisOf(d)):''}`,'');
+    const inn=x=>(M.dictsOf.get(x.id)||[]).includes(d.id);
+    blok(prvky.filter(inn), cis.filter(inn), d.id);
+  }
+  if (ds.length) L.push('slovník -','');
+  const mimo=x=>!ds.length||!(M.dictsOf.get(x.id)||[]).length;
+  blok(prvky.filter(mimo), cis.filter(mimo), null);
+  const skip=new Set([M.R.vlastnost?.id, M.R.polozka?.id, M.R.slovnik?.id]);
+  const rels=[]; for (const e of S.data.entities){ if(!kindOf(e)||['polozka','slovnik'].includes(kindOf(e))) continue; for(const r of e.relations||[]){ if(skip.has(r.relationTypeId)) continue; const t=M.E.get(r.targetId); if(t&&kindOf(t)) rels.push(`vazba ${e.name} | ${M.relById[r.relationTypeId]?.name} | ${t.name}`); } }
   rels.sort(coll.compare); if (rels.length) L.push('# Vazby',...rels);
   return L.join('\n').trim()+'\n';
 }
@@ -1294,6 +1492,13 @@ function renderKontrola(m){
   sec('Objekty a subjekty bez vlastností', sortByName([...ents('objekt'),...ents('subjekt')].filter(e=>!(M.children.get(e.id)||[]).length)));
   sec('Číselníky bez položek', sortByName(ents('ciselnik').filter(c=>!(M.items.get(c.id)||[]).length)));
   sec('Položky mimo číselník', sortByName(ents('polozka').filter(p=>!M.itemOf.has(p.id))));
+  if (M.T.slovnik && ents('slovnik').length){
+    sec('Objekty, subjekty a číselníky mimo všechny datové slovníky', sortByName([...ents('objekt'),...ents('subjekt'),...ents('ciselnik')].filter(e=>!(M.dictsOf.get(e.id)||[]).length)));
+    sec('Vlastnosti ve slovníku bez svého prvku ve stejném slovníku', sortByName(ents('vlastnost').filter(v=>(M.dictsOf.get(v.id)||[]).some(d=>!(M.parents.get(v.id)||[]).some(p=>(M.dictsOf.get(p)||[]).includes(d))))));
+    const nesoulad=S.data.entities.filter(e=>{ if(!M.slovAttr||!M.R.slovnik) return false; const rel=(e.relations||[]).filter(r=>r.relationTypeId===M.R.slovnik.id).map(r=>r.targetId).sort(); const v=e.attributes?.[M.slovAttr.id]; const at=(Array.isArray(v)?v:(v?[v]:[])).filter(x=>x!==e.id).sort(); return JSON.stringify(rel)!==JSON.stringify(at); });
+    sec('Nesoulad vazby „Ve slovníku“ a atributu Slovník', sortByName(nesoulad));
+    S.nesoulad=nesoulad;
+  }
   sec('Vlastnosti bez popisu', sortByName(ents('vlastnost').filter(v=>!popisOf(v).trim())));
   const dup=[]; for (const k of ['objekt','subjekt','ciselnik']){ const seen=new Map(); for(const e of ents(k)){ const n=norm(e.name); if(seen.has(n)) dup.push(e,seen.get(n)); else seen.set(n,e);} }
   for (const [pid,ch] of M.children){ const seen=new Map(); for (const id of ch){ const v=M.E.get(id); if(!v) continue; const n=norm(v.name); if(seen.has(n)) dup.push(v,seen.get(n)); else seen.set(n,v);} }
@@ -1305,11 +1510,17 @@ function renderKontrola(m){
   m.innerHTML=`<h2>Kontrola slovníku</h2>
   ${miss.length?`<p class="warn">V souboru chybí definice: ${esc(miss.join(', '))}.</p><button type="button" id="kFix">Doplnit chybějící definice</button>`:'<p class="ok">Všechny potřebné typy a vazby datového slovníku jsou v souboru definovány.</p>'}
   ${P.map(([t,l])=>`<h3>${esc(t)} (${l.length})</h3>${l.length?`<ul class="tree">${l.slice(0,300).map(e=>`<li><a href="#${e.id}" data-open="${e.id}">${esc(label(e))}</a>${kindOf(e)==='polozka'&&M.itemOf.get(e.id)?' <span class="mut">v '+esc(M.E.get(M.itemOf.get(e.id))?.name)+'</span>':''}${kindOf(e)==='vlastnost'&&(M.parents.get(e.id)||[]).length?' <span class="mut">u '+esc((M.parents.get(e.id)||[]).map(p=>M.E.get(p)?.name).join(', '))+'</span>':''}</li>`).join('')}</ul>${l.length>300?'<p class="mut">Zobrazeno prvních 300.</p>':''}`:'<p class="ok">V pořádku.</p>'}`).join('')}
-  ${broken.length?'<button type="button" id="kBroken">Odstranit vazby na neexistující záznamy</button>':''}`;
+  ${broken.length?'<button type="button" id="kBroken">Odstranit vazby na neexistující záznamy</button>':''}
+  ${S.nesoulad&&S.nesoulad.length?'<button type="button" id="kSyncDict">Sjednotit zařazení do slovníků (vazba i atribut)</button>':''}
+  ${(!M.T.slovnik||!M.R.slovnik||!M.slovAttr)?`<h3>Datové slovníky</h3><p class="warn">Chybí definice datového slovníku (typ, vazba „Ve slovníku“ nebo aspekt s atributem Slovník).</p><button type="button" id="kDictFix">Doplnit definice datového slovníku podle Správy dat SFDI</button>`:''}`;
   bindOpen(m);
   $('#kFix')?.addEventListener('click',()=>{ snapshot(); addMissingDefs(); changed('Chybějící definice doplněny.'); rerender(); });
+  $('#kDictFix')?.addEventListener('click',()=>{ snapshot(); addDictDefs(); changed('Definice datového slovníku doplněny.'); rerender(); });
+  $('#kSyncDict')?.addEventListener('click',()=>{ snapshot(); let n=0; for(const e of S.nesoulad){ for(const id of [...(M.dictsOf.get(e.id)||[])]){ const d=M.E.get(id); if(d){ assignDict(e,d,false); n++; } } } reindex(); changed('Sjednoceno zařazení: '+n+'.'); rerender(); });
   $('#kBroken')?.addEventListener('click',()=>{ snapshot(); let n=0; for(const e of S.data.entities){ const b=(e.relations||[]).length; e.relations=(e.relations||[]).filter(r=>M.E.has(r.targetId)); if(b!==e.relations.length){ n+=b-e.relations.length; touch(e);} } changed('Odstraněno vazeb: '+n+'.'); rerender(); });
 }
+$('#workDict').addEventListener('change',ev=>{ S.workDict=ev.target.value; if(!S.workDict) S.onlyWork=false; updateWorkDictUi(); saveSession(); say(S.workDict?'Pracovní slovník: '+M.E.get(S.workDict).name+'.':'Bez pracovního slovníku.'); if(S.view!=='detail') rerender(); });
+$('#onlyWork').addEventListener('change',ev=>{ S.onlyWork=ev.target.checked; saveSession(); say(S.onlyWork?'Zobrazeny jen záznamy pracovního slovníku.':'Zobrazeny všechny záznamy.'); if(S.view!=='detail') rerender(); });
 /* ====== Start ====== */
 (function start(){
   if (autoLoadFromUrlParams()) return;
