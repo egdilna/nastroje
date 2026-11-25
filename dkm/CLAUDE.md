@@ -1923,7 +1923,11 @@ samostatně nezařazuje. Hromadně se slovník plní zaškrtávátky v jeho deta
 (`#fDictAdd`, skupiny `DICT_ADD_GROUPS`: objekty, subjekty, určené vazby, číselníky).
 Chybí-li definice, editor je doplní podle SFDI (`addDictDefs`) **s id ze Správy dat
 SFDI** (`SFDI_ID`) — náhodná id by rozbila sjednocení modelů napříč soubory.
-Pracovní slovník (`S.workDict`) zařazuje nově zakládané záznamy.
+Pracovní slovník (`S.workDict`) zařazuje nově zakládané záznamy. Ukazuje ho **lišta
+`#workBar` nahoře na stránce (sticky, mimo `<header>`)** — stav, přepnutí, vypnutí,
+odkaz na slovník a filtr „jen jeho záznamy“; název je i v titulku okna. Měnit ho jen
+přes `setWorkDict(id)`. Volba se pamatuje v `localStorage['dkm-slovnik-pracovni']`
+zvlášť pro každý soubor (klíč `ghPath`, jinak název souboru) a `loadData` ji obnoví.
 
 **Cizí uložení se dohání samo, jako v DKM**: `zkontrolujVzdalene` (poslední commit,
 20 s při práci / 2 min v klidu, jen viditelné okno) → `automatickeSlouceni` →
