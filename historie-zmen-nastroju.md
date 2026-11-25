@@ -57,6 +57,7 @@ multisection
 
 | Datum | Typ | Popis |
 | --- | --- | --- |
+| 25. 11. 2026 | Oprava | Opraveno chování, kdy se někdy i pro entitu s povinným skládaným názvem při její tvorbě vyžadovalo zadání názvu. Teď už to nedělá a nemate to uživatele. |
 | 9. 11. 2026 | Funkce | Nové funkce pro český EG. Dva nové atributy a to Ustanovení (zadá se ustanovení a načte se jeho text do aplikace a vypíšou se odkazy) a RPP (zadá se typ a identifikátor objektu a načtou se o něm informace a odkaz na jeho detail v prohlížeči RPP). |
 | 2. 9. 2026 | Funkce | Úplný export do schématického JSON. Po průvodci exportem se vytvoří datový json a json schéma soubor a vše se podá jako kompletně zdokumentovaný ZIP valíček i s detailním popisem v readme.md. Export je kompatibilní se standardy JSX a JSONscheme a validní i pro otevřená a dynamická data a splňuje i požadavky na popis dat pro import. |
 | 3. 7. 2026 | Funkce | Konečně máme pokročilé a dynamické filtry. Nově jsou v pohledech možnosti přidávat a měnit pokročilé filtry, které jsou chytré jak podle typu atributu, tak i podle jejich kombinací (to si musíte vyzkoušet). A navíc se dá vymazlený filtr uložit jako nový pohled, což přináší ohromné možnosti filtrace a hledání přes celý projekt. |
@@ -105,6 +106,7 @@ multisection
 
 | Datum | Typ | Popis |
 | --- | --- | --- |
+| 25. 11. 2026 | Vylepšení | Na detailu entity dosud fungovaly klávesy l pro tagy a a pro aspekty, teď funguje i p pro projekty. Otevře rychlé přiřazení do projektů aby se to nemuselo krkolomně dělat ručně. |
 | 4. 11. 2026 | Funkce | Přílohy v balíčcích: offline prohlížeč i přenos entit mezi PIMy se stáhnou jako ZIP se soubory příloh (attachments/<id>/<název>); opakovaný import nic nezdvojí. Opraveno tiché vynechávání příloh v ZIP záloze a pád prohlížeče na zabezpečené entitě. |
 | 30. 10. 2026 | Vylepšení | Přílohu jde přidat rovnou z režimu čtení — tlačítko v sekci Přílohy a příkaz v paletě; z pohledu čtení se rovnou uloží a naplánuje nahrání na GitHub. |
 | 29. 10. 2026 | Vylepšení | Plán: v tabulce WBS přibylo tlačítko příznaku před názvem úkolu a select stavu; příznak v úkolu plánu vidí i pohled Příznaky. |
@@ -125,6 +127,7 @@ multisection
 | 8. 10. 2026 | Vylepšení | Datum z názvu se doplní na všech cestách, kudy entita vzniká. |
 | 8. 10. 2026 | Funkce | Termín a čas z názvu funguje i u + Nová entita; parser rozumí „do pátku, „za týden i názvům měsíců. |
 | 8. 10. 2026 | Oprava | Samostatné okno entity si bere data od okna, které ho otevřelo, místo stahování z GitHubu. |
+| 11. 9. 2026 | Vylepšení | Když používáte projekty, vytváříte-li z entity v projektu novou entitu jakýmkoliv způsobem, nabídne se vám ji rovnou přidat do jednoho či více souvisejících projektů, přičemž to inteligentně rozpozná projekty kterých se to může týkat. Do teď tohle bylo jen při tvorbě z detailu projektu nebo schůzky. |
 | 7. 8. 2026 | Vylepšení | Přidáno víc než 20 klávesových zkratek pro funkce v editoru textu. Od prostého formátování až po ovládání critic revizí apod. Sem to nebudu celé vypisovat, podívejte se do aktualizované nápovědy v aplikaci. |
 | 3. 8. 2026 | Vylepšení | I v detailu pokud je někde vazba na prvek, lze jej nyní otevŕít jedním kliknutím v novém panelu, takže neztratíte kontext. A taky přidána maličkost při editaci, u vazeb je nyní možno rovnou rychle vazbu editovat, což šlo před tím jen z přehledu Nástroje / Vazby / Všechny vazby / Upravit vazbu. |
 | 28. 7. 2026 | Oprava | Oprava korektoru češtiny, kdy při určitém výskytu některých písmen s diakritikou na konci slova chybně označoval za chybu a nabízel to samé slovo jako opravu. |
@@ -142,7 +145,6 @@ multisection
 | 8. 6. 2026 | Funkce | Nyní se databáze includují do jiných entit přes nový příkaz picluide database místo include, podporuje celou řadu parametrů jako jsou vybrané sloupce filtrování, apod. Ostatně i tento výpis je tvořen filtrovaným exportem databáze změn aplikací |
 | 2. 6. 2026 | Funkce | Poměrně výrazná nová verze se spoustou funkcí. Time tracking pro jakoukoliv entitu, sledování času napříč projektem, detaily projektu vylepšeny, zcela přepracováno rozhraní pro události... |
 | 9. 4. 2026 | Vylepšení | Zpřehlednění detailu u diagramu a databáze a zpřehlednění time tracker pohledů. |
-| | Vylepšení | Když používáte projekty, vytváříte-li z entity v projektu novou entitu jakýmkoliv způsobem, nabídne se vám ji rovnou přidat do jednoho či více souvisejících projektů, přičemž to inteligentně rozpozná projekty kterých se to může týkat. Do teď tohle bylo jen při tvorbě z detailu projektu nebo schůzky. |
 
 
 
