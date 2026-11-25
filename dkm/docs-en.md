@@ -837,12 +837,15 @@ A **single entity** can override it in its editor, in the picker below the name:
 
 What then happens:
 
-- **The name field is not shown in the editor at all** — in its place is the value the entity
-  will get, with a note on what it is composed from. Typing into a field that the save will
-  overwrite anyway makes no sense. There is one exception: **while the template yields
-  nothing** (a new entity with empty sources) the field stays, so there is somewhere to write
-  a name — an entity without one cannot be saved. Once the template yields something, the
-  field disappears on the next redraw.
+- **The name field is not shown in the editor and the name is not required** — in its place
+  there is always a live preview of the value the entity will get, with a note on what it is
+  composed from. For a new entity with empty sources the preview says *Nothing composed yet*;
+  just fill in the attributes and the name appears by itself. Typing into a field that the
+  save will overwrite anyway makes no sense.
+- **A manual name is only a fallback** behind the *Type a name manually* button. It applies
+  while the template yields nothing; once the name is composed, it overwrites it. If you try
+  to save an entity whose template yields nothing and that has no manual name, saving stops
+  with an explanation and the manual name field opens by itself.
 - **The name is recomputed on every change in the editor** and the displayed value changes as
   you type into the sources — it does not wait for the save and does not track which field
   feeds the template. Add an aspect, change a number, rewrite a mark: the name follows.
