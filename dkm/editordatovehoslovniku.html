@@ -148,7 +148,8 @@ function kindOf(e){ for (const k of ['objekt','subjekt','vlastnost','ciselnik','
    Vlastnosti se zařazují automaticky se svým objektem či subjektem. */
 function dictable(e){ const k=kindOf(e); return !!e && k!=='polozka' && k!=='slovnik' && !!e.typeId; }
 function assignDict(e, dict, sVlastnostmi=true){
-  if(!M.R.slovnik || !dictable(e)) return 0;
+  /* Položka se samostatně nezařazuje — jen se svým číselníkem (sVlastnostmi=false). */
+  if(!M.R.slovnik || !e || !(dictable(e) || (!sVlastnostmi && kindOf(e)==='polozka'))) return 0;
   let n=addRel(e, M.R.slovnik.id, dict.id) ? 1 : 0;
   if (M.slovAttr){
     if(!(e.aspects||[]).includes(M.slovAsp.id)) e.aspects=[...(e.aspects||[]), M.slovAsp.id];
@@ -157,6 +158,7 @@ function assignDict(e, dict, sVlastnostmi=true){
   }
   touch(e); push(M.inDict,dict.id,e.id); push(M.dictsOf,e.id,dict.id);
   if (sVlastnostmi && ['objekt','subjekt'].includes(kindOf(e))) for (const vid of M.children.get(e.id)||[]){ const v=M.E.get(vid); if(v) n+=assignDict(v,dict,false); }
+  if (sVlastnostmi && kindOf(e)==='ciselnik') for (const pid of M.items.get(e.id)||[]){ const pi=M.E.get(pid); if(pi) n+=assignDict(pi,dict,false); }
   return n;
 }
 function unassignDict(e, dict, sVlastnostmi=true){
@@ -171,6 +173,7 @@ function unassignDict(e, dict, sVlastnostmi=true){
       const jinyRodic=(M.parents.get(vid)||[]).some(p=>p!==e.id && (M.dictsOf.get(p)||[]).includes(dict.id));
       if(!jinyRodic) unassignDict(v,dict,false); }
   }
+  if (sVlastnostmi && kindOf(e)==='ciselnik') for (const pid of M.items.get(e.id)||[]){ const pi=M.E.get(pid); if(pi) unassignDict(pi,dict,false); }
   reindex();
 }
 /* Nově založený záznam: zařadit do slovníků (rodiče, nebo pracovního). */
@@ -469,7 +472,7 @@ function glErrFromStatus(status){ if(status===404) return t('glErr404'); if(stat
 function glFetch(parsed,url,volby){
   volby=volby||{};
   const h=Object.assign({},glHeaders(parsed),volby.body?{'Content-Type':'application/json'}:{});
-  return fetch(url,Object.assign({},volby,{headers:h})).then(res=>{
+  return fetch(url,Object.assign({cache:'no-store'},volby,{headers:h})).then(res=>{
     if(!res.ok) return res.json().catch(()=>({})).then(j=>{ let zpr=j&&(j.message||j.error); if(zpr&&typeof zpr!=='string') zpr=JSON.stringify(zpr);
       const e=new Error(glErrFromStatus(res.status)+(zpr?' – '+zpr:'')); e.status=res.status; throw e; });
     return res;
@@ -515,7 +518,7 @@ function glUlozit(parsed,byty,zprava,ocekavana){
 function glJeVlastniServer(host){ host=String(host||'').trim().toLowerCase(); return !!host&&host!==GL_VYCHOZI_SERVER; }
 function glStavMistniSite(){ try{ if(navigator.permissions&&navigator.permissions.query) return navigator.permissions.query({name:'local-network-access'}).then(p=>p&&p.state||null,()=>null); }catch(e){} return Promise.resolve(null); }
 function glPosledniCommit(parsed){
-  return glVychoziVetev(parsed).then(vetev=>fetch(glApi(parsed)+'/repository/commits?per_page=1&ref_name='+encodeURIComponent(vetev)+'&path='+encodeURIComponent(parsed.path),{headers:glHeaders(parsed)})).then(res=>res.ok?res.json():null)
+  return glVychoziVetev(parsed).then(vetev=>fetch(glApi(parsed)+'/repository/commits?per_page=1&ref_name='+encodeURIComponent(vetev)+'&path='+encodeURIComponent(parsed.path),{headers:glHeaders(parsed),cache:'no-store'})).then(res=>res.ok?res.json():null)
     .then(j=>(Array.isArray(j)&&j[0])?{sha:j[0].id,kdo:j[0].author_name||'',kdy:j[0].authored_date||''}:null);
 }
 function repoToken(parsed){ if(!parsed) return ''; return parsed.druh==='gitlab'?glToken(parsed.host):ghToken(); }
@@ -524,11 +527,11 @@ function repoPripraveno(cesta){ const p=cesta?parseGhPath(cesta):null; return !!
 function ghNactiSoubor(parsed){
   if(parsed.druh==='gitlab') return glNactiSoubor(parsed);
   const apiUrl='https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/contents/'+parsed.path;
-  return fetch(apiUrl,{headers:ghHeaders()}).then(res=>{ if(!res.ok) throw new Error(ghErrFromStatus(res.status)); return res.json(); }).then(meta=>{
+  return fetch(apiUrl,{headers:ghHeaders(),cache:'no-store'}).then(res=>{ if(!res.ok) throw new Error(ghErrFromStatus(res.status)); return res.json(); }).then(meta=>{
     if(meta.content&&meta.encoding==='base64') return {text:ghB64ToText(meta.content),sha:meta.sha};
     const blobUrl='https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/git/blobs/'+meta.sha;
     dbg('Velký soubor, stahuji blob.');
-    return fetch(blobUrl,{headers:ghHeaders()}).then(res=>{ if(!res.ok) throw new Error(ghErrFromStatus(res.status)); return res.json(); }).then(blob=>({text:ghB64ToText(blob.content),sha:meta.sha}));
+    return fetch(blobUrl,{headers:ghHeaders(),cache:'no-store'}).then(res=>{ if(!res.ok) throw new Error(ghErrFromStatus(res.status)); return res.json(); }).then(blob=>({text:ghB64ToText(blob.content),sha:meta.sha}));
   });
 }
 const GH_MEZ_VELKEHO=1000000;
@@ -568,7 +571,7 @@ function ghUlozitVelke(parsed,byty,zprava,ocekavanaSha){
 }
 function ghPosledniCommitZeSite(parsed){
   if(parsed.druh==='gitlab') return glPosledniCommit(parsed);
-  return fetch('https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/commits?per_page=1&path='+encodeURIComponent(parsed.path),{headers:ghHeaders()}).then(res=>res.ok?res.json():null)
+  return fetch('https://api.github.com/repos/'+parsed.owner+'/'+parsed.repo+'/commits?per_page=1&path='+encodeURIComponent(parsed.path),{headers:ghHeaders(),cache:'no-store'}).then(res=>res.ok?res.json():null)
     .then(j=>(Array.isArray(j)&&j[0])?{sha:j[0].sha,kdo:(j[0].commit&&j[0].commit.author&&j[0].commit.author.name)||'',kdy:(j[0].commit&&j[0].commit.author&&j[0].commit.author.date)||''}:null);
 }
 
@@ -582,6 +585,7 @@ function loadFromGitHub(ghPath,opts){
     const p=JSON.parse(text);
     normalizeData(p); p.ghPath=ghPath;
     loadData(p, parsed.path.split('/').pop(), false, sha);
+    ghZapamatujCommit();
     toast('✓ '+t('ghLoaded')+(p.projectName?' – '+p.projectName:''));
     soundSaved();
     dbg('Načteno z repozitáře ('+text.length+' B)');
@@ -734,6 +738,34 @@ $('#jinyBannerSluc').addEventListener('click',()=>{ $('#jinyBanner').hidden=true
 
 let ghPosledniCommit=null;
 function ghZapamatujCommit(){ const parsed=parseGhPath(S.data&&S.data.ghPath); if(!parsed) return; ghPosledniCommit=null; ghPosledniCommitZeSite(parsed).then(c=>{ if(c) ghPosledniCommit=c.sha; }).catch(()=>{}); }
+/* Hlídání cizích uložení — stejně jako zkontrolujVzdalene v DKM: levný dotaz
+   na poslední commit souboru, jen když je okno vidět; při práci každých 20 s,
+   v klidu po 2 minutách. Cizí commit se sloučí sám (slucSVzdalenym tiše):
+   bez rozdělané práce se převezme celá vzdálená verze, jinak trojcestně.
+   Nesahá se do toho, dokud je ohnisko v poli formuláře — překreslení by
+   rozepsaný text zahodilo; dožene se to při další kontrole. */
+const GH_KONTROLA_CILA_MS=20000, GH_KONTROLA_KLID_MS=120000, GH_CINNOST_MS=120000;
+let ghPosledniCinnost=Date.now();
+['keydown','pointerdown'].forEach(typ=>document.addEventListener(typ,()=>{ ghPosledniCinnost=Date.now(); },true));
+function ghKontrolaInterval(){ return (Date.now()-ghPosledniCinnost)<GH_CINNOST_MS?GH_KONTROLA_CILA_MS:GH_KONTROLA_KLID_MS; }
+function ghNaplanujKontrolu(){ setTimeout(()=>{ zkontrolujVzdalene(); ghNaplanujKontrolu(); },ghKontrolaInterval()); }
+function pisuDoPole(){ const a=document.activeElement; if(!a) return false; const tg=a.tagName; return tg==='TEXTAREA'||tg==='SELECT'||(tg==='INPUT'&&!['checkbox','radio','button','submit','reset'].includes(a.type)); }
+function zkontrolujVzdalene(){
+  if(document.visibilityState!=='visible'||!S.data||!repoPripraveno(S.data.ghPath)||ghAutoStav.bezi||pisuDoPole()) return;
+  const parsed=parseGhPath(S.data.ghPath); if(!parsed) return;
+  ghPosledniCommitZeSite(parsed).then(c=>{
+    if(!c) return;
+    if(!ghPosledniCommit){ ghPosledniCommit=c.sha; return; }
+    if(c.sha===ghPosledniCommit) return;
+    automatickeSlouceni(parsed);
+  }).catch(()=>{});
+}
+function automatickeSlouceni(parsed){
+  const id=document.activeElement?.id;
+  return slucSVzdalenym(parsed,{tiche:true}).then(()=>{ ghZapamatujCommit(); if(id){ const el=document.getElementById(id); if(el) el.focus(); } },
+    err=>dbg('Automatické sloučení selhalo: '+(err&&err.message||err)));
+}
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') zkontrolujVzdalene(); });
 
 function saveToGitHub(tiche){
   const ghPath=S.data.ghPath;
@@ -1056,23 +1088,28 @@ function secVeSlovnicich(e){
   const sv=['objekt','subjekt'].includes(kindOf(e));
   return `<fieldset id="fsDicts"><legend>Ve slovnících</legend>
     ${ds.map((d,i)=>`<div class="field"><input type="checkbox" id="dict_${i}" data-dict="${d.id}"${cur.includes(d.id)?' checked':''}> <label for="dict_${i}" style="display:inline">${esc(d.name)}</label></div>`).join('')}
-    ${sv?'<p class="mut">Zařazením nebo vyřazením prvku se stejně zařadí či vyřadí i jeho vlastnosti.</p>':''}</fieldset>`;
+    ${sv?'<p class="mut">Zařazením nebo vyřazením prvku se stejně zařadí či vyřadí i jeho vlastnosti.</p>':''}${kindOf(e)==='ciselnik'?'<p class="mut">Zařazením nebo vyřazením číselníku se stejně zařadí či vyřadí i jeho položky.</p>':''}</fieldset>`;
 }
-const DICT_GROUPS=[['objekt','Objekty'],['subjekt','Subjekty'],['vlastnost','Vlastnosti'],['ciselnik','Číselníky']];
+const DICT_GROUPS=[['objekt','Objekty'],['subjekt','Subjekty'],['vlastnost','Vlastnosti'],['ciselnik','Číselníky'],['polozka','Položky číselníků']];
+/* Hromadně se zařazují jen prvky „nahoře“; vlastnosti a položky jdou automaticky s nimi. */
+const DICT_ADD_GROUPS=[['objekt','Objekty'],['subjekt','Subjekty'],['urcena','Určené vazby'],['ciselnik','Číselníky']];
 function secSlovnikObsah(d){
   const all=(M.inDict.get(d.id)||[]).map(id=>M.E.get(id)).filter(Boolean);
   const groups=DICT_GROUPS.map(([k,n])=>[n,sortByName(all.filter(x=>kindOf(x)===k))]);
   const other=sortByName(all.filter(x=>!DICT_GROUPS.some(([k])=>kindOf(x)===k)));
   if(other.length) groups.push(['Další záznamy',other]);
-  const cand=sortByName(S.data.entities.filter(x=>dictable(x) && !all.includes(x) && ['objekt','subjekt','ciselnik','vlastnost'].includes(kindOf(x)) || (dictable(x) && !all.includes(x) && norm(typeName(x))==='určená vazba')));
-  const cg=[...DICT_GROUPS,['urcena','Určené vazby']].map(([k,n])=>[n,cand.filter(x=>k==='urcena'?norm(typeName(x))==='určená vazba':kindOf(x)===k)]).filter(g=>g[1].length);
+  const cand=sortByName(S.data.entities.filter(x=>dictable(x) && !all.includes(x) && (['objekt','subjekt','ciselnik'].includes(kindOf(x)) || norm(typeName(x))==='určená vazba')));
+  const cg=DICT_ADD_GROUPS.map(([k,n])=>[n,cand.filter(x=>k==='urcena'?norm(typeName(x))==='určená vazba':kindOf(x)===k)]).filter(g=>g[1].length);
   const jePrac=S.workDict===d.id;
   return `<h3>Obsah slovníku (${all.length})</h3>
   <div class="bar"><button type="button" id="btnWork">${jePrac?'Přestat používat jako pracovní slovník':'Nastavit jako pracovní slovník'}</button></div>
   ${groups.map(([n,l])=>`<h4>${esc(n)} (${l.length})</h4>${l.length?`<ul class="tree">${l.map(x=>`<li><a href="#${x.id}" data-open="${x.id}">${esc(x.name)}</a>${kindOf(x)==='vlastnost'&&(M.parents.get(x.id)||[]).length?' <span class="mut">u '+esc((M.parents.get(x.id)||[]).map(p=>M.E.get(p)?.name).join(', '))+'</span>':''} <button type="button" data-undict="${x.id}">Vyřadit ${esc(x.name)}</button></li>`).join('')}</ul>`:'<p class="mut">Žádné.</p>'}`).join('')}
   ${cg.length?`<form id="fDictAdd"><fieldset><legend>Zařadit do slovníku</legend>
-    <div class="field"><label for="dictAddSel">Záznam</label><select id="dictAddSel">${cg.map(([n,l])=>`<optgroup label="${esc(n)}">${l.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</optgroup>`).join('')}</select></div>
-    <button type="submit">Zařadit</button> <span class="mut">Objekt či subjekt se zařadí i s vlastnostmi.</span></fieldset></form>`:''}`;
+    <p class="mut">Zaškrtněte záznamy a dejte Zařadit vybrané. Objekt či subjekt se zařadí i se svými vlastnostmi, číselník i se svými položkami.</p>
+    ${cg.map(([n,l],gi)=>`<fieldset class="dadd-grp"><legend>${esc(n)} (${l.length})</legend>
+      <div class="bar"><button type="button" data-dadd-vse="${gi}" aria-label="Vybrat vše: ${esc(n)}">Vybrat vše</button><button type="button" data-dadd-nic="${gi}" aria-label="Zrušit výběr: ${esc(n)}">Zrušit výběr</button></div>
+      ${l.map((x,xi)=>`<div class="field"><input type="checkbox" id="dadd_${gi}_${xi}" data-dadd="${x.id}" data-dadd-grp="${gi}"> <label for="dadd_${gi}_${xi}" style="display:inline">${esc(x.name)}</label></div>`).join('')}</fieldset>`).join('')}
+    <div class="bar"><button type="submit" id="daddGo">Zařadit vybrané</button></div></fieldset></form>`:''}`;
 }
 function bindSlovniky(m,e,k){
   m.querySelectorAll('#fsDicts [data-dict]').forEach(cb=>cb.addEventListener('change',()=>{
@@ -1083,8 +1120,18 @@ function bindSlovniky(m,e,k){
   }));
   if (k!=='slovnik') return;
   $('#btnWork').onclick=()=>{ S.workDict = S.workDict===e.id ? '' : e.id; if(!S.workDict) S.onlyWork=false; updateWorkDictUi(); saveSession(); say(S.workDict?'Pracovní slovník: '+e.name+'.':'Pracovní slovník zrušen.'); rerender(); $('#btnWork')?.focus(); };
-  m.querySelectorAll('[data-undict]').forEach(b=>b.onclick=()=>{ const x=M.E.get(b.dataset.undict); snapshot(); unassignDict(x,e); changed('Vyřazeno: '+x.name+'.'); rerender(); $('#dictAddSel')?.focus(); });
-  $('#fDictAdd')?.addEventListener('submit',ev=>{ ev.preventDefault(); const x=M.E.get($('#dictAddSel').value); snapshot(); const n=assignDict(x,e); reindex(); changed('Zařazeno: '+x.name+(n>1?' (včetně vlastností: '+(n-1)+')':'')+'.'); rerender(); $('#dictAddSel')?.focus(); });
+  m.querySelectorAll('[data-undict]').forEach(b=>b.onclick=()=>{ const x=M.E.get(b.dataset.undict); snapshot(); unassignDict(x,e); changed('Vyřazeno: '+x.name+'.'); rerender(); ($('#fDictAdd input[type=checkbox]')||$('#daddGo'))?.focus(); });
+  const daddVse=(gi,stav)=>{ const cbs=[...m.querySelectorAll('[data-dadd-grp="'+gi+'"]')]; cbs.forEach(cb=>cb.checked=stav); say((stav?'Vybráno: ':'Zrušen výběr: ')+cbs.length+'.'); };
+  m.querySelectorAll('[data-dadd-vse]').forEach(b=>b.onclick=()=>daddVse(b.dataset.daddVse,true));
+  m.querySelectorAll('[data-dadd-nic]').forEach(b=>b.onclick=()=>daddVse(b.dataset.daddNic,false));
+  $('#fDictAdd')?.addEventListener('submit',ev=>{ ev.preventDefault();
+    const vyber=[...m.querySelectorAll('[data-dadd]:checked')].map(cb=>M.E.get(cb.dataset.dadd)).filter(Boolean);
+    if(!vyber.length){ say('Není vybraný žádný záznam.'); return; }
+    snapshot(); let n=0;
+    for(const x of vyber){ if((M.dictsOf.get(x.id)||[]).includes(e.id)) continue; n+=assignDict(x,e); }
+    reindex();
+    changed('Zařazeno do slovníku '+e.name+': vybraných záznamů '+vyber.length+', zápisů celkem včetně vlastností a položek '+n+'.'); rerender();
+    ($('#fDictAdd input[type=checkbox]')||$('#daddGo'))?.focus(); });
 }
 /* Název slovníku drží DKM i v atributu „Název slovníku“ — udržet shodný. */
 function syncNazevSlovniku(e){ if(isT(e,'slovnik')) setAttrByName(e,'Název slovníku',e.name); }
@@ -1114,35 +1161,43 @@ function renderSlovniky(m){
     if($('#ndWork').checked) S.workDict=d.id; changed('Přidán datový slovník '+n+'.'); openDetail(d.id); });
 }
 /* Definice podle Správy dat SFDI (typ, vazba, aspekt Formální popis dat). */
+/* Identifikátory ze Správy dat SFDI (sfdi-sprava-dat.dkmdata). Doplněné definice je
+   dostanou, aby byly shodné napříč soubory a balíčky mezi nimi šly bez párování podle
+   názvu. Když už id v souboru nese něco jiného, přidělí se nové. */
+const SFDI_ID={typSlovnik:'ty_mvy8klj0pnvnqy',slNazev:'a_mvy8klj1gp2tyd',slPopis:'a_mvy8klj288w6fz',slVytvoreno:'a_mw0dsvp1dsmc27',slAktualizovano:'a_mw0dsvp182p1w4',slAgenda:'a_mw0d7nd72zz9b2',
+  vazbaVeSlovniku:'r_mvy8klj3v2luxw',aspFormalni:'asp_mufahxj91b3c2s',fpZahrnuto:'a_mufajarktmivfq',fpUri:'a_mufaiewlxlot2q',fpSlovnik:'a_mvyt80x76qo28n',fpKatalogy:'a_mufaqebjpyr6am',
+  fpStav:'a_mufaqntlf4vev8',fpPoznamky:'a_mufaqqatuzht38',fpTypDk:'a_mufavjcu3y8a26',listStavZapisu:'l_mufalaa7yokvn3',tagyTypyDk:'ts_mufay2pq6b472m'};
 function addDictDefs(){
   const d=S.data; const typ=n=>d.entityTypes.find(t=>norm(t.name)===norm(n));
+  const pouzita=new Set(); [d.entityTypes,d.aspects||[],d.relationTypes,d.selectLists||[],d.tagSets||[]].forEach(k=>k.forEach(x=>{ pouzita.add(x.id); (x.attributes||[]).forEach(a=>pouzita.add(a.id)); }));
+  const sid=(klic,prefix)=>{ const id=SFDI_ID[klic]; if(id&&!pouzita.has(id)){ pouzita.add(id); return id; } return uid(prefix); };
   if(!M.T.slovnik){
     const ag=typ('Agenda');
-    d.entityTypes.push({id:uid('ty_'),name:'Datový slovník',icon:'📖',attributes:[
-      {id:uid('a_'),name:'Název slovníku',type:'text'},{id:uid('a_'),name:'Popis',type:'textarea'},
-      {id:uid('a_'),name:'Vytvořeno',type:'date'},{id:uid('a_'),name:'Aktualizováno',type:'date'},
-      {id:uid('a_'),name:'Agenda',type:'relation',...(ag?{targetType:ag.id}:{}),multi:true}],
+    d.entityTypes.push({id:sid('typSlovnik','ty_'),name:'Datový slovník',icon:'📖',attributes:[
+      {id:sid('slNazev','a_'),name:'Název slovníku',type:'text'},{id:sid('slPopis','a_'),name:'Popis',type:'textarea'},
+      {id:sid('slVytvoreno','a_'),name:'Vytvořeno',type:'date'},{id:sid('slAktualizovano','a_'),name:'Aktualizováno',type:'date'},
+      {id:sid('slAgenda','a_'),name:'Agenda',type:'relation',...(ag?{targetType:ag.id}:{}),multi:true}],
       sablonaDetailu:"Podrobnosti o datovém slovníku\n\n```dkm:attributes\nstyle: list\nhideempty: yes\n```\n\n```dkm:relations\ntype: Ve slovníku\ndirection: in\ntarget: Subjekt\nstyle: table\ncolumns: link, popis, definice\ncollapse: Subjekty ve slovníku\n```\n\n```dkm:relations\ntype: Ve slovníku\ndirection: in\ntarget: Objekt\nstyle: table\ncolumns: link, popis, definice\ncollapse: Objekty ve slovníku\n```\n\n\n```dkm:relations\ntype: Ve slovníku\ndirection: in\ntarget: Číselník\nstyle: table\ncolumns: link, popis, definice\ncollapse: Číselníky ve slovníku\n```"});
     rebuildModel();
   }
-  if(!M.R.slovnik){ d.relationTypes.push({id:uid('rt_'),name:'Ve slovníku',inverseName:'Slovník obsahuje',scope:'to',fromTypes:[],toTypes:[M.T.slovnik.id]}); rebuildModel(); }
+  if(!M.R.slovnik){ d.relationTypes.push({id:sid('vazbaVeSlovniku','rt_'),name:'Ve slovníku',inverseName:'Slovník obsahuje',scope:'to',fromTypes:[],toTypes:[M.T.slovnik.id]}); rebuildModel(); }
   if(!M.slovAttr){
-    const slovAttr={id:uid('a_'),name:'Slovník',type:'relation',targetType:M.T.slovnik.id,multi:true};
+    const slovAttr={id:sid('fpSlovnik','a_'),name:'Slovník',type:'relation',targetType:M.T.slovnik.id,multi:true};
     let asp=(d.aspects||[]).find(a=>norm(a.name)==='formální popis dat');
     if(asp){ asp.attributes=[...(asp.attributes||[]),slovAttr]; }
     else {
       let list=d.selectLists.find(l=>norm(l.name)==='stav zápisu');
-      if(!list){ list={id:uid('l_'),name:'Stav zápisu',values:['Pracovní položka','Rozpracováno pro zápis','Připraveno pro zápis','Zapsáno a aktuální','Potřebuje aktualizovat','Aktualizováno a nepublikováno','Publikováno','Neaktuální záznam','Zrušený záznam']}; d.selectLists.push(list); }
+      if(!list){ list={id:sid('listStavZapisu','l_'),name:'Stav zápisu',values:['Pracovní položka','Rozpracováno pro zápis','Připraveno pro zápis','Zapsáno a aktuální','Potřebuje aktualizovat','Aktualizováno a nepublikováno','Publikováno','Neaktuální záznam','Zrušený záznam']}; d.selectLists.push(list); }
       let ts=d.tagSets.find(l=>norm(l.name)==='typy v dk');
-      if(!ts){ ts={id:uid('ts_'),name:'Typy v DK',tags:['Datoý slovník: slovník','Datový slovník: Pojem','Datový slovník: Doplnění','Datový slovník: Alias','Datový slovník: Objekt','Datový slovník: Subjekt','Datový slovník: Obecné','Datový slovník: Vztah','Datový katalog: Katalog','Datový katalog: Skupina','Datový katalog: Podkatalog','Slovník','Tezaurus','Konceptuální model','Pojem','Koncept','Třída','Typ objektu práva','Vlastnost','Veřejný údaj','Neveřejný údaj','Typ subjektu práva']}; d.tagSets.push(ts); }
+      if(!ts){ ts={id:sid('tagyTypyDk','ts_'),name:'Typy v DK',tags:['Datoý slovník: slovník','Datový slovník: Pojem','Datový slovník: Doplnění','Datový slovník: Alias','Datový slovník: Objekt','Datový slovník: Subjekt','Datový slovník: Obecné','Datový slovník: Vztah','Datový katalog: Katalog','Datový katalog: Skupina','Datový katalog: Podkatalog','Slovník','Tezaurus','Konceptuální model','Pojem','Koncept','Třída','Typ objektu práva','Vlastnost','Veřejný údaj','Neveřejný údaj','Typ subjektu práva']}; d.tagSets.push(ts); }
       const kat=typ('Katalog');
-      d.aspects.push({id:uid('asp_'),name:'Formální popis dat',attributes:[
-        {id:uid('a_'),name:'Zahrnuto do DK?',type:'yesno',showInList:true,hideEmpty:true},
-        {id:uid('a_'),name:'URI',type:'text'}, slovAttr,
-        {id:uid('a_'),name:'Katalogy',type:'relation',copyable:true,hideEmpty:true,...(kat?{targetType:kat.id}:{}),multi:true},
-        {id:uid('a_'),name:'Stav zápisu v katalogu',type:'select',listId:list.id,showInList:true,highlight:true,hideEmpty:true},
-        {id:uid('a_'),name:'Poznámky k zápisu do DK a popisu',type:'textarea'},
-        {id:uid('a_'),name:'Typ v DK',type:'tags',showInList:true,highlight:true,hideEmpty:true,tagSetId:ts.id}]});
+      d.aspects.push({id:sid('aspFormalni','asp_'),name:'Formální popis dat',attributes:[
+        {id:sid('fpZahrnuto','a_'),name:'Zahrnuto do DK?',type:'yesno',showInList:true,hideEmpty:true},
+        {id:sid('fpUri','a_'),name:'URI',type:'text'}, slovAttr,
+        {id:sid('fpKatalogy','a_'),name:'Katalogy',type:'relation',copyable:true,hideEmpty:true,...(kat?{targetType:kat.id}:{}),multi:true},
+        {id:sid('fpStav','a_'),name:'Stav zápisu v katalogu',type:'select',listId:list.id,showInList:true,highlight:true,hideEmpty:true},
+        {id:sid('fpPoznamky','a_'),name:'Poznámky k zápisu do DK a popisu',type:'textarea'},
+        {id:sid('fpTypDk','a_'),name:'Typ v DK',type:'tags',showInList:true,highlight:true,hideEmpty:true,tagSetId:ts.id}]});
     }
     rebuildModel();
   }
@@ -1328,7 +1383,7 @@ function upsertItem(c, kod, name){
   const its=(M.items.get(c.id)||[]).map(id=>M.E.get(id)).filter(Boolean);
   let p = kod ? its.find(x=>String(kodOf(x))===kod) : its.find(x=>norm(x.name)===norm(name));
   if (p){ if(name) p.name=name; if(kod) setAttrByName(p,'Kód',kod); touch(p); return {item:p,created:false}; }
-  p=newEntity('polozka',name); if(kod) setAttrByName(p,'Kód',kod); setPolozkaCiselnik(p,c); push(M.items,c.id,p.id); M.itemOf.set(p.id,c.id); return {item:p,created:true};
+  p=newEntity('polozka',name); if(kod) setAttrByName(p,'Kód',kod); setPolozkaCiselnik(p,c); push(M.items,c.id,p.id); M.itemOf.set(p.id,c.id); autoDict(p,c); return {item:p,created:true};
 }
 
 /* ====== Rychlý zápis ====== */
@@ -1523,8 +1578,13 @@ $('#workDict').addEventListener('change',ev=>{ S.workDict=ev.target.value; if(!S
 $('#onlyWork').addEventListener('change',ev=>{ S.onlyWork=ev.target.checked; saveSession(); say(S.onlyWork?'Zobrazeny jen záznamy pracovního slovníku.':'Zobrazeny všechny záznamy.'); if(S.view!=='detail') rerender(); });
 /* ====== Start ====== */
 (function start(){
+  ghNaplanujKontrolu();
   if (autoLoadFromUrlParams()) return;
-  if (restoreSession()) return;
+  if (restoreSession()){
+    /* Kopie z relace záložky může být starší než repozitář — hned ji dorovnat. */
+    if (repoPripraveno(S.data.ghPath)){ const parsed=parseGhPath(S.data.ghPath); if(parsed) automatickeSlouceni(parsed); }
+    return;
+  }
   checkRestore(); updateTitle(); show('prvky', false);
 })();
 dbg('Editor datového slovníku připraven.');

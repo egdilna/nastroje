@@ -1917,8 +1917,21 @@ a kontrolu úplnosti.
 **Datové slovníky** (typ „Datový slovník“) se spravují jako ve Správě dat SFDI:
 zařazení se zapisuje **souběžně** vazbou „Ve slovníku“ a atributem „Slovník“ v aspektu
 „Formální popis dat“ (aspekt se záznamu doplní). Vlastnosti se zařazují a vyřazují
-automaticky se svým objektem či subjektem. Chybí-li definice, editor je doplní podle
-SFDI (`addDictDefs`). Pracovní slovník (`S.workDict`) zařazuje nově zakládané záznamy.
+automaticky se svým objektem či subjektem, **položky se svým číselníkem** (`assignDict`
+/ `unassignDict`, nová položka přebírá slovníky číselníku přes `autoDict`). Položka se
+samostatně nezařazuje. Hromadně se slovník plní zaškrtávátky v jeho detailu
+(`#fDictAdd`, skupiny `DICT_ADD_GROUPS`: objekty, subjekty, určené vazby, číselníky).
+Chybí-li definice, editor je doplní podle SFDI (`addDictDefs`) **s id ze Správy dat
+SFDI** (`SFDI_ID`) — náhodná id by rozbila sjednocení modelů napříč soubory.
+Pracovní slovník (`S.workDict`) zařazuje nově zakládané záznamy.
+
+**Cizí uložení se dohání samo, jako v DKM**: `zkontrolujVzdalene` (poslední commit,
+20 s při práci / 2 min v klidu, jen viditelné okno) → `automatickeSlouceni` →
+`slucSVzdalenym(…,{tiche:true})`. Při ohnisku v textovém poli se čeká (`pisuDoPole`),
+překreslení by rozepsaný text zahodilo. **Obnovení relace záložky (F5 bez `?id=`) se
+hned dorovná z repozitáře** — dřív editor ukazoval starou kopii, dokud se neuložilo.
+Čtení z GitHubu/GitLabu jde s `cache:'no-store'`: API vrací `max-age=60` a prohlížeč
+by po uložení ještě minutu podával starou verzi.
 
 Práce s GitHubem / GitLabem je **převzatá z `index.html` beze změny chování**
 (`parseGhPath`, `ghNactiSoubor`, `ghUlozitVelke`, `glUlozit`, `slucProjekty`,
