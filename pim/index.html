@@ -1484,7 +1484,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <tr><td><kbd>Shift+N</kbd></td><td>Nová ze šablony</td></tr>
       <tr><td><kbd>Alt+Shift+D</kbd></td><td>Nástěnka (Dashboard)</td></tr>
       <tr><td><kbd>/</kbd></td><td>Skok do pole hledání v záhlaví</td></tr>
-      <tr><td><kbd>p</kbd> nebo <kbd>Alt+Shift+P</kbd></td><td>Skok na první otevřený panel (tab)</td></tr>
+      <tr><td><kbd>p</kbd> nebo <kbd>Alt+Shift+P</kbd></td><td>Skok na první otevřený panel (tab). <strong>V detailu (read)</strong> otevírá <kbd>p</kbd> rychlou úpravu projektů, na panel tam vede <kbd>Alt+Shift+P</kbd></td></tr>
       <tr><td><kbd>s</kbd></td><td>Uložit na GitHub/GitLab</td></tr>
       <tr><td><kbd>e</kbd></td><td>V detailu: přepnout edit ↔ čtení</td></tr>
       <tr><td><kbd>Shift</kbd>+<kbd>E</kbd></td><td><strong>Výjimka z navigace:</strong> v detailu přepnout pokročilý editor ↔ čtení (jen u entit, které ho mají zapnutý)</td></tr>
@@ -1504,6 +1504,7 @@ body.theme-dark .comment-meta { color: #bbb; border-bottom-color: #444; }
       <tr><td><kbd>a</kbd></td><td>V detailu (read): přepnout anotační režim</td></tr>
       <tr><td><kbd>l</kbd></td><td><strong>Rychlá úprava tagů</strong> — v detailu (read) i nad označeným řádkem v tabulce entit</td></tr>
       <tr><td><kbd>k</kbd></td><td><strong>Rychlá úprava aspektů</strong> v detailu (read). Samotné <kbd>a</kbd> je anotační režim a <kbd>Shift+A</kbd> navigace na „Vše", proto <kbd>k</kbd> — hned vedle <kbd>l</kbd> pro tagy. Nad řádkem v tabulce entit otevírá aspekty <kbd>a</kbd></td></tr>
+      <tr><td><kbd>p</kbd></td><td><strong>Rychlá úprava projektů</strong> — v detailu (read) i nad označeným řádkem v tabulce entit. Zaškrtnutý projekt = entita je jeho součástí</td></tr>
       <tr><td><kbd>o</kbd></td><td>V detailu: otevřít jediný vyplněný atribut typu URL (když jich je víc, jen to oznámí)</td></tr>
       <tr><td><kbd>Esc</kbd></td><td>Zavřít dialog / opustit edit / zpět</td></tr>
       <tr><td><kbd>?</kbd></td><td>Tato nápověda (stejně jako <kbd>Shift+F1</kbd>)</td></tr>
@@ -8876,6 +8877,7 @@ function attachEntityTableKeyboard(root) {
       else if (ev.key === 'l' || ev.key === 'L') { stop(); openQuickTagEditor(id); }
       else if (ev.key === 'r' || ev.key === 'R') { stop(); openQuickReminderEditor(id); }
       else if (ev.key === 'a' || ev.key === 'A') { stop(); openQuickAspectEditor(id); }
+      else if (ev.key === 'p' || ev.key === 'P') { stop(); openQuickProjectEditor(id); }
       else if (ev.key === 'Enter') { stop(); setView('detail', { detailId: id, detailMode: 'read' }); }
     };
   });
@@ -9157,6 +9159,57 @@ function openQuickAspectEditor(entityId) {
       save();
       render();
       toast('Aspekty uloženy (' + aspekty.length + ').');
+    }
+  });
+}
+
+// Rychlá úprava projektů jedné entity: klávesa P v detailu i nad řádkem
+// v tabulce entit, tlačítko 📁 Projekty v liště detailu, příkaz v paletě.
+// Zaškrtnutí = vazba „je součástí" (partOf) na projekt, odškrtnutí ji odebere.
+//
+// Sahá jen na vazby partOf mířící na aktivní projekty, které dialog ukazuje.
+// Vazba partOf na jinou entitu (schůzku, nadřazený úkol) i na archivovaný
+// projekt zůstává, jak byla. Nové projekty tudy nevznikají.
+function openQuickProjectEditor(entityId) {
+  const e = findEntity(entityId);
+  if (!e) return;
+  // Projekt nemůže být součástí sebe ani svého potomka — vznikl by cyklus.
+  const potomci = idsVProjektu(e.id);
+  const projekty = db.entities.filter(x => !x.archived && (x.aspects || []).includes('Project') && !potomci.has(x.id));
+  const nabizene = new Set(projekty.map(x => x.id));
+  const puvodni = new Set((e.links || []).filter(l => l.type === 'partOf' && nabizene.has(l.to)).map(l => l.to));
+
+  // Četnost = kolik entit je přímo součástí projektu.
+  const pocty = new Map();
+  db.entities.forEach(x => (x.links || []).forEach(l => {
+    if (l.type === 'partOf' && nabizene.has(l.to)) pocty.set(l.to, (pocty.get(l.to) || 0) + 1);
+  }));
+  const nazev = (id) => getDisplayTitle(findEntity(id));
+  const jako = (id) => ({ klic: id, popis: nazev(id), pocet: pocty.get(id) || 0 });
+  otevriRychlyVyber({
+    id: 'quick-project-dialog',
+    titul: '📁 Projekty: ' + getDisplayTitle(e),
+    popisekFiltru: 'Filtr',
+    napoveda: 'Zaškrtnutý projekt = entita je jeho součástí. Pište pro filtrování (bez ohledu na diakritiku). ' +
+      'Enter přepne jedinou nalezenou položku. Prázdný filtr a Enter uloží.',
+    poznamka: projekty.length ? 'Nový projekt se zakládá jako entita s aspektem Projekt.'
+                              : 'V bázi zatím není žádný projekt — založte entitu s aspektem Projekt.',
+    nadpisOstatnich: 'Ostatní projekty (podle počtu položek)',
+    prirazene: [...puvodni].sort((a, b) => nazev(a).localeCompare(nazev(b), 'cs')).map(jako),
+    ostatni: projekty.map(x => x.id).filter(id => !puvodni.has(id))
+      .sort((a, b) => (pocty.get(b) || 0) - (pocty.get(a) || 0) || nazev(a).localeCompare(nazev(b), 'cs'))
+      .map(jako),
+    umoznitNove: false,
+    fokusPo: 'btn-projects',
+    onUlozit: (ids) => {
+      const nove = new Set(ids);
+      e.links = (e.links || []).filter(l => !(l.type === 'partOf' && nabizene.has(l.to) && !nove.has(l.to)));
+      const ma = new Set(e.links.filter(l => l.type === 'partOf').map(l => l.to));
+      ids.forEach(id => { if (!ma.has(id)) { e.links.push({ to: id, type: 'partOf', note: '' }); ma.add(id); } });
+      e.updated_at = nowIso();
+      save();
+      render();
+      toast('Projekty uloženy (' + ids.length + ').');
     }
   });
 }
@@ -14990,6 +15043,11 @@ function renderDetailRead(main, e) {
         '<button id="btn-aspects" title="Rychlá úprava aspektů této entity — seznam se zaškrtávátky (klávesa K; A je anotační režim a Shift+A navigace)">🧩 Aspekty' +
           ((e.aspects || []).length ? ' (' + (e.aspects || []).length + ')' : '') + '</button>' +
         (function() {
+          const n = getEntityParentProjects(e).length;
+          return '<button id="btn-projects" title="Rychlá úprava projektů, jejichž je entita součástí — seznam se zaškrtávátky (klávesa P)">📁 Projekty' +
+            (n ? ' (' + n + ')' : '') + '</button>';
+        })() +
+        (function() {
           const r = (e.attributes || {}).reminder_at;
           return '<button id="btn-reminder" title="' +
               (r ? 'Změnit připomenutí (nyní ' + escapeHtml(fmtDate(r)) + ')' : 'Nastavit připomenutí — termín lze zadat i slovy') +
@@ -15253,6 +15311,8 @@ function renderDetailRead(main, e) {
     if (_td) _td.onclick = () => openQuickReminderEditorForDeadline(e, _td); }
   { const _ba = document.getElementById('btn-aspects');
     if (_ba) _ba.onclick = () => openQuickAspectEditor(e.id); }
+  { const _bp = document.getElementById('btn-projects');
+    if (_bp) _bp.onclick = () => openQuickProjectEditor(e.id); }
   const btnCopyLink = document.getElementById('btn-copy-entity-link');
   if (btnCopyLink) btnCopyLink.onclick = async () => {
     const link = buildEntityShareLink(e);
@@ -27254,6 +27314,12 @@ function setupKeyboard() {
     }
 
     // ===== AKCE bez shiftu =====
+    // p v detailu (read) = rychlá úprava projektů; mimo detail dál skok na
+    // první panel. Na panel vede v detailu i nadále Alt+Shift+P.
+    if ((ev.key === 'p') && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey
+        && state.view === 'detail' && state.detailMode === 'read' && state.detailId) {
+      openQuickProjectEditor(state.detailId); ev.preventDefault(); return;
+    }
     // p = focus na první panel (tab)
     if ((ev.key === 'p') && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey) {
       const firstTab = document.querySelector('#panels-bar .panel-tab');
@@ -27627,6 +27693,12 @@ function paletaSestavPrikazy() {
       hint: 'Rychlá úprava aspektů této entity — seznam se zaškrtávátky',
       keywords: 'aspekty typy druh entita upravit prirazeni rychle',
       run: () => openQuickAspectEditor(ent.id)
+    });
+    pridej({
+      id: 'projekty-entity', label: '📁 Projekty entity…', klavesa: 'p', kategorie: 'Entita',
+      hint: 'Rychlá úprava projektů, jejichž je entita součástí — seznam se zaškrtávátky',
+      keywords: 'projekty projekt soucast partof vazba prirazeni rychle',
+      run: () => openQuickProjectEditor(ent.id)
     });
     pridej({
       id: 'tagy-entity', label: '🏷 Tagy entity…', klavesa: 'l', kategorie: 'Entita',

@@ -309,6 +309,21 @@ counter, nothing written until Uložit. Two differences:
 - **Removing an aspect does not delete the values of its fields**, they just stop being
   shown. Put the aspect back and the values are still there.
 
+## 📁 Quick editing of an entity's projects
+
+The **📁 Projekty** button in the detail toolbar, the <kbd>p</kbd> key (in the detail and
+over a focused row in the entity table) or the **📁 Projekty entity…** palette command opens
+a list of all projects with checkboxes. **A checked project = the entity is part of it**
+("part of" link); unchecking removes the link.
+
+It behaves like the aspect list — assigned at the top, the rest by number of items, a
+filter, nothing written until Uložit. The dialog touches **only "part of" links to active
+projects**; a link to a meeting, a parent task or an archived project stays. A project is
+not offered itself or its sub-projects. New projects are not created here.
+
+Outside the detail <kbd>p</kbd> still jumps to the first panel; in the detail the panel is
+reached with <kbd>Alt+Shift+P</kbd>.
+
 ## 🏷 Link tags (matrix)
 
 The **🏷 Link tags…** button in the **Links** section of an entity detail (and the

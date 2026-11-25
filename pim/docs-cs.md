@@ -305,6 +305,21 @@ počítadlo, zápis až na Uložit. Dva rozdíly:
 - **Odebráním aspektu se hodnoty jeho polí nesmažou**, jen se přestanou zobrazovat.
   Když si aspekt vrátíte, hodnoty tam pořád jsou.
 
+## 📁 Rychlá úprava projektů entity
+
+Tlačítko **📁 Projekty** v liště detailu, klávesa <kbd>p</kbd> (v detailu i nad
+označeným řádkem v tabulce entit) nebo příkaz **📁 Projekty entity…** v paletě otevře
+seznam všech projektů se zaškrtávátky. **Zaškrtnutý projekt = entita je jeho součástí**
+(vazba „je součástí"), odškrtnutím se vazba odebere.
+
+Chová se stejně jako seznam aspektů — přiřazené nahoře, ostatní podle počtu položek,
+filtr, zápis až na Uložit. Dialog sahá **jen na vazby „je součástí" k aktivním projektům**;
+vazba ke schůzce, k nadřazenému úkolu nebo k archivovanému projektu zůstává. Projekt
+nenabízí sám sebe ani své podprojekty. Nové projekty tudy nevznikají.
+
+Mimo detail skáče <kbd>p</kbd> dál na první panel; v detailu na panel vede
+<kbd>Alt+Shift+P</kbd>.
+
 ## 🏷 Tagy vazeb (matice)
 
 Tlačítko **🏷 Tagy vazeb…** v sekci **Vazby** v detailu entity (a stejný příkaz

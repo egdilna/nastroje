@@ -761,7 +761,7 @@ zamčený rodič, vrácení fokusu, VS16 a ZWJ v `planPriznakNazvu`, propsání 
 Příznaky, kanárci na okolní úkoly i na poznámku s emoji v těle) a v sekci Příznaky
 u entity `pim/testy/sekce-detailu.mjs`.
 
-## Rychlý výběr ze seznamu: tagy (L) a aspekty (K)
+## Rychlý výběr ze seznamu: tagy (L), aspekty (K) a projekty (P)
 
 `otevriRychlyVyber(opts)` je **jeden** dialog „zaškrtej, co k entitě patří".
 Staví na něm `openQuickTagEditor()` (klávesa `l`, `#btn-tags`) i
@@ -806,8 +806,17 @@ Dialog to říká nahlas; bez té věty to vypadá jako ztráta dat.
 
 Je to **jen v aplikaci**, ne v šabloně prohlížeče.
 
-Hlídá to `pim/testy/rychle-tagy.mjs` a `pim/testy/rychle-aspekty.mjs`
-(kanárci na ostatní entity).
+### Projekty (P)
+
+`openQuickProjectEditor()` (klávesa `p` v detailu read i nad řádkem tabulky entit,
+`#btn-projects`, paleta) staví na témž dialogu. Zaškrtnutí = vazba `partOf` na projekt.
+Sahá **jen na `partOf` k nabízeným projektům** (aktivní, s aspektem Project) — `partOf`
+ke schůzce, úkolu nebo archivovanému projektu zůstává. Nenabízí entitu samu ani její
+potomky (`idsVProjektu`), jinak by vznikl cyklus. `p` mimo detail dál skáče na první
+panel; v detailu na panel vede `Alt+Shift+P`.
+
+Hlídá to `pim/testy/rychle-tagy.mjs`, `pim/testy/rychle-aspekty.mjs`
+a `pim/testy/rychle-projekty.mjs` (kanárci na ostatní entity).
 
 ## Dialog Vybrat entitu: hledá se podle toho, co je v řádku vidět
 
