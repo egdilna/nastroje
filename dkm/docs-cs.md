@@ -822,11 +822,14 @@ U **jedné entity** se to dá přebít v jejím editoru, v nabídce pod názvem:
 
 Co se pak děje:
 
-- **Pole pro název se v editoru vůbec neukáže** — místo něj je vypsaná hodnota, kterou
-  entita dostane, a pod ní poznámka, podle čeho se skládá. Psát do pole, které se při uložení
-  stejně přepíše, nemá smysl. Výjimka je jediná: **dokud ze šablony nic nevychází** (nová
-  entita s prázdnými zdroji) pole zůstane, ať je kam název napsat — entita bez názvu by
-  nešla uložit. Jakmile šablona něco dá, pole při dalším překreslení zmizí.
+- **Pole pro název se v editoru neukáže a název není povinný** — místo pole je vždycky živý
+  náhled hodnoty, kterou entita dostane, a pod ním poznámka, podle čeho se skládá. U nové
+  entity s prázdnými zdroji stojí v náhledu *Zatím se nic neskládá*; stačí vyplnit atributy
+  a název se objeví sám. Psát do pole, které se při uložení stejně přepíše, nemá smysl.
+- **Ruční název je jen záloha** za tlačítkem *Napsat název ručně*. Platí, dokud ze šablony
+  nic nevychází; jakmile se název složí, přepíše ho. Kdyby šel uložit entitu, ze které nic
+  nevychází a ručně nemá nic, ukládání se zastaví s vysvětlením a pole pro ruční název se
+  samo odkryje.
 - **Název se přepočítá při každé změně v editoru** a vypsaná hodnota se mění rovnou při psaní
   do zdrojů — nečeká se na uložení a nehlídá se, které pole do šablony vstupuje. Přidáš
   aspekt, změníš číslo, přepíšeš značku: název se srovná.
